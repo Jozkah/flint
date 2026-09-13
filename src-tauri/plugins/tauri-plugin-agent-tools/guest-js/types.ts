@@ -1,7 +1,10 @@
 /** A skill's summary as returned by `skillList`. */
 export interface SkillMeta {
+  /** `name` for a store skill, `<plugin>:<skill>` for a plugin skill. */
   name: string
   description: string
+  /** The installed plugin this skill ships in; absent for a store skill. */
+  plugin?: string
 }
 
 /**

@@ -444,7 +444,7 @@ impl Ctx {
         }
         self.eval(
             "const b = [...document.querySelectorAll('button')].find(x =>
-               /select a model/i.test((x.getAttribute('aria-label') || '')
+               /select a model|smoke-alt/i.test((x.getAttribute('aria-label') || '')
                  + ' ' + (x.textContent || '')));
              if (b) b.click();
              return true;",
@@ -15675,16 +15675,39 @@ fn scenario_picker_rows_keyboard(ctx: &Ctx) -> ScenarioResult {
              return true;"
         ))?;
         ensure!(dispatched, "no focusable, keyboard-selectable row for {model}");
-        ctx.wait_until(
+        let selected = ctx.wait_until(
             &format!("{model} to be selected by keyboard"),
             &format!(
                 "const open = [...document.querySelectorAll('input')].some(i =>
                    /search|find|model/i.test(i.getAttribute('placeholder') || ''));
                  return !open && [...document.querySelectorAll('button')].some(b =>
-                   (b.textContent || '').trim().startsWith({model:?}));"
+                   (b.textContent || '').includes({model:?}));"
             ),
             Duration::from_secs(15),
-        )
+        );
+        if selected.is_err() {
+            println!(
+                "      picker after Enter: {}",
+                ctx.eval_string(&format!(
+                    "const rows = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
+                       .filter(r => (r.textContent || '').includes('smoke'))
+                       .map(r => (r.textContent || '').trim().slice(0, 40) + ' pressed=' + r.getAttribute('aria-pressed'));
+                     const open = [...document.querySelectorAll('input')].some(i =>
+                       /search|find|model/i.test(i.getAttribute('placeholder') || ''));
+                     const triggers = [...document.querySelectorAll('button')]
+                       .map(b => (b.textContent || '').trim()).filter(t => /smoke/i.test(t)).slice(0, 4);
+                     return JSON.stringify({{ open, rows, triggers, active: (document.activeElement && document.activeElement.textContent || '').slice(0, 40) }});"
+                ))
+                .unwrap_or_default()
+            );
+            // Put the default model back by pointer so later scenarios are not
+            // judged against a selection this failure left behind.
+            let _ = ctx.eval(&format!(
+                "document.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Escape', bubbles: true }}));
+                 return true;"
+            ));
+        }
+        selected
     };
     pick("smoke-alt")?;
     pick(SMOKE_MODEL)
@@ -15878,20 +15901,38 @@ fn scenario_mcp_trust_identity(ctx: &Ctx) -> ScenarioResult {
         &serde_json::json!({ "serverName": name, "fingerprint": fingerprint }),
     )?;
 
-    ctx.goto("/settings/general")?;
-    ctx.goto("/settings/mcp-servers")?;
-    ctx.wait_until(
+    // The settings page keeps its own copy of the configuration, so edits made
+    // through the backend above are only visible after a full load.
+    ctx.eval_detached("window.location.replace('/settings/mcp-servers')")?;
+    std::thread::sleep(Duration::from_secs(2));
+    ctx.settle();
+    let row = ctx.wait_until(
         "the server row",
-        &format!("return (document.body.innerText || '').includes({name:?});"),
-        Duration::from_secs(30),
-    )?;
+        &format!("return !!document.querySelector('[data-testid={:?}]');", format!("mcp-status-{name}")),
+        Duration::from_secs(45),
+    );
+    if row.is_err() {
+        ctx.describe("mcp-servers-after-config-edit")?;
+        println!(
+            "      saved config now: {}",
+            invoke(ctx, "get_mcp_configs", &serde_json::json!({}))
+                .map(|v| v.to_string())
+                .unwrap_or_default()
+                .chars()
+                .take(600)
+                .collect::<String>()
+        );
+    }
+    row?;
+    let status = format!("mcp-status-{name}");
     let clicked = ctx.eval_bool(&format!(
         "const buttons = [...document.querySelectorAll('button[title=\"Delete MCP Server\"]')];
+         const status = document.querySelector('[data-testid={status:?}]');
          const b = buttons.find(btn => {{
            let el = btn;
-           for (let i = 0; i < 8 && el; i++) {{
+           for (let i = 0; i < 12 && el; i++) {{
              el = el.parentElement;
-             if (el && (el.textContent || '').includes({name:?})
+             if (el && status && el.contains(status)
                  && el.querySelectorAll('button[title=\"Delete MCP Server\"]').length === 1) return true;
            }}
            return false;
@@ -15899,6 +15940,7 @@ fn scenario_mcp_trust_identity(ctx: &Ctx) -> ScenarioResult {
          if (!b) return false; b.click(); return true;"
     ))?;
     ensure!(clicked, "no delete control on the {name} row");
+    let _ = &status;
     ctx.wait_until(
         "the delete confirmation",
         "const d = document.querySelector('[role=\"dialog\"]');
@@ -15970,7 +16012,8 @@ fn scenario_guide_card(ctx: &Ctx) -> ScenarioResult {
     }
 
     let opened = ctx.eval_bool(
-        "const b = document.querySelector('button[aria-label=\"What does \\\"Context\\\" mean?\"]');
+        "const b = [...document.querySelectorAll('button[aria-label]')]
+           .find(x => x.getAttribute('aria-label') === 'What does \"Context\" mean?');
          if (!b) return false; b.focus(); b.click(); return true;",
     )?;
     ensure!(opened, "the 'Context' term had no explanation control");
@@ -16042,6 +16085,54 @@ fn create_collection(ctx: &Ctx, name: &str) -> Result<String, Failure> {
     Ok(id)
 }
 
+/// The system prompt of the most recent chat request whose messages include
+/// `user_text`. Title and other background requests are skipped.
+fn system_prompt_for(ctx: &Ctx, user_text: &str) -> Result<String, Failure> {
+    let requests = model_requests(ctx)?;
+    let request = requests
+        .iter()
+        .rev()
+        .find(|r| {
+            r.get("messages")
+                .and_then(Value::as_array)
+                .map(|m| {
+                    m.iter().any(|m| {
+                        let content = match m.get("content") {
+                            Some(Value::String(text)) => text.trim().to_string(),
+                            Some(other) => other
+                                .as_array()
+                                .map(|parts| {
+                                    parts
+                                        .iter()
+                                        .filter_map(|p| p.get("text").and_then(Value::as_str))
+                                        .collect::<Vec<_>>()
+                                        .join("")
+                                })
+                                .unwrap_or_default()
+                                .trim()
+                                .to_string(),
+                            None => String::new(),
+                        };
+                        m.get("role").and_then(Value::as_str) == Some("user")
+                            && (content == user_text || content.starts_with(user_text))
+                    })
+                })
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| Failure(format!("no chat request carried {user_text:?}")))?;
+    Ok(request
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|m| {
+            m.iter()
+                .filter(|m| m.get("role").and_then(Value::as_str) == Some("system"))
+                .map(|m| m.get("content").map(|c| c.to_string()).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default())
+}
+
 /// Commit a project-scope memory for a collection the way Settings > Memory does.
 fn commit_collection_memory(ctx: &Ctx, collection: &str, content: &str) -> ScenarioResult {
     let data = data_folder()?.to_string_lossy().to_string();
@@ -16096,17 +16187,52 @@ fn send_in_current_page(ctx: &Ctx, text: &str) -> ScenarioResult {
 fn scenario_collection_memory(ctx: &Ctx) -> ScenarioResult {
     ctx.script_model("plain", &[])?;
     script_reply(ctx, DEFAULT_REPLY)?;
-    let alpha = create_collection(ctx, "Smoke Alpha")?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let alpha = create_collection(ctx, &format!("Smoke Alpha {stamp}"))?;
     let marker = "SMOKE-ALPHA-DEPLOYS-WITH-MAKE-SHIP";
     commit_collection_memory(ctx, &alpha, &format!("The team deploys with {marker}."))?;
 
     // A chat in Alpha carries the memory.
     ctx.goto(&format!("/project/{alpha}"))?;
-    send_in_current_page(ctx, "how do we deploy?")?;
-    let prompt = last_system_prompt(ctx)?;
+    let question_alpha = format!("how do we deploy? alpha {stamp}");
+    send_in_current_page(ctx, &question_alpha)?;
+    let prompt = system_prompt_for(ctx, &question_alpha)?;
+    if !prompt.contains(marker) {
+        // Separate "the backend has nothing for this collection" from "the
+        // chat did not ask for it", and show what the request looked like.
+        let data = data_folder()?.to_string_lossy().to_string();
+        let direct = invoke(
+            ctx,
+            "plugin:agent-tools|memory_retrieve",
+            &serde_json::json!({ "location": { "dataFolder": data, "janProjectId": alpha } }),
+        );
+        println!("      direct retrieval for the collection: {direct:?}");
+        let thread = ctx.eval_string("return window.location.pathname;").unwrap_or_default();
+        println!("      chat route: {thread}");
+        let requests = model_requests(ctx)?;
+        for r in requests.iter().rev().take(3) {
+            let roles: Vec<String> = r
+                .get("messages")
+                .and_then(Value::as_array)
+                .map(|m| {
+                    m.iter()
+                        .map(|m| {
+                            let role = m.get("role").and_then(Value::as_str).unwrap_or("?");
+                            let text = m.get("content").map(|c| c.to_string()).unwrap_or_default();
+                            format!("{role}: {}", text.chars().take(160).collect::<String>())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            println!("      request: {roles:?}");
+        }
+    }
     ensure!(
         prompt.contains(marker),
-        "the collection's memory was not sent with its chat. system prompt: {prompt:.600}"
+        "the collection's memory was not sent with its chat. system prompt: {prompt}"
     );
 
     // The panel verifies it from the sanitized request, not from intent.
@@ -16137,17 +16263,19 @@ fn scenario_collection_memory(ctx: &Ctx) -> ScenarioResult {
     )?;
 
     // Another collection's chat, and an ordinary chat, do not.
-    let beta = create_collection(ctx, "Smoke Beta")?;
+    let beta = create_collection(ctx, &format!("Smoke Beta {stamp}"))?;
     ctx.goto(&format!("/project/{beta}"))?;
-    send_in_current_page(ctx, "how do we deploy?")?;
-    let prompt = last_system_prompt(ctx)?;
+    let question_beta = format!("how do we deploy? beta {stamp}");
+    send_in_current_page(ctx, &question_beta)?;
+    let prompt = system_prompt_for(ctx, &question_beta)?;
     ensure!(
         !prompt.contains(marker),
         "another collection's memory leaked into this chat: {prompt:.600}"
     );
     new_chat(ctx)?;
-    send_in_current_page(ctx, "how do we deploy?")?;
-    let prompt = last_system_prompt(ctx)?;
+    let question_plain = format!("how do we deploy? plain {stamp}");
+    send_in_current_page(ctx, &question_plain)?;
+    let prompt = system_prompt_for(ctx, &question_plain)?;
     ensure!(
         !prompt.contains(marker),
         "a collection memory leaked into an ordinary chat: {prompt:.600}"

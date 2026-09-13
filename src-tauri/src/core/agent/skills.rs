@@ -18,12 +18,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use tauri_plugin_agent_tools::skills as tool_skills;
 use tauri_plugin_agent_tools::skills::{DEFAULT_JAN_SKILL, DEFAULT_JAN_SKILL_NAME};
-use tauri_plugin_agent_tools::workspace::workspace_filename;
+use tauri_plugin_agent_tools::workspace::{project_store, workspace_filename};
 
 /// `<project_root>/.jan/agent/skills`.
 pub(crate) fn skills_dir(root: &Path) -> PathBuf {
-    root.join(".jan").join("agent").join("skills")
+    tool_skills::skills_dir(&project_store(root))
 }
 
 /// The user's own skills, shared by every project (AH-121):
@@ -61,23 +62,17 @@ fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
     let Some(dir) = user_skills_dir() else {
         return Vec::new();
     };
-    scan_skill_dir(&dir)
+    tool_skills::scan_skill_dir(&dir)
         .into_iter()
         .filter(|u| !project.iter().any(|p| p.name == u.name))
         .collect()
 }
 
-/// One skill on disk, located by its identity name (folder name or flat stem).
-#[derive(Debug, Clone)]
-pub(crate) struct SkillEntry {
-    pub name: String,
-    /// The markdown file to read (the `SKILL.md`, or the flat `<name>.md`).
-    pub file: PathBuf,
-    /// True for the folder form `<name>/SKILL.md`, false for legacy flat.
-    pub is_folder: bool,
-    /// The plugin this skill ships in (`Some`), or `None` for a project skill.
-    pub plugin: Option<String>,
-}
+/// One skill on disk, located by its identity name (folder name or flat stem),
+/// tagged with the plugin it ships in. The type, and every plugin discovery
+/// rule below, live in the tool plugin crate so the desktop's skill tools and
+/// this CLI catalog apply identical rules.
+pub(crate) use tauri_plugin_agent_tools::skills::SkillEntry;
 
 /// Summary for the management UI / prompt catalog.
 #[derive(Clone, serde::Serialize)]
@@ -236,66 +231,14 @@ pub(crate) fn safe_stem(name: &str) -> Result<String, String> {
     Ok(file.trim_end_matches(".md").to_string())
 }
 
-/// Scan one skills directory for folder skills (`<name>/SKILL.md`) and legacy
-/// flat skills (`<name>.md`), sorted by name. When both forms share a name,
-/// the folder form wins so a skill is never listed/injected twice. Entries
-/// come back with `plugin: None`; the caller tags plugin-owned entries.
-pub(crate) fn scan_skill_dir(dir: &Path) -> Vec<SkillEntry> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    // Keyed by name so a duplicate stem collapses to one entry; BTreeMap also
-    // gives the sorted-by-name order for free.
-    let mut by_name: std::collections::BTreeMap<String, SkillEntry> =
-        std::collections::BTreeMap::new();
-    let mut consider = |entry: SkillEntry| {
-        match by_name.get(&entry.name) {
-            // Keep an existing folder entry over an incoming flat one.
-            Some(existing) if existing.is_folder && !entry.is_folder => {}
-            _ => {
-                by_name.insert(entry.name.clone(), entry);
-            }
-        }
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
-            let skill_md = path.join("SKILL.md");
-            if skill_md.is_file() {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    consider(SkillEntry {
-                        name: name.to_string(),
-                        file: skill_md,
-                        is_folder: true,
-                        plugin: None,
-                    });
-                }
-            }
-        } else if path.extension().and_then(|x| x.to_str()) == Some("md") {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                consider(SkillEntry {
-                    name: stem.to_string(),
-                    file: path,
-                    is_folder: false,
-                    plugin: None,
-                });
-            }
-        }
-    }
-    let mut out: Vec<SkillEntry> = by_name.into_values().collect();
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
-}
-
 /// All project skills (`.jan/agent/skills`), sorted by name.
 pub(crate) fn discover(root: &Path) -> Vec<SkillEntry> {
-    scan_skill_dir(&skills_dir(root))
+    tool_skills::discover(&project_store(root))
 }
 
 /// The plugins directory `.jan/agent/plugins`.
 pub(crate) fn plugins_dir(root: &Path) -> PathBuf {
-    root.join(".jan").join("agent").join("plugins")
+    tool_skills::plugins_dir(&project_store(root))
 }
 
 /// Recursively yield every `*.md` file under `dir`, skipping dotfiles and
@@ -362,49 +305,11 @@ pub(crate) fn discover_plugins_including_disabled(root: &Path) -> Vec<SkillEntry
     scan_plugin_skills(root, &[])
 }
 
+/// Delegates to the tool crate's discovery with this crate's own reading of
+/// `[plugins].disabled`; `tests::plugin_rules_match_the_tool_crate` pins the
+/// two readings to the same answer.
 fn scan_plugin_skills(root: &Path, disabled: &[String]) -> Vec<SkillEntry> {
-    let dir = plugins_dir(root);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<SkillEntry> = Vec::new();
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let Some(plugin) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        // Ignore interrupted `.installing-*` staging directories, matching the
-        // command/agent loaders: a partially-copied plugin must not leak its
-        // skills into the catalog during an install.
-        if plugin.starts_with(".installing-") {
-            continue;
-        }
-        if disabled.iter().any(|d| d == plugin) {
-            continue;
-        }
-        let mut tagged = Vec::new();
-        for e in scan_skill_dir(&path.join("skills")) {
-            tagged.push(SkillEntry {
-                plugin: Some(plugin.to_string()),
-                ..e
-            });
-        }
-        let root_md = path.join("SKILL.md");
-        if root_md.is_file() {
-            tagged.push(SkillEntry {
-                name: plugin.to_string(),
-                file: root_md,
-                is_folder: false,
-                plugin: Some(plugin.to_string()),
-            });
-        }
-        out.extend(tagged);
-    }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
+    tool_skills::discover_plugins(&project_store(root), disabled)
 }
 
 /// Project skills, then the user's own skills (AH-121), then plugin skills
@@ -421,108 +326,25 @@ pub(crate) fn discover_all(root: &Path) -> Vec<SkillEntry> {
 /// The user-facing identity of a skill entry: `name` for project skills,
 /// `<plugin>:<name>` for plugin skills.
 pub(crate) fn qualified_name(entry: &SkillEntry) -> String {
-    match &entry.plugin {
-        Some(plugin) => format!("{plugin}:{}", entry.name),
-        None => entry.name.clone(),
-    }
-}
-
-/// Locate a project skill by name, preferring the folder form. Plugin skills
-/// are not resolved here — `resolve_readable` handles those.
-fn resolve(root: &Path, name: &str) -> Result<SkillEntry, String> {
-    let stem = safe_stem(name)?;
-    let dir = skills_dir(root);
-    let folder = dir.join(&stem).join("SKILL.md");
-    if folder.is_file() {
-        return Ok(SkillEntry {
-            name: stem,
-            file: folder,
-            is_folder: true,
-            plugin: None,
-        });
-    }
-    let flat = dir.join(format!("{stem}.md"));
-    if flat.is_file() {
-        return Ok(SkillEntry {
-            name: stem,
-            file: flat,
-            is_folder: false,
-            plugin: None,
-        });
-    }
-    Err(format!("ERROR: skill '{name}' not found"))
-}
-
-/// Locate a skill inside an installed plugin: `plugins/<plugin>/skills/<plain>`
-/// (folder or flat) plus the single-skill case `<plugin>/SKILL.md` when the
-/// plain name equals the plugin name. Both names are stem-validated so a
-/// caller-supplied name can never escape the plugins directory.
-fn resolve_in_plugin(root: &Path, plugin: &str, plain: &str) -> Option<SkillEntry> {
-    if safe_stem(plugin).ok()? != plugin || safe_stem(plain).ok()? != plain {
-        return None;
-    }
-    // A disabled plugin's skills are not resolvable by their qualified name
-    // either, or disabling would only hide them from the catalog.
-    if crate::core::agent::project::plugin_disabled(root, plugin) {
-        return None;
-    }
-    let base = plugins_dir(root).join(plugin);
-    let folder = base.join("skills").join(plain).join("SKILL.md");
-    if folder.is_file() {
-        return Some(SkillEntry {
-            name: plain.to_string(),
-            file: folder,
-            is_folder: true,
-            plugin: Some(plugin.to_string()),
-        });
-    }
-    let flat = base.join("skills").join(format!("{plain}.md"));
-    if flat.is_file() {
-        return Some(SkillEntry {
-            name: plain.to_string(),
-            file: flat,
-            is_folder: false,
-            plugin: Some(plugin.to_string()),
-        });
-    }
-    if plain == plugin {
-        let root_md = base.join("SKILL.md");
-        if root_md.is_file() {
-            return Some(SkillEntry {
-                name: plain.to_string(),
-                file: root_md,
-                is_folder: false,
-                plugin: Some(plugin.to_string()),
-            });
-        }
-    }
-    None
+    tool_skills::qualified_name(entry)
 }
 
 /// Locate any readable skill: project skill first (project shadows plugins),
 /// then the explicit `<plugin>:<plain>` form, then a plain name that is unique
-/// across installed plugins. Used by `read_raw` so `skill_read` and invocation
-/// dispatch reach plugin skills with the same names the catalogs advertise.
+/// across enabled plugins. A disabled plugin's skills resolve to nothing, or
+/// disabling would only hide them from the catalog. Used by invocation
+/// dispatch so it reaches plugin skills with the names the catalogs advertise.
 pub(crate) fn resolve_readable(root: &Path, name: &str) -> Result<SkillEntry, String> {
-    if let Ok(entry) = resolve(root, name) {
+    let store = project_store(root);
+    if let Ok(entry) = tool_skills::resolve_store_skill(&store, name) {
         return Ok(entry);
     }
-    // The user's own skill, when no project skill has the name.
+    // The user's own skill, when no project skill has the name (AH-121).
     if let Some(entry) = discover_user(&[]).into_iter().find(|e| e.name == name) {
         return Ok(entry);
     }
-    if let Some((plugin, plain)) = name.split_once(':') {
-        if let Some(entry) = resolve_in_plugin(root, plugin, plain) {
-            return Ok(entry);
-        }
-    }
-    let mut matches = discover_plugins(root)
-        .into_iter()
-        .filter(|e| e.name == name);
-    match (matches.next(), matches.next()) {
-        (Some(only), None) => Ok(only),
-        _ => Err(format!("ERROR: skill '{name}' not found")),
-    }
+    let disabled = crate::core::agent::project::disabled_plugins(root);
+    tool_skills::resolve_readable(&store, name, &disabled)
 }
 
 /// Whether a skill is advertised given the `[skills].enabled` whitelist. An
@@ -530,13 +352,7 @@ pub(crate) fn resolve_readable(root: &Path, name: &str) -> Result<SkillEntry, St
 /// qualified `<plugin>:<skill>` name, the plain skill name, or the plugin
 /// name alone (enables every skill a plugin ships).
 pub(crate) fn is_enabled(enabled: &[String], entry: &SkillEntry) -> bool {
-    if enabled.is_empty() {
-        return true;
-    }
-    let qualified = qualified_name(entry);
-    enabled
-        .iter()
-        .any(|n| n == &qualified || n == &entry.name || Some(n) == entry.plugin.as_ref())
+    tool_skills::entry_enabled(enabled, entry)
 }
 
 /// A skill's summary line: the frontmatter `description`, or the first body line.
@@ -1434,6 +1250,64 @@ mod tests {
         assert!(msg.contains("Run the release steps."));
         // Unknown skill errors.
         assert!(build_invocation_message(&root, "nope", "").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The CLI catalog (this crate reading agent.toml with `load_agent_config`)
+    /// and the desktop skill tools (the tool crate reading the same file with
+    /// its own two-key reader) must offer the model the same skills and refuse
+    /// the same reads, across disabled plugins and every whitelist shape.
+    #[test]
+    fn plugin_rules_match_the_tool_crate() {
+        let root = temp_root("parity");
+        project_skill(&root, "deploy", "---\ndescription: ship\n---\nbody\n");
+        plugin_skill(&root, "release", "prepare", "---\ndescription: prep\n---\nbody\n");
+        plugin_skill(&root, "release", "changelog", "log body\n");
+        plugin_skill(&root, "muted", "hush", "muted body\n");
+        single_plugin(&root, "triage", "---\ndescription: t\n---\nbody\n");
+        std::fs::write(
+            root.join(".jan/agent/agent.toml"),
+            "[plugins]\ndisabled = [\"muted\"]\n",
+        )
+        .unwrap();
+        let store = project_store(&root);
+
+        let whitelists: [&[&str]; 6] = [
+            &[],
+            &["release"],
+            &["release:prepare", "deploy"],
+            &["changelog"],
+            &["triage", "jan"],
+            &[""],
+        ];
+        for wl in whitelists {
+            let enabled: Vec<String> = wl.iter().map(|s| s.to_string()).collect();
+            let cli: Vec<String> = catalog(&root, &enabled).into_iter().map(|m| m.name).collect();
+            let tools: Vec<String> = tool_skills::catalog(&store, &enabled)
+                .into_iter()
+                .map(|m| m.name)
+                .collect();
+            assert_eq!(cli, tools, "catalog differs for whitelist {wl:?}");
+            for name in [
+                "deploy",
+                "release:prepare",
+                "prepare",
+                "changelog",
+                "triage",
+                "muted:hush",
+                "hush",
+            ] {
+                let cli_ok = resolve_readable(&root, name)
+                    .map(|e| is_enabled(&enabled, &e))
+                    .unwrap_or(false);
+                let tools_ok = tool_skills::read_for_model(None, &store, &enabled, name).is_ok();
+                assert_eq!(cli_ok, tools_ok, "readability of {name} differs for {wl:?}");
+            }
+        }
+        assert_eq!(
+            crate::core::agent::project::disabled_plugins(&root),
+            tool_skills::load_config(&store).disabled_plugins
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

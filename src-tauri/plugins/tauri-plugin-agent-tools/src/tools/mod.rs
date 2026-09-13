@@ -68,6 +68,12 @@ pub struct ToolContext<'a> {
     pub project_root: &'a Path,
     pub store_root: &'a Path,
     pub enabled_skills: &'a [String],
+    /// An attached project's store (`<folder>/.jan/agent`), read by the skill
+    /// tools as a read-only layer in front of `store_root`: the project's own
+    /// skills and its enabled plugins' skills, filtered by that project's
+    /// `agent.toml`. `None` everywhere a project is not attached, and on the
+    /// CLI, whose `store_root` already is the project store.
+    pub skill_project: Option<&'a Path>,
     pub allow_network: bool,
     /// When set, `write`/`edit` re-canonicalize the target and refuse a path
     /// that escapes `project_root`, closing the check/use race between the
@@ -196,6 +202,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("project_root", &self.project_root)
             .field("store_root", &self.store_root)
             .field("enabled_skills", &self.enabled_skills)
+            .field("skill_project", &self.skill_project)
             .field("allow_network", &self.allow_network)
             .field("confine_writes", &self.confine_writes)
             .field("mask_root", &self.mask_root)
@@ -225,6 +232,7 @@ impl<'a> ToolContext<'a> {
             project_root,
             store_root,
             enabled_skills,
+            skill_project: None,
             allow_network: false,
             confine_writes: false,
             mask_root: None,
@@ -337,6 +345,13 @@ impl<'a> ToolContext<'a> {
 
     pub fn with_read_roots(mut self, read_roots: &'a [PathBuf]) -> Self {
         self.read_roots = read_roots;
+        self
+    }
+
+    /// Layer an attached project's skills in front of the store's. See
+    /// [`Self::skill_project`].
+    pub fn with_skill_project(mut self, project_store: Option<&'a Path>) -> Self {
+        self.skill_project = project_store;
         self
     }
 

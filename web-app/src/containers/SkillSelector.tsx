@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useSkills, effectiveEnabled, storedEnabled } from '@/hooks/useSkills'
 import { cn } from '@/lib/utils'
+import { isPluginSkill } from '@/lib/skillStore'
 
 /**
  * Top-of-input control showing which skills will be advertised to the agent this
@@ -72,6 +73,11 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
             >
               <div className="flex-1 min-w-0">
                 <div className="truncate text-sm font-medium">{s.name}</div>
+                {isPluginSkill(s) && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {t('connections:skills.fromPlugin', { plugin: s.plugin })}
+                  </div>
+                )}
                 {s.description && (
                   <div className="truncate text-xs text-muted-foreground">
                     {s.description}

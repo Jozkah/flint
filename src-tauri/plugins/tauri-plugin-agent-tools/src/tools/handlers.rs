@@ -1038,14 +1038,28 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
 /// Resolution is the caller's, not the skills module's: a dependency may live
 /// in the project's store or in the user's, and only here is that known.
 fn skill_requirements_unmet(ctx: &ToolContext<'_>, name: &str, parsed: &skills::ParsedSkill) -> Vec<String> {
-    let lookup = |wanted: &str| skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, wanted).ok();
+    let lookup = |wanted: &str| {
+        ctx.skill_project
+            .and_then(|project| skills::read_raw(project, wanted).ok())
+            .or_else(|| skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, wanted).ok())
+    };
     skills::unmet_requirements(name, parsed, &lookup, ctx.available_tools)
 }
 
 /// `skill_list` tool: catalog of `name — description` lines for ENABLED skills
 /// only (disabled skills must stay invisible to the model). Empty if none.
+///
+/// With an attached project (`ctx.skill_project`), that project's skills and
+/// its enabled plugins' skills come first, filtered by the project's own
+/// `[skills].enabled`; see [`skills::catalog_for_model`].
 fn skill_list(ctx: &ToolContext<'_>) -> String {
-    skills::catalog_with_user(ctx.store_root, ctx.user_skills_root, ctx.enabled_skills)
+    let offered = skills::catalog_for_model_with_user(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.user_skills_root,
+        ctx.enabled_skills,
+    );
+    offered
         .into_iter()
         // A skill this run could not carry out is not offered: a catalogue
         // entry is an invitation, and one that always ends in a refusal is a
@@ -1060,7 +1074,15 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
         // catalogue is an offer; one that cannot be taken up is worse than no
         // entry at all.
         .filter(|meta| {
-            match skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, &meta.name) {
+            // The body the listing layer would hand over, not a same-named
+            // skill of another layer.
+            match skills::read_for_model_with_user(
+                ctx.skill_project,
+                ctx.store_root,
+                ctx.user_skills_root,
+                ctx.enabled_skills,
+                &meta.name,
+            ) {
                 Ok(raw) => skill_requirements_unmet(ctx, &meta.name, &skills::parse(&raw)).is_empty(),
                 Err(_) => true,
             }
@@ -1086,16 +1108,23 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
 }
 
 /// `skill_read` tool: a skill's full instructions (frontmatter stripped). A
-/// disabled skill — or one with `disable-model-invocation: true` — is treated
-/// as absent so it never reaches the model.
+/// disabled skill, a skill of a disabled plugin, or one with
+/// `disable-model-invocation: true` is treated as absent so it never reaches
+/// the model. Reading a skill grants nothing: scripts it mentions still run
+/// only through `bash`, under the gate.
 fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(name) = arg_str(args, "name") else {
         return "ERROR: missing required argument 'name'".to_string();
     };
-    if !skills::is_enabled(ctx.enabled_skills, name) {
-        return format!("ERROR: skill '{name}' not found");
-    }
-    let raw = match skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, name) {
+    // The whitelist is applied per layer: an attached project's own
+    // `[skills].enabled`, the caller's for the store and the user's skills.
+    let raw = match skills::read_for_model_with_user(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.user_skills_root,
+        ctx.enabled_skills,
+        name,
+    ) {
         Ok(raw) => raw,
         Err(e) => return e,
     };
@@ -1143,6 +1172,17 @@ fn skill_write(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(content) = arg_str(args, "content") else {
         return "ERROR: missing required argument 'content'".to_string();
     };
+    // An attached project's skills (its own and its plugins') are read-only
+    // here: the folder is mounted read-only, and a same-named store skill
+    // would be shadowed by it and never read back.
+    if let Some(project) = ctx.skill_project {
+        if skills::project_claims(project, name) {
+            return format!(
+                "ERROR: skill '{name}' is provided by the attached project folder \
+                 and is read-only here"
+            );
+        }
+    }
     if !skills::is_enabled(ctx.enabled_skills, name) {
         return format!("ERROR: skill '{name}' is disabled and read-only");
     }
@@ -5903,6 +5943,70 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// The attached-project layer and the user's own skills together: the
+    /// catalogue filters (AH-040 unusable tools, AH-124 unmet requirements)
+    /// apply to project and user entries alike, a dependency may be met by the
+    /// project layer, and a name the project hides reaches neither the store
+    /// nor the user layer.
+    #[tokio::test]
+    async fn skill_catalogue_filters_apply_to_project_and_user_layers() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let sandbox = unique_root();
+        let store = unique_root();
+        let user = unique_root();
+        let project = crate::workspace::project_store(&unique_root());
+        let skill = |at: &std::path::Path, name: &str, content: &str| {
+            crate::skills::write(at, name, content).unwrap();
+        };
+        skill(&project, "proj-shell", "---\ndescription: project shell\nallowed-tools: [bash]\n---\nPROJECT SHELL");
+        skill(&project, "proj-dep", "---\ndescription: project dep\nrequires:\n  - absent >=1.0\n---\nPROJECT DEP");
+        skill(&project, "proj-ok", "---\ndescription: project ok\nversion: 2.0.0\n---\nPROJECT OK");
+        skill(&project, "off", "---\ndescription: project off\n---\nPROJECT OFF");
+        std::fs::write(
+            project.join("agent.toml"),
+            "[skills]\nenabled = [\"proj-shell\", \"proj-dep\", \"proj-ok\"]\n",
+        )
+        .unwrap();
+        skill(&store, "off", "---\ndescription: store off\n---\nSTORE OFF");
+        skill(&user, "off", "---\ndescription: user off\n---\nUSER OFF");
+        skill(&user, "user-shell", "---\ndescription: user shell\nallowed-tools: [bash]\n---\nUSER SHELL");
+        skill(&user, "user-dep", "---\ndescription: user dep\nrequires:\n  - absent >=1.0\n---\nUSER DEP");
+        skill(&user, "user-ok", "---\ndescription: user ok\nrequires:\n  - proj-ok >=2.0\n---\nUSER OK");
+
+        let enabled: [String; 0] = [];
+        let subject = crate::subject::Subject::MainAgent;
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&sandbox, &store, &enabled)
+            .with_skill_project(Some(&project))
+            .with_user_skills(Some(&user))
+            .with_permissions(&denied, &subject);
+        let run = |name: &'static str, args: serde_json::Value| {
+            let ctx = ctx.clone();
+            async move { super::execute_builtin(lookup(name).unwrap(), &args, &ctx).await.0 }
+        };
+
+        let list = run("skill_list", json!({})).await;
+        assert!(list.contains("proj-ok (v2.0.0) — project ok"), "{list}");
+        assert!(list.contains("user-ok — user ok"), "a dependency met by the project: {list}");
+        for absent in ["proj-shell", "user-shell", "proj-dep", "user-dep", "off"] {
+            assert!(!list.contains(absent), "{absent} offered: {list}");
+        }
+
+        let off = run("skill_read", json!({"name": "off"})).await;
+        assert!(off.starts_with("ERROR"), "{off}");
+        assert!(!off.contains("STORE OFF") && !off.contains("USER OFF"), "{off}");
+        let shell = run("skill_read", json!({"name": "user-shell"})).await;
+        assert!(shell.starts_with("ERROR [permission_denied]"), "{shell}");
+        let dep = run("skill_read", json!({"name": "user-dep"})).await;
+        assert!(dep.starts_with("ERROR [invalid_input]"), "{dep}");
+        let ok = run("skill_read", json!({"name": "user-ok"})).await;
+        assert_eq!(ok.trim(), "USER OK");
+        for dir in [&sandbox, &store, &user] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let _ = std::fs::remove_dir_all(project.parent().and_then(|p| p.parent()).unwrap());
+    }
+
     /// AH-124: a skill whose dependency is not installed is refused by name,
     /// with what is missing in the refusal, and is not offered in the
     /// catalogue either -- an entry that always ends in a refusal is worse
@@ -6255,6 +6359,81 @@ on_failure = \"warn\"
         .await;
         assert_eq!(read_plain, "plain body");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The desktop Cowork shape: filesystem tools confined to a sandbox, skill
+    /// tools reading the permanent store plus the attached project's store.
+    #[tokio::test]
+    async fn skill_tools_offer_an_attached_projects_enabled_plugin_skills() {
+        let sandbox = unique_root();
+        let store = unique_root();
+        let folder = unique_root();
+        let project = crate::workspace::project_store(&folder);
+        let plugin_skill = |plugin: &str, name: &str, body: &str| {
+            let dir = project.join("plugins").join(plugin).join("skills").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), body).unwrap();
+        };
+        plugin_skill(
+            "release",
+            "prepare",
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh",
+        );
+        plugin_skill("muted", "hush", "---\ndescription: muted\n---\nmuted body");
+        std::fs::write(project.join("agent.toml"), "[plugins]\ndisabled = [\"muted\"]\n").unwrap();
+        crate::skills::write(&store, "personal", "personal body").unwrap();
+
+        let enabled: [String; 0] = [];
+        let ctx = ToolContext::new(&sandbox, &store, &enabled).with_skill_project(Some(&project));
+        let run = |name: &'static str, args: serde_json::Value| {
+            let ctx = ctx.clone();
+            async move { super::execute_builtin(lookup(name).unwrap(), &args, &ctx).await.0 }
+        };
+
+        let list = run("skill_list", json!({})).await;
+        assert!(list.contains("release:prepare — Prepare a release"), "{list}");
+        assert!(list.contains("personal"), "store skills stay offered: {list}");
+        assert!(!list.contains("muted"), "disabled plugin leaked: {list}");
+
+        let body = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert_eq!(body, "run scripts/prep.sh");
+        // A disabled plugin's files are not readable through the skill tools.
+        for name in ["muted:hush", "hush"] {
+            let out = run("skill_read", json!({"name": name})).await;
+            assert!(out.starts_with("ERROR"), "{name}: {out}");
+            assert!(!out.contains("muted body"), "{name}: {out}");
+        }
+
+        // Plugin skills are read-only, and nothing lands in the plugin.
+        let out = run("skill_write", json!({"name": "release:prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        let out = run("skill_write", json!({"name": "prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(project.join("plugins/release/skills/prepare/SKILL.md"))
+                .unwrap(),
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh"
+        );
+        // A new skill still goes to the writable store, not the project.
+        let out = run("skill_write", json!({"name": "fresh", "content": "new"})).await;
+        assert!(out.starts_with("Wrote"), "{out}");
+        assert!(store.join("skills/fresh/SKILL.md").is_file());
+        assert!(!project.join("skills/fresh").exists());
+
+        // The project's own whitelist applies, read from its agent.toml.
+        std::fs::write(
+            project.join("agent.toml"),
+            "[skills]\nenabled = [\"jan\"]\n[plugins]\ndisabled = [\"muted\"]\n",
+        )
+        .unwrap();
+        let out = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert!(out.starts_with("ERROR"), "{out}");
+        let list = run("skill_list", json!({})).await;
+        assert!(!list.contains("release:prepare"), "{list}");
+
+        for dir in [sandbox, store, folder] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     #[tokio::test]

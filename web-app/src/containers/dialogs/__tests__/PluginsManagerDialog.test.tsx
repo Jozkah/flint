@@ -19,6 +19,11 @@ vi.mock('@/hooks/useCoworkSessions', () => ({
   ) => selector({ sessions: [{ id: 's1', folder: '/project' }], currentId: 's1' }),
 }))
 
+const invalidateSkills = vi.fn()
+vi.mock('@/hooks/useSkills', () => ({
+  invalidateSkills: () => invalidateSkills(),
+}))
+
 const dialogOpen = vi.fn()
 vi.mock('@/hooks/useServiceHub', () => ({
   useServiceHub: () => ({ dialog: () => ({ open: dialogOpen }) }),
@@ -104,6 +109,42 @@ describe('PluginsManagerDialog', () => {
     await renderDialog()
     expect(screen.getByText('plugins:whatIs')).toBeInTheDocument()
     expect(screen.getByText('plugins:whereApplies')).toBeInTheDocument()
+    expect(screen.getByText('plugins:whenApplies')).toBeInTheDocument()
+  })
+
+  it('refreshes the skill list after enabling or disabling a plugin', async () => {
+    setPluginEnabled.mockResolvedValue({ ...alpha, enabled: false })
+    await openAlpha()
+    expect(invalidateSkills).not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /plugins:toggle\.label.*alpha/ }))
+    })
+    await waitFor(() => expect(invalidateSkills).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not refresh the skill list when the toggle is refused', async () => {
+    setPluginEnabled.mockRejectedValue(new PluginError('config', 'bad toml'))
+    await openAlpha()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /plugins:toggle\.label.*alpha/ }))
+    })
+    await screen.findByRole('alert')
+    expect(invalidateSkills).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the skill list after an install', async () => {
+    installPlugin.mockResolvedValue(alpha)
+    await renderDialog()
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'plugins:installButton' })[0])
+    })
+    fireEvent.change(screen.getByLabelText('plugins:install.localPathLabel'), {
+      target: { value: '/home/me/alpha' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'plugins:install.submit' }))
+    })
+    await waitFor(() => expect(invalidateSkills).toHaveBeenCalledTimes(1))
   })
 
   it('lists installed plugins with version, state, counts and source', async () => {
@@ -190,6 +231,7 @@ describe('PluginsManagerDialog', () => {
     })
     expect(removePlugin).toHaveBeenCalledWith('/project', 'alpha')
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(invalidateSkills).toHaveBeenCalledTimes(1)
     expect(String(vi.mocked(toast.success).mock.calls[0][0])).toContain('plugins:remove.done')
   })
 
@@ -230,7 +272,7 @@ describe('PluginsManagerDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'plugins:install.submit' }))
     })
     expect(installPlugin).toHaveBeenCalledTimes(1)
-    const [project, source, installId] = installPlugin.mock.calls[0]
+    const [project, source, operationId] = installPlugin.mock.calls[0]
     expect(project).toBe('/project')
     expect(source).toEqual({ kind: 'local', path: '/home/me/my-plugin' })
     expect(screen.getByText('plugins:install.copying')).toBeInTheDocument()
@@ -238,7 +280,7 @@ describe('PluginsManagerDialog', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'plugins:install.cancel' }))
     })
-    expect(cancelPluginInstall).toHaveBeenCalledWith(installId)
+    expect(cancelPluginInstall).toHaveBeenCalledWith(operationId)
     expect(screen.getByText('plugins:install.cancelling')).toBeInTheDocument()
 
     await act(async () => {

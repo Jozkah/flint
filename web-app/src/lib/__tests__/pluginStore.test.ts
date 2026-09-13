@@ -58,7 +58,7 @@ describe('pluginStore', () => {
     expect(invoke).toHaveBeenCalledWith('agent_plugin_install', {
       project: '/project',
       source: { kind: 'git', url: 'https://h/r' },
-      installId: 'id-1',
+      operationId: 'id-1',
     })
   })
 
@@ -76,7 +76,7 @@ describe('pluginStore', () => {
     invoke.mockResolvedValue(true)
     await expect(cancelPluginInstall('id-9')).resolves.toBe(true)
     expect(invoke).toHaveBeenLastCalledWith('agent_plugin_install_cancel', {
-      installId: 'id-9',
+      operationId: 'id-9',
     })
   })
 
