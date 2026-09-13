@@ -76,6 +76,7 @@ const COMMANDS: &[&str] = &[
     "mailbox_take_for_delivery",
     "mailbox_pending",
     "mailbox_mark_read",
+    "mailbox_claim",
     "mailbox_reply",
     "mailbox_list_sessions",
 ];

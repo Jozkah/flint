@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { runTurn, type ToolOutcome } from '../coworkRunner'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { envelopeToQueued } from '../mailboxDelivery'
+import { envelopeToQueued, takeClaimed } from '../mailboxDelivery'
+import { fakeMailbox } from './mailboxFake'
 import type { MailEnvelope } from '../sessionMailbox'
 
 /**
@@ -141,6 +142,50 @@ describe('mailbox messages in a running turn', () => {
     expect(textOf(second[1])).toBe('answer')
     expect(textOf(second[2])).toContain('mail m2')
     expect(out.stoppedBy).toBe('done')
+  })
+
+  it('a reply wait_for_reply already consumed is not injected at the boundary', async () => {
+    const fake = fakeMailbox()
+    const consumed = fake.envelope('A', 'r1', { replyTo: 'q1', depth: 1 })
+    const fresh = fake.envelope('A', 'n1')
+    const claimedSteering = vi.fn(async () =>
+      (
+        await takeClaimed('A', () => useMessageQueue.getState().takeReady('A'), fake.mailbox)
+      ).map(
+        (m) =>
+          ({ id: `steer-${m.id}`, role: 'user', parts: [{ type: 'text', text: m.text }] }) as UIMessage
+      )
+    )
+    const dispatch = vi.fn(async (): Promise<ToolOutcome> => {
+      // Both land while the tool runs; the tool was wait_for_reply and
+      // returned r1 (marking it read in the backend).
+      useMessageQueue.getState().enqueue('A', envelopeToQueued(consumed, false))
+      useMessageQueue.getState().enqueue('A', envelopeToQueued(fresh, false))
+      fake.state.r1 = 'read'
+      return { output: 'reply r1' }
+    })
+    const steps = [toolStep('c1'), textStep('done')]
+    let i = 0
+    const sendStep = vi.fn(async () => streamOf(steps[Math.min(i++, steps.length - 1)]))
+    const out = await runTurn({
+      messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'go' }] } as UIMessage],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch,
+        sink: { onText: vi.fn(), onToolStart: vi.fn(), onToolArgsDelta: vi.fn(), onToolCall: vi.fn() },
+        onStep: vi.fn(),
+        nextMessageId: () => 'x',
+        takeSteering: claimedSteering,
+      },
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    const second = (sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(second.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    const texts = second.map(textOf).join('\n')
+    expect(texts).toContain('text of n1')
+    expect(texts).not.toContain('text of r1')
+    expect(fake.state).toEqual({ r1: 'read', n1: 'read' })
   })
 
   it('never drains held mail', async () => {

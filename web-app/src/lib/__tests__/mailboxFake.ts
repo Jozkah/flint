@@ -47,6 +47,17 @@ export function fakeMailbox() {
     markRead: vi.fn(async (_sid: string, ids: string[]) => {
       for (const id of ids) state[id] = 'read'
     }),
+    /** mailbox_claim: not-yet-read ids in this inbox become read and are returned. */
+    claim: vi.fn(async (sid: string, ids: string[]) => {
+      const out: string[] = []
+      for (const id of ids) {
+        if (out.includes(id) || state[id] === 'read') continue
+        if (!(inbox[sid] ?? []).some((e) => e.id === id)) continue
+        state[id] = 'read'
+        out.push(id)
+      }
+      return out
+    }),
   }
 
   return { mailbox, envelope, state, takenTimes }

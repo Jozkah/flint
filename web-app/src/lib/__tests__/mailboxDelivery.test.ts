@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createMailboxDelivery } from '../mailboxDelivery'
+import {
+  createMailboxDelivery,
+  dequeueClaimedReady,
+  takeClaimed,
+} from '../mailboxDelivery'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -164,6 +168,57 @@ describe('mailbox delivery', () => {
     setRunning('A', true)
     setRunning('A', false)
     expect(useSessionMessaging.getState().lastRunWasWake.A).toBe(false)
+  })
+
+  it('a reply consumed by wait_for_reply or read_messages is not re-injected by steering', async () => {
+    setRunning('A', true)
+    fake.envelope('A', 'r1', { replyTo: 'q1', depth: 1 })
+    await delivery.onEvent({ sessionId: 'A', messageId: 'r1' })
+    expect(q('A').map((m) => [m.id, m.held])).toEqual([['mail:r1', false]])
+    // The agent's wait_for_reply returned it and marked it read in the backend.
+    fake.state.r1 = 'read'
+    const taken = await takeClaimed(
+      'A',
+      () => useMessageQueue.getState().takeReady('A'),
+      fake.mailbox
+    )
+    expect(taken).toEqual([])
+    expect(q('A')).toEqual([])
+  })
+
+  it('steering claims unconsumed mail exactly once and keeps typed input', async () => {
+    setRunning('A', true)
+    fake.envelope('A', 'm1')
+    await delivery.onEvent({ sessionId: 'A', messageId: 'm1' })
+    useMessageQueue.getState().enqueue('A', { id: 'typed', text: 'mine', createdAt: 2 })
+    const taken = await takeClaimed(
+      'A',
+      () => useMessageQueue.getState().takeReady('A'),
+      fake.mailbox
+    )
+    await flush()
+    expect(taken.map((m) => m.id)).toEqual(['mail:m1', 'typed'])
+    expect(fake.state.m1).toBe('read')
+    expect(fake.mailbox.claim).toHaveBeenCalledWith('A', ['m1'])
+    // The claim marked it read; the queue subscriber did not race it.
+    expect(fake.mailbox.markRead).not.toHaveBeenCalled()
+    // Claimed again (a second drain of the same id): nothing comes back.
+    expect(await fake.mailbox.claim('A', ['m1'])).toEqual([])
+  })
+
+  it('idle dequeue skips consumed mail and sends the next claimed message', async () => {
+    fake.envelope('A', 'a1')
+    fake.envelope('A', 'a2')
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    useMessageQueue.getState().release('A', 'mail:a1')
+    useMessageQueue.getState().release('A', 'mail:a2')
+    await flush()
+    fake.state.a1 = 'read' // read_messages consumed it
+    const next = await dequeueClaimedReady('A', fake.mailbox)
+    expect(next?.id).toBe('mail:a2')
+    expect(fake.state.a2).toBe('read')
+    expect(q('A')).toEqual([])
+    expect(await dequeueClaimedReady('A', fake.mailbox)).toBeUndefined()
   })
 
   it('leaves normal held input alone', async () => {

@@ -78,7 +78,11 @@ import {
   useMessageQueue,
   type QueuedMessageSender,
 } from '@/stores/message-queue-store'
-import { agentAttribution } from '@/lib/mailboxDelivery'
+import {
+  agentAttribution,
+  dequeueClaimedReady,
+  takeClaimed,
+} from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
@@ -3305,8 +3309,12 @@ function CoworkPage() {
           // session's queue: input typed in another session never reaches
           // this run, whichever session is in view. Shown in the transcript
           // where it entered the conversation, marked as steering.
-          takeSteering: () => {
-            const taken = useMessageQueue.getState().takeReady(sid)
+          takeSteering: async () => {
+            // Mail a tool already consumed (wait_for_reply, read_messages)
+            // is dropped here, so it is never injected a second time.
+            const taken = await takeClaimed(sid, () =>
+              useMessageQueue.getState().takeReady(sid)
+            )
             if (taken.length === 0) return []
             // Into this run's execution record, in sequence with its calls:
             // steering changes what the model works from. The words stay in
@@ -3505,11 +3513,20 @@ function CoworkPage() {
   const readyCount = useMessageQueue((s) =>
     session?.id ? s.getQueue(session.id).filter((m) => !m.held).length : 0
   )
+  const idleDrainRef = useRef(false)
   useEffect(() => {
-    if (running || !session?.id) return
-    // Held input waits for the user; only what is ready goes.
-    const next = useMessageQueue.getState().dequeueReady(session.id)
-    if (next) void runRequestRef.current(next.text, next.from)
+    if (running || !session?.id || idleDrainRef.current) return
+    // Held input waits for the user; only what is ready goes. Mail is claimed
+    // first, so a reply a tool already consumed is not sent again.
+    idleDrainRef.current = true
+    void dequeueClaimedReady(session.id)
+      .then((next) => {
+        idleDrainRef.current = false
+        if (next) void runRequestRef.current(next.text, next.from)
+      })
+      .catch(() => {
+        idleDrainRef.current = false
+      })
   }, [running, session?.id, readyCount])
 
   /**
