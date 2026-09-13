@@ -1410,6 +1410,127 @@ impl CompositeToolInvoker {
             // AH-102: the run's own children, listed and cancelled one at a
             // time. Both are confined to this parent's registry, so a run id
             // from another run names nothing here.
+            "consensus" => {
+                use crate::core::agent::consensus;
+                let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+                };
+                let data = crate::core::app::commands::resolve_jan_data_folder();
+                let project = self.project_root.clone();
+                let id = text("id");
+                if !id.is_empty() {
+                    return match consensus::load(&data, &project, &id) {
+                        Ok(record) => consensus::render(&record),
+                        Err(e) => failed(&e),
+                    };
+                }
+                let question = text("question");
+                let context = text("context");
+                let reviewers: Vec<String> = args
+                    .get("reviewers")
+                    .and_then(|v| v.as_array())
+                    .map(|list| list.iter().filter_map(|x| x.as_str()).map(|s| s.trim().to_string()).collect())
+                    .unwrap_or_default();
+                let registry = SubagentRegistry::load(&self.project_root);
+                // A saved subagent may sit on a gate only if every tool it may
+                // use reads: one that can write could change what it judges.
+                let is_read_only = |name: &str| -> Option<bool> {
+                    let definition = registry.get(name)?;
+                    Some(definition.allowed_tools.as_ref().is_some_and(|tools| {
+                        !tools.is_empty()
+                            && tools.iter().all(|tool| {
+                                tauri_plugin_agent_tools::tools::lookup(tool).is_some_and(|t| {
+                                    matches!(
+                                        t.capability,
+                                        tauri_plugin_agent_tools::tools::Capability::Read
+                                            | tauri_plugin_agent_tools::tools::Capability::Net
+                                    )
+                                })
+                            })
+                    }))
+                };
+                let quorum = match consensus::check_request(&question, &reviewers, &text("quorum"), &is_read_only) {
+                    Ok(quorum) => quorum,
+                    Err(e) => return failed(&e),
+                };
+                let parent = crate::core::agent::subagent::ParentRun {
+                    routing: self.routing.clone(),
+                    conversation: None,
+                    model: ctx.model_id.clone(),
+                    budget_remaining: ctx.max_session_tokens,
+                    send_reasoning: ctx.send_reasoning,
+                };
+                // Every reviewer is dispatched before any is awaited, so they
+                // work at the same time and none waits on another's answer.
+                let mut dispatched = Vec::new();
+                for reviewer in &reviewers {
+                    let request = crate::core::agent::subagent::SubagentRequest {
+                        subagent_name: reviewer.clone(),
+                        description: consensus::brief(reviewer, &question, &context),
+                        allowed_tools: None,
+                        system_prompt: None,
+                        isolate: None,
+                        fork_context: false,
+                        durable: false,
+                    };
+                    let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
+                    dispatched.push((reviewer.clone(), run));
+                }
+                let mut verdicts = Vec::new();
+                let mut cancelled = false;
+                for (reviewer, run) in dispatched {
+                    let answer = match run {
+                        Ok(run_id) => match await_subagent(&ctx.bg, &run_id).await {
+                            Ok(text) => Ok(text),
+                            Err(crate::core::agent::subagent::SubagentError::Cancelled) => {
+                                cancelled = true;
+                                Err("cancelled".to_string())
+                            }
+                            Err(e) => Err(e.to_string()),
+                        },
+                        Err(e) => Err(e),
+                    };
+                    verdicts.push(match &answer {
+                        Ok(text) => consensus::read_verdict(&reviewer, Ok(text)),
+                        Err(why) => consensus::read_verdict(&reviewer, Err(why)),
+                    });
+                }
+                if tauri_plugin_agent_tools::lifecycle::current().is_some_and(|t| t.is_stopped()) {
+                    cancelled = true;
+                }
+                let outcome = consensus::decide(quorum, reviewers.len(), &verdicts, cancelled);
+                let record = consensus::Record {
+                    version: consensus::RECORD_VERSION,
+                    id: consensus::new_id(),
+                    question,
+                    quorum,
+                    reviewers,
+                    verdicts,
+                    outcome,
+                    session: ctx.parent_args.session_id.clone().unwrap_or_default(),
+                    run: self.cancel_scope.run.clone(),
+                    decided_at: tauri_plugin_agent_tools::audit::now(),
+                };
+                self.invocations.note(
+                    "consensus.decided",
+                    serde_json::json!({
+                        "gate": record.id,
+                        "outcome": record.outcome.tag(),
+                        "reviewers": record.reviewers.len(),
+                        "approvals": record.verdicts.iter().filter(|v| v.vote == consensus::Vote::Approve).count(),
+                    }),
+                );
+                match consensus::save(&data, &project, &record) {
+                    Ok(_) => consensus::render(&record),
+                    Err(e) => format!(
+                        "ERROR [{}]: the gate was decided ({}) but could not be recorded, so it does not count: {}",
+                        e.kind().tag(),
+                        record.outcome.tag(),
+                        e.message()
+                    ),
+                }
+            }
             "list_subagent_runs" => {
                 let mut out = crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list());
                 let durable = crate::core::agent::durable_subagent::list(

@@ -72,6 +72,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ARGS = argparse.Namespace()
 REQUESTS: list = []
 REQUESTS_LOCK = threading.Lock()
+# How many chat requests were seen in all, since the log keeps only the last 20.
+REQUEST_TOTAL = [0]
 # What each relayed exchange's provider reported. See "Upstream pass-through".
 RECORDS: list[dict] = []
 RECORDS_LOCK = threading.Lock()
@@ -242,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path.rstrip("/").endswith("/__requests"):
             with REQUESTS_LOCK:
-                return self._json(200, {"requests": list(REQUESTS)})
+                return self._json(200, {"requests": list(REQUESTS), "total": REQUEST_TOTAL[0]})
         if self.path.rstrip("/").endswith("/__usage"):
             with RECORDS_LOCK:
                 return self._json(200, {"records": list(RECORDS)})
@@ -305,6 +307,7 @@ class Handler(BaseHTTPRequestHandler):
 
         with REQUESTS_LOCK:
             REQUESTS.append(body)
+            REQUEST_TOTAL[0] += 1
             del REQUESTS[:-20]
             HEADERS.append({k.lower(): v for k, v in self.headers.items()})
             del HEADERS[:-20]

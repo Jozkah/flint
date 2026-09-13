@@ -2706,3 +2706,16 @@ A change to the agent loop -- a system prompt, a retry policy, a tool descriptio
 **How a task runs.** In a fresh scratch copy of its project, as a separate `jan cli agent run --output-format json` process -- the same binary and loop, nothing mocked in-process -- with the benchmark's model and data folder, under a per-task deadline. The child is owned (`tools::owned`, kill-on-close job), so an interrupted benchmark stops its agent and the agent's tree. Scratch copies live under a directory named for the benchmark's PID; a benchmark killed outright cannot remove its own, so each run first sweeps scratch left by benchmarks whose process no longer exists and keeps a live one's.
 
 **The report** records per task the outcome (completed, failed, timed out, cancelled), failed checks with reasons, turns and duration. Ctrl+C marks the run incomplete and exits 130. `compare` refuses two reports of different task sets, lists tasks that regressed or improved, and exits 1 when any task that passed before fails now.
+
+
+## Consensus gates (AH-112)
+
+Some decisions should not rest on one agent's judgement: shipping a risky change, accepting a plan, approving a migration. The `consensus` loop tool (`core/agent/consensus.rs`) puts a yes-or-no question to two to seven independent read-only reviewers and decides it by a stated quorum -- `all` (default), `majority`, or a number of approvals.
+
+**Independence.** Every reviewer is dispatched as its own subagent before any is awaited, so they work at the same time; each gets only its brief (which reviewer it is, the question, the context) and never another reviewer's answer.
+
+**Who may sit on a gate.** Only reviewers whose resolved definition allows nothing but read and network tools. The registry's definition decides, never the name: a project or user definition of `reviewer` replaces the built-in one and may allow `bash`, and is then refused (R15). Unknown names and roles that write or run commands are refused with `permission_denied`; one reviewer, a reviewer listed twice, more than seven, an empty question or a quorum that cannot be met are refused with `invalid_input` -- all before any reviewer runs.
+
+**Verdicts.** A reviewer's answer counts only when its first non-empty line is exactly `VERDICT: approve` or `VERDICT: reject`. Anything else -- a verdict buried later in the text, an error, a cancelled reviewer -- is not counted and is never an approval. The outcome is approved once the quorum's approvals are reached, rejected once too few reviewers remain who could approve, otherwise undecided; a cancelled run is cancelled.
+
+**Record.** A decided gate is written atomically to the data folder under a digest of the project path, with its question, quorum, reviewers, verdicts, outcome, session and run, and noted in the run's invocation record (`consensus.decided`). Calling `consensus` with just `id` reads a gate back -- after a restart too -- and only in the project it belongs to; an id that is not a gate id is refused. A gate that could not be recorded does not count, and a run killed while its reviewers are answering records nothing.

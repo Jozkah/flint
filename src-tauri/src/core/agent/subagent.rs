@@ -1473,6 +1473,7 @@ pub fn is_subagent_tool(name: &str) -> bool {
             | "list_subagents"
             | "list_subagent_runs"
             | "cancel_subagent"
+            | "consensus"
     )
 }
 
@@ -1650,6 +1651,26 @@ pub fn subagent_tool_schemas(
                         "run_id": { "type": "string", "description": "The run_id dispatch_subagent returned." }
                     },
                     "required": ["run_id"]
+                }
+            }
+        }),
+        // AH-112: a decision that needs agreement from several independent
+        // read-only reviewers, by a stated quorum, kept for later.
+        json!({
+            "type": "function",
+            "function": {
+                "name": "consensus",
+                "description": "Put a decision to several independent read-only reviewers and decide it by a quorum, instead of deciding alone. Each reviewer (explorer, planner, reviewer, security, or a saved read-only subagent) investigates separately, never sees the others' answers, and must answer VERDICT: approve or VERDICT: reject; an answer without that line is not counted and is never an approval. The outcome is approved, rejected or undecided, and the whole gate is recorded -- call again with just `id` to read an earlier gate back, including after a restart.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": { "type": "string", "description": "The decision to make, as a question the reviewers can answer yes or no." },
+                        "context": { "type": "string", "description": "What the reviewers need to know: the change, the files, the risk." },
+                        "reviewers": { "type": "array", "items": { "type": "string" }, "description": "Two to seven different read-only reviewers." },
+                        "quorum": { "type": "string", "description": "all (default), majority, or a number of approvals." },
+                        "id": { "type": "string", "description": "Read back an earlier gate instead of deciding a new one." }
+                    },
+                    "required": []
                 }
             }
         }),
@@ -3435,7 +3456,7 @@ mod tests {
     fn schemas_list_available_names_in_dispatch_description() {
         let reg = registry_with("reviewer", None);
         let schemas = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);
-        assert_eq!(schemas.len(), 6);
+        assert_eq!(schemas.len(), 7);
         let names: Vec<&str> = schemas
             .iter()
             .map(|s| s["function"]["name"].as_str().unwrap())
@@ -3448,7 +3469,8 @@ mod tests {
                 "create_subagent",
                 "list_subagents",
                 "list_subagent_runs",
-                "cancel_subagent"
+                "cancel_subagent",
+                "consensus"
             ]
         );
         for name in &names {

@@ -39,6 +39,7 @@ pub mod impact;
 pub mod health;
 pub mod index;
 pub mod lsp;
+pub mod consensus;
 pub mod licenses;
 pub mod vcs;
 pub mod replay;

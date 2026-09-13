@@ -4147,13 +4147,19 @@
       "category": "orchestration",
       "phase": 5,
       "phaseName": "Agent orchestration",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-101"
       ],
       "owner": "lane-06-agents-worktrees",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/consensus.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/mod.rs",
+        "src-tauri/src/core/agent/subagent.rs",
+        "src-tauri/tests/fixtures/mock_openai_server.py"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A decision can require agreement from several independent agents.",
@@ -4163,10 +4169,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/consensus.rs::a_gate_is_kept_and_read_back_after_a_restart",
+        "src-tauri/src/core/agent/consensus.rs::a_gate_that_could_not_mean_agreement_is_refused_by_kind",
+        "src-tauri/src/core/agent/consensus.rs::only_a_verdict_line_counts_and_silence_is_never_approval",
+        "src-tauri/src/core/agent/consensus.rs::the_quorum_decides_and_abstentions_do_not_approve",
+        "src-tauri/src/core/agent/subagent.rs::schemas_list_available_names_in_dispatch_description"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-13 (Phase 6): the consensus loop tool. Two to seven read-only reviewers (judged by their resolved definition, R15) are dispatched concurrently with independent briefs; only a leading VERDICT line counts; all/majority/N quorum decides approved, rejected or undecided; the gate is recorded atomically per project and readable by id after a restart. Evidence: failing CLI evidence first, 4 unit tests, real CLI exercise with scripted reviewers."
     },
     {
       "id": "AH-113",
