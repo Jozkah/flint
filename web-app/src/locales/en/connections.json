@@ -11,6 +11,8 @@
     },
     "importFailed": "Could not import {{name}}: {{error}}",
     "loadHubFailed": "Could not load the skill hub: {{error}}",
-    "deleteSkill": "Delete skill {{name}}"
+    "deleteSkill": "Delete skill {{name}}",
+    "fromPlugin": "From plugin {{plugin}}",
+    "pluginReadOnly": "This skill comes from the plugin {{plugin}} and is read-only here. To change it, edit the plugin's source and reinstall the plugin, or turn the plugin off in Plugins."
   }
 }

@@ -20,6 +20,7 @@ import {
   type HubSkill,
 } from '@/hooks/useSkills'
 import { normalizeAppError } from '@/utils/appError'
+import { isPluginSkill } from '@/lib/skillStore'
 
 export default function SkillsManagerDialog({
   open,
@@ -151,6 +152,13 @@ export default function SkillsManagerDialog({
   }
 
   const editing = isNew || selected !== null
+  // A plugin's skill is shown, never saved: the backend refuses writes to it,
+  // and the place to change it is the plugin's own source.
+  const selectedMeta = selected ? skills.find((s) => s.name === selected) : undefined
+  const readOnlyPlugin =
+    !isNew && selectedMeta && isPluginSkill(selectedMeta)
+      ? (selectedMeta.plugin ?? null)
+      : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,6 +241,13 @@ export default function SkillsManagerDialog({
                       <FileText size={14} className="shrink-0 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
                         <div className="truncate font-medium">{s.name}</div>
+                        {isPluginSkill(s) && (
+                          <div className="truncate text-xs text-muted-foreground">
+                            {t('connections:skills.fromPlugin', {
+                              plugin: s.plugin,
+                            })}
+                          </div>
+                        )}
                         {s.description && (
                           <div className="line-clamp-2 break-words text-xs text-muted-foreground">
                             {s.description}
@@ -244,6 +259,7 @@ export default function SkillsManagerDialog({
                             : t('connections:skills.state.disabled')}
                         </div>
                       </div>
+                      {!isPluginSkill(s) && (
                       <button
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 text-muted-foreground hover:text-destructive"
                         onClick={(e) => {
@@ -257,6 +273,7 @@ export default function SkillsManagerDialog({
                       >
                         <Trash2 size={14} />
                       </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -341,19 +358,30 @@ export default function SkillsManagerDialog({
                     placeholder={t('common:skillNamePlaceholder')}
                     disabled={!isNew}
                   />
+                  {readOnlyPlugin && (
+                    <p role="note" className="text-xs text-muted-foreground break-words">
+                      {t('connections:skills.pluginReadOnly', {
+                        plugin: readOnlyPlugin,
+                      })}
+                    </p>
+                  )}
                   <Textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder={t('common:skillContentPlaceholder')}
                     className="flex-1 font-mono text-xs resize-none"
+                    readOnly={readOnlyPlugin !== null}
+                    aria-readonly={readOnlyPlugin !== null ? true : undefined}
                   />
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={closeEditor}>
                       {t('common:cancel')}
                     </Button>
-                    <Button size="sm" onClick={handleSave} disabled={saving}>
-                      {t('common:skillSave')}
-                    </Button>
+                    {readOnlyPlugin === null && (
+                      <Button size="sm" onClick={handleSave} disabled={saving}>
+                        {t('common:skillSave')}
+                      </Button>
+                    )}
                   </div>
                 </>
               ) : (

@@ -798,13 +798,23 @@ async fn execute_tool_inner(
     }
 
     let enabled = enabled_skills.unwrap_or_default();
+    // The attached folder is the project, for skills as for policy: its own
+    // skills and its enabled plugins' skills are offered to the skill tools,
+    // with `[skills].enabled` and `[plugins].disabled` read from its agent.toml
+    // here rather than trusted from the renderer. Only when no explicit
+    // `project` store was named, which would already be that project's store.
+    let skill_project: Option<PathBuf> = match project.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => None,
+        _ => read_roots.first().map(|r| workspace::project_store(r)),
+    };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
         .with_network(allow_network.unwrap_or(false))
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
         .with_read_roots(&read_roots)
-        .with_write_roots(&write_roots);
+        .with_write_roots(&write_roots)
+        .with_skill_project(skill_project.as_deref());
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }

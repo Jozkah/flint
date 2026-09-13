@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { invalidateSkills } from '@/hooks/useSkills'
 import {
   cancelPluginInstall,
   checkGitUrl,
@@ -175,6 +176,8 @@ export default function PluginsManagerDialog({
     try {
       const state = await setPluginEnabled(folder, plugin.id, enabled)
       apply(state.enabled)
+      // The plugin's skills join or leave the Cowork skill list.
+      invalidateSkills()
       toast.success(
         t(state.enabled ? 'plugins:toggle.enabled' : 'plugins:toggle.disabled', {
           name: plugin.name,
@@ -266,6 +269,7 @@ export default function PluginsManagerDialog({
     setInstalling(state)
     try {
       const plugin = await installPlugin(folder, source, state.id)
+      invalidateSkills()
       toast.success(t('plugins:install.done', { name: plugin.name }))
       await refresh()
       select(plugin.id)
@@ -324,6 +328,9 @@ export default function PluginsManagerDialog({
       setConfirmRemove(null)
       void refresh()
     } finally {
+      // Also after a failure: the directory may be gone even when the config
+      // cleanup that follows it was refused.
+      invalidateSkills()
       setRemoving(false)
     }
   }
@@ -791,6 +798,7 @@ export default function PluginsManagerDialog({
               <div className="flex flex-col gap-1 text-xs">
                 <p>{t('plugins:whatIs')}</p>
                 <p>{t('plugins:whereApplies')}</p>
+                <p>{t('plugins:whenApplies')}</p>
               </div>
             </DialogDescription>
           </DialogHeader>
