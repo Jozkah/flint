@@ -26,6 +26,8 @@ import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
+// Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
+import '@/lib/rooms/e2eHooks'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
