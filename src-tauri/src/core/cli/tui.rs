@@ -16843,10 +16843,22 @@ fn agents_column(
         }
     }
     if hidden > 0 {
-        out.push(Line::from(vec![Span::styled(
-            format!("  +{hidden} more running"),
-            dim,
-        )]));
+        // The overflow row points at the `/agents` inspector, which lists the
+        // whole live fan-out with per-agent detail -- the dock only has room for
+        // the newest few. Compact form when the (often half-width) column can't
+        // fit the hint.
+        let hinted = format!("  +{hidden} more · /agents");
+        if hinted.chars().count() <= max {
+            out.push(Line::from(vec![
+                Span::styled(format!("  +{hidden} more · "), dim),
+                Span::styled("/agents", Style::new().cyan()),
+            ]));
+        } else {
+            out.push(Line::from(vec![Span::styled(
+                format!("  +{hidden} more running"),
+                dim,
+            )]));
+        }
     }
     out.truncate(rows);
     out
