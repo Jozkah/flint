@@ -31,6 +31,26 @@
   "importModelError": "Failed to import model:",
   "stop": "Stop",
   "start": "Start",
+  "status": {
+    "loading": "Loading",
+    "loaded": "Loaded",
+    "failed": "Failed",
+    "available": "Available · not loaded",
+    "needsApiKey": "Needs API key",
+    "connected": "Connected"
+  },
+  "table": {
+    "name": "Name",
+    "file": "File",
+    "size": "Size",
+    "context": "Context",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "openProvider": "Open {{provider}} settings",
+  "useProvider": "Use {{provider}}",
+  "editModelLabel": "Edit {{modelId}}",
+  "addModelLabel": "Add a model",
   "noModelFound": "No model found",
   "noModelFoundDesc": "Available models will be listed here. If you don't have any models yet, visit the Hub to download.",
   "noModelFoundRemoteDesc": "Available models will be listed here. Use the refresh button above to fetch models from the provider, or add one manually with the + button.",

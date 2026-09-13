@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
 import { Card, CardItem } from '@/containers/Card'
 import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
@@ -9,7 +8,11 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useHardware, type GPU } from '@/hooks/useHardware'
 import { useLlamacppDevices } from '@/hooks/useLlamacppDevices'
 import { useEffect, useState } from 'react'
-import { IconDeviceDesktopAnalytics, IconRefresh } from '@tabler/icons-react'
+import { Activity, RefreshCw } from 'lucide-react'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import type {
   DeviceList,
@@ -70,12 +73,12 @@ function BackendChip({ label, active }: { label: string; active: boolean }) {
   return (
     <span
       title={t('settings:hardware.backendApiDesc')}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 font-mono text-xs uppercase tracking-wider text-foreground"
+      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-xs uppercase tracking-wider text-foreground"
     >
       <span
         className={cn(
           'size-1.5 rounded-full',
-          active ? 'bg-primary' : 'bg-muted-foreground/50'
+          active ? 'bg-success' : 'bg-muted-foreground/50'
         )}
       />
       {label}
@@ -85,7 +88,7 @@ function BackendChip({ label, active }: { label: string; active: boolean }) {
 
 function SpecChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+    <span className="rounded border border-border bg-sunken px-1.5 py-0.5 font-mono text-xs text-ink-2">
       {children}
     </span>
   )
@@ -95,7 +98,7 @@ function UsageMeter({ percent }: { percent: number }) {
   const clamped = Math.min(100, Math.max(0, percent))
   return (
     <div className="flex items-center gap-3">
-      <Progress value={clamped} className="h-1.5 w-32 border sm:w-40" />
+      <Progress value={clamped} className="h-1.5 w-32 border border-border sm:w-40" />
       <span className="w-14 text-right font-mono text-xs tabular-nums text-foreground">
         {clamped.toFixed(1)}%
       </span>
@@ -220,8 +223,12 @@ function GpuGroupCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/60 p-4 transition-colors',
-        activated ? 'border-l-2 border-l-primary' : 'bg-muted/20'
+        'relative overflow-hidden rounded-lg border border-border p-4 transition-colors',
+        // The device in use reads as the selected row: brand tint and a
+        // 2px marker. One that is off sits back on the sunken fill.
+        activated
+          ? 'bg-brand-tint before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand'
+          : 'bg-sunken/60'
       )}
     >
       <div className="flex items-start justify-between gap-4">
@@ -238,17 +245,17 @@ function GpuGroupCard({
                     onClick={() => onSelect(groupDevice.id)}
                     title={t('settings:hardware.backendSelectDesc')}
                     className={cn(
-                      'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs uppercase tracking-wider transition-colors',
+                      'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs uppercase tracking-wider transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                       isSelected
-                        ? 'border-primary/60 text-foreground'
-                        : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground'
+                        ? 'border-brand bg-card text-foreground'
+                        : 'border-border text-muted-foreground hover:border-line-strong hover:bg-card hover:text-foreground'
                     )}
                   >
                     <span
                       className={cn(
                         'size-1.5 rounded-full',
                         isSelected && activated
-                          ? 'bg-primary'
+                          ? 'bg-success'
                           : 'bg-muted-foreground/50'
                       )}
                     />
@@ -279,7 +286,7 @@ function GpuGroupCard({
             {formatMegaBytes(device.mem)}
           </span>
         </div>
-        <Progress value={usedPercent} className="mt-1.5 h-1.5 w-full border" />
+        <Progress value={usedPercent} className="mt-1.5 h-1.5 w-full border border-border" />
         {facts.length > 0 && (
           <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1">
             {facts.map((fact) => (
@@ -313,7 +320,7 @@ function AppleSiliconGpuCard({
   const usedPercent = totalMemory > 0 ? (usedMemory / totalMemory) * 100 : 0
 
   return (
-    <div className="rounded-lg border border-border/60 border-l-2 border-l-primary p-4">
+    <div className="relative overflow-hidden rounded-lg border border-border bg-brand-tint p-4 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand">
       <div className="min-w-0">
         <h2 className="truncate font-medium text-foreground">{name}</h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -330,7 +337,7 @@ function AppleSiliconGpuCard({
             {t('settings:hardware.freeOf')} {formatMegaBytes(totalMemory)}
           </span>
         </div>
-        <Progress value={usedPercent} className="mt-1.5 h-1.5 w-full border" />
+        <Progress value={usedPercent} className="mt-1.5 h-1.5 w-full border border-border" />
         <p className="mt-3 text-xs text-muted-foreground">
           {t('settings:hardware.unifiedMemoryDesc')}
         </p>
@@ -485,37 +492,26 @@ function HardwareContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <HeaderPage>
-        <div
-          className={cn(
-            'flex items-center justify-between w-full mr-2 pr-3',
-            !IS_MACOS && 'pr-30'
-          )}
+      <SettingsPageHeader>
+        <Button
+          variant="outline"
+          size="sm"
+          className="pointer-coarse:h-11"
+          onClick={handleClickSystemMonitor}
         >
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 relative z-50"
-            onClick={handleClickSystemMonitor}
-          >
-            <IconDeviceDesktopAnalytics className="text-muted-foreground size-5" />
-            <p>{t('settings:hardware.systemMonitor')}</p>
-          </Button>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-var(--ctx-h))]">
-        <div className="p-4 pt-0 w-full overflow-y-auto">
+          <Activity className="text-muted-foreground" aria-hidden />
+          <span>{t('settings:hardware.systemMonitor')}</span>
+        </Button>
+      </SettingsPageHeader>
+      <SettingsPageBody>
           {isLoading ? (
-            <div className="flex items-center justify-center h-32">
+            <div role="status" className="flex h-32 items-center justify-center rounded-lg border border-border bg-card">
               <div className="text-muted-foreground">
                 Loading hardware information...
               </div>
             </div>
           ) : (
-            <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+            <div className="flex w-full min-w-0 flex-col gap-4">
               {/* OS Information */}
               <SettingTarget anchor="settings-hardware-os">
               <Card title={t('settings:hardware.os')}>
@@ -642,15 +638,15 @@ function HardwareContent() {
                 <Card
                   title={t('settings:hardware.gpus')}
                   header={
-                    <div className="flex items-center justify-end -mt-10 mb-4">
+                    <div className="-mt-2 mb-4 flex justify-end">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={handleRefreshHardware}
                         disabled={isLoading}
-                        className="flex items-center gap-1.5"
+                        className="pointer-coarse:h-11"
                       >
-                        <IconRefresh className="size-4 text-muted-foreground" />
+                        <RefreshCw className="text-muted-foreground" aria-hidden />
                         {t('settings:hardware.refresh')}
                       </Button>
                     </div>
@@ -697,8 +693,7 @@ function HardwareContent() {
               )}
             </div>
           )}
-        </div>
-      </div>
+      </SettingsPageBody>
     </div>
   )
 }

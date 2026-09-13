@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -116,11 +116,14 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
     )
 
   return (
-    <div className="space-y-2 mt-6" data-testid="custom-headers">
+    <div
+      className="mt-6 space-y-3 border-t border-border pt-5"
+      data-testid="custom-headers"
+    >
       <div className="space-y-1">
-        <h2 className="font-medium text-foreground text-base">
+        <h3 className="font-display text-lg font-normal text-foreground">
           {t('providers:customHeaders.title')}
-        </h2>
+        </h3>
         <p className="text-sm text-muted-foreground leading-normal">
           {t('providers:customHeaders.description')}
         </p>
@@ -132,7 +135,8 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         const ValueInput = h.secret ? SecretInput : Input
         return (
           <div key={i} className="space-y-1">
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] items-center gap-2">
+            {/* Phone: switch, name and remove on one line, value below. */}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-sunken/40 p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
               <Switch
                 data-testid={`custom-header-enabled-${i}`}
                 aria-label={t('providers:customHeaders.enabled')}
@@ -160,7 +164,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
                 autoComplete="off"
               />
               <ValueInput
-                className="font-mono"
+                className="col-span-3 font-mono sm:col-span-1"
                 placeholder={t('providers:customHeaders.valuePlaceholder')}
                 aria-label={t('providers:customHeaders.valuePlaceholder')}
                 aria-invalid={error ? true : undefined}
@@ -173,7 +177,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
                 autoComplete="off"
               />
               <label
-                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                className="col-span-2 flex min-h-11 items-center gap-1.5 text-xs text-muted-foreground sm:col-span-1 sm:min-h-0"
                 title={t('providers:customHeaders.secretHint')}
               >
                 <Switch
@@ -190,8 +194,9 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
                 {t('providers:customHeaders.secret')}
               </label>
               <Button
-                size="icon-xs"
-                variant="outline"
+                size="icon-sm"
+                variant="ghost"
+                className="justify-self-end text-muted-foreground hover:text-destructive pointer-coarse:size-11"
                 title={t('providers:customHeaders.remove')}
                 aria-label={t('providers:customHeaders.remove')}
                 data-testid={`custom-header-remove-${i}`}
@@ -201,7 +206,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
                   commit(next)
                 }}
               >
-                <IconTrash size={14} />
+                <Trash2 aria-hidden />
               </Button>
             </div>
             {error && (
@@ -221,6 +226,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
       <Button
         size="sm"
         variant="outline"
+        className="pointer-coarse:h-11"
         data-testid="custom-header-add"
         onClick={() => setDrafts((current) => [...current, { header: '', value: '' }])}
       >

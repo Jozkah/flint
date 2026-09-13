@@ -14,14 +14,15 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { validateDisplayName } from '@/lib/modelDisplayName'
 import { getModelDisplayName } from '@/lib/utils'
 import {
-  IconPencil,
-  IconEye,
-  IconTool,
-  IconAlertTriangle,
-  IconLoader2,
-  IconHeadphones,
-  IconVideo,
-} from '@tabler/icons-react'
+  Eye,
+  Headphones,
+  LoaderCircle,
+  Pencil,
+  TriangleAlert,
+  Video,
+  Wrench,
+} from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useState, useEffect } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
@@ -198,9 +199,16 @@ export const DialogEditModel = ({
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
-        <div className="size-6 cursor-pointer flex items-center justify-center rounded transition-all duration-200 ease-in-out">
-          <IconPencil size={18} className="text-muted-foreground" />
-        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground pointer-coarse:size-11"
+          aria-label={t('providers:editModelLabel', {
+            modelId: getModelDisplayName(selectedModel),
+          })}
+        >
+          <Pencil aria-hidden />
+        </Button>
       </DialogTrigger>
       <DialogContent onKeyDown={handleKeyDown}>
         <DialogHeader>
@@ -248,11 +256,14 @@ export const DialogEditModel = ({
         </div>
 
         {/* Warning Banner */}
-        <div className="bg-secondary border  rounded-md p-3">
-          <div className="flex items-start space-x-3">
-            <IconAlertTriangle className="size-5 text-yellow-600 mt-0.5 shrink-0" />
+        <div className="rounded-md border border-border bg-warning-tint p-3">
+          <div className="flex items-start gap-3">
+            <TriangleAlert
+              className="mt-0.5 size-5 shrink-0 text-warning"
+              aria-hidden
+            />
             <div className="text-sm">
-              <p className="font-medium mb-1">
+              <p className="mb-1 font-medium text-foreground">
                 {t('providers:editModel.warning.title')}
               </p>
               <p className="text-muted-foreground">
@@ -267,9 +278,9 @@ export const DialogEditModel = ({
             {t('providers:editModel.capabilities')}
           </h3>
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <IconTool className="size-4 text-muted-foreground" />
+            <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-0">
+              <div className="flex items-center gap-2">
+                <Wrench className="size-4 text-muted-foreground" aria-hidden />
                 <span className="text-sm">
                   {t('providers:editModel.tools')}
                 </span>
@@ -284,9 +295,9 @@ export const DialogEditModel = ({
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <IconEye className="size-4 text-muted-foreground" />
+            <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-0">
+              <div className="flex items-center gap-2">
+                <Eye className="size-4 text-muted-foreground" aria-hidden />
                 <span className="text-sm">
                   {t('providers:editModel.vision')}
                 </span>
@@ -301,9 +312,9 @@ export const DialogEditModel = ({
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <IconHeadphones className="size-4 text-muted-foreground" />
+            <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-0">
+              <div className="flex items-center gap-2">
+                <Headphones className="size-4 text-muted-foreground" aria-hidden />
                 <span className="text-sm">
                   {t('providers:editModel.audio')}
                 </span>
@@ -318,9 +329,9 @@ export const DialogEditModel = ({
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <IconVideo className="size-4 text-muted-foreground" />
+            <div className="flex min-h-11 items-center justify-between gap-3 sm:min-h-0">
+              <div className="flex items-center gap-2">
+                <Video className="size-4 text-muted-foreground" aria-hidden />
                 <span className="text-sm">
                   {t('providers:editModel.video')}
                 </span>
@@ -338,15 +349,16 @@ export const DialogEditModel = ({
         </div>
 
         {/* Save Button */}
-        <div className="flex justify-end pt-4">
+        <div className={`flex justify-end ${STICKY_DIALOG_FOOTER}`}>
           <Button
             onClick={handleSaveChanges}
             disabled={!hasUnsavedChanges() || !validation.ok || isLoading}
             size="sm"
+            className="pointer-coarse:h-11"
           >
             {isLoading ? (
               <>
-                <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />
+                <LoaderCircle className="animate-spin" aria-hidden />
                 Saving...
               </>
             ) : (
