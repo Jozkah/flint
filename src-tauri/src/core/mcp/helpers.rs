@@ -859,19 +859,43 @@ async fn schedule_mcp_start_task<R: Runtime>(
 /// Route an MCP server's stderr line through Jan's logger at the level the
 /// server itself reported, defaulting to info when no level tag is present.
 fn log_mcp_stderr_line(server_name: &str, line: &str) {
-    let trimmed = line.trim_start();
-    let level_token = trimmed.split_whitespace().next().map(|t| {
+    let (level, text) = stderr_log_record(server_name, line);
+    log::log!(level, "{text}");
+}
+
+/// The level and text an MCP server's stderr line is logged with.
+///
+/// A server's stderr is third-party text, and servers print credentials in
+/// their banners: it is scrubbed before the application log keeps a copy.
+/// Found by the AH-140 scenario, which saw a fixture's key land verbatim in
+/// the app log while the server's own log was clean.
+fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
+    let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
+    let level_token = scrubbed.trim_start().split_whitespace().next().map(|t| {
         t.trim_matches(|c: char| !c.is_ascii_alphabetic())
             .to_ascii_uppercase()
     });
-    match level_token.as_deref() {
-        Some("ERROR" | "CRITICAL" | "FATAL") => {
-            log::error!("[mcp-stderr:{server_name}] {line}")
-        }
-        Some("WARN" | "WARNING") => log::warn!("[mcp-stderr:{server_name}] {line}"),
-        Some("DEBUG") => log::debug!("[mcp-stderr:{server_name}] {line}"),
-        Some("TRACE") => log::trace!("[mcp-stderr:{server_name}] {line}"),
-        _ => log::info!("[mcp-stderr:{server_name}] {line}"),
+    let level = match level_token.as_deref() {
+        Some("ERROR" | "CRITICAL" | "FATAL") => log::Level::Error,
+        Some("WARN" | "WARNING") => log::Level::Warn,
+        Some("DEBUG") => log::Level::Debug,
+        Some("TRACE") => log::Level::Trace,
+        _ => log::Level::Info,
+    };
+    (level, format!("[mcp-stderr:{server_name}] {scrubbed}"))
+}
+
+#[cfg(test)]
+mod stderr_log_tests {
+    #[test]
+    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
+        let (level, text) =
+            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
+        assert_eq!(level, log::Level::Error);
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
+        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
+        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
     }
 }
 
