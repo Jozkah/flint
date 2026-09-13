@@ -1701,14 +1701,25 @@ mod mcp_http_integration_tests {
     }
 
     impl Fixture {
+        /// Starts the fixture, or fails the test. It used to return `None` --
+        /// and every caller returned early and passed -- whenever
+        /// `/usr/bin/python3` was absent, so on Windows none of these tests
+        /// ever exercised the transport.
         fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
             let script =
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_http_server.py");
-            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
-                return None;
-            }
+            assert!(script.exists(), "missing fixture {}", script.display());
+            let python = ["python3", "python"]
+                .into_iter()
+                .find(|p| {
+                    std::process::Command::new(p)
+                        .arg("--version")
+                        .output()
+                        .is_ok_and(|o| o.status.success())
+                })
+                .expect("python is required for the HTTP MCP fixture");
 
-            let mut command = std::process::Command::new("/usr/bin/python3");
+            let mut command = std::process::Command::new(python);
             command.arg(&script).arg(mode);
             if let Some(path) = barrier {
                 command.arg(path);
@@ -1756,9 +1767,7 @@ mod mcp_http_integration_tests {
 
     #[tokio::test]
     async fn a_remote_server_handshakes_lists_and_calls() {
-        let Some(fixture) = Fixture::start("ok", None) else {
-            return;
-        };
+        let fixture = Fixture::start("ok", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let info = service.peer_info().expect("the server identified itself");
@@ -1814,9 +1823,7 @@ mod mcp_http_integration_tests {
     /// not a server to start publishing tools from.
     #[tokio::test]
     async fn a_malformed_initialize_is_a_failed_handshake() {
-        let Some(fixture) = Fixture::start("malformed-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-init", None).expect("the HTTP MCP fixture started");
 
         assert!(
             connect(&fixture).await.is_err(),
@@ -1828,9 +1835,7 @@ mod mcp_http_integration_tests {
     /// caller open indefinitely.
     #[tokio::test]
     async fn an_unanswered_initialize_does_not_hang_forever() {
-        let Some(fixture) = Fixture::start("hang-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("hang-init", None).expect("the HTTP MCP fixture started");
 
         let outcome =
             tokio::time::timeout(std::time::Duration::from_secs(3), connect(&fixture)).await;
@@ -1847,9 +1852,7 @@ mod mcp_http_integration_tests {
     /// tools to publish, and the failure has to surface.
     #[tokio::test]
     async fn a_tool_listing_failure_yields_no_tools() {
-        let Some(fixture) = Fixture::start("tools-list-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tools-list-error", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         assert!(
@@ -1862,9 +1865,7 @@ mod mcp_http_integration_tests {
 
     #[tokio::test]
     async fn a_failing_tool_call_is_reported() {
-        let Some(fixture) = Fixture::start("tool-call-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tool-call-error", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let outcome = service
@@ -1895,9 +1896,7 @@ mod mcp_http_integration_tests {
         ));
         let _ = std::fs::remove_file(&barrier);
 
-        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
-            return;
-        };
+        let fixture = Fixture::start("slow-call", Some(&barrier)).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let call = tokio::spawn({
@@ -1928,9 +1927,7 @@ mod mcp_http_integration_tests {
     /// the URL it reports is a loopback address.
     #[tokio::test]
     async fn failures_carry_no_secret_and_no_public_endpoint() {
-        let Some(fixture) = Fixture::start("malformed-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-init", None).expect("the HTTP MCP fixture started");
 
         let message = match connect(&fixture).await {
             Err(message) => message,
@@ -2020,9 +2017,7 @@ mod mcp_sse_integration_tests {
     /// The whole lifecycle: stream, endpoint, initialize, list, call, shutdown.
     #[tokio::test]
     async fn an_sse_server_handshakes_lists_and_calls() {
-        let Some(fixture) = Fixture::start("ok", None) else {
-            return;
-        };
+        let fixture = Fixture::start("ok", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize over SSE");
         let info = service.peer_info().expect("the server identified itself");
@@ -2050,9 +2045,7 @@ mod mcp_sse_integration_tests {
     /// The stream drops before the handshake completes. There is no service.
     #[tokio::test]
     async fn a_stream_that_closes_during_initialize_yields_no_service() {
-        let Some(fixture) = Fixture::start("close-during-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("close-during-init", None).expect("the HTTP MCP fixture started");
 
         let outcome =
             tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await;
@@ -2067,9 +2060,7 @@ mod mcp_sse_integration_tests {
     /// reporting success.
     #[tokio::test]
     async fn a_malformed_event_does_not_produce_a_working_service() {
-        let Some(fixture) = Fixture::start("malformed-event", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-event", None).expect("the HTTP MCP fixture started");
 
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             let service = connect(&fixture).await?;
@@ -2091,9 +2082,7 @@ mod mcp_sse_integration_tests {
 
     #[tokio::test]
     async fn a_tool_listing_failure_is_reported_over_sse() {
-        let Some(fixture) = Fixture::start("tools-list-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tools-list-error", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         assert!(
@@ -2110,9 +2099,7 @@ mod mcp_sse_integration_tests {
         let barrier = std::env::temp_dir().join(format!("jan-sse-barrier-{}", std::process::id()));
         let _ = std::fs::remove_file(&barrier);
 
-        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
-            return;
-        };
+        let fixture = Fixture::start("slow-call", Some(&barrier)).expect("the HTTP MCP fixture started");
 
         let service = std::sync::Arc::new(connect(&fixture).await.expect("initialize"));
         let held = service.clone();
@@ -2137,9 +2124,7 @@ mod mcp_sse_integration_tests {
     /// Nothing in a failure carries a secret, and the endpoint is loopback.
     #[tokio::test]
     async fn sse_failures_carry_no_secret_and_no_public_endpoint() {
-        let Some(fixture) = Fixture::start("close-during-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("close-during-init", None).expect("the HTTP MCP fixture started");
 
         let message =
             match tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await
