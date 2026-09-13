@@ -1109,14 +1109,24 @@ impl ToolInvoker for CompositeToolInvoker {
                     ));
                     continue;
                 }
-                if self.auto_approve || self.grants.lock().unwrap().covers_mcp(name) {
+                // The grant is about the server that will receive the call, not
+                // the tool name alone: another server can publish the same name.
+                // An unregistered tool resolves to no server, which no grant
+                // made for a real server covers.
+                let server = self
+                    .mcp
+                    .tool_to_server
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                if self.auto_approve || self.grants.lock().unwrap().covers_mcp(&server, name) {
                     mcp_calls.push(tc.clone());
                     continue;
                 }
                 match self.prompt_mcp_permission(name).await {
                     PermissionDecision::AllowOnce => mcp_calls.push(tc.clone()),
                     PermissionDecision::AllowAlways => {
-                        self.grants.lock().unwrap().grant_mcp(name);
+                        self.grants.lock().unwrap().grant_mcp(&server, name);
                         mcp_calls.push(tc.clone());
                     }
                     PermissionDecision::Deny => out.push(ToolOutcome::plain(
@@ -6472,7 +6482,11 @@ mod tests {
         let root = unique_project_root();
         let (tx, mut rx) = mpsc::unbounded_channel();
         let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
-        let invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker
+            .mcp
+            .tool_to_server
+            .insert("web_search_exa".to_string(), "exa".to_string());
 
         let responder = {
             let registry = registry.clone();
@@ -6485,7 +6499,46 @@ mod tests {
         let _ = invoker.invoke(&[mcp_call("m1", "web_search_exa")]).await;
         responder.await.unwrap();
 
-        assert!(invoker.grants.lock().unwrap().covers_mcp("web_search_exa"));
+        let grants = invoker.grants.lock().unwrap();
+        assert!(grants.covers_mcp("exa", "web_search_exa"));
+        assert!(
+            !grants.covers_mcp("impostor", "web_search_exa"),
+            "the grant belongs to the server that published the tool"
+        );
+        drop(grants);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A grant for one server's tool must not answer for a same-named tool
+    /// that now resolves to a different server.
+    #[tokio::test]
+    async fn an_mcp_grant_for_another_server_still_prompts() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker
+            .mcp
+            .tool_to_server
+            .insert("web_search_exa".to_string(), "exa".to_string());
+        invoker
+            .grants
+            .lock()
+            .unwrap()
+            .grant_mcp("impostor", "web_search_exa");
+
+        let responder = {
+            let registry = registry.clone();
+            tokio::spawn(async move {
+                respond_once(&mut rx, &registry, PermissionDecision::Deny).await;
+            })
+        };
+        let out = invoker
+            .invoke(&[mcp_call("m1", "web_search_exa")])
+            .await
+            .unwrap();
+        responder.await.unwrap();
+        assert!(out[0].content.contains("denied by user"), "{}", out[0].content);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -6494,8 +6547,16 @@ mod tests {
         let root = unique_project_root();
         let (tx, mut rx) = mpsc::unbounded_channel();
         let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
-        let invoker = build_prompting_invoker(root.clone(), tx, registry);
-        invoker.grants.lock().unwrap().grant_mcp("web_search_exa");
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry);
+        invoker
+            .mcp
+            .tool_to_server
+            .insert("web_search_exa".to_string(), "exa".to_string());
+        invoker
+            .grants
+            .lock()
+            .unwrap()
+            .grant_mcp("exa", "web_search_exa");
 
         // Execution errors (no live server) are irrelevant; assert no prompt fired.
         let _ = invoker.invoke(&[mcp_call("m1", "web_search_exa")]).await;

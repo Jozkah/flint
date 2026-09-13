@@ -21,7 +21,8 @@ use crate::core::{
     mcp::models::ToolWithServer,
     state::{RunningMcpService, SharedMcpServers},
 };
-use std::{collections::HashSet, fs, time::Duration};
+use serde::Serialize;
+use std::{collections::HashSet, fs, path::Path, time::Duration};
 
 async fn tool_call_timeout(state: &AppState) -> Duration {
     state.mcp_settings.lock().await.tool_call_timeout_duration()
@@ -414,25 +415,157 @@ pub async fn get_server_summaries(
 /// 4. When found, calls the tool on that server with the provided arguments
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
-/// Every MCP server the user has trusted. AH-041.
+/// Server definitions saved in `mcp_config.json`, by name. Empty when the file
+/// is missing or unreadable: identity is then unknown, which permits nothing.
+fn saved_server_configs(data_folder: &Path) -> Map<String, Value> {
+    fs::read_to_string(data_folder.join("mcp_config.json"))
+        .ok()
+        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+        .and_then(|value| value.get("mcpServers").and_then(Value::as_object).cloned())
+        .unwrap_or_default()
+}
+
+/// The fingerprint of the definition a server name currently stands for.
+///
+/// The definition it is *running* with wins over the saved one: that is the
+/// program a call would reach. A server that is neither running nor saved has
+/// no identity, and `None` permits nothing.
+pub(crate) fn server_fingerprint_from(
+    active: &std::collections::HashMap<String, Value>,
+    saved: &Map<String, Value>,
+    name: &str,
+) -> Option<String> {
+    active
+        .get(name)
+        .or_else(|| saved.get(name))
+        .map(tauri_plugin_agent_tools::mcp_identity::fingerprint)
+}
+
+async fn current_server_fingerprint(state: &AppState, data_folder: &Path, name: &str) -> Option<String> {
+    let active = state.mcp_active_servers.lock().await.clone();
+    server_fingerprint_from(&active, &saved_server_configs(data_folder), name)
+}
+
+/// Every MCP server name the backend holds a standing grant for. AH-041.
+///
+/// Names only, for callers that just need the list; [`mcp_trust_report`] says
+/// whether each grant still matches its server's configuration.
 #[tauri::command]
 pub async fn mcp_trusted_servers() -> Result<Vec<String>, String> {
     Ok(tauri_plugin_agent_tools::mcp_trust::trusted(
         &crate::core::app::commands::resolve_jan_data_folder(),
-    ))
+    )
+    .into_iter()
+    .map(|grant| grant.name)
+    .collect())
 }
 
-/// Record that the user trusts a server, for every conversation, until they
-/// withdraw it. AH-041.
-///
-/// Kept by the backend rather than in renderer state so that what is enforced
-/// and what the user was shown cannot drift apart across a restart.
+/// One standing grant, with the fingerprint its server has now.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpTrustEntry {
+    pub name: String,
+    pub fingerprint: String,
+    pub granted_at: String,
+    /// `None` when no server by this name is configured any more.
+    pub current_fingerprint: Option<String>,
+}
+
+/// An approval that stopped applying and needs renewing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpInvalidatedEntry {
+    pub name: String,
+    /// `schema-v1` or `configuration-changed`.
+    pub reason: String,
+    pub at: String,
+    pub fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpTrustReport {
+    pub trusted: Vec<McpTrustEntry>,
+    pub invalidated: Vec<McpInvalidatedEntry>,
+}
+
+/// Standing grants and approvals needing renewal, for the permissions page.
 #[tauri::command]
-pub async fn mcp_trust_server(server_name: String) -> Result<(), String> {
-    tauri_plugin_agent_tools::mcp_trust::trust(
-        &crate::core::app::commands::resolve_jan_data_folder(),
-        &server_name,
-    )
+pub async fn mcp_trust_report(state: State<'_, AppState>) -> Result<McpTrustReport, String> {
+    let folder = crate::core::app::commands::resolve_jan_data_folder();
+    let active = state.mcp_active_servers.lock().await.clone();
+    let saved = saved_server_configs(&folder);
+    let trusted = tauri_plugin_agent_tools::mcp_trust::trusted(&folder)
+        .into_iter()
+        .map(|grant| McpTrustEntry {
+            current_fingerprint: server_fingerprint_from(&active, &saved, &grant.name),
+            name: grant.name,
+            fingerprint: grant.fingerprint,
+            granted_at: grant.granted_at,
+        })
+        .collect();
+    let invalidated = tauri_plugin_agent_tools::mcp_trust::invalidated(&folder)
+        .into_iter()
+        .map(|entry| McpInvalidatedEntry {
+            name: entry.name,
+            reason: entry.reason,
+            at: entry.at,
+            fingerprint: entry.fingerprint,
+        })
+        .collect();
+    Ok(McpTrustReport {
+        trusted,
+        invalidated,
+    })
+}
+
+/// The security fingerprint of every configured or running server, by name.
+///
+/// The renderer binds its own approvals to these, so an approval it records
+/// and the grant the backend enforces describe the same definition.
+#[tauri::command]
+pub async fn mcp_server_fingerprints(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let folder = crate::core::app::commands::resolve_jan_data_folder();
+    let active = state.mcp_active_servers.lock().await.clone();
+    let saved = saved_server_configs(&folder);
+    Ok(saved
+        .keys()
+        .chain(active.keys())
+        .filter_map(|name| {
+            server_fingerprint_from(&active, &saved, name).map(|fp| (name.clone(), fp))
+        })
+        .collect())
+}
+
+/// Record that the user trusts a server, as currently configured, for every
+/// conversation, until they withdraw it. AH-041.
+///
+/// `fingerprint` is the definition the user was shown when they answered.
+/// When it is given and no longer matches, nothing is recorded: the user
+/// approved something else.
+#[tauri::command]
+pub async fn mcp_trust_server(
+    state: State<'_, AppState>,
+    server_name: String,
+    fingerprint: Option<String>,
+) -> Result<(), String> {
+    let folder = crate::core::app::commands::resolve_jan_data_folder();
+    let current = current_server_fingerprint(&state, &folder, &server_name)
+        .await
+        .ok_or_else(|| {
+            format!("MCP server '{server_name}' is not configured, so it cannot be trusted")
+        })?;
+    if let Some(expected) = fingerprint.as_deref() {
+        if expected != current {
+            return Err(tauri_plugin_agent_tools::mcp_trust::Refusal::ConfigurationChanged {
+                server: server_name,
+            }
+            .message());
+        }
+    }
+    tauri_plugin_agent_tools::mcp_trust::trust(&folder, &server_name, &current)
 }
 
 /// Withdraw trust from a server. Takes effect on the next call. AH-041.
@@ -441,23 +574,57 @@ pub async fn mcp_revoke_server(server_name: String) -> Result<(), String> {
     tauri_plugin_agent_tools::mcp_trust::revoke(
         &crate::core::app::commands::resolve_jan_data_folder(),
         &server_name,
+        tauri_plugin_agent_tools::mcp_trust::RevokeReason::User,
     )
+    .map(|_| ())
 }
 
-/// Authorize one call to one tool on one server, and return the ticket that
-/// `call_tool` will consume. AH-041.
+/// Forget everything granted to a server name that is being deleted or
+/// renamed: its trust (audited with the reason) and its OAuth tokens.
+///
+/// `reason` is `deleted` or `renamed`. A rename is treated like a delete of
+/// the old name on purpose: grants never move to a name nobody approved, and
+/// tokens are not carried to what may be a different endpoint. Audit history
+/// is not touched.
+#[tauri::command]
+pub async fn mcp_forget_server(server_name: String, reason: String) -> Result<(), String> {
+    let reason = tauri_plugin_agent_tools::mcp_trust::RevokeReason::parse(&reason)
+        .filter(|r| *r != tauri_plugin_agent_tools::mcp_trust::RevokeReason::User)
+        .ok_or_else(|| format!("unknown reason '{reason}': expected 'deleted' or 'renamed'"))?;
+    let folder = crate::core::app::commands::resolve_jan_data_folder();
+    tauri_plugin_agent_tools::mcp_trust::revoke(&folder, &server_name, reason)?;
+    oauth::clear(&folder, &server_name).map(|_| ())
+}
+
+/// Authorize one call to one tool on one server as currently configured, and
+/// return the ticket that `call_tool` will consume. AH-041.
 ///
 /// Single use and short lived: an "allow once" answer that outlived the call
-/// would be a standing permission nobody granted.
+/// would be a standing permission nobody granted. `fingerprint`, when given,
+/// is the definition the user approved; a mismatch issues nothing.
 #[tauri::command]
-pub async fn mcp_allow_once(server_name: String, tool_name: String) -> Result<String, String> {
+pub async fn mcp_allow_once(
+    state: State<'_, AppState>,
+    server_name: String,
+    tool_name: String,
+    fingerprint: Option<String>,
+) -> Result<String, String> {
     if server_name.trim().is_empty() {
         return Err("a server name is required to authorize a call".to_string());
     }
-    Ok(tauri_plugin_agent_tools::mcp_trust::allow_once(
+    let folder = crate::core::app::commands::resolve_jan_data_folder();
+    let current = current_server_fingerprint(&state, &folder, &server_name)
+        .await
+        .ok_or_else(|| {
+            format!("MCP server '{server_name}' is not configured, so no call to it can be authorized")
+        })?;
+    tauri_plugin_agent_tools::mcp_trust::allow_once(
+        &folder,
         &server_name,
         &tool_name,
-    ))
+        &current,
+        fingerprint.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -487,6 +654,11 @@ pub async fn call_tool(
         let mut cancellations = state.tool_call_cancellations.lock().await;
         cancellations.insert(token.clone(), cancel_tx);
     }
+
+    // Snapshotted before `mcp_servers` is locked, so the trust check below
+    // never holds both locks at once.
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let active_configs = state.mcp_active_servers.lock().await.clone();
 
     let servers = state.mcp_servers.lock().await;
 
@@ -544,10 +716,20 @@ pub async fn call_tool(
         //
         // Before the check, not after: a refusal that has already sent the
         // arguments to the server has not refused anything.
+        //
+        // The grant or ticket must also be for the definition this server is
+        // running now: an approval given before its command or endpoint was
+        // edited was an approval of a different program.
+        let current = server_fingerprint_from(
+            &active_configs,
+            &saved_server_configs(&data_folder),
+            srv_name,
+        );
         if let Err(refusal) = tauri_plugin_agent_tools::mcp_trust::permits(
-            &crate::core::app::commands::resolve_jan_data_folder(),
+            &data_folder,
             srv_name,
             &tool_name,
+            current.as_deref(),
             approval_ticket.as_deref(),
         ) {
             cleanup_cancellation_token(&state, &cancellation_token).await;
