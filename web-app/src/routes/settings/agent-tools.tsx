@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -15,13 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  IconFolderCode,
-  IconTrash,
-  IconPencil,
-  IconLock,
-  IconLockOpen,
-} from '@tabler/icons-react'
+import { FolderCode, Lock, LockOpen, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -43,6 +37,7 @@ import {
 } from '@/lib/agentWorkspace'
 import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.agent_tools as any)({
@@ -188,19 +183,23 @@ function AgentToolsContent() {
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
+            className="text-muted-foreground pointer-coarse:size-11"
             title={t('common:edit')}
+            aria-label={`${t('common:edit')} ${name}`}
             onClick={() => openEditor(kind, name)}
           >
-            <IconPencil size={16} className="text-muted-foreground" />
+            <Pencil aria-hidden />
           </Button>
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
             title={t('common:delete')}
+            aria-label={`${t('common:delete')} ${name}`}
             onClick={() => remove(kind, name)}
           >
-            <IconTrash size={16} className="text-destructive" />
+            <Trash2 aria-hidden />
           </Button>
         </div>
       }
@@ -208,11 +207,16 @@ function AgentToolsContent() {
   )
 
   const sectionHeader = (titleKey: string, kind: EntryKind) => (
-    <div className="flex items-center justify-between">
-      <h1 className="text-foreground font-studio font-medium text-base mb-2">
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h1 className="font-display text-xl font-normal text-foreground">
         {t(titleKey)}
       </h1>
-      <Button variant="outline" size="sm" onClick={() => openEditor(kind)}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="pointer-coarse:h-11"
+        onClick={() => openEditor(kind)}
+      >
         {t('settings:agentTools.add')}
       </Button>
     </div>
@@ -220,21 +224,15 @@ function AgentToolsContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-var(--ctx-h))]">
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             <Card
               header={
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="space-y-1">
-                    <h1 className="text-foreground font-studio font-medium text-base">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                  <div className="min-w-0 space-y-1">
+                    <h1 className="font-display text-xl font-normal text-foreground">
                       {t('settings:agentTools.title')}
                     </h1>
                     <p className="text-muted-foreground leading-normal">
@@ -244,14 +242,14 @@ function AgentToolsContent() {
                   {/* The path is a tooltip, not a row: it derives from the Jan
                       data folder that Settings > General already owns. */}
                   <Button
-                    variant="link"
+                    variant="outline"
                     size="sm"
-                    className="shrink-0 gap-1.5"
+                    className="shrink-0 pointer-coarse:h-11"
                     title={path}
                     onClick={reveal}
                     disabled={!path}
                   >
-                    <IconFolderCode size={16} />
+                    <FolderCode aria-hidden />
                     {t('settings:agentTools.openFolder')}
                   </Button>
                 </div>
@@ -291,11 +289,11 @@ function AgentToolsContent() {
                 description={
                   <span className="flex items-start gap-1.5">
                     {sandbox?.enforces ? (
-                      <IconLock size={14} className="mt-0.5 shrink-0" />
+                      <Lock className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
                     ) : (
-                      <IconLockOpen
-                        size={14}
-                        className="mt-0.5 shrink-0 text-destructive"
+                      <LockOpen
+                        className="mt-0.5 size-3.5 shrink-0 text-destructive"
+                        aria-hidden
                       />
                     )}
                     <span>
@@ -357,7 +355,7 @@ function AgentToolsContent() {
         open={editor !== null}
         onOpenChange={(open) => !open && setEditor(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {t(
@@ -389,7 +387,7 @@ function AgentToolsContent() {
               }
             />
             <Textarea
-              className="min-h-64 font-mono text-xs"
+              className="min-h-64 font-mono text-base md:text-xs"
               placeholder={t('settings:agentTools.contentPlaceholder')}
               value={editor?.content ?? ''}
               onChange={(e) =>
@@ -399,11 +397,16 @@ function AgentToolsContent() {
               }
             />
           </div>
-          <DialogFooter>
-            <Button variant="link" onClick={() => setEditor(null)}>
+          <DialogFooter className={STICKY_DIALOG_FOOTER}>
+            <Button
+              variant="ghost"
+              className="pointer-coarse:h-11"
+              onClick={() => setEditor(null)}
+            >
               {t('common:cancel')}
             </Button>
             <Button
+              className="pointer-coarse:h-11"
               onClick={save}
               disabled={saving || !editor?.name.trim()}
             >

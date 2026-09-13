@@ -204,6 +204,8 @@
     "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed."
   },
   "webSearch": {
+    "showKey": "Show key",
+    "hideKey": "Hide key",
     "title": "Web Search",
     "description": "Let models search and read the web using Jan's built-in tools.",
     "enable": "Enable Web Search",

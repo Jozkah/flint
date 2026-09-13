@@ -226,6 +226,7 @@ describe('Extensions Settings Route', () => {
     // The settings navigation lives in the shell's sidebar now.
     expect(screen.queryByTestId('settings-menu')).toBeNull()
     const settingsContent = screen.getAllByTestId('card-item')[0].closest('.overflow-y-auto')
-    expect(settingsContent).toHaveClass('p-4', 'pt-0', 'w-full', 'overflow-y-auto')
+    // Scrolls vertically inside its own container and never sideways.
+    expect(settingsContent).toHaveClass('w-full', 'overflow-y-auto', 'overflow-x-hidden')
   })
 })

@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn, getModelDisplayName, isLocalProvider } from '@/lib/utils'
 import { classifyModelLocation } from '@/lib/modelLocation'
-import { IconChevronDown, IconX } from '@tabler/icons-react'
+import { ChevronDown, X } from 'lucide-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
@@ -133,7 +133,7 @@ export function McpRouterModelPicker({
           size="sm"
           disabled={disabled}
           {...(ariaLabel ? { 'aria-label': ariaLabel } : {})}
-          className="max-w-[min(100%,320px)] justify-between"
+          className="max-w-[min(100%,320px)] justify-between pointer-coarse:h-11"
         >
           <span className="flex items-center gap-2 truncate leading-normal">
             {current ? (
@@ -142,8 +142,8 @@ export function McpRouterModelPicker({
                   className={cn(
                     'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
                     current.isLocal
-                      ? 'bg-emerald-500/10 text-emerald-600'
-                      : 'bg-blue-500/10 text-blue-600'
+                      ? 'bg-success-tint text-success'
+                      : 'bg-sunken text-ink-2'
                   )}
                 >
                   {current.providerName}
@@ -156,27 +156,27 @@ export function McpRouterModelPicker({
               <span className="text-muted-foreground">{placeholder}</span>
             )}
           </span>
-          <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </Button>
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[min(100vw-2rem,320px)] p-0 bg-background/95 border"
+        className="w-[min(100vw-2rem,320px)] border border-border bg-popover p-0"
         align="end"
         sideOffset={8}
       >
         <div className="flex flex-col size-full">
-          <div className="relative p-2 border-b">
+          <div className="relative border-b border-border p-2">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={searchPlaceholder}
-              className="text-sm font-normal outline-0 w-full bg-transparent"
+              className="w-full bg-transparent pr-8 text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
               <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <IconX
+                <X
                   size={16}
                   className="text-muted-foreground cursor-pointer"
                   onClick={() => setSearchValue('')}
@@ -203,7 +203,7 @@ export function McpRouterModelPicker({
                   return (
                     <div
                       key={providerKey}
-                      className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 first:mt-1 py-1"
+                      className="mx-1.5 my-1.5 rounded-md bg-sunken/50 py-1 first:mt-1"
                     >
                       <div className="flex items-center gap-1.5 px-2 py-1">
                         <ProvidersAvatar provider={providerInfo} />
@@ -224,10 +224,10 @@ export function McpRouterModelPicker({
                             title={e.model.id}
                             onClick={() => handleSelect(e)}
                             className={cn(
-                              'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                              'hover:bg-secondary/40',
+                              'mx-1 mb-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors pointer-coarse:min-h-11',
+                              'hover:bg-card',
                               isSelected &&
-                                'bg-secondary/60 hover:bg-secondary/60'
+                                'bg-brand-tint shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand-tint'
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">

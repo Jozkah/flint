@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn } from '@/lib/utils'
+import { StatusChip, type StatusTone } from '@/containers/StatusChip'
 import type {
   McpConnectionSnapshot,
   McpConnectionState,
@@ -20,14 +20,14 @@ import type {
  * throughout so the i18n key scan can check them.
  */
 
-const TONE: Record<McpConnectionState, string> = {
-  'not-installed': 'text-muted-foreground',
-  disabled: 'text-muted-foreground',
-  connecting: 'text-muted-foreground',
-  connected: 'text-green-700 dark:text-green-500',
-  'needs-authorization': 'text-amber-700 dark:text-amber-500',
-  failed: 'text-destructive',
-  'not-connected': 'text-amber-700 dark:text-amber-500',
+const TONE: Record<McpConnectionState, StatusTone> = {
+  'not-installed': 'neutral',
+  disabled: 'neutral',
+  connecting: 'progress',
+  connected: 'success',
+  'needs-authorization': 'warning',
+  failed: 'destructive',
+  'not-connected': 'warning',
 }
 
 function useStateLabel() {
@@ -100,29 +100,29 @@ export function McpServerStatus({
   return (
     <div className="mt-2 flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
-        <span>{t('mcp-servers:connection.statusLabel')}</span>
-        <span
+        <span className="text-ink-2">
+          {t('mcp-servers:connection.statusLabel')}
+        </span>
+        <StatusChip
           role="status"
           aria-live="polite"
           data-testid={`mcp-status-${serverName}`}
-          className={cn(
-            'rounded-sm border bg-secondary px-2 py-0.5 text-xs',
-            TONE[state]
-          )}
+          tone={TONE[state]}
+          pulse={state === 'connecting'}
         >
           {stateLabel(state)}
-        </span>
+        </StatusChip>
       </div>
 
       {failure && (
         <div
           role="alert"
           id={mcpServerErrorId(serverName)}
-          className="rounded-md border border-destructive/40 p-2 text-sm"
+          className="rounded-md border border-destructive/40 bg-destructive-tint p-3 text-sm"
         >
           <p className="break-words text-destructive">{failure.message}</p>
           {nextStep && (
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 text-ink-2">
               {nextStepLabel(nextStep)}
             </p>
           )}
@@ -151,7 +151,7 @@ export function McpServerStatus({
       )}
 
       {!(state === 'connected' && toolNames === null) && (
-        <p className="text-xs">
+        <p className="text-xs text-ink-2">
           {state === 'connected'
             ? toolNames === undefined
               ? t('mcp-servers:connection.toolsLoading')
@@ -250,17 +250,17 @@ export function McpServerDetails({
           ? t('mcp-servers:details.runsWhereRemoteService', { host })
           : t('mcp-servers:details.runsWhereUnresolved', { host })
 
-  const heading = 'font-medium text-foreground'
+  const heading = 'text-xs font-semibold uppercase tracking-wide text-ink-2'
 
   return (
     // Native <details>: keyboard operable (Enter/Space on the summary) and
     // announces expanded state without extra wiring. Nothing here is
     // reachable only by hovering.
     <details className="mt-2 group">
-      <summary className="w-fit cursor-pointer rounded-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0">
         {t('mcp-servers:details.toggle')}
       </summary>
-      <div className="mt-2 flex flex-col gap-2 border-l pl-3">
+      <div className="mt-2 flex flex-col gap-3 rounded-md bg-sunken p-3 text-ink-2">
         <section>
           <h3 className={heading}>{t('mcp-servers:details.whatItDoes')}</h3>
           <p>{profile.description ?? t('mcp-servers:details.noDescription')}</p>

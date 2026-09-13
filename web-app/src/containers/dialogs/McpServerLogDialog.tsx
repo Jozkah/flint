@@ -8,6 +8,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
 
@@ -63,16 +64,25 @@ export default function McpServerLogDialog({
           <pre
             aria-label={t('mcp-servers:serverLog.title', { serverName })}
             tabIndex={0}
-            className="max-h-96 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap"
+            className="max-h-96 overflow-auto rounded-md border border-border bg-code p-3 font-mono text-xs whitespace-pre-wrap text-foreground focus-visible:outline-2 focus-visible:outline-ring"
           >
             {lines.join('\n')}
           </pre>
         )}
-        <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={load}>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="pointer-coarse:h-11"
+            onClick={load}
+          >
             {t('mcp-servers:serverLog.refresh')}
           </Button>
-          <Button size="sm" onClick={() => onOpenChange(false)}>
+          <Button
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => onOpenChange(false)}
+          >
             {t('common:close')}
           </Button>
         </DialogFooter>

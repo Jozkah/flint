@@ -5,7 +5,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { ExtensionManager } from '@/lib/extension'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.extensions as any)({
@@ -17,19 +17,15 @@ function ExtensionsContent() {
   const extensions = ExtensionManager.getInstance().listExtensions()
   return (
     <div className="flex flex-col h-full w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-var(--ctx-h))]">
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             {/* General */}
             <Card
               header={
-                <div className="flex items-center justify-between mb-4">
-                  <h1 className="text-foreground font-studio font-medium text-base">
+                <div className="mb-4 flex items-center justify-between">
+                  <h1 className="font-display text-xl font-normal text-foreground">
                     {t('settings:extensions.title')}
                   </h1>
                   {/* <div className="flex items-center gap-2">
@@ -43,11 +39,11 @@ function ExtensionsContent() {
                   <CardItem
                     key={i}
                     title={
-                      <div className="flex items-center gap-x-2">
-                        <h1 className="text-foreground font-studio font-medium text-base">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <h1 className="font-medium text-foreground">
                           {item.productName ?? item.name}
                         </h1>
-                        <div className="bg-foreground/10 px-1 py-0.5 rounded text-foreground/70 text-xs">
+                        <div className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-xs tabular-nums text-ink-2">
                           v{item.version}
                         </div>
                       </div>
@@ -60,6 +56,7 @@ function ExtensionsContent() {
                           a: ({ ...props }) => (
                             <a
                               {...props}
+                              className="text-brand-text underline-offset-4 hover:underline"
                               target="_blank"
                               rel="noopener noreferrer"
                             />
