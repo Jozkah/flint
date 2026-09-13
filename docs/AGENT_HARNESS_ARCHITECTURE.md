@@ -1936,3 +1936,23 @@ Four migration behaviours, and every store declares one:
 
 Nothing rewrites a user's data on startup. That is the migration strategy that
 turns one bad release into lost work, and no store here uses it.
+
+
+### A skill says which tools it needs (AH-040)
+
+A skill's frontmatter may declare `allowed-tools: [read, grep]`, the convention
+Claude Code uses. The harness reads it as a *ceiling claim*, never a grant:
+
+* a skill whose declared tools this run may not use is **withheld**, with a
+  refusal naming the tool, and its instructions are not loaded -- handing over
+  steps that will each be refused wastes a turn and reads to the model as the
+  harness being broken rather than as a policy it cannot cross;
+* the catalogue does not list such a skill either, because an entry is an
+  invitation and one that always ends in a refusal is worse than no entry;
+* a skill that declares nothing behaves as it always did: its calls are gated
+  when they are made, like anybody else's;
+* and nothing here makes a denied tool callable. The check can only subtract.
+
+The tool context now carries the run's permissions and subject, which is what
+makes the check possible at the point the skill is handed over rather than
+three calls later.

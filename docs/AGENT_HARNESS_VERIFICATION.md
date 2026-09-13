@@ -1936,3 +1936,16 @@ rendering names every store, its location and its migration behaviour.
 
 `jan cli agent state` prints the catalogue, grouped by whether the file lives
 in the Jan data folder, in the project, or where a person chose.
+
+
+### Per-skill permissions (AH-040)
+
+Two tests. A project with two skills -- one declaring `bash` and `write`, one
+declaring `read` -- in a run where `bash` is denied: the first is refused as
+`permission_denied`, the refusal names `bash`, and its instructions do not
+appear in the answer; the second is handed over normally; `skill_list` offers
+the second and not the first. With nothing denied, both are available, which is
+the property that matters most: the check withholds and never grants.
+
+The second test covers the skill that declares nothing -- it is handed over as
+before, and its calls meet the gate when they are made.

@@ -973,6 +973,17 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
 /// only (disabled skills must stay invisible to the model). Empty if none.
 fn skill_list(ctx: &ToolContext<'_>) -> String {
     skills::catalog_with_user(ctx.store_root, ctx.user_skills_root, ctx.enabled_skills)
+        .into_iter()
+        // A skill this run could not carry out is not offered: a catalogue
+        // entry is an invitation, and one that always ends in a refusal is a
+        // worse answer than not listing it.
+        .filter(|meta| match (ctx.permissions, ctx.subject) {
+            (Some(permissions), Some(subject)) => {
+                skills::unusable_tools(&meta.needs, permissions, subject).is_empty()
+            }
+            _ => true,
+        })
+        .collect::<Vec<_>>()
         .iter()
         .map(|m| {
             if m.description.is_empty() {
@@ -1002,6 +1013,21 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let parsed = skills::parse(&raw);
     if !parsed.model_invocable {
         return format!("ERROR: skill '{name}' not found");
+    }
+    // AH-040: a skill that says which tools it needs is withheld where this
+    // run may not use them. Handing over instructions whose every step will be
+    // refused wastes a turn and reads, to the model, as the harness being
+    // broken rather than as a policy it cannot cross.
+    if let (Some(permissions), Some(subject)) = (ctx.permissions, ctx.subject) {
+        let blocked = skills::unusable_tools(&parsed.needs, permissions, subject);
+        if !blocked.is_empty() {
+            return format!(
+                "ERROR [permission_denied]: the skill '{name}' needs {}, which this run may not \
+                 use. Its instructions are not loaded; do the work with what you have, or ask \
+                 for the policy to be changed.",
+                blocked.join(", ")
+            );
+        }
     }
     parsed.body
 }
@@ -3381,6 +3407,114 @@ mod tests {
 
     /// The command language the sandboxed shell for `root` actually speaks.
     ///
+    // ---- AH-040: a skill declares the tools it needs, and the gate says ---
+
+    /// A skill's declared tools are checked against what this run may do. It
+    /// can only ever withhold the skill; nothing here grants a tool.
+    #[tokio::test]
+    async fn a_skill_that_needs_a_denied_tool_is_withheld_and_says_why() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let skills = store.join("skills");
+        std::fs::create_dir_all(skills.join("deployer")).unwrap();
+        std::fs::write(
+            skills.join("deployer").join("SKILL.md"),
+            "---\nname: deployer\ndescription: deploys the thing\nallowed-tools: [bash, write]\n---\nRun the deploy script.\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(skills.join("reader")).unwrap();
+        std::fs::write(
+            skills.join("reader").join("SKILL.md"),
+            "---\nname: reader\ndescription: reads things\nallowed-tools: [read]\n---\nRead the file.\n",
+        )
+        .unwrap();
+
+        let enabled = vec!["deployer".to_string(), "reader".to_string()];
+        let subject = crate::subject::Subject::MainAgent;
+        // This run may not run a shell.
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&root, &store, &enabled).with_permissions(&denied, &subject);
+
+        let refused = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "deployer" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(
+            refused.starts_with("ERROR [permission_denied]"),
+            "a skill needing a denied tool must be withheld: {refused}"
+        );
+        assert!(refused.contains("bash"), "and say which tool: {refused}");
+        assert!(
+            !refused.contains("Run the deploy script"),
+            "its instructions must not be handed over anyway: {refused}"
+        );
+
+        // The one this run can carry out is unaffected.
+        let allowed = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "reader" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(allowed.contains("Read the file"), "{allowed}");
+
+        // And the catalogue does not offer what it would refuse.
+        let listed = super::execute_builtin(lookup("skill_list").unwrap(), &json!({}), &ctx)
+            .await
+            .0;
+        assert!(listed.contains("reader"), "{listed}");
+        assert!(!listed.contains("deployer"), "a skill that cannot run was offered: {listed}");
+
+        // With nothing denied, both are available: the check withholds, it
+        // never grants.
+        let open = ToolPermissions::allow_all();
+        let open_ctx =
+            ToolContext::new(&root, &store, &enabled).with_permissions(&open, &subject);
+        let now = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "deployer" }),
+            &open_ctx,
+        )
+        .await
+        .0;
+        assert!(now.contains("Run the deploy script"), "{now}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A skill that says nothing about tools behaves as it always did: its
+    /// calls are gated when they are made, like anybody else's.
+    #[tokio::test]
+    async fn a_skill_that_declares_nothing_is_not_withheld() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let skills = store.join("skills");
+        std::fs::create_dir_all(skills.join("quiet")).unwrap();
+        std::fs::write(
+            skills.join("quiet").join("SKILL.md"),
+            "---\nname: quiet\ndescription: says nothing about tools\n---\nDo the thing.\n",
+        )
+        .unwrap();
+        let enabled = vec!["quiet".to_string()];
+        let subject = crate::subject::Subject::MainAgent;
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&root, &store, &enabled).with_permissions(&denied, &subject);
+        let out = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "quiet" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.contains("Do the thing"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // ---- AH-103: one run writing to another, through the tools ------------
 
     #[tokio::test]

@@ -1364,14 +1364,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-007"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/agent/skills.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1383,10 +1386,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_skill_that_needs_a_denied_tool_is_withheld_and_says_why",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_skill_that_declares_nothing_is_not_withheld"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Skills carry an availability whitelist only; skill tools are auto-allowed as workspace tools."
+      "auditNote": "Implemented 2026-09-12 (Phase 5), closing the gap that skill tools were auto-allowed as workspace tools. A skill's frontmatter may declare allowed-tools; the harness reads it as a ceiling claim and withholds the skill -- instructions and catalogue entry alike -- where this run may not use one of them, naming the tool in a permission_denied refusal. It can only subtract: with nothing denied every skill is available, and a skill that declares nothing is gated at call time as before. The tool context carries the run's permissions and subject so the check happens where the skill is handed over."
     },
     {
       "id": "AH-041",

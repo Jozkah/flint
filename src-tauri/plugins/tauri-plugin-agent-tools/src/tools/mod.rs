@@ -102,6 +102,14 @@ pub struct ToolContext<'a> {
     /// The Jan data folder, where a run's mailbox is stored. `None` on a
     /// surface that keeps no durable state.
     pub data_folder: Option<&'a std::path::Path>,
+    /// What this run may do, and who it is doing it as (AH-040).
+    ///
+    /// Carried so a skill that declares the tools it needs can be withheld
+    /// where those tools are denied, instead of handing over instructions
+    /// whose every step will be refused. It can only withhold: nothing here
+    /// grants a tool.
+    pub permissions: Option<&'a crate::permissions::ToolPermissions>,
+    pub subject: Option<&'a crate::subject::Subject>,
     /// A temporary chat neither reads nor records memory.
     ///
     /// Carried rather than inferred from a missing session id: an unsaved chat
@@ -211,6 +219,8 @@ impl<'a> ToolContext<'a> {
             session_id: None,
             run_id: None,
             data_folder: None,
+            permissions: None,
+            subject: None,
             temporary: false,
             sandbox: true,
             on_output: None,
@@ -239,6 +249,17 @@ impl<'a> ToolContext<'a> {
     }
 
     /// `owner`. See [`Self::job_owner`].
+    /// Say what this run may do, so a skill can be checked against it.
+    pub fn with_permissions(
+        mut self,
+        permissions: &'a crate::permissions::ToolPermissions,
+        subject: &'a crate::subject::Subject,
+    ) -> Self {
+        self.permissions = Some(permissions);
+        self.subject = Some(subject);
+        self
+    }
+
     /// Say which run is executing this call, and where its mail lives.
     pub fn with_run(mut self, run_id: &'a str, data_folder: &'a std::path::Path) -> Self {
         self.run_id = Some(run_id);

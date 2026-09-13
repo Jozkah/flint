@@ -27,7 +27,7 @@ and the latter two require a recorded `blockedReason`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 0 | 12 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 1 | 19 | 0 | 0 | 0 | 20 |
-| 2 | Security and permissions | 0 | 0 | 1 | 19 | 0 | 0 | 0 | 20 |
+| 2 | Security and permissions | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 4 | 0 | 0 | 13 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 1 | 15 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 1 | 0 | 4 | 20 | 0 | 0 | 0 | 25 |
@@ -35,7 +35,7 @@ and the latter two require a recorded `blockedReason`.
 | 7 | Coding and Git workflows | 10 | 0 | 0 | 16 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 8 | 0 | 6 | 14 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **30** | **0** | **17** | **160** | **3** | **0** | **1** | **211** |
+| **all** | | **30** | **0** | **16** | **161** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -109,7 +109,7 @@ per-OS evidence log rather than backlog items.
 | `AH-037` | Per-command permissions | 2 | security | P0 | `implemented` | critical | `AH-034` |
 | `AH-038` | Shell command argument parsing | 2 | security | P0 | `implemented` | high | `AH-037` |
 | `AH-039` | Per-agent permissions | 2 | security | P0 | `implemented` | critical | `AH-007` |
-| `AH-040` | Per-skill permissions | 2 | security | P1 | `in-progress` | high | `AH-007` |
+| `AH-040` | Per-skill permissions | 2 | security | P1 | `implemented` | high | `AH-007` |
 | `AH-041` | Per-MCP-server permissions | 2 | security | P0 | `implemented` | critical | `AH-007` |
 | `AH-042` | Network egress permissions | 2 | security | P0 | `implemented` | critical | `AH-006` |
 | `AH-043` | Network domain allow/deny lists | 2 | security | P1 | `implemented` | high | `AH-042` |
@@ -314,7 +314,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-036` Per-path permissions** - User-authorable per-path allow/deny rules from the project's agent.toml now reach the desktop gate, which previously built ToolPermissions::default() (allow everything). A relative rule such as read(secrets/**) also matches, anchored at a directory boundary; before this it compiled, was accepted, and matched nothing.
 - **`AH-037` Per-command permissions** - Per-command rules (bash(git:force-push), bash(rm)) already worked; the interactive grant did not. grant_command recorded the base commands a string ran, so approving `git status` granted `git` and covered `git push` for the session, and approving a compound handed over every base inside it -- `git status && rm foo` granted `rm`, so `rm bar` ran unprompted. A grant is now the exact normalized command the user was shown: same command with different spacing is covered, a changed flag, path or order is a new decision. That also closes the composition routes by construction, since `&&`, `|`, `;` and `$(...)` all produce a string that was never approved. Desktop was checked and was never affected: `bash` is in AGENT_TOOL_NAMES, so it is auto-allowed in the renderer and gated in Rust, and the renderer per-thread approval (keyed on tool name) never covers it. The change is on the CLI/Cowork path, where the grant lives. Two pre-existing tests asserted the old behaviour and were rewritten to the new intent rather than deleted, with comments saying what they used to claim. Not `verified`: no cancellation test on this path, and no WebView scenario -- the CLI prompt flow is not driven by cowork-smoke.
 - **`AH-038` Shell command argument parsing** - Each shell now declares the command language it speaks and is chosen by probing it under the real sandbox policy, not by assuming: on Windows the MSYS2 runtime Git Bash is built on cannot initialise inside an AppContainer, so a command needing POSIX syntax is refused with that reason rather than reinterpreted by cmd or PowerShell. The sandboxed environment block is built in one place (win_env), which is what fixes CreateProcessW failing with ERROR_ENVVAR_NOT_FOUND (203) for a missing LOCALAPPDATA. Readiness is now eight independently probed components rather than one boolean: a shell that cannot start costs the session its shell tool and nothing else. `advertised_tool_schemas` is the single production decision about what a model is offered, and both call sites (Cowork's tool builder, the chat transport) go through it; omissions keep their reason. The Cowork tool signature includes readiness state, so a retry that fixes a shell changes the tool set on the next message. A collapsed Environment section in session details renders the same report, and its Git Bash row names MSYS2 rather than an install location.
-- **`AH-040` Per-skill permissions** - Skills carry an availability whitelist only; skill tools are auto-allowed as workspace tools.
+- **`AH-040` Per-skill permissions** - Implemented 2026-09-12 (Phase 5), closing the gap that skill tools were auto-allowed as workspace tools. A skill's frontmatter may declare allowed-tools; the harness reads it as a ceiling claim and withholds the skill -- instructions and catalogue entry alike -- where this run may not use one of them, naming the tool in a permission_denied refusal. It can only subtract: with nothing denied every skill is available, and a skill that declares nothing is gated at call time as before. The tool context carries the run's permissions and subject so the check happens where the skill is handed over.
 - **`AH-041` Per-MCP-server permissions** - Trust keys on the MCP server, never on a tool name: a tool name is chosen by whoever publishes it, so two servers can both publish `fetch` and a call naming no server is answered by whichever the search reaches first. `mcp_trust` holds the per-server record, persisted to <jan_data>/mcp-trust.json with an atomic rename, and `call_tool` checks it against the server the tool was resolved on, before the arguments are sent. An "allow once" answer is a single-use, short-lived ticket that is never written to disk, so it cannot become a standing permission; a ticket is spent even when it does not match, so it cannot be retried against another server. An unreadable trust file trusts nothing. Scope: this moves the persisted decision into the backend and makes every call carry a backend-issued authorization. It is not a defence against the renderer, which is the thing that asks the user and can mint a ticket. Not `verified`: no test covers the generic cancellation criterion, and the Cowork/CLI path keeps its own separate MCP gate (SessionGrants::covers_mcp) rather than sharing this one.
 - **`AH-042` Network egress permissions** - A Capability::Net call is refused when the run has no network. allow_network previously confined only the shell, so a run with its network off could still fetch a URL.
 - **`AH-043` Network domain allow/deny lists** - allow_domains/deny_domains from agent.toml, matched on domain boundaries so a lookalike host cannot pass for an allowed one; deny is checked first and cannot be overridden by allow.

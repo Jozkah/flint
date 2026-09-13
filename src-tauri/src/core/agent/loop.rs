@@ -1159,6 +1159,9 @@ impl CompositeToolInvoker {
         .with_sandbox(self.sandbox)
         .with_scratch_root(&self.scratch_root)
         .with_user_skills(self.user_skills.as_deref())
+        // AH-040: what this run may do, so a skill that declares the tools it
+        // needs is withheld where those tools are denied.
+        .with_permissions(&self.permissions, &self.subject)
     }
 
     /// The same context, plus who this run is for the mailbox (AH-103).

@@ -50,6 +50,11 @@ pub struct SkillMeta {
     pub user_invocable: bool,
     /// Offered to the model (system-prompt catalog, `skill_list`/`skill_read`).
     pub model_invocable: bool,
+    /// The tools this skill says it needs (AH-040). Empty means it did not
+    /// say, which is not the same as "none": an unsaid requirement is checked
+    /// at the gate when the call is made, like any other call.
+    #[serde(default)]
+    pub needs: Vec<String>,
 }
 
 /// Frontmatter fields we recognize; everything else is ignored.
@@ -67,6 +72,16 @@ struct Frontmatter {
     /// from the model's reach (no context load).
     #[serde(rename = "disable-model-invocation")]
     disable_model_invocation: Option<bool>,
+    /// AH-040. The tools a skill's instructions actually require, by the
+    /// convention Claude Code uses. Declaring them lets the harness withhold a
+    /// skill this run could never carry out, rather than handing over
+    /// instructions whose every step will be refused.
+    ///
+    /// It is a *ceiling claim*, never a grant: a skill that names `bash` in a
+    /// run where `bash` is denied is withheld; a skill can never make a denied
+    /// tool callable.
+    #[serde(rename = "allowed-tools")]
+    allowed_tools: Option<Vec<String>>,
 }
 
 /// A skill's parsed content: optional frontmatter description + markdown body
@@ -76,6 +91,8 @@ pub struct ParsedSkill {
     pub body: String,
     pub user_invocable: bool,
     pub model_invocable: bool,
+    /// The tools the skill declared it needs (AH-040), lowercased and trimmed.
+    pub needs: Vec<String>,
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from the markdown body.
@@ -89,6 +106,7 @@ pub fn parse(content: &str) -> ParsedSkill {
             body: content.to_string(),
             user_invocable: true,
             model_invocable: true,
+            needs: Vec::new(),
         };
     }
     let mut yaml = String::new();
@@ -113,6 +131,7 @@ pub fn parse(content: &str) -> ParsedSkill {
             body: content.to_string(),
             user_invocable: true,
             model_invocable: true,
+            needs: Vec::new(),
         };
     }
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -121,7 +140,31 @@ pub fn parse(content: &str) -> ParsedSkill {
         body: body.join("\n").trim_start_matches('\n').to_string(),
         user_invocable: fm.user_invocable.unwrap_or(true),
         model_invocable: !fm.disable_model_invocation.unwrap_or(false),
+        needs: fm
+            .allowed_tools
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.trim().to_ascii_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect(),
     }
+}
+
+/// Which of a skill's declared tools this run may not use (AH-040).
+///
+/// Empty when the skill can be carried out here. The check is one-directional
+/// on purpose: it can withhold a skill, and it can never make a denied tool
+/// callable.
+pub fn unusable_tools(
+    needs: &[String],
+    permissions: &crate::permissions::ToolPermissions,
+    subject: &crate::subject::Subject,
+) -> Vec<String> {
+    needs
+        .iter()
+        .filter(|tool| permissions.is_denied(tool, subject))
+        .cloned()
+        .collect()
 }
 
 /// First non-empty, non-heading line of `body`, capped at 120 chars. Fallback
@@ -257,6 +300,7 @@ fn default_jan_skill_meta() -> SkillMeta {
         // invoke it directly.
         user_invocable: true,
         model_invocable: true,
+        needs: parsed.needs.clone(),
     }
 }
 
@@ -266,6 +310,7 @@ fn meta_for(name: String, parsed: &ParsedSkill) -> SkillMeta {
         description: describe(parsed),
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
+        needs: parsed.needs.clone(),
     }
 }
 
