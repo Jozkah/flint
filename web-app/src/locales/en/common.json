@@ -180,7 +180,17 @@
       "navigation": "Go to",
       "settings": "Settings",
       "threads": "Conversation"
+    },
+    "group": {
+      "actions": "Actions",
+      "navigation": "Go to",
+      "settings": "Settings",
+      "threads": "Conversations"
     }
+  },
+  "searchGroup": {
+    "inProjects": "In projects",
+    "conversations": "Conversations"
   },
   "rail": {
     "label": "Cowork panels",
