@@ -415,6 +415,40 @@ pub async fn get_server_summaries(
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
 /// Every MCP server the user has trusted. AH-041.
+/// The prompts a connected server offers (AH-138).
+///
+/// A prompt is a message the *server* composes -- a template its author wrote,
+/// filled in with arguments. It is content, not instruction: what comes back
+/// is handed to the model as a user message, exactly as a person pasting it
+/// would, and nothing in it decides what the harness may do.
+pub async fn list_prompts(
+    server: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) -> Result<Vec<rmcp::model::Prompt>, String> {
+    server
+        .list_all_prompts()
+        .await
+        .map_err(|e| format!("prompts/list failed: {e}"))
+}
+
+/// One prompt, filled in (AH-138).
+///
+/// `arguments` are the server's own, by the names it declared; an argument it
+/// did not declare is its business to refuse, and its refusal is returned
+/// rather than smoothed over.
+pub async fn get_prompt(
+    server: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    name: &str,
+    arguments: serde_json::Map<String, serde_json::Value>,
+) -> Result<rmcp::model::GetPromptResult, String> {
+    server
+        .get_prompt(rmcp::model::GetPromptRequestParam {
+            name: name.to_string(),
+            arguments: (!arguments.is_empty()).then_some(arguments),
+        })
+        .await
+        .map_err(|e| format!("prompts/get failed: {e}"))
+}
+
 #[tauri::command]
 pub async fn mcp_trusted_servers() -> Result<Vec<String>, String> {
     Ok(tauri_plugin_agent_tools::mcp_trust::trusted(

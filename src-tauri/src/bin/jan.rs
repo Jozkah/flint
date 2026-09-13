@@ -790,6 +790,21 @@ enum McpCommands {
         #[arg(long)]
         active: bool,
     },
+    /// List the prompts a server offers (AH-138)
+    Prompts {
+        /// Server name
+        name: String,
+    },
+    /// Fetch one of a server's prompts, filled in (AH-138)
+    Prompt {
+        /// Server name
+        name: String,
+        /// Prompt name
+        prompt: String,
+        /// Argument KEY=VALUE, repeatable
+        #[arg(long = "arg")]
+        args: Vec<String>,
+    },
     /// Remove a server entry from mcp_config.json
     Remove {
         /// Server name
@@ -1115,7 +1130,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
-            if let Err(e) = handle_mcp(cmd) {
+            if let Err(e) = handle_mcp(cmd).await {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
@@ -2191,7 +2206,7 @@ fn mcp_list_entry(entry: &McpServerEntry, show_secrets: bool) -> serde_json::Val
 }
 
 /// Manage MCP servers in mcp_config.json.
-fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
+async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
     match cmd {
         McpCommands::List { show_secrets } => {
             let servers = mcp::list_servers();
@@ -2225,6 +2240,43 @@ fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             let config = build_mcp_config(command, args, env, &r#type, url, header, active)?;
             mcp::upsert_server(&name, &config)?;
             println!("saved server '{name}' to mcp_config.json");
+            Ok(())
+        }
+        McpCommands::Prompts { name } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let listed = mcp::list_prompts(&name, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            let listed = listed?;
+            if listed.is_empty() {
+                println!("'{name}' offers no prompts");
+            }
+            for line in listed {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        McpCommands::Prompt { name, prompt, args } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let mut arguments = serde_json::Map::new();
+            for kv in &args {
+                let (k, v) = split_kv(kv, "arg")?;
+                arguments.insert(k, serde_json::json!(v));
+            }
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let fetched = mcp::get_prompt(&name, &prompt, arguments, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            print!("{}", fetched?);
             Ok(())
         }
         McpCommands::Remove { name } => {

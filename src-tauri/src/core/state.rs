@@ -101,6 +101,26 @@ pub type SharedMcpServers = Arc<Mutex<HashMap<String, RunningServiceEnum>>>;
 
 #[cfg(feature = "cli")]
 impl RunningServiceEnum {
+    /// The prompts this server offers (AH-138). Paginated listings are
+    /// followed to the end, the same way tools are.
+    pub async fn list_all_prompts(&self) -> Result<Vec<rmcp::model::Prompt>, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.list_all_prompts().await,
+            Self::WithInit(s) => s.list_all_prompts().await,
+        }
+    }
+
+    /// One prompt, filled in with the server's own arguments (AH-138).
+    pub async fn get_prompt(
+        &self,
+        param: rmcp::model::GetPromptRequestParam,
+    ) -> Result<rmcp::model::GetPromptResult, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.get_prompt(param).await,
+            Self::WithInit(s) => s.get_prompt(param).await,
+        }
+    }
+
     pub async fn list_all_tools(&self) -> Result<Vec<Tool>, ServiceError> {
         match self {
             Self::NoInit(s) => s.list_all_tools().await,

@@ -4891,13 +4891,20 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-136"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/mcp/models.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/state.rs",
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/tests/fixtures/mcp_stdio_server.py"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "MCP prompts are listable and invocable.",
@@ -4907,10 +4914,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/tests.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `jan cli mcp prompts <server>` lists a server's prompts with their descriptions and declared arguments; `jan cli mcp prompt <server> <name> --arg k=v` fetches one, filled in. What comes back is content, not instruction: it is rendered with its role and handed on the way a person pasting it would, never merged into the harness's own prompt -- the same rule MCP resources follow (AH-137), because a server is a third party. A prompt the server does not have comes back as the server's own refusal. Each round trip is bounded by the same tool-call timeout every other call to a peer uses, because the lock it takes is the one an agent turn also takes. Proven against the stdio fixture over the real protocol, and through the CLI."
     },
     {
       "id": "AH-139",
@@ -5039,13 +5048,20 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-136"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/mcp/models.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/state.rs",
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/tests/fixtures/mcp_stdio_server.py"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Cursor pagination is honoured when listing large MCP collections.",
@@ -5055,10 +5071,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/tests.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). Cursor pagination is honoured on every listing the harness makes -- tools, prompts and resources -- and is now proven rather than assumed: the stdio fixture serves its tools over two pages, with the second tool reachable only by following `nextCursor`, and the test asserts both are seen. A client that stopped at the first page would visibly miss one, rather than merely being untested. The fixture also refuses an unknown cursor, so a wrong one is an error rather than an empty page."
     },
     {
       "id": "AH-144",

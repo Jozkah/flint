@@ -731,6 +731,72 @@ pub async fn list_tools(name: &str, servers: &SharedMcpServers) -> Result<Vec<St
     Ok(names)
 }
 
+/// The prompts a connected server offers (AH-138).
+///
+/// Bounded by the same timeout every other round trip to a peer uses: the
+/// guard here is the process-wide server map that each agent turn also locks,
+/// so a peer that accepts a request and never answers would stall turns and
+/// not just this call.
+pub async fn list_prompts(name: &str, servers: &SharedMcpServers) -> Result<Vec<String>, String> {
+    let timeout_duration = read_settings().tool_call_timeout_duration();
+    let guard = servers.lock().await;
+    let service = guard
+        .get(name)
+        .ok_or_else(|| format!("'{name}' is not connected"))?;
+    let prompts = tokio::time::timeout(timeout_duration, service.list_all_prompts())
+        .await
+        .map_err(|_| {
+            format!(
+                "listing prompts for '{name}' timed out after {}s",
+                timeout_duration.as_secs()
+            )
+        })?
+        .map_err(|e| format!("could not list prompts for '{name}': {e}"))?;
+    let mut lines: Vec<String> = prompts
+        .into_iter()
+        .map(|p| match p.description {
+            Some(description) if !description.is_empty() => format!("{} — {description}", p.name),
+            _ => p.name.to_string(),
+        })
+        .collect();
+    lines.sort();
+    Ok(lines)
+}
+
+/// One prompt from a connected server, filled in (AH-138).
+///
+/// What comes back is the server's content, labelled by role. It is handed on
+/// as a message, the way a person pasting it would -- never merged into the
+/// harness's own instructions.
+pub async fn get_prompt(
+    name: &str,
+    prompt: &str,
+    arguments: serde_json::Map<String, Value>,
+    servers: &SharedMcpServers,
+) -> Result<String, String> {
+    let timeout_duration = read_settings().tool_call_timeout_duration();
+    let guard = servers.lock().await;
+    let service = guard
+        .get(name)
+        .ok_or_else(|| format!("'{name}' is not connected"))?;
+    let result = tokio::time::timeout(
+        timeout_duration,
+        service.get_prompt(rmcp::model::GetPromptRequestParam {
+            name: prompt.to_string(),
+            arguments: (!arguments.is_empty()).then_some(arguments),
+        }),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "asking '{name}' for prompt '{prompt}' timed out after {}s",
+            timeout_duration.as_secs()
+        )
+    })?
+    .map_err(|e| format!("could not get prompt '{prompt}' from '{name}': {e}"))?;
+    Ok(crate::core::mcp::models::render_prompt(&result))
+}
+
 /// Number of servers marked `active` in `mcp_config.json`.
 pub fn active_count() -> usize {
     list_servers().iter().filter(|e| e.active).count()

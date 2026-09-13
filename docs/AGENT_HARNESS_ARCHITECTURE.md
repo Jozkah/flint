@@ -2521,3 +2521,30 @@ reporting no failures -- silence there would read as a clean suite.
 
 The exit code distinguishes the two: a suite whose only failures did not
 reproduce exits zero, one with a failure that happened twice does not.
+
+
+## A server's prompts, and listings that come in pages (AH-138, AH-143)
+
+**Prompts (AH-138).** An MCP server can offer prompts: messages its author
+wrote, filled in with arguments. `jan cli mcp prompts <server>` lists them with
+the descriptions the server gave; `jan cli mcp prompt <server> <name> --arg
+k=v` fetches one.
+
+What comes back is **content, not instruction**. It is rendered with its role
+(`[user] …`) and handed on the way a person pasting it would -- never merged
+into the harness's own prompt, and nothing in it decides what the harness may
+do. That is the same rule MCP resources follow (AH-137), for the same reason: a
+server is a third party. A prompt the server does not have is the server's own
+refusal, returned as it was given rather than smoothed into an empty prompt.
+
+**Pagination (AH-143).** A listing arrives with a `nextCursor` when there is
+more, and every listing this harness makes follows it to the end -- tools,
+prompts and resources alike. The fixture server now serves its tools over two
+pages, with the second tool reachable *only* by following the cursor, so a
+client that stopped at the first page is visibly missing something rather than
+merely untested.
+
+Each round trip is bounded by the same tool-call timeout every other call to a
+peer uses: the lock these take is the process-wide server map an agent turn
+also locks, so a peer that accepts a request and never answers would stall
+turns and not just the listing.

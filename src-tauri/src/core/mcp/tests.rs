@@ -1474,6 +1474,86 @@ mod mcp_resource_tests {
 
         service.cancel().await.expect("shutdown");
     }
+
+    /// AH-143: the fixture serves its tools over two pages, and the second
+    /// tool exists only on the second. A client that does not follow the
+    /// cursor is visibly missing it, rather than merely untested.
+    #[tokio::test]
+    async fn a_paginated_listing_is_followed_to_the_end() {
+        let (Some(python), true) = (python(), fixture().exists()) else {
+            eprintln!("skipped: no python interpreter on this host");
+            return;
+        };
+        let mut command = tokio::process::Command::new(python);
+        command.arg(fixture());
+        let service = ().serve(rmcp::transport::TokioChildProcess::new(command).expect("spawn"))
+            .await
+            .expect("initialize");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
+        assert!(
+            names.iter().any(|n| n == "echo_fixture"),
+            "the first page: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "echo_fixture_page_two"),
+            "the second page is only reachable by following the cursor: {names:?}"
+        );
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// AH-138: a server's prompts are listed and one is fetched, filled in
+    /// with the argument it declared. What comes back is the server's
+    /// content -- returned as it was written, and refused by the server when
+    /// it is asked for something it does not have.
+    #[tokio::test]
+    async fn a_servers_prompts_are_listed_and_fetched() {
+        use crate::core::mcp::commands::{get_prompt, list_prompts};
+        use crate::core::mcp::models::render_prompt;
+
+        let (Some(python), true) = (python(), fixture().exists()) else {
+            eprintln!("skipped: no python interpreter on this host");
+            return;
+        };
+        let mut command = tokio::process::Command::new(python);
+        command.arg(fixture());
+        let service = ().serve(rmcp::transport::TokioChildProcess::new(command).expect("spawn"))
+            .await
+            .expect("initialize");
+
+        let prompts = list_prompts(&service).await.expect("prompts/list");
+        let greet = prompts
+            .iter()
+            .find(|p| p.name == "greet")
+            .expect("the fixture's prompt");
+        assert_eq!(
+            greet
+                .arguments
+                .as_ref()
+                .map(|a| a.iter().map(|arg| arg.name.clone()).collect::<Vec<_>>()),
+            Some(vec!["name".to_string()]),
+            "its declared argument travels with it"
+        );
+
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("name".to_string(), serde_json::json!("the fixture"));
+        let filled = get_prompt(&service, "greet", arguments)
+            .await
+            .expect("prompts/get");
+        let rendered = render_prompt(&filled);
+        assert!(rendered.contains("Say hello to the fixture."), "{rendered}");
+        // The role is kept: a server's message is labelled as what it is.
+        assert!(rendered.contains("[user]"), "{rendered}");
+
+        // A prompt the server does not have is the server's refusal, not an
+        // empty prompt.
+        let missing = get_prompt(&service, "nowhere", serde_json::Map::new()).await;
+        assert!(missing.is_err(), "{missing:?}");
+
+        service.cancel().await.expect("shutdown");
+    }
 }
 
 #[cfg(all(test, unix))]

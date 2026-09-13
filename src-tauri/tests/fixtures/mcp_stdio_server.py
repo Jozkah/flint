@@ -20,6 +20,24 @@ TOOL = {
     "inputSchema": {"type": "object", "properties": {}},
 }
 
+# AH-143: a second tool, served only on the second page, so a client that does
+# not follow `nextCursor` is visibly missing something rather than merely
+# untested.
+SECOND_PAGE_TOOL = {
+    "name": "echo_fixture_page_two",
+    "description": "Only reachable by following the list cursor.",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+
+# AH-138: a prompt the server offers, with one argument.
+PROMPT = {
+    "name": "greet",
+    "description": "A greeting the server composes.",
+    "arguments": [
+        {"name": "name", "description": "who to greet", "required": True}
+    ],
+}
+
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -40,12 +58,57 @@ for line in sys.stdin:
             "id": request_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}, "resources": {}},
+                "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "serverInfo": {"name": "jan-test-fixture", "version": "0.0.0"},
             },
         })
     elif method == "tools/list":
-        send({"jsonrpc": "2.0", "id": request_id, "result": {"tools": [TOOL]}})
+        # Two pages: the first answers with a cursor, and only a client that
+        # follows it ever sees the second tool.
+        cursor = (request.get("params") or {}).get("cursor")
+        if cursor is None:
+            send({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {"tools": [TOOL], "nextCursor": "page-2"},
+            })
+        elif cursor == "page-2":
+            send({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {"tools": [SECOND_PAGE_TOOL]},
+            })
+        else:
+            send({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32602, "message": f"no such cursor {cursor}"},
+            })
+    elif method == "prompts/list":
+        send({"jsonrpc": "2.0", "id": request_id, "result": {"prompts": [PROMPT]}})
+    elif method == "prompts/get":
+        params = request.get("params") or {}
+        if params.get("name") != PROMPT["name"]:
+            send({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32602, "message": "no such prompt"},
+            })
+            continue
+        who = (params.get("arguments") or {}).get("name", "nobody")
+        send({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "description": PROMPT["description"],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": {"type": "text", "text": f"Say hello to {who}."},
+                    }
+                ],
+            },
+        })
     elif method == "resources/list":
         # AH-137: a document the server offers, which reading runs nothing.
         send({

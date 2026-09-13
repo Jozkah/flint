@@ -2482,3 +2482,33 @@ complaints and differing quoted values stay apart; a failure called flaky only
 after a re-run passed, a re-failure called a failure, and nothing claimed
 without a re-run; and unreadable output reported as unreadable, with an empty
 command refused.
+
+
+### MCP prompts and paginated listings (AH-138, AH-143)
+
+Two protocol-level tests against the stdio fixture, plus a real run through the
+CLI:
+
+```
+=== the prompts it offers
+greet — A greeting the server composes.
+
+=== one of them, filled in
+A greeting the server composes.
+
+[user] Say hello to the operator.
+
+=== a prompt it does not have
+Error: could not get prompt 'nowhere' from 'fixture': Mcp error: -32602: no
+such prompt                                                            rc=1
+
+=== the tools it serves, over two pages
+  page 1: ['echo_fixture'] nextCursor: page-2
+  page 2: ['echo_fixture_page_two'] nextCursor: None
+```
+
+Covered by test: a paginated `tools/list` followed to the end, asserted by a
+tool that exists only on the second page; and a server's prompts listed with
+the argument each declares, one fetched and filled in, its role preserved in
+what comes back, and a prompt the server does not have coming back as the
+server's refusal.

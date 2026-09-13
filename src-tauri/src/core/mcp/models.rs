@@ -438,3 +438,26 @@ pub fn registration_decision(
         },
     }
 }
+
+/// A prompt's messages as plain text, for a surface that shows them.
+///
+/// Labelled by role, and never merged into the harness's own instructions: a
+/// server's words are a server's words.
+pub fn render_prompt(result: &rmcp::model::GetPromptResult) -> String {
+    let mut out = String::new();
+    if let Some(description) = &result.description {
+        out.push_str(&format!("{description}\n\n"));
+    }
+    for message in &result.messages {
+        let role = match message.role {
+            rmcp::model::PromptMessageRole::User => "user",
+            rmcp::model::PromptMessageRole::Assistant => "assistant",
+        };
+        let text = match &message.content {
+            rmcp::model::PromptMessageContent::Text { text } => text.clone(),
+            other => serde_json::to_string(other).unwrap_or_default(),
+        };
+        out.push_str(&format!("[{role}] {text}\n"));
+    }
+    out
+}
