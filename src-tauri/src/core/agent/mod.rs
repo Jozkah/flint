@@ -30,6 +30,7 @@ pub mod project;
 pub mod proposals;
 pub mod reminder;
 pub mod impact;
+pub mod vcs;
 pub mod replay;
 pub mod roles;
 pub mod session_bundle;

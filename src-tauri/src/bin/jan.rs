@@ -391,6 +391,16 @@ enum AgentCommands {
         #[arg(long)]
         accept_widening: bool,
     },
+    /// Where this branch stands against its remote, and what a stopped merge
+    /// says (AH-171/AH-165). Reads only; fetches nothing, resolves nothing.
+    Vcs {
+        /// The repository to read. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// What a change can affect, and which tests cover it (AH-065/066/067/151)
     Impact {
         /// The files that changed, relative to the project, `/`-separated.
@@ -1155,6 +1165,58 @@ async fn handle_agent(cmd: AgentCommands) {
                     );
                 }
             })
+        }
+        AgentCommands::Vcs { project, json } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            app_lib::core::agent::vcs::divergence(&root)
+                .and_then(|divergence| {
+                    app_lib::core::agent::vcs::conflicts(&root).map(|merge| (divergence, merge))
+                })
+                .map_err(|e| HarnessError::from(&e))
+                .map(|(divergence, merge)| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "divergence": divergence,
+                                "merge": merge,
+                            }))
+                            .unwrap_or_default()
+                        );
+                        return;
+                    }
+                    match (&divergence.branch, &divergence.upstream) {
+                        (Some(branch), Some(upstream)) => println!(
+                            "{branch} vs {upstream}: {} ahead, {} behind",
+                            divergence.ahead, divergence.behind
+                        ),
+                        (Some(branch), None) => println!("{branch}: tracks nothing"),
+                        _ => println!("HEAD is detached"),
+                    }
+                    for option in &divergence.options {
+                        println!("  - {option}");
+                    }
+                    if divergence.needs_a_person {
+                        println!("  this needs a decision, not a command");
+                    }
+                    if merge.in_progress {
+                        println!(
+                            "a merge is stopped, with {} file(s) unresolved:",
+                            merge.files.len()
+                        );
+                        for file in &merge.files {
+                            println!(
+                                "  {} ({:?}, {} region(s))",
+                                file.path,
+                                file.kind,
+                                file.hunks.len()
+                            );
+                        }
+                        println!("  {}", merge.note);
+                    }
+                })
         }
         AgentCommands::Impact {
             changed,

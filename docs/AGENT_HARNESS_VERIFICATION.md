@@ -1571,3 +1571,29 @@ added; the machine's policy holding where there is no project and where the
 project file will not parse; `JAN_ORG_POLICY` ignored when an installed policy
 exists and honoured when none is; and a malformed policy read at its strictest
 and reported as `invalid_input` that is never retried.
+
+### Divergence and conflicts (AH-171 / AH-165)
+
+Eight tests against real git repositories (a bare origin, two clones, real
+pushes and a real failing merge), plus a real CLI run:
+
+```
+main vs origin/main: 1 ahead, 1 behind
+  - both sides moved: 1 commit(s) here, 1 on `origin/main`. `git merge origin/main` keeps both histories
+  - or `git rebase origin/main` replays your 1 commit(s) on top -- it rewrites them, so only do it if they have not been shared
+  - what is deliberately not offered: a force push, which would delete the commits on the remote that are not here
+  this needs a decision, not a command
+a merge is stopped, with 1 file(s) unresolved:
+  file.txt (BothChanged, 1 region(s))
+--- the file on disk still has its markers (nothing was resolved): 1
+```
+
+Covered by test: in-sync, ahead, behind and diverged each named and counted
+from real commits; the fast-forward offered where nothing can be lost; a
+diverged branch never offered a force push, a `-f`, or a hard reset, asserted
+on the text of every option; `refuse_overwrite` typed `policy_violation` and
+never retryable; no-upstream and detached HEAD told apart; a directory that is
+not a repository refused as `not_found`; a real stopped merge reported region
+by region with the file left untouched; a file deleted on one side named as
+that rather than as an edit; and both bounds (regions per file, lines per
+side) reporting what they cut.

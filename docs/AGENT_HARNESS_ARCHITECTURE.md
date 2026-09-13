@@ -1625,3 +1625,36 @@ The refusal says which file the rule is in. Telling someone to edit
 `agent.toml` when the deny came from `policy.toml` sends them to change a file
 that cannot help, and the refusal is tagged `permission_denied` so nothing
 downstream has to infer it from the words.
+
+## A diverged branch and a stopped merge (AH-171 / AH-165)
+
+These are the two git situations where a wrong guess destroys someone's work,
+and both are currently handled by asking the model to read `git status` and
+decide. In both, the convenient answer -- `git push --force`,
+`git checkout --theirs .` -- throws away commits, and a model told to make it
+work will reach for it.
+
+`vcs.rs` reports and refuses to resolve. `jan cli agent vcs` prints it.
+
+*Divergence* says how far a branch and its upstream have drifted in each
+direction, whether the tree is dirty, and what can be done from here that
+loses nothing -- a push when only the local side moved, a fast-forward when
+only the remote did, and for a real divergence, merge or rebase with what each
+costs. A force push is not in that list under any circumstances; the answer
+instead carries `needsAPerson`, because choosing between a merge and a rebase
+is a project's decision rather than a command. `refuse_overwrite` is the typed
+refusal for a caller that tries to assemble one anyway: `policy_violation`,
+never retryable.
+
+Nothing fetches. A function that reaches the network as a side effect of being
+asked a question cannot be called from anywhere careful, so the answer is
+about what has already been fetched and says so.
+
+*Conflicts* reads a stopped merge from the index's unmerged stages rather than
+from the working tree alone, which is what lets it tell "both sides changed
+it" from "they deleted it while we changed it" -- different situations, and
+only one of them has regions to show. Each conflicting region is reported with
+its line number and both sides, bounded (20 regions per file, 60 lines per
+side, 200 files) with what was cut said out loud. Binary files are named as
+binary rather than shown. Nothing is written: after reading a conflict, the
+markers are still in the file.

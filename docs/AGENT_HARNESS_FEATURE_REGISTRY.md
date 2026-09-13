@@ -234,13 +234,13 @@ per-OS evidence log rather than backlog items.
 | `AH-162` | Pull request creation | 7 | git-workflows | P1 | `missing` | high | `AH-161` |
 | `AH-163` | Pull request description synchronization | 7 | git-workflows | P2 | `missing` | medium | `AH-162` |
 | `AH-164` | Review-response mode | 7 | git-workflows | P1 | `missing` | medium | `AH-162` |
-| `AH-165` | Merge conflict resolution assistance | 7 | git-workflows | P1 | `missing` | high | `AH-109` |
+| `AH-165` | Merge conflict resolution assistance | 7 | git-workflows | P1 | `implemented` | high | `AH-109` |
 | `AH-166` | Rebase assistance | 7 | git-workflows | P2 | `missing` | high | `AH-165` |
 | `AH-167` | Cherry-pick assistance | 7 | git-workflows | P2 | `missing` | medium | `AH-165` |
 | `AH-168` | Worktree export | 7 | git-workflows | P1 | `implemented` | medium | `AH-108` |
 | `AH-169` | Worktree apply | 7 | git-workflows | P1 | `implemented` | high | `AH-168` |
 | `AH-170` | Worktree cleanup | 7 | git-workflows | P1 | `implemented` | medium | `AH-108` |
-| `AH-171` | Remote divergence handling | 7 | git-workflows | P1 | `missing` | high | `AH-161` |
+| `AH-171` | Remote divergence handling | 7 | git-workflows | P1 | `implemented` | high | `AH-161` |
 | `AH-172` | Live tool timeline | 8 | ux-operations | P1 | `implemented` | none | `AH-004` |
 | `AH-173` | Process tree view | 8 | ux-operations | P2 | `implemented` | low | `AH-172` |
 | `AH-174` | Resource usage monitor | 8 | ux-operations | P2 | `in-progress` | low | `AH-173` |

@@ -5636,13 +5636,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-109"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/vcs.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "The harness presents conflicts with enough context to resolve them safely.",
@@ -5652,12 +5655,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/vcs.rs"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). conflicts() reads a stopped merge from the index's unmerged stages, so 'both sides changed it' is told apart from 'they deleted it while we changed it' and from a binary file; each conflicting region is reported with its line number and both sides, bounded (20 regions per file, 60 lines per side, 200 files) with what was cut said out loud. It writes nothing: after reading a conflict the markers are still in the file, asserted by test and by a real run."
     },
     {
       "id": "AH-166",
@@ -5844,13 +5849,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-161"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/vcs.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A branch that diverged from its remote is detected and handled without a forced overwrite.",
@@ -5860,12 +5868,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/vcs.rs"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). divergence() reports ahead/behind counts against the tracked upstream, whether the tree is dirty, and the moves that lose nothing; a force push and a hard reset are never among them, and a real divergence carries needsAPerson because choosing between merge and rebase is a project's decision. refuse_overwrite is the typed refusal (policy_violation, never retryable) for a caller that assembles one anyway. It fetches nothing -- the answer is about what is already fetched. Exposed as `jan cli agent vcs` and proven against real repositories with real pushes."
     },
     {
       "id": "AH-172",
