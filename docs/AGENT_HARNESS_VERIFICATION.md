@@ -1768,3 +1768,17 @@ running job was reported interrupted the moment anything listed it.
 `background-job-record` caught it. An unsupervised record is now judged the way
 it was before supervisors existed, by its recorded identity, and where that
 cannot be checked, by whether this process is the one that wrote it.
+
+
+### Branch management (AH-161)
+
+Three tests against real repositories, plus `jan cli agent vcs`, which now
+lists branches with their upstreams and marks any held by another worktree.
+
+Covered by test: a branch created and switched to, with the branch it came
+from named; creating one that exists refused as `policy_violation`; switching
+to one that does not exist refused as `not_found` and nothing created;
+uncommitted changes refused on a switch and carried on a create; nine names
+that are flags, paths or empty refused as `invalid_input` with nothing created
+by any of them; and a branch a second worktree holds listed as held and
+refused on a switch.

@@ -1370,6 +1370,73 @@ impl CompositeToolInvoker {
                     }
                 }
             }
+            "git_branch" => {
+                // AH-161. Listing is reading; creating or switching changes
+                // the checkout, so it is a write and Plan mode does not offer
+                // it (the check below is defence in depth against a stale
+                // schema).
+                let action = args
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("list")
+                    .trim()
+                    .to_string();
+                let branch = args
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let root = self.project_root.clone();
+                let changes = action == "create" || action == "switch";
+                if changes && self.run_mode == crate::core::agent::plan::RunMode::Plan {
+                    return plan_mode_read_only_msg("git_branch");
+                }
+                let answer = match action.as_str() {
+                    "list" => crate::core::agent::vcs::branches(&root).map(|branches| {
+                        let mut out = String::new();
+                        for b in &branches {
+                            out.push_str(&format!(
+                                "{}{}{}{}\n",
+                                if b.current { "* " } else { "  " },
+                                b.name,
+                                b.upstream
+                                    .as_ref()
+                                    .map(|u| format!(" -> {u}"))
+                                    .unwrap_or_default(),
+                                if b.checked_out_elsewhere {
+                                    " (checked out in another worktree)"
+                                } else {
+                                    ""
+                                }
+                            ));
+                        }
+                        if branches.is_empty() {
+                            out.push_str("no branches");
+                        }
+                        out.trim_end().to_string()
+                    }),
+                    "create" | "switch" => {
+                        crate::core::agent::vcs::switch_branch(&root, &branch, action == "create")
+                            .map(|change| change.note)
+                    }
+                    other => {
+                        return format!(
+                            "ERROR [invalid_input]: git_branch takes action list, create or \
+                             switch; {other:?} is not one of them. Deleting a branch is not \
+                             offered: a branch is often the only record of work that is not \
+                             merged."
+                        )
+                    }
+                };
+                match answer {
+                    Ok(text) => text,
+                    Err(e) => {
+                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                            (&e).into();
+                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+                    }
+                }
+            }
             "dispatch_subagent" => {
                 let req = match parse_dispatch_args(args) {
                     Ok(r) => r,
@@ -1945,7 +2012,10 @@ impl CompositeToolInvoker {
             }
             // Subagent tools are handled ahead of the fs/exec gate and the MCP
             // fallback: they orchestrate nested runs, not filesystem access.
-            if name == "symbol_find" || crate::core::agent::subagent::is_subagent_tool(name) {
+            if name == "symbol_find"
+                || name == "git_branch"
+                || crate::core::agent::subagent::is_subagent_tool(name)
+            {
                 let id = tc
                     .get("id")
                     .and_then(|v| v.as_str())
@@ -2654,6 +2724,37 @@ fn advertise_local_tools(
                 && allowed_names.is_none_or(|allow| allow.contains(named));
             if offered {
                 openai_tools.push(schema);
+            }
+
+            // AH-161: branches without a shell command, and with the refusals
+            // a shell command cannot give -- a name that is really a flag, a
+            // branch another worktree holds, a switch that would carry
+            // uncommitted changes onto somebody else's history.
+            let branches = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "git_branch",
+                    "description": "List this project's branches, create one, or switch to one. Creating from uncommitted changes carries them onto the new branch, which is how work usually starts; switching to an existing branch with uncommitted changes is refused. Nothing here deletes a branch, and nothing overwrites one that exists.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": ["list", "create", "switch"],
+                                "description": "Default list."
+                            },
+                            "name": { "type": "string", "description": "The branch, for create and switch." }
+                        },
+                        "required": []
+                    }
+                }
+            });
+            let named = branches["function"]["name"].as_str().unwrap_or_default();
+            let offered = !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named));
+            if offered {
+                openai_tools.push(branches);
             }
         }
         if subagents_enabled && !planning {

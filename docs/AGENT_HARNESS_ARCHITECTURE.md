@@ -1791,3 +1791,25 @@ Said plainly rather than sold as a call graph: the reading is line-shaped, so a
 name used as a value reads like a call, a macro can look like one, and two
 functions with one name are not told apart. What it does is find the places
 worth opening, which before meant reading the whole project.
+
+
+### Branches, without a shell command (AH-161)
+
+The model reached git only through `bash`, under per-base-command grants,
+which means every branch operation was a string somebody had to read. There is
+now a `git_branch` tool -- list, create, switch -- and the reason it is worth
+having is the refusals a shell command cannot give:
+
+* a name that is really a flag (`--force`, `-D`) or a path (`a..b`,
+  `refs/heads/../../x`) is refused before git sees it;
+* creating a branch that already exists is refused, because `switch -C` moves
+  it and orphans whatever it pointed at;
+* switching to a branch another worktree of this repository holds is refused
+  by name, rather than failing obscurely halfway;
+* switching to an existing branch with uncommitted changes is refused --
+  carrying them onto somebody else's history is rarely what was meant --
+  while *creating* from them is the ordinary way work starts;
+* there is no delete at all. A branch is often the only record of work that is
+  not merged yet.
+
+Listing is a read and is offered in Plan mode; create and switch are not.

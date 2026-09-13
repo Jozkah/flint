@@ -48,6 +48,10 @@ pub enum VcsErrorKind {
     GitFailed,
     /// The caller asked for something that would discard work.
     WouldDiscard,
+    /// No branch by that name here.
+    NoBranch,
+    /// The name is not one this will hand to git.
+    BadName,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -77,6 +81,8 @@ impl From<&VcsError> for tauri_plugin_agent_tools::harness_error::HarnessError {
             // Structurally forbidden rather than merely failed: asking again
             // will not make it allowed.
             VcsErrorKind::WouldDiscard => ErrorKind::PolicyViolation,
+            VcsErrorKind::NoBranch => ErrorKind::NotFound,
+            VcsErrorKind::BadName => ErrorKind::InvalidInput,
         };
         HarnessError::new(kind, error.message.clone()).at(Stage::Tool)
     }
@@ -425,6 +431,191 @@ fn parse_markers(text: &str) -> (Vec<Hunk>, bool) {
     (hunks, truncated)
 }
 
+// ---- AH-161: branches, through something other than a shell command --------
+
+/// The most branches listed.
+pub const MAX_BRANCHES: usize = 500;
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Branch {
+    pub name: String,
+    /// Whether this is the branch the working tree is on.
+    pub current: bool,
+    /// The upstream it tracks, when it tracks one.
+    #[serde(default)]
+    pub upstream: Option<String>,
+    /// Set when another worktree of this repository has it checked out, which
+    /// is what makes switching to it refuse rather than fail obscurely.
+    pub checked_out_elsewhere: bool,
+}
+
+/// The branches this repository has.
+pub fn branches(repo: &Path) -> Result<Vec<Branch>, VcsError> {
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    // `worktree list --porcelain` says which branch each checkout holds, so a
+    // branch another worktree is on can be named as such instead of being
+    // offered and then refused by git.
+    let held: Vec<String> = git(repo, &["worktree", "list", "--porcelain"])
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.strip_prefix("branch refs/heads/"))
+        .map(str::to_string)
+        .collect();
+    let current = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let listed = git(
+        repo,
+        &["for-each-ref", "--format=%(refname:short)%09%(upstream:short)", "refs/heads"],
+    )?;
+    Ok(listed
+        .lines()
+        .take(MAX_BRANCHES)
+        .filter_map(|line| {
+            let mut parts = line.split('\t');
+            let name = parts.next()?.trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
+            let upstream = parts.next().map(str::trim).filter(|u| !u.is_empty()).map(str::to_string);
+            Some(Branch {
+                current: name == current,
+                checked_out_elsewhere: held.contains(&name) && name != current,
+                name,
+                upstream,
+            })
+        })
+        .collect())
+}
+
+/// Whether a name is one this will act on.
+///
+/// Deliberately narrower than git's own rules: no leading dash (which git
+/// would read as a flag), no `..`, no spaces, no ref punctuation. A name this
+/// refuses is a name somebody can retype; a name that turns into an argument
+/// is a bug that deletes something.
+fn usable_branch_name(name: &str) -> Result<(), VcsError> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 200 {
+        return Err(VcsError::new(
+            VcsErrorKind::BadName,
+            "a branch needs a name, of at most 200 characters",
+        ));
+    }
+    let bad = name.starts_with('-')
+        || name.starts_with('/')
+        || name.ends_with('/')
+        || name.contains("..")
+        || name.contains(char::is_whitespace)
+        || name.contains(['~', '^', ':', '?', '*', '[', '\\'])
+        || name.chars().any(|c| c.is_control());
+    if bad {
+        return Err(VcsError::new(
+            VcsErrorKind::BadName,
+            format!("{name:?} is not a branch name this will act on"),
+        ));
+    }
+    Ok(())
+}
+
+/// What a branch operation did.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchChange {
+    pub branch: String,
+    /// The branch that was current before, when it changed.
+    #[serde(default)]
+    pub from: Option<String>,
+    pub created: bool,
+    /// What the caller should know, in one line.
+    pub note: String,
+}
+
+/// Create a branch, or switch to one that exists.
+///
+/// What it will not do, each as a typed refusal rather than a missing case:
+///
+/// * overwrite a branch that exists (`git switch -C` is not reachable here);
+/// * move onto a branch another worktree holds, which would take it from the
+///   checkout that is using it;
+/// * switch away from changes that are not committed -- git itself refuses a
+///   switch that would lose them, and this refuses one that would *carry*
+///   them somewhere the caller did not ask for;
+/// * delete anything. There is no delete here at all: a branch is the only
+///   record of work that is not merged yet.
+pub fn switch_branch(repo: &Path, name: &str, create: bool) -> Result<BranchChange, VcsError> {
+    usable_branch_name(name)?;
+    let name = name.trim();
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    let existing = branches(repo)?;
+    let from = existing.iter().find(|b| b.current).map(|b| b.name.clone());
+    let known = existing.iter().find(|b| b.name == name);
+
+    match (create, known) {
+        (true, Some(_)) => {
+            return Err(VcsError::new(
+                VcsErrorKind::WouldDiscard,
+                format!(
+                    "`{name}` already exists. Creating it again would move it, and whatever it \
+                     points at now would be unreferenced; switch to it instead, or pick another \
+                     name."
+                ),
+            ))
+        }
+        (false, None) => {
+            return Err(VcsError::new(
+                VcsErrorKind::NoBranch,
+                format!("there is no branch called `{name}` here"),
+            ))
+        }
+        (false, Some(branch)) if branch.checked_out_elsewhere => {
+            return Err(VcsError::new(
+                VcsErrorKind::WouldDiscard,
+                format!("`{name}` is checked out in another worktree of this repository"),
+            ))
+        }
+        _ => {}
+    }
+
+    let dirty = !git(repo, &["status", "--porcelain"])?.trim().is_empty();
+    if dirty && !create {
+        // Creating from here carries the changes onto the new branch, which is
+        // the ordinary way to start work. Moving to a branch that already
+        // exists carries them somewhere with its own history, which is rarely
+        // what anybody meant.
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!(
+                "the working tree has changes that are not committed, so switching to `{name}` \
+                 would carry them onto it. Commit or stash them first."
+            ),
+        ));
+    }
+
+    let args: Vec<&str> = if create {
+        vec!["switch", "-c", name]
+    } else {
+        vec!["switch", name]
+    };
+    git(repo, &args)?;
+    Ok(BranchChange {
+        branch: name.to_string(),
+        from,
+        created: create,
+        note: if create {
+            format!("created `{name}` and switched to it")
+        } else {
+            format!("switched to `{name}`")
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -585,6 +776,94 @@ mod tests {
         assert_eq!(detached.standing, Standing::Detached);
         assert_eq!(detached.branch, None);
         assert!(detached.options.iter().any(|o| o.contains("switch -c")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// AH-161: branches through something other than a shell command, with the
+    /// refusals that a shell command would not give.
+    #[test]
+    fn a_branch_can_be_made_and_moved_to_and_nothing_is_overwritten() {
+        let (base, work) = pair("branches");
+        let listed = branches(&work).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].current && listed[0].name == "main");
+        assert_eq!(listed[0].upstream.as_deref(), Some("origin/main"));
+
+        let made = switch_branch(&work, "feature/one", true).unwrap();
+        assert!(made.created && made.from.as_deref() == Some("main"));
+        assert_eq!(
+            git(&work, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap().trim(),
+            "feature/one"
+        );
+
+        // Creating it again would move it and orphan what it points at.
+        let again = switch_branch(&work, "feature/one", true).unwrap_err();
+        assert_eq!(again.kind, VcsErrorKind::WouldDiscard);
+        let harness: tauri_plugin_agent_tools::harness_error::HarnessError = (&again).into();
+        assert_eq!(
+            harness.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::PolicyViolation
+        );
+
+        // Switching back works, and says where it came from.
+        let back = switch_branch(&work, "main", false).unwrap();
+        assert!(!back.created && back.from.as_deref() == Some("feature/one"));
+
+        // A branch that is not here is not found, rather than created.
+        let missing = switch_branch(&work, "no-such-branch", false).unwrap_err();
+        assert_eq!(missing.kind, VcsErrorKind::NoBranch);
+        assert!(branches(&work).unwrap().iter().all(|b| b.name != "no-such-branch"));
+
+        // Uncommitted changes are not carried onto an existing branch.
+        std::fs::write(work.join("file.txt"), "one\nchanged\n").unwrap();
+        let dirty = switch_branch(&work, "feature/one", false).unwrap_err();
+        assert_eq!(dirty.kind, VcsErrorKind::WouldDiscard);
+        assert!(dirty.message.contains("not committed"), "{}", dirty.message);
+        // But starting new work from them is the ordinary thing to do.
+        assert!(switch_branch(&work, "feature/two", true).is_ok());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A name that would become an argument is refused before git sees it.
+    #[test]
+    fn a_name_that_is_really_a_flag_or_a_path_is_refused() {
+        let (base, work) = pair("names");
+        for hostile in [
+            "--force",
+            "-D",
+            "a b",
+            "a..b",
+            "refs/heads/../../x",
+            "a~1",
+            "a:b",
+            "",
+            "   ",
+        ] {
+            let refused = switch_branch(&work, hostile, true).unwrap_err();
+            assert_eq!(refused.kind, VcsErrorKind::BadName, "{hostile:?}");
+        }
+        // And nothing was created by any of them.
+        assert_eq!(branches(&work).unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A branch another checkout is using is named as such rather than taken
+    /// from it.
+    #[test]
+    fn a_branch_another_worktree_holds_is_not_taken() {
+        let (base, work) = pair("worktrees");
+        run(&work, &["switch", "-q", "-c", "held"]);
+        run(&work, &["switch", "-q", "main"]);
+        let elsewhere = base.join("other-checkout");
+        run(&work, &["worktree", "add", "-q", &elsewhere.to_string_lossy(), "held"]);
+
+        let listed = branches(&work).unwrap();
+        let held = listed.iter().find(|b| b.name == "held").expect("the branch is listed");
+        assert!(held.checked_out_elsewhere, "{listed:?}");
+
+        let refused = switch_branch(&work, "held", false).unwrap_err();
+        assert_eq!(refused.kind, VcsErrorKind::WouldDiscard);
+        assert!(refused.message.contains("another worktree"), "{}", refused.message);
         let _ = std::fs::remove_dir_all(&base);
     }
 

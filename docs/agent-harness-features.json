@@ -5587,14 +5587,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-046"
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
-        "src-tauri/src/core/agent/worktree.rs"
+        "src-tauri/src/core/agent/vcs.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -5605,12 +5607,16 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/vcs.rs::a_branch_can_be_made_and_moved_to_and_nothing_is_overwritten",
+        "src-tauri/src/core/agent/vcs.rs::a_name_that_is_really_a_flag_or_a_path_is_refused",
+        "src-tauri/src/core/agent/vcs.rs::a_branch_another_worktree_holds_is_not_taken"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "The harness creates and deletes its own jan/cowork/* branches. There is no agent-facing git tool: the model reaches git only through bash, under per-base-command grants."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A git_branch tool -- list, create, switch -- with the refusals a shell command cannot give: a name that is really a flag or a path is refused before git sees it, creating a branch that exists is refused rather than moving it, a branch another worktree holds is refused by name, and switching to an existing branch with uncommitted changes is refused while creating from them is allowed. There is no delete: a branch is often the only record of unmerged work. Listing is offered in Plan mode; the two that change the checkout are not."
     },
     {
       "id": "AH-162",

@@ -1358,6 +1358,21 @@ async fn handle_agent(cmd: AgentCommands) {
                     if divergence.needs_a_person {
                         println!("  this needs a decision, not a command");
                     }
+                    println!();
+                    match app_lib::core::agent::vcs::branches(&root) {
+                        Ok(branches) => {
+                            for b in &branches {
+                                println!(
+                                    "{}{}{}{}",
+                                    if b.current { "* " } else { "  " },
+                                    b.name,
+                                    b.upstream.as_ref().map(|u| format!(" -> {u}")).unwrap_or_default(),
+                                    if b.checked_out_elsewhere { " (held by another worktree)" } else { "" }
+                                );
+                            }
+                        }
+                        Err(e) => println!("branches: {}", e.message),
+                    }
                     if merge.in_progress {
                         println!(
                             "a merge is stopped, with {} file(s) unresolved:",
