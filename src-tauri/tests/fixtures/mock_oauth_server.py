@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 """A minimal OAuth 2.0 authorization server with an MCP endpoint behind it, for
-testing MCP token refresh and storage.
+testing MCP token refresh, storage and scopes.
 
-Serves RFC 8414 metadata at /.well-known/oauth-authorization-server, a token
-endpoint that answers `grant_type=refresh_token`, and a streamable-HTTP MCP
-endpoint at /mcp that only answers a request carrying a bearer token this
-server issued (or the one named by --initial-access). Every refresh and every
-MCP request is logged to the file named by --log as one JSON line -- the bearer
-token recorded only as a short fingerprint -- so a test can assert that a
-refresh happened, when, with which refresh token, and which token each MCP
-request carried. A refresh with an unknown refresh token is refused, and an
-MCP request with an unknown or missing bearer gets 401.
+Serves RFC 8414 metadata at /.well-known/oauth-authorization-server, dynamic
+client registration at /register, an authorization endpoint at /authorize that
+consents on its own and redirects straight back to the client's redirect uri
+(no browser and no person involved -- a test fetches the consent url), a token
+endpoint that answers `grant_type=authorization_code` and
+`grant_type=refresh_token`, and a streamable-HTTP MCP endpoint at /mcp that
+only answers a request carrying a bearer token this server issued (or the one
+named by --initial-access).
+
+Scopes: /authorize remembers the scopes the client asked for with its code.
+The code exchange grants exactly those, unless --grant-extra-scope adds one the
+client never asked for (a provider widening a grant) or --grant-only narrows
+the grant to the listed scopes. A refresh returns no `scope` unless
+--refresh-scope names what to claim. The response's `scope` is omitted when
+--omit-granted-scope is given (RFC 6749 section 5.1: then it is the scope that
+was requested).
+
+Every exchange, refresh and MCP request is logged to the file named by --log as
+one JSON line -- tokens recorded only as a short fingerprint -- so a test can
+assert what was asked for, what was granted and which token each MCP request
+carried. A refresh with an unknown refresh token is refused, and an MCP request
+with an unknown or missing bearer gets 401.
 
 Prints `PORT <n>` on stdout.
 """
@@ -26,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ARGS = argparse.Namespace()
 ISSUED = {"count": 0}
 VALID = set()
+CODES = {}
 LOCK = threading.Lock()
 
 
@@ -68,6 +82,8 @@ class Handler(BaseHTTPRequestHandler):
                 "grant_types_supported": ["authorization_code", "refresh_token"],
                 "code_challenge_methods_supported": ["S256"],
             })
+        if self.path.startswith("/authorize"):
+            return self._authorize()
         if self.path.startswith("/mcp"):
             # No server-initiated stream.
             self.send_response(405)
@@ -81,15 +97,49 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _authorize(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        redirect = query.get("redirect_uri", [""])[0]
+        state = query.get("state", [""])[0]
+        scope = query.get("scope", [""])[0]
+        with LOCK:
+            ISSUED["count"] += 1
+            code = f"code-{ISSUED['count']}"
+            CODES[code] = scope
+        log({"at": time.time(), "path": "/authorize", "requested_scope": scope,
+             "client_id": query.get("client_id", [""])[0]})
+        if not redirect:
+            return self._json(400, {"error": "invalid_request"})
+        target = redirect + ("&" if "?" in redirect else "?") + urllib.parse.urlencode({"code": code, "state": state})
+        self.send_response(302)
+        self.send_header("Location", target)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
         if self.path.startswith("/mcp"):
             return self._mcp(raw)
+        if self.path.startswith("/register"):
+            try:
+                body = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                body = {}
+            return self._json(201, {
+                "client_id": "fixture-client",
+                "client_name": body.get("client_name", ""),
+                "redirect_uris": body.get("redirect_uris", []),
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+            })
         if self.path != "/token":
             return self._json(404, {"error": "not_found"})
         form = urllib.parse.parse_qs(raw.decode())
         grant = form.get("grant_type", [""])[0]
+        if grant == "authorization_code":
+            return self._exchange(form)
         refresh = form.get("refresh_token", [""])[0]
         entry = {"at": time.time(), "path": "/token", "grant": grant, "refresh_token": refresh}
         if grant != "refresh_token" or refresh != ARGS.accept:
@@ -102,16 +152,50 @@ class Handler(BaseHTTPRequestHandler):
             VALID.add(token)
         entry["outcome"] = "issued"
         entry["issued"] = fingerprint(token)
-        log(entry)
         body = {
             "access_token": token,
             "token_type": "Bearer",
             "expires_in": ARGS.expires_in,
         }
+        if ARGS.refresh_scope:
+            body["scope"] = ARGS.refresh_scope
+            entry["granted_scope"] = ARGS.refresh_scope
+        log(entry)
         # RFC 6749 section 6: a provider may keep the refresh token it issued
         # and not send it again.
         if not ARGS.omit_refresh:
             body["refresh_token"] = ARGS.accept
+        return self._json(200, body)
+
+    def _exchange(self, form):
+        code = form.get("code", [""])[0]
+        with LOCK:
+            requested = CODES.pop(code, None)
+        entry = {"at": time.time(), "path": "/token", "grant": "authorization_code"}
+        if requested is None:
+            entry["outcome"] = "refused"
+            log(entry)
+            return self._json(400, {"error": "invalid_grant"})
+        granted = [s for s in requested.split(" ") if s]
+        if ARGS.grant_only is not None:
+            granted = [s for s in ARGS.grant_only.split(" ") if s]
+        if ARGS.grant_extra_scope:
+            granted.append(ARGS.grant_extra_scope)
+        with LOCK:
+            ISSUED["count"] += 1
+            token = f"code-access-{ISSUED['count']}"
+            VALID.add(token)
+        entry.update({"outcome": "issued", "issued": fingerprint(token),
+                      "requested_scope": requested, "granted_scope": " ".join(granted)})
+        log(entry)
+        body = {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": ARGS.expires_in,
+            "refresh_token": ARGS.accept,
+        }
+        if not ARGS.omit_granted_scope:
+            body["scope"] = " ".join(granted)
         return self._json(200, body)
 
     def _mcp(self, raw):
@@ -170,6 +254,10 @@ def main():
     parser.add_argument("--initial-access", default="")
     parser.add_argument("--expires-in", type=int, default=3600)
     parser.add_argument("--omit-refresh", action="store_true")
+    parser.add_argument("--grant-extra-scope", default="")
+    parser.add_argument("--grant-only", default=None)
+    parser.add_argument("--refresh-scope", default="")
+    parser.add_argument("--omit-granted-scope", action="store_true")
     parser.parse_args(namespace=ARGS)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True

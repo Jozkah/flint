@@ -833,6 +833,9 @@ enum McpCommands {
         /// Header KEY=VALUE for an http/sse server, repeatable
         #[arg(long = "header")]
         header: Vec<String>,
+        /// OAuth scope an http/sse server's sign-in asks for, repeatable (AH-135)
+        #[arg(long = "scope")]
+        scope: Vec<String>,
         /// Mark the server active immediately; defaults to inactive
         #[arg(long)]
         active: bool,
@@ -874,6 +877,13 @@ enum McpCommands {
         /// How many lines
         #[arg(long, default_value_t = 100)]
         lines: usize,
+    },
+    /// Sign in to a server's OAuth provider (AH-135). Prints the scopes it asks
+    /// for and the consent url, then waits for the redirect. Never opens a
+    /// browser, so it works over SSH and in scripts
+    Auth {
+        /// Server name
+        name: String,
     },
     /// Show a server's OAuth state as JSON, without touching the network (AH-134)
     AuthStatus {
@@ -2324,6 +2334,9 @@ fn mcp_list_entry(entry: &McpServerEntry, show_secrets: bool) -> serde_json::Val
         "url": cfg.get("url").cloned().unwrap_or(serde_json::Value::Null),
         "env": redact_map(cfg.get("env").and_then(serde_json::Value::as_object)),
         "headers": redact_map(cfg.get("headers").and_then(serde_json::Value::as_object)),
+        // The OAuth scopes a sign-in asks for (AH-135). Not a secret, and the
+        // authority the server's token will carry, so it is never redacted.
+        "oauth": cfg.get("oauth").cloned().unwrap_or(serde_json::Value::Null),
     })
 }
 
@@ -2357,9 +2370,10 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             r#type,
             url,
             header,
+            scope,
             active,
         } => {
-            let config = build_mcp_config(command, args, env, &r#type, url, header, active)?;
+            let config = build_mcp_config(command, args, env, &r#type, url, header, active, scope)?;
             mcp::upsert_server(&name, &config)?;
             println!("saved server '{name}' to mcp_config.json");
             Ok(())
@@ -2367,9 +2381,23 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
         McpCommands::AuthStatus { name } => {
             let entry = app_lib::core::cli::mcp::get_server(&name)
                 .ok_or_else(|| format!("no MCP server named '{name}'"))?;
-            let info: app_lib::core::mcp::oauth::AuthStatusInfo =
-                app_lib::core::cli::mcp::auth_status(&name, &entry.config).into();
+            let info = app_lib::core::cli::mcp::auth_status_info(&name, &entry.config);
             println!("{}", serde_json::to_string_pretty(&info).unwrap_or_default());
+            Ok(())
+        }
+        McpCommands::Auth { name } => {
+            let pending = app_lib::core::cli::mcp::begin_auth(&name).await?;
+            eprintln!(
+                "Signing in to '{name}'. Asking for scopes: {}",
+                if pending.scopes.is_empty() { "(none declared)".to_string() } else { pending.scopes.join(" ") }
+            );
+            eprintln!("Open this address to consent; waiting for the redirect to {}", pending.redirect_uri);
+            println!("{}", pending.authorization_url);
+            let creds = app_lib::core::cli::mcp::finish_auth(pending).await?;
+            eprintln!(
+                "Signed in to '{name}'. Granted scopes: {}",
+                if creds.granted_scopes.is_empty() { "(none)".to_string() } else { creds.granted_scopes.join(" ") }
+            );
             Ok(())
         }
         McpCommands::AuthClear { name } => {
@@ -2460,6 +2488,7 @@ fn build_mcp_config(
     url: Option<String>,
     header: Vec<String>,
     active: bool,
+    scopes: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     let mut env_map = serde_json::Map::new();
     for kv in &env {
@@ -2479,6 +2508,7 @@ fn build_mcp_config(
         url.as_deref(),
         header_map,
         active,
+        scopes,
     )
 }
 

@@ -738,7 +738,7 @@ pub async fn get_mcp_auth_status<R: Runtime>(
 ) -> Result<oauth::AuthStatusInfo, String> {
     let config = read_server_config(&app, &name)?;
     let folder = get_jan_data_folder_path(app);
-    Ok(oauth::status(&folder, &name, &config).into())
+    Ok(oauth::status_info(&folder, &name, &config))
 }
 
 /// Run an interactive OAuth authorization for one server: discover the
@@ -763,10 +763,11 @@ pub async fn authorize_mcp_server<R: Runtime>(
             format!("'{name}' is a stdio server - OAuth applies to http/sse servers only")
         })?;
 
-    let pending = oauth::begin(&name, url).await?;
+    let scopes = oauth::declared_scopes(&config).map_err(|e| e.message().to_string())?;
+    let pending = oauth::begin(&name, url, &scopes).await?;
     if let Err(e) = app.emit(
         "mcp-oauth-url",
-        json!({ "server": &name, "url": &pending.authorization_url }),
+        json!({ "server": &name, "url": &pending.authorization_url, "scopes": &pending.scopes }),
     ) {
         log::error!("Failed to emit mcp-oauth-url event: {e}");
     }

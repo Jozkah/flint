@@ -4866,13 +4866,24 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-133"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/cli/tui.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "src-tauri/src/core/mcp/oauth.rs",
+        "src-tauri/tests/fixtures/mock_oauth_server.py",
+        "web-app/src/containers/McpServerAuth.tsx",
+        "web-app/src/locales/en/mcp-servers.json",
+        "web-app/src/services/mcp/default.ts",
+        "web-app/src/services/mcp/types.ts"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Requested OAuth scopes are declared, shown to the user and enforced.",
@@ -4883,10 +4894,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/oauth.rs::a_grant_wider_than_was_asked_for_is_refused_and_not_stored",
+        "src-tauri/src/core/mcp/oauth.rs::a_narrower_grant_is_kept_and_an_omitted_scope_means_what_was_asked",
+        "src-tauri/src/core/mcp/oauth.rs::a_record_from_before_scopes_reads_as_none_and_still_works",
+        "src-tauri/src/core/mcp/oauth.rs::a_refresh_that_widens_the_grant_is_refused_and_nothing_is_stored",
+        "src-tauri/src/core/mcp/oauth.rs::a_sign_in_asks_for_the_declared_scopes_and_keeps_what_was_granted",
+        "src-tauri/src/core/mcp/oauth.rs::a_token_is_never_sent_under_scopes_it_was_not_asked_for",
+        "src-tauri/src/core/mcp/oauth.rs::a_widened_grant_is_refused_even_when_scopes_were_asked_for",
+        "src-tauri/src/core/mcp/oauth.rs::declared_scopes_are_read_as_a_set_and_anything_else_is_refused",
+        "web-app/src/containers/__tests__/McpServerAuth.test.tsx"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 6). A remote MCP server declares its OAuth scopes in mcp_config.json (oauth.scopes; jan cli mcp add --scope), read as a set of RFC 6749 scope tokens with malformed declarations refused. Shown: mcp get/list, auth-status and the desktop settings row (declared, requested, granted), the TUI detail, and jan cli mcp auth before consent. Requested: the consent request asks for exactly the declared scopes. Enforced: a grant wider than requested is refused and not stored; a stored token is never sent unless it was asked for under exactly the declared scopes and carries nothing beyond them (scopeMismatch / invalidScopes); a refresh that widens the grant is refused and not stored, at connect and in the live refresher. Evidence: failing test first against the old code; 8 new oauth tests (27 total), app lib 1836 passed, web 42 + tsc; real CLI exercise 22/22 on the first attempt including escalation refused and the credential store left clean."
     },
     {
       "id": "AH-136",

@@ -10960,6 +10960,13 @@ impl McpPrompt {
             Some(self.url.trim()).filter(|s| !s.is_empty()),
             super::mcp::parse_pairs(self.headers.trim(), "header")?,
             self.active,
+            // The form has no field for OAuth scopes (AH-135); an edit keeps
+            // the ones the entry already declares instead of dropping them.
+            self.editing
+                .as_deref()
+                .and_then(super::mcp::get_server)
+                .map(|e| crate::core::mcp::oauth::declared_scopes(&e.config).unwrap_or_default())
+                .unwrap_or_default(),
         )?;
         // Read the *previous* active flag before the write. `upsert_server` has
         // already replaced the entry by the time it lands on disk, so reading it
@@ -12381,8 +12388,12 @@ async fn open_mcp_picker(app: &mut App, mcp_servers: &crate::core::state::Shared
                     match super::mcp::auth_status(&s.name, &s.config) {
                         crate::core::mcp::oauth::AuthStatus::Unauthenticated
                         | crate::core::mcp::oauth::AuthStatus::Expired { .. }
-                        | crate::core::mcp::oauth::AuthStatus::StaleResource => {
+                        | crate::core::mcp::oauth::AuthStatus::StaleResource
+                        | crate::core::mcp::oauth::AuthStatus::ScopeMismatch { .. } => {
                             "needs auth".to_string()
+                        }
+                        crate::core::mcp::oauth::AuthStatus::InvalidScopes { .. } => {
+                            "invalid oauth scopes".to_string()
                         }
                         _ => "not connected".to_string(),
                     }
@@ -12452,9 +12463,13 @@ fn mcp_action_items(server: &super::mcp::ServerDetail) -> Vec<PickerItem> {
         AuthStatus::NotApplicable | AuthStatus::StaticHeader => {}
         // Anything with tokens on disk can be renewed *and* forgotten, whether
         // they still work or not.
+        // A configuration that cannot be read has to be fixed first: signing in
+        // under scopes nobody can state would authorize nothing sensible.
+        AuthStatus::InvalidScopes { .. } => {}
         AuthStatus::Authenticated { .. }
         | AuthStatus::Expired { .. }
-        | AuthStatus::StaleResource => {
+        | AuthStatus::StaleResource
+        | AuthStatus::ScopeMismatch { .. } => {
             actions.push((MCP_ACTION_AUTH, "Re-authenticate".to_string()));
             actions.push((MCP_ACTION_CLEAR_AUTH, "Clear authentication".to_string()));
         }
@@ -12512,13 +12527,18 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
         AuthStatus::StaticHeader => {
             vec![Span::styled("✓ Authorization header (configured)", good)]
         }
-        AuthStatus::Authenticated { expires_at } => {
+        AuthStatus::Authenticated { expires_at, granted } => {
             let mut spans = vec![Span::styled("✓ authenticated", good)];
             if let Some(at) = expires_at {
                 spans.push(Span::styled(
                     format!("  (expires in {})", until_label(*at)),
                     dim,
                 ));
+            }
+            // AH-135: the authority the token carries, next to the fact that it
+            // works.
+            if !granted.is_empty() {
+                spans.push(Span::styled(format!("  scopes: {}", granted.join(" ")), dim));
             }
             spans
         }
@@ -12534,6 +12554,17 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
             "! tokens were issued for a different url",
             warn,
         )],
+        AuthStatus::ScopeMismatch { declared, requested, .. } => vec![Span::styled(
+            format!(
+                "! token asked for [{}], configuration declares [{}] - re-authenticate",
+                requested.join(" "),
+                declared.join(" ")
+            ),
+            warn,
+        )],
+        AuthStatus::InvalidScopes { detail } => {
+            vec![Span::styled(format!("✗ {detail}"), bad)]
+        }
         AuthStatus::Unauthenticated => vec![Span::styled("✗ not authenticated", bad)],
     };
     rows.push(("Auth", auth));

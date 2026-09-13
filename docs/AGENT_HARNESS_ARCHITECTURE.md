@@ -2643,3 +2643,22 @@ An ordinary background subagent is a future inside the dispatching process: it i
 **Reboot.** A machine that goes down takes the supervisor and child with it. Nothing is written at that moment, so the next process that looks settles the record through the existing claim check: the supervisor's pid and creation time are gone, the job is `interrupted`, and awaiting it says so instead of returning an answer. This was exercised as a simulated reboot (supervisor and child tree killed together); a physical reboot was not performed.
 
 **Scope.** Cowork's own in-app subagents are not durable, by decision: they run in the webview on the app's loaded model instance under per-run grants, none of which exist once the app exits, and they are recorded as interrupted on restart (AH-026/AH-089). Durable background agents are the harness loop's (`jan cli agent run`, `agent serve`), which is the loop that can run without the app.
+
+
+## OAuth scopes for MCP servers (AH-135)
+
+Before this, a sign-in to a remote MCP server asked for no scopes at all (`start_authorization(&[], ..)`) and kept whatever the provider granted, so the authority a stored token carried was whatever the provider chose and nobody on Jan's side had stated or seen it.
+
+**Declared.** A server's `mcp_config.json` entry declares its scopes: `"oauth": { "scopes": ["mcp:read", "mcp:tools"] }` (`jan cli mcp add --scope`, repeatable; the TUI edit form keeps an entry's existing scopes). `oauth::declared_scopes` reads them as a sorted, de-duplicated set of RFC 6749 scope tokens and refuses, as `invalid_input`, anything else: an `oauth` value that is not an object, a key other than `scopes`, a non-list, a non-string, an empty token, or a token with a space, quote, backslash or non-ASCII character. A typo there never quietly means "no scopes". Scopes on a stdio server are refused.
+
+**Shown.** `jan cli mcp get`/`list` print the `oauth` entry (never redacted: it is not a secret, and it is the authority the token will carry). `jan cli mcp auth-status` and the desktop's `get_mcp_auth_status` return `declaredScopes` (what a sign-in will ask for), `requestedScopes` and `grantedScopes` (what the stored token was asked for and given) and a `detail`. The desktop MCP settings row shows "Asks for" and "Granted" under the auth badge; the TUI detail screen shows the granted scopes. `jan cli mcp auth <name>` prints the scopes it is asking for before the consent url, and what was granted after -- it never opens a browser, so it works over SSH.
+
+**Requested.** `begin` sends exactly the declared scopes in the consent request.
+
+**Enforced.** Three places, each refusing rather than trusting:
+
+* *At the grant.* `complete` computes what was granted (the response's `scope`, or -- RFC 6749 section 5.1 -- what was requested when the response omits it) and refuses, as `permission_denied`, a grant carrying any scope that was not asked for. The token is not stored. A narrower grant is the provider's right; it is kept and shown as narrower.
+* *At use.* `authorized_client` refuses to send a stored token unless it was asked for under exactly the scopes the configuration now declares and carries nothing beyond them. Widening the declaration therefore needs a new consent, and narrowing it stops a broader token from being used. `status` reports this as `scopeMismatch` (sign in again), and an unreadable declaration as `invalidScopes` (no sign-in is offered until it is fixed). This is the shared path: the CLI transport and the desktop activation (`mcp::helpers`) both connect through it.
+* *At refresh.* A refresh that comes back with a scope beyond the grant is refused and not stored, both at connect and in the live refresher, which also puts the connection back on the token it had.
+
+Records written before scopes existed deserialize as requested and granted nothing, so a server that declares none keeps working unchanged.

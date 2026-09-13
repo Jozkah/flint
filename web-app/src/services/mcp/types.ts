@@ -36,6 +36,8 @@ export interface MCPAuthStatus {
     | 'authenticated'
     | 'expired'
     | 'staleResource'
+    | 'scopeMismatch'
+    | 'invalidScopes'
     | 'unauthenticated'
   /** Whether an interactive sign-in is possible and would mean something. */
   canAuthenticate: boolean
@@ -48,6 +50,14 @@ export interface MCPAuthStatus {
   renewable: boolean
   /** Unix seconds the access token expires at, when known. */
   expiresAt: number | null
+  /** What the server's configuration declares: what a sign-in asks for (AH-135). */
+  declaredScopes: string[]
+  /** What the stored token was asked for under. */
+  requestedScopes: string[]
+  /** What the provider granted the stored token; never wider than requested. */
+  grantedScopes: string[]
+  /** Why the state is what it is, when that is not obvious from the state. */
+  detail: string | null
 }
 
 export interface MCPService {

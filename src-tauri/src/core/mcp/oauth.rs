@@ -81,6 +81,15 @@ pub struct StoredCredentials {
     /// The MCP url these tokens were issued for. Editing a server's url points
     /// it at a different resource, so credentials for the old one are stale.
     pub resource: String,
+    /// The scopes the consent request asked for (AH-135): the server's
+    /// declared `oauth.scopes` at the time. Empty for tokens from before scopes
+    /// were declared, which is also what "none declared" means.
+    #[serde(default)]
+    pub requested_scopes: Vec<String>,
+    /// The scopes the provider granted. Never wider than `requested_scopes`:
+    /// a grant that is wider is refused before it is stored.
+    #[serde(default)]
+    pub granted_scopes: Vec<String>,
 }
 
 impl StoredCredentials {
@@ -91,7 +100,15 @@ impl StoredCredentials {
             tokens,
             expires_at,
             resource,
+            requested_scopes: Vec::new(),
+            granted_scopes: Vec::new(),
         }
+    }
+
+    fn with_scopes(mut self, requested: Vec<String>, granted: Vec<String>) -> Self {
+        self.requested_scopes = requested;
+        self.granted_scopes = granted;
+        self
     }
 
     /// Whether the access token is past `expires_at` (minus the refresh skew).
@@ -138,6 +155,93 @@ fn keep_refresh_token(mut tokens: OAuthTokenResponse, previous: &OAuthTokenRespo
 }
 
 /// An authorization manager holding `tokens`, discovered against `url`.
+/// The scopes a server's configuration declares for OAuth (AH-135):
+/// `"oauth": { "scopes": ["read", "write"] }` in its `mcp_config.json` entry.
+///
+/// These are what a consent request asks for and the most a stored token may
+/// carry. Sorted and de-duplicated, so two spellings of the same list compare
+/// equal. Refused, by kind, when the entry cannot be read as a list of RFC 6749
+/// scope tokens, or names an `oauth` setting Jan does not read -- a typo there
+/// must not quietly mean "no scopes".
+pub fn declared_scopes(config: &Value) -> Result<Vec<String>, HarnessError> {
+    let refuse = |message: String| HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup);
+    let Some(oauth) = config.get("oauth") else {
+        return Ok(Vec::new());
+    };
+    let settings = oauth
+        .as_object()
+        .ok_or_else(|| refuse("'oauth' must be an object such as {\"scopes\": [\"read\"]}".to_string()))?;
+    if let Some(unknown) = settings.keys().find(|k| k.as_str() != "scopes") {
+        return Err(refuse(format!("'oauth.{unknown}' is not a setting Jan reads (only 'scopes' is)")));
+    }
+    let Some(list) = settings.get("scopes") else {
+        return Ok(Vec::new());
+    };
+    let items = list
+        .as_array()
+        .ok_or_else(|| refuse("'oauth.scopes' must be a list of strings".to_string()))?;
+    let mut scopes = Vec::with_capacity(items.len());
+    for item in items {
+        let scope = item
+            .as_str()
+            .ok_or_else(|| refuse("'oauth.scopes' must be a list of strings".to_string()))?;
+        if !is_scope_token(scope) {
+            return Err(refuse(format!("{scope:?} is not a valid OAuth scope")));
+        }
+        scopes.push(scope.to_string());
+    }
+    Ok(normalized(scopes))
+}
+
+/// RFC 6749 section 3.3: `scope-token = 1*( %x21 / %x23-5B / %x5D-7E )`. No
+/// spaces (they separate scopes), no quotes, no backslashes, nothing outside
+/// printable ASCII.
+fn is_scope_token(scope: &str) -> bool {
+    !scope.is_empty()
+        && scope
+            .chars()
+            .all(|c| c == '\x21' || ('\x23'..='\x5b').contains(&c) || ('\x5d'..='\x7e').contains(&c))
+}
+
+fn normalized(scopes: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut scopes: Vec<String> = scopes.into_iter().collect();
+    scopes.sort();
+    scopes.dedup();
+    scopes
+}
+
+/// What a token response says was granted. RFC 6749 section 5.1: a response
+/// without `scope` grants what was asked for, so `fallback` is the request.
+fn granted_scopes(tokens: &OAuthTokenResponse, fallback: &[String]) -> Vec<String> {
+    use oauth2::TokenResponse;
+    match tokens.scopes() {
+        Some(list) => normalized(list.iter().map(|s| s.as_str().to_string())),
+        None => fallback.to_vec(),
+    }
+}
+
+/// Refuse a grant carrying any scope that was not asked for. A provider that
+/// widens a grant is handing out authority nobody consented to on Jan's side,
+/// so the token is not kept rather than kept and trusted.
+fn check_grant(name: &str, allowed: &[String], granted: &[String]) -> Result<(), HarnessError> {
+    let extra: Vec<&str> = granted
+        .iter()
+        .filter(|scope| !allowed.contains(scope))
+        .map(String::as_str)
+        .collect();
+    if extra.is_empty() {
+        return Ok(());
+    }
+    Err(HarnessError::new(
+        ErrorKind::PermissionDenied,
+        format!(
+            "the provider for '{name}' granted scopes that were not asked for ({}); the token was not kept",
+            extra.join(" ")
+        ),
+    )
+    .at(Stage::Startup))
+}
+
 async fn manager_for(
     name: &str,
     url: &str,
@@ -169,14 +273,29 @@ pub enum AuthStatus {
     /// The user configured an `Authorization` header by hand. OAuth would fight
     /// with it, so it is never attempted and never reported as missing.
     StaticHeader,
-    /// Tokens on disk, still valid.
-    Authenticated { expires_at: Option<u64> },
+    /// Tokens on disk, still valid, carrying `granted`.
+    Authenticated {
+        expires_at: Option<u64>,
+        granted: Vec<String>,
+    },
     /// Tokens on disk but past their expiry. Renewable without the browser when
     /// a refresh token came with them.
     Expired {
         renewable: bool,
         expires_at: Option<u64>,
+        granted: Vec<String>,
     },
+    /// Tokens on disk whose scopes are not the ones the configuration now
+    /// declares (AH-135). Not used until the server is authorized again: a
+    /// token asked for under other scopes is not what the user configured.
+    ScopeMismatch {
+        declared: Vec<String>,
+        requested: Vec<String>,
+        granted: Vec<String>,
+    },
+    /// The configuration's `oauth` entry cannot be read, so nothing is
+    /// authorized until it is fixed.
+    InvalidScopes { detail: String },
     /// Tokens on disk, issued for a different url than the server now points at.
     StaleResource,
     /// Nothing stored. Whether that is a problem is up to the server.
@@ -196,6 +315,14 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
     if has_static_authorization(config) {
         return AuthStatus::StaticHeader;
     }
+    let declared = match declared_scopes(config) {
+        Ok(declared) => declared,
+        Err(e) => {
+            return AuthStatus::InvalidScopes {
+                detail: e.message().to_string(),
+            }
+        }
+    };
     let Some(stored) = load(data_folder, name) else {
         return AuthStatus::Unauthenticated;
     };
@@ -203,15 +330,43 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
     if !url.is_empty() && stored.resource != url {
         return AuthStatus::StaleResource;
     }
+    if !scopes_match(&declared, &stored) {
+        return AuthStatus::ScopeMismatch {
+            declared,
+            requested: stored.requested_scopes,
+            granted: stored.granted_scopes,
+        };
+    }
     if stored.is_expired() {
         return AuthStatus::Expired {
             renewable: stored.has_refresh_token(),
             expires_at: stored.expires_at,
+            granted: stored.granted_scopes,
         };
     }
     AuthStatus::Authenticated {
         expires_at: stored.expires_at,
+        granted: stored.granted_scopes,
     }
+}
+
+/// Whether stored credentials may be used under the declared scopes: they were
+/// asked for under exactly those, and carry nothing beyond them.
+fn scopes_match(declared: &[String], stored: &StoredCredentials) -> bool {
+    normalized(stored.requested_scopes.clone()) == declared
+        && stored.granted_scopes.iter().all(|scope| declared.contains(scope))
+}
+
+/// [`status`] with what the configuration declares, for the wire.
+pub fn status_info(data_folder: &Path, name: &str, config: &Value) -> AuthStatusInfo {
+    let mut info: AuthStatusInfo = status(data_folder, name, config).into();
+    info.declared_scopes = declared_scopes(config).unwrap_or_default();
+    if let Some(stored) = load(data_folder, name) {
+        if info.requested_scopes.is_empty() {
+            info.requested_scopes = stored.requested_scopes;
+        }
+    }
+    info
 }
 
 /// `AuthStatus` flattened for the wire, so the settings UI can render a badge
@@ -224,7 +379,7 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
 #[serde(rename_all = "camelCase")]
 pub struct AuthStatusInfo {
     /// One of `notApplicable`, `staticHeader`, `authenticated`, `expired`,
-    /// `staleResource`, `unauthenticated`.
+    /// `staleResource`, `scopeMismatch`, `invalidScopes`, `unauthenticated`.
     pub state: &'static str,
     /// Whether an interactive sign-in is possible and would mean something.
     pub can_authenticate: bool,
@@ -235,21 +390,55 @@ pub struct AuthStatusInfo {
     pub renewable: bool,
     /// Unix seconds the access token expires at, when known.
     pub expires_at: Option<u64>,
+    /// What the configuration declares (AH-135): what a sign-in will ask for.
+    pub declared_scopes: Vec<String>,
+    /// What the stored token was asked for under.
+    pub requested_scopes: Vec<String>,
+    /// What the provider granted the stored token.
+    pub granted_scopes: Vec<String>,
+    /// Why the state is what it is, when that is not obvious from the state.
+    pub detail: Option<String>,
 }
 
 impl From<AuthStatus> for AuthStatusInfo {
     fn from(status: AuthStatus) -> Self {
+        let mut requested_scopes = Vec::new();
+        let mut granted_scopes = Vec::new();
+        let mut detail = None;
         let (state, can_authenticate, has_credentials, renewable, expires_at) = match status {
             AuthStatus::NotApplicable => ("notApplicable", false, false, false, None),
             AuthStatus::StaticHeader => ("staticHeader", false, false, false, None),
-            AuthStatus::Authenticated { expires_at } => {
+            AuthStatus::Authenticated { expires_at, granted } => {
+                granted_scopes = granted;
                 ("authenticated", true, true, false, expires_at)
             }
             AuthStatus::Expired {
                 renewable,
                 expires_at,
-            } => ("expired", true, true, renewable, expires_at),
+                granted,
+            } => {
+                granted_scopes = granted;
+                ("expired", true, true, renewable, expires_at)
+            }
             AuthStatus::StaleResource => ("staleResource", true, true, false, None),
+            AuthStatus::ScopeMismatch {
+                declared,
+                requested,
+                granted,
+            } => {
+                detail = Some(format!(
+                    "the stored token was asked for [{}] but the configuration declares [{}]",
+                    requested.join(" "),
+                    declared.join(" ")
+                ));
+                requested_scopes = requested;
+                granted_scopes = granted;
+                ("scopeMismatch", true, true, false, None)
+            }
+            AuthStatus::InvalidScopes { detail: why } => {
+                detail = Some(why);
+                ("invalidScopes", false, false, false, None)
+            }
             AuthStatus::Unauthenticated => ("unauthenticated", true, false, false, None),
         };
         Self {
@@ -258,6 +447,10 @@ impl From<AuthStatus> for AuthStatusInfo {
             has_credentials,
             renewable,
             expires_at,
+            declared_scopes: Vec::new(),
+            requested_scopes,
+            granted_scopes,
+            detail,
         }
     }
 }
@@ -454,6 +647,8 @@ fn spawn_refresher(
     manager: Weak<tokio::sync::Mutex<AuthorizationManager>>,
     mut current: OAuthTokenResponse,
     mut expires_at: Option<u64>,
+    requested: Vec<String>,
+    mut granted: Vec<String>,
 ) {
     let alive = RefresherAlive::new(secret_key(&data_folder, &name));
     tokio::spawn(async move {
@@ -477,6 +672,18 @@ fn spawn_refresher(
             let outcome = guard.refresh_token().await;
             match outcome {
                 Ok(tokens) => {
+                    // AH-135: a refresh may not widen what was granted. The
+                    // widened token is not stored, and the live connection is
+                    // put back on the token it had.
+                    let refreshed_scopes = granted_scopes(&tokens, &granted);
+                    if let Err(e) = check_grant(&name, &requested, &refreshed_scopes) {
+                        log::warn!("{}", e.message());
+                        if let Ok(previous) = manager_for(&name, &url, &base, &client_id, current.clone()).await {
+                            *guard = previous;
+                        }
+                        return;
+                    }
+                    granted = refreshed_scopes;
                     let (tokens, carried) = keep_refresh_token(tokens, &current);
                     if carried {
                         // The manager holds what the provider sent, without the
@@ -491,7 +698,8 @@ fn spawn_refresher(
                     }
                     drop(guard);
                     drop(strong);
-                    let creds = StoredCredentials::from_exchange(client_id.clone(), tokens, url.clone());
+                    let creds = StoredCredentials::from_exchange(client_id.clone(), tokens, url.clone())
+                        .with_scopes(requested.clone(), granted.clone());
                     expires_at = creds.expires_at;
                     current = creds.tokens.clone();
                     match save(&data_folder, &name, &creds) {
@@ -536,6 +744,9 @@ pub struct PendingAuth {
     /// a remote or headless session finishes by pasting it somewhere else.
     pub authorization_url: String,
     pub redirect_uri: String,
+    /// The scopes the consent request asks for (AH-135), shown to the user
+    /// before they consent.
+    pub scopes: Vec<String>,
 }
 
 /// Start an authorization: bind the loopback listener, register (or reuse) a
@@ -545,7 +756,11 @@ pub struct PendingAuth {
 /// The listener is bound *before* the redirect uri is minted because dynamic
 /// registration sends that uri to the provider; picking a port afterwards could
 /// hand out one another process just took.
-pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
+pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<PendingAuth, String> {
+    let scopes = normalized(scopes.to_vec());
+    if let Some(bad) = scopes.iter().find(|s| !is_scope_token(s)) {
+        return Err(format!("{bad:?} is not a valid OAuth scope"));
+    }
     let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
         .await
         .map_err(|e| format!("could not open a local callback port: {e}"))?;
@@ -560,8 +775,9 @@ pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
     let mut state = OAuthState::new(url.to_string(), None)
         .await
         .map_err(|e| format!("could not reach '{url}' for OAuth discovery: {e}"))?;
+    let asked: Vec<&str> = scopes.iter().map(String::as_str).collect();
     state
-        .start_authorization(&[], &redirect_uri, Some(CLIENT_NAME))
+        .start_authorization(&asked, &redirect_uri, Some(CLIENT_NAME))
         .await
         .map_err(|e| format!("'{server}' does not offer OAuth we can use: {e}"))?;
     let authorization_url = state
@@ -576,6 +792,7 @@ pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
         resource: url.to_string(),
         authorization_url,
         redirect_uri,
+        scopes,
     })
 }
 
@@ -602,7 +819,11 @@ impl PendingAuth {
         let tokens =
             tokens.ok_or_else(|| "authorization finished without an access token".to_string())?;
 
-        let creds = StoredCredentials::from_exchange(client_id, tokens, self.resource);
+        // AH-135: nothing wider than what was asked for is kept.
+        let granted = granted_scopes(&tokens, &self.scopes);
+        check_grant(&self.server, &self.scopes, &granted).map_err(|e| e.message().to_string())?;
+        let creds = StoredCredentials::from_exchange(client_id, tokens, self.resource)
+            .with_scopes(self.scopes, granted);
         save(data_folder, &self.server, &creds)?;
         Ok(creds)
     }
@@ -774,6 +995,7 @@ pub async fn authorized_client(
     if has_static_authorization(config) {
         return Ok(None);
     }
+    let declared = declared_scopes(config)?;
     let Some(stored) = load(data_folder, name) else {
         return Ok(None);
     };
@@ -781,6 +1003,16 @@ pub async fn authorized_client(
         return Err(auth(format!(
             "stored credentials for '{name}' were issued for {} - re-authenticate from /mcp",
             stored.resource
+        )));
+    }
+    // AH-135: a token asked for under other scopes, or carrying more than the
+    // configuration declares, is never sent.
+    if !scopes_match(&declared, &stored) {
+        return Err(auth(format!(
+            "the stored token for '{name}' was asked for [{}] and granted [{}], but the configuration declares [{}] - re-authenticate from /mcp",
+            stored.requested_scopes.join(" "),
+            stored.granted_scopes.join(" "),
+            declared.join(" ")
         )));
     }
 
@@ -798,11 +1030,15 @@ pub async fn authorized_client(
                 "could not refresh the access token for '{name}': {e} - re-authenticate from /mcp"
             ))
         })?;
+        // A refresh may not widen the grant: refused, and nothing is stored.
+        let refreshed_scopes = granted_scopes(&tokens, &stored.granted_scopes);
+        check_grant(name, &declared, &refreshed_scopes)?;
         let (tokens, carried) = keep_refresh_token(tokens, &stored.tokens);
         if carried {
             manager = manager_for(name, url, &base, &stored.client_id, tokens.clone()).await?;
         }
-        current = StoredCredentials::from_exchange(stored.client_id.clone(), tokens, url.to_string());
+        current = StoredCredentials::from_exchange(stored.client_id.clone(), tokens, url.to_string())
+            .with_scopes(stored.requested_scopes.clone(), refreshed_scopes);
         store_record(data_folder, name, &current)?;
     }
 
@@ -817,6 +1053,8 @@ pub async fn authorized_client(
             Arc::downgrade(&client.auth_manager),
             current.tokens.clone(),
             current.expires_at,
+            current.requested_scopes.clone(),
+            current.granted_scopes.clone(),
         );
     }
     Ok(Some(client))
@@ -1117,6 +1355,247 @@ mod tests {
         json!({ "type": "http" })
     }
 
+    /// Follow a consent url the way a browser would: the fixture consents on
+    /// its own and redirects to the loopback callback, which completes the flow.
+    async fn consent(url: &str) {
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let redirect = client.get(url).send().await.unwrap();
+        assert_eq!(redirect.status(), 302, "the fixture redirects to the callback");
+        let location = redirect.headers()["location"].to_str().unwrap().to_string();
+        let landed = client.get(&location).send().await.unwrap();
+        assert_eq!(landed.status(), 200);
+    }
+
+    /// AH-135 (written before the implementation, as the failing evidence): a
+    /// provider that grants a scope nobody asked for must not end up with a
+    /// stored token carrying it.
+    #[test]
+    fn a_grant_wider_than_was_asked_for_is_refused_and_not_stored() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-extra-scope", "admin"]);
+        let outcome = runtime().block_on(async {
+            let pending = begin("srv", &fixture.url(), &[]).await.unwrap();
+            let url = pending.authorization_url.clone();
+            let completing = tokio::spawn({
+                let folder = dir.path().to_path_buf();
+                async move { pending.complete(&folder).await }
+            });
+            consent(&url).await;
+            completing.await.unwrap()
+        });
+        let exchanges: Vec<Value> = fixture
+            .entries("/token")
+            .into_iter()
+            .filter(|e| e["grant"] == "authorization_code")
+            .collect();
+        assert_eq!(exchanges.len(), 1, "{exchanges:?}");
+        assert!(exchanges[0]["granted_scope"].as_str().unwrap().contains("admin"));
+        assert!(outcome.is_err(), "a grant carrying an unrequested scope was accepted");
+        assert!(load(dir.path(), "srv").is_none(), "the widened token was stored");
+    }
+
+    fn scoped(fixture: &OauthFixture, scopes: &[&str]) -> Value {
+        json!({ "type": "http", "url": fixture.url(), "oauth": { "scopes": scopes } })
+    }
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Run a whole sign-in against the fixture and return its outcome.
+    fn sign_in(dir: &Isolated, fixture: &OauthFixture, scopes: &[&str]) -> (String, Result<StoredCredentials, String>) {
+        runtime().block_on(async {
+            let pending = begin("srv", &fixture.url(), &strings(scopes)).await.unwrap();
+            let url = pending.authorization_url.clone();
+            let completing = tokio::spawn({
+                let folder = dir.path().to_path_buf();
+                async move { pending.complete(&folder).await }
+            });
+            consent(&url).await;
+            (url, completing.await.unwrap())
+        })
+    }
+
+    /// AH-135: what a configuration declares is read as a sorted set of RFC
+    /// 6749 scope tokens, and anything else is refused by kind rather than
+    /// quietly read as "no scopes".
+    #[test]
+    fn declared_scopes_are_read_as_a_set_and_anything_else_is_refused() {
+        assert!(declared_scopes(&json!({ "type": "http" })).unwrap().is_empty());
+        assert_eq!(
+            declared_scopes(&json!({ "oauth": { "scopes": ["b:write", "a:read", "a:read"] } })).unwrap(),
+            strings(&["a:read", "b:write"])
+        );
+        for broken in [
+            json!({ "oauth": ["read"] }),
+            json!({ "oauth": { "scope": ["read"] } }),
+            json!({ "oauth": { "scopes": "read write" } }),
+            json!({ "oauth": { "scopes": [1] } }),
+            json!({ "oauth": { "scopes": ["read write"] } }),
+            json!({ "oauth": { "scopes": [""] } }),
+            json!({ "oauth": { "scopes": ["say\"hi"] } }),
+            json!({ "oauth": { "scopes": ["caf\u{00e9}"] } }),
+        ] {
+            let e = declared_scopes(&broken).expect_err(&broken.to_string());
+            assert_eq!(e.kind(), ErrorKind::InvalidInput, "{broken}");
+        }
+    }
+
+    /// AH-135: the sign-in asks for exactly the declared scopes, the provider
+    /// sees them, and what it granted is stored with the token and shown.
+    #[test]
+    fn a_sign_in_asks_for_the_declared_scopes_and_keeps_what_was_granted() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&[]);
+        let (url, outcome) = sign_in(&dir, &fixture, &["mcp:tools", "mcp:read"]);
+        let query = url.split_once('?').map(|(_, q)| q).unwrap_or_default();
+        let asked: Vec<String> = form_urlencoded::parse(query.as_bytes())
+            .filter(|(k, _)| k == "scope")
+            .map(|(_, v)| v.into_owned())
+            .collect();
+        assert_eq!(asked, vec!["mcp:read mcp:tools".to_string()], "{url}");
+        assert_eq!(fixture.entries("/authorize")[0]["requested_scope"], "mcp:read mcp:tools");
+        let creds = outcome.expect("the sign-in completes");
+        assert_eq!(creds.requested_scopes, strings(&["mcp:read", "mcp:tools"]));
+        assert_eq!(creds.granted_scopes, strings(&["mcp:read", "mcp:tools"]));
+        let config = scoped(&fixture, &["mcp:read", "mcp:tools"]);
+        let info = status_info(dir.path(), "srv", &config);
+        assert_eq!(info.state, "authenticated");
+        assert_eq!(info.declared_scopes, strings(&["mcp:read", "mcp:tools"]));
+        assert_eq!(info.granted_scopes, strings(&["mcp:read", "mcp:tools"]));
+        runtime().block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            assert!(client.get_access_token().await.unwrap().starts_with("code-access-"));
+        });
+    }
+
+    /// AH-135: a provider that adds a scope to a grant that did ask for some is
+    /// refused as well, and nothing is stored.
+    #[test]
+    fn a_widened_grant_is_refused_even_when_scopes_were_asked_for() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-extra-scope", "mcp:admin"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read"]);
+        let refusal = outcome.expect_err("a widened grant is refused");
+        assert!(refusal.contains("mcp:admin"), "{refusal}");
+        assert!(load(dir.path(), "srv").is_none(), "the widened token was stored");
+    }
+
+    /// AH-135: a narrower grant is the provider's right; it is kept and shown
+    /// as what it is. A response that names no scope grants what was asked.
+    #[test]
+    fn a_narrower_grant_is_kept_and_an_omitted_scope_means_what_was_asked() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-only", "mcp:read"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read", "mcp:tools"]);
+        assert_eq!(outcome.unwrap().granted_scopes, strings(&["mcp:read"]));
+        assert!(matches!(
+            status(dir.path(), "srv", &scoped(&fixture, &["mcp:read", "mcp:tools"])),
+            AuthStatus::Authenticated { ref granted, .. } if granted == &strings(&["mcp:read"])
+        ));
+        drop(fixture);
+
+        let dir = isolated_again(dir);
+        let fixture = OauthFixture::start(&["--omit-granted-scope"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read"]);
+        assert_eq!(outcome.unwrap().granted_scopes, strings(&["mcp:read"]));
+    }
+
+    fn isolated_again(previous: Isolated) -> Isolated {
+        drop(previous);
+        isolated()
+    }
+
+    /// AH-135, security: once the configuration declares other scopes -- wider
+    /// or narrower -- a stored token is not sent, and the server is shown as
+    /// needing a new sign-in.
+    #[test]
+    fn a_token_is_never_sent_under_scopes_it_was_not_asked_for() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--initial-access", "at-scoped"]);
+        let mut t = OAuthTokenResponse::new(
+            AccessToken::new("at-scoped".to_string()),
+            oauth2::basic::BasicTokenType::Bearer,
+            EmptyExtraTokenFields {},
+        );
+        t.set_expires_in(Some(&Duration::from_secs(3600)));
+        let stored = StoredCredentials::from_exchange("client-1".to_string(), t, fixture.url())
+            .with_scopes(strings(&["mcp:read"]), strings(&["mcp:read"]));
+        save(dir.path(), "srv", &stored).unwrap();
+
+        for declared in [&["mcp:read", "mcp:admin"][..], &[][..], &["mcp:write"][..]] {
+            let config = scoped(&fixture, declared);
+            assert!(matches!(status(dir.path(), "srv", &config), AuthStatus::ScopeMismatch { .. }), "{declared:?}");
+            let info = status_info(dir.path(), "srv", &config);
+            assert_eq!(info.state, "scopeMismatch");
+            assert!(info.can_authenticate && info.has_credentials);
+            let refused = runtime()
+                .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+                .err()
+                .unwrap_or_else(|| panic!("a mismatched token was used under {declared:?}"));
+            assert_eq!(refused.kind(), ErrorKind::Authentication);
+        }
+        // The matching declaration still works, so the refusal above was the
+        // scopes and not the token.
+        let config = scoped(&fixture, &["mcp:read"]);
+        assert!(matches!(status(dir.path(), "srv", &config), AuthStatus::Authenticated { .. }));
+        assert!(fixture.entries("/mcp").is_empty(), "nothing was sent to the server");
+        assert!(fixture.entries("/token").is_empty());
+
+        // A configuration that cannot be read authorizes nothing.
+        let broken = json!({ "type": "http", "url": fixture.url(), "oauth": { "scopes": "mcp:read" } });
+        assert!(matches!(status(dir.path(), "srv", &broken), AuthStatus::InvalidScopes { .. }));
+        let refused = runtime()
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest::Client::new()))
+            .err()
+            .expect("an unreadable declaration authorizes nothing");
+        assert_eq!(refused.kind(), ErrorKind::InvalidInput);
+    }
+
+    /// AH-135, security: a refresh that comes back wider than the grant is
+    /// refused, and the stored token stays the one that was consented to.
+    #[test]
+    fn a_refresh_that_widens_the_grant_is_refused_and_nothing_is_stored() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "rt-good", "--refresh-scope", "mcp:read mcp:admin"]);
+        let stored = fixture_creds(&fixture, "at-old", "rt-good", 30)
+            .with_scopes(strings(&["mcp:read"]), strings(&["mcp:read"]));
+        save(dir.path(), "srv", &stored).unwrap();
+        let config = scoped(&fixture, &["mcp:read"]);
+        let refused = runtime()
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+            .err()
+            .expect("a widened refresh is refused");
+        assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
+        assert!(refused.message().contains("mcp:admin"), "{}", refused.message());
+        let after = load(dir.path(), "srv").unwrap();
+        assert_eq!(after.tokens.access_token().secret(), "at-old");
+        assert_eq!(after.granted_scopes, strings(&["mcp:read"]));
+        assert_eq!(fixture.entries("/token").len(), 1, "the refresh did happen");
+    }
+
+    /// AH-135: a record written before scopes existed reads as asked for and
+    /// granted nothing, so a server that declares none keeps working.
+    #[test]
+    fn a_record_from_before_scopes_reads_as_none_and_still_works() {
+        let dir = isolated();
+        let mut record = serde_json::to_value(creds(Some(3600), true, "https://x/mcp")).unwrap();
+        let object = record.as_object_mut().unwrap();
+        object.remove("requested_scopes");
+        object.remove("granted_scopes");
+        let old: StoredCredentials = serde_json::from_value(record).unwrap();
+        assert!(old.requested_scopes.is_empty() && old.granted_scopes.is_empty());
+        save(dir.path(), "s", &old).unwrap();
+        let http = json!({ "type": "http", "url": "https://x/mcp" });
+        assert!(matches!(status(dir.path(), "s", &http), AuthStatus::Authenticated { .. }));
+    }
+
     /// AH-134: a token inside the refresh window is refreshed at connect,
     /// against the provider, and the refreshed token is what gets stored and
     /// sent.
@@ -1301,7 +1780,8 @@ mod tests {
             status(dir.path(), "s", &http),
             AuthStatus::Expired {
                 renewable: true,
-                expires_at: Some(_)
+                expires_at: Some(_),
+                ..
             }
         ));
         save(dir.path(), "s", &creds(Some(0), false, "https://x/mcp")).unwrap();
@@ -1309,7 +1789,8 @@ mod tests {
             status(dir.path(), "s", &http),
             AuthStatus::Expired {
                 renewable: false,
-                expires_at: Some(_)
+                expires_at: Some(_),
+                ..
             }
         ));
     }

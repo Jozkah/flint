@@ -144,6 +144,10 @@ export class DefaultMCPService implements MCPService {
       hasCredentials: false,
       renewable: false,
       expiresAt: null,
+      declaredScopes: [],
+      requestedScopes: [],
+      grantedScopes: [],
+      detail: null,
     }
   }
 

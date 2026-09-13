@@ -28,7 +28,44 @@ const TONE: Record<MCPAuthStatus['state'], string> = {
   authenticated: 'text-green-700 dark:text-green-500 bg-secondary',
   expired: 'text-amber-700 dark:text-amber-500 bg-secondary',
   staleResource: 'text-amber-700 dark:text-amber-500 bg-secondary',
+  scopeMismatch: 'text-amber-700 dark:text-amber-500 bg-secondary',
+  invalidScopes: 'text-red-700 dark:text-red-500 bg-secondary',
   unauthenticated: 'text-red-700 dark:text-red-500 bg-secondary',
+}
+
+/**
+ * What a sign-in asks for and what the stored token was granted (AH-135).
+ * Shown whenever there is anything to say, because the scopes are the
+ * authority the server's token carries: a person consenting should see them
+ * here as well as on the provider's page.
+ */
+function ScopeLine({ status }: { status: MCPAuthStatus }) {
+  const { t } = useTranslation()
+  const declared = status.declaredScopes ?? []
+  const granted = status.grantedScopes ?? []
+  const list = (scopes: string[]) =>
+    scopes.length > 0 ? scopes.join(' ') : t('mcp-servers:auth.scopesNone')
+  if (declared.length === 0 && granted.length === 0 && !status.detail) {
+    return null
+  }
+  return (
+    <div
+      className="flex w-full flex-wrap gap-x-3 text-xs text-muted-foreground"
+      data-testid="mcp-auth-scopes"
+    >
+      <span data-testid="mcp-auth-scopes-declared">
+        {t('mcp-servers:auth.scopesDeclared', { scopes: list(declared) })}
+      </span>
+      {status.hasCredentials && (
+        <span data-testid="mcp-auth-scopes-granted">
+          {t('mcp-servers:auth.scopesGranted', { scopes: list(granted) })}
+        </span>
+      )}
+      {status.detail && (
+        <span data-testid="mcp-auth-detail">{status.detail}</span>
+      )}
+    </div>
+  )
 }
 
 /** A coarse "42m" / "3h" distance from now; the exact second is never useful. */
@@ -104,6 +141,8 @@ export function McpServerAuth({
           {t('mcp-servers:auth.clear')}
         </Button>
       )}
+
+      <ScopeLine status={status} />
 
       {/* The flow is already waiting on the redirect by the time this shows, so
           a browser that failed to launch is still recoverable by hand. */}

@@ -165,8 +165,12 @@ pub fn validate_config(config: &Value) -> Result<(), String> {
             if obj.get("url").and_then(Value::as_str).is_none() {
                 return Err(format!("server of type '{transport}' needs a 'url'"));
             }
+            oauth::declared_scopes(config).map_err(|e| e.message().to_string())?;
         }
         "stdio" => {
+            if obj.contains_key("oauth") {
+                return Err("OAuth applies to http/sse servers only".to_string());
+            }
             if obj.get("command").and_then(Value::as_str).is_none() {
                 return Err("stdio server needs a 'command'".to_string());
             }
@@ -208,8 +212,12 @@ pub fn build_server_config(
     url: Option<&str>,
     headers: serde_json::Map<String, Value>,
     active: bool,
+    scopes: Vec<String>,
 ) -> Result<Value, String> {
     let mut config = serde_json::json!({ "type": transport, "active": active });
+    if !scopes.is_empty() {
+        config["oauth"] = serde_json::json!({ "scopes": scopes });
+    }
     match transport {
         "stdio" => {
             let command = command
@@ -600,6 +608,11 @@ pub fn auth_status(name: &str, config: &Value) -> oauth::AuthStatus {
     oauth::status(&default_data_folder(), name, config)
 }
 
+/// The same, with the declared, requested and granted scopes, for display.
+pub fn auth_status_info(name: &str, config: &Value) -> oauth::AuthStatusInfo {
+    oauth::status_info(&default_data_folder(), name, config)
+}
+
 /// Forget one server's stored tokens. `Ok(false)` when there were none.
 pub fn clear_auth(name: &str) -> Result<bool, String> {
     oauth::clear(&default_data_folder(), name)
@@ -618,7 +631,8 @@ pub async fn begin_auth(name: &str) -> Result<oauth::PendingAuth, String> {
         .ok_or_else(|| {
             format!("'{name}' is a stdio server - OAuth applies to http/sse servers only")
         })?;
-    oauth::begin(name, url).await
+    let scopes = oauth::declared_scopes(&entry.config).map_err(|e| e.message().to_string())?;
+    oauth::begin(name, url, &scopes).await
 }
 
 /// Finish an authorization by persisting the tokens it produced.
