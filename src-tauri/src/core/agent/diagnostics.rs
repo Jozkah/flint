@@ -262,6 +262,35 @@ pub fn run_and_parse(
     let pid = child.id();
     proc::register(pid);
 
+    // Drained while the child runs, not after it exits. A compiler with many
+    // errors fills the pipe buffer and blocks on write, and a reader that only
+    // starts after `wait` would then always report a timeout -- on exactly the
+    // input this feature exists for.
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let drain = |pipe: Option<std::process::ChildStdout>| {
+        std::thread::spawn(move || {
+            use std::io::Read as _;
+            let mut buffer = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buffer);
+            }
+            buffer
+        })
+    };
+    let stdout_reader = drain(out_pipe.take());
+    let stderr_reader = {
+        let pipe = err_pipe.take();
+        std::thread::spawn(move || {
+            use std::io::Read as _;
+            let mut buffer = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buffer);
+            }
+            buffer
+        })
+    };
+
     // Waited on in slices so cancellation and the deadline are both answered
     // promptly, and so the process tree is killed rather than left behind.
     let deadline = started + std::time::Duration::from_secs(seconds.max(1));
@@ -289,6 +318,9 @@ pub fn run_and_parse(
         proc::kill_tree(pid);
         proc::unregister(pid);
         let _ = child.wait();
+        // The readers end when the pipes close with the process.
+        let _ = stdout_reader.join();
+        let _ = stderr_reader.join();
         return Err(DiagnosticsError::new(
             kind,
             match kind {
@@ -299,19 +331,22 @@ pub fn run_and_parse(
             },
         ));
     }
-    let output = child.wait_with_output().map_err(|e| {
-        DiagnosticsError::new(
-            DiagnosticsErrorKind::CheckerUnavailable,
-            format!("the checker's output could not be read: {e}"),
-        )
-    })?;
     proc::unregister(pid);
+    let stdout = stdout_reader.join().unwrap_or_default();
+    let stderr = stderr_reader.join().unwrap_or_default();
 
-    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let mut text = String::from_utf8_lossy(&stdout).into_owned();
     text.push('\n');
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    text.push_str(&String::from_utf8_lossy(&stderr));
     if text.len() > MAX_OUTPUT_BYTES {
-        text.truncate(MAX_OUTPUT_BYTES);
+        // On a character boundary: compilers echo source, source is not
+        // always ASCII, and `String::truncate` panics in the middle of a
+        // character -- which would lose the diagnostics rather than cut them.
+        let cut = (0..=MAX_OUTPUT_BYTES)
+            .rev()
+            .find(|at| text.is_char_boundary(*at))
+            .unwrap_or(0);
+        text.truncate(cut);
     }
     let (diagnostics, truncated) = parse(project_root, &text);
     Ok(Report {
@@ -521,6 +556,45 @@ src/elsewhere.rs:1:1: error: something the run never touched
         assert!(report.render_for(&["src/untouched.rs".to_string()]).is_none());
         // A Windows spelling of the same file is the same file.
         assert_eq!(report.for_files(&["src\\a.rs".to_string()]).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A compiler with a great deal to say does not deadlock the reader, and
+    /// a cut in the middle of a character does not lose what was read.
+    #[test]
+    fn a_very_noisy_check_is_read_rather_than_timing_out() {
+        let root = project("noisy", &[("src/a.rs", "")]);
+        // Far more than a pipe buffer (~64KB), printed by a shell either
+        // flavour of host can run.
+        // Chosen by the shell that will actually run it, not by the host: on
+        // Windows this host still selects git-bash where it can.
+        let posix = tauri_plugin_agent_tools::tools::proc::shell().flavor
+            == tauri_plugin_agent_tools::tools::proc::ShellFlavor::Posix;
+        let command = if !posix {
+            "for($i=0; $i -lt 4000; $i++) { echo \"src/a.rs:$($i+1):1: error: broken thing number $i with padding padding padding padding padding\" }"
+        } else {
+            "for i in $(seq 1 4000); do echo \"src/a.rs:$i:1: error: broken thing number $i with padding padding padding padding padding\"; done"
+        };
+        let started = std::time::Instant::now();
+        let report = run_and_parse(&root, command, &AtomicBool::new(false), 60)
+            .expect("a noisy check still finishes");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(55),
+            "the reader deadlocked and the deadline stopped it"
+        );
+        assert_eq!(report.diagnostics.len(), MAX_DIAGNOSTICS, "{}", report.diagnostics.len());
+        assert!(report.truncated);
+
+        // And a cut that lands inside a character keeps what came before it.
+        let mut text = "é".repeat(MAX_OUTPUT_BYTES);
+        if text.len() > MAX_OUTPUT_BYTES {
+            let cut = (0..=MAX_OUTPUT_BYTES)
+                .rev()
+                .find(|at| text.is_char_boundary(*at))
+                .unwrap_or(0);
+            text.truncate(cut);
+        }
+        assert!(text.len() <= MAX_OUTPUT_BYTES);
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -131,6 +131,29 @@ pub fn attach(data_folder: &Path, record: &JobRecord) -> Attachment {
     if record.state.is_ended() {
         return Attachment::Ended;
     }
+    // Not every job is a supervised one. A `bash` call backgrounded inside the
+    // app is a child of the app, with no claim file and no secret, and judging
+    // it by a missing claim would declare a running job interrupted -- which
+    // is exactly what happened when reconciliation moved into the listing.
+    // Such a record is judged the way it was before supervisors existed: by
+    // the identity it recorded, and failing that by who wrote it.
+    if record.token_hash.trim().is_empty() {
+        return match crate::job_record::still_running(&record.identity) {
+            crate::job_record::Verdict::Alive => Attachment::Running,
+            crate::job_record::Verdict::Reused => Attachment::Foreign,
+            crate::job_record::Verdict::Gone => Attachment::Interrupted,
+            // No checkable identity. If this process wrote the record, this
+            // process would know if the job had ended, so it has not; a record
+            // from before this process started is one nobody can vouch for.
+            crate::job_record::Verdict::Unknowable => {
+                if record.started_at_ms >= process_started_ms() {
+                    Attachment::Running
+                } else {
+                    Attachment::Interrupted
+                }
+            }
+        };
+    }
     let Ok(text) = std::fs::read_to_string(claim_path(data_folder, &record.id)) else {
         return Attachment::Interrupted;
     };
@@ -150,6 +173,15 @@ pub fn attach(data_folder: &Path, record: &JobRecord) -> Attachment {
         crate::job_record::Verdict::Gone => Attachment::Interrupted,
         crate::job_record::Verdict::Unknowable => Attachment::Interrupted,
     }
+}
+
+/// When this process began, in milliseconds, fixed on first use.
+///
+/// Used to tell a record this process wrote from one it inherited: the second
+/// is the only one a look can honestly call interrupted.
+fn process_started_ms() -> u64 {
+    static STARTED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *STARTED.get_or_init(crate::job_record::now_ms)
 }
 
 /// Start a job that will outlive this process.

@@ -1739,3 +1739,32 @@ written in; a `use` line that names the function counted as a use and not as a
 call; both calls inside the function's own body found and nothing outside it;
 `if (` not read as a call; and a name nothing defines yielding an empty
 hierarchy rather than an invented one.
+
+
+### What an adversarial review of this phase found
+
+The phase's own new code was read adversarially against its own claims, and
+ten defects came back. All ten are fixed here; three of them were holes the
+features had opened.
+
+| What was wrong | Why it mattered | Fix |
+| --- | --- | --- |
+| The `.jan` refusal was conditional on the sandbox, and the CLI does not sandbox by default | `.jan/agent/` holds the tool policy and, since AH-127, the hooks -- shell commands run around every call. A model on a default CLI run could write `hooks.toml` and have its command executed on the next tool call, past the deny list, the machine policy, the approval prompt and plan mode | reading `.jan` stays allowed where it was; *changing* it is a hard deny on every surface, for `write`, `edit` and `bash` alike, and the refusal is tagged `permission_denied` |
+| `%ProgramData%` was read from the environment | It is an ordinary environment variable: `set ProgramData=...` and an administrator's policy simply disappears | the folder is asked of Windows through the known-folder API, which the constrained process cannot move |
+| A machine policy that exists and cannot be read returned "no policy" | An ACL, or another process holding the file open, turned a policy into permission | the same strictest reading a malformed file already got, and the administrator is told |
+| An empty domain intersection | An empty allow list reads as "anywhere not denied" at the gate, so a project listing only destinations the machine had not listed got *more* than the machine allowed; a project narrowing `docs.internal` to `api.docs.internal` fell into the same hole | subsumption rather than string equality, and a disjoint project list leaves the machine's list standing |
+| Hooks ran without the data-folder mask and without `.jan` hidden | A repository's hook could read `settings.json` and the provider keys in it on a surface where `bash` cannot -- the one thing AH-128 says a hook must never be | the hook context carries `mask_root`, and a confined hook hides the project's `.jan` exactly as a confined shell does |
+| `session-start` hooks parsed and never fired | A config file that accepts a hook that never runs reads as enforced and is not | the event is refused at parse until something fires it; `run-end` stays, and is fired |
+| The mailbox was read-modify-write with no lock, and `message_check` asked what was unread and then marked everything unread | Two runs sending at once lost a message and could repeat a `seq`; a message arriving between the two calls was stamped delivered and never shown | an exclusive lock file around each write, and one `collect` that returns exactly what it marked. Tested with twenty concurrent sends from two threads |
+| The index walk followed symlinks with no depth bound | A repository carrying `ln -s .. loop` -- which git stores happily -- made the build spin until it was cancelled, and a link to `$HOME` put somebody's home directory in an index that claims to describe a repository | symlinks are not followed and the walk is bounded at 24 deep |
+| Diagnostics drained the compiler's pipes only after it exited | More than a pipe buffer of output blocks the child forever, so the deadline always fired -- on exactly the input the feature exists for: a compiler with many errors | both pipes are drained on their own threads while the child runs. Tested with 4,000 diagnostics |
+| The output cut used a byte index | `String::truncate` panics off a character boundary, and compilers echo source, which is not always ASCII | the cut lands on a boundary |
+
+One more defect came from the scenario matrix rather than the review:
+moving reconciliation into the job listing (AH-101/AH-102) made it judge every
+unfinished record by whether a supervisor claim file existed. A `bash` call
+backgrounded inside the app has no claim -- it is the app's own child -- so a
+running job was reported interrupted the moment anything listed it.
+`background-job-record` caught it. An unsupervised record is now judged the way
+it was before supervisors existed, by its recorded identity, and where that
+cannot be checked, by whether this process is the one that wrote it.

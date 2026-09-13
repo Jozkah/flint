@@ -1707,9 +1707,11 @@ fn denied_by_policy_msg(name: &str, project_root: &std::path::Path) -> String {
 /// at a deny list would send the model reading a file that is hidden too.
 fn hidden_path_msg(name: &str) -> String {
     format!(
-        "ERROR: tool '{name}' refused: '{}' is the agent's own state directory and is not part of \
-         the project. It is hidden from every tool -- do not try to reach it another way. Skills \
-         and memory are available through the skill_*/memory_* tools.",
+        "ERROR [permission_denied]: tool '{name}' refused: '{}' is the agent's own state \\
+         directory, and what it holds decides what this harness will do -- the tool policy, \\
+         and the hooks that run around every call. Reading it may be allowed; changing it \\
+         never is, on any surface. Skills and memory are available through the \\
+         skill_*/memory_* tools.",
         tauri_plugin_agent_tools::tools::sandbox::JAN_DIR
     )
 }

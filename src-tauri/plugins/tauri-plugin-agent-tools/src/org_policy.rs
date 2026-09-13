@@ -166,11 +166,28 @@ impl OrgPolicy {
         if project.is_empty() {
             return self.allow_domains.clone();
         }
-        project
+        // Subsumption, not string equality: a project that narrows
+        // `docs.internal` to `api.docs.internal` has narrowed, and dropping it
+        // for not matching exactly would be the wrong answer twice over --
+        // because an *empty* result reads as "anywhere not denied" at the
+        // gate. So a project list that shares nothing with the machine's
+        // leaves the machine's list standing, which is the narrowest thing
+        // that is true.
+        let kept: Vec<String> = project
             .iter()
-            .filter(|d| self.allow_domains.contains(d))
+            .filter(|d| {
+                let host = d.trim().trim_start_matches("*.").to_ascii_lowercase();
+                self.allow_domains.iter().any(|rule| {
+                    let rule = rule.trim().trim_start_matches("*.").to_ascii_lowercase();
+                    host == rule || host.ends_with(&format!(".{rule}"))
+                })
+            })
             .cloned()
-            .collect()
+            .collect();
+        if kept.is_empty() {
+            return self.allow_domains.clone();
+        }
+        kept
     }
 
     /// The destinations nothing may reach: everything either of them denies.
@@ -198,15 +215,46 @@ impl OrgPolicy {
 pub fn system_path() -> PathBuf {
     #[cfg(windows)]
     {
-        let base = std::env::var_os("ProgramData")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("C:\\ProgramData"));
-        base.join("Jan").join("policy.toml")
+        program_data().join("Jan").join("policy.toml")
     }
     #[cfg(not(windows))]
     {
         PathBuf::from("/etc/jan/policy.toml")
     }
+}
+
+/// The machine's ProgramData folder, asked of Windows rather than of the
+/// environment.
+///
+/// `%ProgramData%` is an ordinary process environment variable: anyone who can
+/// start Jan can set it, and pointing it at an empty directory would make an
+/// administrator's policy simply disappear. The known-folder API answers from
+/// the system, so it cannot be moved by the process being constrained.
+#[cfg(windows)]
+fn program_data() -> PathBuf {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::UI::Shell::{FOLDERID_ProgramData, SHGetKnownFolderPath};
+
+    let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
+    // SAFETY: the call writes one owned wide string, which is freed below, and
+    // is given a null token to mean "this machine's common folder".
+    let ok = unsafe {
+        SHGetKnownFolderPath(&FOLDERID_ProgramData, 0, std::ptr::null_mut(), &mut raw) == 0
+    };
+    if !ok || raw.is_null() {
+        // Not the environment's answer: a fixed path is wrong far less often
+        // than a path the caller chose.
+        return PathBuf::from("C:\\ProgramData");
+    }
+    let mut len = 0usize;
+    // SAFETY: `raw` is a null-terminated wide string owned by the shell.
+    while unsafe { *raw.add(len) } != 0 {
+        len += 1;
+    }
+    let wide = unsafe { std::slice::from_raw_parts(raw, len) };
+    let path = std::ffi::OsString::from_wide(wide);
+    unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(raw as *mut _) };
+    PathBuf::from(path)
 }
 
 /// Read this machine's policy, if it has one.
@@ -234,12 +282,25 @@ pub fn load_from(
     };
     let raw = match std::fs::read_to_string(&path) {
         Ok(raw) => raw,
+        // A file that is there and cannot be read is not "no policy". It is a
+        // policy this process was not allowed to see -- an ACL, another
+        // process holding it open -- and reading that as permission is the
+        // failure this whole module exists to prevent. Strictest reading, and
+        // the administrator is told.
         Err(e) => {
             return (
-                None,
+                Some(OrgPolicy {
+                    source: path,
+                    max_default: Some(PermissionDefault::ReadOnly),
+                    allow_network: Some(false),
+                    ..OrgPolicy::default()
+                }),
                 Some(OrgPolicyError::new(
                     OrgPolicyErrorKind::Io,
-                    format!("the machine policy could not be read: {e}"),
+                    format!(
+                        "the machine policy is there and could not be read, so the strictest \
+                         reading of it is in force: {e}"
+                    ),
                 )),
             )
         }
@@ -356,8 +417,18 @@ deny_domains = ["evil.example"]
         let policy = policy.unwrap();
         // Fewer: allowed.
         assert_eq!(policy.clamp_allow_domains(&["docs.internal".to_string()]), ["docs.internal"]);
-        // Others: not reachable, however the project lists them.
-        assert_eq!(policy.clamp_allow_domains(&["evil.example".to_string()]), Vec::<String>::new());
+        // Others: not reachable, however the project lists them -- and the
+        // answer is the machine's list rather than an empty one, because an
+        // empty allow list reads as "anywhere not denied" at the gate.
+        assert_eq!(
+            policy.clamp_allow_domains(&["evil.example".to_string()]),
+            ["docs.internal", "registry.internal"]
+        );
+        // A project narrowing to a subdomain has narrowed, and keeps it.
+        assert_eq!(
+            policy.clamp_allow_domains(&["api.docs.internal".to_string()]),
+            ["api.docs.internal"]
+        );
         // "Anywhere" under an organisation list means "anywhere on the list".
         assert_eq!(
             policy.clamp_allow_domains(&[]),

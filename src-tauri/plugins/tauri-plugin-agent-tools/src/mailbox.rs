@@ -131,6 +131,48 @@ pub fn path_for(data_folder: &Path, run: &RunId) -> PathBuf {
     data_folder.join("mail").join(format!("{}.jsonl", &digest[..24]))
 }
 
+/// Hold the mailbox while it is read and rewritten.
+///
+/// Every write here is read-modify-write over the whole file, and the case
+/// this feature exists for is two runs going at once: without a lock, a second
+/// send between the first's read and its write silently disappears, and two
+/// messages can be given the same seq. The lock is a file created
+/// exclusively, so it works across processes -- a run and a `jan cli agent
+/// mail` in another terminal are the same race.
+struct Held {
+    path: PathBuf,
+}
+
+impl Held {
+    /// Wait briefly for the mailbox, then take it anyway.
+    ///
+    /// A stale lock (a process killed mid-write) must not wedge a mailbox
+    /// forever, and the window it guards is a few milliseconds of file IO, so
+    /// a bounded wait followed by taking it is the behaviour that fails least
+    /// badly.
+    fn take(mailbox: &Path) -> Held {
+        let path = mailbox.with_extension("lock");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        for _ in 0..200 {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(_) => return Held { path },
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(5)),
+            }
+        }
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::OpenOptions::new().write(true).create_new(true).open(&path);
+        Held { path }
+    }
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 fn read_all(path: &Path) -> Result<Vec<Message>, MailError> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
@@ -223,6 +265,7 @@ pub fn send(
     }
 
     let path = path_for(data_folder, to);
+    let _held = Held::take(&path);
     let mut messages = read_all(&path)?;
     if messages.len() >= MAX_MESSAGES {
         // Deliberately a refusal rather than dropping the oldest: a queue that
@@ -254,6 +297,9 @@ pub fn send(
 /// what two agents told each other is answerable after the fact.
 pub fn read(data_folder: &Path, run: &RunId, mark: bool) -> Result<Vec<Message>, MailError> {
     let path = path_for(data_folder, run);
+    // Held across the read *and* the marking, so a message that arrives
+    // between the two is not stamped delivered without ever being shown.
+    let _held = mark.then(|| Held::take(&path));
     let mut messages = read_all(&path)?;
     if mark && messages.iter().any(|m| m.delivered_at.is_none()) {
         let now = crate::audit::now();
@@ -271,6 +317,28 @@ pub fn unread(data_folder: &Path, run: &RunId) -> Result<Vec<Message>, MailError
         .into_iter()
         .filter(|m| m.delivered_at.is_none())
         .collect())
+}
+
+/// Take everything this run has not seen, in one step.
+///
+/// The two-call version -- ask what is unread, then mark everything unread as
+/// delivered -- loses a message that arrives between the two: it is stamped
+/// delivered and never shown to anybody. This reads and marks under one lock
+/// and returns exactly what it marked.
+pub fn collect(data_folder: &Path, run: &RunId) -> Result<Vec<Message>, MailError> {
+    let path = path_for(data_folder, run);
+    let _held = Held::take(&path);
+    let mut messages = read_all(&path)?;
+    let now = crate::audit::now();
+    let mut fresh = Vec::new();
+    for message in messages.iter_mut().filter(|m| m.delivered_at.is_none()) {
+        message.delivered_at = Some(now.clone());
+        fresh.push(message.clone());
+    }
+    if !fresh.is_empty() {
+        write_all(&path, &messages)?;
+    }
+    Ok(fresh)
 }
 
 #[cfg(test)]
@@ -424,6 +492,43 @@ mod tests {
         let inbox = read(&d, &parent, false).unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].body, "said in time");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// What a reader is given is exactly what it marked: a message that lands
+    /// mid-read is either shown or still unread, never stamped and skipped.
+    #[test]
+    fn taking_what_is_unread_and_marking_it_is_one_step() {
+        let d = data("collect");
+        let (session, parent, child) = ids("s-collect");
+        send(&d, &session, &child, &parent, "one", "first").unwrap();
+        let taken = collect(&d, &parent).unwrap();
+        assert_eq!(taken.len(), 1);
+        assert!(taken[0].delivered_at.is_some(), "what is handed back says it was delivered");
+        assert!(collect(&d, &parent).unwrap().is_empty(), "nothing is taken twice");
+
+        // Two senders at once: both messages survive, with different seqs.
+        let (_, other, _) = ids("s-collect");
+        let sender_a = RunId::parse("s-collect#run-a").unwrap();
+        let sender_b = RunId::parse("s-collect#run-b").unwrap();
+        let _ = other;
+        std::thread::scope(|scope| {
+            for sender in [&sender_a, &sender_b] {
+                let d = d.clone();
+                let session = session.clone();
+                let parent = parent.clone();
+                scope.spawn(move || {
+                    for n in 0..10 {
+                        send(&d, &session, sender, &parent, "n", &format!("{sender} {n}")).unwrap();
+                    }
+                });
+            }
+        });
+        let all = read(&d, &parent, false).unwrap();
+        let fresh: Vec<_> = all.iter().filter(|m| m.delivered_at.is_none()).collect();
+        assert_eq!(fresh.len(), 20, "a concurrent send was lost: {}", fresh.len());
+        let seqs: std::collections::BTreeSet<u64> = all.iter().map(|m| m.seq).collect();
+        assert_eq!(seqs.len(), all.len(), "two messages share a seq");
         let _ = std::fs::remove_dir_all(&d);
     }
 

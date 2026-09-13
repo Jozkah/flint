@@ -58,6 +58,9 @@ pub enum Event {
     /// After a tool call has produced its result.
     PostTool,
     /// Once, when a session begins.
+    ///
+    /// Declared and not yet fired: parsing refuses it rather than accepting a
+    /// hook that would silently never run. See [`Event::parse`].
     SessionStart,
     /// Once, when a run ends, however it ended.
     RunEnd,
@@ -73,11 +76,15 @@ impl Event {
         }
     }
 
+    /// The events a hook may be declared for *and that something fires*.
+    ///
+    /// `session-start` is deliberately absent: nothing calls it yet, and a
+    /// configuration file that accepts a hook which never runs is worse than
+    /// one that refuses it -- the file reads as enforced and is not.
     fn parse(raw: &str) -> Option<Event> {
         match raw {
             "pre-tool" => Some(Event::PreTool),
             "post-tool" => Some(Event::PostTool),
-            "session-start" => Some(Event::SessionStart),
             "run-end" => Some(Event::RunEnd),
             _ => None,
         }
@@ -415,6 +422,12 @@ pub struct Context<'a> {
     /// exactly when `bash` would be on the same surface -- AH-128 is that a
     /// hook is never the more privileged way to run a command.
     pub sandbox: bool,
+    /// The Jan data folder, masked from the hook exactly as it is masked from
+    /// `bash`. Without this a repository's hook could read `settings.json` and
+    /// the provider keys in it on a surface where the shell tool cannot --
+    /// which would make a hook the more privileged way to run a command, the
+    /// one thing AH-128 says it must never be.
+    pub mask_root: Option<&'a Path>,
     /// Stops the hook when the work it belongs to is stopped.
     pub cancel: Option<crate::lifecycle::Token>,
 }
@@ -462,8 +475,17 @@ async fn execute(
 ) -> (bool, String, Option<HookError>) {
     use crate::tools::{jail, proc};
 
-    let policy = jail::Policy::new(ctx.project_root, ctx.allow_network)
+    let mut policy = jail::Policy::new(ctx.project_root, ctx.allow_network)
         .with_home_readonly(ctx.home_readonly);
+    if let Some(mask) = ctx.mask_root {
+        policy = policy.with_mask_root(mask);
+    }
+    if ctx.sandbox {
+        // The project's own `.jan` is hidden from a confined hook for the same
+        // reason it is hidden from a confined shell: it is where the harness
+        // keeps what it was told to do.
+        policy = policy.with_hide_root(&ctx.project_root.join(".jan"));
+    }
     // Which shell can be confined is probed, not assumed -- the same decision
     // `bash` makes, for the same reason: on Windows the MSYS runtime cannot
     // start inside an AppContainer, and running the hook unconfined instead
@@ -661,6 +683,7 @@ mod tests {
             allow_network: false,
             home_readonly: true,
             sandbox: false,
+            mask_root: None,
             cancel: None,
         }
     }
@@ -713,6 +736,12 @@ mod tests {
             ("[[hook]]\ncommand = \"x\"\n", HookErrorKind::Malformed),
             ("[[hook]]\nevent = \"pre-tool\"\ncommand = \"  \"\n", HookErrorKind::Malformed),
             ("[[hook]]\nevent = \"whenever\"\ncommand = \"x\"\n", HookErrorKind::Unknown),
+            // Declared in the type and not yet fired anywhere: refused, so a
+            // hook that would never run is never accepted.
+            (
+                "[[hook]]\nevent = \"session-start\"\ncommand = \"x\"\n",
+                HookErrorKind::Unknown,
+            ),
             (
                 "[[hook]]\nevent = \"pre-tool\"\ncommand = \"x\"\non_failure = \"explode\"\n",
                 HookErrorKind::Unknown,
@@ -866,6 +895,7 @@ mod tests {
                 allow_network: false,
                 home_readonly: true,
                 sandbox: false,
+                mask_root: None,
                 cancel: Some(token),
             },
         )
@@ -967,6 +997,7 @@ mod tests {
                 allow_network: false,
                 home_readonly: true,
                 sandbox: true,
+                mask_root: None,
                 cancel: None,
             },
         )

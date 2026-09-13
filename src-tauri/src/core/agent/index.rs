@@ -47,6 +47,10 @@ pub const MAX_FILES: usize = 20_000;
 pub const MAX_FILE_BYTES: u64 = 512 * 1024;
 /// The most symbols kept from one file.
 pub const MAX_SYMBOLS_PER_FILE: usize = 2_000;
+/// How deep the walk goes. A directory symlink is not followed at all, but a
+/// deeply nested tree is still a tree, and an unbounded walk is a walk that
+/// can be made not to end.
+pub const MAX_DEPTH: usize = 24;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -262,8 +266,13 @@ pub fn refresh(
     let mut update = Update { reconciled, ..Update::default() };
     let mut files: BTreeMap<String, FileEntry> = BTreeMap::new();
     let mut truncated = false;
-    let mut queue = std::collections::VecDeque::from([project.to_path_buf()]);
-    while let Some(dir) = queue.pop_front() {
+    let _ = &truncated;
+    let mut queue = std::collections::VecDeque::from([(project.to_path_buf(), 0usize)]);
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > MAX_DEPTH {
+            truncated = true;
+            continue;
+        }
         if cancel.load(Ordering::Relaxed) {
             return Err(IndexError::new(
                 IndexErrorKind::Cancelled,
@@ -277,8 +286,18 @@ pub fn refresh(
             if name.starts_with('.') || ignored(&name) {
                 continue;
             }
+            // A symlink is not followed, in either direction. Following one
+            // is how a repository containing `ln -s .. loop` -- which git
+            // happily carries -- makes this walk never end, and how a link to
+            // `$HOME` gets somebody's home directory hashed into an index that
+            // claims to describe a repository.
+            let link = entry.file_type().map(|t| t.is_symlink()).unwrap_or(true);
+            if link {
+                truncated = true;
+                continue;
+            }
             if path.is_dir() {
-                queue.push_back(path);
+                queue.push_back((path, depth + 1));
                 continue;
             }
             if !indexable(&path) {
@@ -884,6 +903,34 @@ mod tests {
 
     /// A build that is stopped leaves no index at all: half an index that
     /// looks whole is worse than none.
+    /// A repository that contains a link to itself does not make the walk
+    /// run forever, and a link out of the project does not put somebody
+    /// else's files in the index.
+    #[test]
+    #[cfg(windows)]
+    fn a_symlinked_directory_is_not_followed() {
+        let f = sample();
+        let outside = f.project.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.rs"), "pub fn not_ours() {}\n").unwrap();
+        // Symlinks need privilege on Windows; where they cannot be made the
+        // test has nothing to say rather than a false pass.
+        if std::os::windows::fs::symlink_dir(&outside, f.project.join("linked")).is_err() {
+            return;
+        }
+        let _ = std::os::windows::fs::symlink_dir(&f.project, f.project.join("loop"));
+
+        let started = std::time::Instant::now();
+        let (index, _) = f.refresh();
+        assert!(started.elapsed() < std::time::Duration::from_secs(20), "the walk did not end");
+        assert!(
+            index.files.keys().all(|p| !p.contains("linked") && !p.contains("loop")),
+            "a symlink was followed: {:?}",
+            index.files.keys()
+        );
+        assert!(find_symbol(&index, "not_ours", 5).is_empty(), "a file outside the project");
+    }
+
     #[test]
     fn a_cancelled_build_writes_nothing() {
         let f = sample();

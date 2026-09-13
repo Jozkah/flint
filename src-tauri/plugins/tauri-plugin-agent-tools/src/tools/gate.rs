@@ -333,16 +333,23 @@ pub fn resolve_decision(
     // Nothing under .jan is reachable while hidden: skills/memory only through
     // their dedicated tools, config, threads and the dir listing not at all.
     // Checked ahead of allow rules so an allowed tool name cannot bypass it.
-    // The whole check is skipped when not hiding, so an unconfined CLI run can
-    // read and edit its own `.jan` like any other project state.
-    let hits_hidden = hide_jan
+    //
+    // *Reading* it is allowed when not hiding, so an unconfined CLI run can
+    // look at its own `.jan` like any other project state. *Changing* it is
+    // not, on any surface: `.jan/agent/` holds the files that decide what this
+    // harness will do -- the tool policy, and since AH-127 the hooks, which
+    // are shell commands run around every call. A model that can write one has
+    // granted itself everything the policy withheld, so the rule that stops it
+    // cannot be conditional on a sandbox the CLI does not use.
+    let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
+    let hits_hidden = (hide_jan || mutating)
         && tool.path_args.iter().any(|key| {
             args.get(key)
                 .and_then(|v| v.as_str())
                 .map(|p| is_hidden_jan_path(project_root, p))
                 .unwrap_or(false)
         });
-    let exec_hits_hidden = hide_jan
+    let exec_hits_hidden = (hide_jan || mutating)
         && tool.capability == Capability::Exec
         && args
             .get("command")
@@ -651,10 +658,10 @@ mod tests {
         std::fs::write(root.join(".jan/agent/agent.toml"), b"[tools]\n").unwrap();
         let perms = ToolPermissions::allow_all();
         let grants = SessionGrants::default();
-        // With hiding off, paths and commands under `.jan` take the ordinary
-        // capability path instead of the hard deny (here an in-project read
-        // allows; the write prompts like any in-project write).
-        for tool in ["read", "ls", "find", "grep", "write", "edit"] {
+        // With hiding off, *reading* `.jan` takes the ordinary capability path
+        // instead of the hard deny: an unconfined CLI run can look at its own
+        // project state.
+        for tool in ["read", "ls", "find", "grep"] {
             let d = resolve_decision(
                 lookup(tool).unwrap(),
                 &json!({ "path": ".jan/agent/agent.toml" }),
@@ -669,13 +676,36 @@ mod tests {
             assert_ne!(
                 d,
                 Decision::HardDeny(DenyReason::Hidden),
-                "{tool} must not hard-deny .jan when not hiding"
+                "{tool} must not hard-deny a read of .jan when not hiding"
             );
         }
-        // bash referencing it is a normal exec prompt, not a hidden deny.
+        // Changing it is denied on every surface, hiding or not. `.jan/agent`
+        // holds the tool policy and the hooks -- shell commands run around
+        // every call -- so a model that can write there has granted itself
+        // everything the policy withheld.
+        for tool in ["write", "edit"] {
+            let d = resolve_decision(
+                lookup(tool).unwrap(),
+                &json!({ "path": ".jan/agent/hooks.toml" }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            );
+            assert_eq!(
+                d,
+                Decision::HardDeny(DenyReason::Hidden),
+                "{tool} must never change .jan, on any surface"
+            );
+        }
+        // And a shell command that touches it is denied too: `bash` is the
+        // other way to write a file.
         let d = resolve_decision(
             lookup("bash").unwrap(),
-            &json!({"command": "cat .jan/agent/agent.toml"}),
+            &json!({"command": "echo x > .jan/agent/hooks.toml"}),
             &root,
             None,
             &[],
@@ -684,7 +714,11 @@ mod tests {
             false,
             &crate::subject::Subject::MainAgent,
         );
-        assert_ne!(d, Decision::HardDeny(DenyReason::Hidden));
+        assert_eq!(
+            d,
+            Decision::HardDeny(DenyReason::Hidden),
+            "a shell command is the other way to write a file"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

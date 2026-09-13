@@ -515,6 +515,8 @@ pub async fn execute_builtin(
         allow_network: ctx.allow_network,
         home_readonly: ctx.home_readonly,
         sandbox: ctx.sandbox,
+        // The same folder `bash` has masked from it on this surface.
+        mask_root: ctx.mask_root,
         cancel: ctx.cancel.clone(),
     };
     let hooks = match crate::hooks::load(project_root) {
@@ -3070,18 +3072,11 @@ fn message_check(ctx: &ToolContext<'_>) -> String {
         Ok(run) => run,
         Err(e) => return format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
     };
-    // What is new is decided *before* the read marks anything: taking the
-    // delivered ones afterwards would hand back every message this run has
-    // ever been sent, every time it looked.
-    let fresh = match crate::mailbox::unread(data, &run) {
-        Ok(fresh) => fresh,
-        Err(e) => {
-            let harness: crate::harness_error::HarnessError = (&e).into();
-            return format!("ERROR [{}]: {}", harness.kind().tag(), e.message);
-        }
-    };
-    match crate::mailbox::read(data, &run, true) {
-        Ok(_) => {
+    // One step, so what is handed back is exactly what was marked delivered:
+    // asking what is unread and then marking everything unread would stamp a
+    // message that arrived in between and never show it to anyone.
+    match crate::mailbox::collect(data, &run) {
+        Ok(fresh) => {
             if fresh.is_empty() {
                 return "No messages.".to_string();
             }
