@@ -39,6 +39,19 @@ pub(crate) struct AgentToml {
     /// `[output]` -- how much a run says about itself (AH-181).
     #[serde(default)]
     pub output: OutputSection,
+    /// `[licenses]` -- what this project's dependencies may be licensed under
+    /// (AH-158).
+    #[serde(default)]
+    pub licenses: LicensesSection,
+}
+
+/// `[licenses]` -- the licences this project allows its dependencies to carry
+/// (AH-158). Empty is a project that has not said, which is not the same as a
+/// project that allows nothing.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct LicensesSection {
+    #[serde(default)]
+    pub allow: Vec<String>,
 }
 
 /// `[output]` -- how much a headless run prints while it works (AH-181).
@@ -370,6 +383,11 @@ inject = "always"
 # webhook = "https://example.invalid/hooks/jan"
 # events = ["run.ended", "needs.attention"]
 
+# Licences this project's dependencies may carry. Unset checks nothing; "*"
+# allows anything that declares a licence at all.
+# [licenses]
+# allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+
 # How much a headless run prints while it works: compact, normal or verbose.
 # The answer on stdout is the same either way; this is the progress on stderr.
 # [output]
@@ -445,6 +463,15 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
     }
+}
+
+/// The licences this project allows its dependencies to carry (AH-158). A
+/// project with no configuration allows nothing in particular, which is not
+/// the same as allowing nothing: see `licenses::scan`.
+pub fn allowed_licenses(project_root: &Path) -> Vec<String> {
+    load_agent_config(project_root)
+        .map(|cfg| cfg.licenses.allow)
+        .unwrap_or_default()
 }
 
 pub(crate) fn enabled_skills(project_root: &Path) -> Vec<String> {

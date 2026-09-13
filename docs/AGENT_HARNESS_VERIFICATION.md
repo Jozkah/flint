@@ -2353,3 +2353,40 @@ One test plus the same real run at three densities:
 Covered by test: every accepted spelling (`compact`, `quiet`, `normal`,
 `verbose`, and unset meaning normal) and a word that is not a density refused
 by name.
+
+
+### Licence scanning (AH-158)
+
+Five tests plus real scans, including this repository's own Rust tree:
+
+```
+=== everything allowed
+every dependency declares a licence the project allows              rc=0
+
+=== a dependency arrives that the project does not allow
+4 dependenc(ies) read
+not in the allowed set (1):    npm copyleft 3.0.0 — GPL-3.0
+declaring no licence (1):      npm silent 4.0.0 — (declares none)
+new since the recorded scan (2): copyleft, silent
+Error [policy_violation]: 1 dependenc(ies) are not licensed under anything
+this project allows                                                 rc=77
+
+=== this repository's own Rust tree, read through cargo metadata
+807 dependenc(ies) read
+declaring no licence (1):      cargo jan-utils 0.1.0 — (declares none)
+```
+
+A defect the real run found: the dependency tree is megabytes of JSON, and the
+first implementation drained the child's pipes only after it exited -- so cargo
+filled the pipe, stopped, and was killed by the deadline, which read as "cargo
+is slow". Both pipes are now drained on their own threads while the child runs;
+807 crates take 0.75s.
+
+Covered by test: every expression form read as written (`MIT`, case-insensitive
+identifiers, `OR`, `AND`, `+` suffixes) and parenthesised expressions left
+unjudged rather than judged by halves; `*` allowing anything declared while
+never making an undeclared licence declared; a package's own declaration read,
+including the deprecated array form and scoped packages; a project with no
+allowed set enforcing nothing; "new" only being a question once a scan was
+recorded, with a version bump counting as new; and a project with nothing to
+read reporting that it read nothing.

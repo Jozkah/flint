@@ -381,6 +381,21 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Check dependencies against the licences the project allows (AH-158)
+    Licenses {
+        /// Project root to scan.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Licences to allow, overriding [licenses].allow.
+        #[arg(long, value_name = "SPDX", num_args = 1..)]
+        allow: Vec<String>,
+        /// Write down what is here now, so a later scan can say what is new.
+        #[arg(long)]
+        record: bool,
+        /// Print the scan as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Search past runs' transcripts by content (AH-178)
     Search {
         /// What to look for.
@@ -1223,6 +1238,44 @@ async fn handle_agent(cmd: AgentCommands) {
                     println!("{}", serde_json::to_string_pretty(&tree).unwrap_or_default());
                 } else {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
+                }
+            })
+        }
+        AgentCommands::Licenses {
+            project,
+            allow,
+            record,
+            json,
+        } => {
+            use app_lib::core::agent::licenses;
+            let root = std::path::PathBuf::from(&project);
+            let allow = if allow.is_empty() {
+                app_lib::core::agent::project::allowed_licenses(&root)
+            } else {
+                allow
+            };
+            licenses::scan(&root, &allow).and_then(|report| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                } else {
+                    print!("{}", licenses::render(&report));
+                }
+                if record {
+                    let path = licenses::record(&root, &report.dependencies)?;
+                    println!("recorded {} dependenc(ies) in {}", report.dependencies.len(), path.display());
+                }
+                // A dependency the project does not allow is a finding, and a
+                // command that finds something says so in its exit code.
+                if report.disallowed.is_empty() {
+                    Ok(())
+                } else {
+                    Err(HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::PolicyViolation,
+                        format!(
+                            "{} dependenc(ies) are not licensed under anything this project allows",
+                            report.disallowed.len()
+                        ),
+                    ))
                 }
             })
         }

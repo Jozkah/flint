@@ -2402,3 +2402,47 @@ quiet**: compact drops results, not the news that something did not work.
 A density that is not one of the three refuses the run rather than being
 treated as the default -- a run that says less than somebody asked it to is a
 log missing what they wanted to read.
+
+
+## Dependency licences (AH-158)
+
+A dependency arrives with a licence and a project has a list of the ones it may
+ship. Nothing here decided whether the two agreed.
+
+```toml
+[licenses]
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+```
+
+```
+jan cli agent licenses [--project .] [--allow MIT Apache-2.0] [--record] [--json]
+```
+
+Cargo crates come from `cargo metadata --offline`, npm packages from each
+installed package's own `package.json` (the deprecated `licenses` array
+included). Reading what is installed rather than what a lockfile promises is
+deliberate: the licence that matters is the one in the code that is there.
+`--offline` is deliberate too -- a licence check is not a reason to update a
+registry index, and a tree that has never been resolved fails saying so.
+
+The rules it follows:
+
+* **Only the declared identifier.** Matching a licence by reading its text is
+  how a project comes to believe a modified MIT is MIT.
+* **Undeclared is undeclared.** A dependency that declares nothing is listed as
+  declaring nothing -- never as allowed.
+* **`MIT OR Apache-2.0` needs either; `MIT AND OpenSSL` needs both.** An
+  expression with parentheses is not judged by halves: it is reported for a
+  person to read. `allow = ["*"]` means anything that declares a licence at
+  all, and then the shape stops mattering -- but it still never turns an
+  undeclared licence into a declared one.
+* **A project that has not said what it allows enforces nothing.** Everything
+  is listed; nothing is called disallowed.
+* **Nothing that could not be read is called fine.** A tree that fails to read
+  is a typed error, not an empty list of problems.
+
+`--record` writes `<project>/.jan/agent/licenses.json`; a later scan says which
+dependencies were not in it, which is the question somebody has when a lockfile
+changes. Before there is a record, the scan says so rather than calling
+everything new. A disallowed dependency exits `policy_violation`, so this is
+usable as a gate.

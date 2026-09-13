@@ -36,6 +36,7 @@ pub mod diagnostics;
 pub mod fixtures;
 pub mod impact;
 pub mod index;
+pub mod licenses;
 pub mod vcs;
 pub mod replay;
 pub mod review;

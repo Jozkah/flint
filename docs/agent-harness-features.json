@@ -5582,13 +5582,17 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-154"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/licenses.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "New dependencies are checked against an allowed licence set.",
@@ -5597,10 +5601,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/licenses.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `jan cli agent licenses [--allow ...] [--record] [--json]` reads cargo crates via `cargo metadata --offline` and npm packages from each installed package.json (the deprecated licenses array included), and judges each declared licence against [licenses].allow. Only declared identifiers are used -- matching by licence text is how a project comes to believe a modified MIT is MIT -- and a dependency that declares nothing is listed as declaring nothing, never as allowed. `OR` needs either, `AND` needs both, a parenthesised expression is reported rather than judged by halves, and \"*\" allows anything declared without ever making an undeclared licence declared. A project with no allowed set enforces nothing; a tree that cannot be read is a typed error rather than an empty list of problems. --record writes .jan/agent/licenses.json so a later scan can say what is new (a version bump counts), and before there is a record the scan says so rather than calling everything new. A disallowed dependency exits policy_violation. A defect the real run found: the child's pipes were drained only after it exited, so cargo filled the pipe and was killed by the deadline; both pipes are now drained on threads and 807 crates read in 0.75s."
     },
     {
       "id": "AH-159",
