@@ -422,7 +422,7 @@ fn cached_of(record: &tauri_plugin_agent_tools::usage::PayloadUsage) -> u64 {
 }
 
 /// The declared price for a model, by its exact name or by the part after the
-/// provider prefix -- `v100/claude-sonnet-4-5` finds `claude-sonnet-4-5`.
+/// provider prefix -- `llm-host/claude-sonnet-4-5` finds `claude-sonnet-4-5`.
 fn price_for(prices: &BTreeMap<String, Price>, model: &str) -> Option<Price> {
     if let Some(price) = prices.get(model) {
         return Some(*price);
@@ -532,7 +532,7 @@ mod tests {
     fn a_price_is_found_with_or_without_the_provider_prefix() {
         let data = Workspace::new("spend-prefix")
             .file("prices.toml", "[models.\"sonnet\"]\ninput = 1.0\noutput = 2.0\n");
-        usage_record(data.path(), "v100/sonnet", 1_000_000, 1_000_000, UsageSource::Provider);
+        usage_record(data.path(), "llm-host/sonnet", 1_000_000, 1_000_000, UsageSource::Provider);
         let report = report(data.path(), None, None).unwrap();
         assert_eq!(report.by_model[0].cost, Some(3.0));
     }

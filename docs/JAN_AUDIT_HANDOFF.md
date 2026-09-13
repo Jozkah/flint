@@ -171,7 +171,7 @@ registry work, so nothing was reclassified.
 
 ### Completed this batch
 
-- Local-provider diagnosis and fix (`6ab1c5229`): `v100` resolved through a
+- Local-provider diagnosis and fix (`6ab1c5229`): `llm-host` resolved through a
   search domain to a Cloudflare AAAA record, so requests left the machine and
   came back 403. IPv4 reaches the real server and returns `qwen3.8-27b`.
   `errorText`, `endpointDiagnostics`, and truthful provider failures.
@@ -527,9 +527,9 @@ red when removed.
 Paused the 210-feature programme at `28f46d1c5` on user instruction to fix
 reported production defects. Resumed after this batch.
 
-### `http://v100:8080/v1` reached the wrong machine
+### `http://llm-host:8080/v1` reached the wrong machine
 
-Root cause: `v100` is a single-label name, so the only way it resolves to
+Root cause: `llm-host` is a single-label name, so the only way it resolves to
 anything public is a DNS search-domain collision. The OS returned both a public
 Cloudflare record and the Tailscale address; the connector took whichever came
 first, left the network, and the public host answered 403. Every layer above
@@ -557,8 +557,8 @@ Fix: one transport for every OpenAI-compatible provider request.
   connection tests).
 
 Deterministic resolver injection: `transport::set_probe`. The smoke harness
-pins `v100` to a public decoy plus loopback and configures the provider at the
-literal `http://v100:8080/v1`, so every model-touching scenario exercises the
+pins `llm-host` to a public decoy plus loopback and configures the provider at the
+literal `http://llm-host:8080/v1`, so every model-touching scenario exercises the
 short-hostname path.
 
 ### Cowork timeline
@@ -714,7 +714,7 @@ what it saw instead of only that it saw nothing.
    the provider had an API key, so a local server -- which needs none -- was
    told to "configure an API key", and the request that would have explained
    the real failure never happened. `isLocalEndpoint` was not enough here
-   either: a single-label name like `v100` is deliberately `unknown`, not
+   either: a single-label name like `llm-host` is deliberately `unknown`, not
    private. The guard now demands a key only when the endpoint is *definitely*
    public (`classifyModelLocation(...) === 'remote'`); where it is not certain,
    Jan makes the request and reports the answer.
@@ -730,7 +730,7 @@ records every toast as it is inserted, rather than sampling the DOM and racing
 the toast's own lifetime.
 
 Observed toast, exactly one:
-`cowork-smoke-mock: GET http://v100:8080/v1/models returned 403 (answered by
+`cowork-smoke-mock: GET http://llm-host:8080/v1/models returned 403 (answered by
 cloudflare). The request reached a proxy on the internet rather than your own
 server, so the hostname is resolving to a public address. Point the provider at
 the machine's address directly, or fix the name resolution.`
@@ -1530,7 +1530,7 @@ keeping the failure, no key in any audit file, and the dispatched payload
 accounted for with the provider's count.
 
 **Real-model proof is blocked, externally.** Your brief requires the success
-path against `http://v100:8555/v1` (`pxa-27b`). From this machine `v100` does
+path against `http://llm-host:8555/v1` (`pxa-27b`). From this machine `llm-host` does
 not resolve at all ("No such host is known"); Tailscale reports
 "Tailscale is starting — unexpected state: NoState". That is machine network
 configuration and was not touched. Every claim above is against the mock.
@@ -1798,7 +1798,7 @@ post-run diff and the prompt share one `ChangeDiff` component.
   Each of these runs also waited about 40 s for the environment check to probe
   shells that cannot start here.
 
-**Windows evidence (mock provider on `v100:8080`; the real model lane is not
+**Windows evidence (mock provider on `llm-host:8080`; the real model lane is not
 reachable from this host).** Each scenario was run by itself with
 `cowork-smoke --only <name>`:
 

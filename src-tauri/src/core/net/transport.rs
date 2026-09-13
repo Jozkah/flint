@@ -659,7 +659,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         let response = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/chat/completions"),
+            url: format!("http://llm-host:{port}/v1/chat/completions"),
             method: "POST".into(),
             headers: HashMap::from([("Authorization".into(), "Bearer sk-not-a-real-key".into())]),
             body: Some(
@@ -700,7 +700,7 @@ mod tests {
 
         // Model discovery: no session, and no messages.
         let discovery = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             timeout_secs: Some(10),
             ..Default::default()
@@ -711,7 +711,7 @@ mod tests {
 
         // A POST that carries no conversation is not a dispatch either.
         let other = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/embeddings"),
+            url: format!("http://llm-host:{port}/v1/embeddings"),
             method: "POST".into(),
             body: Some(r#"{"model":"e5","input":"hi"}"#.into()),
             timeout_secs: Some(10),
@@ -738,7 +738,7 @@ mod tests {
         let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
         send_stream(
             ProviderRequest {
-                url: format!("http://v100:{port}/v1/chat/completions"),
+                url: format!("http://llm-host:{port}/v1/chat/completions"),
                 method: "POST".into(),
                 body: Some(
                     r#"{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}],"stream":true}"#
@@ -799,7 +799,7 @@ mod tests {
             Duration::from_secs(10),
             send_stream(
                 ProviderRequest {
-                    url: format!("http://v100:{port}/v1/chat/completions"),
+                    url: format!("http://llm-host:{port}/v1/chat/completions"),
                     method: "POST".into(),
                     body: Some("{}".into()),
                     timeout_secs: Some(20),
@@ -831,7 +831,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         let dispatch = |invocation: &str, kind: &str, content: &str| ProviderRequest {
-            url: format!("http://v100:{port}/v1/chat/completions"),
+            url: format!("http://llm-host:{port}/v1/chat/completions"),
             method: "POST".into(),
             body: Some(format!(
                 r#"{{"model":"m","messages":[{{"role":"user","content":"{content}"}}]}}"#
@@ -879,8 +879,8 @@ mod tests {
     #[test]
     fn an_endpoint_is_the_host_and_the_port_that_will_actually_be_dialled() {
         assert_eq!(
-            endpoint_of("http://v100:8080/v1/models").unwrap(),
-            ("v100".to_string(), 8080)
+            endpoint_of("http://llm-host:8080/v1/models").unwrap(),
+            ("llm-host".to_string(), 8080)
         );
         // The scheme's default port, since that is what gets connected to.
         assert_eq!(
@@ -888,8 +888,8 @@ mod tests {
             ("api.openai.com".to_string(), 443)
         );
         assert_eq!(
-            endpoint_of("http://v100/v1").unwrap(),
-            ("v100".to_string(), 80)
+            endpoint_of("http://llm-host/v1").unwrap(),
+            ("llm-host".to_string(), 80)
         );
         assert!(endpoint_of("not a url").is_err());
     }
@@ -958,7 +958,7 @@ mod tests {
         let _guard = pin(vec![ip("203.0.113.9"), ip("127.0.0.1")]);
 
         let response = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             headers: HashMap::new(),
             body: None,
@@ -975,13 +975,13 @@ mod tests {
         // The hostname the user configured is what the server sees, not an IP.
         // hyper writes header names lower-case on the wire.
         assert!(
-            head.to_lowercase().contains(&format!("host: v100:{port}")),
+            head.to_lowercase().contains(&format!("host: llm-host:{port}")),
             "the Host header was rewritten: {head}"
         );
         // Path and query survive untouched.
         assert!(head.starts_with("GET /v1/models HTTP/1.1"), "{head}");
 
-        let diag = resolver::shared().peek("v100", port).unwrap();
+        let diag = resolver::shared().peek("llm-host", port).unwrap();
         assert!(diag.suppressed_public);
         assert_eq!(diag.selected().map(|a| a.ip()), Some(ip("127.0.0.1")));
         assert_eq!(
@@ -998,7 +998,7 @@ mod tests {
         let _guard = pin(vec![ip("::1"), ip("127.0.0.1")]);
 
         let response = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             headers: HashMap::new(),
             body: None,
@@ -1013,7 +1013,7 @@ mod tests {
             .recv()
             .unwrap()
             .to_lowercase()
-            .contains("host: v100"));
+            .contains("host: llm-host"));
     }
 
     #[tokio::test]
@@ -1027,7 +1027,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         let response = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             headers: HashMap::from([("Authorization".into(), "Bearer secret-key".into())]),
             body: None,
@@ -1040,7 +1040,7 @@ mod tests {
         assert_eq!(response.status, 403);
         assert_eq!(response.status_text, "Forbidden");
         // And the diagnostics for that endpoint still carry no credential.
-        let text = describe("v100", port).unwrap();
+        let text = describe("llm-host", port).unwrap();
         assert!(!text.contains("secret-key"), "{text}");
     }
 
@@ -1050,7 +1050,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/chat/completions?stream=false"),
+            url: format!("http://llm-host:{port}/v1/chat/completions?stream=false"),
             method: "POST".into(),
             headers: HashMap::from([("Content-Type".into(), "application/json".into())]),
             body: Some("{\"model\":\"qwen3.8-27b\"}".into()),
@@ -1083,7 +1083,7 @@ mod tests {
         let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
         send_stream(
             ProviderRequest {
-                url: format!("http://v100:{port}/v1/chat/completions"),
+                url: format!("http://llm-host:{port}/v1/chat/completions"),
                 method: "POST".into(),
                 headers: HashMap::new(),
                 body: Some("{}".into()),
@@ -1134,7 +1134,7 @@ mod tests {
         let _guard = pin(vec![ip("::1")]);
         // Nothing is listening on that port, so the connection is refused.
         let err = send(ProviderRequest {
-            url: "http://v100:1/v1/models".into(),
+            url: "http://llm-host:1/v1/models".into(),
             method: "GET".into(),
             headers: HashMap::new(),
             body: None,
@@ -1147,7 +1147,7 @@ mod tests {
         assert!(err.contains("could not connect"), "{err}");
         // The message says what was tried, which is the point of the diagnostics.
         assert!(err.contains("::1"), "{err}");
-        assert!(resolver::shared().peek("v100", 1).is_none());
+        assert!(resolver::shared().peek("llm-host", 1).is_none());
     }
 
     #[test]
@@ -1219,7 +1219,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         let err = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             headers: with_credentials(),
             timeout_secs: Some(10),
@@ -1257,7 +1257,7 @@ mod tests {
 
         let err = send_stream(
             ProviderRequest {
-                url: format!("http://v100:{port}/v1/chat/completions"),
+                url: format!("http://llm-host:{port}/v1/chat/completions"),
                 method: "POST".into(),
                 headers: with_credentials(),
                 body: Some("{}".into()),
@@ -1283,7 +1283,7 @@ mod tests {
         // Rebind on the same port with the two answers in order.
         let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
         let responses = vec![
-            redirect_to(&format!("http://v100:{port}/v1/models-moved")),
+            redirect_to(&format!("http://llm-host:{port}/v1/models-moved")),
             OK_JSON.to_string(),
         ];
         let (tx, requests) = mpsc::channel();
@@ -1301,7 +1301,7 @@ mod tests {
         let _guard = pin(vec![ip("127.0.0.1")]);
 
         let response = send(ProviderRequest {
-            url: format!("http://v100:{port}/v1/models"),
+            url: format!("http://llm-host:{port}/v1/models"),
             method: "GET".into(),
             headers: with_credentials(),
             timeout_secs: Some(10),
@@ -1331,7 +1331,7 @@ mod tests {
         let (port, _requests) = serve_each(vec![reply.clone(), reply]);
         let _guard = pin(vec![ip("127.0.0.1")]);
         let request = || ProviderRequest {
-            url: format!("http://v100:{port}/v1/chat/completions"),
+            url: format!("http://llm-host:{port}/v1/chat/completions"),
             method: "POST".into(),
             body: Some("{}".into()),
             timeout_secs: Some(10),

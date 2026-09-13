@@ -96,7 +96,7 @@ describe('normalizeLanguageModelUsage', () => {
   })
 
   it('reads llama.cpp usage, including a measured zero on a cold cache', () => {
-    // Captured from llama-server (v100:8080): first turn, nothing cached yet.
+    // Captured from llama-server (llm-host:8080): first turn, nothing cached yet.
     const cold = normalizeLanguageModelUsage(
       sdkUsage({
         inputTokens: 5974,

@@ -2,7 +2,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import dns from 'node:dns/promises'
 
-const BASE = process.env.JAN_TEST_PROVIDER_BASE_URL ?? 'http://v100:8555/v1'
+const BASE = process.env.JAN_TEST_PROVIDER_BASE_URL ?? 'http://llm-host:8555/v1'
 
 // Generated per run, never printed and never written anywhere.
 const key = process.env.JAN_TEST_PROVIDER_API_KEY ?? randomBytes(32).toString('hex')

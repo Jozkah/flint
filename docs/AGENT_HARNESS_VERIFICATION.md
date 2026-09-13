@@ -143,7 +143,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | 9 unit tests | `plugins/tauri-plugin-agent-tools/src/activity.rs` | one call stays one item; concurrent calls keep request order; refusal/cancellation/failure stay distinguishable; only a success is hideable; restart restores the timeline; a killed run's call becomes stale; cross-session reads refused; a truncated tail costs one event; no credential reaches the file |
 | 11 unit tests | `web-app/src/lib/__tests__/toolActivity.test.ts` | classification and resource extraction; success, failure, cancellation and throw paths; a tool never waits on its audit line; a failed write never fails the tool |
 | 7 unit tests | `web-app/src/lib/__tests__/coworkActivityTimeline.test.ts` | reconciliation: settles a stuck call, keeps unknown calls, restores lost ones in request order, marks refusals as errors |
-| Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` (succeeds) and `read` of a missing file (fails) are dispatched, recorded with the right terminal phases, rendered as their own items and survive a reload; with "Hide completed tool activity" on, the notice appears, the failure stays visible and the success is hidden; no provider key in `tool-activity`, `prompts`, `payload-usage` or `permissions` audit files. **Passed on Windows 2026-09-10** against the smoke mock provider; the real-model lane (`v100:8555`) was unreachable from this host |
+| Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` (succeeds) and `read` of a missing file (fails) are dispatched, recorded with the right terminal phases, rendered as their own items and survive a reload; with "Hide completed tool activity" on, the notice appears, the failure stays visible and the success is hidden; no provider key in `tool-activity`, `prompts`, `payload-usage` or `permissions` audit files. **Passed on Windows 2026-09-10** against the smoke mock provider; the real-model lane (`llm-host:8555`) was unreachable from this host |
 | 2 unit tests | `web-app/src/lib/__tests__/coworkRunner.test.ts` (`an invalid tool call`) | a `tool-input-error` is kept as a failed call, never dispatched, answered to the model, and recorded requested → refused |
 | 1 unit test | `web-app/src/lib/__tests__/agentTools.test.ts` | the tool-schema cache never serves one folder's (or one readiness state's) tool list to another |
 
@@ -476,7 +476,7 @@ Not exercised in the real app: a window that actually overflowed, so the
 
 | Evidence | Where | Covers |
 | --- | --- | --- |
-| Real provider | `jan cli agent run` against vLLM `http://v100:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER` with `house-style` only in `<data>/agent-workspace/skills`, project with no skills; then `jan cli agent prompts <session> --show last` | the system prompt lists `house-style`; the model calls `skill_read({"name":"house-style"})` and gets the body; the reply ends with the marker the skill asks for |
+| Real provider | `jan cli agent run` against vLLM `http://llm-host:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER` with `house-style` only in `<data>/agent-workspace/skills`, project with no skills; then `jan cli agent prompts <session> --show last` | the system prompt lists `house-style`; the model calls `skill_read({"name":"house-style"})` and gets the body; the reply ends with the marker the skill asks for |
 | Rust tests | `core/agent/skills.rs::user_skills_apply_in_every_project_and_a_project_skill_shadows_them`, `tools/handlers.rs::skill_tools_reach_user_skills_and_the_project_shadows_them`, `core/agent/loop.rs::the_loop_reads_a_user_skill_from_any_project` | catalog in two unrelated projects, `read_raw`, project shadowing, the enabled whitelist, nothing without a user store; `skill_list` / `skill_read` through the plugin handlers; the loop's own dispatch with the store root |
 
 First attempts, retries off: the first real run failed because only the
@@ -509,7 +509,7 @@ the canonical log (AH-032), so the log is not yet the sole source for
 headless runs and subagents never wait on a handoff -- so its recording is
 proven by the loop test above and the TUI's own tests rather than by a WebView
 scenario. The real-provider lanes were unavailable again for this batch
-(`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
+(`llm-host` does not resolve; see `/c/tmp/jan-p4-evidence/llm-host-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
 ## What a run started, as a tree (AH-173)
@@ -621,7 +621,7 @@ Phase 5 added the parsing boundary and the desktop evidence:
 
 ## A resumed headless run keeps its tool calls (AH-026/AH-008)
 
-Found by the real-AI exercise on `v100:8555`, not by reading the code: on a
+Found by the real-AI exercise on `llm-host:8555`, not by reading the code: on a
 resumed session the model twice *described* dispatching a child agent and
 running a background job, reported their results in detail, and had called no
 tool at all -- the execution record for those turns holds a single request and
@@ -635,7 +635,7 @@ resumed turn sees the calls it made and the results it got.
 
 | Evidence | Where | Covers |
 | --- | --- | --- |
-| Real provider, before and after | `jan cli agent run` against `claude-sonnet-4-5` on `v100:8555`, one turn that runs `ls`, then a resumed turn | before: the resumed request's roles are `system, user, assistant, user, ...` with no `tool_calls` anywhere; after: `system, user, assistant, tool, assistant, user` with the call and its result intact |
+| Real provider, before and after | `jan cli agent run` against `claude-sonnet-4-5` on `llm-host:8555`, one turn that runs `ls`, then a resumed turn | before: the resumed request's roles are `system, user, assistant, user, ...` with no `tool_calls` anywhere; after: `system, user, assistant, tool, assistant, user` with the call and its result intact |
 | Rust test | `cli/mod.rs::a_resumed_turn_still_shows_the_model_the_tools_it_ran` | a conversation containing a tool call and its result survives save and resume with its roles, the call's name and the result's `tool_call_id` and content |
 
 ## Typed failures (AH-009)
@@ -688,7 +688,7 @@ app's startup and tool refresh, not the probe.
 
 | Evidence | Where | Covers |
 | --- | --- | --- |
-| Real provider | `jan cli agent run` against vLLM `http://v100:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER`, then `jan cli agent prompts <session>` and `--show last` | the run recorded two requests and the list shows both (id, time, kind, model, message count, hash); `--show last` printed the 4-message request -- system prompt, the user task, the assistant's `ls` call, the tool result -- and the 23 tools offered; every message text and the hash match `prompts.jsonl`; a read of that snapshot id under another session is refused |
+| Real provider | `jan cli agent run` against vLLM `http://llm-host:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER`, then `jan cli agent prompts <session>` and `--show last` | the run recorded two requests and the list shows both (id, time, kind, model, message count, hash); `--show last` printed the 4-message request -- system prompt, the user task, the assistant's `ls` call, the tool result -- and the 23 tools offered; every message text and the hash match `prompts.jsonl`; a read of that snapshot id under another session is refused |
 | Rust tests | `snapshot.rs::the_text_view_is_what_the_model_saw`, `the_text_view_shows_redactions_not_secrets`, `a_snapshot_without_a_payload_says_why`; `bin/jan.rs::agent_prompts_lists_and_prints_a_sessions_requests_only`, `prompts_is_a_cli_agent_command` | order and roles, no truncation of a 5,000-character message, non-text parts named, tool calls with arguments, tools offered; a credential is redacted and counted; a payload-less snapshot says why; list, last, by id, another session's id refused, unknown session and blank session refused |
 
 A request carrying tool results back is now labelled `Continuation` rather
@@ -1401,7 +1401,7 @@ First failures, kept, and what they were:
 | `session-isolation` alone | the attached session never appeared | harness ordering | it relies on `project-attachment` in the same process; passes run after it |
 | `agent-roles` (passed, but its record showed it) | a child's refused calls written with no session, two children's `call_0` merged | integration defect | `860bfc9e0` |
 
-**Real provider.** llama-server at `v100:8080` (`qwen3.8-27b`), through the
+**Real provider.** llama-server at `llm-host:8080` (`qwen3.8-27b`), through the
 fixture's relay: `token-usage-cache` (Chat) showed input 2,816, cached 2,793,
 output 26 against the provider's 2816 / 2793 / 26; `token-usage-cache-cowork`
 showed 6,379 / 6,342 / 22 against 6379 / 6342 / 22; after a restart with no
@@ -1416,7 +1416,7 @@ the harness carries a long, tool-heavy, multi-session piece of work without
 losing the record of it — and that when something is wrong, the record says
 so rather than the model's summary of itself.
 
-**The provider.** `http://v100:8555/v1`, model id `claude-sonnet-4-5`,
+**The provider.** `http://llm-host:8555/v1`, model id `claude-sonnet-4-5`,
 configured in an isolated `JAN_HOME` (`/c/tmp/jan-p5-pb-home`) so nothing
 touched the developer's own Jan profile. No DNS, Tailscale, firewall,
 routing or remote service was changed; the endpoint was used as it already
@@ -1442,7 +1442,7 @@ proposed patches was applied by hand.
 **Cache status, as reported and not inferred.** `8555` returns
 `prompt_tokens_details: null` on every completion, so every run of this
 exercise is recorded as **Not reported** — the harness does not guess a hit
-from a repeated prompt or a fast reply. The contrast case is `v100:8080`,
+from a repeated prompt or a fast reply. The contrast case is `llm-host:8080`,
 which does report the field: 2,784 cached of 2,808 prompt tokens, recorded
 as **Cache reused**. An explicit `cached_tokens: 0` is recorded as **No
 cached input**. The three cases are distinguishable in the record because
@@ -1824,12 +1824,12 @@ Run on the committed tip `460bb914e` (branch `feat/integrated-phase-5`).
 | `cargo clippy` (desktop and cli, all targets) | 0 errors |
 | `cargo build --features cowork-smoke --example cowork-smoke` | builds, embedding this commit's web bundle |
 | Windows real-app matrix, retries off, one process per scenario or restart half | **69 of 69 processes passed, 0 failures** |
-| Real provider `v100:8080` (cache reported) | `Cache reused. Input 6,374, Cached 6,337, Uncached 37, Output 23` -- matching the provider's own `prompt_tokens_details.cached_tokens` |
-| Real provider `v100:8555` (cache not reported) | `Not reported. Input 6,555, Cached not reported, Uncached not reported, Output 2` |
+| Real provider `llm-host:8080` (cache reported) | `Cache reused. Input 6,374, Cached 6,337, Uncached 37, Output 23` -- matching the provider's own `prompt_tokens_details.cached_tokens` |
+| Real provider `llm-host:8555` (cache not reported) | `Not reported. Input 6,555, Cached not reported, Uncached not reported, Output 2` |
 | PocketBoard, the project a real model built through Jan | `Ran 106 tests ... OK` |
 
 The matrix run before this one, on `67e1c5a4a`, had one failure: the
-`token-usage-cache` unit could not reach `v100` at all ("Couldn't reach the
+`token-usage-cache` unit could not reach `llm-host` at all ("Couldn't reach the
 provider -- the connection failed"), and passed on re-run in 36 s. Both logs
 are kept. That lane depends on a machine outside this repository being up, and
 this is the shape its failures take.
@@ -1953,18 +1953,18 @@ before, and its calls meet the gate when they are made.
 
 ### Spend (AH-175)
 
-Seven tests plus a real exchange with `v100:8555`. The same run, reported
+Seven tests plus a real exchange with `llm-host:8555`. The same run, reported
 twice -- before and after a price was declared:
 
 ```
 $ jan cli agent spend
-  v100/pxa-27b       1 dispatch(es)  in   6909  out   2  not priced
+  llm-host/pxa-27b       1 dispatch(es)  in   6909  out   2  not priced
   $0.0000 across the models that have a declared price
-  not in that figure, because nobody has said what they cost: v100/pxa-27b
+  not in that figure, because nobody has said what they cost: llm-host/pxa-27b
 
 $ printf '[models."pxa-27b"]\ninput = 3.0\noutput = 15.0\n' > prices.toml
 $ jan cli agent spend
-  v100/pxa-27b       1 dispatch(es)  in   6909  out   2  $0.0208
+  llm-host/pxa-27b       1 dispatch(es)  in   6909  out   2  $0.0208
   $0.0208 across the models that have a declared price
 ```
 
@@ -2646,7 +2646,7 @@ Real CLI forced-kill exercise (`scripts/inflight_kill.py`): the mock provider an
 
 ## AH-071: semantic code search (2026-09-13)
 
-- Real providers first: POST /v1/embeddings to http://v100:8080 (llama.cpp, qwen3.8-27b) answers HTTP 501 "This server does not support embeddings. Start it with `--embeddings`"; to http://v100:8555 (vLLM, pxa-27b) HTTP 404. Neither real provider in this environment serves an embedding model, and enabling one would mean reconfiguring a server or downloading a model, which this phase must not do.
+- Real providers first: POST /v1/embeddings to http://llm-host:8080 (llama.cpp, qwen3.8-27b) answers HTTP 501 "This server does not support embeddings. Start it with `--embeddings`"; to http://llm-host:8555 (vLLM, pxa-27b) HTTP 404. Neither real provider in this environment serves an embedding model, and enabling one would mean reconfiguring a server or downloading a model, which this phase must not do.
 - Failing evidence (`semantic-prefail.out`, jan.exe from cc2937584): `No MCP server registered for tool 'semantic_search'`; nothing searched under any name.
 - Unit and integration (`core::agent::semantic`, 7 tests): only a model the user named is used (not configured is `tool_unavailable` and names grep/symbol_find as text search; bad names, unknown providers, providers without a base URL and non-http URLs refused); overlapping ranges and secret files never read; code found by meaning with no shared words, an unchanged project not embedded again, one changed file re-embedded alone, another model starting afresh; a credential inside a file scrubbed before sending; vectors that cannot be compared or a cancelled build leave the index byte-identical with no temporary file; R17: an unsupported provider receives only the probe; a provider answering 501 makes the search unavailable.
 - R17 (found by the real 8080 lane): the first exercise attempt got `transport` instead of the server's 501 because a 32-range batch of project code was the first request and the refusal raced its upload; reproduced on the pre-fix build and fixed with the probe (see ledger).

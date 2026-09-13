@@ -1,7 +1,7 @@
 /**
  * Classifying provider endpoints, and explaining why one of them failed.
  *
- * Motivated by a real report: four providers pointed at `http://v100:8080/v1`
+ * Motivated by a real report: four providers pointed at `http://llm-host:8080/v1`
  * and the app said only "Forbidden". The endpoint was in fact answered by
  * Cloudflare, because the bare hostname resolved through a search domain to a
  * public record instead of the machine on the LAN, so requests meant for a
@@ -30,7 +30,7 @@ const PRIVATE_SUFFIXES = ['.local', '.internal', '.lan', '.home.arpa', '.ts.net'
  * Where an endpoint lives: on this machine, on this network, or on the
  * internet.
  *
- * A bare hostname with no dots (`v100`) is *unknown*, not private: whether it
+ * A bare hostname with no dots (`llm-host`) is *unknown*, not private: whether it
  * resolves to a machine on the LAN or to a public record depends on the
  * resolver's search domains, and that is exactly the ambiguity that produced
  * the report above.

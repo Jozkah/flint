@@ -1,11 +1,11 @@
-# Real-provider lane (v100:8555) — batch 3
+# Real-provider lane (llm-host:8555) — batch 3
 
 Not an upstream item: the end-to-end gate the batch had to pass, and what it
 found. Driven through the real app by `src-tauri/examples/cowork_smoke.rs` in
 lane mode:
 
 ```bash
-COWORK_SMOKE_REAL_BASE_URL=http://v100:8555/v1 COWORK_SMOKE_REAL_MODEL=pxa-27b \
+COWORK_SMOKE_REAL_BASE_URL=http://llm-host:8555/v1 COWORK_SMOKE_REAL_MODEL=pxa-27b \
   target/debug/examples/cowork-smoke.exe
 ```
 
@@ -13,7 +13,7 @@ COWORK_SMOKE_REAL_BASE_URL=http://v100:8555/v1 COWORK_SMOKE_REAL_MODEL=pxa-27b \
 
 - Seeds an isolated profile (own data folder, own WebView2 profile, provider
   keys in the data folder's encrypted file, never the OS keyring) with a
-  custom provider `v100-lane` at the real base URL, a placeholder model, and a
+  custom provider `llm-host-lane` at the real base URL, a placeholder model, and a
   key made in-process from 32 random bytes. The key is never printed, never
   in process arguments or the environment, and lives only in that profile.
 - Resolves names for real through the app's transport and records every name
@@ -32,12 +32,12 @@ COWORK_SMOKE_REAL_BASE_URL=http://v100:8555/v1 COWORK_SMOKE_REAL_MODEL=pxa-27b \
      the context window reported;
   6. containment — every file of the profile scanned for the key (allowed only
      in the provider store), every connection the app logged and every name it
-     resolved checked: only `v100:8555` and loopback, never port 8080.
+     resolved checked: only `llm-host:8555` and loopback, never port 8080.
 
 ## Defects it found
 
 - **Local grouping never settled** (`c6eac57`). The sidebar asked the
-  resolver about `v100` once, before anything had connected, cached the
+  resolver about `llm-host` once, before anything had connected, cached the
   `null`, and never asked again; the endpoint sat in neither Local nor Remote
   for the session. It now re-reads the resolver's cache every 3 s while
   unsettled (no network request).
@@ -63,5 +63,5 @@ COWORK_SMOKE_REAL_BASE_URL=http://v100:8555/v1 COWORK_SMOKE_REAL_MODEL=pxa-27b \
 | endpoint under Local once resolved | pass (after `c6eac57`) |
 | memory in the request and in the answer | pass |
 | key containment | pass: no plaintext copy anywhere in the profile |
-| peers | pass: connections `v100:8555` only; resolved `v100:8555` only; nothing on 8080 |
+| peers | pass: connections `llm-host:8555` only; resolved `llm-host:8555` only; nothing on 8080 |
 | Cowork model -> `ls` -> model, provider usage recorded | pass (context-window row present; its value readout was tightened afterwards) |

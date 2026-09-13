@@ -8098,7 +8098,7 @@ mod tests {
     #[test]
     fn only_an_unreached_provider_is_worth_failing_over() {
         for unreachable in [
-            "Upstream request failed: error sending request for url (http://v100:8555/v1/chat/completions)",
+            "Upstream request failed: error sending request for url (http://llm-host:8555/v1/chat/completions)",
             "connection refused",
             "dns error: failed to lookup address information",
             "upstream returned 503 Service Unavailable",

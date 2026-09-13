@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from 'node:f
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-const BASE = process.env.JAN_TEST_PROVIDER_BASE_URL ?? 'http://v100:8555/v1'
+const BASE = process.env.JAN_TEST_PROVIDER_BASE_URL ?? 'http://llm-host:8555/v1'
 const key = process.env.JAN_TEST_PROVIDER_API_KEY ?? randomBytes(32).toString('hex')
 const fingerprint = createHash('sha256').update(key).digest('hex').slice(0, 12)
 const PROBE = process.env.MEMORY_PROBE

@@ -27,7 +27,7 @@ describe('endpointScope', () => {
       // Tailscale hands out 100.64.0.0/10; this is the address the reporter's
       // own server actually answers on.
       'http://100.118.119.72:8080/v1',
-      'http://v100.tail76b52a.ts.net:8080/v1',
+      'http://llm-host.tail76b52a.ts.net:8080/v1',
       'http://box.local:8080/v1',
     ]) {
       expect(isLocalEndpoint(url)).toBe(true)
@@ -41,10 +41,10 @@ describe('endpointScope', () => {
   })
 
   it('refuses to guess for a bare hostname', () => {
-    // `v100` resolves to the LAN box or to a public record depending on the
+    // `llm-host` resolves to the LAN box or to a public record depending on the
     // resolver's search domains. Claiming either would be a lie.
-    expect(endpointScope('http://v100:8080/v1')).toBe('unknown')
-    expect(isLocalEndpoint('http://v100:8080/v1')).toBe(false)
+    expect(endpointScope('http://llm-host:8080/v1')).toBe('unknown')
+    expect(isLocalEndpoint('http://llm-host:8080/v1')).toBe(false)
   })
 
   it('does not throw on rubbish', () => {
@@ -57,7 +57,7 @@ describe('endpointScope', () => {
 describe('describeEndpointFailure', () => {
   const base = {
     provider: 'Qwen 3.8 (8080)',
-    url: 'http://v100:8080/v1/models',
+    url: 'http://llm-host:8080/v1/models',
   }
 
   it('names the proxy when a local-looking endpoint is answered from the internet', () => {
@@ -70,7 +70,7 @@ describe('describeEndpointFailure', () => {
       server: 'cloudflare',
     })
     expect(message).toContain('Qwen 3.8 (8080)')
-    expect(message).toContain('http://v100:8080/v1/models')
+    expect(message).toContain('http://llm-host:8080/v1/models')
     expect(message).toContain('403')
     expect(message).toContain('cloudflare')
     expect(message).toMatch(/resolving to a public address/i)
@@ -162,7 +162,7 @@ describe('parseModelList', () => {
 describe('when nothing answered at all', () => {
   const failure = {
     provider: '123',
-    url: 'http://v100:8555/v1/models',
+    url: 'http://llm-host:8555/v1/models',
     method: 'GET',
   }
 
@@ -170,19 +170,19 @@ describe('when nothing answered at all', () => {
     const message = describeEndpointFailure({
       ...failure,
       cause: new Error(
-        'v100:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1): error sending request for url (http://v100:8555/v1/models)'
+        'llm-host:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1): error sending request for url (http://llm-host:8555/v1/models)'
       ),
     })
     expect(message).toContain('203.0.113.9 [public, suppressed]')
     expect(message).toContain('selected 127.0.0.1')
-    expect(message).toContain('listening on http://v100:8555')
+    expect(message).toContain('listening on http://llm-host:8555')
   })
 
   it('does not say the same URL three times', () => {
     const message = describeEndpointFailure({
       ...failure,
       cause: new Error(
-        'v100:8555 could not connect: error sending request for url (http://v100:8555/v1/models)'
+        'llm-host:8555 could not connect: error sending request for url (http://llm-host:8555/v1/models)'
       ),
     })
     expect(message.match(/v1\/models/g) ?? []).toHaveLength(1)
@@ -190,7 +190,7 @@ describe('when nothing answered at all', () => {
 
   it('still says something when the transport said nothing', () => {
     const message = describeEndpointFailure({ ...failure, cause: undefined })
-    expect(message).toContain('could not reach GET http://v100:8555/v1/models')
+    expect(message).toContain('could not reach GET http://llm-host:8555/v1/models')
     expect(message).not.toContain('—  .')
   })
 })

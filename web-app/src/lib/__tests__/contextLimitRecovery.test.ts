@@ -22,7 +22,7 @@ import {
 
 const local: EndpointBinding = {
   provider: 'llamacpp',
-  baseUrl: 'http://v100:8080/v1',
+  baseUrl: 'http://llm-host:8080/v1',
   model: 'qwen3-8b',
 }
 
@@ -194,7 +194,7 @@ describe('what a learned limit belongs to', () => {
 
   it('keys on all three parts of the binding', () => {
     expect(bindingKey(local)).toContain('llamacpp')
-    expect(bindingKey(local)).toContain('http://v100:8080/v1')
+    expect(bindingKey(local)).toContain('http://llm-host:8080/v1')
     expect(bindingKey(local)).toContain('qwen3-8b')
     expect(bindingKey({ ...local, model: 'other' })).not.toBe(bindingKey(local))
   })

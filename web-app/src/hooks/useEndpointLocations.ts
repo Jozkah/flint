@@ -15,7 +15,7 @@ import {
  * What the canonical resolver has decided about each provider endpoint.
  *
  * Only single-label hostnames need this: everything else is settled by the URL
- * alone. `v100` is the case that does -- it is local exactly when the address
+ * alone. `llm-host` is the case that does -- it is local exactly when the address
  * the transport selected for it is local -- so the answer has to come from the
  * transport rather than from a guess about the name.
  */
@@ -46,7 +46,7 @@ export const useEndpointLocations = create<State>()((set, get) => ({
     if (!key || !endpoint) return
     // Only a real answer is final. `null` means the resolver has not seen the
     // endpoint yet -- nothing has connected to it -- and caching that as the
-    // answer kept a tailnet host like `v100` "checking", out of both LOCAL
+    // answer kept a tailnet host like `llm-host` "checking", out of both LOCAL
     // and REMOTE, for the rest of the session.
     if (get().pending[key] || get().byEndpoint[key]) return
     set((s) => ({ pending: { ...s.pending, [key]: true } }))

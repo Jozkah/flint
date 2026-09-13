@@ -46,4 +46,4 @@ yarn workspace @janhq/web-app typecheck                     exit 0
 ```
 
 A model-in-the-loop replay (as the reporter did with Qwen3.5-9B) has not been
-run here; the v100 lane exercises Cowork against a real model.
+run here; the llm-host lane exercises Cowork against a real model.

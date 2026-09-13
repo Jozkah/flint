@@ -7,7 +7,7 @@ import type { EndpointDiagnostics } from '@/lib/providerFetch'
  * The old rule was "does this provider ship an inference engine", which is a
  * question about how the provider was installed, not about where the work
  * happens. A workstation on the LAN, a home server, or a machine on the
- * tailnet reached at `http://v100:8080/v1` was therefore filed under REMOTE --
+ * tailnet reached at `http://llm-host:8080/v1` was therefore filed under REMOTE --
  * next to the hosted APIs -- which is exactly backwards for the property
  * anybody is grouping by: whether the prompt leaves the network.
  *
@@ -26,7 +26,7 @@ export type LocationInput = {
   /**
    * What the canonical resolver decided for this endpoint, when it has run.
    *
-   * This is what settles a single-label name: `v100` is local exactly when the
+   * This is what settles a single-label name: `llm-host` is local exactly when the
    * address actually selected for it is a local one.
    */
   diagnostics?: EndpointDiagnostics | null
@@ -52,7 +52,7 @@ export function classifyModelLocation(input: LocationInput): ModelLocation {
   if (scope === 'public') return 'remote'
 
   // `unknown` is the resolver-dependent case -- a single-label name like
-  // `v100`. The resolver's own answer decides it.
+  // `llm-host`. The resolver's own answer decides it.
   const diagnostics = input.diagnostics
   if (!diagnostics) return 'checking'
   // Mixed public and private answers are not ambiguous: the transport picks

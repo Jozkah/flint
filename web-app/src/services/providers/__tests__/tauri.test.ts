@@ -329,7 +329,7 @@ describe('TauriProvidersService', () => {
       // a different mock would be testing something else.
       vi.mocked(fetchTauri).mockRejectedValue(
         new Error(
-          'v100:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1)'
+          'llm-host:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1)'
         )
       )
 
