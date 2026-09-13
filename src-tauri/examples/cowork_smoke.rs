@@ -1314,6 +1314,14 @@ const LANE_SCENARIOS: &[Scenario] = &[
         run: lane_cowork_tool_loop,
     },
     Scenario {
+        name: "branchcraft-desktop",
+        run: scenario_branchcraft_desktop,
+    },
+    Scenario {
+        name: "branchcraft-desktop-restart",
+        run: scenario_branchcraft_desktop_restart,
+    },
+    Scenario {
         name: "lane-key-and-peers-are-contained",
         run: lane_contained,
     },
@@ -15916,6 +15924,283 @@ fn enable_tools(ctx: &Ctx, model: &str) -> ScenarioResult {
     let _ = ctx.eval(
         "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;",
     );
+    Ok(())
+}
+
+const BRANCHCRAFT_HANDOFF: &str = "branchcraft-desktop";
+
+/// The BranchCraft repository the real-AI exercise builds (COWORK_SMOKE_BRANCHCRAFT).
+fn branchcraft_folder() -> Result<PathBuf, Failure> {
+    let raw = std::env::var("COWORK_SMOKE_BRANCHCRAFT")
+        .map_err(|_| Failure("COWORK_SMOKE_BRANCHCRAFT is not set".into()))?;
+    let path = PathBuf::from(raw);
+    ensure!(path.join(".git").exists(), "{} is not the BranchCraft repository", path.display());
+    Ok(path)
+}
+
+/// Wait until the session in view has no running turn, answering nothing on
+/// the model's behalf. Returns how long it took.
+fn wait_turn_done(ctx: &Ctx, what: &str, limit: Duration) -> Result<Duration, Failure> {
+    let started = Instant::now();
+    loop {
+        let running = ctx
+            .eval_bool("return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length > 0;")
+            .unwrap_or(true);
+        let idle = ctx
+            .eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")
+            .unwrap_or(false);
+        if !running && idle {
+            return Ok(started.elapsed());
+        }
+        ensure!(started.elapsed() < limit, "{what} did not finish within {limit:?}: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(1000));
+    }
+}
+
+fn event_kinds(events: &[Value]) -> std::collections::BTreeMap<String, usize> {
+    let mut kinds = std::collections::BTreeMap::new();
+    for e in events {
+        *kinds.entry(e["kind"].as_str().unwrap_or("").to_string()).or_insert(0) += 1;
+    }
+    kinds
+}
+
+/// BranchCraft, desktop half one (real 8555 model): steer an active turn,
+/// read it back through Timeline, context diff and the prompt snapshot, replay
+/// the run from its record, undo and redo the model's change, then leave
+/// background work running as this process -- the app -- ends.
+fn scenario_branchcraft_desktop(ctx: &Ctx) -> ScenarioResult {
+    let folder = branchcraft_folder()?;
+    let model = lane_model();
+    ensure!(!model.is_empty(), "no real-provider lane is configured");
+    println!("      model {model}, folder {}", folder.display());
+    // The model comes from the server's own list, discovered through the
+    // provider page as a user would, not typed in.
+    lane_provider_page(ctx)?;
+    if !ctx.eval_bool(&format!("return !!document.querySelector('h1[title={model:?}]');"))? {
+        ctx.eval("document.querySelector('button[title=\"Refresh\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the server's models to be discovered",
+            &format!("return !!document.querySelector('h1[title={model:?}]');"),
+            Duration::from_secs(90),
+        )?;
+    }
+    enable_tools(ctx, &model)?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    select_model(ctx, &model)?;
+    attach_folder(ctx, &folder)?;
+    choose_mode(ctx, "Autonomous")?;
+    let session = current_cowork_session(ctx)?;
+    println!("      session {session}");
+
+    // 1. A real turn, steered while it runs.
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        "The attached folder is the BranchCraft project. Read branchcraft/cli.py from it with the read tool. Then, in your own workspace (not the attached folder), write notes/cli-review.md with exactly three concrete suggestions for improving that CLI, each one line. Then run `echo branchcraft-review-done` with bash and finish with one short sentence.",
+    )?;
+    send_armed(ctx)?;
+    ctx.wait_until(
+        "the turn to be running",
+        "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length > 0;",
+        Duration::from_secs(60),
+    )?;
+    // Steer once the first tool call is under way, so it lands at a boundary
+    // inside this turn rather than before it starts.
+    ctx.wait_until(
+        "the first tool call of the turn",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(300),
+    )?;
+    type_and_enter(ctx, "Steering: make it four suggestions, and the fourth must be about the --help text.")?;
+    let took = wait_turn_done(ctx, "the steered turn", Duration::from_secs(900))?;
+    println!("      steered turn finished in {took:?}");
+    let events = session_events(ctx, &session)?;
+    println!("      event kinds: {:?}", event_kinds(&events));
+    // The desktop runner records steering as a lifecycle of the run it entered.
+    let steering = events
+        .iter()
+        .find(|e| e["kind"] == "lifecycle.succeeded" && e["payload"]["lifecycle"] == "steering")
+        .cloned()
+        .ok_or_else(|| Failure(format!("the steering was not recorded on the run: {:?}", event_kinds(&events))))?;
+    let steered_run = steering["run"].as_str().unwrap_or_default().to_string();
+    println!("      steering recorded on run {steered_run} at seq {}", steering["seq"]);
+    ensure!(
+        events.iter().filter(|e| e["run"] == steered_run.as_str() && e["kind"] == "tool.requested").count() >= 2,
+        "the steering did not land inside a run that went on working"
+    );
+    let review = find_file(Path::new(&std::env::var("JAN_DATA_FOLDER").unwrap_or_default()), "cli-review.md")
+        .ok_or_else(|| Failure("the model did not write notes/cli-review.md in its workspace".into()))?;
+    let text = std::fs::read_to_string(&review).unwrap_or_default();
+    println!("      cli-review.md ({} lines): {:?}", text.lines().count(), text.chars().take(300).collect::<String>());
+    ensure!(text.to_lowercase().contains("help"), "the steered suggestion about --help is not in the file");
+    ensure!(
+        !folder.join("notes").join("cli-review.md").exists(),
+        "the attached folder was written although it is read-only on this platform"
+    );
+
+    // 2. The prompt the model was sent after the steering carries it.
+    let (ok, snaps) = ipc(ctx, "agent_prompt_snapshots", &serde_json::json!({ "session": session }).to_string())?;
+    ensure!(ok, "agent_prompt_snapshots failed: {snaps}");
+    let snaps = snaps.as_array().cloned().unwrap_or_default();
+    println!("      prompt snapshots: {}", snaps.len());
+    ensure!(snaps.len() >= 2, "fewer than two requests were recorded for the turn");
+    ensure!(
+        snaps.iter().any(|s| s.to_string().contains("the fourth must be about the --help text")),
+        "no recorded request carried the steering message"
+    );
+    let hashes: Vec<String> = snaps.iter().filter_map(|s| s["hash"].as_str().map(str::to_string)).collect();
+    println!("      snapshot hashes: {hashes:?}");
+
+    // 3. Timeline: the turn in log order, with the steering on it.
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the turn's rows on the timeline",
+        "return document.querySelectorAll('[data-testid=\"timeline-row\"]').length > 3;",
+        Duration::from_secs(30),
+    )?;
+    let rows = timeline_rows(ctx)?;
+    println!("      timeline rows: {}", rows.len());
+    let seqs: Vec<u64> = rows.iter().filter_map(|r| r.split('|').next()?.parse().ok()).collect();
+    ensure!(seqs.windows(2).all(|w| w[0] < w[1]), "the timeline is not in log order: {seqs:?}");
+    let has = |cat: &str| rows.iter().any(|r| r.split('|').nth(2).is_some_and(|c| c.split(' ').any(|x| x == cat)));
+    ensure!(has("tools") && has("run") && has("messages"), "the timeline lacks tools/run/messages rows: {rows:?}");
+    ensure!(has("steering"), "the steering is not on the timeline: {rows:?}");
+
+    // 4. Context diff between the last two requests.
+    let (previous, reasons, _previews, left) = compare_last_snapshot(ctx)?;
+    println!("      context diff against {previous}: entered {reasons:?}, left {left}");
+    ensure!(!previous.is_empty() && !reasons.is_empty(), "the context diff names nothing");
+
+    // 5. Replay the run from its record: nothing is sent, the record is read back.
+    let run = events
+        .iter()
+        .find(|e| e["kind"] == "message.completed" && e["payload"]["phase"] == "dispatched")
+        .and_then(|e| e["run"].as_str())
+        .map(str::to_string)
+        .ok_or_else(|| Failure("no dispatched run in the session record".into()))?;
+    let (ok, plan) = ipc(ctx, "agent_replay_plan", &serde_json::json!({ "session": session, "run": run }).to_string())?;
+    ensure!(ok, "agent_replay_plan failed: {plan}");
+    let steps = plan["steps"].as_array().map(|a| a.len()).unwrap_or(0);
+    println!("      replay plan: {steps} step(s), tools {}", plan["toolCalls"]);
+    ensure!(steps > 0, "the replay plan has no steps: {plan}");
+    let (ok, recorded) = ipc(ctx, "agent_replay_recorded", &serde_json::json!({ "session": session, "run": run }).to_string())?;
+    ensure!(ok, "agent_replay_recorded failed: {recorded}");
+    let recorded = recorded.as_array().cloned().unwrap_or_default();
+    ensure!(!recorded.is_empty() && recorded.iter().all(|e| e["run"] == run.as_str()), "the replayed record is empty or mixed");
+    println!("      replayed {} recorded events of {run}", recorded.len());
+
+    // 6. Undo, then redo, the model's change.
+    open_turn_undo(ctx)?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"applied\"] [data-testid=\"turn-undo-button\"]').click(); return true;",
+    )?;
+    ctx.wait_until(
+        "the undo",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"undone\"]');",
+        Duration::from_secs(60),
+    )?;
+    ensure!(!review.exists(), "undo left the model's file in place");
+    ctx.eval(
+        "const row = document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"undone\"]');
+         const b = (row && row.querySelector('[data-testid=\"turn-redo\"]')) || document.querySelector('[data-testid=\"turn-redo\"]');
+         if (b) b.click(); return !!b;",
+    )?;
+    ctx.wait_until(
+        "the redo",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"applied\"]');",
+        Duration::from_secs(60),
+    )?;
+    ensure!(std::fs::read_to_string(&review).unwrap_or_default() == text, "redo did not restore the model's file exactly");
+    println!("      undo removed the file, redo restored it byte for byte");
+
+    // 7. Background work that is still running when the app goes away.
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        "Use the bash tool with background set to true to run exactly this command, then report the job id it returns and stop: powershell -NoProfile -Command Start-Sleep -Seconds 300",
+    )?;
+    send_armed(ctx)?;
+    let _ = wait_turn_done(ctx, "the background-job turn", Duration::from_secs(600))?;
+    let (ok, jobs) = ipc(ctx, "agent_background_jobs", &serde_json::json!({ "session": session }).to_string())?;
+    ensure!(ok, "agent_background_jobs failed: {jobs}");
+    let jobs = jobs.as_array().cloned().unwrap_or_default();
+    println!("      background jobs before closing: {}", serde_json::to_string(&jobs).unwrap_or_default());
+    let running = jobs
+        .iter()
+        .find(|j| j["state"] == "running")
+        .ok_or_else(|| Failure(format!("the model left no running background job: {jobs:?}")))?;
+    write_handoff(
+        ctx,
+        BRANCHCRAFT_HANDOFF,
+        &serde_json::json!({
+            "session": session,
+            "job": running["id"],
+            "review": review.to_string_lossy(),
+            "reviewText": text,
+            "rows": rows.len(),
+            "run": run,
+        }),
+    )
+}
+
+/// BranchCraft, desktop half two: a new app process on the same profile. The
+/// session, its Timeline, the redone change and the background job the earlier
+/// process left are all accounted for.
+fn scenario_branchcraft_desktop_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, BRANCHCRAFT_HANDOFF, "branchcraft-desktop")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    let job = handoff["job"].as_str().unwrap_or_default().to_string();
+    open_cowork_session(ctx, &session)?;
+    println!("      reopened session {session}");
+
+    let (ok, jobs) = ipc(ctx, "agent_background_jobs", &serde_json::json!({ "session": session }).to_string())?;
+    ensure!(ok, "agent_background_jobs failed after the restart: {jobs}");
+    let jobs = jobs.as_array().cloned().unwrap_or_default();
+    println!("      background jobs after restart: {}", serde_json::to_string(&jobs).unwrap_or_default());
+    let record = jobs
+        .iter()
+        .find(|j| j["id"] == job.as_str())
+        .ok_or_else(|| Failure(format!("the job {job} the earlier process started was not kept: {jobs:?}")))?;
+    let state = record["state"].as_str().unwrap_or_default();
+    ensure!(state != "completed", "an ending nobody saw was reported as completion: {record}");
+    if state == "running" {
+        ensure!(
+            record["identity"]["pid"].as_u64().unwrap_or(0) > 0 && record["identity"]["created"].as_u64().unwrap_or(0) > 0,
+            "a job reads as running with nothing to identify it by: {record}"
+        );
+        println!("      the job outlived the app and was re-identified by pid and creation time");
+    }
+
+    let review = PathBuf::from(handoff["review"].as_str().unwrap_or_default());
+    ensure!(
+        std::fs::read_to_string(&review).unwrap_or_default() == handoff["reviewText"].as_str().unwrap_or_default(),
+        "the redone change did not survive the restart"
+    );
+
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the earlier rows on the timeline",
+        "return document.querySelectorAll('[data-testid=\"timeline-row\"]').length > 3;",
+        Duration::from_secs(30),
+    )?;
+    let rows = timeline_rows(ctx)?;
+    let before = handoff["rows"].as_u64().unwrap_or(0) as usize;
+    println!("      timeline rows after restart: {} (before closing: {before})", rows.len());
+    ensure!(rows.len() >= before, "the timeline lost rows across the restart");
+
+    let (previous, reasons, _, _) = compare_last_snapshot(ctx)?;
+    ensure!(!previous.is_empty() && !reasons.is_empty(), "the context diff did not come back after the restart");
     Ok(())
 }
 
