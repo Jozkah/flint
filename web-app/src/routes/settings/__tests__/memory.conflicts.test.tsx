@@ -106,7 +106,7 @@ describe('Settings > Memory: memories that disagree', () => {
     // The tab is "Project" since memory can belong to a Jan project as well
     // as a folder.
     expect(within(card).getByText(/^Project/)).toBeInTheDocument()
-    expect(within(card).getByText(/Across chats/)).toBeInTheDocument()
+    expect(within(card).getByText(/All conversations/)).toBeInTheDocument()
     // Asked about the place the page is looking at: the picked conversation
     // and project, never an id the page invents.
     expect(api.memoryConflicts).toHaveBeenCalledWith({

@@ -134,6 +134,19 @@
     "historyDesc": "The last permission decisions JAN's built-in tools recorded, newest first. Secrets are removed before they are saved.",
     "historyEmpty": "No decisions have been recorded yet.",
     "historyUnavailable": "Decision history is not available: {{error}}",
-    "historyRow": "{{decision}} · {{tool}} · {{at}}"
+    "toolsEverywhere": "Tools allowed in every conversation",
+    "toolsEverywhereDesc": "These tools run without asking in any conversation. Revoking one makes JAN ask again next time.",
+    "noToolsEverywhere": "No tool is allowed in every conversation.",
+    "trustedServers": "Trusted MCP servers",
+    "trustedServersDesc": "Every tool from these servers runs without asking, as long as the server is still configured the way you approved it.",
+    "noTrustedServers": "No MCP server is trusted.",
+    "allowAllGroup": "All MCP tools",
+    "allowAllOn": "On",
+    "allowAllOff": "Off. MCP tools ask before they run, unless their server is trusted above.",
+    "historyTime": "Time",
+    "historyDecision": "Decision",
+    "historyTool": "Tool",
+    "historyScope": "Scope",
+    "historyRow":"{{decision}} · {{tool}} · {{at}}"
   }
 }
