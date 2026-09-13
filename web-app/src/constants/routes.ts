@@ -6,6 +6,8 @@ export const route = {
   appLogs: '/logs',
   project: '/project',
   projectDetail: '/project/$projectId',
+  rooms: '/rooms',
+  roomDetail: '/rooms/$roomId',
   settings: {
     index: '/settings',
     model_providers: '/settings/providers',
