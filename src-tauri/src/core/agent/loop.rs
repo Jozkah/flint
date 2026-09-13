@@ -1858,6 +1858,59 @@ impl CompositeToolInvoker {
                     }
                 }
             }
+            // AH-160, AH-166, AH-167. These change history, so Plan mode does
+            // not offer them and refuses them here too; every refusal and the
+            // backup that makes each step recoverable live in `vcs`.
+            "git_split" | "git_history" => {
+                use crate::core::agent::vcs;
+                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+                    return plan_mode_read_only_msg(name);
+                }
+                let root = self.project_root.clone();
+                let text = |key: &str| {
+                    args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
+                };
+                let answer = if name == "git_split" {
+                    match serde_json::from_value::<Vec<vcs::SplitGroup>>(
+                        args.get("groups").cloned().unwrap_or_default(),
+                    ) {
+                        Err(e) => {
+                            return format!(
+                                "ERROR [invalid_input]: `groups` must be a list of {{files, message}}: {e}"
+                            )
+                        }
+                        Ok(groups) => {
+                            let scope = tauri_plugin_agent_tools::lifecycle::current();
+                            vcs::apply_split(&root, &groups, &|| {
+                                scope.as_ref().is_some_and(|t| t.is_stopped())
+                            })
+                            .map(|outcome| vcs::render_split(&outcome))
+                        }
+                    }
+                } else {
+                    match text("action").as_str() {
+                        "status" => vcs::history_status(&root),
+                        "rebase" => vcs::rebase_start(&root, &text("onto")).map(|op| vcs::render_op(&op)),
+                        "cherry_pick" => vcs::cherry_pick(&root, &text("commit")).map(|op| vcs::render_op(&op)),
+                        "continue" => vcs::continue_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
+                        "abort" => vcs::abort_op(&root, &text("backup")).map(|op| vcs::render_op(&op)),
+                        other => {
+                            return format!(
+                                "ERROR [invalid_input]: git_history takes action status, rebase, \
+                                 cherry_pick, continue or abort; {other:?} is not one of them."
+                            )
+                        }
+                    }
+                };
+                match answer {
+                    Ok(text) => text,
+                    Err(e) => {
+                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                            (&e).into();
+                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+                    }
+                }
+            }
             "dispatch_subagent" => {
                 let req = match parse_dispatch_args(args) {
                     Ok(r) => r,
@@ -2516,6 +2569,8 @@ impl CompositeToolInvoker {
             // fallback: they orchestrate nested runs, not filesystem access.
             if name == "symbol_find"
                 || name == "git_branch"
+                || name == "git_split"
+                || name == "git_history"
                 || name == "commit_message"
                 || name == "review_comments"
                 || name == "mcp_resource_list"
@@ -2540,6 +2595,13 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .and_then(|s| serde_json::from_str(s).ok())
                     .unwrap_or(serde_json::Value::Object(Default::default()));
+                // R16: these tools are left out of the offered set when the
+                // project denies them, but a model can call a tool it was not
+                // shown. The deny is enforced here too, as it is for MCP tools.
+                if self.permissions.is_denied(name, &self.subject) {
+                    out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
+                    continue;
+                }
                 let content = self.handle_subagent_tool(name, &args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
@@ -3343,6 +3405,68 @@ fn advertise_local_tools(
                 && allowed_names.is_none_or(|allow| allow.contains(named));
             if offered {
                 openai_tools.push(branches);
+            }
+
+            // AH-160: a large change committed as the coherent commits the model
+            // plans, each message checked against its own group's files.
+            let split = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "git_split",
+                    "description": "Commit the working tree's changes as several coherent commits instead of one. Give the groups in order, each with the files it takes and its commit message. Refused before anything is committed if a file is in two groups, is not changed, or a message names a file path that belongs to another group, and refused if anything is already staged. Files no group takes stay uncommitted.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "groups": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "files": { "type": "array", "items": { "type": "string" } },
+                                        "message": { "type": "string" }
+                                    },
+                                    "required": ["files", "message"]
+                                },
+                                "description": "Two or more commits, in the order they are made."
+                            }
+                        },
+                        "required": ["groups"]
+                    }
+                }
+            });
+            let named = split["function"]["name"].as_str().unwrap_or_default();
+            if !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named))
+            {
+                openai_tools.push(split);
+            }
+
+            // AH-166, AH-167: rebase and cherry-pick with a backup ref written
+            // before anything moves, so every step can be undone exactly.
+            let history = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "git_history",
+                    "description": "Rebase the current branch or cherry-pick a commit onto it, recoverably. Before anything moves a backup ref is written and returned. A conflict stops the operation and lists the files: resolve and stage them, then `continue` with the backup, or `abort` with it to return the branch exactly where it was (abort also undoes a finished operation). `status` reports a stopped operation and the backups. Refused: a dirty tree, a detached HEAD, a shared branch such as main, and a rebase of commits already on the upstream.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": { "type": "string", "enum": ["status", "rebase", "cherry_pick", "continue", "abort"] },
+                            "onto": { "type": "string", "description": "For rebase: the branch or commit to rebase onto." },
+                            "commit": { "type": "string", "description": "For cherry_pick: the commit id or branch to port." },
+                            "backup": { "type": "string", "description": "For continue and abort: the backup ref the operation returned." }
+                        },
+                        "required": ["action"]
+                    }
+                }
+            });
+            let named = history["function"]["name"].as_str().unwrap_or_default();
+            if !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named))
+            {
+                openai_tools.push(history);
             }
         }
 
@@ -8221,6 +8345,60 @@ mod tests {
             assert_eq!(o.refusal, Some(HarnessRefusal::ToolNotOffered), "{}: {}", o.id, o.content);
         }
         assert!(!data.join("exports").exists(), "a refused call wrote an export");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// R16: the loop's own tools are hidden when the project denies them, but a
+    /// model can name a tool it was not shown. The deny holds at dispatch: a
+    /// denied git_branch, git_history or git_split is refused and nothing in
+    /// the repository changes.
+    #[tokio::test]
+    async fn a_denied_loop_tool_called_anyway_is_refused_and_changes_nothing() {
+        let root = std::env::temp_dir().join(format!("jan_loop_r16_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create root");
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git").arg("-C").arg(&root).args(args).output().expect("git runs");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@example.invalid"]);
+        git(&["config", "user.name", "Test"]);
+        std::fs::write(root.join("file.txt"), "one\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "first"]);
+        git(&["switch", "-q", "-c", "feature"]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        std::fs::write(root.join("b.txt"), "b\n").unwrap();
+        let head = git(&["rev-parse", "HEAD"]);
+
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let denied = ["git_branch".to_string(), "git_history".to_string(), "git_split".to_string()];
+        let invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::new(PermissionDefault::Allow, &[], &denied, &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        let calls = vec![
+            serde_json::json!({ "id": "b", "type": "function",
+                "function": { "name": "git_branch", "arguments": "{\"action\":\"create\",\"name\":\"sneaky\"}" } }),
+            serde_json::json!({ "id": "h", "type": "function",
+                "function": { "name": "git_history", "arguments": "{\"action\":\"rebase\",\"onto\":\"main\"}" } }),
+            serde_json::json!({ "id": "s", "type": "function",
+                "function": { "name": "git_split", "arguments": "{\"groups\":[{\"files\":[\"a.txt\"],\"message\":\"a\"},{\"files\":[\"b.txt\"],\"message\":\"b\"}]}" } }),
+        ];
+        let outcomes = invoker.invoke(&calls).await.expect("dispatch");
+        assert_eq!(outcomes.len(), 3);
+        for o in &outcomes {
+            assert!(o.content.contains("permission_denied"), "{}: {}", o.id, o.content);
+        }
+        assert!(!git(&["branch", "--list"]).contains("sneaky"), "a denied git_branch created a branch");
+        assert_eq!(git(&["rev-parse", "HEAD"]), head, "a denied tool moved or committed");
+        assert!(git(&["for-each-ref", "refs/jan/"]).trim().is_empty(), "a denied rebase wrote a backup");
         let _ = std::fs::remove_dir_all(&root);
     }
 

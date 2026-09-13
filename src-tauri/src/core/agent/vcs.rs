@@ -21,13 +21,19 @@
 //!   binary), and the conflicting regions with their surrounding lines. It
 //!   never writes a file.
 //!
-//! Nothing here fetches, merges, pushes or checks anything out. Every function
-//! reads.
+//! Nothing in those two fetches, merges, pushes or checks anything out.
+//!
+//! The operations that do change history -- [`apply_split`] (AH-160),
+//! [`rebase_start`] (AH-166) and [`cherry_pick`] (AH-167) -- are built so that
+//! work is recoverable at every step: they refuse a dirty tree, write a backup
+//! ref (`refs/jan/backup/...`) before anything moves, never pass a name that
+//! could be read as an option, never open an editor, and [`abort_op`] returns
+//! the branch exactly to its backup and checks that it did.
 
 use std::path::Path;
 use std::process::Command;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The most conflicting regions reported per file, and the most lines kept per
 /// side of one. A conflict that is bigger than this is real and is reported as
@@ -785,6 +791,524 @@ pub fn message_brief(staged: &Staged) -> String {
     out
 }
 
+// ---- AH-160: one large change split into coherent commits -------------------
+
+/// One commit of a split: the files it takes and the message it gets.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitGroup {
+    pub files: Vec<String>,
+    pub message: String,
+}
+
+/// What a split did.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitOutcome {
+    /// The commits made, in order: short id and subject.
+    pub commits: Vec<(String, String)>,
+    /// Changed files no group took; still changed, not committed.
+    pub left_uncommitted: Vec<String>,
+    /// Set when the split stopped before every group was committed.
+    pub stopped: Option<String>,
+}
+
+fn normalized(file: &str) -> String {
+    file.trim().replace('\\', "/")
+}
+
+/// Every path the working tree has changed, relative and `/`-separated,
+/// renames by their new name.
+fn changed_paths(repo: &Path) -> Result<Vec<String>, VcsError> {
+    let status = git(repo, &["status", "--porcelain=v1", "--untracked-files=all", "-z"])?;
+    let mut paths = Vec::new();
+    let mut entries = status.split('\0').filter(|e| !e.is_empty());
+    while let Some(entry) = entries.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let code = &entry[..2];
+        paths.push(normalized(&entry[3..]));
+        // A rename or copy is followed by its old name, which is not a
+        // separate change.
+        if code.starts_with('R') || code.starts_with('C') {
+            entries.next();
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+/// Check a split before anything is staged or committed.
+///
+/// Refused: fewer than two groups, a group with no files, a file that is not
+/// changed here or that looks like an option, a file in two groups, a message
+/// that fails [`check_message`] against its own group -- and anything already
+/// staged, because a split commits its groups one at a time from an empty
+/// index and staged work would be swept into the first commit without anyone
+/// choosing that. Returns the changed files no group takes.
+pub fn check_split(repo: &Path, groups: &[SplitGroup]) -> Result<Vec<String>, VcsError> {
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    if groups.len() < 2 {
+        return Err(VcsError::new(
+            VcsErrorKind::BadMessage,
+            "a split needs at least two groups; one group is an ordinary commit",
+        ));
+    }
+    if !git(repo, &["diff", "--cached", "--name-only"])?.trim().is_empty() {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            "something is already staged; a split commits its groups from an empty index, so it \
+             would be swept into the first commit. Commit or unstage it first.",
+        ));
+    }
+    let changed = changed_paths(repo)?;
+    let mut taken: std::collections::BTreeMap<String, usize> = Default::default();
+    for (index, group) in groups.iter().enumerate() {
+        if group.files.is_empty() {
+            return Err(VcsError::new(VcsErrorKind::BadMessage, format!("group {} takes no files", index + 1)));
+        }
+        let files: Vec<String> = group.files.iter().map(|f| normalized(f)).collect();
+        for file in &files {
+            if file.starts_with('-') || file.split('/').any(|part| part == "..") {
+                return Err(VcsError::new(
+                    VcsErrorKind::BadName,
+                    format!("{file:?} is not a path this will hand to git"),
+                ));
+            }
+            if !changed.contains(file) {
+                return Err(VcsError::new(
+                    VcsErrorKind::BadMessage,
+                    format!("group {} names {file:?}, which is not changed here", index + 1),
+                ));
+            }
+            if let Some(other) = taken.insert(file.clone(), index) {
+                return Err(VcsError::new(
+                    VcsErrorKind::BadMessage,
+                    format!(
+                        "{file:?} is in group {} and group {}; a change goes in one commit",
+                        other + 1,
+                        index + 1
+                    ),
+                ));
+            }
+        }
+        // The message is checked against what this group's commit will
+        // contain, so it cannot describe another group's files.
+        let staged = Staged {
+            files: files.clone(),
+            insertions: 0,
+            deletions: 0,
+            diff: String::new(),
+            truncated: false,
+            unstaged: changed.iter().filter(|c| !files.contains(c)).cloned().collect(),
+        };
+        check_message(&group.message, &staged)
+            .map_err(|e| VcsError::new(e.kind, format!("group {}: {}", index + 1, e.message)))?;
+    }
+    Ok(changed.into_iter().filter(|c| !taken.contains_key(c)).collect())
+}
+
+/// Commit each group in order. Stops between commits when `cancelled`; a group
+/// that fails to commit is unstaged again (the index only -- the working tree
+/// is never touched) and nothing after it is tried.
+pub fn apply_split(
+    repo: &Path,
+    groups: &[SplitGroup],
+    cancelled: &dyn Fn() -> bool,
+) -> Result<SplitOutcome, VcsError> {
+    let left_uncommitted = check_split(repo, groups)?;
+    let mut outcome = SplitOutcome { commits: Vec::new(), left_uncommitted, stopped: None };
+    for (index, group) in groups.iter().enumerate() {
+        if cancelled() {
+            outcome.stopped = Some(format!(
+                "stopped before group {}; its files are still changed and uncommitted",
+                index + 1
+            ));
+            break;
+        }
+        let files: Vec<String> = group.files.iter().map(|f| normalized(f)).collect();
+        let mut add = vec!["add", "--"];
+        add.extend(files.iter().map(String::as_str));
+        let committed = git(repo, &add).and_then(|_| git(repo, &["commit", "-q", "-m", group.message.trim()]));
+        if let Err(e) = committed {
+            let _ = git(repo, &["reset", "-q"]);
+            outcome.stopped = Some(format!(
+                "group {} could not be committed ({}); it was unstaged and nothing after it was tried",
+                index + 1,
+                e.message
+            ));
+            return Ok(outcome);
+        }
+        let id = git(repo, &["rev-parse", "--short", "HEAD"])?;
+        let subject = group.message.trim().lines().next().unwrap_or("").to_string();
+        outcome.commits.push((id, subject));
+    }
+    Ok(outcome)
+}
+
+pub fn render_split(outcome: &SplitOutcome) -> String {
+    let mut out = String::new();
+    for (id, subject) in &outcome.commits {
+        out.push_str(&format!("committed {id} {subject}\n"));
+    }
+    if !outcome.left_uncommitted.is_empty() {
+        out.push_str(&format!(
+            "left uncommitted (no group took them): {}\n",
+            outcome.left_uncommitted.join(", ")
+        ));
+    }
+    if let Some(stopped) = &outcome.stopped {
+        out.push_str(&format!("stopped: {stopped}\n"));
+    }
+    out.trim_end().to_string()
+}
+
+// ---- AH-166 / AH-167: rebase and cherry-pick that can always be undone ------
+
+/// Where a guided rebase or cherry-pick stands.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryOp {
+    /// `rebase` or `cherry-pick`.
+    pub operation: String,
+    /// `done`, `conflicted` or `aborted`.
+    pub state: String,
+    /// The ref that records where the branch was before anything moved.
+    pub backup: String,
+    pub head: String,
+    pub conflicts: Option<MergeState>,
+    pub note: String,
+}
+
+const BACKUP_PREFIX: &str = "refs/jan/backup/";
+
+/// Branches a guided rebase will not rewrite: the conventional long-lived ones
+/// and whatever the remote says is its default.
+fn protected(repo: &Path, branch: &str) -> bool {
+    if ["main", "master", "trunk", "develop"].contains(&branch) {
+        return true;
+    }
+    git(repo, &["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+        .map(|r| r.trim().rsplit('/').next() == Some(branch))
+        .unwrap_or(false)
+}
+
+/// A ref name or commit id handed to git as an argument, never as an option.
+fn usable_revision(rev: &str) -> Result<String, VcsError> {
+    let rev = rev.trim();
+    if rev.len() >= 7 && rev.len() <= 40 && rev.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok(rev.to_string());
+    }
+    usable_branch_name(rev).map(|_| rev.to_string())
+}
+
+fn current_branch(repo: &Path) -> Result<String, VcsError> {
+    git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"]).map_err(|_| {
+        VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            "HEAD is detached; a guided rebase or cherry-pick needs a branch to move",
+        )
+    })
+}
+
+/// Which history operation is stopped here, read from git's own state files
+/// (through `--git-path`, so a linked worktree is read correctly).
+fn in_progress(repo: &Path) -> Option<&'static str> {
+    let exists = |name: &str| {
+        git(repo, &["rev-parse", "--git-path", name])
+            .map(|p| {
+                let p = std::path::PathBuf::from(p.trim());
+                if p.is_absolute() { p } else { repo.join(p) }
+            })
+            .is_ok_and(|p| p.exists())
+    };
+    if exists("rebase-merge") || exists("rebase-apply") {
+        Some("rebase")
+    } else if exists("CHERRY_PICK_HEAD") {
+        Some("cherry-pick")
+    } else if exists("MERGE_HEAD") {
+        Some("merge")
+    } else {
+        None
+    }
+}
+
+fn require_clean(repo: &Path, what: &str) -> Result<(), VcsError> {
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    if let Some(op) = in_progress(repo) {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!("a {op} is already in progress here; continue or abort it first"),
+        ));
+    }
+    if !git(repo, &["status", "--porcelain"])?.trim().is_empty() {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!(
+                "the working tree has uncommitted changes; {what} would mix them into history or \
+                 lose them. Commit or stash them first."
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// Write the backup ref before anything moves.
+fn write_backup(repo: &Path, operation: &str, branch: &str) -> Result<String, VcsError> {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let name = format!("{BACKUP_PREFIX}{operation}/{branch}/{millis}");
+    git(repo, &["update-ref", &name, "HEAD"])?;
+    Ok(name)
+}
+
+/// The operation and branch a backup ref this module wrote belongs to.
+fn parse_backup(backup: &str) -> Result<(&'static str, String), VcsError> {
+    let bad = || {
+        VcsError::new(
+            VcsErrorKind::BadName,
+            format!("{backup:?} is not a backup a guided rebase or cherry-pick made"),
+        )
+    };
+    let rest = backup.trim().strip_prefix(BACKUP_PREFIX).ok_or_else(bad)?;
+    let (operation, rest) = if let Some(rest) = rest.strip_prefix("rebase/") {
+        ("rebase", rest)
+    } else if let Some(rest) = rest.strip_prefix("cherry-pick/") {
+        ("cherry-pick", rest)
+    } else {
+        return Err(bad());
+    };
+    let (branch, stamp) = rest.rsplit_once('/').ok_or_else(bad)?;
+    if stamp.is_empty() || !stamp.chars().all(|c| c.is_ascii_digit()) {
+        return Err(bad());
+    }
+    usable_branch_name(branch).map_err(|_| bad())?;
+    Ok((operation, branch.to_string()))
+}
+
+/// git with no editor: continuing a rebase or a cherry-pick never opens one.
+fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["-c", "core.editor=true"])
+        .args(args)
+        .env("GIT_EDITOR", "true")
+        .env("GIT_SEQUENCE_EDITOR", "true")
+        .output()
+        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+    } else {
+        Err(VcsError::new(
+            VcsErrorKind::GitFailed,
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        ))
+    }
+}
+
+fn op_state(repo: &Path, operation: &str, backup: String, note: &str) -> Result<HistoryOp, VcsError> {
+    let head = git(repo, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
+    let stopped = in_progress(repo).is_some();
+    Ok(HistoryOp {
+        operation: operation.to_string(),
+        state: if stopped { "conflicted" } else { "done" }.to_string(),
+        backup,
+        head,
+        conflicts: if stopped { Some(conflicts(repo)?) } else { None },
+        note: note.to_string(),
+    })
+}
+
+/// Start a guided rebase of the current branch onto `onto`.
+///
+/// Refused: a dirty tree, a detached HEAD, an operation already in progress, a
+/// shared branch, a target that is not a commit, and -- the one that rewrites
+/// other people's history -- a branch whose commits being rebased are already
+/// on its upstream.
+pub fn rebase_start(repo: &Path, onto: &str) -> Result<HistoryOp, VcsError> {
+    let onto = usable_revision(onto)?;
+    require_clean(repo, "a rebase")?;
+    let branch = current_branch(repo)?;
+    if protected(repo, &branch) {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!("`{branch}` is a shared branch; rewriting its history is not something a guided rebase does"),
+        ));
+    }
+    git(repo, &["rev-parse", "--verify", "--quiet", &format!("{onto}^{{commit}}")])
+        .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("`{onto}` is not a commit here")))?;
+    let rewritten = git(repo, &["rev-list", &format!("{onto}..HEAD")])?;
+    if let Ok(upstream) = git(repo, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]) {
+        let pushed = git(repo, &["rev-list", "@{u}"]).unwrap_or_default();
+        let pushed: std::collections::BTreeSet<&str> = pushed.lines().collect();
+        if rewritten.lines().any(|c| pushed.contains(c)) {
+            return Err(VcsError::new(
+                VcsErrorKind::WouldDiscard,
+                format!(
+                    "some of the commits this would rewrite are already on `{upstream}`; rebasing \
+                     them would rewrite history other people may have"
+                ),
+            ));
+        }
+    }
+    let backup = write_backup(repo, "rebase", &branch)?;
+    let _ = git_no_editor(repo, &["rebase", "--no-autostash", &onto]);
+    op_state(
+        repo,
+        "rebase",
+        backup,
+        "The backup ref records where the branch was; abort with it returns the branch there exactly.",
+    )
+}
+
+/// Port one commit onto the current branch, recording where it came from.
+pub fn cherry_pick(repo: &Path, commit: &str) -> Result<HistoryOp, VcsError> {
+    let commit = usable_revision(commit)?;
+    require_clean(repo, "a cherry-pick")?;
+    let branch = current_branch(repo)?;
+    git(repo, &["rev-parse", "--verify", "--quiet", &format!("{commit}^{{commit}}")])
+        .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("`{commit}` is not a commit here")))?;
+    let backup = write_backup(repo, "cherry-pick", &branch)?;
+    let _ = git_no_editor(repo, &["cherry-pick", "-x", &commit]);
+    op_state(
+        repo,
+        "cherry-pick",
+        backup,
+        "The backup ref records where the branch was; abort with it returns the branch there exactly.",
+    )
+}
+
+/// Continue a stopped rebase or cherry-pick once its conflicts are resolved
+/// and staged.
+pub fn continue_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
+    let (operation, _) = parse_backup(backup)?;
+    if in_progress(repo) != Some(operation) {
+        return Err(VcsError::new(
+            VcsErrorKind::NoBranch,
+            format!("no {operation} is stopped here to continue"),
+        ));
+    }
+    let state = conflicts(repo)?;
+    if !state.files.is_empty() {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!(
+                "{} file(s) still have conflicts ({}); resolve and stage them before continuing",
+                state.files.len(),
+                state.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+        ));
+    }
+    if let Err(e) = git_no_editor(repo, &[operation, "--continue"]) {
+        if in_progress(repo).is_none() {
+            return Err(e);
+        }
+    }
+    op_state(repo, operation, backup.trim().to_string(), "continued")
+}
+
+/// Abandon a rebase or cherry-pick -- or undo a finished one -- and put the
+/// branch back where its backup says it was. Verified, not assumed.
+pub fn abort_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
+    let (operation, branch) = parse_backup(backup)?;
+    let backup = backup.trim();
+    let expected = git(repo, &["rev-parse", "--verify", "--quiet", backup])
+        .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("the backup {backup} does not exist")))?;
+    if in_progress(repo) == Some(operation) {
+        let _ = git_no_editor(repo, &[operation, "--abort"]);
+    }
+    let current = current_branch(repo)?;
+    if current != branch {
+        return Err(VcsError::new(
+            VcsErrorKind::WouldDiscard,
+            format!("the backup is for `{branch}` but HEAD is on `{current}`; nothing was reset"),
+        ));
+    }
+    if git(repo, &["rev-parse", "HEAD"])? != expected {
+        if !git(repo, &["status", "--porcelain"])?.trim().is_empty() {
+            return Err(VcsError::new(
+                VcsErrorKind::WouldDiscard,
+                "the working tree has uncommitted changes that returning to the backup would lose; nothing was reset",
+            ));
+        }
+        git(repo, &["reset", "-q", "--keep", &expected])?;
+    }
+    let head = git(repo, &["rev-parse", "HEAD"])?;
+    if head != expected {
+        return Err(VcsError::new(
+            VcsErrorKind::GitFailed,
+            format!("HEAD is {head}, not the backup {expected}; nothing further was changed"),
+        ));
+    }
+    Ok(HistoryOp {
+        operation: operation.to_string(),
+        state: "aborted".to_string(),
+        backup: backup.to_string(),
+        head: head.chars().take(12).collect(),
+        conflicts: None,
+        note: "The branch is back exactly where it was before the operation started.".to_string(),
+    })
+}
+
+/// What is stopped here, and the backups that can undo earlier operations.
+pub fn history_status(repo: &Path) -> Result<String, VcsError> {
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    let mut out = match in_progress(repo) {
+        Some(op) => {
+            let state = conflicts(repo)?;
+            format!(
+                "a {op} is stopped here with {} conflicted file(s){}.\n",
+                state.files.len(),
+                if state.files.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", state.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>().join(", "))
+                }
+            )
+        }
+        None => "no rebase or cherry-pick is in progress.\n".to_string(),
+    };
+    let refs = git(
+        repo,
+        &["for-each-ref", "--sort=-creatordate", "--count=10", "--format=%(refname) %(objectname:short)", BACKUP_PREFIX],
+    )?;
+    if refs.trim().is_empty() {
+        out.push_str("no backups.");
+    } else {
+        out.push_str("backups, newest first (abort with one to return its branch there):\n");
+        out.push_str(refs.trim());
+    }
+    Ok(out)
+}
+
+pub fn render_op(op: &HistoryOp) -> String {
+    let mut out = format!(
+        "{} {}: HEAD is {}; backup {} .",
+        op.operation, op.state, op.head, op.backup
+    );
+    if let Some(state) = &op.conflicts {
+        out.push_str(&format!(
+            "\nConflicted files ({}): {}\nResolve and stage them, then call continue with this backup -- or abort with it to return exactly to where the branch was.",
+            state.files.len(),
+            state.files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    out.push('\n');
+    out.push_str(&op.note);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1217,5 +1741,198 @@ mod tests {
         let (hunks, truncated) = parse_markers(&many);
         assert_eq!(hunks.len(), MAX_HUNKS);
         assert!(truncated);
+    }
+
+    fn tree_of(repo: &Path, name: &str) -> String {
+        // A checkout may write CRLF (core.autocrlf); the content is what matters.
+        std::fs::read_to_string(repo.join(name)).unwrap_or_default().replace("\r\n", "\n")
+    }
+
+    fn head(repo: &Path) -> String {
+        let out = Command::new("git").arg("-C").arg(repo).args(["rev-parse", "HEAD"]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn a_change_is_split_into_the_commits_it_was_planned_as() {
+        let (base, work) = pair("split");
+        write(&work, "a.txt", "a\n");
+        write(&work, "b.txt", "b\n");
+        write(&work, "file.txt", "one\ntwo\n");
+        write(&work, "left.txt", "left\n");
+        let groups = vec![
+            SplitGroup { files: vec!["a.txt".into(), "b.txt".into()], message: "add a and b".into() },
+            SplitGroup { files: vec!["file.txt".into()], message: "extend file".into() },
+        ];
+        let outcome = apply_split(&work, &groups, &|| false).unwrap();
+        assert_eq!(outcome.commits.len(), 2, "{outcome:?}");
+        assert!(outcome.stopped.is_none());
+        assert_eq!(outcome.left_uncommitted, vec!["left.txt".to_string()]);
+        let files_of = |rev: &str| {
+            let out = Command::new("git").arg("-C").arg(&work).args(["show", "--name-only", "--format=", rev]).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect::<Vec<_>>()
+        };
+        assert_eq!(files_of("HEAD~1"), vec!["a.txt", "b.txt"]);
+        assert_eq!(files_of("HEAD"), vec!["file.txt"]);
+        assert_eq!(tree_of(&work, "left.txt"), "left\n");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_split_that_would_mislead_or_sweep_in_other_work_is_refused() {
+        let (base, work) = pair("split-refuse");
+        write(&work, "a.txt", "a\n");
+        std::fs::create_dir_all(work.join("src")).unwrap();
+        write(&work, "src/b.txt", "b\n");
+        let before = head(&work);
+        let g = |files: &[&str], message: &str| SplitGroup {
+            files: files.iter().map(|f| f.to_string()).collect(),
+            message: message.into(),
+        };
+        let kind = |groups: Vec<SplitGroup>| apply_split(&work, &groups, &|| false).unwrap_err().kind;
+        assert_eq!(kind(vec![g(&["a.txt"], "one")]), VcsErrorKind::BadMessage, "one group");
+        assert_eq!(kind(vec![g(&["a.txt"], "one"), g(&["a.txt", "src/b.txt"], "two")]), VcsErrorKind::BadMessage, "a file in two groups");
+        assert_eq!(kind(vec![g(&["a.txt"], "one"), g(&["nope.txt"], "two")]), VcsErrorKind::BadMessage, "an unchanged file");
+        assert_eq!(kind(vec![g(&["a.txt"], "one"), g(&["--exec=x"], "two")]), VcsErrorKind::BadName, "an option as a path");
+        assert_eq!(kind(vec![g(&["a.txt"], ""), g(&["src/b.txt"], "two")]), VcsErrorKind::BadMessage, "no message");
+        assert_eq!(kind(vec![g(&["a.txt"], "add src/b.txt"), g(&["src/b.txt"], "two")]), VcsErrorKind::BadMessage, "a message naming another group's file path");
+        run(&work, &["add", "src/b.txt"]);
+        assert_eq!(kind(vec![g(&["a.txt"], "one"), g(&["src/b.txt"], "two")]), VcsErrorKind::WouldDiscard, "something already staged");
+        assert_eq!(head(&work), before, "a refused split committed something");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_cancelled_split_stops_between_commits_and_leaves_the_index_clean() {
+        let (base, work) = pair("split-cancel");
+        write(&work, "a.txt", "a\n");
+        write(&work, "b.txt", "b\n");
+        let groups = vec![
+            SplitGroup { files: vec!["a.txt".into()], message: "add a".into() },
+            SplitGroup { files: vec!["b.txt".into()], message: "add b".into() },
+        ];
+        let calls = std::cell::Cell::new(0);
+        let outcome = apply_split(&work, &groups, &|| {
+            calls.set(calls.get() + 1);
+            calls.get() > 1
+        })
+        .unwrap();
+        assert_eq!(outcome.commits.len(), 1);
+        assert!(outcome.stopped.as_deref().unwrap_or("").contains("group 2"));
+        assert_eq!(tree_of(&work, "b.txt"), "b\n", "the uncommitted file is untouched");
+        let staged = Command::new("git").arg("-C").arg(&work).args(["diff", "--cached", "--name-only"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty(), "the index was left dirty");
+        assert!(!work.join(".git").join("index.lock").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_conflicting_rebase_stops_recoverably_and_abort_returns_exactly_to_the_backup() {
+        let (base, work) = pair("rebase");
+        run(&work, &["switch", "-q", "-c", "feature"]);
+        commit(&work, "file.txt", "feature\n", "feature change");
+        let before = head(&work);
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "file.txt", "main\n", "main change");
+        run(&work, &["switch", "-q", "feature"]);
+        let started = rebase_start(&work, "main").unwrap();
+        assert_eq!(started.state, "conflicted", "{started:?}");
+        assert_eq!(started.conflicts.as_ref().unwrap().files[0].path, "file.txt");
+        assert!(started.backup.starts_with("refs/jan/backup/rebase/feature/"));
+        // A later process finds it.
+        let status = history_status(&work).unwrap();
+        assert!(status.contains("a rebase is stopped") && status.contains(&started.backup), "{status}");
+        assert_eq!(continue_op(&work, &started.backup).unwrap_err().kind, VcsErrorKind::WouldDiscard, "continued with conflicts left");
+        assert_eq!(rebase_start(&work, "main").unwrap_err().kind, VcsErrorKind::WouldDiscard, "a second rebase over a stopped one");
+        let aborted = abort_op(&work, &started.backup).unwrap();
+        assert_eq!(aborted.state, "aborted");
+        assert_eq!(head(&work), before, "abort did not return to the backup");
+        assert_eq!(tree_of(&work, "file.txt"), "feature\n");
+        assert_eq!(in_progress(&work), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_clean_rebase_finishes_and_its_backup_can_still_undo_it() {
+        let (base, work) = pair("rebase-clean");
+        run(&work, &["switch", "-q", "-c", "topic"]);
+        commit(&work, "topic.txt", "topic\n", "topic change");
+        let before = head(&work);
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "other.txt", "other\n", "main moves on");
+        run(&work, &["switch", "-q", "topic"]);
+        let done = rebase_start(&work, "main").unwrap();
+        assert_eq!(done.state, "done", "{done:?}");
+        assert_ne!(head(&work), before);
+        assert_eq!(tree_of(&work, "other.txt"), "other\n");
+        abort_op(&work, &done.backup).unwrap();
+        assert_eq!(head(&work), before, "the backup undoes a finished rebase");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_rebase_that_would_rewrite_shared_history_is_refused() {
+        let (base, work) = pair("rebase-refuse");
+        commit(&work, "x.txt", "x\n", "on main");
+        assert_eq!(rebase_start(&work, "HEAD~1").unwrap_err().kind, VcsErrorKind::BadName, "not a plain revision");
+        let first = head(&work);
+        commit(&work, "x2.txt", "x\n", "on main again");
+        assert_eq!(rebase_start(&work, &first).unwrap_err().kind, VcsErrorKind::WouldDiscard, "main itself");
+        run(&work, &["switch", "-q", "-c", "feature"]);
+        commit(&work, "y.txt", "y\n", "pushed feature commit");
+        run(&work, &["push", "-q", "-u", "origin", "feature"]);
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "z.txt", "z\n", "main moves on");
+        run(&work, &["switch", "-q", "feature"]);
+        let before = head(&work);
+        let refused = rebase_start(&work, "main").unwrap_err();
+        assert_eq!(refused.kind, VcsErrorKind::WouldDiscard, "{}", refused.message);
+        assert!(refused.message.contains("already on"), "{}", refused.message);
+        assert_eq!(head(&work), before, "a refused rebase moved the branch");
+        write(&work, "y.txt", "dirty\n");
+        assert_eq!(rebase_start(&work, "main").unwrap_err().kind, VcsErrorKind::WouldDiscard, "a dirty tree");
+        assert_eq!(tree_of(&work, "y.txt"), "dirty\n");
+        run(&work, &["checkout", "-q", "--", "y.txt"]);
+        assert_eq!(rebase_start(&work, "--exec=calc").unwrap_err().kind, VcsErrorKind::BadName);
+        assert_eq!(rebase_start(&work, "no-such-branch").unwrap_err().kind, VcsErrorKind::NoBranch);
+        let listed = Command::new("git").arg("-C").arg(&work).args(["for-each-ref", "refs/jan/"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&listed.stdout).trim().is_empty(), "a refused rebase wrote a backup");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_commit_is_ported_and_a_conflicting_pick_is_continued_or_undone() {
+        let (base, work) = pair("pick");
+        run(&work, &["switch", "-q", "-c", "fix"]);
+        commit(&work, "fix.txt", "fixed\n", "the fix");
+        let fix = head(&work);
+        commit(&work, "file.txt", "fix branch\n", "conflicting change");
+        let conflicting = head(&work);
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "file.txt", "main side\n", "main side");
+        let clean = cherry_pick(&work, &fix).unwrap();
+        assert_eq!(clean.state, "done", "{clean:?}");
+        assert_eq!(tree_of(&work, "fix.txt"), "fixed\n");
+        let before = head(&work);
+        let stopped = cherry_pick(&work, &conflicting).unwrap();
+        assert_eq!(stopped.state, "conflicted");
+        abort_op(&work, &stopped.backup).unwrap();
+        assert_eq!(head(&work), before);
+        assert_eq!(tree_of(&work, "file.txt"), "main side\n");
+        let again = cherry_pick(&work, &conflicting).unwrap();
+        write(&work, "file.txt", "resolved\n");
+        run(&work, &["add", "file.txt"]);
+        let finished = continue_op(&work, &again.backup).unwrap();
+        assert_eq!(finished.state, "done", "{finished:?}");
+        assert_eq!(tree_of(&work, "file.txt"), "resolved\n");
+        assert_eq!(cherry_pick(&work, "-n").unwrap_err().kind, VcsErrorKind::BadName);
+        assert_eq!(abort_op(&work, "refs/heads/main").unwrap_err().kind, VcsErrorKind::BadName, "not a backup this made");
+        assert_eq!(abort_op(&work, "refs/jan/backup/rebase/../x/1").unwrap_err().kind, VcsErrorKind::BadName);
+        // A backup for another branch never resets this one.
+        run(&work, &["switch", "-q", "fix"]);
+        let here = head(&work);
+        assert_eq!(abort_op(&work, &again.backup).unwrap_err().kind, VcsErrorKind::WouldDiscard);
+        assert_eq!(head(&work), here);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
