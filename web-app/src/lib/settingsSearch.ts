@@ -125,6 +125,20 @@ export const SETTINGS_PAGES = [
     ],
   },
   {
+    id: 'permissions',
+    route: route.settings.permissions,
+    titleKey: 'permissions:settings.title',
+    group: 'core',
+    keywords: [
+      'approval',
+      'allow',
+      'always allow',
+      'trust',
+      'revoke',
+      'tool permissions',
+    ],
+  },
+  {
     id: 'agent-tools',
     route: route.settings.agent_tools,
     titleKey: 'common:agent_tools',
@@ -318,6 +332,19 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     anchor: MEMORY_LIST_ANCHOR,
     descriptionKey: 'settings:memory.rememberedDesc',
     keywords: ['edit memory', 'forget', 'pin', 'across chats', 'this project'],
+  }),
+  // Permissions
+  item('permissions', 'conversations', 'permissions:settings.conversations', {
+    descriptionKey: 'permissions:settings.conversationsDesc',
+    keywords: ['allow in thread', 'this conversation', 'revoke'],
+  }),
+  item('permissions', 'everywhere', 'permissions:settings.everywhere', {
+    descriptionKey: 'permissions:settings.everywhereDesc',
+    keywords: ['always allow', 'trusted servers', 'mcp trust', 'revoke'],
+  }),
+  item('permissions', 'history', 'permissions:settings.history', {
+    descriptionKey: 'permissions:settings.historyDesc',
+    keywords: ['audit', 'log', 'decisions', 'denied'],
   }),
   // Agent tools
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
