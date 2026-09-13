@@ -1632,3 +1632,32 @@ path that spells out no conversation; a credential in a message scrubbed
 before storage; ids that could name a place on disk refused; and the three
 tool-level cases including a surface with no mailbox saying so rather than
 pretending to send.
+
+### The golden repositories (AH-197)
+
+`src-tauri/tests/golden_repos.rs`: a fixed set of small repositories the
+harness is run over on every change, built from nothing each run (a fixture
+that is a real `git init` cannot drift from what git actually does) and torn
+down after. Six tests, in the Rust gate as `golden-repos`.
+
+The repositories are deliberately boring, because the point is the *shapes*
+the harness meets: a TypeScript app with `tsconfig` path aliases, a stylesheet
+import and one test that reaches a change and one that does not; a Python
+package with relative imports and a `tests/` directory; a repository in the
+middle of a failed merge; a repository with a `.env` sitting in it; one with a
+file too large to read.
+
+Every assertion is a property, never a golden string -- "the test that reaches
+the change is found" rather than "the answer is these 43 paths". A golden
+string fails on every unrelated improvement and gets updated without being
+read, which is worse than no test.
+
+What they hold the harness to: the covering test is found through two aliased
+imports and the unrelated one is not claimed; a stylesheet is not counted as a
+missing edge; the run command is the project's own; a Python package resolves
+its own imports; a path leaving the repository is refused in every repository
+rather than only in the unit test that first checked it; a stopped merge is
+reported and the file is still conflicted afterwards; a repository with no
+remote is not mistaken for one in sync; a credential sitting in the repository
+never reaches an answer; and a file past the size bound makes the answer say
+it is partial.

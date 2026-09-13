@@ -6645,14 +6645,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-011",
         "AH-196"
       ],
       "owner": "lane-12-security-regression-review",
-      "files": [],
+      "files": [
+        "src-tauri/tests/golden_repos.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A fixed set of repositories exercises the harness end to end on every change.",
@@ -6661,10 +6663,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/tests/golden_repos.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A fixed set of small repositories, built from nothing each run and torn down after, with the harness's own readers run over each: a TypeScript app with tsconfig path aliases, a Python package, a repository in a stopped merge, one with a .env in it, one past the size bound. Six tests, wired into the Rust gate as `golden-repos`, so they run on every change. Every assertion is a property rather than a golden string, because a golden string fails on unrelated improvements and is updated without being read."
     },
     {
       "id": "AH-198",

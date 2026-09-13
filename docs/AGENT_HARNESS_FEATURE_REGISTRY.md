@@ -266,7 +266,7 @@ per-OS evidence log rather than backlog items.
 | `AH-194` | Provider routing rules | 8 | ux-operations | P2 | `in-progress` | medium | `AH-193` |
 | `AH-195` | Local and offline model support | 8 | ux-operations | P1 | `implemented` | low | - |
 | `AH-196` | Benchmark harness | 8 | ux-operations | P2 | `missing` | none | `AH-011` |
-| `AH-197` | Golden-repository regression suite | 8 | ux-operations | P1 | `missing` | medium | `AH-011`, `AH-196` |
+| `AH-197` | Golden-repository regression suite | 8 | ux-operations | P1 | `implemented` | medium | `AH-011`, `AH-196` |
 | `AH-198` | Security regression corpus | 8 | ux-operations | P0 | `implemented` | critical | `AH-011`, `AH-049` |
 | `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `rejected-with-decision` | high | - |
 | `AH-200` | Full audit export | 8 | ux-operations | P1 | `implemented` | critical | `AH-049`, `AH-177` |
