@@ -6,7 +6,7 @@ import { Channel, invoke } from '@tauri-apps/api/core'
  * Model discovery, chat completions, embeddings, health checks and connection
  * tests all call this, so every provider request is resolved and dialled by the
  * same code in `core/net/transport.rs`. That matters for a short hostname like
- * `v100`, which can resolve to both the right machine on the tailnet and a
+ * `llm-host`, which can resolve to both the right machine on the tailnet and a
  * stranger on the public internet: the choice between them is made once, in one
  * place, rather than differently by whichever caller happened to issue the
  * request.

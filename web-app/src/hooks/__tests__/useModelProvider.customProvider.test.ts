@@ -32,10 +32,10 @@ vi.mock('@/constants/localStorage', () => ({
 /** A user-added OpenAI-compatible endpoint on the local network. */
 const customProvider = () =>
   ({
-    provider: 'v100-test',
+    provider: 'llm-host-test',
     active: true,
     persist: false,
-    base_url: 'http://v100:8555/v1',
+    base_url: 'http://llm-host:8555/v1',
     api_key: '',
     settings: [],
     models: [
@@ -44,7 +44,7 @@ const customProvider = () =>
         model: 'pxa-27b',
         name: 'pxa-27b',
         capabilities: ['tools'],
-        provider: 'v100-test',
+        provider: 'llm-host-test',
         settings: {},
       },
     ],
@@ -90,7 +90,7 @@ describe('a user-added local provider', () => {
     })
     expect(
       useModelProvider.getState().providers.map((p) => p.provider)
-    ).toContain('v100-test')
+    ).toContain('llm-host-test')
 
     // Startup: the service returns engine + catalogue only.
     act(() => {
@@ -98,7 +98,7 @@ describe('a user-added local provider', () => {
     })
 
     const names = useModelProvider.getState().providers.map((p) => p.provider)
-    expect(names).toContain('v100-test')
+    expect(names).toContain('llm-host-test')
   })
 
   it('keeps its endpoint exactly as entered', () => {
@@ -108,9 +108,9 @@ describe('a user-added local provider', () => {
     })
     const p = useModelProvider
       .getState()
-      .providers.find((x) => x.provider === 'v100-test')
+      .providers.find((x) => x.provider === 'llm-host-test')
     // Not rewritten to an IP, not normalised, not stripped of its path.
-    expect(p?.base_url).toBe('http://v100:8555/v1')
+    expect(p?.base_url).toBe('http://llm-host:8555/v1')
   })
 
   it('keeps its discovered models through the refresh', () => {
@@ -120,7 +120,7 @@ describe('a user-added local provider', () => {
     })
     const p = useModelProvider
       .getState()
-      .providers.find((x) => x.provider === 'v100-test')
+      .providers.find((x) => x.provider === 'llm-host-test')
     expect(p?.models.map((m) => m.id)).toContain('pxa-27b')
   })
 
@@ -131,7 +131,7 @@ describe('a user-added local provider', () => {
     })
     const p = useModelProvider
       .getState()
-      .providers.find((x) => x.provider === 'v100-test')
+      .providers.find((x) => x.provider === 'llm-host-test')
     expect(p?.active).toBe(true)
   })
 
@@ -143,6 +143,6 @@ describe('a user-added local provider', () => {
     })
     expect(
       useModelProvider.getState().providers.map((p) => p.provider)
-    ).toContain('v100-test')
+    ).toContain('llm-host-test')
   })
 })

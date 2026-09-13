@@ -34,8 +34,8 @@ jan (binary, src-tauri/src/bin/jan.rs)
 ### First Time Setup
 
 ```bash
-# The project is at:
-cd /Users/alandao/Documents/codes/jan-agent
+# From the repository root:
+cd /path/to/jan
 
 # Rust toolchain (already installed):
 rustc --version   # 1.77.2+ (minimum)
@@ -48,7 +48,7 @@ rustc --version   # 1.77.2+ (minimum)
 cd src-tauri && cargo check --no-default-features --features cli --lib
 
 # Debug build + install to ~/.local/bin:
-cd /Users/alandao/Documents/codes/jan-agent
+cd /path/to/jan
 ./build-tui.sh            # debug
 ./build-tui.sh release    # release (optimized, slower build)
 

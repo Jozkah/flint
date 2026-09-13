@@ -56,7 +56,7 @@ describe('classification', () => {
   it('records the resource a call acted on, and nothing when there is none', () => {
     expect(resourceOf({ path: 'src/app.ts' })).toBe('src/app.ts')
     expect(resourceOf('{"command":"ls -la"}')).toBe('ls -la')
-    expect(resourceOf({ url: 'http://v100:8080/v1' })).toBe('http://v100:8080/v1')
+    expect(resourceOf({ url: 'http://llm-host:8080/v1' })).toBe('http://llm-host:8080/v1')
     expect(resourceOf({ thinking: 'about it' })).toBe('')
   })
 })

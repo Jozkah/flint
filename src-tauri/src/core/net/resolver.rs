@@ -1,8 +1,8 @@
 //! Address selection for provider endpoints.
 //!
-//! A short hostname like `v100` can resolve to more than one thing on a machine
+//! A short hostname like `llm-host` can resolve to more than one thing on a machine
 //! with a DNS search domain: the correct private address on the tailnet, and a
-//! public address that belongs to whatever `v100.<search-domain>` happens to
+//! public address that belongs to whatever `llm-host.<search-domain>` happens to
 //! point at. The OS resolver returns both and the connector takes whichever came
 //! first, so a request meant for a machine on the LAN can leave the network
 //! entirely and come back as somebody else's 403.
@@ -97,7 +97,7 @@ fn classify_v6(v6: Ipv6Addr) -> AddrClass {
 
 /// Whether a configured host is one we should refuse to leave the network for.
 ///
-/// A single-label name (`v100`) is the case that started this: it cannot be a
+/// A single-label name (`llm-host`) is the case that started this: it cannot be a
 /// public name on its own, so anything public it resolves to arrived through a
 /// search-domain collision. The private-use suffixes are included for the same
 /// reason, and a literal private address obviously qualifies.
@@ -161,7 +161,7 @@ impl Resolution {
 /// The system resolver, or a stand-in.
 ///
 /// Injected so the ordering rules can be tested against a machine that resolves
-/// `v100` to a Cloudflare address without owning that machine.
+/// `llm-host` to a Cloudflare address without owning that machine.
 pub trait DnsProbe: Send + Sync {
     fn lookup(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, String>;
 }
@@ -343,11 +343,11 @@ mod tests {
 
     #[test]
     fn a_short_name_that_resolves_to_cloudflare_and_tailscale_takes_the_tailnet() {
-        // The reported failure exactly: `v100` answers with a public Cloudflare
+        // The reported failure exactly: `llm-host` answers with a public Cloudflare
         // IPv6 address through a search-domain collision, and with the correct
         // Tailscale IPv4 address.
         let r = decide(
-            "v100",
+            "llm-host",
             8080,
             vec![
                 sock("2606:4700:3033::6815:1b7f", 8080),
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn a_public_answer_is_never_dialled_when_a_local_one_exists() {
         let r = decide(
-            "v100",
+            "llm-host",
             8080,
             vec![sock("93.184.216.34", 8080), sock("192.168.1.9", 8080)],
         );
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn loopback_outranks_every_other_local_answer() {
         let r = decide(
-            "v100",
+            "llm-host",
             8080,
             vec![
                 sock("192.168.1.9", 8080),
@@ -409,7 +409,7 @@ mod tests {
         // Requirement: a connection refused on the first address must be
         // followed by the next eligible one, which means it has to be offered.
         let r = decide(
-            "v100",
+            "llm-host",
             8080,
             vec![sock("100.86.12.4", 8080), sock("192.168.1.9", 8080)],
         );
@@ -438,7 +438,7 @@ mod tests {
     fn a_local_name_that_only_resolves_publicly_is_refused_rather_than_dialled() {
         // Nothing local came back, so there is no suppression -- but this is
         // the case worth watching, and the candidate list says what happened.
-        let r = decide("v100", 8080, vec![sock("104.16.133.229", 8080)]);
+        let r = decide("llm-host", 8080, vec![sock("104.16.133.229", 8080)]);
         assert!(r.local_name);
         assert!(!r.suppressed_public);
         assert_eq!(r.candidates[0].class, AddrClass::Public);
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn a_single_label_name_is_local_and_a_dotted_public_one_is_not() {
-        assert!(is_local_hostname("v100"));
+        assert!(is_local_hostname("llm-host"));
         assert!(is_local_hostname("V100."));
         assert!(is_local_hostname("box.local"));
         assert!(is_local_hostname("host.ts.net"));
@@ -507,20 +507,20 @@ mod tests {
         }
         let probe = Counting(Mutex::new(0));
         let cache = ResolverCache::new();
-        cache.resolve(&probe, "v100", 8080).unwrap();
-        cache.resolve(&probe, "v100", 8080).unwrap();
+        cache.resolve(&probe, "llm-host", 8080).unwrap();
+        cache.resolve(&probe, "llm-host", 8080).unwrap();
         assert_eq!(*probe.0.lock().unwrap(), 1);
 
         // Scoped by port: a different port is a different endpoint.
-        cache.resolve(&probe, "v100", 9090).unwrap();
+        cache.resolve(&probe, "llm-host", 9090).unwrap();
         assert_eq!(*probe.0.lock().unwrap(), 2);
 
-        cache.invalidate("v100", 8080);
-        cache.resolve(&probe, "v100", 8080).unwrap();
+        cache.invalidate("llm-host", 8080);
+        cache.resolve(&probe, "llm-host", 8080).unwrap();
         assert_eq!(*probe.0.lock().unwrap(), 3);
 
         cache.invalidate_all();
-        cache.resolve(&probe, "v100", 9090).unwrap();
+        cache.resolve(&probe, "llm-host", 9090).unwrap();
         assert_eq!(*probe.0.lock().unwrap(), 4);
     }
 
@@ -529,13 +529,13 @@ mod tests {
         let probe = Fixed(vec![sock("100.86.12.4", 8080)]);
         let cache = ResolverCache::new();
         cache.resolve(&probe, "V100", 8080).unwrap();
-        assert!(cache.peek("v100", 8080).is_some());
+        assert!(cache.peek("llm-host", 8080).is_some());
     }
 
     #[test]
     fn a_name_with_no_answers_is_an_error_not_an_empty_dial_list() {
         let cache = ResolverCache::new();
-        let err = cache.resolve(&Fixed(vec![]), "v100", 8080).unwrap_err();
+        let err = cache.resolve(&Fixed(vec![]), "llm-host", 8080).unwrap_err();
         assert!(err.contains("did not resolve"), "{err}");
     }
 
@@ -543,10 +543,10 @@ mod tests {
     fn the_responding_peer_is_recorded_against_the_endpoint() {
         let probe = Fixed(vec![sock("100.86.12.4", 8080)]);
         let cache = ResolverCache::new();
-        cache.resolve(&probe, "v100", 8080).unwrap();
-        cache.record_peer("v100", 8080, sock("100.86.12.4", 8080));
+        cache.resolve(&probe, "llm-host", 8080).unwrap();
+        cache.record_peer("llm-host", 8080, sock("100.86.12.4", 8080));
         assert_eq!(
-            cache.peek("v100", 8080).unwrap().responded,
+            cache.peek("llm-host", 8080).unwrap().responded,
             Some(sock("100.86.12.4", 8080))
         );
     }

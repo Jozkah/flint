@@ -14,10 +14,10 @@ vi.mock('@janhq/core', () => ({
 describe('parsePromptForReferences', () => {
   it('does not treat ssh/email addresses as references', () => {
     expect(
-      parsePromptForReferences('please use bash to ssh username@44.50.0.89')
+      parsePromptForReferences('please use bash to ssh username@203.0.113.10')
     ).toEqual([])
     expect(
-      parsePromptForReferences('please use bash to ssh alandao@44.50.0.89')
+      parsePromptForReferences('please use bash to ssh deploy@203.0.113.10')
     ).toEqual([])
     expect(parsePromptForReferences('mail me at foo@bar.com please')).toEqual(
       []
@@ -25,10 +25,10 @@ describe('parsePromptForReferences', () => {
   })
 
   it('does not treat bare IPv4 as a reference, even with a trailing period', () => {
-    expect(parsePromptForReferences('use bash to ssh @44.50.0.89 now')).toEqual(
+    expect(parsePromptForReferences('use bash to ssh @203.0.113.10 now')).toEqual(
       []
     )
-    expect(parsePromptForReferences('please ping @44.50.0.89.')).toEqual([])
+    expect(parsePromptForReferences('please ping @203.0.113.10.')).toEqual([])
   })
 
   it('parses references and keeps the rest of the query', () => {
@@ -66,14 +66,14 @@ describe('typed references', () => {
 describe('stripPromptReferences', () => {
   it('strips references but keeps ssh/email addresses', () => {
     expect(
-      stripPromptReferences('see @src/main.ts and ssh user@44.50.0.89')
-    ).toBe('see and ssh user@44.50.0.89')
+      stripPromptReferences('see @src/main.ts and ssh user@203.0.113.10')
+    ).toBe('see and ssh user@203.0.113.10')
   })
 
   it('keeps non-reference text intact', () => {
     expect(stripPromptReferences('no refs here')).toBe('no refs here')
-    expect(stripPromptReferences('ssh username@44.50.0.89')).toBe(
-      'ssh username@44.50.0.89'
+    expect(stripPromptReferences('ssh username@203.0.113.10')).toBe(
+      'ssh username@203.0.113.10'
     )
   })
 })

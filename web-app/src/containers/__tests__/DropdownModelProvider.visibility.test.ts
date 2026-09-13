@@ -68,7 +68,7 @@ describe('classifying a provider as built-in', () => {
     // A user's own provider whose name is a substring of a template's.
     expect(isPredefinedProvider('ai')).toBe(false)
     expect(isPredefinedProvider('open')).toBe(false)
-    expect(isPredefinedProvider('v100 test')).toBe(false)
+    expect(isPredefinedProvider('llm-host test')).toBe(false)
   })
 
   it('is what the old substring test got wrong', () => {
@@ -82,13 +82,13 @@ describe('classifying a provider as built-in', () => {
 
 describe('which providers offer models to the picker', () => {
   it('offers a user-added provider that has discovered models', () => {
-    expect(offersModels(withModels('v100 test'))).toBe(true)
+    expect(offersModels(withModels('llm-host test'))).toBe(true)
   })
 
   /// The restart case. Keys are stripped before persisting, so this is what
   /// every provider looks like on launch.
   it('keeps offering them when the key has not been re-seeded yet', () => {
-    const p = withModels('v100 test', undefined)
+    const p = withModels('llm-host test', undefined)
     expect(providerHasRemoteApiKeys(p)).toBe(false)
     expect(offersModels(p)).toBe(true)
   })
@@ -123,13 +123,13 @@ describe('which providers offer models to the picker', () => {
   it('hides a user-added provider that has discovered nothing', () => {
     // Not a regression: there is nothing to offer. The provider still appears
     // in Settings; it has no models to put in the bar.
-    expect(offersModels({ provider: 'v100 test', models: [] })).toBe(false)
+    expect(offersModels({ provider: 'llm-host test', models: [] })).toBe(false)
   })
 
   it('agrees with the sort, which uses the same predicate', () => {
     // The visibility gate and the ordering must not disagree about what
     // "configured" means, or a provider sorts above the fold and is invisible.
-    const configured = withModels('v100 test')
+    const configured = withModels('llm-host test')
     const template = { provider: 'openai', models: [] }
     expect(offersModels(configured)).toBe(true)
     expect(offersModels(template)).toBe(false)

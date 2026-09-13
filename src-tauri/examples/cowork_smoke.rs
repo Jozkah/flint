@@ -37,7 +37,7 @@ static EVAL_SEQ: AtomicU64 = AtomicU64::new(0);
 const SMOKE_PROVIDER: &str = "cowork-smoke-mock";
 /// The single-label hostname the provider is configured at, exactly as a user
 /// would type it. It is never rewritten to an address.
-const SMOKE_ENDPOINT_HOST: &str = "v100";
+const SMOKE_ENDPOINT_HOST: &str = "llm-host";
 /// The port the provider is configured at. `COWORK_SMOKE_PORT` moves it, so
 /// two harness runs on one machine never share -- and re-script -- one
 /// fixture server.
@@ -72,7 +72,7 @@ static LANE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
 static LANE_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 /// Every host the app's transport resolved during a lane run.
 static LOOKED_UP: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-const LANE_PROVIDER: &str = "v100-lane";
+const LANE_PROVIDER: &str = "llm-host-lane";
 
 fn note_step(step: &str) {
     if let Ok(mut last) = LAST_STEP.lock() {
@@ -12718,7 +12718,7 @@ fn main() {
         mock_port
     };
 
-    // Deterministic resolution for the harness only: `v100` answers with a
+    // Deterministic resolution for the harness only: `llm-host` answers with a
     // public address and a loopback one, exactly the shape that sent requests
     // out of the network. Nothing else about the request path changes -- the
     // app still builds and sends through `core::net::transport`.

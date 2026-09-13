@@ -15,7 +15,7 @@ import {
 } from '../useEndpointLocations'
 
 const tailnet = {
-  host: 'v100',
+  host: 'llm-host',
   port: 8555,
   local_name: false,
   candidates: [{ address: '100.118.119.72', class: 'tailscale', eligible: true }],
@@ -24,12 +24,12 @@ const tailnet = {
   responded: null,
 }
 
-const providers = [{ provider: 'v100-lane', base_url: 'http://v100:8555/v1' }]
+const providers = [{ provider: 'llm-host-lane', base_url: 'http://llm-host:8555/v1' }]
 
 // A single-label endpoint is settled by the resolver, which only knows it once
 // something has connected. The sidebar asked once, before that, got `null`,
 // and kept `null` as the answer: the endpoint sat in neither LOCAL nor REMOTE
-// for the session. Found by the real-provider lane against v100:8555.
+// for the session. Found by the real-provider lane against llm-host:8555.
 describe('useProviderLocations', () => {
   beforeEach(() => {
     vi.useFakeTimers()

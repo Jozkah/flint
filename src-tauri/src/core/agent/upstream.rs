@@ -1690,8 +1690,8 @@ mod tests {
         let err = format!("Upstream returned HTTP 400.\nBody: {}", "PAD".repeat(4000));
         assert!(log_brief(&err).contains("HTTP 400"));
         assert_eq!(
-            log_safe_upstream_url("http://v100:8555/v1/chat/completions?api_key=x"),
-            "http://v100:8555/v1/chat/completions"
+            log_safe_upstream_url("http://llm-host:8555/v1/chat/completions?api_key=x"),
+            "http://llm-host:8555/v1/chat/completions"
         );
     }
 

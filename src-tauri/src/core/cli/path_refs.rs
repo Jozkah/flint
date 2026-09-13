@@ -400,11 +400,11 @@ mod tests {
 
     #[test]
     fn test_ssh_address_not_a_reference() {
-        // Regression: `ssh username@44.50.0.89` must survive verbatim.
-        let text = "please use bash to ssh username@44.50.0.89";
+        // Regression: `ssh username@203.0.113.10` must survive verbatim.
+        let text = "please use bash to ssh username@203.0.113.10";
         assert!(parse_references(text).is_empty());
 
-        let text = "please use bash to ssh alandao@44.50.0.89";
+        let text = "please use bash to ssh deploy@203.0.113.10";
         assert!(parse_references(text).is_empty());
 
         let dir = tempfile::tempdir().unwrap();
@@ -421,11 +421,11 @@ mod tests {
 
     #[test]
     fn test_bare_ip_after_space_not_a_reference() {
-        let refs = parse_references("use bash to ssh @44.50.0.89 now");
+        let refs = parse_references("use bash to ssh @203.0.113.10 now");
         assert!(refs.is_empty());
 
         // Sentence-final trailing period must not turn it into a path either.
-        let refs = parse_references("please ping @44.50.0.89.");
+        let refs = parse_references("please ping @203.0.113.10.");
         assert!(refs.is_empty());
     }
 
@@ -457,15 +457,15 @@ mod tests {
 
     #[test]
     fn test_strip_keeps_ssh_address() {
-        let cleaned = strip_references("see @src/main.ts and ssh user@44.50.0.89");
-        assert_eq!(cleaned, "see and ssh user@44.50.0.89");
+        let cleaned = strip_references("see @src/main.ts and ssh user@203.0.113.10");
+        assert_eq!(cleaned, "see and ssh user@203.0.113.10");
     }
 
     #[test]
     fn test_last_ref_start() {
-        assert_eq!(last_ref_start("ssh user@44.50.0.89"), None);
+        assert_eq!(last_ref_start("ssh user@203.0.113.10"), None);
         assert_eq!(last_ref_start("mail foo@bar.com"), None);
-        assert_eq!(last_ref_start("ping @44.50.0.89 now"), None);
+        assert_eq!(last_ref_start("ping @203.0.113.10 now"), None);
         assert_eq!(
             last_ref_start("check @src/main.ts and ssh user@host"),
             Some("check ".len())

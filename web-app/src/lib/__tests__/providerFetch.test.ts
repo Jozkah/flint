@@ -61,7 +61,7 @@ describe('providerFetch', () => {
 
   it('sends the URL exactly as configured, with no hostname rewriting', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send(OK)
     await d.send({ kind: 'data', b64: b64('{"data":[]}') })
     await d.send({ kind: 'end' })
@@ -70,13 +70,13 @@ describe('providerFetch', () => {
     expect(d.command()).toBe('provider_http_stream')
     // The short hostname survives. Selecting an address is the transport's job,
     // and it does it in the connector, not by editing this string.
-    expect(d.request().url).toBe('http://v100:8080/v1/models')
+    expect(d.request().url).toBe('http://llm-host:8080/v1/models')
     expect(d.request().method).toBe('GET')
   })
 
   it('carries the method, headers and JSON body through', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'post',
       headers: { Authorization: 'Bearer k', 'Content-Type': 'application/json' },
       body: '{"model":"qwen3.8-27b","stream":true}',
@@ -93,7 +93,7 @@ describe('providerFetch', () => {
 
   it('accepts a Headers instance as well as a plain object', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models', {
+    const pending = providerFetch('http://llm-host:8080/v1/models', {
       headers: new Headers({ 'x-api-key': 'k' }),
     })
     await d.send(OK)
@@ -104,7 +104,7 @@ describe('providerFetch', () => {
 
   it('streams the body incrementally rather than after the whole response', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       body: '{}',
     })
@@ -133,7 +133,7 @@ describe('providerFetch', () => {
     const tail = btoa(String.fromCharCode(...bytes.slice(4)))
 
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       body: '{}',
     })
@@ -146,7 +146,7 @@ describe('providerFetch', () => {
 
   it('keeps a real 401 or 403 as a response instead of throwing', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send({ ...OK, status: 403, statusText: 'Forbidden' })
     await d.send({ kind: 'data', b64: b64('no entry') })
     await d.send({ kind: 'end' })
@@ -159,30 +159,30 @@ describe('providerFetch', () => {
 
   it('rejects with the transport message when nothing could be reached', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send({
       kind: 'error',
-      message: 'v100:8080 could not connect (resolved 100.86.12.4 [tailscale]; selected 100.86.12.4)',
+      message: 'llm-host:8080 could not connect (resolved 100.86.12.4 [tailscale]; selected 100.86.12.4)',
     })
     await expect(pending).rejects.toThrow(/could not connect/)
   })
 
   it('fails the body stream when the connection dies mid-response', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       body: '{}',
     })
     await d.send(OK)
     const response = await pending
     await d.send({ kind: 'data', b64: b64('partial') })
-    await d.send({ kind: 'error', message: 'v100:8080 failed' })
+    await d.send({ kind: 'error', message: 'llm-host:8080 failed' })
     await expect(response.text()).rejects.toThrow(/failed/)
   })
 
   it('gives a bodyless status no body rather than constructing an illegal Response', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send({ ...OK, status: 204, statusText: 'No Content' })
     await d.send({ kind: 'end' })
     const response = await pending
@@ -193,7 +193,7 @@ describe('providerFetch', () => {
   it('refuses a body type provider APIs never use, rather than sending nothing', async () => {
     drive()
     await expect(
-      providerFetch('http://v100:8080/v1/models', {
+      providerFetch('http://llm-host:8080/v1/models', {
         method: 'POST',
         body: new Blob(['x']),
       })
@@ -205,19 +205,19 @@ describe('providerFetch', () => {
   })
 
   it('does not reach for IPC for diagnostics when there is no bridge', async () => {
-    await expect(endpointDiagnostics('v100', 8080)).resolves.toBeNull()
-    await refreshEndpoint('v100', 8080)
+    await expect(endpointDiagnostics('llm-host', 8080)).resolves.toBeNull()
+    await refreshEndpoint('llm-host', 8080)
     expect(invoke).not.toHaveBeenCalled()
   })
 
   it('reads the endpoint that will actually be dialled out of a base URL', () => {
-    expect(endpointOf('http://v100:8080/v1')).toEqual({ host: 'v100', port: 8080 })
+    expect(endpointOf('http://llm-host:8080/v1')).toEqual({ host: 'llm-host', port: 8080 })
     // The scheme's default port, because that is what gets connected to.
     expect(endpointOf('https://api.openai.com/v1')).toEqual({
       host: 'api.openai.com',
       port: 443,
     })
-    expect(endpointOf('http://v100/v1')).toEqual({ host: 'v100', port: 80 })
+    expect(endpointOf('http://llm-host/v1')).toEqual({ host: 'llm-host', port: 80 })
     expect(endpointOf('not a url')).toBeNull()
   })
 
@@ -226,14 +226,14 @@ describe('providerFetch', () => {
     const controller = new AbortController()
     controller.abort()
     await expect(
-      providerFetch('http://v100:8080/v1/models', { signal: controller.signal })
+      providerFetch('http://llm-host:8080/v1/models', { signal: controller.signal })
     ).rejects.toThrow(/abort/i)
   })
 
   it('tells the transport to stop when the caller aborts mid-stream', async () => {
     const d = drive()
     const controller = new AbortController()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       body: '{}',
       signal: controller.signal,
@@ -251,7 +251,7 @@ describe('providerFetch', () => {
 
   it('stops the request when the consumer lets the body go', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       body: '{}',
     })
@@ -266,7 +266,7 @@ describe('providerFetch', () => {
 
   it('does not try to cancel a stream the transport already ended', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send(OK)
     await d.send({ kind: 'end' })
     const response = await pending
@@ -278,7 +278,7 @@ describe('providerFetch', () => {
 
   it('gives every request its own stream id', async () => {
     const d = drive()
-    const first = providerFetch('http://v100:8080/v1/models')
+    const first = providerFetch('http://llm-host:8080/v1/models')
     await d.send(OK)
     await d.send({ kind: 'end' })
     await first
@@ -292,7 +292,7 @@ describe('providerFetch', () => {
   /// count, was never written for any dispatch.
   it('names each model dispatch so its snapshot and usage can be bound to it', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+    const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
       method: 'POST',
       headers: { 'x-jan-session': 'sess-1', 'x-jan-run': 'run-1' },
       body: '{}',
@@ -312,7 +312,7 @@ describe('providerFetch', () => {
     for (let i = 0; i < 2; i++) {
       invoke.mockReset()
       const d = drive()
-      const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+      const pending = providerFetch('http://llm-host:8080/v1/chat/completions', {
         method: 'POST',
         headers: { 'x-jan-session': 'sess-1' },
         body: '{}',
@@ -327,7 +327,7 @@ describe('providerFetch', () => {
 
   it('does not name a request that is not a model dispatch', async () => {
     const d = drive()
-    const pending = providerFetch('http://v100:8080/v1/models')
+    const pending = providerFetch('http://llm-host:8080/v1/models')
     await d.send(OK)
     await d.send({ kind: 'end' })
     await pending

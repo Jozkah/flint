@@ -5,7 +5,7 @@ import type { EndpointDiagnostics } from '@/lib/providerFetch'
 const diag = (
   over: Partial<EndpointDiagnostics> = {}
 ): EndpointDiagnostics => ({
-  host: 'v100',
+  host: 'llm-host',
   port: 8080,
   localName: true,
   candidates: [],
@@ -56,9 +56,9 @@ describe('classifyModelLocation', () => {
   })
 
   it('will not call an unresolved short hostname remote', () => {
-    // The bug: `v100` filed next to the hosted APIs. Until the resolver has
+    // The bug: `llm-host` filed next to the hosted APIs. Until the resolver has
     // answered, it is checking -- never remote.
-    expect(classifyModelLocation({ baseUrl: 'http://v100:8080/v1' })).toBe(
+    expect(classifyModelLocation({ baseUrl: 'http://llm-host:8080/v1' })).toBe(
       'checking'
     )
   })
@@ -66,7 +66,7 @@ describe('classifyModelLocation', () => {
   it('calls a short hostname local once it resolves to a private address', () => {
     expect(
       classifyModelLocation({
-        baseUrl: 'http://v100:8080/v1',
+        baseUrl: 'http://llm-host:8080/v1',
         diagnostics: diag({
           selected: '100.86.12.4',
           candidates: [
@@ -82,7 +82,7 @@ describe('classifyModelLocation', () => {
     // The transport dials the private one, so the model is local.
     expect(
       classifyModelLocation({
-        baseUrl: 'http://v100:8080/v1',
+        baseUrl: 'http://llm-host:8080/v1',
         diagnostics: diag({
           selected: '100.86.12.4',
           suppressedPublic: true,
@@ -113,7 +113,7 @@ describe('classifyModelLocation', () => {
   it('stays checking while nothing has resolved yet', () => {
     expect(
       classifyModelLocation({
-        baseUrl: 'http://v100:8080/v1',
+        baseUrl: 'http://llm-host:8080/v1',
         diagnostics: diag({ candidates: [], selected: null }),
       })
     ).toBe('checking')
@@ -144,7 +144,7 @@ describe('classifyModelLocation', () => {
     const inputs = [
       { baseUrl: 'http://127.0.0.1:1337/v1' },
       { baseUrl: 'https://api.openai.com/v1' },
-      { baseUrl: 'http://v100:8080/v1' },
+      { baseUrl: 'http://llm-host:8080/v1' },
       { builtInEngine: true },
     ]
     for (const input of inputs) {
