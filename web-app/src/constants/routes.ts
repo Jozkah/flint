@@ -21,6 +21,7 @@ export const route = {
     web_search: '/settings/web-search',
     agent_tools: '/settings/agent-tools',
     memory: '/settings/memory',
+    permissions: '/settings/permissions',
     hardware: '/settings/hardware',
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',
