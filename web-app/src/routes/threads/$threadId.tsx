@@ -95,6 +95,10 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import {
+  APPROVAL_CANCELLED_TEXT,
+  APPROVAL_DENIED_TEXT,
+} from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -578,16 +582,28 @@ function ThreadDetail() {
                       toolCall.toolCallId,
                       toolName,
                       threadId,
-                      serverForTool(toolName)
+                      serverForTool(toolName),
+                      {
+                        input: toolCall.input,
+                        threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                      }
                     ))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
+              // A prompt withdrawn because the conversation stopped is not a
+              // "no" from the user, and the transcript should not say it was.
+              const refusal = useToolApprovalRequests
+                .getState()
+                .takeRefusal?.(toolCall.toolCallId)
               await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                errorText: 'Tool execution denied by user',
+                errorText:
+                  refusal === 'cancelled'
+                    ? APPROVAL_CANCELLED_TEXT
+                    : APPROVAL_DENIED_TEXT,
               })
               continue
             }
@@ -791,7 +807,11 @@ function ThreadDetail() {
               toolCall.toolCallId,
               toolCall.toolName,
               threadId,
-              serverForTool(toolCall.toolName)
+              serverForTool(toolCall.toolName),
+              {
+                input: toolCall.input,
+                threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+              }
             )
         )
       }

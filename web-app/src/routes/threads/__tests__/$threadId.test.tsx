@@ -773,7 +773,9 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        undefined
+        undefined,
+        // The prompt describes the call from its arguments.
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -792,7 +794,8 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        'fetch-server'
+        'fetch-server',
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -864,7 +867,8 @@ describe('ThreadDetail route', () => {
           'tcWeb',
           'web_search',
           'thread-1',
-          'mcp-search'
+          'mcp-search',
+          expect.objectContaining({ input: { query: 'x' } })
         )
         expect(callTool).toHaveBeenCalledWith(
           expect.objectContaining({

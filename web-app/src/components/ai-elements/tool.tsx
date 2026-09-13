@@ -29,7 +29,17 @@ import {
   summarizeToolInput,
 } from '@/lib/toolInputSummary'
 import { summarizeToolOutput } from '@/lib/toolOutputSummary'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  useToolApprovalRequests,
+  usePendingApprovalCount,
+} from '@/hooks/useToolApprovalRequests'
+import { describePermissionRequest } from '@/lib/permissionRequest'
+import { classifyPermissionOutcome } from '@/lib/permissionOutcome'
+import {
+  PermissionRequestDetails,
+  PermissionScopeChoices,
+  formatPermissionMessage,
+} from '@/containers/PermissionRequestDetails'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -344,52 +354,61 @@ export const ToolApprovalActions = memo(() => {
     toolCallId ? s.pending[toolCallId] : undefined
   )
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
+  const threadPendingCount = usePendingApprovalCount(pending?.threadId)
+  // One announcement per thread, from its oldest waiting card, so several
+  // pending cards do not all speak at once.
+  const isFirstInThread = useToolApprovalRequests((s) =>
+    pending
+      ? Object.values(s.pending).find((e) => e.threadId === pending.threadId)
+          ?.toolCallId === toolCallId
+      : false
+  )
+  const request = useMemo(
+    () =>
+      pending
+        ? describePermissionRequest({
+            toolName: pending.toolName,
+            input: pending.input,
+            serverName: pending.serverName,
+            workspaceLabel: pending.workspaceLabel,
+            taskContext: pending.taskContext,
+            threadIsEphemeral: pending.threadIsEphemeral,
+          })
+        : undefined,
+    [pending]
+  )
 
-  if (!pending || !toolCallId) return null
+  if (!pending || !toolCallId || !request) return null
 
   return (
-    <div className="mt-4 space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+    <div className="mt-4 space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
       <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-xs font-medium">
-        <ShieldAlertIcon className="size-4" />
-        <span>{t('tools:toolApproval.needsApproval')}</span>
+        <ShieldAlertIcon className="size-4" aria-hidden />
+        <span>{formatPermissionMessage(t, request.action)}</span>
+        {isFirstInThread && threadPendingCount > 1 && (
+          <span className="ml-auto rounded-full border border-amber-500/40 px-2 py-0.5">
+            {t('permissions:pending.many', { count: threadPendingCount })}
+          </span>
+        )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => resolveApproval(toolCallId, 'deny')}
-        >
-          {t('tools:toolApproval.deny')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => resolveApproval(toolCallId, 'allow-once')}
-        >
-          {t('tools:toolApproval.allowOnce')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => resolveApproval(toolCallId, 'allow-thread')}
-        >
-          {t('tools:toolApproval.allowInThread')}
-        </Button>
-        <Button
-          size="sm"
-          autoFocus
-          onClick={() => resolveApproval(toolCallId, 'allow-always')}
-        >
-          {/* Trusting a server tool-by-tool is the same decision repeated. */}
-          {pending.serverName
-            ? t('tools:toolApproval.allowServerAlways', {
-                server: pending.serverName,
-              })
-            : t('tools:toolApproval.allowToolAlways', {
-                tool: pending.toolName,
-              })}
-        </Button>
-      </div>
+      {isFirstInThread && (
+        <p role="status" aria-live="polite" className="sr-only">
+          {threadPendingCount === 1
+            ? t('permissions:pending.one')
+            : t('permissions:pending.many', { count: threadPendingCount })}
+        </p>
+      )}
+      {/* The parameters are already shown above this card. */}
+      <PermissionRequestDetails
+        request={request}
+        showAction={false}
+        showTechnicalDetails={false}
+      />
+      <PermissionScopeChoices
+        request={request}
+        autoFocusDeny
+        onDecision={(decision) => resolveApproval(toolCallId, decision)}
+      />
     </div>
   )
 })
@@ -478,6 +497,11 @@ export const ToolOutput = memo(
     const copyText = useMemo(
       () => (errorText ? errorText : stringifyToolInput(output)),
       [errorText, output]
+    )
+    // A refusal says what happened and what to do next, above the raw error.
+    const refusal = useMemo(
+      () => classifyPermissionOutcome(errorText),
+      [errorText]
     )
     // Only offer expansion for payloads long enough to be clipped. Citation
     // output (native web search, RAG) renders as cards outside the scroll box,
@@ -670,6 +694,18 @@ export const ToolOutput = memo(
           </p>
         )}
         <div className="rounded-md overflow-hidden">
+          {refusal && (
+            <div data-testid="permission-outcome" className="m-2 space-y-1">
+              <p className="text-foreground">
+                {formatPermissionMessage(t, refusal.message)}
+              </p>
+              {refusal.nextStep && (
+                <p className="text-muted-foreground">
+                  {formatPermissionMessage(t, refusal.nextStep)}
+                </p>
+              )}
+            </div>
+          )}
           {errorText && (
             <div className="m-2 p-2 bg-destructive/10 text-destructive rounded-md">
               {errorText}

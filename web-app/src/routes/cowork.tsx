@@ -2217,10 +2217,13 @@ function CoworkPage() {
               webSearch,
               // A subagent's mutations are the session's mutations, so
               // they go through the same prompt rather than around it.
-              onApprove: (callId, toolName) =>
+              onApprove: (callId, toolName, input) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel: current?.folder ?? undefined,
+                  }),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
                   sessionId: sid,
@@ -2437,10 +2440,13 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName) =>
+              onApprove: (callId, toolName, input) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel: current?.folder ?? undefined,
+                  }),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>
