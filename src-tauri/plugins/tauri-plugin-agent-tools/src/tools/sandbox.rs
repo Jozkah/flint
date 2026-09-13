@@ -393,6 +393,30 @@ fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R21: on Windows a path with a root but no drive names the root of the
+    /// project's drive, not somewhere in the project. It escapes, for writes
+    /// and reads alike, and resolves to where the file would really land.
+    #[test]
+    #[cfg(windows)]
+    fn a_root_relative_path_is_not_inside_the_project() {
+        let base = std::env::temp_dir().join(format!("jan-r21-{}", std::process::id()));
+        let project = base.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        for raw in ["/jan-r21-outside.txt", "\\jan-r21-outside.txt", "/tmp/dbg.py"] {
+            assert!(escapes_project(&project, None, raw).unwrap(), "{raw} was treated as inside the project");
+            assert!(escapes_write_roots(&project, None, &[], raw).unwrap(), "{raw}: write");
+            assert!(escapes_read_roots(&project, None, &[], raw).unwrap(), "{raw}: read");
+            let landed = resolve_path(&project, None, raw);
+            assert!(!landed.starts_with(&project), "{raw} resolved into the project: {landed:?}");
+        }
+        // Drive-relative (`C:foo`) is not a project path either.
+        assert!(escapes_project(&project, None, "C:jan-r21-drive-relative.txt").unwrap());
+        // Ordinary relative paths are still inside.
+        assert!(!escapes_project(&project, None, "src/ok.txt").unwrap());
+        assert!(!escapes_project(&project, None, "./src/ok.txt").unwrap());
+        let _ = std::fs::remove_dir_all(&base);
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);

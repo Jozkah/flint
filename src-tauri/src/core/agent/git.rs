@@ -24,7 +24,9 @@ use std::process::Command;
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
+        .args(crate::core::agent::vcs::HARDENED)
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
@@ -44,7 +46,7 @@ fn git(args: &[&str]) -> Result<String, String> {
 /// never triggers commit signing.
 fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo);
+    cmd.arg("-C").arg(repo).args(crate::core::agent::vcs::HARDENED).env("GIT_TERMINAL_PROMPT", "0");
     // Snapshot and restore must round-trip the working tree byte for byte.
     // `core.autocrlf` is on by default in Git for Windows, which converts on
     // the way into the index and back out again -- so a file snapshotted as

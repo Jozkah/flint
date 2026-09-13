@@ -40,7 +40,9 @@ fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_AUTHOR_NAME", "Jan Agent")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
         .env("GIT_COMMITTER_NAME", "Jan Agent")
@@ -604,6 +606,33 @@ pub fn prune(repo: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R20: creating an isolated checkout runs no hook the repository holds.
+    #[test]
+    fn an_isolated_checkout_runs_no_hook() {
+        let base = std::env::temp_dir().join(format!("jan-wt-nohook-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q", "-b", "main"]);
+        git_in(&repo, &["config", "user.email", "t@example.invalid"]);
+        git_in(&repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("f.txt"), "f\n").unwrap();
+        git_in(&repo, &["add", "-A"]);
+        git_in(&repo, &["commit", "-qm", "first"]);
+        let marker = base.join("hook-ran.txt");
+        std::fs::write(
+            repo.join(".git/hooks/post-checkout"),
+            format!("#!/bin/sh\necho ran > '{}'\n", marker.to_string_lossy().replace('\\', "/")),
+        )
+        .unwrap();
+        let checkout = base.join("checkout");
+        run(&repo, &["worktree", "add", "-q", "-b", "isolated", &checkout.to_string_lossy()]).expect("worktree add");
+        assert!(checkout.join("f.txt").exists());
+        assert!(!marker.exists(), "the repository's post-checkout hook ran");
+        let _ = run(&repo, &["worktree", "remove", "--force", &checkout.to_string_lossy()]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     fn git_in(dir: &Path, args: &[&str]) {
         let out = Command::new("git")

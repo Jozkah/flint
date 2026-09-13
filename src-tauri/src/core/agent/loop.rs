@@ -1320,6 +1320,41 @@ impl CompositeToolInvoker {
         decision
     }
 
+    /// R18: opening or updating a pull request acts on someone else's
+    /// service, so it needs a person or an explicit allow. `default = "allow"`
+    /// is not that: a project that allows every tool by default has not decided
+    /// that a model may publish to a forge.
+    async fn approve_forge_mutation(&self, action: &str, api: &str) -> Result<(), String> {
+        if self.permissions.is_allowed("pull_request", &self.subject) {
+            return Ok(());
+        }
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
+        let _ = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: "pull_request".to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(format!("{action} a pull request through {api}")),
+            diff: None,
+            patch: None,
+            prompt_kind: "mcp".to_string(),
+            offers_always: false,
+        });
+        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+        self.permission_requests.lock().await.remove(&request_id);
+        match decision {
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => Ok(()),
+            PermissionDecision::Deny => Err(format!(
+                "ERROR [approval_refused]: {action} a pull request through {api} was not approved. It changes a service outside this machine, so it needs a person's approval, or `allow = [\"pull_request\"]` in the project's agent.toml; nothing was sent."
+            )),
+        }
+    }
+
     /// Prompt the user to approve a `user`-scope subagent write (it persists
     /// outside the current project). Project-scope writes are not prompted.
     async fn prompt_subagent_create(&self, name: &str) -> PermissionDecision {
@@ -1957,6 +1992,9 @@ impl CompositeToolInvoker {
                             Ok(f) => f,
                             Err(e) => return failed(&e),
                         };
+                        if let Err(refused) = self.approve_forge_mutation("open", &forge.api.origin().ascii_serialization()).await {
+                            return refused;
+                        }
                         match forge.create(&data, &root, &change, &text("title"), &text("body")).await {
                             Ok((record, how)) => format!("{how} pull request #{}: {}", record.number, record.url),
                             Err(e) => failed(&e),
@@ -1974,6 +2012,9 @@ impl CompositeToolInvoker {
                             Ok(c) => c,
                             Err(e) => return failed(&e),
                         };
+                        if let Err(refused) = self.approve_forge_mutation("update", &forge.api.origin().ascii_serialization()).await {
+                            return refused;
+                        }
                         match forge.sync(&data, &root, &record, &change).await {
                             Ok(true) => format!("updated the description of pull request #{} for {}", record.number, &change.head[..change.head.len().min(12)]),
                             Ok(false) => format!("pull request #{} is already in step with the branch", record.number),
@@ -2817,11 +2858,15 @@ impl CompositeToolInvoker {
                 // its parent something and withhold it from the child.
                 &self.subject,
             );
-            // Auto-approval suppresses every prompt (sandbox escape, write, exec) but
-            // still honors HardDeny, so the hidden `.jan` invariant (while the shell
-            // is sandboxed) and explicit agent.toml denies hold.
+            // Auto-approval suppresses the prompts for writes and commands inside
+            // the project, and still honors HardDeny, so the hidden `.jan`
+            // invariant (while the shell is sandboxed) and explicit agent.toml
+            // denies hold. R21: it never covers a read or write that escapes the
+            // project -- those reach host files no sandbox confines, gate.rs
+            // documents them as never auto-approved, and a headless run with
+            // nobody to ask them is refused.
             let decision = match decision {
-                Decision::Prompt(_) if self.auto_approve => Decision::Allow,
+                Decision::Prompt(PromptKind::Write | PromptKind::Exec) if self.auto_approve => Decision::Allow,
                 other => other,
             };
             // Read and Net tools are non-mutating and safe to run concurrently
@@ -8524,6 +8569,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// R18: `default = "allow"` does not let a model open or update a pull
+    /// request. Without an explicit allow the run asks; a refusal (or nobody to
+    /// ask) stops it, and an explicit allow proceeds without asking.
+    #[tokio::test]
+    async fn publishing_to_a_forge_needs_an_explicit_allow_or_a_persons_approval() {
+        let root = std::env::temp_dir().join(format!("jan_loop_r18_{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create root");
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry.clone(),
+            ToolPermissions::new(PermissionDefault::Allow, &[], &[], &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        // A person who says no.
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut asked = Vec::new();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, tool_name, command, .. } = event {
+                    asked.push((tool_name, command.unwrap_or_default()));
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                }
+            }
+            asked
+        });
+        let refused = invoker.approve_forge_mutation("open", "https://api.github.com").await.unwrap_err();
+        assert!(refused.starts_with("ERROR [approval_refused]"), "{refused}");
+        assert!(refused.contains("nothing was sent"), "{refused}");
+
+        // An explicit allow needs nobody.
+        invoker.permissions = ToolPermissions::new(PermissionDefault::Allow, &["pull_request".to_string()], &[], &[]);
+        assert!(invoker.approve_forge_mutation("update", "https://api.github.com").await.is_ok());
+        drop(invoker);
+        let asked = asked.await.expect("listener");
+        assert_eq!(asked.len(), 1, "an explicit allow still asked: {asked:?}");
+        assert_eq!(asked[0].0, "pull_request");
+        assert!(asked[0].1.contains("open a pull request through https://api.github.com"), "{asked:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// R16: the loop's own tools are hidden when the project denies them, but a
     /// model can name a tool it was not shown. The deny holds at dispatch: a
     /// denied git_branch, git_history or git_split is refused and nothing in
@@ -9616,6 +9706,51 @@ mod tests {
             !matches!(rx.try_recv(), Ok(StreamEvent::PermissionRequest { .. })),
             "auto_approve must not prompt for a write"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// R21: auto-approval covers writes inside the project, never a write
+    /// that escapes it. `jan cli agent run` auto-approves unless --safe, and the
+    /// real BranchCraft run wrote C:\\tmp\\dbg.py this way.
+    #[tokio::test]
+    async fn auto_approval_never_covers_a_write_that_escapes_the_project() {
+        let root = unique_project_root();
+        let outside = std::env::temp_dir().join(format!("jan_r21_outside_{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&outside);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        // A person who says no to whatever is asked.
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut kinds = Vec::new();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, prompt_kind, .. } = event {
+                    kinds.push(prompt_kind);
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                }
+            }
+            kinds
+        });
+        let escaping = serde_json::json!({ "id": "w", "type": "function", "function": {
+            "name": "write",
+            "arguments": serde_json::json!({ "path": outside.to_string_lossy(), "content": "escaped" }).to_string()
+        } });
+        let out = invoker.invoke(&[escaping]).await.unwrap();
+        assert!(!outside.exists(), "a write outside the project ran under auto-approval: {}", out[0].content);
+        let inside = serde_json::json!({ "id": "i", "type": "function", "function": {
+            "name": "write",
+            "arguments": serde_json::json!({ "path": "in.txt", "content": "ok" }).to_string()
+        } });
+        invoker.invoke(&[inside]).await.unwrap();
+        assert_eq!(std::fs::read_to_string(root.join("in.txt")).unwrap(), "ok", "an in-project write is still auto-approved");
+        drop(invoker);
+        let kinds = asked.await.unwrap();
+        assert_eq!(kinds, vec!["write_escape".to_string()], "only the escaping write asked");
+        let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&root);
     }
 

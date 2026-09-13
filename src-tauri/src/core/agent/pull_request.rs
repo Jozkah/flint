@@ -139,7 +139,9 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, HarnessError> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .map_err(|e| refuse(ErrorKind::ToolUnavailable, format!("git would not run: {e}")))?;
     if out.status.success() {
@@ -201,6 +203,7 @@ pub fn change(repo: &Path, base: &str) -> Result<Change, HarnessError> {
     if !plain_name(base) {
         return Err(refuse(ErrorKind::InvalidInput, format!("{base:?} is not a base branch name this will use")));
     }
+    crate::core::agent::vcs::refuse_program_config(repo).map_err(|e| HarnessError::from(&e))?;
     let state = divergence(repo).map_err(|e| HarnessError::from(&e))?;
     let branch = state
         .branch

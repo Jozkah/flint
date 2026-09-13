@@ -5860,13 +5860,14 @@
       "tests": [
         "src-tauri/src/core/agent/vcs.rs::a_cancelled_split_stops_between_commits_and_leaves_the_index_clean",
         "src-tauri/src/core/agent/vcs.rs::a_change_is_split_into_the_commits_it_was_planned_as",
+        "src-tauri/src/core/agent/vcs.rs::a_hook_or_a_program_in_the_repositorys_own_config_is_never_run",
         "src-tauri/src/core/agent/vcs.rs::a_split_that_would_mislead_or_sweep_in_other_work_is_refused"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "2026-09-13 (Phase 6): the git_split loop tool commits a planned list of file groups as separate commits, each message checked against its own group; refusals by kind before anything is staged; cancellation between commits leaves a clean index. Evidence: failing CLI evidence first, unit tests on real repositories, real CLI exercise."
+      "auditNote": "2026-09-13 (Phase 6): the git_split loop tool commits a planned list of file groups as separate commits, each message checked against its own group; refusals by kind before anything is staged; cancellation between commits leaves a clean index. Evidence: failing CLI evidence first, unit tests on real repositories, real CLI exercise. R20 (2026-09-13): git_split runs no hook and refuses a repository whose own config names a program."
     },
     {
       "id": "AH-161",
@@ -5933,6 +5934,7 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
+        "src-tauri/src/core/agent/loop.rs::publishing_to_a_forge_needs_an_explicit_allow_or_a_persons_approval",
         "src-tauri/src/core/agent/pull_request.rs::a_cancelled_request_records_nothing",
         "src-tauri/src/core/agent/pull_request.rs::a_github_token_is_never_sent_to_another_api",
         "src-tauri/src/core/agent/pull_request.rs::a_record_holds_no_token_and_is_kept_per_project_and_branch",
@@ -5944,7 +5946,7 @@
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "2026-09-13 (Phase 6): pull_request create opens (or adopts) a pull request for a pushed branch with the model's text plus a harness-owned commit/file section; refusals before any request; token only to the user-named https/loopback API, GitHub tokens only to api.github.com, no redirects, no comments/reviewers/notifications. Evidence: failing CLI evidence first, unit tests, real CLI exercise against the local forge fixture only."
+      "auditNote": "2026-09-13 (Phase 6): pull_request create opens (or adopts) a pull request for a pushed branch with the model's text plus a harness-owned commit/file section; refusals before any request; token only to the user-named https/loopback API, GitHub tokens only to api.github.com, no redirects, no comments/reviewers/notifications. Evidence: failing CLI evidence first, unit tests, real CLI exercise against the local forge fixture only. R18 (2026-09-13): create and sync need an explicit allow or a person's approval; default allow is not approval."
     },
     {
       "id": "AH-163",
@@ -6072,13 +6074,15 @@
         "src-tauri/src/core/agent/loop.rs::a_denied_loop_tool_called_anyway_is_refused_and_changes_nothing",
         "src-tauri/src/core/agent/vcs.rs::a_clean_rebase_finishes_and_its_backup_can_still_undo_it",
         "src-tauri/src/core/agent/vcs.rs::a_conflicting_rebase_stops_recoverably_and_abort_returns_exactly_to_the_backup",
-        "src-tauri/src/core/agent/vcs.rs::a_rebase_that_would_rewrite_shared_history_is_refused"
+        "src-tauri/src/core/agent/vcs.rs::a_hook_or_a_program_in_the_repositorys_own_config_is_never_run",
+        "src-tauri/src/core/agent/vcs.rs::a_rebase_that_would_rewrite_shared_history_is_refused",
+        "src-tauri/src/core/agent/vcs.rs::undoing_a_finished_rebase_refuses_to_drop_commits_made_after_it"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "2026-09-13 (Phase 6): git_history rebase/continue/abort/status with a backup ref written before anything moves; refuses dirty trees, shared branches and already-pushed commits; abort verifies the branch is back at the backup. R16 (denied loop tools ran when called anyway) fixed with a regression test shown failing without the guard. Evidence: failing CLI evidence first, unit tests, real CLI exercise."
+      "auditNote": "2026-09-13 (Phase 6): git_history rebase/continue/abort/status with a backup ref written before anything moves; refuses dirty trees, shared branches and already-pushed commits; abort verifies the branch is back at the backup. R16 (denied loop tools ran when called anyway) fixed with a regression test shown failing without the guard. Evidence: failing CLI evidence first, unit tests, real CLI exercise. R19/R20 (2026-09-13): undo refuses when the branch moved after the operation; git runs no hook or repository-named program."
     },
     {
       "id": "AH-167",

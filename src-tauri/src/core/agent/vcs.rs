@@ -102,11 +102,75 @@ impl From<&VcsError> for tauri_plugin_agent_tools::harness_error::HarnessError {
     }
 }
 
+/// R20: configuration every git a tool runs is given, so git runs no program
+/// the repository could have been made to name. Hooks are looked for where
+/// there are none; fsmonitor, signing and credential prompts are off.
+pub(crate) const HARDENED: &[&str] = &[
+    "-c",
+    "core.hooksPath=/dev/null/jan-no-hooks",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "commit.gpgSign=false",
+    "-c",
+    "tag.gpgSign=false",
+    "-c",
+    "core.sshCommand=",
+    "-c",
+    "credential.helper=",
+];
+
+/// Keys in a repository's own config whose value is a program git would run.
+fn runs_a_program(key: &str, value: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    let last = key.rsplit('.').next().unwrap_or("");
+    let boolean = matches!(value.trim().to_ascii_lowercase().as_str(), "" | "true" | "false" | "yes" | "no" | "on" | "off" | "1" | "0");
+    (key.starts_with("filter.") && matches!(last, "clean" | "smudge" | "process"))
+        || (key.starts_with("diff.") && matches!(last, "textconv" | "command"))
+        || (key.starts_with("merge.") && last == "driver")
+        || (key.starts_with("gpg.") && last == "program")
+        || (key == "core.fsmonitor" && !boolean)
+        || matches!(
+            key.as_str(),
+            "core.editor" | "sequence.editor" | "core.sshcommand" | "core.askpass" | "core.pager"
+                | "credential.helper" | "uploadpack.packobjectshook" | "core.gitproxy" | "diff.external"
+                | "core.hookspath"
+        )
+        || (key.starts_with("credential.") && last == "helper")
+        || key.starts_with("alias.") && value.trim_start().starts_with('!')
+}
+
+/// Refuse a repository whose own config names a program for git to run.
+pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["config", "--local", "--includes", "--list", "-z"])
+        .output()
+        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
+    // No local config at all (not a repository) is for the caller to report.
+    let listed = String::from_utf8_lossy(&out.stdout);
+    for entry in listed.split('\0').filter(|e| !e.is_empty()) {
+        let (key, value) = entry.split_once('\n').unwrap_or((entry, ""));
+        if runs_a_program(key, value) {
+            return Err(VcsError::new(
+                VcsErrorKind::WouldDiscard,
+                format!(
+                    "this repository's own git config sets `{key}`, which makes git run a program; Jan's git tools do not run in it. Remove that setting, or use git yourself."
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn git(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(HARDENED)
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
     if out.status.success() {
@@ -562,6 +626,7 @@ pub struct BranchChange {
 /// * delete anything. There is no delete here at all: a branch is the only
 ///   record of work that is not merged yet.
 pub fn switch_branch(repo: &Path, name: &str, create: bool) -> Result<BranchChange, VcsError> {
+    refuse_program_config(repo)?;
     usable_branch_name(name)?;
     let name = name.trim();
     if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
@@ -852,6 +917,7 @@ pub fn check_split(repo: &Path, groups: &[SplitGroup]) -> Result<Vec<String>, Vc
     if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
         return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
     }
+    refuse_program_config(repo)?;
     if groups.len() < 2 {
         return Err(VcsError::new(
             VcsErrorKind::BadMessage,
@@ -985,6 +1051,12 @@ pub struct HistoryOp {
 }
 
 const BACKUP_PREFIX: &str = "refs/jan/backup/";
+/// Where a finished operation left the branch, named like its backup.
+const AFTER_PREFIX: &str = "refs/jan/after/";
+
+fn after_ref(backup: &str) -> String {
+    format!("{AFTER_PREFIX}{}", backup.trim().trim_start_matches(BACKUP_PREFIX))
+}
 
 /// Branches a guided rebase will not rewrite: the conventional long-lived ones
 /// and whatever the remote says is its default.
@@ -1041,6 +1113,7 @@ fn require_clean(repo: &Path, what: &str) -> Result<(), VcsError> {
     if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
         return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
     }
+    refuse_program_config(repo)?;
     if let Some(op) = in_progress(repo) {
         return Err(VcsError::new(
             VcsErrorKind::WouldDiscard,
@@ -1099,8 +1172,10 @@ fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(HARDENED)
         .args(["-c", "core.editor=true"])
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
         .env("GIT_SEQUENCE_EDITOR", "true")
         .output()
@@ -1118,6 +1193,11 @@ fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
 fn op_state(repo: &Path, operation: &str, backup: String, note: &str) -> Result<HistoryOp, VcsError> {
     let head = git(repo, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
     let stopped = in_progress(repo).is_some();
+    if !stopped {
+        // R19: remember where the finished operation left the branch, so an
+        // undo can tell its own result from work made afterwards.
+        git(repo, &["update-ref", &after_ref(&backup), "HEAD"])?;
+    }
     Ok(HistoryOp {
         operation: operation.to_string(),
         state: if stopped { "conflicted" } else { "done" }.to_string(),
@@ -1191,6 +1271,7 @@ pub fn cherry_pick(repo: &Path, commit: &str) -> Result<HistoryOp, VcsError> {
 /// and staged.
 pub fn continue_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
     let (operation, _) = parse_backup(backup)?;
+    refuse_program_config(repo)?;
     if in_progress(repo) != Some(operation) {
         return Err(VcsError::new(
             VcsErrorKind::NoBranch,
@@ -1220,6 +1301,7 @@ pub fn continue_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
 /// branch back where its backup says it was. Verified, not assumed.
 pub fn abort_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
     let (operation, branch) = parse_backup(backup)?;
+    refuse_program_config(repo)?;
     let backup = backup.trim();
     let expected = git(repo, &["rev-parse", "--verify", "--quiet", backup])
         .map_err(|_| VcsError::new(VcsErrorKind::NoBranch, format!("the backup {backup} does not exist")))?;
@@ -1233,7 +1315,31 @@ pub fn abort_op(repo: &Path, backup: &str) -> Result<HistoryOp, VcsError> {
             format!("the backup is for `{branch}` but HEAD is on `{current}`; nothing was reset"),
         ));
     }
-    if git(repo, &["rev-parse", "HEAD"])? != expected {
+    let head_now = git(repo, &["rev-parse", "HEAD"])?;
+    if head_now != expected {
+        // Undoing a finished operation: only while the branch is still exactly
+        // where the operation left it. Anything else is later work.
+        match git(repo, &["rev-parse", "--verify", "--quiet", &after_ref(backup)]) {
+            Ok(after) if after == head_now => {}
+            Ok(_) => {
+                return Err(VcsError::new(
+                    VcsErrorKind::WouldDiscard,
+                    format!(
+                        "`{branch}` has moved since the {operation} finished; returning to the backup would drop that later work from the branch. Nothing was reset."
+                    ),
+                ))
+            }
+            Err(_) => {
+                return Err(VcsError::new(
+                    VcsErrorKind::WouldDiscard,
+                    format!(
+                        "there is no record of where the {operation} left `{branch}`, so its result cannot be told from later work; nothing was reset"
+                    ),
+                ))
+            }
+        }
+    }
+    if head_now != expected {
         if !git(repo, &["status", "--porcelain"])?.trim().is_empty() {
             return Err(VcsError::new(
                 VcsErrorKind::WouldDiscard,
@@ -1867,6 +1973,70 @@ mod tests {
         assert_eq!(tree_of(&work, "other.txt"), "other\n");
         abort_op(&work, &done.backup).unwrap();
         assert_eq!(head(&work), before, "the backup undoes a finished rebase");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// R20: a hook or a program named in the repository's own config is never
+    /// run by these tools.
+    #[test]
+    fn a_hook_or_a_program_in_the_repositorys_own_config_is_never_run() {
+        let (base, work) = pair("no-exec");
+        let marker = base.join("ran.txt");
+        let marker_sh = marker.to_string_lossy().replace('\\', "/");
+        std::fs::write(work.join(".git/hooks/pre-commit"), format!("#!/bin/sh\necho ran > '{marker_sh}'\n")).unwrap();
+        std::fs::write(work.join(".git/hooks/post-checkout"), format!("#!/bin/sh\necho ran > '{marker_sh}'\n")).unwrap();
+        write(&work, "a.txt", "a\n");
+        write(&work, "b.txt", "b\n");
+        let groups = vec![
+            SplitGroup { files: vec!["a.txt".into()], message: "add a".into() },
+            SplitGroup { files: vec!["b.txt".into()], message: "add b".into() },
+        ];
+        apply_split(&work, &groups, &|| false).unwrap();
+        switch_branch(&work, "topic", true).unwrap();
+        assert!(!marker.exists(), "a hook ran");
+
+        for (key, value) in [
+            ("core.fsmonitor", "echo ran"),
+            ("filter.x.clean", "sh -c 'echo ran'"),
+            ("diff.x.textconv", "cat"),
+            ("core.sshCommand", "ssh -o ProxyCommand=evil"),
+            ("core.hooksPath", ".githooks"),
+        ] {
+            run(&work, &["config", "--local", key, value]);
+            write(&work, "c.txt", key);
+            let refused = check_split(&work, &groups).unwrap_err();
+            assert_eq!(refused.kind, VcsErrorKind::WouldDiscard, "{key}: {}", refused.message);
+            assert!(refused.message.to_lowercase().contains(&key.to_lowercase()), "{}", refused.message);
+            assert_eq!(switch_branch(&work, "main", false).unwrap_err().kind, VcsErrorKind::WouldDiscard, "{key}");
+            run(&work, &["config", "--local", "--unset", key]);
+        }
+        // A boolean fsmonitor is not a program.
+        run(&work, &["config", "--local", "core.fsmonitor", "false"]);
+        assert!(refuse_program_config(&work).is_ok());
+        // An included file counts as the repository's own config.
+        std::fs::write(base.join("extra.cfg"), "[filter \"y\"]\n\tsmudge = evil\n").unwrap();
+        run(&work, &["config", "--local", "include.path", &base.join("extra.cfg").to_string_lossy()]);
+        assert_eq!(refuse_program_config(&work).unwrap_err().kind, VcsErrorKind::WouldDiscard, "an included program");
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// R19: undoing a finished operation must not take later work with it.
+    #[test]
+    fn undoing_a_finished_rebase_refuses_to_drop_commits_made_after_it() {
+        let (base, work) = pair("rebase-later");
+        run(&work, &["switch", "-q", "-c", "topic"]);
+        commit(&work, "topic.txt", "topic\n", "topic change");
+        run(&work, &["switch", "-q", "main"]);
+        commit(&work, "other.txt", "other\n", "main moves on");
+        run(&work, &["switch", "-q", "topic"]);
+        let done = rebase_start(&work, "main").unwrap();
+        assert_eq!(done.state, "done", "{done:?}");
+        commit(&work, "later.txt", "later work\n", "work made after the rebase");
+        let later = head(&work);
+        let refused = abort_op(&work, &done.backup).unwrap_err();
+        assert_eq!(refused.kind, VcsErrorKind::WouldDiscard, "{}", refused.message);
+        assert_eq!(head(&work), later, "undoing the rebase dropped a commit made after it");
         let _ = std::fs::remove_dir_all(&base);
     }
 
