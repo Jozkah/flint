@@ -91,7 +91,7 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { IconAlertCircle, IconRefresh, IconLoader2 } from '@tabler/icons-react'
+import { CircleAlert, Folder, Loader2, RefreshCw } from 'lucide-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
@@ -1955,6 +1955,12 @@ function ThreadDetail() {
     [searchThreadModel, thread]
   )
 
+  // The title as text: search highlighting can leave span markup in it.
+  const plainThreadTitle = (thread?.title || t('common:newThread')).replace(
+    /<span[^>]*>|<\/span>/g,
+    ''
+  )
+
   // Per-message version counts for the `< n/m >` navigation control.
   const versionInfoById = useMemo(() => {
     const map: Record<string, { index: number; count: number }> = {}
@@ -1969,18 +1975,40 @@ function ThreadDetail() {
   return (
     <div className="flex flex-col h-full min-h-0">
       <HeaderPage>
-        <div className="flex items-center justify-between w-full pr-2 gap-2">
-          <DropdownModelProvider model={threadModel} />
-          <div className="flex items-center gap-2">
+        {/* Conversation identity first -- title, project, model -- then the
+            controls that act on it. The title gives way first on a phone. */}
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <h1
+              data-testid="conversation-title"
+              className="hidden min-w-0 max-w-[40%] truncate text-sm font-semibold text-foreground sm:block"
+              title={plainThreadTitle}
+            >
+              {plainThreadTitle}
+            </h1>
+            {thread?.metadata?.project?.name && (
+              <span
+                className="hidden min-w-0 max-w-40 items-center gap-1 truncate text-xs text-ink-2 lg:inline-flex"
+                title={thread.metadata.project.name}
+              >
+                <Folder className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{thread.metadata.project.name}</span>
+              </span>
+            )}
+            <div className="min-w-0 shrink">
+              <DropdownModelProvider model={threadModel} />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
             <WhatJanIsUsing threadId={threadId} messages={chatMessages} />
             <TemporaryChatBanner threadId={threadId} />
           </div>
         </div>
       </HeaderPage>
-      <div className="flex flex-1 flex-col h-full overflow-hidden">
+      <div className="flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Messages Area */}
         <div
-          className="message-zoom flex-1 relative"
+          className="message-zoom flex-1 relative min-w-0"
           style={
             {
               '--font-size-base': `calc(${fontSize} * ${messageZoom})`,
@@ -1989,7 +2017,9 @@ function ThreadDetail() {
         >
           <Conversation className="absolute inset-0 text-start">
             <ConversationContent
-              className={cn('mx-auto w-full md:w-4/5 xl:w-4/6')}
+              className={cn(
+                'mx-auto w-full min-w-0 max-w-[720px] px-3 pt-6 pb-4 md:px-4'
+              )}
             >
               {chatMessages.map((message, index) => {
                 const isLastMessage = index === chatMessages.length - 1
@@ -2045,7 +2075,7 @@ function ThreadDetail() {
               )}
               {memoryLocation && (
                 <MemoryProposalList
-                  className="mx-4 my-2"
+                  className="my-2"
                   proposals={memoryProposals}
                   location={memoryLocation}
                   onResolved={onMemoryProposalResolved}
@@ -2055,10 +2085,13 @@ function ThreadDetail() {
                 />
               )}
               {processingEmbeddings && (
-                <div className="flex items-start gap-3 px-4 py-3 mx-4 my-2 rounded-lg border border-primary/20 bg-primary/5">
-                  <IconLoader2 className="size-5 text-primary shrink-0 mt-0.5 animate-spin" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-main-view-fg mb-0.5">
+                <div
+                  role="status"
+                  className="flex items-start gap-3 px-4 py-3 my-2 rounded-lg border border-border bg-card"
+                >
+                  <Loader2 className="size-4 text-brand shrink-0 mt-0.5 motion-safe:animate-spin" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground mb-0.5">
                       {t('chat:embeddings.title')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -2081,10 +2114,14 @@ function ThreadDetail() {
                 </div>
               )}
               {(contextLimitError || oomError || backendError) && (
-                <div className="px-4 py-3 mx-4 my-2 rounded-lg border border-destructive/10 bg-destructive/10">
+                <div
+                  role="alert"
+                  data-testid="conversation-error-notice"
+                  className="px-4 py-3 my-2 rounded-lg border border-destructive/30 bg-destructive-tint"
+                >
                   <div className="flex items-start gap-3">
-                    <IconAlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
-                    <div className="flex-1">
+                    <CircleAlert className="size-4 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-destructive mb-1">
                         {oomError
                           ? 'llama.cpp ran out of memory'
@@ -2098,7 +2135,7 @@ function ThreadDetail() {
                             (oomError || backendError
                               ? 'text-xs font-mono'
                               : 'text-sm') +
-                            ' text-muted-foreground table-cell align-middle'
+                            ' text-ink-2 table-cell align-middle'
                           }
                           style={{ wordWrap: 'break-word' }}
                         >
@@ -2106,7 +2143,7 @@ function ThreadDetail() {
                         </span>
                       </div>
                       {oomError && (
-                        <ul className="mt-2 list-disc pl-5 text-xs text-muted-foreground space-y-0.5">
+                        <ul className="mt-2 list-disc pl-5 text-xs text-ink-2 space-y-0.5">
                           <li>Reduce context size (ctx-size)</li>
                           <li>Disable MTP (Multi-Token Prediction)</li>
                           <li>Lower n-gpu-layers or switch to a CPU backend</li>
@@ -2134,15 +2171,15 @@ function ThreadDetail() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="mt-3"
+                            className="mt-3 pointer-coarse:h-11"
                             onClick={handleContextSizeIncrease}
                           >
-                            <IconAlertCircle className="size-4 mr-2" />
+                            <CircleAlert className="size-4" />
                             Increase Context Size
                           </Button>
                         ) : (
                           <div className="mt-3 space-y-2">
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-ink-2">
                               This model's context window is set by its server,
                               so Jan cannot enlarge it. Start a new chat, shorten
                               the conversation, or raise the limit on the server.
@@ -2150,9 +2187,10 @@ function ThreadDetail() {
                             <Button
                               variant="outline"
                               size="sm"
+                              className="pointer-coarse:h-11"
                               onClick={() => handleRegenerate()}
                             >
-                              <IconRefresh className="size-4 mr-2" />
+                              <RefreshCw className="size-4" />
                               Regenerate
                             </Button>
                           </div>
@@ -2161,10 +2199,10 @@ function ThreadDetail() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="mt-3"
+                          className="mt-3 pointer-coarse:h-11"
                           onClick={() => handleRegenerate()}
                         >
-                          <IconRefresh className="size-4 mr-2" />
+                          <RefreshCw className="size-4" />
                           {oomError || backendError ? 'Reload' : 'Regenerate'}
                         </Button>
                       )}
@@ -2177,8 +2215,10 @@ function ThreadDetail() {
           </Conversation>
         </div>
 
-        {/* Chat Input - Fixed at bottom */}
-        <div className="py-4 mx-auto w-full md:w-4/5 xl:w-4/6">
+        {/* Chat Input - Fixed at bottom. The shell sizes the page to the
+            visual viewport, so this stays above a phone keyboard. */}
+        <div className="mx-auto w-full min-w-0 max-w-[752px] px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4 md:pb-4">
+
           <ChatInput
             model={threadModel}
             onSubmit={handleSubmit}

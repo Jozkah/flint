@@ -121,7 +121,7 @@ export const TokenSpeedIndicator = memo(
                 ))}
               </ul>
               {withheldIds.length > 0 && (
-                <p className="mt-1 text-amber-600">
+                <p className="mt-1 text-warning">
                   Withheld as conflicting: {withheldIds.join(', ')}
                 </p>
               )}

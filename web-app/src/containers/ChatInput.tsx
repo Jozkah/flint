@@ -29,20 +29,21 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu'
-import { ArrowRight, PlusIcon } from 'lucide-react'
 import {
-  IconPhoto,
-  IconMusic,
-  IconVideo,
-  IconBrain,
-  IconTool,
-  IconCodeCircle2,
-  IconPlayerStopFilled,
-  IconX,
-  IconPaperclip,
-  IconLoader2,
-  IconWorldSearch,
-} from '@tabler/icons-react'
+  ArrowUp,
+  Brain,
+  CodeXml,
+  Globe,
+  ImageIcon,
+  Loader2,
+  Music,
+  Paperclip,
+  PlusIcon,
+  Square,
+  Video,
+  Wrench,
+  X,
+} from 'lucide-react'
 import { generateId } from 'ai'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageChip } from '@/containers/QueuedMessageBubble'
@@ -2169,15 +2170,18 @@ const ChatInput = memo(function ChatInput({
       <div className="relative">
         <div
           className={cn(
-            'relative overflow-hidden p-0.5 rounded-3xl'
+            'relative overflow-hidden p-px rounded-lg'
           )}
         >
           {isStreaming && (
-            <div className="absolute inset-0">
-              <MovingBorder rx="10%" ry="10%">
+            // The accent travelling round the edge says a reply is streaming.
+            // Hidden when the reader asked for less motion; the Stop button
+            // still says the same thing.
+            <div className="absolute inset-0 motion-reduce:hidden" aria-hidden>
+              <MovingBorder rx="2%" ry="2%">
                 <div
                   className={cn(
-                    'h-100 w-100 bg-[radial-gradient(var(--app-primary),transparent_60%)]'
+                    'h-100 w-100 bg-[radial-gradient(var(--brand),transparent_60%)]'
                   )}
                 />
               </MovingBorder>
@@ -2192,9 +2196,9 @@ const ChatInput = memo(function ChatInput({
             // reserve now follows the row's measured height.
             style={{ paddingBottom: `${footerHeight}px` }}
             className={cn(
-              'relative z-20 px-0 border rounded-3xl border-input bg-white dark:bg-input/30',
-              isFocused && 'ring-1 ring-ring/50',
-              isDragOver && 'ring-2 ring-ring/50 border-primary'
+              'relative z-20 px-0 border rounded-lg border-line-strong bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[outline-color]',
+              isFocused && 'outline-2 outline-offset-0 outline-ring/50',
+              isDragOver && 'outline-2 outline-ring border-brand bg-brand-tint'
             )}
             data-drop-zone={dropAcceptsAnything ? 'true' : undefined}
             onDragEnter={dropAcceptsAnything ? handleDragEnter : undefined}
@@ -2204,7 +2208,9 @@ const ChatInput = memo(function ChatInput({
           >
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
-                <div className="flex gap-3 items-center">
+                {/* Attachments as chips: a thumbnail or kind icon, the name,
+                    and a remove button, wrapping instead of overflowing. */}
+                <div className="flex min-w-0 flex-wrap gap-1.5 items-center">
                   {attachments
                     .map((att, idx) => ({ att, idx }))
                     .map(({ att, idx }) => {
@@ -2221,44 +2227,38 @@ const ChatInput = memo(function ChatInput({
                       return (
                         <div
                           key={`${att.type}-${idx}-${att.name}`}
-                          className="relative"
+                          data-testid="composer-attachment-chip"
+                          className="relative flex h-9 min-w-0 max-w-56 items-center gap-1.5 rounded-md border border-border bg-sunken pl-1 pr-1 text-xs text-foreground pointer-coarse:h-11"
                         >
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div
                                 className={cn(
-                                  'relative border rounded-xl size-14 overflow-hidden',
-                                  'flex items-center justify-center'
+                                  'flex min-w-0 items-center gap-1.5'
                                 )}
                               >
-                                {isImage && att.dataUrl ? (
-                                  <img
-                                    className="object-cover w-full h-full"
-                                    src={att.dataUrl}
-                                    alt={`${att.name}`}
-                                  />
-                                ) : isAudio ? (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconMusic size={20} />
-                                    {durLabel && (
-                                      <span className="text-[10px] leading-none mt-0.5 tabular-nums opacity-70">
-                                        {durLabel}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : isVideo ? (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconVideo size={20} />
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconPaperclip size={18} />
-                                    {ext && (
-                                      <span className="text-[10px] leading-none mt-0.5 uppercase opacity-70">
-                                        .{ext}
-                                      </span>
-                                    )}
-                                  </div>
+                                <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-card text-muted-foreground">
+                                  {isImage && att.dataUrl ? (
+                                    <img
+                                      className="object-cover w-full h-full"
+                                      src={att.dataUrl}
+                                      alt={`${att.name}`}
+                                    />
+                                  ) : isAudio ? (
+                                    <Music className="size-4" />
+                                  ) : isVideo ? (
+                                    <Video className="size-4" />
+                                  ) : (
+                                    <Paperclip className="size-4" />
+                                  )}
+                                </span>
+                                <span className="min-w-0 truncate font-medium">
+                                  {att.name}
+                                </span>
+                                {(durLabel || (!isImage && !isAudio && !isVideo && ext)) && (
+                                  <span className="shrink-0 text-[11px] uppercase text-muted-foreground tabular-nums">
+                                    {durLabel ?? `.${ext}`}
+                                  </span>
                                 )}
                               </div>
                             </TooltipTrigger>
@@ -2298,17 +2298,18 @@ const ChatInput = memo(function ChatInput({
                             </TooltipContent>
                           </Tooltip>
 
-                          {/* Remove button disabled while processing - outside overflow-hidden container */}
-                          {!att.processing && (
-                            <div
-                              className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
+                          {/* No remove while it is still being processed. */}
+                          {att.processing ? (
+                            <Loader2 className="mx-1 size-3.5 shrink-0 motion-safe:animate-spin text-muted-foreground" />
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`${t('common:dismiss')} ${att.name}`}
+                              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-9"
                               onClick={() => handleRemoveAttachment(idx)}
                             >
-                              <IconX
-                                className="text-neutral-200"
-                                size={14}
-                              />
-                            </div>
+                              <X className="size-3.5" />
+                            </button>
                           )}
                         </div>
                       )
@@ -2465,7 +2466,8 @@ const ChatInput = memo(function ChatInput({
               data-gramm_editor={spellCheckChatInput}
               data-gramm_grammarly={spellCheckChatInput}
               className={cn(
-                'bg-transparent pt-4 w-full shrink-0 border-none resize-none outline-0 px-4',
+                // 16px below md so a phone does not zoom into the field.
+                'bg-transparent pt-3.5 w-full shrink-0 border-none resize-none outline-0 px-4 text-base leading-relaxed text-foreground placeholder:text-muted-foreground md:text-[15px]',
                 rows < maxRows && 'scrollbar-hide',
                 className
               )}
@@ -2517,8 +2519,12 @@ const ChatInput = memo(function ChatInput({
                 {!effectiveAgentMode && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="secondary" size="icon-sm" className='rounded-full mr-2 mb-1'>
-                      <PlusIcon size={18} className="text-muted-foreground" />
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      className="mr-1.5 text-ink-2 pointer-coarse:size-11"
+                    >
+                      <PlusIcon className="size-4.5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
@@ -2527,7 +2533,7 @@ const ChatInput = memo(function ChatInput({
                         image capability left text-only models with no way to
                         attach anything at all. */}
                     <DropdownMenuItem onClick={() => void openImagePicker()}>
-                      <IconPhoto size={18} className="text-muted-foreground" />
+                      <ImageIcon className="size-4 text-muted-foreground" />
                       <span>
                         {hasMmproj
                           ? t('common:attachFiles.addFilesOrImages')
@@ -2544,7 +2550,7 @@ const ChatInput = memo(function ChatInput({
                     </DropdownMenuItem>
                     {audioSupported && (
                       <DropdownMenuItem onClick={() => void openAudioPicker()}>
-                        <IconMusic size={18} className="text-muted-foreground" />
+                        <Music className="size-4 text-muted-foreground" />
                         <span>Add Audio</span>
                         <input
                           type="file"
@@ -2558,7 +2564,7 @@ const ChatInput = memo(function ChatInput({
                     )}
                     {videoSupported && (
                       <DropdownMenuItem onClick={() => void openVideoPicker()}>
-                        <IconVideo size={18} className="text-muted-foreground" />
+                        <Video className="size-4 text-muted-foreground" />
                         <span>Add Video</span>
                         <input
                           type="file"
@@ -2576,15 +2582,9 @@ const ChatInput = memo(function ChatInput({
                       disabled={!selectedModel?.capabilities?.includes('tools')}
                     >
                       {ingestingDocs ? (
-                        <IconLoader2
-                          size={18}
-                          className="text-muted-foreground animate-spin"
-                        />
+                        <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
                       ) : (
-                        <IconPaperclip
-                          size={18}
-                          className="text-muted-foreground"
-                        />
+                        <Paperclip className="size-4 text-muted-foreground" />
                       )}
                       <span>
                         {ingestingDocs
@@ -2627,11 +2627,9 @@ const ChatInput = memo(function ChatInput({
                       <Button
                           variant="ghost"
                           size="icon-xs"
+                          className="size-8 pointer-coarse:size-11"
                         >
-                        <IconCodeCircle2
-                          size={18}
-                          className="text-muted-foreground"
-                        />
+                        <CodeXml className="size-4 text-muted-foreground" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -2665,6 +2663,7 @@ const ChatInput = memo(function ChatInput({
                         <Button
                           variant="ghost"
                           size="icon-xs"
+                          className="size-8 pointer-coarse:size-11"
                           onClick={(e) => {
                             setDropdownToolsAvailable(false)
                             e.stopPropagation()
@@ -2685,10 +2684,9 @@ const ChatInput = memo(function ChatInput({
                                     'p-1 flex items-center justify-center rounded-sm transition-all duration-200 ease-in-out gap-1 cursor-pointer',
                                   )}
                                 >
-                                  <IconTool
-                                    size={18}
+                                  <Wrench
                                     className={cn(
-                                      'text-muted-foreground',
+                                      'size-4 text-muted-foreground',
                                     )}
                                   />
                                 </div>
@@ -2712,14 +2710,14 @@ const ChatInput = memo(function ChatInput({
                         size="icon-xs"
                         onClick={currentThreadId ? handleAgentToggle : undefined}
                         className={cn(
-                          isAgentMode && 'text-primary bg-primary/10 hover:bg-primary/10 items-center',
+                          isAgentMode && 'text-brand-text bg-brand-tint hover:bg-brand-tint items-center',
                           !currentThreadId && 'cursor-default pointer-events-none'
                         )}
                       >
                         <BotIcon
                           className={cn(
                             'text-muted-foreground -mt-0.5',
-                            isAgentMode && 'text-primary'
+                            isAgentMode && 'text-brand-text'
                           )}
                         />
                       </Button>
@@ -2740,14 +2738,17 @@ const ChatInput = memo(function ChatInput({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className={cn(webSearchEnabled && 'text-primary')}
+                        aria-pressed={webSearchEnabled}
+                        className={cn(
+                          'size-8 pointer-coarse:size-11',
+                          webSearchEnabled && 'bg-brand-tint text-brand-text hover:bg-brand-tint'
+                        )}
                         onClick={() => setWebSearchEnabled(!webSearchEnabled)}
                       >
-                        <IconWorldSearch
-                          size={18}
+                        <Globe
                           className={cn(
-                            'text-muted-foreground',
-                            webSearchEnabled && 'text-primary'
+                            'size-4 text-muted-foreground',
+                            webSearchEnabled && 'text-brand-text'
                           )}
                         />
                       </Button>
@@ -2921,13 +2922,13 @@ const ChatInput = memo(function ChatInput({
                               <Button
                                 variant="ghost"
                                 size="icon-xs"
+                                className="size-8 pointer-coarse:size-11"
                                 aria-label={`Reasoning: ${label}`}
                               >
-                                <IconBrain
-                                  size={18}
+                                <Brain
                                   className={cn(
-                                    'text-muted-foreground',
-                                    reasoningValue === 'on' && 'text-primary',
+                                    'size-4 text-muted-foreground',
+                                    reasoningValue === 'on' && 'text-brand-text',
                                     reasoningValue === 'off' && 'opacity-50'
                                   )}
                                 />
@@ -3067,10 +3068,12 @@ const ChatInput = memo(function ChatInput({
               ) : isStreaming ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    {/* Stopping is not destructive -- the partial reply is
+                        kept -- so it is a secondary button, not a red one. */}
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="icon-sm"
-                      className="rounded-full mr-1 mb-1"
+                      className="mr-1 mb-1 pointer-coarse:size-11"
                       data-test-id="stop-button"
                       aria-label={
                         queueLength > 0
@@ -3094,7 +3097,7 @@ const ChatInput = memo(function ChatInput({
                         stopStreaming(currentThreadId ?? '')
                       }}
                     >
-                      <IconPlayerStopFilled />
+                      <Square className="size-3.5 fill-current" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -3107,10 +3110,11 @@ const ChatInput = memo(function ChatInput({
                   size="icon-sm"
                   disabled={(!prompt.trim() && !hasSendableMedia) || ingestingAny}
                   data-test-id="send-message-button"
+                  aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
-                  className="rounded-full mr-1 mb-1"
+                  className="mr-1 mb-1 pointer-coarse:size-11"
                 >
-                  <ArrowRight className="text-primary-fg" />
+                  <ArrowUp className="size-4.5" />
                 </Button>
               )}
             </div>
@@ -3119,11 +3123,16 @@ const ChatInput = memo(function ChatInput({
       </div>
 
       {message && (
-        <div className="-mt-0.5 mx-2 pb-2 px-3 pt-1.5 rounded-b-lg text-xs text-destructive transition-all duration-200 ease-in-out">
-          <div className="flex items-center gap-1 justify-between">
-            {message}
-            <IconX
-              className="size-3 text-muted-foreground cursor-pointer"
+        <div
+          role="alert"
+          className="mt-1.5 mx-1 rounded-md border border-destructive/30 bg-destructive-tint px-3 py-1.5 text-xs text-destructive"
+        >
+          <div className="flex items-center gap-2 justify-between">
+            <span className="min-w-0 wrap-break-word">{message}</span>
+            <button
+              type="button"
+              aria-label={t('common:dismiss')}
+              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
               onClick={() => {
                 setMessage('')
                 // Reset file input to allow re-uploading the same file
@@ -3131,7 +3140,9 @@ const ChatInput = memo(function ChatInput({
                   fileInputRef.current.value = ''
                 }
               }}
-            />
+            >
+              <X className="size-3.5" />
+            </button>
           </div>
         </div>
       )}

@@ -128,7 +128,7 @@ function NavMainItemWithAnimatedIcon({
 
   const content = (
     <>
-      <AnimatedIcon ref={iconRef} className="text-foreground/70" size={16} />
+      <AnimatedIcon ref={iconRef} className="text-ink-2" size={16} />
       <span>{label}</span>
       {item.shortcut}
     </>
@@ -208,13 +208,13 @@ export function NavMain() {
               >
                 {item.url ? (
                   <Link to={item.url}>
-                    {Icon && <Icon className="text-foreground/70" />}
+                    {Icon && <Icon className="text-ink-2" />}
                     <span>{t(item.title)}</span>
                     {item.shortcut}
                   </Link>
                 ) : (
                   <>
-                    {Icon && <Icon className="text-foreground/70" />}
+                    {Icon && <Icon className="text-ink-2" />}
                     <span>{t(item.title)}</span>
                     {item.shortcut}
                   </>

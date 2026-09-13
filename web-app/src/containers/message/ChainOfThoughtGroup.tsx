@@ -1,6 +1,6 @@
 import { cloneElement, memo, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import { IconArrowDown, IconCircleCheck } from '@tabler/icons-react'
+import { ArrowDown, CircleCheck } from 'lucide-react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -199,7 +199,7 @@ export const ChainOfThoughtGroup = memo(
           <StepRow
             key={`${messageId}-done`}
             marker={
-              <IconCircleCheck className="size-4 text-muted-foreground/60" />
+              <CircleCheck className="size-4 text-success" />
             }
             text={t('chat:done')}
           />
@@ -235,13 +235,13 @@ export const ChainOfThoughtGroup = memo(
         </div>
         {!isReasoningAtBottom && (
           <Button
-            className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10"
+            className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10 pointer-coarse:size-11"
             onClick={onReasoningScrollToBottom}
             size="icon"
             type="button"
             variant="outline"
           >
-            <IconArrowDown className="size-3" />
+            <ArrowDown className="size-3" />
           </Button>
         )}
       </div>

@@ -72,9 +72,9 @@ function ProjectPageContent() {
 
   if (!project) {
     return (
-      <div className="flex h-full flex-col items-center justify-center">
+      <div className="flex h-full flex-col items-center justify-center px-4">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-2">
+          <h1 className="font-display text-[28px] leading-tight mb-2">
             {t('projects.projectNotFound')}
           </h1>
           <p className="text-muted-foreground">
@@ -88,21 +88,24 @@ function ProjectPageContent() {
   return (
     <div className="flex flex-col h-full w-full">
       <HeaderPage>
-        <div className="flex items-center justify-between w-full">
+        <div className="flex min-w-0 items-center justify-between gap-2 w-full">
           <DropdownModelProvider />
         </div>
       </HeaderPage>
 
-      <div className="h-full relative flex flex-col px-4 md:px-8 py-4 overflow-y-auto">
-        <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
+      <div className="h-full min-w-0 relative flex flex-col px-4 md:px-8 py-4 overflow-y-auto overflow-x-hidden">
+        <div className="mx-auto w-full max-w-[720px]">
           {/* Project Name with Dropdown */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <h1 className="text-2xl font-semibold">
+          <div className="flex min-w-0 items-center justify-between gap-2 mb-4">
+            <h1
+              className="min-w-0 truncate font-display text-[28px] leading-tight text-foreground"
+              title={project.name}
+            >
               {project.name}
             </h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-xs">
+                <Button variant="ghost" size="icon-sm" className="shrink-0 pointer-coarse:size-11">
                   <MoreHorizontal className="size-4" />
                   <span className="sr-only">More options</span>
                 </Button>
@@ -138,12 +141,12 @@ function ProjectPageContent() {
           {projectThreads.length > 0 && (
             <div className="flex flex-col mb-6">
               <div className="flex items-center justify-between gap-2 mb-4">
-                <h2 className="text-base font-medium">
+                <h2 className="text-sm font-semibold text-foreground">
                   {t('projects.conversation')}
                 </h2>
                 <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-xs">
+                    <Button variant="ghost" size="icon-sm" className="pointer-coarse:size-11">
                       <MoreHorizontal className="size-4" />
                       <span className="sr-only">More options</span>
                     </Button>
@@ -169,9 +172,9 @@ function ProjectPageContent() {
 
           {/* Empty State */}
           {projectThreads.length === 0 && (
-            <div className="flex flex-col items-center justify-center pt-6 pb-12 text-center bg-card rounded-xl border mb-6">
+            <div className="flex flex-col items-center justify-center px-4 pt-8 pb-12 text-center bg-card rounded-lg border border-border mb-6">
               <MessageCircle className="size-8 text-muted-foreground/50 mb-3" />
-              <h3 className="text-base font-medium text-foreground mb-1">
+              <h3 className="font-display text-xl text-foreground mb-1">
                 {t('projects.noConversationsIn', { projectName: project.name })}
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -181,9 +184,9 @@ function ProjectPageContent() {
           )}
 
           {/* Project Settings Card */}
-          <div className="rounded-xl border border-border overflow-hidden mb-6 bg-card">
+          <div className="rounded-lg border border-border overflow-hidden mb-6 bg-card">
             {/* Assistant Section */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
               <div className="flex flex-col gap-1">
                 <h3 className="text-sm font-medium">{t('projects.addProjectDialog.assistant')}</h3>
                 {projectAssistant ? (

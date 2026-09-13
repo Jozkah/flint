@@ -15,7 +15,7 @@ import {
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
-import { IconArrowsSort, IconSettings, IconX } from '@tabler/icons-react'
+import { ArrowUpDown, Settings, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
@@ -491,7 +491,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       const highlightedId = highlightFzfMatch(
         item.model.id,
         positions,
-        'text-accent'
+        'text-brand-text'
       )
 
       return {
@@ -674,10 +674,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
-          <div className="border relative z-20 px-4 py-1.5 flex items-center gap-1.5 rounded-full">
+          <div className="relative z-20 flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-md border border-line-strong bg-card px-2.5 text-sm transition-colors hover:bg-sunken pointer-coarse:h-11">
             <button
               type="button"
-              className="font-medium cursor-pointer flex items-center gap-1.5 relative z-20 min-w-0"
+              className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {provider && (
                 <div className="shrink-0">
@@ -728,7 +728,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <PopoverContent
         className={cn(
           // Use auto width to fit long model names; keep a sensible minimum.
-          'w-auto min-w-70 max-w-[90vw] p-0 backdrop-blur-2xl bg-background/95 border',
+          'w-auto min-w-70 max-w-[90vw] p-0 bg-card border border-line-strong',
           searchValue.length === 0 && 'h-80'
         )}
         align="start"
@@ -739,20 +739,23 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       >
         <div className="flex flex-col size-full">
           {/* Search input */}
-          <div className="flex items-center gap-1 p-2 border-b">
+          <div className="flex items-center gap-1 p-2 border-b border-border">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={t('common:searchModels')}
-              className="min-w-0 flex-1 bg-transparent text-sm font-normal outline-0"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
-              <IconX
-                size={16}
-                className="shrink-0 text-muted-foreground cursor-pointer"
+              <button
+                type="button"
+                aria-label={t('common:dismiss')}
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={onClearSearch}
-              />
+              >
+                <X className="size-4" />
+              </button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -760,13 +763,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   type="button"
                   aria-label={t('common:sortModels')}
                   title={t('common:sortModels')}
-                  className="size-6 shrink-0 cursor-pointer flex items-center justify-center rounded-sm bg-secondary-foreground/8 transition-all duration-200 ease-in-out"
+                  className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-sunken transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <IconArrowsSort
-                    size={14}
-                    className="text-muted-foreground"
-                  />
+                  <ArrowUpDown className="size-3.5 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
@@ -795,7 +795,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               <div className="py-1">
                 {/* Favorites section - only show when not searching */}
                 {!searchValue && favoriteItems.length > 0 && (
-                  <div className="bg-secondary/30 rounded-sm m-2 py-1">
+                  <div className="bg-sunken/60 rounded-md m-2 py-1">
                     {/* Favorites header */}
                     <div className="flex items-center gap-1.5 px-2 py-1">
                       <span className="text-sm font-medium text-muted-foreground">
@@ -817,11 +817,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             // Selected state needs stronger contrast than the surrounding secondary tint.
                             isSelected &&
-                              'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                           )}
                         >
                           <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -871,12 +871,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
                 {/* Divider between favorites and regular providers */}
                 {favoriteItems.length > 0 && (
-                  <div className="border-b mx-2"></div>
+                  <div className="border-b border-border mx-2"></div>
                 )}
 
                 {/* One ordered list, or a section per provider */}
                 {!isGrouped ? (
-                  <div className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 py-1">
+                  <div className="bg-sunken/60 rounded-md my-1.5 mx-1.5 py-1">
                     {flatItems.map((searchableModel) => {
                       const isSelected =
                         selectedModel?.id === searchableModel.model.id &&
@@ -893,10 +893,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             isSelected &&
-                              'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                           )}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -959,7 +959,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   return (
                     <div
                       key={providerKey}
-                      className="bg-secondary/30 first:mt-0 rounded-sm my-1.5 mx-1.5 first:mb-0 py-1"
+                      className="bg-sunken/60 first:mt-0 rounded-md my-1.5 mx-1.5 first:mb-0 py-1"
                     >
                       {/* Provider header */}
                       <div className="flex items-center justify-between px-2 py-1">
@@ -976,7 +976,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           aria-label={t('model-fit:providerSettings', {
                             provider: getProviderTitle(providerInfo.provider),
                           })}
-                          className="size-6 shrink-0 cursor-pointer flex items-center justify-center rounded-sm bg-secondary-foreground/8 transition-all duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-card focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate({
@@ -986,10 +986,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             setOpen(false)
                           }}
                         >
-                          <IconSettings
-                            size={16}
-                            className="text-muted-foreground"
-                          />
+                          <Settings className="size-4 text-muted-foreground" />
                         </button>
                       </div>
 
@@ -1012,10 +1009,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                               {...selectableRow(searchableModel, isSelected)}
                               className={cn(
                                 'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                                'hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                 modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                                 isSelected &&
-                                  'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                                  'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                               )}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">

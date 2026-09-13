@@ -1,4 +1,4 @@
-import { IconClock } from '@tabler/icons-react'
+import { Clock } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { route } from '@/constants/routes'
@@ -55,10 +55,11 @@ export function NewTemporaryChatButton() {
         <Button
           variant="ghost"
           size="icon-sm"
+          className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
           onClick={start}
           aria-label={t('common:temporaryChat')}
         >
-          <IconClock size={18} />
+          <Clock className="size-4.5" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{t('common:temporaryChatTooltip')}</TooltipContent>

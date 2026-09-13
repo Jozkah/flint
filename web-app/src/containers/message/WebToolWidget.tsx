@@ -16,7 +16,7 @@ import { ToolBar } from './ToolBar'
 const Favicon = ({ url }: { url: string }) => (
   <span
     aria-hidden
-    className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
+    className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border bg-sunken text-[0.5rem] font-medium uppercase text-muted-foreground"
   >
     {siteInitial(url)}
   </span>
@@ -33,7 +33,7 @@ const ResultRow = ({
     href={url}
     target="_blank"
     rel="noreferrer noopener"
-    className="flex items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-secondary"
+    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11"
     title={url}
   >
     <Favicon url={url} />

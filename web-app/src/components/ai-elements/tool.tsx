@@ -203,13 +203,13 @@ export const ToolHeader = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          'cursor-pointer flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors',
-          !isOpen && 'hover:bg-secondary',
+          'cursor-pointer flex w-full min-w-0 items-center gap-2 rounded-md text-muted-foreground text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+          !isOpen && 'hover:bg-sunken',
           className
         )}
       >
         {awaitingApproval ? (
-          <ShieldAlertIcon className="size-4 shrink-0 text-amber-500" />
+          <ShieldAlertIcon className="size-4 shrink-0 text-warning" />
         ) : toolName === 'web_search' ? (
           <SearchIcon className={cn('size-4 shrink-0', toneIcon)} />
         ) : toolName === 'web_fetch' ? (
@@ -220,7 +220,7 @@ export const ToolHeader = memo(
         <span
           className={cn(
             'shrink-0 capitalize',
-            awaitingApproval && 'text-amber-600 dark:text-amber-400'
+            awaitingApproval && 'font-medium text-warning'
           )}
         >
           {getStatusText(
@@ -276,7 +276,7 @@ export const ToolContent = memo(
       )}
       {...props}
     >
-      <div className="ml-2 pl-4 border-l-2 border-dotted">
+      <div className="ml-2 min-w-0 pl-4 border-l border-border">
         {children}
       </div>
     </CollapsibleContent>
@@ -340,7 +340,7 @@ export const ToolInput = memo(
             ))}
           </dl>
         ) : (
-          <div className="rounded-md max-h-40 overflow-auto border">
+          <div className="rounded-md max-h-40 overflow-auto border border-border">
             <CodeBlock code={formatted} language="json" />
           </div>
         )}
@@ -391,12 +391,19 @@ export const ToolApprovalActions = memo(() => {
   if (!pending || !toolCallId || pending.origin || !request) return null
 
   return (
-    <div className="mt-4 space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-xs font-medium">
-        <ShieldAlertIcon className="size-4" aria-hidden />
-        <span>{formatPermissionMessage(t, request.action)}</span>
+    // A paper card with a warning side marker: the action in plain words first,
+    // then what it touches, then the answers with Deny focused first.
+    <div
+      data-testid="inline-approval-card"
+      className="relative mt-4 min-w-0 space-y-3 overflow-hidden rounded-lg border border-line-strong bg-card py-3 pr-3 pl-4 text-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-warning"
+    >
+      <div className="flex flex-wrap items-start gap-2 text-sm">
+        <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+        <span className="min-w-0 flex-1 font-medium text-foreground">
+          {formatPermissionMessage(t, request.action)}
+        </span>
         {isFirstInThread && threadPendingCount > 1 && (
-          <span className="ml-auto rounded-full border border-amber-500/40 px-2 py-0.5">
+          <span className="shrink-0 rounded-full border border-warning/40 bg-warning-tint px-2 py-0.5 text-xs text-warning tabular-nums">
             {t('permissions:pending.many', { count: threadPendingCount })}
           </span>
         )}
@@ -460,8 +467,8 @@ const ToolImage = memo(({ data, index }: ToolImageProps) => {
   if (isLoading) {
     return (
       <div className="flex justify-center">
-        <div className="flex size-24 items-center justify-center rounded-md bg-muted">
-          <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div className="flex size-24 items-center justify-center rounded-md bg-sunken">
+          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-brand border-t-transparent" />
         </div>
       </div>
     )
@@ -476,7 +483,7 @@ const ToolImage = memo(({ data, index }: ToolImageProps) => {
       <img
         src={preparedUrl}
         alt="Tool output"
-        className="max-w-full max-h-96 w-auto h-auto object-contain rounded-md border"
+        className="max-w-full max-h-96 w-auto h-auto object-contain rounded-md border border-border"
       />
     </div>
   )
@@ -531,7 +538,7 @@ export const ToolOutput = memo(
     const isLong =
       !citationPayload && copyText.length > OUTPUT_EXPAND_THRESHOLD
     const boxClassName = cn(
-      'rounded-md overflow-auto border',
+      'rounded-md overflow-auto border border-border',
       expanded ? 'max-h-[32rem]' : 'max-h-40'
     )
 
@@ -729,7 +736,7 @@ export const ToolOutput = memo(
             </div>
           )}
           {errorText && (
-            <div className="m-2 p-2 bg-destructive/10 text-destructive rounded-md">
+            <div className="m-2 p-2 border border-destructive/30 bg-destructive-tint text-destructive rounded-md wrap-break-word">
               {errorText}
             </div>
           )}

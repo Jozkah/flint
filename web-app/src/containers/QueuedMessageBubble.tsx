@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { IconClock, IconX } from '@tabler/icons-react'
+import { Clock, X } from 'lucide-react'
 import type { QueuedMessage } from '@/stores/message-queue-store'
 
 type QueuedMessageChipProps = {
@@ -16,10 +16,10 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
   onRemove,
 }: QueuedMessageChipProps) {
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/80 border border-input text-sm max-w-full">
-      <IconClock size={14} className="shrink-0 text-muted-foreground animate-pulse" />
+    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-sunken border border-border text-sm max-w-full">
+      <Clock className="size-3.5 shrink-0 text-muted-foreground animate-pulse motion-reduce:animate-none" aria-hidden />
       <span
-        className="truncate text-foreground/70 cursor-pointer hover:text-foreground transition-colors"
+        className="min-w-0 truncate text-ink-2 cursor-pointer hover:text-foreground transition-colors"
         onClick={() => onEdit?.(message)}
         title="Click to edit"
       >
@@ -28,10 +28,10 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
       {onRemove && (
         <button
           type="button"
-          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-auto flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
           onClick={() => onRemove(message.id)}
         >
-          <IconX size={14} />
+          <X className="size-3.5" />
         </button>
       )}
     </div>
