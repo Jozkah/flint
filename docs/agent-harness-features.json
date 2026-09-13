@@ -5896,13 +5896,18 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-161"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/global_config.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/pull_request.rs",
+        "src-tauri/tests/fixtures/mock_github_api.py"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A pull request can be opened from a run with a generated description.",
@@ -5912,12 +5917,19 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/pull_request.rs::a_cancelled_request_records_nothing",
+        "src-tauri/src/core/agent/pull_request.rs::a_github_token_is_never_sent_to_another_api",
+        "src-tauri/src/core/agent/pull_request.rs::a_record_holds_no_token_and_is_kept_per_project_and_branch",
+        "src-tauri/src/core/agent/pull_request.rs::a_remote_names_its_repository_and_a_local_path_does_not",
+        "src-tauri/src/core/agent/pull_request.rs::only_a_pushed_branch_in_step_with_its_remote_is_described",
+        "src-tauri/src/core/agent/pull_request.rs::only_a_user_named_https_or_loopback_api_is_accepted"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-13 (Phase 6): pull_request create opens (or adopts) a pull request for a pushed branch with the model's text plus a harness-owned commit/file section; refusals before any request; token only to the user-named https/loopback API, GitHub tokens only to api.github.com, no redirects, no comments/reviewers/notifications. Evidence: failing CLI evidence first, unit tests, real CLI exercise against the local forge fixture only."
     },
     {
       "id": "AH-163",
@@ -5925,13 +5937,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-162"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/pull_request.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A pull request description stays in step with the change it describes.",
@@ -5940,10 +5955,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/pull_request.rs::a_cancelled_request_records_nothing",
+        "src-tauri/src/core/agent/pull_request.rs::a_description_is_checked_and_its_section_is_the_only_part_rewritten"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-13 (Phase 6): pull_request status/sync keep the description in step: status compares the recorded head with the branch; sync rewrites only the marked section, keeps a person's edits, sends nothing when already in step, and refuses unpushed commits or another API origin. Evidence: failing CLI evidence first, unit tests, real CLI exercise against the local forge fixture only."
     },
     {
       "id": "AH-164",

@@ -112,6 +112,10 @@ struct GlobalConfigToml {
     /// HTTPS (AH-190). Set with `jan cli net ca set`, which checks it first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ca_bundle: Option<String>,
+    /// The forge API pull requests are opened through (AH-162). A user
+    /// setting only: a project cannot redirect where a forge token is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forge_api: Option<String>,
     #[serde(default)]
     providers: HashMap<String, GlobalProviderEntry>,
 }
@@ -243,6 +247,12 @@ pub(crate) fn smol_model() -> Result<Option<String>, String> {
 pub fn ca_bundle() -> Result<Option<String>, String> {
     let config = load_raw()?;
     Ok(config.ca_bundle.filter(|p| !p.trim().is_empty()))
+}
+
+/// The forge API named in `~/.jan/config.toml` (`forge_api`), if any.
+pub fn forge_api() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.forge_api.filter(|p| !p.trim().is_empty()))
 }
 
 /// Name, or with `None` forget, the CA bundle in `~/.jan/config.toml`.

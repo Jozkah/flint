@@ -1861,6 +1861,96 @@ impl CompositeToolInvoker {
             // AH-160, AH-166, AH-167. These change history, so Plan mode does
             // not offer them and refuses them here too; every refusal and the
             // backup that makes each step recoverable live in `vcs`.
+            // AH-162, AH-163. A pull request from the branch, with a description
+            // the harness keeps in step with it. Never pushes, comments, requests
+            // reviewers or notifies; the refusals and the token's limits are in
+            // `pull_request`.
+            "pull_request" => {
+                use crate::core::agent::pull_request as pr;
+                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+                    return plan_mode_read_only_msg(name);
+                }
+                let text = |key: &str| {
+                    args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string()
+                };
+                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+                };
+                let root = self.project_root.clone();
+                let data = crate::core::app::commands::resolve_jan_data_folder();
+                let branch = match crate::core::agent::vcs::divergence(&root) {
+                    Ok(d) => d.branch,
+                    Err(e) => return failed(&(&e).into()),
+                };
+                let recorded = match &branch {
+                    Some(b) => match pr::load(&data, &root, b) {
+                        Ok(r) => r,
+                        Err(e) => return failed(&e),
+                    },
+                    None => None,
+                };
+                let forge = || -> Result<pr::Forge, tauri_plugin_agent_tools::harness_error::HarnessError> {
+                    let api = pr::api_base()?;
+                    let token = pr::token_for(&api, &|n| std::env::var(n).ok())?;
+                    Ok(pr::Forge { api, token, cancel: tauri_plugin_agent_tools::lifecycle::current() })
+                };
+                match text("action").as_str() {
+                    "status" => {
+                        let Some(record) = recorded else {
+                            return "no pull request has been opened from this branch by Jan".to_string();
+                        };
+                        let head = match pr::change(&root, &record.base) {
+                            Ok(change) => change.head,
+                            Err(e) => return format!("pull request #{} ({}): the branch cannot be described right now -- {}", record.number, record.url, failed(&e)),
+                        };
+                        if head == record.head {
+                            format!("pull request #{} ({}): the description is in step with the branch at {}", record.number, record.url, &head[..head.len().min(12)])
+                        } else {
+                            format!("pull request #{} ({}): the description is out of step -- it was written for {} and the branch is at {}; call sync", record.number, record.url, &record.head[..record.head.len().min(12)], &head[..head.len().min(12)])
+                        }
+                    }
+                    "create" => {
+                        let base = match text("base") { b if b.is_empty() => "main".to_string(), b => b };
+                        let change = match pr::change(&root, &base) {
+                            Ok(c) => c,
+                            Err(e) => return failed(&e),
+                        };
+                        // Checked before the forge is asked anything.
+                        if let Err(e) = pr::compose(&text("title"), &text("body"), &change) {
+                            return failed(&e);
+                        }
+                        let forge = match forge() {
+                            Ok(f) => f,
+                            Err(e) => return failed(&e),
+                        };
+                        match forge.create(&data, &root, &change, &text("title"), &text("body")).await {
+                            Ok((record, how)) => format!("{how} pull request #{}: {}", record.number, record.url),
+                            Err(e) => failed(&e),
+                        }
+                    }
+                    "sync" => {
+                        let forge = match forge() {
+                            Ok(f) => f,
+                            Err(e) => return failed(&e),
+                        };
+                        let Some(record) = recorded else {
+                            return "ERROR [not_found]: no pull request has been opened from this branch by Jan; create one first".to_string();
+                        };
+                        let change = match pr::change(&root, &record.base) {
+                            Ok(c) => c,
+                            Err(e) => return failed(&e),
+                        };
+                        match forge.sync(&data, &root, &record, &change).await {
+                            Ok(true) => format!("updated the description of pull request #{} for {}", record.number, &change.head[..change.head.len().min(12)]),
+                            Ok(false) => format!("pull request #{} is already in step with the branch", record.number),
+                            Err(e) => failed(&e),
+                        }
+                    }
+                    other => format!(
+                        "ERROR [invalid_input]: pull_request takes action create, sync or status; {other:?} is not one of them."
+                    ),
+                }
+            }
             "git_split" | "git_history" => {
                 use crate::core::agent::vcs;
                 if self.run_mode == crate::core::agent::plan::RunMode::Plan {
@@ -2571,6 +2661,7 @@ impl CompositeToolInvoker {
                 || name == "git_branch"
                 || name == "git_split"
                 || name == "git_history"
+                || name == "pull_request"
                 || name == "commit_message"
                 || name == "review_comments"
                 || name == "mcp_resource_list"
@@ -3461,6 +3552,32 @@ fn advertise_local_tools(
                     }
                 }
             });
+            // AH-162, AH-163.
+            let pull = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "pull_request",
+                    "description": "Open a pull request for the current branch, keep its description in step with the branch, or check whether it is. `create` takes a one-line `title`, a `body` you write about why, and the `base` branch (default main); Jan appends a section listing the branch's commits and files and records the pull request. `sync` rewrites only that section after new commits are pushed, keeping everything written outside it. `status` says whether the description is in step. The branch must already be pushed and in step with its remote -- this never pushes. It never comments, requests reviewers or merges.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": { "type": "string", "enum": ["create", "sync", "status"] },
+                            "title": { "type": "string" },
+                            "body": { "type": "string", "description": "Why the change is made. Do not repeat the commit or file list; Jan adds it." },
+                            "base": { "type": "string", "description": "The branch to propose into. Default main." }
+                        },
+                        "required": ["action"]
+                    }
+                }
+            });
+            let named = pull["function"]["name"].as_str().unwrap_or_default();
+            if !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named))
+            {
+                openai_tools.push(pull);
+            }
+
             let named = history["function"]["name"].as_str().unwrap_or_default();
             if !planning
                 && !permissions.is_denied(named, subject)
