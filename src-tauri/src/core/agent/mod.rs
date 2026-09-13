@@ -29,6 +29,7 @@ pub mod plugins;
 pub mod project;
 pub mod proposals;
 pub mod reminder;
+pub mod diagnostics;
 pub mod impact;
 pub mod index;
 pub mod vcs;

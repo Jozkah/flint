@@ -2136,13 +2136,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-057"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/diagnostics.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Compiler and linter diagnostics are collected without the model shelling out.",
@@ -2151,12 +2154,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/diagnostics.rs"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). The harness runs the project's own checker itself -- cargo check where there is a Cargo.toml, the project's own TypeScript compiler where a dependency provides one, nothing otherwise -- and parses rustc's short format and tsc's into typed diagnostics with path, line, column, severity and code. Bounded (180s cap, 512KB of output, 200 diagnostics) and stoppable: the process tree is killed on cancellation or deadline, and each is named as itself."
     },
     {
       "id": "AH-064",
@@ -2164,13 +2169,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-063"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/diagnostics.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Diagnostics for files the run touched are fed back into the loop after an edit.",
@@ -2179,12 +2187,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/diagnostics.rs"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). After a turn that changed files, the diagnostics for those files are appended to the last successful tool result, where the model is already reading and at no extra turn. Opt-in per project with [tools] diagnostics = true, because running a compiler after every edit costs real time. Proven in a real run: the model wrote a call to a function that does not exist and was told `src/lib.rs:2:5 error[E0425]` in the same turn."
     },
     {
       "id": "AH-065",

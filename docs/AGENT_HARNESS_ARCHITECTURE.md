@@ -1742,3 +1742,38 @@ at.
 This is not a language server (AH-057 and AH-058 remain missing, and one would
 answer questions this cannot -- types, overloads, which of two same-named
 symbols an expression means). It is the part that does not need one.
+
+
+## What the compiler says, without the model shelling out (AH-063 / AH-064)
+
+A model that has just edited a file learns whether it broke something in one of
+two ways: it runs the build itself, in a `bash` call it has to think to make
+and a user has to approve, or it does not and finds out three turns later. The
+first is noisy and gets skipped under pressure; the second is how a run ends
+with a confident summary of code that does not compile.
+
+So the harness can run the check itself and hand back the diagnostics for the
+files the run touched.
+
+* *Opt-in, per project.* `[tools] diagnostics = true` in
+  `.jan/agent/agent.toml`. Running a compiler after every edit costs real time
+  on a large project, and a harness that silently does it feels broken. Off by
+  default.
+* *The project's own command, or nothing.* `cargo check --message-format=short`
+  where there is a `Cargo.toml`; the project's own TypeScript compiler where
+  there is a `tsconfig.json` **and** a dependency that provides one -- never
+  `npx tsc`, which would download a compiler behind the user's back. Where
+  neither is true there is no command and no diagnostics.
+* *Bounded and stoppable.* One command, a deadline the harness caps at 180 s,
+  512 KB of output kept, and the process tree killed when the run is cancelled
+  or the deadline passes. A check that hangs must not hang the run.
+* *Only what the run touched.* The compiler reports the whole project; what
+  goes back is the diagnostics for the files this turn edited, appended to the
+  last successful tool result -- where the model is already reading, costing no
+  extra turn. Everything else is noise it did not cause and cannot act on.
+
+The parser reads exactly two shapes, rustc's short format and the TypeScript
+compiler's, and ignores every other line. A parser that guesses turns a line of
+prose into a diagnostic pointing at a file that is fine.
+
+Nothing here fixes anything. It reports.

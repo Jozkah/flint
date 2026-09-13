@@ -2271,7 +2271,94 @@ impl CompositeToolInvoker {
             .filter_map(|(i, tc)| tc.get("id").and_then(|v| v.as_str()).map(|id| (id, i)))
             .collect();
         out.sort_by_key(|o| *order.get(o.id.as_str()).unwrap_or(&usize::MAX));
+        self.note_diagnostics(tool_calls, &mut out).await;
         Ok(out)
+    }
+
+    /// AH-064. After a turn that changed files, tell the model what the
+    /// project's own checker says about *those* files.
+    ///
+    /// Opt-in per project (`[tools] diagnostics = true`), because running a
+    /// compiler after every edit costs real time on a large project and a
+    /// harness that silently does it feels broken. The note is appended to the
+    /// last write's result rather than sent as its own message, so it arrives
+    /// where the model is already looking and costs no extra turn.
+    async fn note_diagnostics(&self, tool_calls: &[serde_json::Value], out: &mut [ToolOutcome]) {
+        use crate::core::agent::diagnostics;
+        if !diagnostics::enabled(&self.project_root) {
+            return;
+        }
+        // Which files this turn actually changed, from the calls that were
+        // made and did not fail.
+        let mut touched: Vec<String> = Vec::new();
+        for tc in tool_calls {
+            let name = tc
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if name != "write" && name != "edit" {
+                continue;
+            }
+            let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+            let failed = out
+                .iter()
+                .find(|o| o.id == id)
+                .is_some_and(|o| o.content.starts_with("ERROR"));
+            if failed {
+                continue;
+            }
+            let args: serde_json::Value = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|v| v.as_str())
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                let relative = std::path::Path::new(path)
+                    .strip_prefix(&self.project_root)
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| path.replace('\\', "/"));
+                touched.push(relative);
+            }
+        }
+        if touched.is_empty() {
+            return;
+        }
+
+        let project = self.project_root.clone();
+        // The check runs on a blocking thread, and the run's own cancellation
+        // is mirrored into the flag it polls -- so stopping the run stops the
+        // compiler instead of waiting for it.
+        let registered = self.call_token("diagnostics");
+        let token = registered.token().clone();
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watcher = cancelled.clone();
+        let mirror = tokio::spawn(async move {
+            while !token.is_stopped() {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            watcher.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+        let flag = cancelled.clone();
+        let report =
+            tokio::task::spawn_blocking(move || diagnostics::collect(&project, &flag, 60)).await;
+        mirror.abort();
+        drop(registered);
+
+        let Ok(Ok(report)) = report else { return };
+        let Some(note) = report.render_for(&touched) else { return };
+        // Appended to the last changing call's result: the model reads tool
+        // results, and a note that arrives anywhere else is a note it may not
+        // read at all.
+        if let Some(last) = out
+            .iter_mut()
+            .rev()
+            .find(|o| !o.content.starts_with("ERROR"))
+        {
+            last.content.push_str("\n\n");
+            last.content.push_str(&note);
+        }
     }
 }
 

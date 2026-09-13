@@ -132,8 +132,8 @@ per-OS evidence log rather than backlog items.
 | `AH-060` | Find references | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
 | `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
 | `AH-062` | Call hierarchy | 3 | repo-intelligence | P2 | `missing` | low | `AH-060` |
-| `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
-| `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `missing` | low | `AH-063` |
+| `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `implemented` | low | `AH-057` |
+| `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `implemented` | low | `AH-063` |
 | `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `implemented` | low | `AH-053` |
 | `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
 | `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |

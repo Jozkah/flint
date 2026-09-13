@@ -1698,3 +1698,25 @@ index at all, with the next build being a first build; an index for another
 project or an older shape not used; a directory that is not a project refused;
 and every use of a name found, with `payload` not matching `load` and the
 definition line marked.
+
+
+### Diagnostics (AH-063 / AH-064)
+
+Six tests, plus a real run: a project with `diagnostics = true`, a model that
+writes `missing_function()` into `src/lib.rs`, and this in the tool result the
+model received in the same turn:
+
+```
+`cargo check --message-format=short` reports on the files this turn changed:
+src/lib.rs:2:5 error[E0425]: cannot find function `missing_function` in this scope: not found in this scope
+```
+
+Covered by test: both compiler shapes parsed with their codes, positions and
+severities, and every other line ignored; the same diagnostic twice reported
+once; the bound saying it was cut; only the touched files handed back, with a
+Windows spelling of a path matching the compiler's; nothing said when nothing
+the run touched has a diagnostic; a project with no checker refused as
+`unsupported`; a TypeScript project with no compiler dependency not told to
+download one; diagnostics off unless the project asked; and a real command run
+with its output parsed, one that hangs stopped at its deadline, and a cancelled
+one named a cancellation rather than a timeout.
