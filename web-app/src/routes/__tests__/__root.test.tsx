@@ -100,6 +100,15 @@ vi.mock('@/containers/GlobalError', () => ({
 vi.mock('@/components/left-sidebar', () => ({
   LeftSidebar: () => <div data-testid="left-sidebar" />,
 }))
+vi.mock('@/components/shell/AppRail', () => ({
+  AppRail: () => <nav data-testid="app-rail" />,
+}))
+vi.mock('@/components/shell/StatusBar', () => ({
+  StatusBar: () => <footer data-testid="status-bar" />,
+}))
+vi.mock('@/hooks/useAppViewport', () => ({
+  useAppViewport: () => {},
+}))
 vi.mock('@/components/WindowControls', () => ({
   WindowControls: () => <div data-testid="window-controls" />,
 }))
@@ -177,6 +186,15 @@ describe('__root route', () => {
     expect(screen.getByTestId('left-sidebar')).toBeInTheDocument()
     expect(screen.getByTestId('outlet')).toBeInTheDocument()
     expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
+  })
+
+  it('renders one shell: rail, sidebar, page and status bar', () => {
+    renderComponent()
+    const shell = screen.getByTestId('app-shell')
+    expect(shell).toContainElement(screen.getByTestId('app-rail'))
+    expect(shell).toContainElement(screen.getByTestId('left-sidebar'))
+    expect(shell).toContainElement(screen.getByTestId('outlet'))
+    expect(shell).toContainElement(screen.getByTestId('status-bar'))
   })
 
   /**

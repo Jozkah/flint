@@ -277,14 +277,15 @@ function SetupScreen() {
   }
 
   return (
-    <div className="relative flex flex-col h-svh w-full overflow-hidden">
-      <div className="flex flex-col h-svh w-full">
+    <div className="relative flex flex-col h-full w-full overflow-hidden">
+      <div className="flex flex-col h-full w-full">
         <HeaderPage />
 
         {/* Scrolls rather than clips: on a short window the intentions and the
             finish page are taller than the space, and centring with
             items-center pushed the primary actions out of reach. */}
-        <div className="flex h-[calc(100%-60px)] min-h-0 overflow-y-auto px-6 py-6">
+        <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 overflow-y-auto px-4 py-6 sm:px-6">
+
           <div
             className="m-auto w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
             data-testid="setup-wizard"

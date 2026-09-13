@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -213,7 +212,7 @@ function ClaudeCodeIntegration() {
   }
 
   return (
-    <div className="flex flex-col h-svh w-full">
+    <div className="flex flex-col h-full w-full">
       <HeaderPage>
         <div className="flex items-center gap-2 w-full">
           <span className="font-medium text-base font-studio">
@@ -221,8 +220,7 @@ function ClaudeCodeIntegration() {
           </span>
         </div>
       </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
+      <div className="flex h-[calc(100%-var(--ctx-h))]">
         <div className="p-4 pt-0 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             <Card

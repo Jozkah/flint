@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
 import {
   IconPencil,
@@ -690,7 +689,7 @@ function MCPServersDesktop() {
 
   return (
     <Fragment>
-      <div className="flex flex-col h-svh w-full">
+      <div className="flex flex-col h-full w-full">
         <HeaderPage>
           <div className={cn("flex items-center justify-between w-full mr-2 pr-3", !IS_MACOS && "pr-30")}>
             <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
@@ -700,8 +699,7 @@ function MCPServersDesktop() {
             </Button>
           </div>
         </HeaderPage>
-        <div className="flex h-[calc(100%-60px)]">
-          <SettingsMenu />
+        <div className="flex h-[calc(100%-var(--ctx-h))]">
           <div className="p-4 pt-0 w-full overflow-y-auto">
             <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
               <Card

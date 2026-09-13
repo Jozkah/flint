@@ -43,7 +43,7 @@ function DialogOverlay({
         // z-50` -- then stayed in the DOM after the dialog closed and absorbed
         // every click in the window. Entering still animates; leaving is
         // immediate, which is what makes the overlay actually go away.
-        "data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur",
+        "data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-scrim",
         className
       )}
       {...props}
@@ -66,7 +66,11 @@ function DialogContent({
         data-slot="dialog-content"
         aria-describedby={undefined}
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg lg:max-w-2xl xl:max-w-3xl max-h-[85vh] overflow-y-auto",
+          // Phone: a bottom sheet within the visual viewport, so the primary
+          // action stays above the keyboard and the home indicator.
+          "bg-card text-card-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50 grid w-full gap-4 border border-border p-5 shadow-overlay duration-200 outline-none overflow-y-auto",
+          "inset-x-0 bottom-0 max-h-[calc(var(--app-vvh,100dvh)-1.5rem)] rounded-t-xl pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
+          "sm:inset-x-auto sm:bottom-auto sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-lg sm:pb-5 sm:max-h-[85vh] sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 lg:max-w-2xl xl:max-w-3xl",
           className
         )}
         {...props}
@@ -75,7 +79,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="text-muted-foreground hover:text-foreground hover:bg-sunken absolute top-3 right-3 grid size-8 place-items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 pointer-coarse:size-11"
           >
             <XIcon />
             <span className="sr-only">Close</span>
@@ -108,7 +112,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end bg-background -mb-2",
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end bg-card -mb-1",
         className
       )}
       {...props}
@@ -130,7 +134,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-studio font-medium", className)}
+      className={cn("text-lg leading-snug font-sans font-semibold pr-8", className)}
       {...props}
     />
   )

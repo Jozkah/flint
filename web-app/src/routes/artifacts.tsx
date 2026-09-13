@@ -130,7 +130,7 @@ function ArtifactsPage() {
   }
 
   return (
-    <div className="flex h-svh w-full flex-col">
+    <div className="flex h-full w-full flex-col">
       {/* Search in the header, dropdown filter on the right — the hub page's
           layout, so this reads as part of Jan rather than its own thing. */}
       <HeaderPage>
@@ -165,7 +165,7 @@ function ArtifactsPage() {
         </div>
       </HeaderPage>
 
-      <div className="h-[calc(100%-60px)] w-full overflow-y-auto p-4">
+      <div className="h-[calc(100%-var(--ctx-h))] w-full overflow-y-auto p-4">
         <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
           {shown.length === 0 ? (
             <p className="text-sm text-muted-foreground">

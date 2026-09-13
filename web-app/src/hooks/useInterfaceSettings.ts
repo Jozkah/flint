@@ -8,102 +8,16 @@ import {
   isNotificationPosition,
   type NotificationPosition,
 } from '@/utils/toastPlacement'
+import {
+  DEFAULT_ACCENT,
+  applyAccentToDocument,
+  normalizeHex,
+  presetById,
+  sanitizeAccentSelection,
+  type AccentSelection,
+} from '@/lib/accent'
 
 export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
-
-export const ACCENT_COLORS = [
-  {
-    name: 'Gray',
-    value: 'gray',
-    thumb: '#3F3F46',
-    primary: '#f17455',
-    sidebar: { light: '#f1f1f1', dark: '#171717' },
-  },
-  {
-    name: 'Red',
-    value: 'red',
-    thumb: '#F0614B',
-    primary: '#F0614B',
-    sidebar: { light: '#F3CBC4', dark: '#5E1308' },
-  },
-  {
-    name: 'Orange',
-    value: 'orange',
-    thumb: '#E9A23F',
-    primary: '#E9A23F',
-    sidebar: { light: '#F3DFC4', dark: '#5C3A0A' },
-  },
-  {
-    name: 'Green',
-    value: 'green',
-    thumb: '#88BA42',
-    primary: '#88BA42',
-    sidebar: { light: '#DFF3C4', dark: '#374B1B' },
-  },
-  {
-    name: 'Emerald',
-    value: 'emerald',
-    thumb: '#38AB51',
-    primary: '#38AB51',
-    sidebar: { light: '#C4F3CE', dark: '#194D24' },
-  },
-  {
-    name: 'Teal',
-    value: 'teal',
-    thumb: '#38AB8D',
-    primary: '#38AB8D',
-    sidebar: { light: '#C4F3E6', dark: '#194D3F' },
-  },
-  {
-    name: 'Cyan',
-    value: 'cyan',
-    thumb: '#45BBDE',
-    primary: '#45BBDE',
-    sidebar: { light: '#C4E8F3', dark: '#0F4657' },
-  },
-  {
-    name: 'Blue',
-    value: 'blue',
-    thumb: '#456BDE',
-    primary: '#456BDE',
-    sidebar: { light: '#C4D0F3', dark: '#0F2157' },
-  },
-  {
-    name: 'Purple',
-    value: 'purple',
-    thumb: '#865EEA',
-    primary: '#865EEA',
-    sidebar: { light: '#D2C4F3', dark: '#220C5A' },
-  },
-  {
-    name: 'Pink',
-    value: 'pink',
-    thumb: '#D55EF3',
-    primary: '#D55EF3',
-    sidebar: { light: '#FFDAE9', dark: '#4D075F' },
-  },
-  {
-    name: 'Rose',
-    value: 'rose',
-    thumb: '#F655B8',
-    primary: '#F655B8',
-    sidebar: { light: '#F3C4E1', dark: '#61053E' },
-  },
-] as const
-
-export type AccentColorValue = (typeof ACCENT_COLORS)[number]['value']
-const DEFAULT_ACCENT_COLOR: AccentColorValue = 'gray'
-
-const applyAccentColorToDOM = (colorValue: string, isDark: boolean) => {
-  const color = ACCENT_COLORS.find((c) => c.value === colorValue)
-  if (!color) return
-
-  const root = document.documentElement
-  const sidebarColor = isDark ? color.sidebar.dark : color.sidebar.light
-
-  root.style.setProperty('--sidebar', sidebarColor)
-  root.style.setProperty('--primary', color.primary)
-}
 
 export const MESSAGE_ZOOM_LEVELS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 const defaultMessageZoom = 1
@@ -131,7 +45,9 @@ const stepMessageZoom = (current: number, direction: 1 | -1): number => {
 interface InterfaceSettingsState {
   fontSize: FontSize
   messageZoom: number
-  accentColor: AccentColorValue
+  /** The chosen accent: a preset or a custom hex. Tokens are derived from it
+   * per theme (lib/accent.ts). */
+  accent: AccentSelection
   notificationPosition: NotificationPosition
   showTokenSpeed: boolean
   coloredUserBubble: boolean
@@ -141,7 +57,12 @@ interface InterfaceSettingsState {
   zoomInMessages: () => void
   zoomOutMessages: () => void
   resetMessageZoom: () => void
-  setAccentColor: (color: AccentColorValue) => void
+  /** Apply and remember an accent. Invalid input is ignored. */
+  setAccent: (accent: AccentSelection) => void
+  /** Apply an accent for the page only, while a picker is being dragged,
+   * without writing settings on every intermediate colour. */
+  previewAccent: (accent: AccentSelection) => void
+  resetAccent: () => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
@@ -150,19 +71,16 @@ interface InterfaceSettingsState {
   resetInterface: () => void
 }
 
-type InterfaceSettingsPersistedSlice = Omit<
+type InterfaceSettingsPersistedSlice = Pick<
   InterfaceSettingsState,
-  | 'resetInterface'
-  | 'setFontSize'
-  | 'zoomInMessages'
-  | 'zoomOutMessages'
-  | 'resetMessageZoom'
-  | 'setAccentColor'
-  | 'setNotificationPosition'
-  | 'setShowTokenSpeed'
-  | 'setColoredUserBubble'
-  | 'setRenderHtmlArtifacts'
-  | 'setAutoGenerateTitle'
+  | 'fontSize'
+  | 'messageZoom'
+  | 'accent'
+  | 'notificationPosition'
+  | 'showTokenSpeed'
+  | 'coloredUserBubble'
+  | 'renderHtmlArtifacts'
+  | 'autoGenerateTitle'
 >
 
 export const fontSizeOptions = [
@@ -179,7 +97,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
   return {
     fontSize: defaultFontSize,
     messageZoom: defaultMessageZoom,
-    accentColor: DEFAULT_ACCENT_COLOR,
+    accent: DEFAULT_ACCENT,
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
     coloredUserBubble: true,
@@ -191,6 +109,21 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
 const interfaceStorage = createJSONStorage<InterfaceSettingsPersistedSlice>(
   () => backendStorage
 )
+
+const validAccent = (accent: AccentSelection): AccentSelection | null => {
+  if (accent && typeof accent === 'object' && 'custom' in accent) {
+    const hex = normalizeHex(accent.custom)
+    return hex ? { custom: hex } : null
+  }
+  return accent && presetById((accent as { preset?: unknown }).preset)
+    ? { preset: accent.preset }
+    : null
+}
+
+const applyAccent = (accent: AccentSelection) => {
+  if (typeof document === 'undefined') return
+  applyAccentToDocument(accent, useTheme.getState().isDark)
+}
 
 export const useInterfaceSettings = create<InterfaceSettingsState>()(
   persist<
@@ -204,22 +137,19 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
       return {
         ...defaultState,
         resetInterface: () => {
-          const { isDark } = useTheme.getState()
-
           // Reset font size
           document.documentElement.style.setProperty(
             '--font-size-base',
             defaultFontSize
           )
 
-          // Reset accent color preset
-          applyAccentColorToDOM(DEFAULT_ACCENT_COLOR, isDark)
+          applyAccent(DEFAULT_ACCENT)
 
           // Update state
           set({
             fontSize: defaultFontSize,
             messageZoom: defaultMessageZoom,
-            accentColor: DEFAULT_ACCENT_COLOR,
+            accent: DEFAULT_ACCENT,
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
             coloredUserBubble: true,
@@ -228,13 +158,23 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           })
         },
 
-        setAccentColor: (color: AccentColorValue) => {
-          const colorExists = ACCENT_COLORS.find((c) => c.value === color)
-          if (!colorExists) return
+        setAccent: (accent) => {
+          const clean = validAccent(accent)
+          // Invalid input leaves a deliberate choice alone rather than
+          // falling back to the default.
+          if (!clean) return
+          applyAccent(clean)
+          set({ accent: clean })
+        },
 
-          const { isDark } = useTheme.getState()
-          applyAccentColorToDOM(color, isDark)
-          set({ accentColor: color })
+        previewAccent: (accent) => {
+          const clean = validAccent(accent)
+          if (clean) applyAccent(clean)
+        },
+
+        resetAccent: () => {
+          applyAccent(DEFAULT_ACCENT)
+          set({ accent: DEFAULT_ACCENT })
         },
 
         setFontSize: (size: FontSize) => {
@@ -280,10 +220,22 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
       name: localStorageKey.settingInterface,
       storage: interfaceStorage,
       skipHydration: true,
+      version: 1,
+      // v0 stored `accentColor` (one of eleven preset names). The chosen
+      // colour is carried over: the old default becomes Vermilion, the others
+      // keep their exact hex as a custom accent.
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Record<string, unknown>
+        if (version < 1) {
+          state.accent = sanitizeAccentSelection(state.accent, state.accentColor)
+          delete state.accentColor
+        }
+        return state as unknown as InterfaceSettingsPersistedSlice
+      },
       partialize: (state) => ({
         fontSize: state.fontSize,
         messageZoom: state.messageZoom,
-        accentColor: state.accentColor,
+        accent: state.accent,
         notificationPosition: state.notificationPosition,
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
@@ -306,12 +258,11 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           state.messageZoom = sanitizeMessageZoom(state.messageZoom)
 
-          // Get the current theme state
-          const { isDark } = useTheme.getState()
-
-          // Apply accent color preset
-          const accentColorValue = state.accentColor || DEFAULT_ACCENT_COLOR
-          applyAccentColorToDOM(accentColorValue, isDark)
+          state.accent = sanitizeAccentSelection(
+            state.accent,
+            (state as unknown as Record<string, unknown>).accentColor
+          )
+          applyAccent(state.accent)
 
           if (
             !state.notificationPosition ||
@@ -344,17 +295,16 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
   )
 )
 
-// Subscribe to theme changes to update accent color sidebar variant
+// The derived accent tokens differ per theme: re-derive when the theme flips.
 let prevIsDark = useTheme.getState().isDark
 const unsubscribeTheme = useTheme.subscribe((state) => {
   if (state.isDark !== prevIsDark) {
     prevIsDark = state.isDark
-    const { accentColor } = useInterfaceSettings.getState()
-    applyAccentColorToDOM(accentColor, state.isDark)
+    applyAccent(useInterfaceSettings.getState().accent)
   }
 })
 
 // Detach the module-level subscription on HMR so reloads don't stack listeners.
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => unsubscribeTheme())
+  import.meta.hot.dispose(() => unsubscribeTheme?.())
 }

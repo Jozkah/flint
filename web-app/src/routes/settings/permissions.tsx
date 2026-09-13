@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -230,9 +229,8 @@ function PermissionsSettings() {
       <HeaderPage>
         <h1 className="font-medium">{t('common:settings')}</h1>
       </HeaderPage>
-      <div className="flex h-full w-full">
-        <SettingsMenu />
-        <div className="p-4 w-full h-[calc(100%-32px)] overflow-y-auto">
+      <div className="flex h-[calc(100%-var(--ctx-h))] w-full">
+        <div className="p-4 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             <Card title={t('permissions:settings.title')}>
               <CardItem
