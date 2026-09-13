@@ -1858,3 +1858,23 @@ Three properties worth stating:
 * *Bounded and scrubbed.* 200 resources listed, 32 KB of one read, secrets
   scrubbed, and a binary blob named as bytes rather than pasted as base64 into
   a transcript that has to hold it.
+
+
+### Writing a commit message (AH-159)
+
+The harness supplies the change, the model writes the words, and the harness
+checks the words against the change. `commit_message` called with no argument
+returns the staged files, the insertion and deletion counts, the staged diff
+(bounded and scrubbed) and -- separately -- the files that are changed and
+*not* staged, under a heading that says this commit does not contain them.
+Called again with `message`, it checks it.
+
+What it refuses, each because the message would be wrong about the commit
+rather than because of a style opinion: an empty subject; a subject past 72
+characters, which every tool that shows a log truncates; a body that starts on
+the line after the subject, which git reads as part of it; a message naming a
+file that is changed but not staged -- the failure that matters, a model
+summarising the branch instead of the commit; and a message carrying something
+that looks like a credential.
+
+It commits nothing. The message comes back for the caller to use.

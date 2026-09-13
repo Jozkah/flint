@@ -1385,6 +1385,44 @@ impl CompositeToolInvoker {
                 )
                 .await
             }
+            // AH-159. The harness supplies the change; the model writes the
+            // words; the harness checks the words against the change. Nothing
+            // here commits anything.
+            "commit_message" => {
+                let root = self.project_root.clone();
+                let change = match crate::core::agent::vcs::staged(&root) {
+                    Ok(change) => change,
+                    Err(e) => {
+                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                            (&e).into();
+                        return format!("ERROR [{}]: {}", harness.kind().tag(), e.message);
+                    }
+                };
+                match args.get("message").and_then(|v| v.as_str()) {
+                    // No message yet: this is the ask, so hand back what the
+                    // message has to describe.
+                    None => format!(
+                        "{}\n\nWrite the message and call this again with `message`. A subject \
+                         of at most {} characters, then a blank line, then why. Describe only \
+                         what is staged.",
+                        crate::core::agent::vcs::message_brief(&change),
+                        crate::core::agent::vcs::MAX_SUBJECT
+                    ),
+                    Some(message) => {
+                        match crate::core::agent::vcs::check_message(message, &change) {
+                            Ok(checked) => format!(
+                                "This message describes the staged change. Nothing has been \
+                                 committed; run the commit yourself when you are ready.\n\n{checked}"
+                            ),
+                            Err(e) => {
+                                let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                                    (&e).into();
+                                format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+                            }
+                        }
+                    }
+                }
+            }
             "git_branch" => {
                 // AH-161. Listing is reading; creating or switching changes
                 // the checkout, so it is a write and Plan mode does not offer
@@ -2029,6 +2067,7 @@ impl CompositeToolInvoker {
             // fallback: they orchestrate nested runs, not filesystem access.
             if name == "symbol_find"
                 || name == "git_branch"
+                || name == "commit_message"
                 || name == "mcp_resource_list"
                 || name == "mcp_resource_read"
                 || crate::core::agent::subagent::is_subagent_tool(name)
@@ -2769,6 +2808,31 @@ fn advertise_local_tools(
                     }
                 }
             });
+            // AH-159: reads the staged change and checks a message against it.
+            // It commits nothing, but it is about work that is about to be
+            // written down, so Plan mode leaves it out with the rest.
+            let message = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "commit_message",
+                    "description": "Get the staged change so you can write its commit message, then call again with `message` to have it checked against what is actually staged. It commits nothing. A message that names a file which is changed but not staged, or that carries a credential, is refused.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": { "type": "string", "description": "The message to check. Omit it the first time to see the change." }
+                        },
+                        "required": []
+                    }
+                }
+            });
+            let named = message["function"]["name"].as_str().unwrap_or_default();
+            let offered = !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named));
+            if offered {
+                openai_tools.push(message);
+            }
+
             let named = branches["function"]["name"].as_str().unwrap_or_default();
             let offered = !planning
                 && !permissions.is_denied(named, subject)

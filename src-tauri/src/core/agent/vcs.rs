@@ -50,6 +50,10 @@ pub enum VcsErrorKind {
     WouldDiscard,
     /// No branch by that name here.
     NoBranch,
+    /// Nothing is staged, so there is no change to describe.
+    NothingStaged,
+    /// The message would be wrong about the commit.
+    BadMessage,
     /// The name is not one this will hand to git.
     BadName,
 }
@@ -83,6 +87,10 @@ impl From<&VcsError> for tauri_plugin_agent_tools::harness_error::HarnessError {
             VcsErrorKind::WouldDiscard => ErrorKind::PolicyViolation,
             VcsErrorKind::NoBranch => ErrorKind::NotFound,
             VcsErrorKind::BadName => ErrorKind::InvalidInput,
+            // Nothing to describe is not a failure of the message: it is the
+            // caller asking too early, and no retry changes it.
+            VcsErrorKind::NothingStaged => ErrorKind::InvalidInput,
+            VcsErrorKind::BadMessage => ErrorKind::InvalidInput,
         };
         HarnessError::new(kind, error.message.clone()).at(Stage::Tool)
     }
@@ -616,6 +624,167 @@ pub fn switch_branch(repo: &Path, name: &str, create: bool) -> Result<BranchChan
     })
 }
 
+// ---- AH-159: a commit message drawn from the staged change ----------------
+
+/// The most staged files listed, and the most diff characters shown.
+pub const MAX_STAGED_FILES: usize = 100;
+pub const MAX_DIFF_CHARS: usize = 24 * 1024;
+/// What a subject line may be, by the convention nearly every project uses.
+pub const MAX_SUBJECT: usize = 72;
+
+/// The staged change, as the thing a message has to describe.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Staged {
+    /// Paths, relative, `/`-separated.
+    pub files: Vec<String>,
+    pub insertions: usize,
+    pub deletions: usize,
+    /// The diff itself, bounded and scrubbed -- the model writes the message,
+    /// so it needs to see what changed rather than a summary of it.
+    pub diff: String,
+    /// Set when the diff was cut, so nothing claims to have read all of it.
+    pub truncated: bool,
+    /// Files that are changed but *not* staged. Named because a message that
+    /// describes them would be describing work this commit does not contain.
+    pub unstaged: Vec<String>,
+}
+
+/// Read what is staged.
+pub fn staged(repo: &Path) -> Result<Staged, VcsError> {
+    if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
+    }
+    let names = git(repo, &["diff", "--cached", "--name-only"])?;
+    let files: Vec<String> = names
+        .lines()
+        .map(|l| l.trim().replace('\\', "/"))
+        .filter(|l| !l.is_empty())
+        .take(MAX_STAGED_FILES)
+        .collect();
+    if files.is_empty() {
+        return Err(VcsError::new(
+            VcsErrorKind::NothingStaged,
+            "nothing is staged, so there is no change for a message to describe",
+        ));
+    }
+    let stat = git(repo, &["diff", "--cached", "--shortstat"]).unwrap_or_default();
+    let number_before = |word: &str| -> usize {
+        stat.split(',')
+            .find(|part| part.contains(word))
+            .and_then(|part| part.trim().split_whitespace().next()?.parse().ok())
+            .unwrap_or(0)
+    };
+    let raw = git(repo, &["diff", "--cached"]).unwrap_or_default();
+    let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(&raw);
+    let kept: String = scrubbed.chars().take(MAX_DIFF_CHARS).collect();
+    let truncated = kept.chars().count() < scrubbed.chars().count();
+    let unstaged: Vec<String> = git(repo, &["diff", "--name-only"])
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().replace('\\', "/"))
+        .filter(|l| !l.is_empty())
+        .take(MAX_STAGED_FILES)
+        .collect();
+    Ok(Staged {
+        files,
+        insertions: number_before("insertion"),
+        deletions: number_before("deletion"),
+        diff: kept,
+        truncated,
+        unstaged,
+    })
+}
+
+/// What a message has to be before it is worth offering.
+///
+/// Not a style opinion: each of these is a message that would be wrong about
+/// the commit. An empty subject says nothing; an over-long one is truncated by
+/// every tool that shows it; a message naming a file that is not in this
+/// commit describes work the commit does not contain, which is the failure
+/// that matters -- a model summarising the *branch* rather than the change.
+pub fn check_message(message: &str, staged: &Staged) -> Result<String, VcsError> {
+    let trimmed = message.trim();
+    let mut lines = trimmed.lines();
+    let subject = lines.next().unwrap_or_default().trim();
+    if subject.is_empty() {
+        return Err(VcsError::new(
+            VcsErrorKind::BadMessage,
+            "a commit message needs a subject line",
+        ));
+    }
+    if subject.chars().count() > MAX_SUBJECT {
+        return Err(VcsError::new(
+            VcsErrorKind::BadMessage,
+            format!(
+                "the subject is {} characters; {MAX_SUBJECT} is what git and every tool that \
+                 shows a log will display",
+                subject.chars().count()
+            ),
+        ));
+    }
+    if let Some(second) = trimmed.lines().nth(1) {
+        if !second.trim().is_empty() {
+            return Err(VcsError::new(
+                VcsErrorKind::BadMessage,
+                "the line after the subject must be blank, or the body is read as part of it",
+            ));
+        }
+    }
+    // A path in the message that is not in the commit.
+    let staged_set: std::collections::BTreeSet<&str> =
+        staged.files.iter().map(String::as_str).collect();
+    for word in trimmed.split(|c: char| c.is_whitespace() || c == '`' || c == '(' || c == ')') {
+        let candidate = word.trim_matches(|c: char| c == ',' || c == '.' || c == ':' || c == ';');
+        let looks_like_path = candidate.contains('/') && candidate.contains('.');
+        if !looks_like_path || staged_set.contains(candidate) {
+            continue;
+        }
+        if staged.unstaged.iter().any(|u| u == candidate) {
+            return Err(VcsError::new(
+                VcsErrorKind::BadMessage,
+                format!(
+                    "the message names {candidate:?}, which is changed but not staged: this \
+                     commit does not contain it"
+                ),
+            ));
+        }
+    }
+    if tauri_plugin_agent_tools::harness_error::scrub(trimmed) != trimmed {
+        return Err(VcsError::new(
+            VcsErrorKind::BadMessage,
+            "the message carries something that looks like a credential",
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+/// What a run is told when it is asked to write the message.
+pub fn message_brief(staged: &Staged) -> String {
+    let mut out = format!(
+        "{} file(s) staged, +{} -{}{}:\n",
+        staged.files.len(),
+        staged.insertions,
+        staged.deletions,
+        if staged.truncated { " (diff shown in part)" } else { "" }
+    );
+    for file in &staged.files {
+        out.push_str(&format!("  {file}\n"));
+    }
+    if !staged.unstaged.is_empty() {
+        out.push_str(
+            "\nChanged and NOT staged -- this commit does not contain these, so do not \
+             describe them:\n",
+        );
+        for file in &staged.unstaged {
+            out.push_str(&format!("  {file}\n"));
+        }
+    }
+    out.push_str("\nThe staged diff:\n");
+    out.push_str(&staged.diff);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -864,6 +1033,90 @@ mod tests {
         let refused = switch_branch(&work, "held", false).unwrap_err();
         assert_eq!(refused.kind, VcsErrorKind::WouldDiscard);
         assert!(refused.message.contains("another worktree"), "{}", refused.message);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// AH-159: the staged change is what the message describes, and a message
+    /// about anything else is refused.
+    #[test]
+    fn a_message_is_checked_against_what_is_actually_staged() {
+        let (base, work) = pair("commit-message");
+        // Nothing staged yet.
+        assert_eq!(staged(&work).unwrap_err().kind, VcsErrorKind::NothingStaged);
+
+        std::fs::write(work.join("file.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(work.join("other.txt"), "untouched by this commit\n").unwrap();
+        run(&work, &["add", "file.txt"]);
+
+        let change = staged(&work).unwrap();
+        assert_eq!(change.files, ["file.txt"]);
+        assert!(change.insertions >= 1, "{change:?}");
+        assert!(change.diff.contains("two"), "the diff is what changed: {}", change.diff);
+        assert!(
+            change.unstaged.iter().any(|f| f == "other.txt") || change.unstaged.is_empty(),
+            "an untracked file is not a staged one: {:?}",
+            change.unstaged
+        );
+
+        // A message that describes the commit is accepted.
+        let good = check_message("fix(file): keep the second line\n\nIt was dropped.", &change)
+            .expect("a message about this change");
+        assert!(good.starts_with("fix(file)"));
+
+        // The ones that would be wrong about it are not.
+        assert_eq!(check_message("", &change).unwrap_err().kind, VcsErrorKind::BadMessage);
+        assert_eq!(
+            check_message(&"x".repeat(MAX_SUBJECT + 1), &change).unwrap_err().kind,
+            VcsErrorKind::BadMessage
+        );
+        assert_eq!(
+            check_message("subject\nbody with no blank line", &change).unwrap_err().kind,
+            VcsErrorKind::BadMessage
+        );
+        let leaky = check_message(
+            "chore: rotate\n\nAuthorization: Bearer sk-not-a-real-key-1234567890",
+            &change,
+        )
+        .unwrap_err();
+        assert_eq!(leaky.kind, VcsErrorKind::BadMessage);
+        assert!(leaky.message.contains("credential"), "{}", leaky.message);
+
+        // And the brief tells the writer what is *not* in the commit.
+        let brief = message_brief(&change);
+        assert!(brief.contains("file.txt"), "{brief}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A file that is changed and not staged cannot be described by this
+    /// commit's message.
+    #[test]
+    fn a_message_about_work_that_is_not_in_the_commit_is_refused() {
+        let (base, work) = pair("unstaged");
+        std::fs::write(work.join("file.txt"), "one\nstaged change\n").unwrap();
+        run(&work, &["add", "file.txt"]);
+        run(&work, &["commit", "-qm", "first change"]);
+        std::fs::write(work.join("file.txt"), "one\nstaged change\nmore\n").unwrap();
+        std::fs::write(work.join("src/app.ts"), "export const a = 1\n").ok();
+        std::fs::create_dir_all(work.join("src")).unwrap();
+        std::fs::write(work.join("src/app.ts"), "export const a = 1\n").unwrap();
+        run(&work, &["add", "src/app.ts"]);
+        run(&work, &["commit", "-qm", "add app"]);
+        // Now: one staged file, one changed-but-unstaged file.
+        std::fs::write(work.join("file.txt"), "one\nstaged change\nmore\nstaged again\n")
+            .unwrap();
+        std::fs::write(work.join("src/app.ts"), "export const a = 2\n").unwrap();
+        run(&work, &["add", "file.txt"]);
+
+        let change = staged(&work).unwrap();
+        assert_eq!(change.files, ["file.txt"]);
+        assert_eq!(change.unstaged, ["src/app.ts"]);
+
+        let refused = check_message("feat: change src/app.ts as well", &change).unwrap_err();
+        assert_eq!(refused.kind, VcsErrorKind::BadMessage);
+        assert!(refused.message.contains("not staged"), "{}", refused.message);
+
+        // The brief says so too, so the writer is not left to infer it.
+        assert!(message_brief(&change).contains("NOT staged"));
         let _ = std::fs::remove_dir_all(&base);
     }
 

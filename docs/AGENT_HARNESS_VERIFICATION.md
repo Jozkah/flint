@@ -1836,3 +1836,33 @@ this is the shape its failures take.
 
 Not run: macOS, Linux; providers other than the mock, this llama-server and
 this vLLM endpoint.
+
+
+### Commit messages (AH-159)
+
+Two tests plus a real run. The model called `commit_message` and was told:
+
+```
+1 file(s) staged, +1 -0:
+  file.txt
+
+Changed and NOT staged -- this commit does not contain these, so do not describe them:
+  src/app.ts
+
+The staged diff:
+diff --git a/file.txt b/file.txt
+@@ -1 +1,2 @@
+ one
++two
+```
+
+and a message describing the unstaged file came back as
+`ERROR [invalid_input]: the message names "src/app.ts", which is changed but
+not staged: this commit does not contain it`. The repository still had exactly
+one commit afterwards: the tool writes nothing.
+
+Covered by test: nothing staged refused as such; the staged files, counts and
+diff read from a real repository; a message that describes the change
+accepted; empty subject, over-long subject, missing blank line, a credential
+in the body, and a message naming an unstaged file each refused; and the brief
+naming what is not in the commit.

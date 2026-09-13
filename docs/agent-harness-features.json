@@ -5544,13 +5544,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/vcs.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The harness drafts a commit message from the staged change.",
@@ -5559,12 +5562,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/vcs.rs::a_message_is_checked_against_what_is_actually_staged",
+        "src-tauri/src/core/agent/vcs.rs::a_message_about_work_that_is_not_in_the_commit_is_refused"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "No git tool exists; git is reachable only through bash, and git.rs commits are internal snapshots."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). commit_message hands the model the staged change -- files, counts, the bounded scrubbed diff, and separately the files that are changed and not staged -- and then checks the message it writes against it. Refused: an empty or over-long subject, a body with no blank line, a credential, and a message naming a file that is not in this commit, which is the failure that matters. It commits nothing. Proven in a real run in both directions."
     },
     {
       "id": "AH-160",
