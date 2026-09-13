@@ -134,24 +134,27 @@ describe('Dialog Components', () => {
 
     const dialogContent = screen.getByRole('dialog')
     expect(dialogContent).toHaveClass(
-      'bg-background',
-      'max-h-[85vh]',
+      'bg-card',
       'overflow-y-auto',
       'fixed',
-      'top-[50%]',
-      'left-[50%]',
       'z-50',
       'grid',
       'w-full',
-      'max-w-[calc(100%-2rem)]',
-      'translate-x-[-50%]',
-      'translate-y-[-50%]',
       'gap-4',
-      'rounded-lg',
       'border',
-      'p-6',
-      'shadow-lg',
+      'p-5',
+      'shadow-overlay',
       'duration-200',
+      // Phone: a bottom sheet. From sm: a centred dialog.
+      'inset-x-0',
+      'bottom-0',
+      'rounded-t-xl',
+      'sm:top-[50%]',
+      'sm:left-[50%]',
+      'sm:translate-x-[-50%]',
+      'sm:translate-y-[-50%]',
+      'sm:rounded-lg',
+      'sm:max-h-[85vh]',
       'sm:max-w-lg'
     )
   })
@@ -193,7 +196,7 @@ describe('Dialog Components', () => {
     await user.click(screen.getByText('Open Dialog'))
     
     const dialogTitle = screen.getByText('Dialog Title')
-    expect(dialogTitle).toHaveClass('text-lg', 'leading-none', 'font-medium')
+    expect(dialogTitle).toHaveClass('text-lg', 'leading-snug', 'font-semibold')
   })
 
   it('applies proper classes to dialog description', async () => {

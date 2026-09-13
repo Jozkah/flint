@@ -17,9 +17,9 @@ describe('Button', () => {
 
     const button = screen.getByRole('button')
     expect(button).toHaveClass(
-      'bg-primary',
-      'text-primary-foreground',
-      'hover:bg-primary/90'
+      'bg-brand-fill',
+      'text-brand-foreground',
+      'hover:bg-brand-fill-hover'
     )
   })
 
@@ -28,9 +28,9 @@ describe('Button', () => {
 
     const button = screen.getByRole('button')
     expect(button).toHaveClass(
-      'bg-destructive',
-      'text-white',
-      'hover:bg-destructive/90'
+      'border-destructive/70',
+      'text-destructive',
+      'hover:bg-destructive-tint'
     )
   })
 
@@ -45,7 +45,7 @@ describe('Button', () => {
     render(<Button>Default Size</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-9', 'px-4', 'py-2')
+    expect(button).toHaveClass('h-9', 'px-3.5', 'py-2')
   })
 
   it('applies small size classes', () => {
@@ -59,7 +59,7 @@ describe('Button', () => {
     render(<Button size="lg">Large Button</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-10', 'px-6')
+    expect(button).toHaveClass('h-10', 'px-5')
   })
 
   it('applies icon size classes', () => {
@@ -141,7 +141,7 @@ describe('Button', () => {
 
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/test')
-    expect(link).toHaveClass('bg-primary', 'text-primary-foreground') // Should inherit button classes
+    expect(link).toHaveClass('bg-brand-fill', 'text-brand-foreground') // Should inherit button classes
   })
 
   it('combines variant and size classes correctly', () => {
@@ -152,8 +152,8 @@ describe('Button', () => {
     )
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('bg-destructive', 'text-white') // destructive variant
-    expect(button).toHaveClass('h-10', 'px-6') // large size
+    expect(button).toHaveClass('border-destructive/70', 'text-destructive') // destructive variant
+    expect(button).toHaveClass('h-10', 'px-5') // large size
   })
 
   it('handles keyboard events', () => {
@@ -194,9 +194,9 @@ describe('Button', () => {
 
     const button = screen.getByRole('button')
     expect(button).toHaveClass(
-      'focus-visible:border-ring',
-      'focus-visible:ring-[3px]',
-      'focus-visible:ring-ring/50'
+      'focus-visible:outline-2',
+      'focus-visible:outline-offset-2',
+      'focus-visible:outline-ring'
     )
   })
 })
