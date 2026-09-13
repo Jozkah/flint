@@ -22,7 +22,11 @@ pub const ROOMS_DIR: &str = "rooms";
 pub const ROOM_FILE: &str = "room.json";
 pub const JOURNAL_FILE: &str = "journal.jsonl";
 pub const MAX_ROOM_BYTES: usize = 256 * 1024;
-pub const MAX_JOURNAL_LINE_BYTES: usize = 64 * 1024;
+/// A serialised journal line. Message `text` is capped in UTF-16 units, so a
+/// record with text plus a same-sized second field (a vote's proposal, a
+/// synthesis's capped dissent list) can take 4 x 3 bytes per unit of
+/// `MAX_TEXT_LENGTH`; this stays above that. Independent of `MAX_ROOM_BYTES`.
+pub const MAX_JOURNAL_LINE_BYTES: usize = 256 * 1024;
 /// `ROOM_LIMIT_CEILINGS.maxTextLength`, counted in UTF-16 code units so it
 /// agrees with JavaScript's `string.length`.
 pub const MAX_TEXT_LENGTH: usize = 20_000;

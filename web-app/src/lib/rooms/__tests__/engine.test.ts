@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { runRoom, type EngineUpdate } from '../engine'
-import { RoomCallError, type StreamReplyInput } from '../callError'
+import { RoomCallError, cleanErrorMessage, type StreamReplyInput } from '../callError'
 import { HARD_CALL_CEILING, clampLimits } from '../limits'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import {
@@ -597,6 +597,131 @@ describe('engine: votes and synthesis', () => {
     expect(synthesis.text).toContain(dissent)
     expect(room.status).toBe('completed')
     expect(room.stopReason).toEqual({ kind: 'synthesized' })
+  })
+})
+
+/** In-memory persistence that refuses journal lines like the Rust store. */
+function lineLimitedPersistence(maxBytes = 256 * 1024) {
+  const p = memoryPersistence()
+  const inner = p.appendRoomRecord.bind(p)
+  const sizes: number[] = []
+  p.appendRoomRecord = async (roomId, record) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(record)).length
+    if (bytes > maxBytes) throw { code: 'too_large', message: `journal record is ${bytes} bytes` }
+    sizes.push(bytes)
+    return inner(roomId, record)
+  }
+  return Object.assign(p, { sizes })
+}
+
+describe('engine: storage limits and persistence errors', () => {
+  it('synthesis with seven long non-ASCII dissents fits the journal line limit and completes', async () => {
+    const names = ['Ada', 'Bea', 'Cai', 'Dov', 'Eli', 'Fay', 'Gus']
+    const participants = names.map((n, i) => participant(`p-${i}`, n, 'provider-b', 'model-2', { order: i }))
+    const p = lineLimitedPersistence()
+    await seedRoom(p, makeRoom({ status: 'paused', participants }))
+    const position = (n: string) => `DISAGREE\n${n}: ${'中文反对意见'.repeat(250)}`
+    const { fn, calls } = scriptedStream((input) => {
+      if (lastContent(input).includes('Write a synthesis')) return { text: '综合'.repeat(9_000) }
+      return { text: position(speakerOf(input)) }
+    })
+    const room = await runRoom(
+      'room-1',
+      engineDeps(p, fn, { contextWindow: () => 1_000_000 }),
+      signal(),
+      { command: { kind: 'synthesize' } }
+    )
+    expect(room.status).toBe('completed')
+    const synthesis = messagesOf(p).find((m) => m.kind === 'synthesis')!
+    expect(synthesis.status).toBe('complete')
+    expect(synthesis.dissent).toHaveLength(7)
+    expect(synthesis.dissent!.map((d) => d.position)).toEqual(names.map(position))
+    expect(synthesis.text.length).toBeLessThanOrEqual(20_000)
+    // Larger than the old 64 KB line limit, within the new one.
+    expect(Math.max(...p.sizes)).toBeGreaterThan(64 * 1024)
+    expect(calls).toHaveLength(8)
+  })
+
+  it('a storage too_large while closing a turn is reported with its code, not retried, usage counted once', async () => {
+    const p = memoryPersistence()
+    await seedRoom(p, makeRoom())
+    const inner = p.appendRoomRecord.bind(p)
+    p.appendRoomRecord = async (roomId, record) => {
+      if (record.type === 'message' && record.message.kind === 'speech' && record.message.status === 'complete') {
+        throw { code: 'too_large', message: 'journal record is 999999 bytes; at most 262144 are allowed' }
+      }
+      return inner(roomId, record)
+    }
+    const sleep = vi.fn(async () => true)
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText(), usage: { inputTokens: 100, outputTokens: 7 } }))
+    await expect(runRoom('room-1', engineDeps(p, fn, { sleep }), signal())).rejects.toMatchObject({
+      code: 'too_large',
+      name: 'RoomPersistenceError',
+    })
+    expect(calls).toHaveLength(1)
+    expect(sleep).not.toHaveBeenCalled()
+    const stored = p.rooms.get('room-1')!
+    expect(stored.status).toBe('paused')
+    expect(stored.stopReason).toMatchObject({ kind: 'error', code: 'too_large' })
+    expect(stored.usage.inputTokens).toBe(100)
+    expect(stored.usage.outputTokens).toBe(7)
+    const messages = messagesOf(p)
+    const failed = messages.filter((m) => m.status === 'failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0].error).toMatchObject({ code: 'too_large' })
+    expect(messages.some((m) => m.error?.message === 'Unknown error')).toBe(false)
+    expect(messages.some((m) => m.kind === 'system' && m.text.includes('(too_large)'))).toBe(true)
+    expectConsistentJournal(p.journals.get('room-1')!)
+  })
+})
+
+describe('engine: secret redaction in stored errors', () => {
+  it('redacts provider error text in the failed message', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    const { fn } = scriptedStream((input) =>
+      speakerOf(input) === 'Alice'
+        ? { error: Object.assign(new Error('401 invalid key sk-abcdefghijklmnop123456 sent as Authorization: Bearer opaque.token.value'), { statusCode: 401 }) }
+        : { text: uniqueText() }
+    )
+    await runRoom('room-1', engineDeps(p, fn), signal())
+    const failed = messagesOf(p).find((m) => m.status === 'failed')!
+    expect(failed.error!.message).toContain('[redacted]')
+    expect(failed.error!.message).not.toContain('sk-abcdefghijklmnop123456')
+    expect(failed.error!.message).not.toContain('opaque.token.value')
+  })
+
+  it('redacts a load failure in the system note', async () => {
+    const p = await setup(makeRoom({ participants: threeParticipants(), limits: { maxTurns: 2 } }))
+    const { fn } = scriptedStream((input) =>
+      speakerOf(input) === 'Alice'
+        ? { error: new RoomCallError('load-failed', 'load-failed', cleanErrorMessage(new Error('could not start: api_key=hunter2hunter2 Bearer abc123'))) }
+        : { text: uniqueText() }
+    )
+    await runRoom('room-1', engineDeps(p, fn), signal())
+    const texts = messagesOf(p).flatMap((m) => [m.text, m.error?.message ?? ''])
+    const note = messagesOf(p).find((m) => m.kind === 'system' && m.text.startsWith('Alice is unavailable'))!
+    expect(note.text).toContain('[redacted]')
+    expect(texts.join('\n')).not.toContain('hunter2hunter2')
+    expect(texts.join('\n')).not.toContain('abc123')
+  })
+
+  it('redacts the internal-error message', async () => {
+    const p = await setup(makeRoom())
+    const { fn } = scriptedStream(() => ({ text: uniqueText() }))
+    let ids = 0
+    const deps = engineDeps(p, fn, {
+      // The first id is the first turn's id; failing it once is an internal error.
+      newId: () => {
+        if (ids++ === 0) throw new Error('config broke with token=sk-live1234567890abcdef')
+        return `id-${ids}`
+      },
+    })
+    await expect(runRoom('room-1', deps, signal())).rejects.toThrow()
+    const stored = p.rooms.get('room-1')!
+    expect(stored.stopReason).toMatchObject({ kind: 'error', code: 'engine' })
+    const reason = stored.stopReason as { message: string }
+    expect(reason.message).not.toContain('sk-live1234567890abcdef')
+    expect(messagesOf(p).map((m) => m.text).join('\n')).not.toContain('sk-live1234567890abcdef')
   })
 })
 

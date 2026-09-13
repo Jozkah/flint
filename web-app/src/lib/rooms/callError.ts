@@ -9,6 +9,7 @@ import { isContextOverflow } from '@/lib/coworkBudget'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { classifyFailure, type FailureClass, type FailureFacts } from '@/lib/runRetry'
+import { redactSecrets } from '@/lib/redact'
 import type { PromptMessage } from './context'
 import type { RoomModelRef } from './types'
 
@@ -66,10 +67,14 @@ function retryAfterOf(e: unknown): string | null {
   return key ? headers[key] : null
 }
 
-/** Cleaned, bounded error message. */
+/**
+ * Cleaned, bounded error message with credentials redacted. It is stored in
+ * the journal and shown in system notes, so secrets are removed before the
+ * text is truncated (a cut could otherwise hide a token from the filter).
+ */
 export function cleanErrorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : 'Unknown error'
-  return raw.replace(/\s+/g, ' ').trim().slice(0, 500) || 'Unknown error'
+  return redactSecrets(raw.replace(/\s+/g, ' ').trim()).slice(0, 500) || 'Unknown error'
 }
 
 /** Normalise anything thrown by a model call. */
