@@ -49,6 +49,7 @@ pub mod skills;
 pub mod subagent;
 pub mod team_children;
 pub mod todo;
+pub mod transcript;
 pub mod tooling;
 pub mod upstream;
 pub mod worktree;

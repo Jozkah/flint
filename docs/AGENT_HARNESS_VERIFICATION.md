@@ -2258,3 +2258,40 @@ declares none saying so; the run's own resolved settings (network, formatting,
 enabled skills) following the chosen profile rather than the file; and naming
 no profile -- including `--profile ""` -- being the project's own
 configuration.
+
+
+### Transcript search and export (AH-178)
+
+Five tests plus three real runs, then finding one of them again:
+
+```
+=== finding the run by what was said in it
+3 match(es) in 3 transcript(s)
+  09778e47-… #4 [tool] the banner is plum-coloured on Tuesdays
+  …
+
+=== narrowed to the user's own messages
+1 match(es) in 3 transcript(s)
+  59d6d10c-… #2 [user] read fact.txt and tell me about the banner
+
+=== a regular expression  (hedge[a-z]+)
+1 match(es) in 3 transcript(s)
+  fae57112-… #2 [user] something unrelated about hedgehogs
+
+=== the transcript of one of them, as markdown
+# Transcript 09778e47-…
+## system
+…
+
+=== a session nobody has
+Error [not_found]: no transcript for session "nope-not-a-session" in this
+project or data folder                                              rc=66
+```
+
+Covered by test: a run found by what was said in it, across the project's
+transcripts and the data folder's together; the search narrowed by session, by
+role and by a count; a regular expression honoured and a broken one refused as
+`invalid_input` rather than searched for literally, and an empty query refused;
+a credential sitting in a transcript not re-printed by a search that matched
+its line; and an export coming out whole in text, markdown and stored-line
+form, with an unknown session refused by name.

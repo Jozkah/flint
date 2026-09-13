@@ -377,6 +377,44 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Search past runs' transcripts by content (AH-178)
+    Search {
+        /// What to look for.
+        query: String,
+        /// Project root whose transcripts are searched alongside the data
+        /// folder's.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Treat the query as a regular expression.
+        #[arg(long)]
+        regex: bool,
+        /// Only this session.
+        #[arg(long)]
+        session: Option<String>,
+        /// Only this role: user, assistant or tool.
+        #[arg(long)]
+        role: Option<String>,
+        /// Stop after this many matches (0: every match).
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Print the matches as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write one session's transcript out (AH-178)
+    Transcript {
+        /// The session to export.
+        session: String,
+        /// Project root to look in, alongside the data folder.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// text, markdown or json (the stored lines themselves).
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Write to this file instead of stdout.
+        #[arg(long, value_name = "PATH")]
+        out: Option<String>,
+    },
     /// Where use stands against the ceilings in quotas.toml (AH-191, AH-192)
     Quota {
         /// Print the standings as JSON instead of lines.
@@ -1163,6 +1201,77 @@ async fn handle_agent(cmd: AgentCommands) {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
                 }
             })
+        }
+        AgentCommands::Search {
+            query,
+            project,
+            regex,
+            session,
+            role,
+            limit,
+            json,
+        } => {
+            use app_lib::core::agent::transcript;
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            transcript::search(
+                Some(std::path::Path::new(&project)),
+                (!data.as_os_str().is_empty()).then_some(data.as_path()),
+                &transcript::Query {
+                    text: query,
+                    regex,
+                    session,
+                    role,
+                    limit,
+                },
+            )
+            .map(|found| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&found).unwrap_or_default());
+                } else {
+                    print!("{}", transcript::render(&found));
+                }
+            })
+        }
+        AgentCommands::Transcript {
+            session,
+            project,
+            format,
+            out,
+        } => {
+            use app_lib::core::agent::transcript;
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            let format = match format.as_str() {
+                "text" => Ok(transcript::Format::Text),
+                "markdown" | "md" => Ok(transcript::Format::Markdown),
+                "json" => Ok(transcript::Format::Json),
+                other => Err(HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("{other:?} is not a format; use text, markdown or json"),
+                )),
+            };
+            format
+                .and_then(|format| {
+                    transcript::export(
+                        Some(std::path::Path::new(&project)),
+                        (!data.as_os_str().is_empty()).then_some(data.as_path()),
+                        &session,
+                        format,
+                    )
+                })
+                .and_then(|text| match out {
+                    Some(path) => std::fs::write(&path, &text)
+                        .map(|()| println!("wrote {path}"))
+                        .map_err(|e| {
+                            HarnessError::new(
+                                tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                                format!("the transcript could not be written to {path}: {e}"),
+                            )
+                        }),
+                    None => {
+                        print!("{text}");
+                        Ok(())
+                    }
+                })
         }
         AgentCommands::Quota { json } => {
             let data = app_lib::core::app::commands::resolve_jan_data_folder();

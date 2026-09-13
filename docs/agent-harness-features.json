@@ -6250,14 +6250,15 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-09-ux-observability",
       "files": [
-        "web-app/src/containers/dialogs/SearchDialog.tsx"
+        "src-tauri/src/core/agent/transcript.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -6267,10 +6268,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/transcript.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Search exists in the desktop app; there is no transcript export or CLI search."
+      "auditNote": "Implemented 2026-09-13 (Phase 5), closing the gap that search existed only in the desktop app and there was no export at all. `jan cli agent search <query> [--regex] [--session] [--role] [--limit] [--json]` reads the project's transcripts and the data folder's together, newest first, bounded (2,000 transcripts, 20,000 messages each) and saying so when a bound bites. It does not index: an index is a second copy of everything ever said, with its own staleness and its own place to leak from. Snippets go through the same scrubber the error path uses, so a credential a model once echoed into a transcript is not re-printed by a search that matched its line. `jan cli agent transcript <session> [--format text|markdown|json] [--out]` writes one out whole -- tool calls and results included, because an export that dropped them would read as a model that described work instead of doing it. An unreadable regular expression, an empty query and an unknown session are each refused with a typed error. Proven by three real runs, then finding one of them again by content, by role and by pattern, and exporting it."
     },
     {
       "id": "AH-179",

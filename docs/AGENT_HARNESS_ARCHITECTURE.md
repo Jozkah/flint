@@ -2299,3 +2299,39 @@ not a profile called nothing.
 The chosen profile travels with the run (`OrchestrationArgs::profile`), so the
 settings the loop resolves -- skills, network, sandbox, formatting -- are the
 ones the run was actually asked for, not the file's.
+
+
+## Finding a past run, and taking its transcript out (AH-178)
+
+Runs leave transcripts in two places: a project's own
+`<project>/.jan/agent/threads/<id>/messages.jsonl`, and the desktop's
+`<data folder>/threads/<id>/messages.jsonl`. The desktop app could search what
+it holds; nothing could search the project's, and nothing could take a
+transcript out at all, so "what did that run do, three days ago" meant opening
+files by hand.
+
+```
+jan cli agent search "plum-coloured" [--regex] [--session ID] [--role user]
+                                     [--limit N] [--json]
+jan cli agent transcript <session> [--format text|markdown|json] [--out PATH]
+```
+
+Both read the two stores together, newest transcript first, so a bounded search
+spends its budget on the runs somebody is most likely looking for.
+
+Two things it deliberately does not do:
+
+* **It does not index.** Search reads the transcripts, bounded (2,000
+  transcripts, 20,000 messages each), every time. An index is a second copy of
+  everything ever said, with its own staleness and its own place to leak from,
+  and a few hundred conversations are read faster than an index is explained.
+  When a bound bites, the answer says so rather than being quietly partial.
+* **It does not widen what is readable.** It reads exactly the transcripts
+  already on disk, and every snippet goes through the same scrubber the error
+  path uses -- so a credential a model once echoed into a transcript is not
+  re-printed by a search for something else on the same line.
+
+The export is what is on disk, not a summary of it: the tool calls and their
+results are part of what the run did, and an export that dropped them would
+read as a model that described work instead of doing it. `--format json` hands
+back the stored lines themselves.
