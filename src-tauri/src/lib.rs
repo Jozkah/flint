@@ -95,6 +95,8 @@ macro_rules! invoke_commands_with_extras {
         core::net::commands::provider_http_cancel,
         core::net::commands::provider_endpoint_diagnostics,
         core::net::commands::provider_endpoint_refresh,
+        core::net::commands::network_ca_status,
+        core::net::commands::network_ca_check,
         core::agent::commands::agent_prompt_snapshots,
         core::agent::commands::agent_prompt_snapshots_delete,
         core::agent::commands::agent_worktree_export,

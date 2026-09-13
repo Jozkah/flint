@@ -6838,13 +6838,30 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-189"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/agent/genai_bridge.rs",
+        "src-tauri/src/core/agent/global_config.rs",
+        "src-tauri/src/core/agent/upstream.rs",
+        "src-tauri/src/core/cli/device_auth.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/cli/providers.rs",
+        "src-tauri/src/core/mcp/helpers.rs",
+        "src-tauri/src/core/net/commands.rs",
+        "src-tauri/src/core/net/tls.rs",
+        "src-tauri/src/core/net/transport.rs",
+        "src-tauri/src/core/server/proxy.rs",
+        "src-tauri/tests/fixtures/mock_tls_server.py",
+        "web-app/src/containers/CaBundleStatus.tsx",
+        "web-app/src/hooks/useProxyConfig.ts",
+        "web-app/src/routes/settings/https-proxy.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A custom certificate authority bundle can be trusted for outbound requests.",
@@ -6854,12 +6871,21 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/examples/cowork_smoke.rs::network-ca-bundle-in-the-desktop",
+        "src-tauri/src/core/agent/genai_bridge.rs::a_certificate_failure_is_not_retried_and_names_the_reason",
+        "src-tauri/src/core/net/tls.rs::a_bundle_that_cannot_be_used_is_refused_by_kind",
+        "src-tauri/src/core/net/tls.rs::a_run_cannot_grant_itself_trust_in_a_certificate_authority",
+        "src-tauri/src/core/net/tls.rs::an_abandoned_handshake_leaves_no_connection_open",
+        "src-tauri/src/core/net/tls.rs::the_desktop_setting_is_read_from_the_stored_proxy_settings",
+        "src-tauri/src/core/net/tls.rs::the_five_tls_proofs_hold_on_both_http_stacks",
+        "web-app/src/containers/__tests__/CaBundleStatus.test.tsx"
+      ],
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
       ],
-      "blockedReason": null,
-      "auditNote": ""
+      "blockedReason": "Per-OS validation: implemented and validated end to end on Windows (SChannel) -- real CLI and desktop exercises, five TLS proofs on both HTTP stacks. macOS (Security.framework) and Linux (OpenSSL) validation needs those hosts, which this environment does not have.",
+      "auditNote": "2026-09-13 (Phase 6): custom CA bundles for outbound HTTPS, implemented on every platform and validated on Windows only. A PEM bundle named by JAN_CA_BUNDLE, the CLI's ca_bundle (jan cli net ca set/status/clear) or the desktop HTTPS proxy settings is added to the platform roots of every outbound client to configured endpoints on both reqwest stacks; verification stays on; nothing falls back to plain HTTP; a bundle that cannot be used is refused by kind and makes clients fail closed. A project file cannot name one and a run cannot write the user's config to do so without a WriteEscape prompt. Evidence: failing CLI evidence first; five TLS proofs on both stacks; real CLI and desktop exercises. R13 (certificate failures retried ten times and unnamed) and R12 (broken bin tests from AH-135) fixed with regression tests. Blocked on per-OS validation on macOS and Linux."
     },
     {
       "id": "AH-191",

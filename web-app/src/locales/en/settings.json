@@ -194,7 +194,14 @@
     "peerSsl": "Peer SSL",
     "peerSslDesc": "Validate the SSL certificates of peer connections.",
     "hostSsl": "Host SSL",
-    "hostSslDesc": "Validate the SSL certificates of destination hosts."
+    "hostSslDesc": "Validate the SSL certificates of destination hosts.",
+    "caBundle": "Certificate Authorities",
+    "caBundlePath": "Custom CA bundle",
+    "caBundleDesc": "A PEM file of certificate authorities to trust in addition to the system's, for a company proxy or a private model gateway. Certificates are still checked -- host names, dates and the chain -- and nothing is trusted if the file cannot be used. Applies to new connections.",
+    "caBundlePlaceholder": "C:\\certs\\company-ca.pem",
+    "caBundleNone": "Only the platform's certificate authorities are trusted.",
+    "caBundleInUse": "Trusting {{count}} certificate(s) from this bundle as well as the platform's.",
+    "caBundleBroken": "This bundle cannot be used ({{kind}}): outbound HTTPS trusts nothing until it is fixed or removed."
   },
   "webSearch": {
     "title": "Web Search",

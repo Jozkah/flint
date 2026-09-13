@@ -124,10 +124,15 @@ impl BeginError {
 }
 
 fn http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(HTTP_TIMEOUT)
+    crate::core::net::tls::apply12(reqwest::Client::builder().timeout(HTTP_TIMEOUT))
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        // Never a client without the configured roots: one that trusts nothing.
+        .unwrap_or_else(|_| {
+            reqwest::Client::builder()
+                .tls_built_in_root_certs(false)
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new())
+        })
 }
 
 /// Base64url (no padding) SHA-256 of `input` -- the S256 PKCE derivation.

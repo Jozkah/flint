@@ -1118,6 +1118,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_cowork_killed_mid_turn,
     },
     Scenario {
+        name: "network-ca-bundle-in-the-desktop",
+        run: scenario_network_ca_bundle,
+    },
+    Scenario {
         name: "team-member-restarted-in-place",
         run: scenario_team_member_restarted,
     },
@@ -5385,6 +5389,157 @@ const TEAM_RESTART_HANDOFF: &str = "team-member-restart";
 /// without starting the run again. The member that depended on it runs once
 /// it completes; the provider sees the failed member twice and its dependent
 /// once, all inside the one run.
+/// AH-190, in the real desktop app. A throwaway CA signs a local HTTPS
+/// provider (tests/fixtures/mock_tls_server.py; nothing is added to any system
+/// store). The HTTPS proxy settings page names the bundle, shows what it would
+/// do, and saves it; the app's own provider transport then reaches the provider
+/// over TLS. A broken bundle is shown broken and the same request is refused
+/// with nothing sent; clearing the field returns to the platform's roots.
+fn scenario_network_ca_bundle(ctx: &Ctx) -> ScenarioResult {
+    use std::io::BufRead;
+    let fail = |e: String| Failure(e);
+    let python = ["python3", "python", "py"]
+        .into_iter()
+        .find(|name| {
+            std::process::Command::new(name)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        })
+        .ok_or_else(|| fail("no python interpreter for the TLS fixture".into()))?;
+    let fixture = Path::new(MANIFEST_DIR).join("tests/fixtures/mock_tls_server.py");
+    let ca = ctx.workspace.join("tls-ca");
+    let _ = std::fs::remove_dir_all(&ca);
+    let made = std::process::Command::new(python)
+        .arg(&fixture)
+        .arg("--make-ca")
+        .arg(&ca)
+        .output()
+        .map_err(|e| fail(e.to_string()))?;
+    ensure!(made.status.success(), "the TLS fixture could not make a CA: {}", String::from_utf8_lossy(&made.stderr));
+    let log = ca.join("valid.log");
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut child = std::process::Command::new(python)
+        .arg(&fixture)
+        .arg("--serve")
+        .arg(&ca)
+        .args(["--mode", "valid", "--log"])
+        .arg(&log)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| fail(e.to_string()))?;
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .map_err(|e| fail(e.to_string()))?;
+    let _server = Server(child);
+    let port: u16 = line.trim().trim_start_matches("PORT ").parse().map_err(|_| fail(format!("no fixture port in {line:?}")))?;
+    let requests = || std::fs::read_to_string(&log).map(|t| t.lines().count()).unwrap_or(0);
+    let bundle = ca.join("ca.pem").to_string_lossy().to_string();
+    let junk = ca.join("junk.pem").to_string_lossy().to_string();
+    let url = format!("https://127.0.0.1:{port}/v1/models");
+
+    // The provider request, through the app's own transport. Resolves to
+    // "ok:<status>:<body>" or "refused:<error>".
+    let ask = |ctx: &Ctx| -> Result<String, Failure> {
+        ctx.eval_string(&format!(
+            r#"try {{
+                 const r = await window.__TAURI_INTERNALS__.invoke('provider_http_request',
+                   {{ request: {{ url: {url:?}, method: 'GET', timeout_secs: 15 }} }});
+                 return 'ok:' + r.status + ':' + r.body;
+               }} catch (e) {{
+                 return 'refused:' + String(e && e.message || e);
+               }}"#
+        ))
+    };
+    let saved_path = |ctx: &Ctx| -> Result<String, Failure> {
+        ctx.eval_string(
+            "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', { key: 'setting-proxy-config' });
+             try { return (JSON.parse(raw || '{}').state || {}).caBundlePath || ''; } catch (e) { return ''; }",
+        )
+    };
+
+    // 1. Before anything is named, the provider is refused and sees nothing.
+    let before = ask(ctx)?;
+    ensure!(before.starts_with("refused:"), "an untrusted provider was reached: {before}");
+    // R13: the refusal says it was the certificate, and why.
+    ensure!(before.contains("[certificate:") && before.contains("not trusted"), "the refusal does not name the certificate: {before}");
+    ensure!(requests() == 0, "an untrusted provider received a request");
+
+    // 2. The settings page names the bundle and shows what it would do.
+    ctx.goto("/settings/https-proxy")?;
+    ctx.wait_until(
+        "the CA bundle field",
+        "return !!document.querySelector('[data-testid=\"ca-bundle-path\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.type_into("[data-testid=\"ca-bundle-path\"]", &bundle)?;
+    ctx.wait_until(
+        "the bundle shown in use",
+        "const s = document.querySelector('[data-testid=\"ca-bundle-status-in-use\"]');
+         return !!s && /SHA-256 [0-9a-f]{64}/.test(s.innerText || '');",
+        Duration::from_secs(20),
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while saved_path(ctx)? != bundle {
+        ensure!(Instant::now() < deadline, "the bundle path was never saved to the settings");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let status = ctx.eval_string("return JSON.stringify(await window.__TAURI_INTERNALS__.invoke('network_ca_status'));")?;
+    ensure!(status.contains("\"in_use\"") && status.contains("desktop HTTPS proxy settings"), "network_ca_status: {status}");
+
+    // 3. The app's transport now reaches the provider over TLS.
+    let trusted = ask(ctx)?;
+    println!("      trusted request: {}", trusted.chars().take(80).collect::<String>());
+    ensure!(trusted.starts_with("ok:200:") && trusted.contains("tls-model"), "the provider was not reached with the bundle: {trusted}");
+    let seen = requests();
+    ensure!(seen >= 1, "the provider saw no request");
+
+    // 4. A broken bundle is shown broken, and fails closed.
+    ctx.type_into("[data-testid=\"ca-bundle-path\"]", &junk)?;
+    ctx.wait_until(
+        "the bundle shown broken",
+        "const s = document.querySelector('[data-testid=\"ca-bundle-status-broken\"]');
+         return !!s && /malformed/.test(s.innerText || '');",
+        Duration::from_secs(20),
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while saved_path(ctx)? != junk {
+        ensure!(Instant::now() < deadline, "the broken path was never saved");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let closed = ask(ctx)?;
+    ensure!(closed.starts_with("refused:"), "a broken bundle still reached the provider: {closed}");
+    ensure!(closed.contains("[certificate:"), "the fail-closed refusal does not name the certificate: {closed}");
+    ensure!(requests() == seen, "a broken bundle let a request through");
+
+    // 5. Cleared: the platform's roots only.
+    ctx.type_into("[data-testid=\"ca-bundle-path\"]", "")?;
+    ctx.wait_until(
+        "the bundle shown as none",
+        "return !!document.querySelector('[data-testid=\"ca-bundle-status-none\"]');",
+        Duration::from_secs(20),
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !saved_path(ctx)?.is_empty() {
+        ensure!(Instant::now() < deadline, "the cleared path was never saved");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let after = ask(ctx)?;
+    ensure!(after.starts_with("refused:"), "the CA was still trusted after it was cleared: {after}");
+    ensure!(requests() == seen, "a request went through after the bundle was cleared");
+    Ok(())
+}
+
 fn scenario_team_member_restarted(ctx: &Ctx) -> ScenarioResult {
     let team = serde_json::json!({ "tasks": [
         { "id": "one", "description": "TASK-ONE: report the number one", "writes": [] },

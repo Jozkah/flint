@@ -6,6 +6,7 @@
 
 pub mod resolver;
 pub mod transport;
+pub mod tls;
 
 #[cfg(not(feature = "cli"))]
 pub mod commands;

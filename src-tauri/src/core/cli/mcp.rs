@@ -577,8 +577,7 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest::Clie
             }
         }
     }
-    reqwest::Client::builder()
-        .default_headers(map)
+    crate::core::net::tls::apply12(reqwest::Client::builder().default_headers(map))
         .build()
         .map_err(|e| e.to_string())
 }

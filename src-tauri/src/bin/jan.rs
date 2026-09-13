@@ -278,6 +278,35 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: McpCommands,
     },
+    /// Outbound network settings: extra certificate authorities (AH-190)
+    #[command(display_order = 14)]
+    Net {
+        #[command(subcommand)]
+        cmd: NetCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum NetCommands {
+    /// Extra certificate authorities trusted for outbound HTTPS
+    Ca {
+        #[command(subcommand)]
+        cmd: CaCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum CaCommands {
+    /// Show which CA bundle is in force, where it was named, and what it holds
+    Status,
+    /// Trust the certificates in a PEM bundle, in addition to the platform's.
+    /// The bundle is checked first; one that cannot be used is refused
+    Set {
+        /// Path to a PEM file of CA certificates
+        path: String,
+    },
+    /// Stop trusting the configured bundle (JAN_CA_BUNDLE, if set, still applies)
+    Clear,
 }
 
 // ── Agent subcommands ──────────────────────────────────────────────────────
@@ -1210,6 +1239,48 @@ async fn handle_cli(cmd: CliCommands) {
                 std::process::exit(1);
             }
         }
+        CliCommands::Net { cmd } => handle_net(cmd),
+    }
+}
+
+/// `jan cli net`: outbound network settings (AH-190).
+fn handle_net(cmd: NetCommands) {
+    use app_lib::core::net::tls;
+    let NetCommands::Ca { cmd } = cmd;
+    let result: Result<(), HarnessError> = match cmd {
+        CaCommands::Status => {
+            println!("{}", serde_json::to_string_pretty(&tls::status()).unwrap_or_default());
+            Ok(())
+        }
+        CaCommands::Set { path } => {
+            let absolute = std::path::Path::new(&path)
+                .canonicalize()
+                .map(|p| p.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+                .unwrap_or(path.clone());
+            match tls::load(std::path::Path::new(&absolute), tls::Source::CliConfig) {
+                Ok(bundle) => app_lib::core::agent::global_config::set_ca_bundle(Some(&absolute))
+                    .map(|written| {
+                        println!(
+                            "Trusting {} certificate(s) from {} in addition to the platform's roots ({}).",
+                            bundle.fingerprints.len(),
+                            absolute,
+                            written.display()
+                        );
+                        if std::env::var_os(tls::ENV).is_some() {
+                            eprintln!("Note: {} is set in this environment and takes precedence.", tls::ENV);
+                        }
+                    })
+                    .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
+                Err(e) => Err(HarnessError::from(&e)),
+            }
+        }
+        CaCommands::Clear => app_lib::core::agent::global_config::set_ca_bundle(None)
+            .map(|written| println!("No CA bundle is named in {} any more.", written.display()))
+            .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
+    };
+    if let Err(e) = result {
+        eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+        std::process::exit(e.exit_code());
     }
 }
 
@@ -2736,8 +2807,10 @@ mod tests {
                 r#type,
                 url,
                 header,
+                scope,
                 active,
             } => {
+                assert!(scope.is_empty(), "no --scope was given");
                 assert_eq!(name, "files");
                 assert_eq!(command.as_deref(), Some("npx"));
                 assert_eq!(args, vec!["-y", "my-mcp"]);
@@ -2753,13 +2826,13 @@ mod tests {
 
     #[test]
     fn mcp_build_rejects_http_without_url() {
-        let err = build_mcp_config(None, vec![], vec![], "http", None, vec![], false).unwrap_err();
+        let err = build_mcp_config(None, vec![], vec![], "http", None, vec![], false, Vec::new()).unwrap_err();
         assert!(err.contains("url"), "{err}");
-        let err = build_mcp_config(None, vec![], vec![], "sse", None, vec![], false).unwrap_err();
+        let err = build_mcp_config(None, vec![], vec![], "sse", None, vec![], false, Vec::new()).unwrap_err();
         assert!(err.contains("url"), "{err}");
-        assert!(build_mcp_config(None, vec![], vec![], "bogus", None, vec![], false).is_err());
+        assert!(build_mcp_config(None, vec![], vec![], "bogus", None, vec![], false, Vec::new()).is_err());
         // stdio needs a command.
-        assert!(build_mcp_config(None, vec![], vec![], "stdio", None, vec![], false).is_err());
+        assert!(build_mcp_config(None, vec![], vec![], "stdio", None, vec![], false, Vec::new()).is_err());
     }
 
     #[test]

@@ -1002,6 +1002,10 @@ fn is_retryable_send_error(err: &reqwest::Error) -> bool {
     if err.is_timeout() || err.is_body() || err.is_decode() || err.is_builder() {
         return false;
     }
+    // R13: a certificate failure is a connect error that no retry changes.
+    if crate::core::net::tls::certificate_failure(err).is_some() {
+        return false;
+    }
     err.is_connect() || chain_indicates_dropped_connection(&error_source_chain(err))
 }
 
@@ -1143,6 +1147,9 @@ pub(crate) fn describe_request_error(err: &reqwest::Error) -> String {
     }
     if let Some(status) = err.status() {
         msg.push_str(&format!(" [HTTP {status}]"));
+    }
+    if let Some(reason) = crate::core::net::tls::certificate_failure(err) {
+        msg.push_str(&format!(" [certificate: {reason}]"));
     }
     if err.is_connect() || err.is_timeout() {
         if let Some(hint) = proxy_env_hint() {

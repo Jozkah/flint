@@ -520,10 +520,12 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // One client for both transports, and one place the configured headers
         // are turned into a `HeaderMap` -- the http and sse arms used to carry
         // identical copies of that loop.
-        let base = reqwest::Client::builder()
-            .default_headers(header_map(&config_params.headers))
-            .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX))
-            .build()
+        let base = crate::core::net::tls::apply12(
+            reqwest::Client::builder()
+                .default_headers(header_map(&config_params.headers))
+                .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX)),
+        )
+        .build()
             .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;
 
         // Stored OAuth credentials (refreshed if stale) are wrapped around the

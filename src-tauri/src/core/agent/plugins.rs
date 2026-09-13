@@ -127,8 +127,7 @@ struct Manifest {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+    crate::core::net::tls::apply12(reqwest::Client::builder().user_agent(USER_AGENT))
         .build()
         .map_err(|e| format!("ERROR: {e}"))
 }

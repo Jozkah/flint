@@ -308,7 +308,7 @@ pub async fn post_webhook(notify: &Notify, note: &Notification) -> Delivered {
     let Some(url) = notify.webhook.as_deref() else {
         return Delivered::NotAsked;
     };
-    let client = match reqwest::Client::builder().timeout(DELIVERY_DEADLINE).build() {
+    let client = match crate::core::net::tls::apply12(reqwest::Client::builder().timeout(DELIVERY_DEADLINE)).build() {
         Ok(client) => client,
         Err(e) => return Delivered::Failed(format!("the webhook client could not be built: {e}")),
     };

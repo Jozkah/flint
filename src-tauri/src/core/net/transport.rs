@@ -111,21 +111,31 @@ fn endpoint_of(url: &str) -> Result<(String, u16), String> {
 }
 
 fn client_for(host: &str, port: u16) -> Result<Client, String> {
+    // AH-190: clients built under another CA bundle are not reused.
+    static BUILT_FOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let bundle = crate::core::net::tls::fingerprint();
+    if BUILT_FOR.swap(bundle, Ordering::SeqCst) != bundle {
+        if let Ok(mut cache) = clients().lock() {
+            cache.clear();
+        }
+    }
     let key = (host.to_ascii_lowercase(), port);
     if let Some(existing) = clients().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Ok(existing);
     }
-    let client = Client::builder()
-        .dns_resolver(Arc::new(EndpointResolver {
-            port,
-            cache: resolver::shared().clone(),
-        }))
-        // A local server that is down should fail quickly enough that the next
-        // candidate is tried while the user is still watching.
-        .connect_timeout(Duration::from_secs(10))
-        .pool_idle_timeout(Duration::from_secs(30))
-        .redirect(same_origin_redirects())
-        .build()
+    let client = crate::core::net::tls::apply12(
+        Client::builder()
+            .dns_resolver(Arc::new(EndpointResolver {
+                port,
+                cache: resolver::shared().clone(),
+            }))
+            // A local server that is down should fail quickly enough that the next
+            // candidate is tried while the user is still watching.
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Duration::from_secs(30))
+            .redirect(same_origin_redirects()),
+    )
+    .build()
         .map_err(|e| format!("could not build an HTTP client for {host}:{port}: {e}"))?;
     if let Ok(mut cache) = clients().lock() {
         cache.insert(key, client.clone());
@@ -468,6 +478,11 @@ fn transport_failed(host: &str, port: u16, e: &reqwest::Error) -> String {
             reason.push_str(&text);
         }
         source = s.source();
+    }
+    // R13: a certificate failure is named as one, not left to be read out of
+    // an operating system message.
+    if let Some(certificate) = crate::core::net::tls::certificate_failure(e) {
+        reason.push_str(&format!(" [certificate: {certificate}]"));
     }
     format!("{host}:{port} {what}{diag}: {reason}")
 }

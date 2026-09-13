@@ -7,8 +7,11 @@ import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
 import { EyeOff, Eye } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
+import { CaBundleStatus, type CaBundleState } from '@/containers/CaBundleStatus'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { isPlatformTauri } from '@/lib/platform/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.https_proxy as any)({
@@ -31,7 +34,31 @@ function HTTPSProxyContent() {
     setProxyIgnoreSSL,
     setNoProxy,
     setProxyUrl,
+    caBundlePath,
+    setCaBundlePath,
   } = useProxyConfig()
+  const [caStatus, setCaStatus] = useState<CaBundleState | null>(null)
+
+  // AH-190: what the bundle would do, checked by the backend as it is typed.
+  useEffect(() => {
+    if (!isPlatformTauri()) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      getServiceHub()
+        .core()
+        .invoke<CaBundleState>('network_ca_check', { path: caBundlePath })
+        .then((status) => {
+          if (!cancelled) setCaStatus(status)
+        })
+        .catch(() => {
+          if (!cancelled) setCaStatus(null)
+        })
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [caBundlePath])
 
   const toggleProxy = useCallback(
     (checked: boolean) => {
@@ -146,6 +173,32 @@ function HTTPSProxyContent() {
                     checked={proxyIgnoreSSL}
                     onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
                   />
+                }
+              />
+            </Card>
+            <Card
+              header={
+                <h1 className="text-foreground font-studio font-medium text-base mb-2">
+                  {t('settings:httpsProxy.caBundle')}
+                </h1>
+              }
+            >
+              <CardItem
+                anchor="settings-https-proxy-ca-bundle"
+                title={t('settings:httpsProxy.caBundlePath')}
+                className="block"
+                description={
+                  <div className="space-y-2">
+                    <p>{t('settings:httpsProxy.caBundleDesc')}</p>
+                    <Input
+                      className="w-full"
+                      data-testid="ca-bundle-path"
+                      placeholder={t('settings:httpsProxy.caBundlePlaceholder')}
+                      value={caBundlePath}
+                      onChange={(e) => setCaBundlePath(e.target.value)}
+                    />
+                    <CaBundleStatus status={caStatus} />
+                  </div>
                 }
               />
             </Card>
