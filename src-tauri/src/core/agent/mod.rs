@@ -28,6 +28,7 @@ pub mod plan;
 pub mod plugin_commands;
 pub mod plugins;
 pub mod project;
+pub mod quota;
 pub mod proposals;
 pub mod reminder;
 pub mod diagnostics;

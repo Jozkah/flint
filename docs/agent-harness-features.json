@@ -6628,13 +6628,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/quota.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Per-user or per-project usage ceilings are enforced across runs.",
@@ -6643,10 +6647,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/quota.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). [tokens] per_day / per_month count input plus output across every run in the window, which is what a session budget cannot do: a session budget stops one run, and a quota is about what a person or project may use in a day or a month. Declared in <data folder>/quotas.toml; no file means no ceilings and no ledger work, and a file that will not parse or carries an impossible amount refuses the run (an unreadable ceiling is not no ceiling). Judged at every provider dispatch -- the moment something is spent, retries and fallbacks included -- against the same ledger `jan cli agent spend` reports, so a run that crosses its ceiling mid-way stops there rather than at the end. A compaction dispatch is exempt: its run is judged at every turn of its own, and stopping the compaction would strand it with a history it cannot send. `jan cli agent quota` shows where use stands, tightest ceiling first; a stopped run ends with a typed budget_exhausted naming the ceiling and marked never-retry, because the window has to pass. Proven by real runs: a generous ceiling passing, a reached one stopping the run, and a malformed file refusing it."
     },
     {
       "id": "AH-192",
@@ -6654,14 +6660,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-175",
         "AH-191"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/quota.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A monetary ceiling stops runs before it is exceeded.",
@@ -6670,10 +6680,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/quota.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). [spend] per_day / per_month are dollars, and can only judge what has a declared price (prices.toml, AH-175). Use of a model nobody priced is real use that cannot be turned into dollars: it is named beside the answer rather than folded in as zero, because a ceiling that treats unpriced use as free is a ceiling that does not hold. Declared in <data folder>/quotas.toml; no file means no ceilings and no ledger work, and a file that will not parse or carries an impossible amount refuses the run (an unreadable ceiling is not no ceiling). Judged at every provider dispatch -- the moment something is spent, retries and fallbacks included -- against the same ledger `jan cli agent spend` reports, so a run that crosses its ceiling mid-way stops there rather than at the end. A compaction dispatch is exempt: its run is judged at every turn of its own, and stopping the compaction would strand it with a history it cannot send. `jan cli agent quota` shows where use stands, tightest ceiling first; a stopped run ends with a typed budget_exhausted naming the ceiling and marked never-retry, because the window has to pass. Proven by real runs: a generous ceiling passing, a reached one stopping the run, and a malformed file refusing it."
     },
     {
       "id": "AH-193",

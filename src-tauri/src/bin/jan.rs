@@ -371,6 +371,12 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Where use stands against the ceilings in quotas.toml (AH-191, AH-192)
+    Quota {
+        /// Print the standings as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Import agent definitions written for OpenCode or Qwen Code into Jan's
     /// own subagent format (AH-118, AH-119)
     ImportAgents {
@@ -1147,6 +1153,23 @@ async fn handle_agent(cmd: AgentCommands) {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
                 }
             })
+        }
+        AgentCommands::Quota { json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            use app_lib::core::agent::quota;
+            quota::quotas(&data)
+                .and_then(|declared| quota::standing(&data, &declared))
+                .map_err(|e| HarnessError::from(&e))
+                .map(|standings| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&standings).unwrap_or_default()
+                        );
+                    } else {
+                        print!("{}", quota::render(&standings));
+                    }
+                })
         }
         AgentCommands::ImportAgents {
             path,

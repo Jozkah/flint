@@ -2170,3 +2170,48 @@ still asking the same question. Three such turns in a row now end the run with
 a typed `invalid_response` that says what happened. Any turn that executes
 something -- or that produces an answer -- resets the count, so a model that is
 merely confused once is not cut off.
+
+
+## Ceilings that hold across runs (AH-191, AH-192)
+
+A session budget stops one run. Neither of these is about one run: they are
+about what a person or a project may use in a day or a month, which is the
+number anybody means when they say "keep it under $20".
+
+`<data folder>/quotas.toml`:
+
+```toml
+[tokens]
+per_day = 1000000
+per_month = 20000000
+
+[spend]
+per_day = 5.0
+per_month = 50.0
+```
+
+Every ceiling is optional, and no file means none. A file that will not parse,
+or that carries a negative or non-finite amount, refuses the run: half a quota
+file would enforce a ceiling nobody wrote, and an unreadable ceiling is not the
+same as no ceiling.
+
+**Where it is judged.** At every provider dispatch -- the moment something is
+actually spent, including retries, fallbacks and a turn's own second request.
+The ledger grows as the run goes, so a run that crosses its ceiling mid-way
+stops there rather than at the end. A run with no ceilings declared reads no
+ledger at all. A compaction dispatch is exempt: the run it belongs to is judged
+at every turn of its own, and stopping the compaction would strand it with a
+history it cannot send.
+
+**What a money ceiling can judge.** Only what has a declared price
+(`prices.toml`, AH-175). Use of a model nobody priced is real use that cannot
+be turned into dollars, so it is named beside the answer rather than folded in
+as zero -- `spend per day: $0.0000 of $0.0100 (not counted, because nobody has
+said what they cost: mock/m)`. A ceiling that treated unpriced use as free
+would be a ceiling that does not hold, and saying so is the honest half of it.
+
+`jan cli agent quota` prints where use stands against each ceiling, tightest
+first -- the same numbers `jan cli agent spend` reports, because it is the same
+ledger. A run stopped by a ceiling ends with a typed `budget_exhausted` naming
+which ceiling and what it stands at, and marked never-retry: the window has to
+pass.

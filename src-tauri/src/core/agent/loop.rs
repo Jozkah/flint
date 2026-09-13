@@ -370,6 +370,14 @@ struct HttpModelInvoker {
     /// Providers to try after this one, in order (AH-193). Empty unless the
     /// project configured a chain.
     fallbacks: Vec<ProviderLane>,
+    /// The ceilings that hold across runs (AH-191, AH-192), and the ledger
+    /// they are judged against.
+    ///
+    /// Checked here rather than in the turn loop because this is the moment
+    /// something is spent: every dispatch that costs tokens or money passes
+    /// through, including a retry, a fallback and a compaction summary. `None`
+    /// is the ordinary case -- no quotas.toml, no ceilings, no ledger read.
+    quota: Option<(std::path::PathBuf, crate::core::agent::quota::Quotas)>,
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -395,6 +403,21 @@ impl ModelInvoker for HttpModelInvoker {
             let bare = crate::core::agent::upstream::strip_provider_prefix(model, &pc);
             if bare != model {
                 normalized["model"] = serde_json::json!(bare);
+            }
+        }
+        // AH-191/AH-192: a ceiling that has already been reached stops the
+        // run here, before anything is spent against it. The ledger grows as
+        // the run goes, so a run that crosses its ceiling mid-way stops there
+        // rather than at the end.
+        if let Some((data_folder, quotas)) = &self.quota {
+            match crate::core::agent::quota::exceeded(data_folder, quotas) {
+                Ok(Some(reached)) => {
+                    return Err(crate::core::agent::quota::refusal(&reached));
+                }
+                Ok(None) => {}
+                // A ledger that cannot be read is not a licence to spend: the
+                // ceiling exists, and whether it has been reached is unknown.
+                Err(e) => return Err((&e).into()),
             }
         }
         // AH-004: this request's id, minted before anything it causes.
@@ -777,6 +800,25 @@ impl ToolInvoker for McpToolInvoker {
             .map(|(id, content)| ToolOutcome::plain(id, content))
             .collect::<Vec<_>>())
     }
+}
+
+/// The ceilings this run is judged against, and the ledger to judge them from
+/// (AH-191, AH-192).
+///
+/// `None` when there is no data folder to read a ledger from, or when
+/// `quotas.toml` declares nothing: a run with no ceilings does no ledger work.
+/// A file that will not parse refuses the run -- an unreadable ceiling is not
+/// the same as no ceiling.
+fn quota_guard(
+    jan_data_folder: &str,
+) -> Result<Option<(std::path::PathBuf, crate::core::agent::quota::Quotas)>, HarnessError> {
+    if jan_data_folder.is_empty() {
+        return Ok(None);
+    }
+    let data = std::path::PathBuf::from(jan_data_folder);
+    let quotas = crate::core::agent::quota::quotas(&data)
+        .map_err(|e| HarnessError::from(&e))?;
+    Ok(quotas.any().then_some((data, quotas)))
 }
 
 /// Every tool a run could call: the built-ins, plus each tool the connected
@@ -3546,6 +3588,10 @@ async fn orchestrate_inner(
     ));
 
     let http_model = HttpModelInvoker {
+        // AH-191/AH-192: read once per run. A quotas.toml that will not parse
+        // refuses the run here rather than being ignored, which is the only
+        // reading of an unreadable ceiling that is not a licence to spend.
+        quota: quota_guard(jan_data_folder.as_str())?,
         client: client.clone(),
         upstream_url,
         api_keys: session_api_keys,
@@ -3860,6 +3906,10 @@ pub(crate) async fn compact_history(
     )
     .await?;
     let model = HttpModelInvoker {
+        // The run this compaction belongs to is judged at every turn of its
+        // own (AH-191/AH-192). Stopping a compaction against a ceiling would
+        // strand the run with a history it cannot send.
+        quota: None,
         client: args.client.clone(),
         upstream_url,
         api_keys,
@@ -3917,6 +3967,8 @@ pub(crate) async fn evaluate_goal(
     )
     .await?;
     let model = HttpModelInvoker {
+        // As above: this is a helper dispatch inside a run already judged.
+        quota: None,
         client: args.client.clone(),
         upstream_url,
         api_keys,

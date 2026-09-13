@@ -2156,3 +2156,41 @@ after:   rc=76  after 15s       turns reached: 3
 Covered by test: a turn cycle with no turn ceiling and a provider that always
 answers the same unexecutable call stops on the third turn, with the typed
 error, having executed no tool at all.
+
+
+### Usage quotas and spend budgets (AH-191, AH-192)
+
+Five tests plus real runs against a live ceiling:
+
+```
+=== no quotas.toml
+no ceilings are declared in quotas.toml        rc=0
+
+=== a generous token ceiling
+rc=0      tokens per day: 30 tokens of 1000000 tokens
+
+=== a ceiling the ledger has already passed
+rc=75
+Error [budget_exhausted]: this run was stopped by a ceiling in quotas.toml --
+tokens per day: 30 tokens of 10 tokens. Raise it there, or wait for the window
+to pass.
+          tokens per day: 30 tokens of 10 tokens  REACHED
+
+=== the same, in dollars, with no price declared for the model
+  spend per day: $0.0000 of $0.0100 (not counted, because nobody has said what
+  they cost: mock/m)                                                      rc=0
+
+=== and with a price declared
+  spend per day: $0.0045 of $0.0100                                       rc=0
+
+=== a quotas.toml that will not parse
+rc=64   Error [invalid_input]: quotas.toml: TOML parse error at line 1, column 8
+```
+
+Covered by test: no file declaring nothing and doing no ledger work; a
+malformed file, a negative amount and a NaN each refused whole and named; a
+token ceiling judged from the ledger rather than from anything one run
+remembers, reached only when the ledger says so, and refused with a typed
+`budget_exhausted`; a spend ceiling counting what has a declared price, naming
+the models nobody priced, and not treating their use as free; and the tightest
+ceiling being the one reported first and named in the refusal.
