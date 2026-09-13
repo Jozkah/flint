@@ -348,6 +348,21 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "stop_session",
+                "description": "Stop the current run of another agent session in this same project (ids come from list_sessions), for example when both are changing the same files. Prefer send_message to ask first. Every call is shown to the user of this session, who must approve it; it is refused if they do not. Only a running session can be stopped, only its current run is stopped, and the other session's transcript records that this session stopped it and the reason you give. Limits: 3 per 10 minutes, 2 per 10 minutes to the same session. Returns status `applied`, `ignored_stale` (the run had already ended or been replaced) or `requested`.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": { "type": "string", "description": "Id of the session to stop, from list_sessions." },
+                        "reason": { "type": "string", "description": "Why it should stop, 1-500 characters. Shown to the user and recorded in both sessions." }
+                    },
+                    "required": ["session_id", "reason"]
+                }
+            }
+        }),
     ]
 }
 
@@ -362,7 +377,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 23);
+        assert_eq!(schemas.len(), 24);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

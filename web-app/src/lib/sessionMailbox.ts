@@ -23,6 +23,28 @@ export {
   SESSION_MESSAGING_TOOLS,
 } from '@/lib/sessionMessagingTools'
 
+/** Emitted by the backend after a stop request is recorded (ids only). */
+export const STOP_REQUESTED_EVENT = 'agent-session-stop-requested'
+
+export type StopRequestedPayload = { sessionId: string; requestId: string }
+
+export type StopStatus = 'requested' | 'applied' | 'ignored_stale'
+
+/** A durable stop request, as `mailbox/stops.json` holds it. */
+export type StopRequest = {
+  v: 1
+  id: string
+  from: { sessionId: string; displayName: string }
+  to: { sessionId: string; displayName: string }
+  project: string
+  /** Scrubbed, but written by another agent: untrusted plain text. */
+  reason: string
+  targetRunId: string
+  createdAt: number
+  status: StopStatus
+  resolvedAt?: number | null
+}
+
 export type SessionStatus = 'running' | 'idle' | 'unavailable'
 
 export type MailSessionSummary = {
@@ -66,9 +88,19 @@ export type MailboxErrorCode =
   | 'not_available'
   | 'io'
   | 'no_data_folder'
+  | 'invalid_reason'
+  | 'target_not_running'
+  | 'caller_not_running'
+  | 'approval_required'
+  | 'unknown_stop_request'
   | 'unknown'
 
 const KNOWN_CODES: ReadonlySet<string> = new Set<MailboxErrorCode>([
+  'invalid_reason',
+  'target_not_running',
+  'caller_not_running',
+  'approval_required',
+  'unknown_stop_request',
   'invalid_text',
   'reply_depth_exceeded',
   'rate_limited',
@@ -235,6 +267,30 @@ export const sessionMailbox = {
 
   listSessions: (sessionId: string) =>
     call<MailSessionSummary[]>('mailbox_list_sessions', { sessionId }),
+
+  /**
+   * Record that the user of `sessionId` approved one `stop_session` call. The
+   * backend tool refuses the call without it. Only the approval path in
+   * `lib/sessionStop.ts` calls this.
+   */
+  approveStop: (input: {
+    sessionId: string
+    callId: string
+    targetSessionId: string
+    reason: string
+  }) => call<null>('mailbox_stop_approve', input),
+
+  /** A request addressed to `sessionId` that may be applied now, or `null`. */
+  pendingStop: (sessionId: string, requestId: string) =>
+    call<StopRequest | null>('mailbox_stop_pending', { sessionId, requestId }),
+
+  /** Report what the target did; `applied` counts only for the named run. */
+  resolveStop: (input: {
+    sessionId: string
+    requestId: string
+    applied: boolean
+    runId: string | null
+  }) => call<StopRequest>('mailbox_stop_resolve', input),
 }
 
 export type SessionMailbox = typeof sessionMailbox

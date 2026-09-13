@@ -11,6 +11,10 @@
  * (`taskContext`); otherwise the prompt says what the call does, not why.
  */
 import { isPlainObject, parseToolInput } from '@/lib/toolInputSummary'
+import {
+  ALWAYS_ASK_TOOLS,
+  STOP_SESSION_TOOL_NAME,
+} from '@/lib/sessionMessagingTools'
 
 export type PermissionCategory =
   | 'file-change'
@@ -307,7 +311,9 @@ function resourcesFor(
       raw = [...(serverName ? [serverName] : []), ...generic]
       break
     default:
-      if (toolName === 'team' && Array.isArray(args.tasks)) {
+      if (toolName === STOP_SESSION_TOOL_NAME) {
+        raw = [str(args.session) ?? str(args.session_id)].filter(Boolean) as string[]
+      } else if (toolName === 'team' && Array.isArray(args.tasks)) {
         raw = args.tasks.flatMap((task) =>
           isPlainObject(task) ? strings(task.writes) : []
         )
@@ -377,6 +383,17 @@ function actionFor(
         ? { key: 'permissions:action.readTarget', values: { target: resources[0] } }
         : { key: 'permissions:action.readFiles' }
     default:
+      if (toolName === STOP_SESSION_TOOL_NAME) {
+        return {
+          key: 'permissions:action.stopSession',
+          values: {
+            session: sanitizeResource(
+              str(args.session) ?? str(args.session_id) ?? '',
+              80
+            ),
+          },
+        }
+      }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
       return { key: 'permissions:action.useTool', values: { tool: toolName } }
   }
@@ -403,6 +420,9 @@ function consequencesFor(
     case 'read':
       return [{ key: 'permissions:consequence.read' }]
     default:
+      if (toolName === STOP_SESSION_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.stopSession' }]
+      }
       return HELPER_TOOLS.has(toolName)
         ? [{ key: 'permissions:consequence.helper' }]
         : [{ key: 'permissions:consequence.unknown' }]
@@ -421,6 +441,8 @@ function consequencesFor(
  */
 export function scopesFor(req: PermissionRequestInput): ApprovalScope[] {
   const scopes: ApprovalScope[] = ['allow-once']
+  // Decided call by call: nothing broader can be recorded for these.
+  if (ALWAYS_ASK_TOOLS.has(req.toolName)) return scopes
   if (!req.threadIsEphemeral) scopes.push('allow-thread')
   scopes.push('allow-always')
   return scopes
@@ -500,9 +522,11 @@ export function describePermissionRequest(
   for (const scope of scopesOffered) {
     scopeExplanations[scope] = explain(scope, toolName, serverName)
   }
-  const reason = req.taskContext?.trim()
-    ? sanitizeResource(req.taskContext, 300)
-    : undefined
+  // A stop request carries its own reason, written by the agent asking. Shown
+  // as the "why" so the user decides with it in front of them.
+  const stated =
+    toolName === STOP_SESSION_TOOL_NAME ? str(args.reason) : req.taskContext
+  const reason = stated?.trim() ? sanitizeResource(stated, 300) : undefined
 
   return {
     category,

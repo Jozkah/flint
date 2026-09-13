@@ -426,6 +426,8 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
             vec![capability::FS_READ]
         }
+        // Writes a stop request under the data folder.
+        "stop_session" => vec![capability::FS_WRITE],
         // The web tools reach the network, which is a per-run policy decision
         // rather than an environment fact, and is enforced by the gate. Nothing
         // about the environment withholds them.

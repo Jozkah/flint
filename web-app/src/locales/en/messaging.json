@@ -10,6 +10,11 @@
   "letAgentRespond": "Let the agent respond",
   "dismiss": "Dismiss",
   "heldTitle": "Messages from other sessions",
+  "stopNotice": {
+    "stoppedBy": "Stopped by",
+    "reason": "reason:",
+    "approvedIn": "approved in"
+  },
   "autoWake": {
     "label": "Automatic wake-ups",
     "description": "When on, messages from other sessions in this project are sent to this session's agent as soon as it is idle and open. When off, they wait here for you."
