@@ -2435,3 +2435,50 @@ as not run; dependency health counting what is installed, naming what declares
 no licence and what is present at more than one version; and a `--only`
 selection running only what was selected, with an unknown check refused by
 name.
+
+
+### Failure clustering and flake detection (AH-152, AH-153)
+
+Five tests plus a real crate whose suite fails four times in three ways, one of
+them only on the first run:
+
+```
+=== without re-running: nothing is called flaky
+rc=70
+4 failure(s) in 3 group(s)
+  2 test(s) said the same thing:
+      assertion `left == right` failed / left: 7
+    tests::the_header_is_five_wide
+    tests::the_footer_is_five_wide
+  1 test(s) said the same thing:  the cache was cold
+  1 test(s) said the same thing:  the door was locked
+
+=== with the re-run
+4 failure(s) in 3 group(s)
+    tests::the_footer_is_five_wide  (failed again)
+    tests::the_header_is_five_wide  (failed again)
+    tests::the_cache_is_warm        (passed on a re-run: flaky)
+    tests::the_door_is_unlocked     (failed again)
+1 of these did not happen again: tests::the_cache_is_warm
+
+=== a suite with nothing wrong
+rc=0   no failures
+```
+
+A defect the real run found, and a second one it caused: adding these commands
+pushed the CLI's clap command tree past the 1 MB stack Windows gives a main
+thread, so **every** subcommand began failing with a bare "thread 'main' has
+overflowed its stack" and no other output. The program now runs on a thread
+with room; the alternative would have been deciding which of a person's
+commands to delete. The first version of the grouping also failed to group the
+two identical assertions, because Rust now prints a thread id in the panic
+preamble.
+
+Covered by test: failures read with the message each test actually printed;
+failures that said the same thing grouped, with the biggest group first and an
+unnormalised example kept; only incidental detail normalised (line numbers,
+counts, the panic preamble with or without a thread id) while different
+complaints and differing quoted values stay apart; a failure called flaky only
+after a re-run passed, a re-failure called a failure, and nothing claimed
+without a re-run; and unreadable output reported as unreadable, with an empty
+command refused.

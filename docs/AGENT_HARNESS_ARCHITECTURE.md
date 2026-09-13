@@ -2487,3 +2487,37 @@ registry is not claimed.
 A scan that found something broken exits non-zero: this is what somebody runs
 before starting work, and "it printed a failure and exited 0" is how a broken
 tree gets worked in anyway.
+
+
+## Reading a failing suite (AH-152, AH-153)
+
+A suite that fails forty times has usually broken in two or three ways: one
+renamed function, one changed message, forty call sites. A list of forty
+failures is a list somebody has to group in their head before they can act, and
+a model handed that list fixes them one at a time.
+
+```
+jan cli agent test-triage [--command cargo test] [--no-retry] [--json]
+```
+
+**Grouping (AH-152).** Failures are grouped by what they printed, normalised
+only where the noise is provably incidental: the `thread 'name' (id) panicked
+at` preamble (which is the one thing every failure has different), file paths,
+line numbers, and bare numbers inside a message. Nothing else is touched -- a
+quoted string in an assertion may be exactly what the failure is about. The
+claim a group makes is "these said the same thing", and the group carries one
+real, unnormalised message so a person sees what was actually printed. The
+biggest group is first: it is the fix that buys the most.
+
+**Flakes (AH-153).** Each failing test is run again, by name. One that passes
+the second time is reported as flaky *on that evidence*; one that fails again
+is a failure. `--no-retry` skips this, and then nothing is called flaky at all
+-- because without a second run there is nothing to say. A re-run that could
+not be done is recorded as saying nothing, not as either answer.
+
+**It reads the shapes it knows.** Rust's test output is parsed. A run that
+failed and printed something this cannot read says exactly that, rather than
+reporting no failures -- silence there would read as a clean suite.
+
+The exit code distinguishes the two: a suite whose only failures did not
+reproduce exits zero, one with a failure that happened twice does not.

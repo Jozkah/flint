@@ -51,6 +51,7 @@ pub mod skill_hub;
 pub mod skills;
 pub mod subagent;
 pub mod team_children;
+pub mod test_triage;
 pub mod todo;
 pub mod transcript;
 pub mod tooling;

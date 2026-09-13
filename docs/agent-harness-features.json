@@ -5374,13 +5374,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-151"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/test_triage.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Failures are grouped by root cause instead of listed individually.",
@@ -5389,10 +5392,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/test_triage.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `jan cli agent test-triage` groups a run's failures by what they printed, normalising only provably incidental detail: the `thread 'name' (id) panicked at` preamble (the one thing every failure has different), paths, line numbers and bare numbers. Nothing else is touched -- a quoted value in an assertion may be exactly what the failure is about -- so the claim a group makes is 'these said the same thing', and each group carries one real unnormalised message. The biggest group is first, being the fix that buys the most. Rust's output is parsed; a failing run whose output cannot be read says so rather than reporting no failures."
     },
     {
       "id": "AH-153",
@@ -5400,13 +5405,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-151"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/test_triage.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A failure that does not reproduce is identified as flaky rather than treated as a regression.",
@@ -5415,10 +5423,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/test_triage.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). Each failing test is re-run by name: one that passes the second time is reported flaky on that evidence, one that fails again is a failure, and --no-retry skips the re-run, after which nothing is called flaky at all -- without a second run there is nothing to say. A re-run that could not be done is recorded as saying nothing rather than as either answer. The exit code follows: a suite whose only failures did not reproduce exits zero. Proven on a real crate with a genuinely flaky test (one that fails only the first time in a directory) alongside three real failures."
     },
     {
       "id": "AH-154",

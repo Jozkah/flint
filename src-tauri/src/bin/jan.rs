@@ -381,6 +381,22 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Run the tests, group the failures by what they said, and re-run each to
+    /// see which happen twice (AH-152, AH-153)
+    TestTriage {
+        /// Project root to run in.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The test command, program first. Defaults to `cargo test`.
+        #[arg(long, value_name = "ARG", num_args = 1..)]
+        command: Vec<String>,
+        /// Do not re-run the failures; then nothing is called flaky.
+        #[arg(long)]
+        no_retry: bool,
+        /// Print the triage as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the project's own build, test and lint checks once and report (AH-072)
     Health {
         /// Project root to scan.
@@ -805,8 +821,34 @@ fn make_logo() -> String {
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() {
+/// Windows gives a process's main thread a 1 MB stack, and this CLI's command
+/// tree is now deep enough that building it there overflows: every subcommand
+/// added to the tree costs stack in a debug build, and the failure is a bare
+/// "thread 'main' has overflowed its stack" with no other output at all.
+///
+/// So the whole program runs on a thread with room. The alternative -- keeping
+/// the tree small enough to fit -- would mean deciding which of a person's
+/// commands to remove.
+fn main() {
+    let worker = std::thread::Builder::new()
+        .name("jan-main".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("a tokio runtime")
+                .block_on(run())
+        })
+        .expect("a thread to run on");
+    // A panic inside has already printed; exiting non-zero keeps a caller from
+    // reading a crash as success.
+    if worker.join().is_err() {
+        std::process::exit(70);
+    }
+}
+
+async fn run() {
     // Exits early if invoked as the Windows sandbox helper for a `bash` tool
     // call: the helper's only job is to spawn the confined shell and wait, so it
     // must run before anything else -- starting the app first would run a second
@@ -1253,6 +1295,49 @@ async fn handle_agent(cmd: AgentCommands) {
                     println!("{}", serde_json::to_string_pretty(&tree).unwrap_or_default());
                 } else {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
+                }
+            })
+        }
+        AgentCommands::TestTriage {
+            project,
+            command,
+            no_retry,
+            json,
+        } => {
+            use app_lib::core::agent::test_triage;
+            let root = std::path::PathBuf::from(&project);
+            let command = if command.is_empty() {
+                vec!["cargo".to_string(), "test".to_string()]
+            } else {
+                command
+            };
+            test_triage::triage(&root, &command, !no_retry).and_then(|triage| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&triage).unwrap_or_default());
+                } else {
+                    print!("{}", test_triage::render(&triage));
+                }
+                // A suite with failures that happened twice is a suite with
+                // failures; one whose only failures did not reproduce is not
+                // the same thing, and the exit code says which.
+                let real = triage.reproduced.values().any(|r| {
+                    *r == test_triage::Reproduced::Yes || *r == test_triage::Reproduced::NotChecked
+                }) && !triage.failures.is_empty();
+                if real || triage.unreadable {
+                    Err(HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
+                        if triage.unreadable {
+                            "the test run failed and its output could not be read".to_string()
+                        } else {
+                            format!(
+                                "{} failure(s) in {} group(s)",
+                                triage.failures.len(),
+                                triage.clusters.len()
+                            )
+                        },
+                    ))
+                } else {
+                    Ok(())
                 }
             })
         }
