@@ -24,6 +24,7 @@ import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -61,6 +62,7 @@ const secondaryStores = [
   useCoworkDisplay,
   useModelEvidence,
   useOnboardingGuide,
+  useSessionMessaging,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {
