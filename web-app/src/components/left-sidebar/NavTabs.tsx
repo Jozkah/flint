@@ -44,7 +44,7 @@ export function NavTabs() {
             to={tab.to}
             aria-current={tab.isActive ? 'page' : undefined}
             className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium transition-colors outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+              'flex flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
               i > 0 && 'border-l border-line-strong',
               tab.isActive
                 ? 'bg-brand-tint text-foreground'
