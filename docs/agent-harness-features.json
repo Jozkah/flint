@@ -2482,13 +2482,18 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/global_config.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/semantic.rs",
+        "src-tauri/tests/fixtures/mock_embeddings_server.py"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Embedding search over repository content is available to the agent loop.",
@@ -2497,10 +2502,20 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
-      "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code."
+      "tests": [
+        "src-tauri/src/core/agent/semantic.rs::a_credential_inside_a_file_is_scrubbed_before_it_is_sent",
+        "src-tauri/src/core/agent/semantic.rs::a_file_is_cut_into_overlapping_ranges_and_secret_files_are_never_read",
+        "src-tauri/src/core/agent/semantic.rs::a_provider_without_embeddings_makes_the_search_unavailable",
+        "src-tauri/src/core/agent/semantic.rs::an_unsupported_provider_receives_no_project_content",
+        "src-tauri/src/core/agent/semantic.rs::code_is_found_by_meaning_and_only_changed_files_are_embedded_again",
+        "src-tauri/src/core/agent/semantic.rs::only_a_model_the_user_named_is_used",
+        "src-tauri/src/core/agent/semantic.rs::vectors_that_cannot_be_compared_or_a_cancelled_build_leave_the_index_as_it_was"
+      ],
+      "platformRequirements": [
+        "an OpenAI-compatible /v1/embeddings endpoint with an embedding model"
+      ],
+      "blockedReason": "No real embedding model is reachable: v100:8080 (llama.cpp) answers 501 because it was not started with --embeddings, and v100:8555 (vLLM) answers 404 for /v1/embeddings. Enabling one requires reconfiguring a server or downloading a model, both outside what this phase may do. The implementation is complete and exercised end to end against a local embedding fixture and the real servers' refusals.",
+      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code. 2026-09-13 (Phase 6): semantic_search in the agent loop over an embedding model the user names, with a probe before any project content (R17), secret files never read, credentials scrubbed, incremental per-model store written atomically, typed refusals and no lexical fallback. Evidence: failing CLI evidence first, 7 unit tests, real CLI exercise with a local embedding fixture plus real 8080/8555 refusals. Blocked on a real embedding model: neither v100:8080 nor v100:8555 serves embeddings."
     },
     {
       "id": "AH-072",

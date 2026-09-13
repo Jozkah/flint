@@ -28,14 +28,14 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 0 | 12 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 1 | 0 | 0 | 16 | 3 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 0 | 0 | 1 | 16 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 0 | 16 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 0 | 0 | 0 | 25 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 0 | 0 | 0 | 32 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 0 | 0 | 0 | 26 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 0 | 0 | 1 | 27 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **1** | **0** | **1** | **205** | **3** | **0** | **1** | **211** |
+| **all** | | **0** | **0** | **2** | **205** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -140,7 +140,7 @@ per-OS evidence log rather than backlog items.
 | `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `verified` | none | `AH-053` |
 | `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
 | `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
-| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `missing` | medium | `AH-053` |
+| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `in-progress` | medium | `AH-053` |
 | `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `implemented` | low | `AH-069`, `AH-070` |
 | `AH-073` | Exact dispatched-payload accounting | 4 | context-memory | P0 | `implemented` | low | `AH-078` |
 | `AH-074` | Per-segment token attribution | 4 | context-memory | P1 | `implemented` | low | `AH-073` |
@@ -343,7 +343,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-068` Framework detection** - Frameworks from dependencies (high) or config files without the dependency (medium), across JS/TS, Rust, Python, Go, JVM (Android, Spring Boot), .NET (ASP.NET Core, MAUI), Flutter, Rails; each fact carries confidence, source and reason. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
 - **`AH-069` Build-system detection** - Build systems and package managers with lockfile/packageManager precedence, conflict reporting, workspace orchestrators, and no invented command where the manifest does not say how. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
 - **`AH-070` Test-runner detection** - Test runners from scripts and configuration, unit vs integration vs e2e, wrapped scripts followed, absent dependencies and unsafe scripts marked; nothing is ever run. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
-- **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code.
+- **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code. 2026-09-13 (Phase 6): semantic_search in the agent loop over an embedding model the user names, with a probe before any project content (R17), secret files never read, credentials scrubbed, incremental per-model store written atomically, typed refusals and no lexical fallback. Evidence: failing CLI evidence first, 7 unit tests, real CLI exercise with a local embedding fixture plus real 8080/8555 refusals. Blocked on a real embedding model: neither v100:8080 nor v100:8555 serves embeddings.
 - **`AH-072` Repository health scan** - Implemented 2026-09-13 (Phase 5). `jan cli agent health [--only ...] [--dry-run] [--json]` runs the project's own checks: cargo check / cargo test --no-run / cargo clippy for a crate, and the package.json scripts that actually exist, through the runner the lockfile names (npm run in a yarn project can resolve a different tree than the one installed). Nothing is invented -- a project that declares no checks is told it has none -- and --dry-run shows exactly what would run with the file that says so. `cargo test --no-run` builds the tests rather than running an unknown repository's whole suite. Each check is bounded, its pipes drained while it runs (a compiler can fill a pipe and stop), a timeout reported as a timeout rather than a failure it never reported, and a failure quoted from what the command printed rather than paraphrased. Dependency health is what can be known offline: totals, undeclared licences (the same reader AH-158 uses) and packages present at more than one version. A scan that found something broken exits non-zero. Proven on a real crate before and after breaking it, on a project that declares nothing, and on this repository (807 dependencies, 76 duplicated).
 - **`AH-073` Exact dispatched-payload accounting** - The provider's own count for the dispatched payload is recorded against the invocation and that payload's snapshot; Jan's byte estimate stays separate and labelled, and never overwrites a real count. A window of zero from a runtime or an overflow error is now reported as not known rather than counted as a real capacity, so the indicator no longer renders 0 / 0.
 - **`AH-074` Per-segment token attribution** - Per-category breakdown taken from the frozen dispatch; unmeasured categories report {known:false} rather than zero. Figures remain estimates until AH-073 lands a tokenizer.

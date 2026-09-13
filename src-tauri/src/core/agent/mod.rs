@@ -43,6 +43,7 @@ pub mod consensus;
 pub mod licenses;
 pub mod vcs;
 pub mod pull_request;
+pub mod semantic;
 pub mod replay;
 pub mod review;
 pub mod spend;

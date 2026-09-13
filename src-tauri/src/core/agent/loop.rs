@@ -1865,6 +1865,40 @@ impl CompositeToolInvoker {
             // the harness keeps in step with it. Never pushes, comments, requests
             // reviewers or notifies; the refusals and the token's limits are in
             // `pull_request`.
+            // AH-071. Search by meaning with the embedding model the user named;
+            // without one this says so and searches nothing -- it never falls
+            // back to a text search under this name.
+            "semantic_search" => {
+                use crate::core::agent::semantic;
+                let failed = |e: &tauri_plugin_agent_tools::harness_error::HarnessError| {
+                    format!("ERROR [{}]: {}", e.kind().tag(), e.message())
+                };
+                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+                    .unwrap_or(semantic::DEFAULT_RESULTS);
+                let embedder = match semantic::configured() {
+                    Ok(e) => e,
+                    Err(e) => return failed(&e),
+                };
+                if query.is_empty() {
+                    return "ERROR [invalid_input]: a semantic search needs a query".to_string();
+                }
+                let root = self.project_root.clone();
+                let data = crate::core::app::commands::resolve_jan_data_folder();
+                let token = tauri_plugin_agent_tools::lifecycle::current();
+                let http = semantic::HttpEmbedder { embedder: embedder.clone(), cancel: token.clone() };
+                let cancelled = move || token.as_ref().is_some_and(|t| t.is_stopped());
+                match semantic::refresh(&data, &root, &embedder.id, &http, &cancelled).await {
+                    Ok((store, update)) => match semantic::search(&store, &query, limit, &http).await {
+                        Ok(hits) => semantic::render(&root, &store, &update, &hits),
+                        Err(e) => failed(&e),
+                    },
+                    Err(e) => failed(&e),
+                }
+            }
             "pull_request" => {
                 use crate::core::agent::pull_request as pr;
                 if self.run_mode == crate::core::agent::plan::RunMode::Plan {
@@ -2662,6 +2696,7 @@ impl CompositeToolInvoker {
                 || name == "git_split"
                 || name == "git_history"
                 || name == "pull_request"
+                || name == "semantic_search"
                 || name == "commit_message"
                 || name == "review_comments"
                 || name == "mcp_resource_list"
@@ -3552,6 +3587,30 @@ fn advertise_local_tools(
                     }
                 }
             });
+            // AH-071.
+            let semantic = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "semantic_search",
+                    "description": "Find code in this project by meaning rather than by exact words, using the embedding model the user configured -- for example \"where do we retry a failed request\" finds a function named with_backoff. Returns file line ranges with a similarity score. If no embedding model is configured, or the provider does not serve embeddings, it says so and searches nothing; use grep or symbol_find for text.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": { "type": "string", "description": "What the code does, in words." },
+                            "limit": { "type": "integer", "description": "How many ranges to return. Default 8, at most 20." }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            });
+            let named = semantic["function"]["name"].as_str().unwrap_or_default();
+            if !planning
+                && !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named))
+            {
+                openai_tools.push(semantic);
+            }
+
             // AH-162, AH-163.
             let pull = serde_json::json!({
                 "type": "function",

@@ -116,6 +116,9 @@ struct GlobalConfigToml {
     /// setting only: a project cannot redirect where a forge token is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     forge_api: Option<String>,
+    /// The embedding model semantic code search uses, `provider/model` (AH-071).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    embeddings_model: Option<String>,
     #[serde(default)]
     providers: HashMap<String, GlobalProviderEntry>,
 }
@@ -247,6 +250,12 @@ pub(crate) fn smol_model() -> Result<Option<String>, String> {
 pub fn ca_bundle() -> Result<Option<String>, String> {
     let config = load_raw()?;
     Ok(config.ca_bundle.filter(|p| !p.trim().is_empty()))
+}
+
+/// The embedding model named in `~/.jan/config.toml` (`embeddings_model`).
+pub fn embeddings_model() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.embeddings_model.filter(|m| !m.trim().is_empty()))
 }
 
 /// The forge API named in `~/.jan/config.toml` (`forge_api`), if any.
