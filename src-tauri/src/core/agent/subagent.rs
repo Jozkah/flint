@@ -2952,6 +2952,7 @@ mod tests {
         use std::sync::Arc;
         use tauri_plugin_agent_tools::permissions::ToolPermissions;
         OrchestrationArgs {
+            profile: None,
             parent_run: None,
             dispatch_id: None,
             fallback_models: Vec::new(),

@@ -469,7 +469,8 @@ fn default_thread_title(history: &[serde_json::Value]) -> String {
 
 use crate::core::agent::events::StreamEvent;
 use crate::core::agent::project::{
-    ensure_project, load_agent_config, permissions_from, set_model_in_agent_toml,
+    ensure_project, load_agent_config, load_agent_config_with_profile, permissions_from,
+    set_model_in_agent_toml,
 };
 use crate::core::agent::r#loop::{
     run_orchestration_streamed, OrchestrationArgs, PermissionRegistry,
@@ -701,8 +702,11 @@ fn build_cli_orchestration_args(
     // `[agent].fallback`: providers to try when the model cannot be reached
     // (AH-193). Empty unless the project configured a chain.
     fallback_models: Vec<String>,
+    // The named profile this run was started under (AH-186).
+    profile: Option<String>,
 ) -> OrchestrationArgs {
     OrchestrationArgs {
+        profile,
         fallback_models,
         // A CLI run is nobody's child.
         parent_run: None,
@@ -839,7 +843,7 @@ impl AgentSession {
 /// A struct rather than a run of positional `bool`s: `(.., false, false, true)`
 /// at a call site names none of them, and the compiler cannot catch two of them
 /// being swapped.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SessionFlags {
     /// Skip the permission prompt for writes, shell, and MCP calls.
     pub auto_approve: bool,
@@ -852,6 +856,9 @@ pub struct SessionFlags {
     /// to `[tools].sandbox`, then the global `sandbox`, then the CLI default of
     /// off.
     pub sandbox: Option<bool>,
+    /// `--profile`: a named variation on this project's settings (AH-186).
+    /// `None` is the project's own configuration.
+    pub profile: Option<String>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -878,7 +885,10 @@ fn prepare_agent_session(
     if let Err(e) = crate::core::agent::global_config::ensure_global_config() {
         log::warn!("Agent: could not scaffold ~/.jan/config.toml: {e}");
     }
-    let cfg = load_agent_config(&project_root)?;
+    // AH-186: the run's settings are the project's, with the chosen profile
+    // folded in. An unknown profile is refused here -- before a provider, a
+    // tool or a model is resolved from settings nobody asked for.
+    let cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
     let permissions = permissions_from(&cfg);
 
     // Resolution order: --model flag, then agent.toml [agent].model, then the
@@ -991,6 +1001,7 @@ fn prepare_agent_session(
         max_parallel_subagents,
         flags.sandbox,
         cfg.agent.fallback.clone(),
+        flags.profile.clone(),
     );
 
     // Resolution order: configured `[agent].context_window` override, then the

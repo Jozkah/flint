@@ -333,6 +333,9 @@ enum AgentCommands {
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
         events: Option<String>,
+        /// A named profile from agent.toml's [profiles.<name>] (AH-186)
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
     },
     /// Run a single turn (debugging)
     Step {
@@ -351,6 +354,9 @@ enum AgentCommands {
         providers: ProviderArgs,
         #[command(flatten)]
         sandbox: SandboxArgs,
+        /// A named profile from agent.toml's [profiles.<name>] (AH-186)
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
     },
     /// Print resolved project config and available providers as JSON
     Status {
@@ -1099,6 +1105,7 @@ async fn handle_agent(cmd: AgentCommands) {
             resume,
             output_format,
             events,
+            profile,
         } => {
             // AH-183: before the run, so a destination that cannot be written
             // fails the command instead of silently streaming nowhere.
@@ -1116,6 +1123,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    profile,
                     ..Default::default()
                 },
                 resume.into_target(),
@@ -1130,6 +1138,7 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            profile,
         } => {
             cli_agent_step(
                 &project,
@@ -1139,6 +1148,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    profile,
                     ..Default::default()
                 },
             )

@@ -29,6 +29,118 @@ pub(crate) struct AgentToml {
     /// AH-184).
     #[serde(default)]
     pub notify: crate::core::agent::notify::NotifySection,
+    /// `[profiles.<name>]` -- named variations on this project's settings,
+    /// chosen per run (AH-186).
+    #[serde(default)]
+    pub profiles: std::collections::BTreeMap<String, ProfileSection>,
+}
+
+/// A named variation on a project's settings (AH-186).
+///
+/// Only the things a person actually varies between runs: which model, how
+/// much it may generate and read, what it may do, and which skills it sees. A
+/// profile that could change anything at all would be a second configuration
+/// format, and the one a reader has to hold in their head would be whichever
+/// they last looked at.
+///
+/// Every field is optional, and an unset field means "whatever the base
+/// configuration says" -- not a default of its own, which would make selecting
+/// a profile quietly reset settings it never mentioned.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct ProfileSection {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
+    #[serde(default)]
+    pub context_window: Option<u64>,
+    /// `[tools].default` for this profile: `allow`, `ask` or `deny`.
+    #[serde(default)]
+    pub tools_default: Option<String>,
+    #[serde(default)]
+    pub tools_allow: Option<Vec<String>>,
+    #[serde(default)]
+    pub tools_deny: Option<Vec<String>>,
+    #[serde(default)]
+    pub allow_network: Option<bool>,
+    #[serde(default)]
+    pub sandbox: Option<bool>,
+    #[serde(default)]
+    pub format_on_edit: Option<bool>,
+    /// `[skills].enabled` for this profile.
+    #[serde(default)]
+    pub skills: Option<Vec<String>>,
+}
+
+/// Fold a named profile into a configuration (AH-186).
+///
+/// An unknown name is refused, naming what this project does declare: silently
+/// running the base configuration because a profile was misspelled is a run
+/// with the wrong settings that looks like the right one.
+pub(crate) fn apply_profile(mut cfg: AgentToml, name: &str) -> Result<AgentToml, String> {
+    let Some(profile) = cfg.profiles.get(name).cloned() else {
+        let mut known: Vec<&String> = cfg.profiles.keys().collect();
+        known.sort();
+        return Err(if known.is_empty() {
+            format!("no profile named {name:?}: this project declares none")
+        } else {
+            format!(
+                "no profile named {name:?}: this project declares {}",
+                known
+                    .iter()
+                    .map(|n| format!("{n:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        });
+    };
+    #[cfg(feature = "cli")]
+    {
+        if let Some(model) = profile.model.clone() {
+            cfg.agent.model = Some(model);
+        }
+        if let Some(max_tokens) = profile.max_tokens {
+            cfg.agent.max_tokens = Some(max_tokens);
+        }
+        if let Some(window) = profile.context_window {
+            cfg.agent.context_window = Some(window);
+        }
+    }
+    if let Some(default) = profile.tools_default.clone() {
+        cfg.tools.default = Some(default);
+    }
+    if let Some(allow) = profile.tools_allow.clone() {
+        cfg.tools.allow = allow;
+    }
+    if let Some(deny) = profile.tools_deny.clone() {
+        cfg.tools.deny = deny;
+    }
+    if let Some(network) = profile.allow_network {
+        cfg.tools.allow_network = Some(network);
+    }
+    if let Some(sandbox) = profile.sandbox {
+        cfg.tools.sandbox = Some(sandbox);
+    }
+    if let Some(format_on_edit) = profile.format_on_edit {
+        cfg.tools.format_on_edit = Some(format_on_edit);
+    }
+    if let Some(skills) = profile.skills.clone() {
+        cfg.skills.enabled = skills;
+    }
+    Ok(cfg)
+}
+
+/// The project's configuration with a profile folded in, when one was chosen
+/// (AH-186).
+pub(crate) fn load_agent_config_with_profile(
+    project_root: &Path,
+    profile: Option<&str>,
+) -> Result<AgentToml, String> {
+    let cfg = load_agent_config(project_root)?;
+    match profile.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(name) => apply_profile(cfg, name),
+        None => Ok(cfg),
+    }
 }
 
 /// `[plugins]` — plugin installs and marketplace. Installed plugins live in
@@ -243,6 +355,14 @@ inject = "always"
 # command = ["notify-send", "Jan"]      # argument vector; no shell
 # webhook = "https://example.invalid/hooks/jan"
 # events = ["run.ended", "needs.attention"]
+
+# Named variations on the settings above, chosen with `--profile <name>`.
+# What a profile does not mention is left exactly as it is above.
+# [profiles.review]
+# model = "provider/a-careful-model"
+# tools_default = "ask"
+# tools_deny = ["bash"]
+# skills = ["review"]
 "#;
 
 /// Path to `<project_root>/.jan/agent/agent.toml`.
@@ -283,7 +403,14 @@ pub(crate) struct RunSettings {
 /// A missing or malformed config yields defaults rather than an error: a project
 /// without an agent.toml should still run, advertising all of its skills.
 pub(crate) fn run_settings(project_root: &Path) -> RunSettings {
-    let Ok(cfg) = load_agent_config(project_root) else {
+    run_settings_for(project_root, None)
+}
+
+/// The same, with a profile folded in (AH-186). A profile that does not exist
+/// leaves the base settings: the run itself has already refused by then, and a
+/// second refusal from here would say the same thing twice.
+pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> RunSettings {
+    let Ok(cfg) = load_agent_config_with_profile(project_root, profile) else {
         return RunSettings::default();
     };
     RunSettings {
@@ -457,6 +584,145 @@ pub(crate) fn set_skills_enabled_in_agent_toml(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// A project with the profile written into its agent.toml.
+    fn project_with(toml: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "jan_profile_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
+        ));
+        let dir = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).expect("project");
+        std::fs::write(dir.join("agent.toml"), toml).expect("agent.toml");
+        root
+    }
+
+    const BASE: &str = r#"
+[agent]
+model = "base/model"
+max_tokens = 1000
+
+[tools]
+default = "allow"
+deny = ["bash"]
+allow_network = true
+
+[skills]
+enabled = ["one"]
+
+[profiles.review]
+model = "careful/model"
+tools_default = "ask"
+skills = ["review"]
+
+[profiles.quiet]
+max_tokens = 10
+"#;
+
+    /// AH-186: what a profile mentions changes; what it does not mention is
+    /// left exactly as the project had it. A profile that quietly reset
+    /// settings it never named would be a run with settings nobody chose.
+    #[test]
+    fn a_profile_changes_what_it_names_and_nothing_else() {
+        let root = project_with(BASE);
+        let base = load_agent_config_with_profile(&root, None).expect("base");
+        #[cfg(feature = "cli")]
+        assert_eq!(base.agent.model.as_deref(), Some("base/model"));
+        assert_eq!(base.tools.default.as_deref(), Some("allow"));
+        assert_eq!(base.skills.enabled, vec!["one".to_string()]);
+
+        let review = load_agent_config_with_profile(&root, Some("review")).expect("review");
+        #[cfg(feature = "cli")]
+        assert_eq!(review.agent.model.as_deref(), Some("careful/model"));
+        assert_eq!(review.tools.default.as_deref(), Some("ask"));
+        assert_eq!(review.skills.enabled, vec!["review".to_string()]);
+        // Untouched by this profile:
+        #[cfg(feature = "cli")]
+        assert_eq!(review.agent.max_tokens, Some(1000));
+        assert_eq!(review.tools.deny, vec!["bash".to_string()]);
+        assert_eq!(review.tools.allow_network, Some(true));
+
+        let quiet = load_agent_config_with_profile(&root, Some("quiet")).expect("quiet");
+        #[cfg(feature = "cli")]
+        {
+            assert_eq!(quiet.agent.max_tokens, Some(10));
+            assert_eq!(quiet.agent.model.as_deref(), Some("base/model"));
+        }
+        assert_eq!(quiet.skills.enabled, vec!["one".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A profile nobody declared is refused, naming what the project does
+    /// declare: running the base settings because a name was misspelled is a
+    /// run with the wrong settings that looks like the right one.
+    #[test]
+    fn a_profile_that_does_not_exist_is_refused_by_name() {
+        let root = project_with(BASE);
+        let err = load_agent_config_with_profile(&root, Some("reveiw")).unwrap_err();
+        assert!(err.contains("\"reveiw\""), "{err}");
+        assert!(err.contains("\"review\"") && err.contains("\"quiet\""), "{err}");
+
+        let bare = project_with("[tools]\ndefault = \"allow\"\n");
+        let err = load_agent_config_with_profile(&bare, Some("anything")).unwrap_err();
+        assert!(err.contains("declares none"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    /// The settings a run actually uses follow the profile, not just the file:
+    /// this is the path `resolve_run_settings` reads.
+    #[test]
+    fn the_runs_own_settings_follow_the_chosen_profile() {
+        let root = project_with(
+            r#"
+[tools]
+allow_network = true
+format_on_edit = false
+
+[skills]
+enabled = ["one"]
+
+[profiles.offline]
+allow_network = false
+format_on_edit = true
+skills = ["two", "three"]
+"#,
+        );
+        let base = run_settings_for(&root, None);
+        assert_eq!(base.allow_network, Some(true));
+        assert!(!base.format_on_edit);
+        assert_eq!(base.enabled_skills, vec!["one".to_string()]);
+
+        let offline = run_settings_for(&root, Some("offline"));
+        assert_eq!(offline.allow_network, Some(false));
+        assert!(offline.format_on_edit);
+        assert_eq!(
+            offline.enabled_skills,
+            vec!["two".to_string(), "three".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Naming no profile is the project's own configuration, and an empty
+    /// `--profile ""` is the same as naming none rather than an error about a
+    /// profile called nothing.
+    #[test]
+    fn naming_no_profile_is_the_projects_own_configuration() {
+        let root = project_with(BASE);
+        for none in [None, Some(""), Some("   ")] {
+            let cfg = load_agent_config_with_profile(&root, none).expect("base");
+            #[cfg(feature = "cli")]
+            assert_eq!(cfg.agent.model.as_deref(), Some("base/model"));
+            assert_eq!(cfg.tools.default.as_deref(), Some("allow"));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
 

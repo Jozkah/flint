@@ -6494,13 +6494,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Named per-project configuration profiles can be selected per run.",
@@ -6509,10 +6514,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). [profiles.<name>] in agent.toml declares named variations on a project's settings, chosen per run with `jan cli agent run --profile <name>` (and `agent step`). A profile may name model, max_tokens, context_window, the tool policy (default/allow/deny), allow_network, sandbox, format_on_edit and skills -- deliberately not everything, since a profile that could change anything would be a second configuration format. What it does not mention is left exactly as it was: an unset field is not a default of its own. An unknown profile is refused by name, listing what the project declares, before any provider or policy is resolved; `--profile \"\"` means none. The chosen profile travels with the run (OrchestrationArgs::profile) so the settings the loop resolves are the ones the run was asked for, not the file's. Proven by real runs of one task under no profile, a read-only profile whose write was denied, a profile naming a different model (seen in the provider's own request log), and an undeclared name refused."
     },
     {
       "id": "AH-187",

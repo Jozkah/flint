@@ -2256,3 +2256,46 @@ discovered when a run ends and nobody is told. Delivery itself never decides
 the run: a command that fails, or an endpoint that is not there, is logged and
 dropped, because a run that has finished has finished, and failing it because
 nobody could be told would turn a courtesy into a new way to lose work.
+
+
+## Named profiles (AH-186)
+
+One project is worked on in more than one way: a careful review pass that may
+not run anything, a cheap pass on a smaller model, an offline pass. Keeping
+those as edits to `agent.toml` means editing the file before each run and
+remembering to put it back.
+
+```toml
+[profiles.review]
+model = "provider/a-careful-model"
+tools_default = "ask"
+tools_deny = ["bash"]
+skills = ["review"]
+
+[profiles.readonly]
+tools_deny = ["write", "edit"]
+```
+
+`jan cli agent run --profile review "..."` (and `agent step --profile`) folds
+the named profile over the project's own settings for that run only.
+
+A profile may name the things people actually vary -- `model`, `max_tokens`,
+`context_window`, `tools_default`/`tools_allow`/`tools_deny`, `allow_network`,
+`sandbox`, `format_on_edit`, `skills` -- and nothing else. A profile that could
+change anything at all would be a second configuration format, and the one a
+reader has to hold in their head would be whichever they last looked at.
+
+**What a profile does not mention is left exactly as it was.** An unset field
+is not a default of its own; a profile that quietly reset settings it never
+named would be a run with settings nobody chose.
+
+**A profile nobody declared is refused**, naming what the project does declare:
+`no profile named "reveiw": this project declares "other-model", "readonly"`.
+Running the base configuration because a name was misspelled is a run with the
+wrong settings that looks like the right one. The refusal happens before a
+provider, a model or a tool policy is resolved. `--profile ""` is naming none,
+not a profile called nothing.
+
+The chosen profile travels with the run (`OrchestrationArgs::profile`), so the
+settings the loop resolves -- skills, network, sandbox, formatting -- are the
+ones the run was actually asked for, not the file's.

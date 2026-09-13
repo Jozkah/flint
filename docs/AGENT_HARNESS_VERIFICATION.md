@@ -2229,3 +2229,32 @@ default being both moments and a declared list narrowing it; a notification
 carrying no content of the run; a command that cannot be started reported and
 nothing more; and the declared command actually running with the notification
 as one argument, while a moment nobody asked about delivers nothing.
+
+
+### Named profiles (AH-186)
+
+Five tests plus real runs of the same task under three profiles:
+
+```
+=== no profile: the write lands
+rc=0      out.txt written
+
+=== --profile readonly: the same run, the same model, no write
+rc=0      out.txt absent
+          ERROR [permission_denied]: tool 'write' denied by project policy
+
+=== --profile other-model: the model the profile names
+rc=0      models the provider was asked for: ['m', 'second']
+
+=== --profile nonesuch
+rc=64     Error [invalid_input]: no profile named "nonesuch": this project
+          declares "other-model", "readonly"
+```
+
+Covered by test: a profile changing what it names and leaving everything else
+(model, max_tokens, tool policy, network, skills) as the project had it; an
+unknown profile refused by name, listing what is declared, and a project that
+declares none saying so; the run's own resolved settings (network, formatting,
+enabled skills) following the chosen profile rather than the file; and naming
+no profile -- including `--profile ""` -- being the project's own
+configuration.

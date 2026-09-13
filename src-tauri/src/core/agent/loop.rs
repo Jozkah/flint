@@ -72,6 +72,10 @@ pub(crate) struct OrchestrationArgs {
     pub mcp_settings: Arc<Mutex<McpSettings>>,
     pub jan_data_folder: String,
     pub permissions: tauri_plugin_agent_tools::permissions::ToolPermissions,
+    /// The named profile this run was started under (AH-186), so the settings
+    /// resolved here are the ones the run was actually asked for. `None` is
+    /// the project's own configuration.
+    pub profile: Option<String>,
     pub project_root: Option<std::path::PathBuf>,
     pub permission_requests: PermissionRegistry,
     /// Present only when a client can render and answer structured questions.
@@ -1050,8 +1054,9 @@ struct ResolvedSettings {
 fn resolve_run_settings(
     project_root: &std::path::Path,
     sandbox_flag: Option<bool>,
+    profile: Option<&str>,
 ) -> ResolvedSettings {
-    let settings = crate::core::agent::project::run_settings(project_root);
+    let settings = crate::core::agent::project::run_settings_for(project_root, profile);
     ResolvedSettings {
         enabled_skills: settings.enabled_skills,
         allow_network: resolve_allow_network(settings.allow_network),
@@ -2725,6 +2730,9 @@ pub(crate) async fn run_server_side_openai_orchestration(
 ) -> Result<serde_json::Value, HarnessError> {
     let (tx, _rx) = mpsc::unbounded_channel();
     let args = OrchestrationArgs {
+        // The proxy path runs whatever the caller's body asks for; a named
+        // profile belongs to a run started from a project.
+        profile: None,
         fallback_models: Vec::new(),
         parent_run: None,
         dispatch_id: None,
@@ -3189,7 +3197,9 @@ pub(crate) fn context_system_prompt_preview(
     subagents_enabled: bool,
     sandbox_flag: Option<bool>,
 ) -> Option<String> {
-    let settings = resolve_run_settings(project_root, sandbox_flag);
+    // A preview is of the project's own settings: a profile belongs to a run,
+    // and this is not one.
+    let settings = resolve_run_settings(project_root, sandbox_flag, None);
     build_run_system_prompt(
         None,
         override_prompt,
@@ -3322,6 +3332,7 @@ async fn orchestrate_inner(
 ) -> Result<serde_json::Value, HarnessError> {
     let OrchestrationArgs {
         client,
+        profile,
         fallback_models,
         parent_run: _,
         dispatch_id: _,
@@ -3400,7 +3411,7 @@ async fn orchestrate_inner(
     // nothing binds.
     let settings = project_root
         .as_deref()
-        .map(|root| resolve_run_settings(root, *sandbox));
+        .map(|root| resolve_run_settings(root, *sandbox, profile.as_deref()));
 
     let system_prompt = build_run_system_prompt(
         assistant_instructions.as_deref(),
@@ -7831,19 +7842,19 @@ mod tests {
         };
 
         write("[tools]\nallow_network = false\n[skills]\nenabled = [\"deploy\"]\n");
-        let denied = resolve_run_settings(&root, None);
+        let denied = resolve_run_settings(&root, None, None);
         assert!(!denied.allow_network, "explicit false must be honoured");
         assert_eq!(denied.enabled_skills, vec!["deploy".to_string()]);
 
         write("[tools]\nallow_network = true\n");
         assert!(
-            resolve_run_settings(&root, None).allow_network,
+            resolve_run_settings(&root, None, None).allow_network,
             "explicit true must be honoured"
         );
 
         write("[tools]\ndefault = \"read-only\"\n");
         assert_eq!(
-            resolve_run_settings(&root, None).allow_network,
+            resolve_run_settings(&root, None, None).allow_network,
             DEFAULT_ALLOW_NETWORK,
             "unset must fall back to the surface default"
         );
