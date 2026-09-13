@@ -25,6 +25,7 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -75,6 +76,9 @@ export async function hydrateBackendStores(): Promise<void> {
   // run left in flight, or the panel would show work still running that
   // nothing can ever finish.
   useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
+  // Discussion rooms live in backend files, desktop only. Rooms the previous
+  // run left running are saved paused; failures are logged, never thrown.
+  void scheduleRoomRecovery(IS_TAURI)
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */
