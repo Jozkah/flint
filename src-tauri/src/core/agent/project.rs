@@ -50,12 +50,6 @@ pub(crate) fn disabled_plugins(project_root: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Whether the plugin installed in directory `plugin` is disabled for this
-/// project.
-pub(crate) fn plugin_disabled(project_root: &Path, plugin: &str) -> bool {
-    disabled_plugins(project_root).iter().any(|p| p == plugin)
-}
-
 /// Persist a string array at `[section].key` in the agent.toml at `path`,
 /// format-preserving (comments and unrelated keys kept).
 pub(crate) fn set_string_array_in_agent_toml(

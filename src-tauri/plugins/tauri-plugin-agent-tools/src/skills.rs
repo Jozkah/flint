@@ -18,6 +18,28 @@
 //!
 //! Sync (std::fs) so the sync `context::load_skills` and the async `agent_skill_*`
 //! commands share one code path; the ops are tiny single-file reads/writes.
+//!
+//! # Plugin skills
+//!
+//! A store may also hold installed plugins under `<store_root>/plugins/<id>/`.
+//! Their skills are discovered here -- not in the app crate -- so the desktop's
+//! skill tools, the management commands and the CLI all apply one set of rules:
+//!
+//! - each plugin contributes `skills/` (folder and flat forms, same rules as
+//!   store skills) plus an optional single `SKILL.md` at the plugin root;
+//! - plugin skills are named `<plugin>:<skill>` and carry their plugin id;
+//! - a plugin listed in `[plugins].disabled` of `<store_root>/agent.toml`
+//!   contributes nothing: not listed, not in any catalog, not readable by name;
+//! - the `[skills].enabled` whitelist matches the qualified name, the plain
+//!   skill name, or the plugin id alone;
+//! - plugin skills are read-only: writes and deletes addressed to a qualified
+//!   name are refused, because the plugin's own source is where edits belong;
+//! - a store skill shadows a plugin skill of the same plain name.
+//!
+//! The app crate (`core::agent::skills`) delegates its plugin discovery to the
+//! functions below, so the CLI prompt catalog and these tools cannot drift.
+//! Reading `agent.toml` here is read-only and limited to those two keys; the
+//! file's format and every write to it stay with the app crate.
 
 use std::path::{Path, PathBuf};
 
@@ -26,30 +48,91 @@ use serde::Deserialize;
 use crate::workspace::{store_dir, workspace_filename};
 
 const KIND: &str = "skills";
+const PLUGINS: &str = "plugins";
 
 /// `<store_root>/skills`.
 pub fn skills_dir(store: &Path) -> PathBuf {
     store_dir(store, KIND)
 }
 
+/// `<store_root>/plugins`: where a project's installed plugins live.
+pub fn plugins_dir(store: &Path) -> PathBuf {
+    store_dir(store, PLUGINS)
+}
+
 /// One skill on disk, located by its identity name (folder name or flat stem).
+#[derive(Debug, Clone)]
 pub struct SkillEntry {
     pub name: String,
     /// The markdown file to read (the `SKILL.md`, or the flat `<name>.md`).
     pub file: PathBuf,
     /// True for the folder form `<name>/SKILL.md`, false for legacy flat.
     pub is_folder: bool,
+    /// The plugin this skill ships in (`Some`), or `None` for a store skill.
+    pub plugin: Option<String>,
 }
 
 /// Summary for the management UI / prompt catalog.
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SkillMeta {
+    /// `name` for a store skill, `<plugin>:<skill>` for a plugin skill.
     pub name: String,
     pub description: String,
+    /// The plugin this skill ships in. Absent for a store skill, so existing
+    /// consumers of the JSON shape see no change.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
     /// Offered in the user-facing invoke surface (slash popup, `/skill:`).
     pub user_invocable: bool,
     /// Offered to the model (system-prompt catalog, `skill_list`/`skill_read`).
     pub model_invocable: bool,
+}
+
+/// The two `agent.toml` keys skill discovery depends on.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SkillConfig {
+    /// `[skills].enabled`; empty means every skill.
+    pub enabled: Vec<String>,
+    /// `[plugins].disabled`; plugins that contribute nothing.
+    pub disabled_plugins: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SkillConfigToml {
+    #[serde(default)]
+    skills: SkillsSectionToml,
+    #[serde(default)]
+    plugins: PluginsSectionToml,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SkillsSectionToml {
+    #[serde(default)]
+    enabled: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PluginsSectionToml {
+    #[serde(default)]
+    disabled: Vec<String>,
+}
+
+/// Read `[skills].enabled` and `[plugins].disabled` from `<store>/agent.toml`.
+///
+/// A missing or unparseable file yields the defaults, the same fallback the
+/// app crate's `load_agent_config(..).unwrap_or_default()` uses, so both sides
+/// answer "what is in force" identically.
+pub fn load_config(store: &Path) -> SkillConfig {
+    let Ok(raw) = std::fs::read_to_string(store.join("agent.toml")) else {
+        return SkillConfig::default();
+    };
+    match toml::from_str::<SkillConfigToml>(&raw) {
+        Ok(parsed) => SkillConfig {
+            enabled: parsed.skills.enabled,
+            disabled_plugins: parsed.plugins.disabled,
+        },
+        Err(_) => SkillConfig::default(),
+    }
 }
 
 /// Frontmatter fields we recognize; everything else is ignored.
@@ -143,12 +226,18 @@ pub fn safe_stem(name: &str) -> Result<String, String> {
     Ok(file.trim_end_matches(".md").to_string())
 }
 
-/// All skills in the store, sorted by name. Folder skills (`<name>/SKILL.md`)
+/// All skills in the store's own `skills/` directory, sorted by name. Plugin
+/// skills are not included; see [`discover_all`].
+pub fn discover(store: &Path) -> Vec<SkillEntry> {
+    scan_skill_dir(&skills_dir(store))
+}
+
+/// Scan one skills directory, sorted by name. Folder skills (`<name>/SKILL.md`)
 /// and legacy flat skills (`<name>.md`) are both discovered. When both forms
 /// share a name, the folder form wins so a skill is never listed/injected twice.
-pub fn discover(store: &Path) -> Vec<SkillEntry> {
-    let dir = skills_dir(store);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
+/// Entries come back with `plugin: None`; callers tag plugin-owned entries.
+pub fn scan_skill_dir(dir: &Path) -> Vec<SkillEntry> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     // Keyed by name so a duplicate stem collapses to one entry; BTreeMap also
@@ -175,6 +264,7 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
                         name: name.to_string(),
                         file: skill_md,
                         is_folder: true,
+                        plugin: None,
                     });
                 }
             }
@@ -184,6 +274,7 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
                     name: stem.to_string(),
                     file: path,
                     is_folder: false,
+                    plugin: None,
                 });
             }
         }
@@ -193,8 +284,70 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
     out
 }
 
-/// Locate an existing skill by name, preferring the folder form.
-fn resolve(store: &Path, name: &str) -> Result<SkillEntry, String> {
+/// Skills shipped by the plugins installed in `store`, qualified with their
+/// plugin id and sorted by qualified name. Plugins named in `disabled` are
+/// skipped, as are interrupted `.installing-*` staging directories.
+pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
+    let Ok(rd) = std::fs::read_dir(plugins_dir(store)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<SkillEntry> = Vec::new();
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let Some(plugin) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // A partially-copied plugin must not leak its skills during an install.
+        if plugin.starts_with(".installing-") {
+            continue;
+        }
+        if disabled.iter().any(|d| d == plugin) {
+            continue;
+        }
+        for e in scan_skill_dir(&path.join(KIND)) {
+            out.push(SkillEntry {
+                plugin: Some(plugin.to_string()),
+                ..e
+            });
+        }
+        let root_md = path.join("SKILL.md");
+        if root_md.is_file() {
+            out.push(SkillEntry {
+                name: plugin.to_string(),
+                file: root_md,
+                is_folder: false,
+                plugin: Some(plugin.to_string()),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// Store skills followed by the skills of every enabled installed plugin, with
+/// `[plugins].disabled` read from the store's own `agent.toml`.
+pub fn discover_all(store: &Path) -> Vec<SkillEntry> {
+    let disabled = load_config(store).disabled_plugins;
+    let mut out = discover(store);
+    out.extend(discover_plugins(store, &disabled));
+    out
+}
+
+/// The user-facing identity of a skill entry: `name` for store skills,
+/// `<plugin>:<name>` for plugin skills.
+pub fn qualified_name(entry: &SkillEntry) -> String {
+    match &entry.plugin {
+        Some(plugin) => format!("{plugin}:{}", entry.name),
+        None => entry.name.clone(),
+    }
+}
+
+/// Locate a store skill by name, preferring the folder form. Plugin skills are
+/// not resolved here; [`resolve_readable`] handles those.
+pub fn resolve_store_skill(store: &Path, name: &str) -> Result<SkillEntry, String> {
     let stem = safe_stem(name)?;
     let dir = skills_dir(store);
     let folder = dir.join(&stem).join("SKILL.md");
@@ -203,6 +356,7 @@ fn resolve(store: &Path, name: &str) -> Result<SkillEntry, String> {
             name: stem,
             file: folder,
             is_folder: true,
+            plugin: None,
         });
     }
     let flat = dir.join(format!("{stem}.md"));
@@ -211,15 +365,107 @@ fn resolve(store: &Path, name: &str) -> Result<SkillEntry, String> {
             name: stem,
             file: flat,
             is_folder: false,
+            plugin: None,
         });
     }
     Err(format!("ERROR: skill '{name}' not found"))
 }
 
-/// Whether a skill is advertised given the `[skills].enabled` whitelist. An
-/// empty whitelist means every skill is enabled.
+/// Locate a skill inside one installed plugin: `plugins/<plugin>/skills/<plain>`
+/// (folder or flat), plus `<plugin>/SKILL.md` when `plain == plugin`. Both names
+/// are stem-validated so a caller-supplied name can never escape the plugins
+/// directory, and a disabled plugin resolves to nothing.
+pub fn resolve_in_plugin(
+    store: &Path,
+    plugin: &str,
+    plain: &str,
+    disabled: &[String],
+) -> Option<SkillEntry> {
+    if safe_stem(plugin).ok()? != plugin || safe_stem(plain).ok()? != plain {
+        return None;
+    }
+    if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin) {
+        return None;
+    }
+    let base = plugins_dir(store).join(plugin);
+    let tagged = |file: PathBuf, is_folder: bool| SkillEntry {
+        name: plain.to_string(),
+        file,
+        is_folder,
+        plugin: Some(plugin.to_string()),
+    };
+    let folder = base.join(KIND).join(plain).join("SKILL.md");
+    if folder.is_file() {
+        return Some(tagged(folder, true));
+    }
+    let flat = base.join(KIND).join(format!("{plain}.md"));
+    if flat.is_file() {
+        return Some(tagged(flat, false));
+    }
+    if plain == plugin {
+        let root_md = base.join("SKILL.md");
+        if root_md.is_file() {
+            return Some(tagged(root_md, false));
+        }
+    }
+    None
+}
+
+/// Locate any readable skill: a store skill first (store shadows plugins), then
+/// the explicit `<plugin>:<plain>` form, then a plain name unique across the
+/// enabled plugins. Disabled plugins are invisible to every step.
+pub fn resolve_readable(
+    store: &Path,
+    name: &str,
+    disabled: &[String],
+) -> Result<SkillEntry, String> {
+    if let Ok(entry) = resolve_store_skill(store, name) {
+        return Ok(entry);
+    }
+    if let Some((plugin, plain)) = name.split_once(':') {
+        if let Some(entry) = resolve_in_plugin(store, plugin, plain, disabled) {
+            return Ok(entry);
+        }
+    }
+    let mut matches = discover_plugins(store, disabled)
+        .into_iter()
+        .filter(|e| e.name == name);
+    match (matches.next(), matches.next()) {
+        (Some(only), None) => Ok(only),
+        _ => Err(format!("ERROR: skill '{name}' not found")),
+    }
+}
+
+/// Whether a skill *name* passes the `[skills].enabled` whitelist, for names
+/// that have no entry yet (a write creating a new store skill, the built-in
+/// Jan skill). An empty whitelist means every skill is enabled.
 pub fn is_enabled(enabled: &[String], name: &str) -> bool {
     enabled.is_empty() || enabled.iter().any(|n| n == name)
+}
+
+/// Whether a discovered skill passes the `[skills].enabled` whitelist. Matches
+/// the qualified `<plugin>:<skill>` name, the plain skill name, or the plugin
+/// id alone (which enables every skill that plugin ships).
+pub fn entry_enabled(enabled: &[String], entry: &SkillEntry) -> bool {
+    if enabled.is_empty() {
+        return true;
+    }
+    let qualified = qualified_name(entry);
+    enabled
+        .iter()
+        .any(|n| n == &qualified || n == &entry.name || Some(n) == entry.plugin.as_ref())
+}
+
+/// Plugin skills are edited in the plugin's own source, never through the
+/// store's skill CRUD: a qualified name is refused before any path is built.
+fn refuse_plugin_name(name: &str) -> Result<(), String> {
+    match name.trim().split_once(':') {
+        Some((plugin, _)) => Err(format!(
+            "ERROR: skill '{name}' is provided by plugin '{plugin}' and is read-only. \
+             Edit it in the plugin's source and reinstall the plugin."
+        )),
+        None => Ok(()),
+    }
 }
 
 /// A skill's summary line: the frontmatter `description`, or the first body line.
@@ -251,6 +497,7 @@ fn default_jan_skill_meta() -> SkillMeta {
     SkillMeta {
         name: DEFAULT_JAN_SKILL_NAME.to_string(),
         description: describe(&parsed),
+        plugin: None,
         // The built-in Jan skill is available on both invocation sides: dev's
         // baseline ships it as the model-facing onboarding skill (listed in
         // `skill_list`, body loaded via `skill_read`), and the user may also
@@ -260,10 +507,11 @@ fn default_jan_skill_meta() -> SkillMeta {
     }
 }
 
-fn meta_for(name: String, parsed: &ParsedSkill) -> SkillMeta {
+fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
     SkillMeta {
-        name,
+        name: qualified_name(entry),
         description: describe(parsed),
+        plugin: entry.plugin.clone(),
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
     }
@@ -272,34 +520,32 @@ fn meta_for(name: String, parsed: &ParsedSkill) -> SkillMeta {
 /// Metadata for every discovered skill (name + description + invocation
 /// flags) — for the management UI, which must see disabled and private skills.
 /// Keeps empty stubs so the user can see and edit them.
+///
+/// Includes the skills of enabled installed plugins, tagged with `plugin`; a
+/// disabled or removed plugin's skills are absent.
 pub fn list_meta(store: &Path) -> Vec<SkillMeta> {
-    discover(store)
+    discover_all(store)
         .into_iter()
         .filter_map(|e| {
             let parsed = parse(&std::fs::read_to_string(&e.file).ok()?);
-            Some(meta_for(e.name, &parsed))
+            Some(meta_for(&e, &parsed))
         })
         .collect()
 }
 
-/// Filter discovered skills by the `[skills].enabled` whitelist and one
-/// invocation side. Skills with neither a description nor a body are skipped
-/// (nothing to advertise or invoke).
+/// Filter discovered skills (store + enabled plugins) by the `[skills].enabled`
+/// whitelist and one invocation side. Skills with neither a description nor a
+/// body are skipped (nothing to advertise or invoke).
 fn side_catalog(
     root: &Path,
     enabled: &[String],
     side: impl Fn(&ParsedSkill) -> bool,
+    include_default: bool,
 ) -> Vec<SkillMeta> {
-    let allow: Option<std::collections::HashSet<&str>> =
-        (!enabled.is_empty()).then(|| enabled.iter().map(String::as_str).collect());
-    let mut skills = discover(root)
+    let mut skills = discover_all(root)
         .into_iter()
+        .filter(|e| entry_enabled(enabled, e))
         .filter_map(|e| {
-            if let Some(allow) = &allow {
-                if !allow.contains(e.name.as_str()) {
-                    return None;
-                }
-            }
             let parsed = parse(&std::fs::read_to_string(&e.file).ok()?);
             if !side(&parsed) {
                 return None;
@@ -308,10 +554,11 @@ fn side_catalog(
             if description.is_empty() && parsed.body.trim().is_empty() {
                 return None;
             }
-            Some(meta_for(e.name, &parsed))
+            Some(meta_for(&e, &parsed))
         })
         .collect::<Vec<_>>();
-    if is_enabled(enabled, DEFAULT_JAN_SKILL_NAME)
+    if include_default
+        && is_enabled(enabled, DEFAULT_JAN_SKILL_NAME)
         && side(&parse(DEFAULT_JAN_SKILL))
         && !skills
             .iter()
@@ -331,17 +578,128 @@ fn side_catalog(
 ///
 /// `enabled` is a whitelist of skill names; an empty list means "all skills"
 /// (backward-compatible with the agent.toml scaffold, which ships `enabled = []`).
-pub(crate) fn catalog(root: &Path, enabled: &[String]) -> Vec<SkillMeta> {
-    side_catalog(root, enabled, |p| p.model_invocable)
+pub fn catalog(root: &Path, enabled: &[String]) -> Vec<SkillMeta> {
+    side_catalog(root, enabled, |p| p.model_invocable, true)
 }
 
-/// Raw SKILL.md text (frontmatter included) for the editor.
+/// Raw SKILL.md text (frontmatter included) for the editor. Resolves store
+/// skills, then enabled plugin skills (qualified, or a unique plain name).
 pub fn read_raw(store: &Path, name: &str) -> Result<String, String> {
     if is_default_jan_skill(name) {
         return Ok(parse(DEFAULT_JAN_SKILL).body);
     }
-    let entry = resolve(store, name)?;
+    let disabled = load_config(store).disabled_plugins;
+    let entry = resolve_readable(store, name, &disabled)?;
     std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))
+}
+
+/// What one skill layer says about a name the model asked for.
+enum LayerRead {
+    /// Present, enabled and read.
+    Found(String),
+    /// Present but switched off here: the answer is "not found", and no later
+    /// layer may supply a same-named substitute.
+    Hidden,
+    /// Not in this layer.
+    Missing,
+}
+
+fn read_in_layer(store: &Path, enabled: &[String], name: &str) -> Result<LayerRead, String> {
+    if is_default_jan_skill(name) {
+        return Ok(if is_enabled(enabled, DEFAULT_JAN_SKILL_NAME) {
+            LayerRead::Found(parse(DEFAULT_JAN_SKILL).body)
+        } else {
+            LayerRead::Hidden
+        });
+    }
+    let disabled = load_config(store).disabled_plugins;
+    let Ok(entry) = resolve_readable(store, name, &disabled) else {
+        // A qualified name naming a plugin that exists but is disabled is
+        // still "hidden", never something another layer may answer for.
+        if let Some((plugin, _)) = name.split_once(':') {
+            if plugins_dir(store).join(plugin).is_dir() {
+                return Ok(LayerRead::Hidden);
+            }
+        }
+        return Ok(LayerRead::Missing);
+    };
+    if !entry_enabled(enabled, &entry) {
+        return Ok(LayerRead::Hidden);
+    }
+    std::fs::read_to_string(&entry.file)
+        .map(LayerRead::Found)
+        .map_err(|e| format!("ERROR: {e}"))
+}
+
+/// Raw text of a skill the model may read, honouring the whitelist and the
+/// disabled-plugin list, across up to two layers.
+///
+/// `project` is an attached project's store (`<folder>/.jan/agent`): its own
+/// skills and its enabled plugins' skills, filtered by that project's
+/// `[skills].enabled`, both read from its `agent.toml` here rather than taken
+/// from the caller. `store` is the surface's own store with the caller's
+/// `enabled` list. A name found in the project layer never falls through, so a
+/// disabled project or plugin skill cannot be replaced by a same-named one.
+pub fn read_for_model(
+    project: Option<&Path>,
+    store: &Path,
+    enabled: &[String],
+    name: &str,
+) -> Result<String, String> {
+    let not_found = || format!("ERROR: skill '{name}' not found");
+    if let Some(project) = project {
+        let config = load_config(project);
+        match read_in_layer(project, &config.enabled, name)? {
+            LayerRead::Found(raw) => return Ok(raw),
+            LayerRead::Hidden => return Err(not_found()),
+            LayerRead::Missing if name.contains(':') => return Err(not_found()),
+            LayerRead::Missing => {}
+        }
+    }
+    match read_in_layer(store, enabled, name)? {
+        LayerRead::Found(raw) => Ok(raw),
+        LayerRead::Hidden | LayerRead::Missing => Err(not_found()),
+    }
+}
+
+/// The model-side catalog across the same two layers as [`read_for_model`]:
+/// the attached project's skills first (its own whitelist, its enabled
+/// plugins), then the store's skills whose names the project does not claim.
+pub fn catalog_for_model(
+    project: Option<&Path>,
+    store: &Path,
+    enabled: &[String],
+) -> Vec<SkillMeta> {
+    let Some(project) = project else {
+        return catalog(store, enabled);
+    };
+    let config = load_config(project);
+    let mut out = catalog(project, &config.enabled);
+    // Every name the project layer knows, enabled or not: a disabled project
+    // skill must not reappear from the store under the same name.
+    let mut claimed: std::collections::HashSet<String> = discover_all(project)
+        .iter()
+        .map(qualified_name)
+        .chain(out.iter().map(|m| m.name.clone()))
+        .collect();
+    claimed.insert(DEFAULT_JAN_SKILL_NAME.to_string());
+    for meta in side_catalog(store, enabled, |p| p.model_invocable, false) {
+        if claimed.insert(meta.name.clone()) {
+            out.push(meta);
+        }
+    }
+    out
+}
+
+/// Why a model write to `name` must not land in `store` while `project` is
+/// attached: the project already provides a skill by that name, so the write
+/// would be shadowed and silently ignored on the next read.
+pub fn project_claims(project: &Path, name: &str) -> bool {
+    if is_default_jan_skill(name) {
+        return false;
+    }
+    let disabled = load_config(project).disabled_plugins;
+    resolve_readable(project, name, &disabled).is_ok()
 }
 
 /// A skill's markdown body with the frontmatter fence stripped — what the
@@ -353,6 +711,7 @@ pub fn read_body(store: &Path, name: &str) -> Result<String, String> {
 /// Create or overwrite a skill. Existing skills are written in place (preserving
 /// their form); new skills are written as the folder form `<name>/SKILL.md`.
 pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
+    refuse_plugin_name(name)?;
     let stem = safe_stem(name)?;
     let dir = skills_dir(store);
     let folder = dir.join(&stem);
@@ -377,6 +736,7 @@ pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
 
 /// Delete a skill (folder or flat form). Idempotent: a missing skill is Ok.
 pub fn delete(store: &Path, name: &str) -> Result<(), String> {
+    refuse_plugin_name(name)?;
     let stem = safe_stem(name)?;
     let dir = skills_dir(store);
     let folder = dir.join(&stem);
@@ -597,5 +957,214 @@ mod tests {
             "the stale flat form must be left untouched"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // -- Plugin skills ------------------------------------------------------
+
+    fn plugin_store(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        std::env::temp_dir().join(format!(
+            "jan_plugin_skills_{tag}_{}_{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ))
+    }
+
+    fn plugin_skill(store: &Path, plugin: &str, name: &str, body: &str) {
+        let dir = plugins_dir(store).join(plugin).join("skills").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("SKILL.md"), body).unwrap();
+    }
+
+    fn agent_toml(store: &Path, content: &str) {
+        std::fs::create_dir_all(store).unwrap();
+        std::fs::write(store.join("agent.toml"), content).unwrap();
+    }
+
+    fn names(metas: &[SkillMeta]) -> Vec<String> {
+        metas.iter().map(|m| m.name.clone()).collect()
+    }
+
+    #[test]
+    fn enabled_plugin_skills_are_listed_with_provenance() {
+        let store = plugin_store("list");
+        write(&store, "deploy", "---\ndescription: ship\n---\nbody").unwrap();
+        plugin_skill(&store, "release", "prepare", "---\ndescription: prep\n---\nsteps");
+        // A single-skill plugin: SKILL.md at the plugin root.
+        std::fs::create_dir_all(plugins_dir(&store).join("triage")).unwrap();
+        std::fs::write(plugins_dir(&store).join("triage/SKILL.md"), "triage body").unwrap();
+
+        let listed = list_meta(&store);
+        assert_eq!(names(&listed), vec!["deploy", "release:prepare", "triage:triage"]);
+        let prep = listed.iter().find(|m| m.name == "release:prepare").unwrap();
+        assert_eq!(prep.plugin.as_deref(), Some("release"));
+        assert_eq!(prep.description, "prep");
+        assert!(listed.iter().find(|m| m.name == "deploy").unwrap().plugin.is_none());
+
+        // Serialized provenance: present for plugin skills, absent otherwise.
+        let json = serde_json::to_value(&listed).unwrap();
+        assert_eq!(json[1]["plugin"], "release");
+        assert!(json[0].get("plugin").is_none());
+
+        // Model side too, and readable by qualified and unique plain name.
+        assert!(names(&catalog(&store, &[])).contains(&"release:prepare".to_string()));
+        assert_eq!(parse(&read_raw(&store, "release:prepare").unwrap()).body, "steps");
+        assert_eq!(parse(&read_raw(&store, "prepare").unwrap()).body, "steps");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn disabled_plugin_skills_are_hidden_and_unreadable() {
+        let store = plugin_store("disabled");
+        plugin_skill(&store, "release", "prepare", "secret steps");
+        agent_toml(&store, "[plugins]\ndisabled = [\"release\"]\n");
+
+        assert!(list_meta(&store).is_empty());
+        assert_eq!(names(&catalog(&store, &[])), vec!["jan"]);
+        assert!(read_raw(&store, "release:prepare").is_err());
+        assert!(read_raw(&store, "prepare").is_err());
+        assert!(read_for_model(None, &store, &[], "release:prepare").is_err());
+        // Naming the plugin in the whitelist does not override disabling it.
+        assert!(read_for_model(None, &store, &["release".into()], "release:prepare").is_err());
+
+        // Re-enabling (removing the entry) restores it.
+        agent_toml(&store, "[plugins]\ndisabled = []\n");
+        assert_eq!(read_raw(&store, "release:prepare").unwrap(), "secret steps");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn removed_plugin_skills_are_gone() {
+        let store = plugin_store("removed");
+        plugin_skill(&store, "release", "prepare", "steps");
+        assert_eq!(names(&list_meta(&store)), vec!["release:prepare"]);
+        std::fs::remove_dir_all(plugins_dir(&store).join("release")).unwrap();
+        assert!(list_meta(&store).is_empty());
+        assert!(read_raw(&store, "release:prepare").is_err());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn staging_directories_contribute_nothing() {
+        let store = plugin_store("staging");
+        plugin_skill(&store, ".installing-42", "half", "partial");
+        assert!(list_meta(&store).is_empty());
+        assert!(read_raw(&store, ".installing-42:half").is_err());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn whitelist_matches_qualified_plain_and_plugin_id() {
+        let store = plugin_store("whitelist");
+        write(&store, "deploy", "deploy body").unwrap();
+        plugin_skill(&store, "release", "prepare", "prep body");
+        plugin_skill(&store, "release", "changelog", "log body");
+
+        let model = |enabled: &[&str]| {
+            let enabled: Vec<String> = enabled.iter().map(|s| s.to_string()).collect();
+            names(&catalog(&store, &enabled))
+        };
+        assert_eq!(model(&["release"]), vec!["release:changelog", "release:prepare"]);
+        assert_eq!(model(&["release:prepare"]), vec!["release:prepare"]);
+        assert_eq!(model(&["changelog"]), vec!["release:changelog"]);
+        assert_eq!(model(&["deploy"]), vec!["deploy"]);
+        // The "none" sentinel matches nothing, the built-in skill included.
+        assert!(model(&[""]).is_empty());
+
+        let only_prepare = ["release:prepare".to_string()];
+        assert!(read_for_model(None, &store, &only_prepare, "release:prepare").is_ok());
+        assert!(read_for_model(None, &store, &only_prepare, "release:changelog").is_err());
+        assert!(read_for_model(None, &store, &only_prepare, "deploy").is_err());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn plugin_skills_are_read_only() {
+        let store = plugin_store("readonly");
+        plugin_skill(&store, "release", "prepare", "original");
+
+        let err = write(&store, "release:prepare", "overwritten").unwrap_err();
+        assert!(err.contains("read-only") && err.contains("release"), "{err}");
+        let err = delete(&store, "release:prepare").unwrap_err();
+        assert!(err.contains("read-only"), "{err}");
+        assert_eq!(read_raw(&store, "release:prepare").unwrap(), "original");
+        assert!(plugins_dir(&store).join("release/skills/prepare/SKILL.md").is_file());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn a_store_skill_shadows_a_plugin_skill_of_the_same_name() {
+        let store = plugin_store("shadow");
+        write(&store, "prepare", "store copy").unwrap();
+        plugin_skill(&store, "release", "prepare", "plugin copy");
+        assert_eq!(read_raw(&store, "prepare").unwrap(), "store copy");
+        assert_eq!(read_raw(&store, "release:prepare").unwrap(), "plugin copy");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn a_plugin_name_cannot_escape_the_plugins_directory() {
+        let store = plugin_store("escape");
+        std::fs::create_dir_all(skills_dir(&store)).unwrap();
+        std::fs::write(store.join("outside.md"), "outside").unwrap();
+        for name in ["..:outside", "release:../../outside", "a/b:c", "release:..\\x"] {
+            assert!(read_raw(&store, name).is_err(), "{name}");
+        }
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn project_layer_comes_first_honours_its_own_config_and_never_falls_through() {
+        let project = plugin_store("layer_project");
+        let store = plugin_store("layer_store");
+        write(&project, "deploy", "project deploy").unwrap();
+        write(&project, "off", "project off").unwrap();
+        plugin_skill(&project, "release", "prepare", "prep");
+        plugin_skill(&project, "muted", "hush", "muted body");
+        agent_toml(
+            &project,
+            "[skills]\nenabled = [\"deploy\", \"release\", \"jan\"]\n[plugins]\ndisabled = [\"muted\"]\n",
+        );
+        write(&store, "personal", "store personal").unwrap();
+        write(&store, "off", "store off").unwrap();
+        write(&store, "deploy", "store deploy").unwrap();
+
+        let listed = names(&catalog_for_model(Some(&project), &store, &[]));
+        assert_eq!(listed, vec!["deploy", "release:prepare", "jan", "personal"]);
+
+        let read = |name: &str| read_for_model(Some(&project), &store, &[], name);
+        assert_eq!(read("deploy").unwrap(), "project deploy");
+        assert_eq!(read("release:prepare").unwrap(), "prep");
+        assert_eq!(read("personal").unwrap(), "store personal");
+        // Disabled in the project: not replaced by the store's same-named copy.
+        assert!(read("off").is_err());
+        // A disabled plugin's skill is unreadable in every spelling.
+        assert!(read("muted:hush").is_err());
+        assert!(read("hush").is_err());
+
+        assert!(project_claims(&project, "deploy"));
+        assert!(project_claims(&project, "release:prepare"));
+        assert!(!project_claims(&project, "personal"));
+        assert!(!project_claims(&project, "muted:hush"));
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn config_is_read_leniently() {
+        let store = plugin_store("config");
+        assert_eq!(load_config(&store), SkillConfig::default());
+        agent_toml(&store, "[skills]\nenabled = [\"a\"]\n[plugins]\ndisabled = [\"p\"]\n[tools]\ndeny = [\"bash\"]\n");
+        assert_eq!(
+            load_config(&store),
+            SkillConfig {
+                enabled: vec!["a".into()],
+                disabled_plugins: vec!["p".into()],
+            }
+        );
+        agent_toml(&store, "[skills\nbroken");
+        assert_eq!(load_config(&store), SkillConfig::default());
+        let _ = std::fs::remove_dir_all(&store);
     }
 }

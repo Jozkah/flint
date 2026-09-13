@@ -746,8 +746,12 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
 
 /// `skill_list` tool: catalog of `name — description` lines for ENABLED skills
 /// only (disabled skills must stay invisible to the model). Empty if none.
+///
+/// With an attached project (`ctx.skill_project`), that project's skills and
+/// its enabled plugins' skills come first, filtered by the project's own
+/// `[skills].enabled`; see [`skills::catalog_for_model`].
 fn skill_list(ctx: &ToolContext<'_>) -> String {
-    skills::catalog(ctx.store_root, ctx.enabled_skills)
+    skills::catalog_for_model(ctx.skill_project, ctx.store_root, ctx.enabled_skills)
         .iter()
         .map(|m| {
             if m.description.is_empty() {
@@ -761,16 +765,20 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
 }
 
 /// `skill_read` tool: a skill's full instructions (frontmatter stripped). A
-/// disabled skill — or one with `disable-model-invocation: true` — is treated
-/// as absent so it never reaches the model.
+/// disabled skill, a skill of a disabled plugin, or one with
+/// `disable-model-invocation: true` is treated as absent so it never reaches
+/// the model. Reading a skill grants nothing: scripts it mentions still run
+/// only through `bash`, under the gate.
 fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(name) = arg_str(args, "name") else {
         return "ERROR: missing required argument 'name'".to_string();
     };
-    if !skills::is_enabled(ctx.enabled_skills, name) {
-        return format!("ERROR: skill '{name}' not found");
-    }
-    let raw = match skills::read_raw(ctx.store_root, name) {
+    let raw = match skills::read_for_model(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.enabled_skills,
+        name,
+    ) {
         Ok(raw) => raw,
         Err(e) => return e,
     };
@@ -792,6 +800,17 @@ fn skill_write(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(content) = arg_str(args, "content") else {
         return "ERROR: missing required argument 'content'".to_string();
     };
+    // An attached project's skills (its own and its plugins') are read-only
+    // here: the folder is mounted read-only, and a same-named store skill
+    // would be shadowed by it and never read back.
+    if let Some(project) = ctx.skill_project {
+        if skills::project_claims(project, name) {
+            return format!(
+                "ERROR: skill '{name}' is provided by the attached project folder \
+                 and is read-only here"
+            );
+        }
+    }
     if !skills::is_enabled(ctx.enabled_skills, name) {
         return format!("ERROR: skill '{name}' is disabled and read-only");
     }
@@ -4764,6 +4783,81 @@ mod tests {
         .await;
         assert_eq!(read_plain, "plain body");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The desktop Cowork shape: filesystem tools confined to a sandbox, skill
+    /// tools reading the permanent store plus the attached project's store.
+    #[tokio::test]
+    async fn skill_tools_offer_an_attached_projects_enabled_plugin_skills() {
+        let sandbox = unique_root();
+        let store = unique_root();
+        let folder = unique_root();
+        let project = crate::workspace::project_store(&folder);
+        let plugin_skill = |plugin: &str, name: &str, body: &str| {
+            let dir = project.join("plugins").join(plugin).join("skills").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), body).unwrap();
+        };
+        plugin_skill(
+            "release",
+            "prepare",
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh",
+        );
+        plugin_skill("muted", "hush", "---\ndescription: muted\n---\nmuted body");
+        std::fs::write(project.join("agent.toml"), "[plugins]\ndisabled = [\"muted\"]\n").unwrap();
+        crate::skills::write(&store, "personal", "personal body").unwrap();
+
+        let enabled: [String; 0] = [];
+        let ctx = ToolContext::new(&sandbox, &store, &enabled).with_skill_project(Some(&project));
+        let run = |name: &'static str, args: serde_json::Value| {
+            let ctx = ctx.clone();
+            async move { super::execute_builtin(lookup(name).unwrap(), &args, &ctx).await.0 }
+        };
+
+        let list = run("skill_list", json!({})).await;
+        assert!(list.contains("release:prepare — Prepare a release"), "{list}");
+        assert!(list.contains("personal"), "store skills stay offered: {list}");
+        assert!(!list.contains("muted"), "disabled plugin leaked: {list}");
+
+        let body = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert_eq!(body, "run scripts/prep.sh");
+        // A disabled plugin's files are not readable through the skill tools.
+        for name in ["muted:hush", "hush"] {
+            let out = run("skill_read", json!({"name": name})).await;
+            assert!(out.starts_with("ERROR"), "{name}: {out}");
+            assert!(!out.contains("muted body"), "{name}: {out}");
+        }
+
+        // Plugin skills are read-only, and nothing lands in the plugin.
+        let out = run("skill_write", json!({"name": "release:prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        let out = run("skill_write", json!({"name": "prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(project.join("plugins/release/skills/prepare/SKILL.md"))
+                .unwrap(),
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh"
+        );
+        // A new skill still goes to the writable store, not the project.
+        let out = run("skill_write", json!({"name": "fresh", "content": "new"})).await;
+        assert!(out.starts_with("Wrote"), "{out}");
+        assert!(store.join("skills/fresh/SKILL.md").is_file());
+        assert!(!project.join("skills/fresh").exists());
+
+        // The project's own whitelist applies, read from its agent.toml.
+        std::fs::write(
+            project.join("agent.toml"),
+            "[skills]\nenabled = [\"jan\"]\n[plugins]\ndisabled = [\"muted\"]\n",
+        )
+        .unwrap();
+        let out = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert!(out.starts_with("ERROR"), "{out}");
+        let list = run("skill_list", json!({})).await;
+        assert!(!list.contains("release:prepare"), "{list}");
+
+        for dir in [sandbox, store, folder] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     #[tokio::test]
