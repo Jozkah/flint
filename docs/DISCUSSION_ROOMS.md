@@ -404,7 +404,33 @@ limits (no pricing entered) and more than eight participants.
 | Rooms suites | 17 files, 145 passed |
 | `cargo test -j 4 --lib --no-default-features --features test-tauri rooms` | 14 passed |
 
-The real-provider rooms lane was not re-run after this merge.
+### Final real-provider run (commit aeaff24ca, includes the review fixes)
+
+Real app against the OpenAI-compatible vLLM endpoint used before; model ids
+from the harness's own `GET /models` (5 ids, all served from the same
+weights; every probe reported `tools=false`, `contextWindow=8192`). All five
+compatible, none incompatible.
+
+- Full rooms lane: 11/11 pass (a first attempt failed 4 scenarios while the
+  server was unreachable for about a minute: `GET .../models failed: error
+  sending request`; the clean rerun is the result). Keep/restart pair: 2/2.
+- `rooms-single-room-all-models`: one room with all five models plus one
+  participant on an unserved model id. In that one room: round-robin
+  turn-taking, shared context (code word, previous speaker named and quoted
+  14/14), an addressed reply via `selectNext`, streaming (8 strictly
+  increasing store and DOM samples), pause mid-turn (partial saved
+  `interrupted`, no writes for 15 s) and resume, the failing participant
+  suspended `repeated-errors` after `invalid:404` errors while the others
+  continued, stop on `maxRounds` (model calls per run under
+  `HARD_CALL_CEILING`), final positions and a complete synthesis with the
+  instructed dissenter recorded verbatim, and permission isolation (a
+  participant demanding approvals, read access and higher limits changed
+  nothing).
+- Observed model behaviour, not app defects: individual models occasionally
+  drop the code word, name the previous speaker inconsistently or quote only
+  two words; some replies copy the `[Name to room]:` header format.
+- Not covered: tools-capable models and `toolAccess: read`, the context
+  summary/overflow path, cost limits, more than eight participants.
 
 ### After the review fixes (framing, dissent cap, line limit, error classification, redaction)
 
