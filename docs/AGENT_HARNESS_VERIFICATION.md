@@ -1597,3 +1597,38 @@ not a repository refused as `not_found`; a real stopped merge reported region
 by region with the file left untouched; a file deleted on one side named as
 that rather than as an edit; and both bounds (regions per file, lines per
 side) reporting what they cut.
+
+### Runs talking to each other (AH-103)
+
+Thirteen tests (ten on the store, three at the tool layer) plus a real
+three-process exercise using ids from a real recorded run:
+
+```
+session=77363e77-...  run=77363e77-...#run-mtz346ia1
+=== process 2 writes to the child's mailbox
+delivered to 77363e77-...#run-child as message 1
+=== process 3 reads it (a different process entirely)
+2026-09-13T00:37:28Z from 77363e77-...#run-mtz346ia1 -- context [read]
+  the parent already checked the schema
+=== a message to another conversation's run
+Error [policy_violation]: the recipient is not a run of this conversation
+=== and to the run that has already ended (its mailbox closed with it)
+Error [not_found]: that run has ended, so nothing else will be read from its mailbox
+```
+
+A defect the tool-layer test found: `message_check` decided what was new
+*after* marking delivery, so every check would have handed back every message
+the run had ever received. What is new is now taken before the read marks
+anything.
+
+Covered by test: a message reaching the run it was addressed to and carrying
+the sender the harness knows; the sender's own mailbox untouched; delivery
+recorded without destroying; a second check finding nothing; cross-session and
+self-addressed sends refused; a full mailbox refusing rather than forgetting,
+as `rate_limited`; an over-long message refused whole with nothing
+half-written; a closed mailbox refusing new messages while keeping what it
+held, never retryable; the store surviving the process that wrote it with a
+path that spells out no conversation; a credential in a message scrubbed
+before storage; ids that could name a place on disk refused; and the three
+tool-level cases including a surface with no mailbox saying so rather than
+pretending to send.

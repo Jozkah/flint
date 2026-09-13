@@ -1658,3 +1658,43 @@ its line number and both sides, bounded (20 regions per file, 60 lines per
 side, 200 files) with what was cut said out loud. Binary files are named as
 binary rather than shown. Nothing is written: after reading a conflict, the
 markers are still in the file.
+
+## Runs talking to each other (AH-103)
+
+A child run could already hand its parent a final answer. What it could not do
+was say anything *while* it worked -- "the migration you asked about is
+already applied", "I need the file you are holding" -- so a parent either
+waited for a result it could have redirected, or the two agents did not
+collaborate at all.
+
+`mailbox.rs` is a durable per-run mailbox, and two tools sit on it:
+`message_send` (write to another run of this conversation) and
+`message_check` (read what has been sent to me). `jan cli agent mail` reads
+and writes the same store from outside a run.
+
+The rules, each of them a test:
+
+* *The sender is recorded, never claimed.* `from` is the run the loop is
+  executing, taken from its cancellation scope. The model supplies who the
+  message is for and what it says, and nothing else -- a model that would like
+  to be someone else has no field to put it in.
+* *A message stays inside its conversation.* Both ends must be runs of the
+  same session, so one conversation cannot post into another's work. The
+  refusal is `policy_violation`, not "not found": the recipient may well exist
+  somewhere this run is not entitled to know about.
+* *Reading records delivery and destroys nothing.* What two agents told each
+  other stays answerable afterwards. What is *new* is decided before the read
+  marks anything -- otherwise every check hands back every message the run has
+  ever received.
+* *Bounded, and the bound is said.* 64 messages per mailbox, 16 KB each. A
+  full mailbox refuses (`rate_limited`, so waiting is a real option) rather
+  than dropping the oldest: a queue that silently forgets leaves the sender
+  believing something was said.
+* *A mailbox closes with its run.* When a run ends, later sends are refused as
+  `not_found` and never retried, because a message nobody will read is not
+  delivered. What was already there stays readable.
+
+The mailbox path is a hash of the run id, so a conversation id is never a path
+component on a shared machine, and message bodies are scrubbed on the way in.
+A message is data: `message_check` presents it as another agent's words, which
+this run may act on or ignore.

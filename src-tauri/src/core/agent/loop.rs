@@ -1161,6 +1161,21 @@ impl CompositeToolInvoker {
         .with_user_skills(self.user_skills.as_deref())
     }
 
+    /// The same context, plus who this run is for the mailbox (AH-103).
+    ///
+    /// Kept separate because `record_to` is the surface's own answer about
+    /// whether it keeps durable state: where it is `None` there is nowhere to
+    /// put a message, and the tools say so rather than pretending to send.
+    fn tool_context_with_run(&self) -> tauri_plugin_agent_tools::tools::ToolContext<'_> {
+        let ctx = self.tool_context();
+        match self.record_to.as_deref() {
+            // Taken from the scope the loop is running under, never from
+            // anything the model produced: this is the sender's identity.
+            Some(data) => ctx.with_run(&self.cancel_scope.run, data),
+            None => ctx,
+        }
+    }
+
     /// A tool context whose output streams to the run's event channel as
     /// [`StreamEvent::ToolOutputDelta`], tagged with the call's `id`.
     ///
@@ -1169,7 +1184,7 @@ impl CompositeToolInvoker {
     /// ignored -- the receiver is gone only when the run is over, and a dead
     /// display must not stop the command.
     fn streaming_tool_context(&self, id: &str) -> tauri_plugin_agent_tools::tools::ToolContext<'_> {
-        self.tool_context()
+        self.tool_context_with_run()
             .with_output_sink(output_sink(&self.events, id))
     }
 
@@ -1297,7 +1312,7 @@ impl CompositeToolInvoker {
                             }),
                         );
                         let mut out = format!(
-                            "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result."
+                            "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result. While it runs you can send it a message with message_send (to={run_id}), and read anything it sends you with message_check."
                         );
                         if let Some(c) = ctx.bg.checkout_of(&run_id) {
                             out.push_str(&format!(
@@ -3099,6 +3114,17 @@ async fn orchestrate_inner(
             ),
         )
         .await;
+        // AH-103: the run is over, so its mailbox closes. What it was already
+        // sent stays readable -- what was said is part of the record -- but a
+        // later sender is refused rather than left waiting for an answer that
+        // cannot come.
+        if let Ok(run) = tauri_plugin_agent_tools::identity::RunId::parse(
+            tools.cancel_scope.run.clone(),
+        ) {
+            if let Some(data) = &tools.record_to {
+                let _ = tauri_plugin_agent_tools::mailbox::close(data, &run);
+            }
+        }
         record_run(
             "run.ended",
             match &result {

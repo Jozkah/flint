@@ -632,6 +632,8 @@ pub(crate) async fn execute_text(
         "memory_read" => memory_read(args, ctx.store_root).await,
         "memory_write" => memory_write(args, ctx.store_root).await,
         "memory_propose" => memory_propose(args, ctx).await,
+        "message_send" => message_send(args, ctx),
+        "message_check" => message_check(ctx),
         // Skills go through the skills module so the tool honors the folder form
         // (`<name>/SKILL.md`) and frontmatter, matching what the UI writes.
         "skill_list" => skill_list(ctx),
@@ -3021,6 +3023,93 @@ mod bash_job_registry_tests {
 ///
 /// A proposal is never authority. Nothing here can widen what the model may do:
 /// the worst case is a record the user is asked about.
+/// AH-103. Who the message is from is this run, as the loop told us; the
+/// model supplies only who it is for and what it says.
+fn message_send(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let (Some(data), Some(run), Some(session)) = (ctx.data_folder, ctx.run_id, ctx.session_id)
+    else {
+        return "ERROR [unsupported]: this surface has no run mailbox, so there is nobody to \
+                write to."
+            .to_string();
+    };
+    let to = args.get("to").and_then(|v| v.as_str()).unwrap_or_default().trim();
+    let body = args.get("body").and_then(|v| v.as_str()).unwrap_or_default();
+    if to.is_empty() || body.trim().is_empty() {
+        return "ERROR [invalid_input]: message_send needs `to` and a non-empty `body`."
+            .to_string();
+    }
+    let subject = args.get("subject").and_then(|v| v.as_str()).unwrap_or_default();
+
+    let parsed = crate::identity::SessionId::parse(session).and_then(|session| {
+        let from = crate::identity::RunId::parse(run)?;
+        let to = crate::identity::RunId::parse(to)?;
+        Ok((session, from, to))
+    });
+    let (session, from, to) = match parsed {
+        Ok(ids) => ids,
+        Err(e) => return format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+    };
+    match crate::mailbox::send(data, &session, &from, &to, subject, body) {
+        Ok(message) => format!(
+            "Delivered to {} as message {} of their mailbox.",
+            message.to, message.seq
+        ),
+        Err(e) => {
+            let harness: crate::harness_error::HarnessError = (&e).into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        }
+    }
+}
+
+/// AH-103. What other runs have said to this one since it last looked.
+fn message_check(ctx: &ToolContext<'_>) -> String {
+    let (Some(data), Some(run)) = (ctx.data_folder, ctx.run_id) else {
+        return "ERROR [unsupported]: this surface has no run mailbox.".to_string();
+    };
+    let run = match crate::identity::RunId::parse(run) {
+        Ok(run) => run,
+        Err(e) => return format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+    };
+    // What is new is decided *before* the read marks anything: taking the
+    // delivered ones afterwards would hand back every message this run has
+    // ever been sent, every time it looked.
+    let fresh = match crate::mailbox::unread(data, &run) {
+        Ok(fresh) => fresh,
+        Err(e) => {
+            let harness: crate::harness_error::HarnessError = (&e).into();
+            return format!("ERROR [{}]: {}", harness.kind().tag(), e.message);
+        }
+    };
+    match crate::mailbox::read(data, &run, true) {
+        Ok(_) => {
+            if fresh.is_empty() {
+                return "No messages.".to_string();
+            }
+            let mut out = String::new();
+            for message in &fresh {
+                // Named as what it is: another agent's words, which are
+                // information and not an instruction this run has to follow.
+                out.push_str(&format!(
+                    "From run {} at {}{}\n{}\n\n",
+                    message.from,
+                    message.at,
+                    if message.subject.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" -- {}", message.subject)
+                    },
+                    message.body
+                ));
+            }
+            out.trim_end().to_string()
+        }
+        Err(e) => {
+            let harness: crate::harness_error::HarnessError = (&e).into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        }
+    }
+}
+
 async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     use crate::memory::inferred::{self, Decision};
     use crate::memory::record::{MemoryId, Scope};
@@ -3297,6 +3386,96 @@ mod tests {
 
     /// The command language the sandboxed shell for `root` actually speaks.
     ///
+    // ---- AH-103: one run writing to another, through the tools ------------
+
+    #[tokio::test]
+    async fn a_run_writes_to_another_run_and_cannot_pretend_to_be_someone_else() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let session = "s-tools";
+        let me = format!("{session}#run-child");
+        let parent = format!("{session}#run-parent");
+
+        let ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some(session), false)
+            .with_run(&me, &data);
+        let sent = super::execute_builtin(
+            lookup("message_send").unwrap(),
+            &json!({ "to": parent, "subject": "schema", "body": "the migration is applied" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(!sent.starts_with("ERROR"), "{sent}");
+
+        // The parent reads it, and the message says who it is really from --
+        // which is this run, not anything the arguments claimed.
+        let parent_ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some(session), false)
+            .with_run(&parent, &data);
+        let inbox = super::execute_builtin(lookup("message_check").unwrap(), &json!({}), &parent_ctx)
+            .await
+            .0;
+        assert!(inbox.contains("the migration is applied"), "{inbox}");
+        assert!(inbox.contains(&me), "the reader is told who wrote: {inbox}");
+
+        // Read once: a second check has nothing new.
+        let again = super::execute_builtin(lookup("message_check").unwrap(), &json!({}), &parent_ctx)
+            .await
+            .0;
+        assert_eq!(again, "No messages.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_message_to_another_conversation_is_refused_at_the_tool() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some("s-mine"), false)
+            .with_run("s-mine#run-a", &data);
+
+        for (target, expected) in [
+            ("s-theirs#run-b", "policy_violation"),
+            ("../elsewhere", "invalid_input"),
+            ("s-mine#run-a", "policy_violation"),
+        ] {
+            let out = super::execute_builtin(
+                lookup("message_send").unwrap(),
+                &json!({ "to": target, "body": "hello" }),
+                &ctx,
+            )
+            .await
+            .0;
+            assert!(
+                out.contains(&format!("ERROR [{expected}]")),
+                "{target} should be refused as {expected}: {out}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A surface with nowhere to keep a message says so rather than
+    /// pretending to have sent one.
+    #[tokio::test]
+    async fn without_a_mailbox_the_tools_say_there_is_nobody_to_write_to() {
+        let root = unique_root();
+        let out = execute_builtin(
+            lookup("message_send").unwrap(),
+            &json!({ "to": "s#run-x", "body": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(out.contains("ERROR [unsupported]"), "{out}");
+        let read = execute_builtin(lookup("message_check").unwrap(), &json!({}), &root).await;
+        assert!(read.contains("ERROR [unsupported]"), "{read}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // ---- AH-127/AH-129: the project's own hooks, around a real tool call ----
 
     /// Write a hooks file for `root`. Commands here must run under whichever

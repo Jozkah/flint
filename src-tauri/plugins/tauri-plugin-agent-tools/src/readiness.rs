@@ -413,11 +413,14 @@ impl ToolAvailability {
 pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
     match tool {
         "bash" => vec![capability::SHELL_ANY, capability::SANDBOX_ENFORCED],
-        "write" | "edit" | "memory_write" | "memory_propose" | "skill_write" => {
+        "write" | "edit" | "memory_write" | "memory_propose" | "skill_write"
+        // A message is written to a mailbox on disk, so it needs the same
+        // thing writing a file needs.
+        | "message_send" => {
             vec![capability::FS_WRITE]
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
-        | "skill_list" | "skill_read" => vec![capability::FS_READ],
+        | "skill_list" | "skill_read" | "message_check" => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision
         // rather than an environment fact, and is enforced by the gate. Nothing
         // about the environment withholds them.

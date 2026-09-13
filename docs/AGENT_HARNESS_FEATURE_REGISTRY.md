@@ -172,7 +172,7 @@ per-OS evidence log rather than backlog items.
 | `AH-100` | Forked contexts | 5 | orchestration | P1 | `in-progress` | medium | `AH-078` |
 | `AH-101` | Background agents | 5 | orchestration | P0 | `in-progress` | medium | `AH-089` |
 | `AH-102` | Background agent lifecycle control | 5 | orchestration | P1 | `in-progress` | medium | `AH-101` |
-| `AH-103` | Agent-to-agent messaging | 5 | orchestration | P1 | `missing` | medium | `AH-101` |
+| `AH-103` | Agent-to-agent messaging | 5 | orchestration | P1 | `implemented` | medium | `AH-101` |
 | `AH-104` | Shared task board | 5 | orchestration | P1 | `implemented` | medium | `AH-016` |
 | `AH-105` | Task dependency graph | 5 | orchestration | P1 | `implemented` | low | `AH-104` |
 | `AH-106` | Ready-task scheduling | 5 | orchestration | P1 | `implemented` | medium | `AH-105` |

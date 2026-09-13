@@ -93,6 +93,15 @@ pub struct ToolContext<'a> {
     /// from -- `memory_propose` scopes and attributes by it. `None` on a
     /// surface with no conversation, such as a one-shot CLI run.
     pub session_id: Option<&'a str>,
+    /// Which run this call belongs to, as the harness knows it (AH-008).
+    ///
+    /// Supplied by the loop, never by the model: it is the sender's identity
+    /// where one run writes to another (AH-103), so a value a model could
+    /// choose would be no identity at all.
+    pub run_id: Option<&'a str>,
+    /// The Jan data folder, where a run's mailbox is stored. `None` on a
+    /// surface that keeps no durable state.
+    pub data_folder: Option<&'a std::path::Path>,
     /// A temporary chat neither reads nor records memory.
     ///
     /// Carried rather than inferred from a missing session id: an unsaved chat
@@ -200,6 +209,8 @@ impl<'a> ToolContext<'a> {
             home_readonly: false,
             scratch_root: None,
             session_id: None,
+            run_id: None,
+            data_folder: None,
             temporary: false,
             sandbox: true,
             on_output: None,
@@ -228,6 +239,13 @@ impl<'a> ToolContext<'a> {
     }
 
     /// `owner`. See [`Self::job_owner`].
+    /// Say which run is executing this call, and where its mail lives.
+    pub fn with_run(mut self, run_id: &'a str, data_folder: &'a std::path::Path) -> Self {
+        self.run_id = Some(run_id);
+        self.data_folder = Some(data_folder);
+        self
+    }
+
     pub fn with_job_owner(mut self, owner: &'a str) -> Self {
         self.job_owner = Some(owner);
         self
@@ -387,6 +405,20 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     // Dedicated skill/memory tools. They operate on `.jan/agent/{skills,memory}/`
     // by name (never a path), so they are always workspace-scoped and never
     // prompt. `path_args` is empty: there is no path to sandbox-check.
+    // AH-103: one run saying something to another while both are still
+    // running. `message_send` writes to a mailbox and `message_check` reads
+    // this run's own; neither touches the filesystem, so `path_args` is empty
+    // and there is nothing to sandbox-check.
+    BuiltinTool {
+        name: "message_send",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "message_check",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     BuiltinTool {
         name: "memory_list",
         capability: Capability::Read,
@@ -490,11 +522,12 @@ mod tests {
 
     #[test]
     fn builtin_count_matches_expected() {
-        // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools.
+        // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools
+        // + 2 run-to-run message tools (AH-103).
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        assert_eq!(BUILTIN_TOOLS.len(), 17);
+        assert_eq!(BUILTIN_TOOLS.len(), 19);
     }
 
     #[test]

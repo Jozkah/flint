@@ -17,6 +17,7 @@ pub mod event_log;
 pub mod context_report;
 pub mod harness_error;
 pub mod hooks;
+pub mod mailbox;
 pub mod org_policy;
 pub mod identity;
 pub mod job_record;
