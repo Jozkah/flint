@@ -80,7 +80,7 @@ const AppLayout = () => {
             over the page pretending to be one (see lib/titlebar). */}
         {appDrawsChrome && <WindowControls />}
         {appDrawsChrome && <WindowResizeGrips />}
-        <AppRail className="hidden md:flex" />
+        <AppRail className="hidden lg:flex" />
         <LeftSidebar />
         <SidebarInset>
           <div className="size-full min-h-0 bg-background">

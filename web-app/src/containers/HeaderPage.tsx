@@ -86,7 +86,7 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="relative z-50 shrink-0 md:hidden pointer-coarse:size-11"
+            className="relative z-50 shrink-0 lg:hidden pointer-coarse:size-11"
             onClick={() => sidebar.setOpenMobile(true)}
             aria-label={t('common:shell.openNavigation')}
             data-testid="open-navigation"
@@ -98,7 +98,7 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
           <Button
             variant="ghost"
             size="icon-sm"
-            className='relative z-50 hidden md:inline-flex'
+            className='relative z-50 hidden lg:inline-flex'
             onClick={() => setLeftPanel(!open)}
             aria-label="Toggle sidebar"
           >

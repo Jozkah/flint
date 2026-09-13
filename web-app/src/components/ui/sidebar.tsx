@@ -17,7 +17,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsNarrowShell } from "@/hooks/use-mobile";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { mergeButtonRefs } from "@/lib/merge-button-refs";
 import { cn } from "@/lib/utils";
@@ -94,7 +94,7 @@ const SidebarProvider = React.forwardRef<
 		},
 		ref,
 	) => {
-		const isMobile = useIsMobile();
+		const isMobile = useIsNarrowShell();
 		//* new state for sidebar width
 		const [width, setWidthState] = React.useState(defaultWidth);
 
@@ -300,7 +300,7 @@ const Sidebar = React.forwardRef<
 		return (
 			<div
 				ref={ref}
-				className="group peer relative hidden h-full shrink-0 md:block text-sidebar-foreground"
+				className="group peer relative hidden h-full shrink-0 lg:block text-sidebar-foreground"
 				data-state={state}
 				data-collapsible={state === "collapsed" ? collapsible : ""}
 				data-variant={variant}
@@ -326,7 +326,7 @@ const Sidebar = React.forwardRef<
 						// Inside the shell, beside the rail: positioned within the sidebar's
 						// own column rather than fixed to the window, so the rail and the
 						// status bar keep their space.
-						"duration-200 absolute inset-y-0 z-10 hidden h-full w-(--sidebar-width) transition-[left,right,width] ease-linear md:flex",
+						"duration-200 absolute inset-y-0 z-10 hidden h-full w-(--sidebar-width) transition-[left,right,width] ease-linear lg:flex",
 						side === "left"
 							? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
 							: "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
