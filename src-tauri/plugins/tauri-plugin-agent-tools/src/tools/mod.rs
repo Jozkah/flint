@@ -145,6 +145,12 @@ pub struct ToolContext<'a> {
     /// frontend's tool-call id) rather than inside `bash`, so the sink can carry
     /// it from the first chunk.
     pub call_id: Option<&'a str>,
+    /// The Jan data folder whose `mailbox/` the session-messaging tools use.
+    ///
+    /// Set only by the desktop dispatcher for a Cowork (session-scoped) call,
+    /// together with `session_id`. `None` everywhere else -- chat threads, the
+    /// CLI, subagent children -- and the mailbox tools refuse without it.
+    pub mailbox_root: Option<&'a Path>,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -166,6 +172,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("read_roots", &self.read_roots)
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
+            .field("mailbox_root", &self.mailbox_root)
             .finish()
     }
 }
@@ -195,7 +202,14 @@ impl<'a> ToolContext<'a> {
             read_roots: &[],
             write_roots: &[],
             call_id: None,
+            mailbox_root: None,
         }
+    }
+
+    /// Give the session-messaging tools a mailbox. See [`Self::mailbox_root`].
+    pub fn with_mailbox(mut self, data_folder: &'a Path) -> Self {
+        self.mailbox_root = Some(data_folder);
+        self
     }
 
     /// Attach a cancellation token scoped to this call.
@@ -411,7 +425,43 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Net,
         path_args: &[],
     },
+    // Cross-session messaging (docs/SESSION_MESSAGING.md). They touch only the
+    // mailbox under the Jan data folder -- no project file, no network -- so
+    // they are `Read` with no path arguments, and always allowed by the gate.
+    // Advertised only to session-scoped calls and never to subagents.
+    BuiltinTool {
+        name: "list_sessions",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "send_message",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "read_messages",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "wait_for_reply",
+        capability: Capability::Read,
+        path_args: &[],
+    },
 ];
+
+/// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
+/// still wins), offered only in session scope, and withheld from subagents.
+pub fn is_mailbox_tool(name: &str) -> bool {
+    crate::mailbox::TOOL_NAMES.contains(&name)
+}
+
+/// Whether a built-in may be advertised to a call in this scope. Only the
+/// mailbox tools depend on it: a chat thread is not a messaging participant.
+pub fn advertised_in_scope(name: &str, session_scope: bool) -> bool {
+    session_scope || !is_mailbox_tool(name)
+}
 
 /// Tools that act only on the agent's own `.jan/agent/{skills,memory}/`
 /// workspace. They are auto-allowed by the gate (no prompt), since a sanitized
@@ -462,11 +512,27 @@ mod tests {
 
     #[test]
     fn builtin_count_matches_expected() {
-        // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools.
+        // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools
+        // + 4 session-messaging tools.
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        assert_eq!(BUILTIN_TOOLS.len(), 17);
+        assert_eq!(BUILTIN_TOOLS.len(), 21);
+    }
+
+    #[test]
+    fn mailbox_tools_are_read_with_no_paths_and_session_only() {
+        for name in crate::mailbox::TOOL_NAMES {
+            let t = lookup(name).expect("mailbox tool is builtin");
+            assert_eq!(t.capability, Capability::Read);
+            assert!(t.path_args.is_empty());
+            assert!(is_mailbox_tool(name));
+            assert!(!is_workspace_tool(name));
+            assert!(advertised_in_scope(name, true));
+            assert!(!advertised_in_scope(name, false), "{name} offered to a thread");
+        }
+        assert!(advertised_in_scope("read", false));
+        assert!(!is_mailbox_tool("read"));
     }
 
     #[test]

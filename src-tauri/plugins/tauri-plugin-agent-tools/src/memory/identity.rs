@@ -31,21 +31,11 @@ pub fn identity_path(project_root: &Path) -> PathBuf {
 pub fn project_id(project_root: &Path) -> Option<String> {
     let path = identity_path(project_root);
 
-    if let Ok(existing) = std::fs::read_to_string(&path) {
-        let existing = existing.trim();
-        if !existing.is_empty() {
-            return Some(existing.to_string());
-        }
+    if let Some(existing) = read_written_id(project_root) {
+        return Some(existing);
     }
 
-    // Derived from the canonical path rather than random, so a project whose
-    // id file is lost gets the same id back instead of orphaning its memories.
-    // Lower-cased first: on Windows the same directory is reachable by several
-    // spellings, and two of them must not become two projects.
-    let canonical = project_root
-        .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf());
-    let id = derive_id(&canonical);
+    let id = derived_project_id(project_root);
 
     // Best effort. A read-only checkout still gets a usable id for this run;
     // it simply has to be derived again next time.
@@ -55,6 +45,35 @@ pub fn project_id(project_root: &Path) -> Option<String> {
         }
     }
     Some(id)
+}
+
+/// The same identity [`project_id`] resolves, without ever writing anything.
+///
+/// For callers that must not touch the user's folder -- cross-session
+/// messaging groups sessions by project, and registering a session is not a
+/// reason to create `.jan/agent/project-id` inside someone's checkout. An
+/// existing id file still wins, so a project memory already identified keeps
+/// the same identity here.
+pub fn project_id_read_only(project_root: &Path) -> String {
+    read_written_id(project_root).unwrap_or_else(|| derived_project_id(project_root))
+}
+
+/// The id written into the project, when there is a non-empty one.
+fn read_written_id(project_root: &Path) -> Option<String> {
+    let existing = std::fs::read_to_string(identity_path(project_root)).ok()?;
+    let existing = existing.trim();
+    (!existing.is_empty()).then(|| existing.to_string())
+}
+
+/// Derived from the canonical path rather than random, so a project whose id
+/// file is lost gets the same id back instead of orphaning its memories.
+/// Lower-cased first: on Windows the same directory is reachable by several
+/// spellings, and two of them must not become two projects.
+fn derived_project_id(project_root: &Path) -> String {
+    let canonical = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    derive_id(&canonical)
 }
 
 /// A stable digest of the canonical path. FNV-1a: it needs to be identical
@@ -187,6 +206,24 @@ mod tests {
         std::fs::write(&path, "proj-chosen-by-hand\n").unwrap();
         assert_eq!(project_id(&root).unwrap(), "proj-chosen-by-hand");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The read-only form agrees with the writing one and leaves the folder
+    /// untouched.
+    #[test]
+    fn the_read_only_id_matches_and_writes_nothing() {
+        let root = unique_project("readonly");
+        let read_only = project_id_read_only(&root);
+        assert!(!identity_path(&root).exists(), "read-only lookup wrote an id");
+        assert_eq!(project_id(&root).unwrap(), read_only);
+
+        let chosen = unique_project("readonly-chosen");
+        let path = identity_path(&chosen);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "proj-by-hand\n").unwrap();
+        assert_eq!(project_id_read_only(&chosen), "proj-by-hand");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&chosen);
     }
 
     #[test]

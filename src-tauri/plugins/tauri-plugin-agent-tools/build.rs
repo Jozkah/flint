@@ -56,6 +56,15 @@ const COMMANDS: &[&str] = &[
     "bash_jobs_list",
     "bash_job_kill",
     "permission_audit_recent",
+    "mailbox_session_register",
+    "mailbox_session_status",
+    "mailbox_session_heartbeat",
+    "mailbox_session_remove",
+    "mailbox_take_for_delivery",
+    "mailbox_pending",
+    "mailbox_mark_read",
+    "mailbox_reply",
+    "mailbox_list_sessions",
 ];
 
 fn main() {
