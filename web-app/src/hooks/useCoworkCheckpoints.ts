@@ -236,10 +236,19 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
           // now is what holds every file currently on disk.
           const newest = chain[chain.length - 1]
           const latest = newest?.sha ?? sha
+          // The safety point taken for this restore, named as such. The backend
+          // refuses to restore unless the tree on disk is exactly what that
+          // point holds, so an edit made between the capture and the restore —
+          // or a restore attempted without any capture — is refused rather than
+          // silently overwritten. Without it the backend applies the same check
+          // against `latest`.
+          const safety =
+            newest && newest.safety && newest.sha !== sha ? newest.sha : null
           try {
             await invoke('agent_checkpoint_restore', {
               checkpoint: wire(target),
               latest,
+              safety,
             })
           } catch (e) {
             return { ok: false, reason: messageOf(e) }

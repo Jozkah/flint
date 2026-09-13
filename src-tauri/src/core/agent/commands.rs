@@ -414,12 +414,27 @@ pub fn agent_checkpoint_plan(
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller
 /// says: that path leads to deleting work whose only sin was being in the same
 /// directory as the run.
+///
+/// In a managed tree, refuses before writing anything unless the tree on disk
+/// is exactly what a checkpoint holds: `safety` when given (the point taken
+/// immediately before this restore), otherwise `latest`. `allow_overwrite`
+/// names paths the caller has explicitly agreed to lose. Both are optional, so
+/// a caller that predates them gets the strict check rather than none.
 #[tauri::command]
 pub fn agent_checkpoint_restore(
     checkpoint: checkpoint::Checkpoint,
     latest: String,
+    safety: Option<String>,
+    allow_overwrite: Option<Vec<String>>,
 ) -> Result<(), String> {
-    checkpoint::restore(&checkpoint, &latest)
+    checkpoint::restore(
+        &checkpoint,
+        &latest,
+        &checkpoint::RestoreGuard {
+            safety,
+            allow_overwrite: allow_overwrite.unwrap_or_default(),
+        },
+    )
 }
 
 /// Forget a session's snapshot chain.
