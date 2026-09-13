@@ -3,14 +3,12 @@
  *
  * The UI talks only to `RoomsUiApi`. Tests inject a fake through
  * `RoomsApiProvider`. Without a provider, `useRoomsApi` lazily loads the engine
- * modules (`lib/rooms/store.ts`, `lib/rooms/controller.ts` and, if present,
- * `lib/rooms/editor.ts`) through `import.meta.glob`, so this file compiles and
- * the UI renders an "unavailable" state while those modules do not exist yet.
+ * modules (`lib/rooms/store.ts`, `lib/rooms/controller.ts`) and adapts them;
+ * the UI shows "unavailable" only if loading or adapting fails.
  *
- * INTEGRATOR: everything that depends on the engine's exact export and state
- * names is in `adaptEngine` / `adaptState` below. If the engine names differ,
- * change them there and nowhere else. The alternative is to replace
- * `loadEngineApi` with static imports of the real modules.
+ * Everything that depends on the engine's export and state names is in
+ * `adaptEngine` / `adaptState` below (`roomsBindings.engine.test.ts` checks
+ * them against the real modules).
  */
 import {
   createContext,
@@ -213,19 +211,15 @@ export function adaptEngine(exports: Record<string, unknown>): RoomsUiApi | null
   }
 }
 
-const engineModules = import.meta.glob([
-  '../../lib/rooms/store.ts',
-  '../../lib/rooms/controller.ts',
-  '../../lib/rooms/editor.ts',
-])
-
 let engineApi: RoomsUiApi | null = null
 let enginePromise: Promise<RoomsUiApi> | null = null
 
-function loadEngineApi(): Promise<RoomsUiApi> {
+export function loadEngineApi(): Promise<RoomsUiApi> {
   if (!enginePromise) {
-    const loaders = Object.values(engineModules)
-    enginePromise = Promise.all(loaders.map((load) => load()))
+    enginePromise = Promise.all([
+      import('@/lib/rooms/store'),
+      import('@/lib/rooms/controller'),
+    ])
       .then((mods) => {
         const merged = Object.assign({}, ...(mods as Record<string, unknown>[]))
         engineApi = adaptEngine(merged) ?? UNAVAILABLE_API

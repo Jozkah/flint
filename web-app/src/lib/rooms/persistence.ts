@@ -1,10 +1,9 @@
 /**
  * The persistence port used by the engine, store and controller.
  *
- * The default implementation lazily loads `@/services/rooms` (owned by the
- * persistence lane). `import.meta.glob` keeps this module compiling and
- * testable whether or not that file exists yet; tests inject their own
- * implementation with `setRoomPersistence`.
+ * The default implementation lazily loads `@/services/rooms`, so importing the
+ * engine does not pull in Tauri until a room is actually read or written.
+ * Tests inject their own implementation with `setRoomPersistence`.
  */
 import type {
   Room,
@@ -24,19 +23,8 @@ export interface RoomPersistence {
 
 type RoomsServiceModule = RoomPersistence & { toRoomError?: (e: unknown) => RoomError }
 
-const SERVICE_PATH = '/src/services/rooms.ts'
-const loaders = import.meta.glob(['/src/services/rooms.ts'])
-
 async function loadService(): Promise<RoomsServiceModule> {
-  const load = loaders[SERVICE_PATH]
-  if (!load) {
-    const err: RoomError = {
-      code: 'unknown',
-      message: 'Room persistence is not available in this build.',
-    }
-    throw err
-  }
-  return (await load()) as RoomsServiceModule
+  return import('@/services/rooms')
 }
 
 export const defaultRoomPersistence: RoomPersistence = {
