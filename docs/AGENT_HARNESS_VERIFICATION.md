@@ -2320,3 +2320,36 @@ no rules redirecting nothing; a model pattern matching as a prefix, a suffix
 and in the middle, and not matching what it should not; a rule that names the
 model already in use reporting no change; and an unknown match form, an empty
 role and a rule with nothing to use each refused as `invalid_input`.
+
+
+### Output density (AH-181)
+
+One test plus the same real run at three densities:
+
+```
+=== normal (the default)
+  rc=0 stdout=36 bytes, stderr=10 lines
+  tool-result lines: 1      turn markers: 2
+
+=== --output-density compact
+  rc=0 stdout=36 bytes, stderr=4 lines
+  tool-result lines: 0      turn markers: 0      tool-call lines: 1
+
+=== --output-density verbose
+  rc=0 stdout=36 bytes, stderr=12 lines
+  per-turn usage lines: 2
+
+=== the answer on stdout is the same at every density
+  normal:  Done. I used the tools you allowed.
+  compact: Done. I used the tools you allowed.
+  verbose: Done. I used the tools you allowed.
+
+=== [output].density in the project, and one that is not a density
+  rc=0  turn markers: 0
+  rc=64 Error [invalid_input]: [output].density: "loud" is not an output
+        density; use compact, normal or verbose
+```
+
+Covered by test: every accepted spelling (`compact`, `quiet`, `normal`,
+`verbose`, and unset meaning normal) and a word that is not a density refused
+by name.

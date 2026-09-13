@@ -6345,13 +6345,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-172"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "Output density is a user choice rather than a fixed default.",
@@ -6360,10 +6364,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `--output-density compact|normal|verbose`, or [output].density in agent.toml with the flag outranking the file. stdout never changes -- a piped run yields exactly the model's completion at every density; what moves is the progress on stderr. Compact keeps tool calls, errors and failed tools and drops tool results, reasoning, live command output and turn markers; verbose adds each turn's token usage, because a total hides which turn was expensive. A failure is never quiet at any density. A word that is not one of the three refuses the run rather than being treated as the default, since a run that says less than somebody asked for is a log missing what they wanted. Proven by the same real run at three densities, plus a declared density in the project and an unreadable one refusing the run."
     },
     {
       "id": "AH-182",

@@ -36,6 +36,17 @@ pub(crate) struct AgentToml {
     /// `[[routing]]` -- which model answers what (AH-194).
     #[serde(default)]
     pub routing: Vec<crate::core::agent::routing::RoutingRule>,
+    /// `[output]` -- how much a run says about itself (AH-181).
+    #[serde(default)]
+    pub output: OutputSection,
+}
+
+/// `[output]` -- how much a headless run prints while it works (AH-181).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct OutputSection {
+    /// `compact`, `normal` or `verbose`. Unset is normal.
+    #[serde(default)]
+    pub density: Option<String>,
 }
 
 /// A named variation on a project's settings (AH-186).
@@ -358,6 +369,11 @@ inject = "always"
 # command = ["notify-send", "Jan"]      # argument vector; no shell
 # webhook = "https://example.invalid/hooks/jan"
 # events = ["run.ended", "needs.attention"]
+
+# How much a headless run prints while it works: compact, normal or verbose.
+# The answer on stdout is the same either way; this is the progress on stderr.
+# [output]
+# density = "compact"
 
 # Which model answers what. Rules are read in order and the first match wins;
 # anything no rule matches resolves exactly as it would have.

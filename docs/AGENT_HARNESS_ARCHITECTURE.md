@@ -2374,3 +2374,31 @@ nobody chose while looking as though their rule had been honoured.
 A rule about a subagent by name outranks both that subagent's own declared
 model and the parent's, because naming the agent is the more specific
 statement and the one somebody wrote on purpose.
+
+
+## How much a run says about itself (AH-181)
+
+A headless run printed one fixed amount: every turn marker, every reasoning
+token, every byte of live command output, every tool result. That is right for
+watching one run and wrong for a log of a hundred.
+
+`jan cli agent run --output-density compact|normal|verbose`, or `[output]
+density` in agent.toml, with the flag outranking the file.
+
+| | compact | normal | verbose |
+| --- | --- | --- | --- |
+| the answer (stdout) | yes | yes | yes |
+| tool calls | yes | yes | yes |
+| errors and failed tools | yes | yes | yes |
+| tool results | no | yes | yes |
+| reasoning, live command output, turn markers | no | yes | yes |
+| each turn's token usage | no | no | yes |
+
+**stdout never changes.** A piped run yields exactly the model's completion at
+every density; what moves is the progress on stderr, which is what a person
+reads while waiting and what a log keeps afterwards. **A failure is never
+quiet**: compact drops results, not the news that something did not work.
+
+A density that is not one of the three refuses the run rather than being
+treated as the default -- a run that says less than somebody asked it to is a
+log missing what they wanted to read.

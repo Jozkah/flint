@@ -336,6 +336,10 @@ enum AgentCommands {
         /// A named profile from agent.toml's [profiles.<name>] (AH-186)
         #[arg(long, value_name = "NAME")]
         profile: Option<String>,
+        /// How much this run says about itself: compact, normal or verbose
+        /// (AH-181). Overrides [output].density.
+        #[arg(long, value_name = "DENSITY")]
+        output_density: Option<String>,
     },
     /// Run a single turn (debugging)
     Step {
@@ -1144,6 +1148,7 @@ async fn handle_agent(cmd: AgentCommands) {
             output_format,
             events,
             profile,
+            output_density,
         } => {
             // AH-183: before the run, so a destination that cannot be written
             // fails the command instead of silently streaming nowhere.
@@ -1162,6 +1167,25 @@ async fn handle_agent(cmd: AgentCommands) {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
                     profile,
+                    density: match output_density
+                        .as_deref()
+                        .map(app_lib::core::cli::Density::parse)
+                    {
+                        Some(Ok(density)) => Some(density),
+                        Some(Err(e)) => {
+                            let refusal = HarnessError::new(
+                                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                                e,
+                            );
+                            eprintln!(
+                                "Error [{}]: {}",
+                                refusal.kind().tag(),
+                                refusal.message()
+                            );
+                            std::process::exit(refusal.exit_code());
+                        }
+                        None => None,
+                    },
                     ..Default::default()
                 },
                 resume.into_target(),

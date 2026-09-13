@@ -859,6 +859,9 @@ pub struct SessionFlags {
     /// `--profile`: a named variation on this project's settings (AH-186).
     /// `None` is the project's own configuration.
     pub profile: Option<String>,
+    /// `--compact` / `--verbose`: how much a headless run says about itself
+    /// (AH-181). `None` defers to `[output].density`, then normal.
+    pub density: Option<Density>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1200,6 +1203,9 @@ async fn run_agent_loop(
     format: OutputFormat,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     let started = std::time::Instant::now();
+    // Read before the flags are handed on: this is the run's own answer about
+    // how much to say, and it is wanted after the run as well as during it.
+    let asked_density = flags.density;
     let prepared = prepare_agent_run(
         project,
         task,
@@ -1280,6 +1286,25 @@ async fn run_agent_loop(
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
+    // AH-181: how much this run says about itself. The flag outranks the
+    // project's declaration, and an unreadable declaration refuses the run
+    // rather than quietly printing a different amount than was asked for.
+    let density = match asked_density {
+        Some(density) => density,
+        None => {
+            let declared = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
+                .ok()
+                .and_then(|cfg| cfg.output.density)
+                .unwrap_or_default();
+            Density::parse(&declared).map_err(|e| {
+                tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("[output].density: {e}"),
+                )
+                .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
+            })?
+        }
+    };
     let notify_for_prompts = notify.clone();
     let prompt_root = notify_root.clone();
     let prompt_session = notify_session.clone();
@@ -1350,7 +1375,7 @@ async fn run_agent_loop(
             if format.is_json() {
                 resolve_permission_silently(ev, &permission_requests).await;
             } else {
-                print_event(ev, &permission_requests).await;
+                print_event(ev, &permission_requests, density).await;
             }
         }
         (report, conversation)
@@ -1689,7 +1714,42 @@ pub fn agent_dir_for(project_root: &std::path::Path) -> PathBuf {
 /// Render one `StreamEvent` for the terminal. Content tokens go to stdout so a
 /// run can be piped; progress/diagnostics go to stderr. `PermissionRequest` is
 /// resolved via the terminal (deny when non-interactive).
-async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
+/// How much a headless run says about itself (AH-181).
+///
+/// The answer on stdout never changes: a piped run yields exactly the model's
+/// completion at every density. What changes is the progress on stderr, which
+/// is what a person reads while waiting and what a log keeps afterwards -- and
+/// those two want different amounts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Density {
+    /// One line per tool call, errors, and the answer. No reasoning, no live
+    /// command output, no turn markers, no tool results.
+    Compact,
+    /// What a run has always printed.
+    #[default]
+    Normal,
+    /// Everything Normal prints, plus each turn's token usage as the provider
+    /// reported it.
+    Verbose,
+}
+
+impl Density {
+    /// Read a declared density. Anything else is refused rather than quietly
+    /// treated as the default, which would be a run that says less than
+    /// somebody asked it to.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "compact" | "quiet" => Ok(Density::Compact),
+            "normal" | "" => Ok(Density::Normal),
+            "verbose" => Ok(Density::Verbose),
+            other => Err(format!(
+                "{other:?} is not an output density; use compact, normal or verbose"
+            )),
+        }
+    }
+}
+
+async fn print_event(ev: StreamEvent, registry: &PermissionRegistry, density: Density) {
     if crate::core::cli::auth::account::take_claude_alias_engaged() {
         eprintln!(
             "\x1b[33m[warning] {}\x1b[0m",
@@ -1713,26 +1773,49 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
         // arrives again with the tool result, which is what the model sees; this
         // is purely so a long command is not silent in a headless run.
         StreamEvent::ToolOutputDelta { delta, .. } => {
-            eprint!("\x1b[2m{delta}\x1b[0m");
-            let _ = std::io::stderr().flush();
+            // Live command output is the noisiest thing a run produces, and
+            // the whole of it arrives again with the tool result.
+            if density != Density::Compact {
+                eprint!("\x1b[2m{delta}\x1b[0m");
+                let _ = std::io::stderr().flush();
+            }
         }
         // Reasoning is progress, not answer: dimmed on stderr so piping stdout
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
-            eprint!("\x1b[2m{text}\x1b[0m");
-            let _ = std::io::stderr().flush();
+            if density != Density::Compact {
+                eprint!("\x1b[2m{text}\x1b[0m");
+                let _ = std::io::stderr().flush();
+            }
         }
-        StreamEvent::Step { index, max } => match max {
-            0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
-            m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
-        },
+        StreamEvent::Step { index, max } => {
+            if density != Density::Compact {
+                match max {
+                    0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
+                    m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
+                }
+            }
+        }
         // In-progress signal is for the live TUI; the piped log stays quiet
         // until the full call (with args) arrives just below.
         // Headless prints one line per completed call; the in-progress signal
         // and its argument deltas have nothing to render into.
         StreamEvent::ToolCallStarted { .. } | StreamEvent::ToolCallArgsDelta { .. } => {}
-        // Headless reports totals once, from the terminal `Done`.
-        StreamEvent::TurnUsage { .. } => {}
+        // Headless reports totals once, from the terminal `Done` -- unless the
+        // run was asked to say more, in which case each turn's own numbers are
+        // worth having, because a total hides which turn was expensive.
+        StreamEvent::TurnUsage { usage } => {
+            if density == Density::Verbose {
+                let (input, output, total) = (
+                    usage.prompt_tokens.unwrap_or(0),
+                    usage.completion_tokens.unwrap_or(0),
+                    usage.total_tokens.unwrap_or(0),
+                );
+                eprintln!(
+                    "\x1b[2m[turn-usage] in={input} out={output} total={total}\x1b[0m"
+                );
+            }
+        }
         StreamEvent::ToolCall { name, args, .. } => eprintln!(
             "\x1b[2m[tool] {}\x1b[0m",
             crate::core::agent::events::describe_tool_call(&name, &args)
@@ -1745,7 +1828,11 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
             } else {
                 "tool-result"
             };
-            eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+            // A failure is never quiet: a compact run drops results, not the
+            // news that something did not work.
+            if density != Density::Compact || is_error {
+                eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+            }
         }
         StreamEvent::SubagentStart { name, .. } => {
             eprintln!("\x1b[2m[subagent:{name}] started (background)\x1b[0m")
@@ -1849,6 +1936,26 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// AH-181: a declared density is read, and anything that is not one is
+    /// refused rather than quietly treated as the default -- a run that says
+    /// less than somebody asked it to is a run whose log is missing what they
+    /// wanted to read.
+    #[test]
+    fn an_output_density_is_read_or_refused_by_name() {
+        use super::Density;
+        assert_eq!(Density::parse("compact"), Ok(Density::Compact));
+        assert_eq!(Density::parse(" QUIET "), Ok(Density::Compact));
+        assert_eq!(Density::parse("normal"), Ok(Density::Normal));
+        // Unset in a config file reads as the default rather than as an error.
+        assert_eq!(Density::parse(""), Ok(Density::Normal));
+        assert_eq!(Density::parse("verbose"), Ok(Density::Verbose));
+        assert_eq!(Density::default(), Density::Normal);
+
+        let err = Density::parse("loud").unwrap_err();
+        assert!(err.contains("not an output density"), "{err}");
+        assert!(err.contains("compact, normal or verbose"), "{err}");
+    }
+
     /// A headless run's conversation survives being saved and resumed, tool
     /// calls and all.
     ///
