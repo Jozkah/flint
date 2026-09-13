@@ -295,6 +295,19 @@ async fn test_modify_and_delete_thread() {
     assert!(found_thread.is_some(), "Modified thread should exist");
     assert_eq!(found_thread.unwrap()["title"], "Modified Title");
 
+    // Requests this thread sent, and one from another thread that must survive.
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    for session in [thread_id.as_str(), "some-other-thread"] {
+        let snap = tauri_plugin_agent_tools::snapshot::capture(
+            &json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] }),
+            &tauri_plugin_agent_tools::snapshot::Identity {
+                session: session.to_string(),
+                ..Default::default()
+            },
+        );
+        tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
+    }
+
     // Delete the thread
     delete_thread(app.handle().clone(), thread_id.clone())
         .await
@@ -305,6 +318,15 @@ async fn test_modify_and_delete_thread() {
     {
         let thread_dir = data_dir.join(&thread_id);
         assert!(!thread_dir.exists(), "Thread directory should be deleted");
+        assert!(
+            tauri_plugin_agent_tools::snapshot::by_session(&jan_data, &thread_id).is_empty(),
+            "a deleted thread's request snapshots must go with it"
+        );
+        assert_eq!(
+            tauri_plugin_agent_tools::snapshot::by_session(&jan_data, "some-other-thread").len(),
+            1,
+            "another thread's snapshots must survive"
+        );
     }
 
     // Clean up

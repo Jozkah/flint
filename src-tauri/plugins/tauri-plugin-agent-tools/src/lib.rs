@@ -23,6 +23,7 @@ pub mod project_browse;
 pub mod proposal;
 pub mod readiness;
 pub mod resource;
+pub mod retention;
 pub mod secrets;
 pub mod skills;
 pub mod snapshot;

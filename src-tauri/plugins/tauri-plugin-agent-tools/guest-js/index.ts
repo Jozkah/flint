@@ -277,6 +277,13 @@ export type MemoryLocation = {
   projectRoot?: string
   /** The active chat. */
   sessionId?: string
+  /**
+   * The Jan workspace project (sidebar project) the chat belongs to, when it
+   * has no folder. The backend namespaces it (`jan-project:<id>`) and uses a
+   * folder's identity instead whenever `projectRoot` is set. Only renderer
+   * memory commands accept it; model-facing tools cannot supply it.
+   */
+  janProjectId?: string
 }
 
 export type MemoryView = {
@@ -340,6 +347,8 @@ export type MemoryStorageSummary = {
 
 export type MemorySettings = {
   automaticallySave: boolean
+  /** Whether remembered facts are added to requests at all. Defaults to on. */
+  memoryEnabled: boolean
   schemaVersion: number
 }
 
@@ -359,6 +368,12 @@ export type MemoryRetrieved = {
   /** Applicable records the budget had no room for. */
   droppedIds: string[]
   charsUsed: number
+  /** Usable records whose scope matched, before conflicts, dedupe and budget. */
+  candidateIds: string[]
+  /** The project identity the retrieval was scoped to, if any. */
+  projectId: string | null
+  /** Memory is switched off in settings; nothing was read. */
+  disabled: boolean
 }
 
 /**
@@ -609,6 +624,20 @@ export async function memorySettingsUpdate(
   return await invoke('plugin:agent-tools|memory_settings_update', {
     location,
     automaticallySave,
+  })
+}
+
+/**
+ * Turn memory in requests on or off. Leaves `automaticallySave` as it is:
+ * the backend changes only the switch that was named.
+ */
+export async function memorySettingsSetEnabled(
+  location: MemoryLocation,
+  memoryEnabled: boolean
+): Promise<MemorySettings> {
+  return await invoke('plugin:agent-tools|memory_settings_update', {
+    location,
+    memoryEnabled,
   })
 }
 

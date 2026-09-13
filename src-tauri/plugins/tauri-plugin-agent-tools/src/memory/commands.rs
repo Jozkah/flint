@@ -52,6 +52,47 @@ pub struct Where {
     pub project_root: Option<String>,
     /// The active chat.
     pub session_id: Option<String>,
+    /// The Jan workspace project the chat belongs to, when it has no folder.
+    ///
+    /// Jan's sidebar projects are a renderer-owned grouping with no path on
+    /// disk, so a folder identity cannot be derived for them. This names one.
+    /// See [`JAN_PROJECT_PREFIX`] for what it becomes and why that is safe.
+    pub jan_project_id: Option<String>,
+}
+
+/// Namespace for workspace-project identities.
+///
+/// A Jan project id becomes `jan-project:<id>`. Folder identities are
+/// `proj-<hash>` (or whatever a project's id file says, which cannot contain
+/// this prefix and still be read back by a folder -- see `identity`), so a
+/// renderer naming a Jan project can never address a folder project's records,
+/// and a folder can never be mistaken for a Jan project.
+///
+/// Trust boundary. The project list lives in the renderer's own storage and is
+/// not reachable from Rust, so the backend cannot prove the id names a project
+/// that exists. It does not need to: the only caller that can supply this field
+/// is a renderer-invoked memory command, and the renderer is the user acting in
+/// their own UI -- they can already open every project in Settings > Memory.
+/// What must not supply it is the model. Model-facing tools reach memory
+/// through `ToolContext`, which carries a project *root* and derives identity
+/// from the folder; no tool schema or tool argument is ever parsed into a
+/// `Where`, so nothing a model emits can choose a workspace project.
+pub const JAN_PROJECT_PREFIX: &str = "jan-project:";
+
+/// A workspace project id as the renderer sent it, if it is one.
+///
+/// Refused rather than escaped when it is blank, overlong or carries anything
+/// beyond the characters Jan's own ids use: an id that needs escaping was not
+/// produced by Jan, and an unusable id must mean "no project memory", never a
+/// different project's.
+fn workspace_project(raw: Option<&str>) -> Option<String> {
+    let id = raw?.trim();
+    let ok = !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    ok.then(|| format!("{JAN_PROJECT_PREFIX}{id}"))
 }
 
 impl Where {
@@ -62,6 +103,29 @@ impl Where {
             .map(str::trim)
             .filter(|p| !p.is_empty())
             .map(PathBuf::from);
+        let permanent_store = (!self.data_folder.trim().is_empty())
+            .then(|| workspace::permanent_store(Path::new(&self.data_folder)));
+
+        // A folder, when there is one, is the identity: a Jan project linked to
+        // a Cowork workspace keeps the memories that folder already has. The
+        // workspace-project identity applies only to a project with no folder.
+        let (project_id, project_store) = match project_root.as_deref() {
+            // Derived from the project itself, never from anything the
+            // renderer says it is: an id supplied by the caller would be a way
+            // to ask for another project's memories by name.
+            Some(root) => (
+                super::identity::project_id(root),
+                Some(workspace::project_store(root)),
+            ),
+            // Namespaced, and kept in the data-folder store: there is no
+            // project folder to hold it. Records from every workspace project
+            // share that file and are told apart by `project_id`, which every
+            // read path checks (`applies_to`, `may_see`).
+            None => match workspace_project(self.jan_project_id.as_deref()) {
+                Some(id) if permanent_store.is_some() => (Some(id), permanent_store.clone()),
+                _ => (None, None),
+            },
+        };
 
         Access {
             session_id: self
@@ -70,15 +134,9 @@ impl Where {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
-            // Derived from the project itself, never from anything the renderer
-            // says it is: an id supplied by the caller would be a way to ask
-            // for another project's memories by name.
-            project_id: project_root
-                .as_deref()
-                .and_then(super::identity::project_id),
-            project_store: project_root.as_deref().map(workspace::project_store),
-            permanent_store: (!self.data_folder.trim().is_empty())
-                .then(|| workspace::permanent_store(Path::new(&self.data_folder))),
+            project_id,
+            project_store,
+            permanent_store,
         }
     }
 
@@ -594,14 +652,19 @@ pub async fn memory_settings_get(location: Where) -> Result<Settings, AgentTools
 #[tauri::command]
 pub async fn memory_settings_update(
     location: Where,
-    automatically_save: bool,
+    automatically_save: Option<bool>,
+    memory_enabled: Option<bool>,
 ) -> Result<Settings, AgentToolsError> {
     let root = location
         .settings_root()
         .ok_or_else(|| AgentToolsError::from("no data folder to store settings in".to_string()))?;
+    // Each switch changes only itself: flipping one must not reset the other
+    // to whatever a caller that did not mention it happened to default to.
+    let current = settings::load(&root);
     let next = Settings {
-        automatically_save,
-        ..settings::load(&root)
+        automatically_save: automatically_save.unwrap_or(current.automatically_save),
+        memory_enabled: memory_enabled.unwrap_or(current.memory_enabled),
+        ..current
     };
     settings::save(&root, &next).map_err(AgentToolsError::from)?;
     Ok(next)
@@ -689,6 +752,15 @@ pub struct Retrieved {
     pub dropped_ids: Vec<String>,
     /// Characters injected, for context accounting.
     pub chars_used: usize,
+    /// Usable records whose scope matched this chat, before conflicts,
+    /// duplicates and the budget. "Retrieved" in the context panel: a record
+    /// here was a candidate, and only `injected_ids` says it was chosen.
+    pub candidate_ids: Vec<String>,
+    /// The project identity this retrieval was scoped to, when there was one.
+    /// Lets the panel say which project a request used after the chat moves.
+    pub project_id: Option<String>,
+    /// Memory is switched off in settings, so nothing was read.
+    pub disabled: bool,
 }
 
 impl Retrieved {
@@ -701,6 +773,9 @@ impl Retrieved {
             conflict_ids: Vec::new(),
             dropped_ids: Vec::new(),
             chars_used: 0,
+            candidate_ids: Vec::new(),
+            project_id: None,
+            disabled: false,
         }
     }
 }
@@ -720,6 +795,19 @@ pub async fn memory_retrieve(
         return Ok(Retrieved::empty());
     }
 
+    // Switched off in settings: answered before any record is opened, and
+    // said so, so the panel can tell "off" apart from "nothing applies".
+    let enabled = location
+        .settings_root()
+        .map(|root| settings::load(&root).memory_enabled)
+        .unwrap_or(true);
+    if !enabled {
+        return Ok(Retrieved {
+            disabled: true,
+            ..Retrieved::empty()
+        });
+    }
+
     let access = location.access();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -736,6 +824,15 @@ pub async fn memory_retrieve(
     let permanent = crate::workspace::permanent_store(std::path::Path::new(&location.data_folder));
     records.extend(super::store::load(&permanent, Scope::User).records);
     records.extend(super::store::load(&permanent, Scope::Session).records);
+
+    // The same two filters `select` starts with, so a candidate here is
+    // exactly a record `select` considered.
+    let candidate_ids: Vec<String> = records
+        .iter()
+        .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
+        .filter(|r| r.is_usable(now))
+        .map(|r| r.id.as_str().to_string())
+        .collect();
 
     let selection = super::retrieve::select(
         &records,
@@ -771,6 +868,9 @@ pub async fn memory_retrieve(
             .map(|id| id.as_str().to_string())
             .collect(),
         chars_used: selection.chars_used,
+        candidate_ids,
+        project_id: access.project_id.clone(),
+        disabled: false,
     })
 }
 
@@ -795,20 +895,66 @@ mod tests {
         assert!(parse_scope("").is_err());
     }
 
-    /// The project id is derived from the project, never taken from the caller.
+    /// The project id is derived, never taken from the caller verbatim. The
+    /// only project name a caller may give is a workspace project, and that is
+    /// namespaced so it cannot spell a folder project's identity.
     #[test]
     fn a_caller_cannot_name_the_project_id_it_wants() {
-        let fields: Vec<&str> = serde_json::to_value(Where::default())
+        let fields: Vec<String> = serde_json::to_value(Where::default())
             .ok()
             .and_then(|v| v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()))
-            .unwrap_or_default()
-            .iter()
-            .map(|s| Box::leak(s.clone().into_boxed_str()) as &str)
-            .collect();
+            .unwrap_or_default();
         assert!(
-            !fields.iter().any(|f| f.contains("projectId")),
-            "the renderer must not be able to supply a project id: {fields:?}"
+            !fields.iter().any(|f| f == "projectId"),
+            "the renderer must not be able to supply a raw project id: {fields:?}"
         );
+
+        // Naming a folder project's id as a workspace project reaches a
+        // different, namespaced identity.
+        let dir = std::env::temp_dir().join(format!("jan-where-ns-{}", std::process::id()));
+        let access = Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            jan_project_id: Some("proj-0123456789abcdef".into()),
+            ..Where::default()
+        }
+        .access();
+        assert_eq!(
+            access.project_id.as_deref(),
+            Some("jan-project:proj-0123456789abcdef")
+        );
+    }
+
+    #[test]
+    fn an_unusable_workspace_project_id_means_no_project_not_another_one() {
+        for raw in ["", "   ", "../other", "a b", "jan-project:x", &"x".repeat(200)] {
+            let access = Where {
+                data_folder: "/tmp/x".into(),
+                jan_project_id: Some(raw.to_string()),
+                ..Where::default()
+            }
+            .access();
+            assert!(access.project_id.is_none(), "{raw:?} was accepted");
+            assert!(access.project_store.is_none(), "{raw:?} opened a store");
+        }
+    }
+
+    /// A folder is the identity whenever there is one, so a Jan project linked
+    /// to a Cowork workspace keeps the memories that folder already holds.
+    #[test]
+    fn a_folder_wins_over_a_workspace_project() {
+        let root = std::env::temp_dir().join(format!("jan-where-folder-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let access = Where {
+            data_folder: "/tmp/x".into(),
+            project_root: Some(root.to_string_lossy().to_string()),
+            jan_project_id: Some("p1".into()),
+            ..Where::default()
+        }
+        .access();
+        let id = access.project_id.expect("folder identity");
+        assert!(!id.starts_with(JAN_PROJECT_PREFIX), "{id}");
+        assert_eq!(access.project_store, Some(workspace::project_store(&root)));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -834,11 +980,301 @@ mod tests {
 impl Serialize for Where {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("Where", 3)?;
+        let mut s = serializer.serialize_struct("Where", 4)?;
         s.serialize_field("dataFolder", &self.data_folder)?;
         s.serialize_field("projectRoot", &self.project_root)?;
         s.serialize_field("sessionId", &self.session_id)?;
+        s.serialize_field("janProjectId", &self.jan_project_id)?;
         s.end()
+    }
+}
+
+#[cfg(test)]
+mod workspace_project_tests {
+    //! Project memory for Jan's sidebar projects, which have no folder.
+
+    use super::*;
+    use crate::memory::record::{Creator, MemoryId, MemoryRecord, Origin};
+
+    fn root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-wsproj-{name}-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("root");
+        dir
+    }
+
+    fn at(dir: &Path, project: Option<&str>, session: &str) -> Where {
+        Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some(session.to_string()),
+            jan_project_id: project.map(str::to_string),
+        }
+    }
+
+    /// Save an explicit project memory through the same commands the UI uses.
+    async fn remember_in_project(dir: &Path, project: &str, content: &str) -> MemoryView {
+        let location = at(dir, Some(project), "chat-in-project");
+        let proposal = memory_record_propose(
+            location.clone(),
+            "project".into(),
+            content.into(),
+            None,
+            None,
+        )
+        .await
+        .expect("propose");
+        memory_record_commit(
+            location,
+            "project".into(),
+            content.into(),
+            proposal.content_hash,
+            None,
+            None,
+        )
+        .await
+        .expect("commit")
+    }
+
+    fn user_memory(dir: &Path, content: &str) {
+        let store = workspace::permanent_store(dir);
+        let record = MemoryRecord::new(
+            MemoryId::new(format!("mem-user-{}", content.len())),
+            content,
+            Scope::User,
+            Creator::User,
+            Origin::Explicit,
+            now(),
+        );
+        crate::memory::store::upsert(&store, &record).expect("user memory");
+    }
+
+    #[tokio::test]
+    async fn a_project_memory_is_saved_under_the_namespaced_identity() {
+        let dir = root("save");
+        let saved = remember_in_project(&dir, "p-alpha", "Alpha deploys with make ship.").await;
+        assert_eq!(saved.scope, "project");
+        assert_eq!(saved.project_id.as_deref(), Some("jan-project:p-alpha"));
+        // In the data-folder store: there is no project folder to put it in.
+        let records =
+            crate::memory::store::load(&workspace::permanent_store(&dir), Scope::Project).records;
+        assert_eq!(records.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The isolation that matters: project A's memory never reaches a chat in
+    /// project B, or a chat in no project.
+    #[tokio::test]
+    async fn project_memory_is_never_retrieved_for_another_project_or_none() {
+        let dir = root("isolation");
+        let a = remember_in_project(&dir, "p-alpha", "Alpha deploys with make ship.").await;
+        let b = remember_in_project(&dir, "p-beta", "Beta deploys with cargo dist.").await;
+        user_memory(&dir, "The user prefers metric units.");
+
+        let in_a = memory_retrieve(at(&dir, Some("p-alpha"), "chat-1"), None, None)
+            .await
+            .unwrap();
+        assert!(in_a.injected_ids.contains(&a.id));
+        assert!(!in_a.injected_ids.contains(&b.id), "B leaked into A");
+        assert!(!in_a.candidate_ids.contains(&b.id), "B was even a candidate in A");
+        assert!(in_a.block.as_deref().unwrap_or("").contains("make ship"));
+        assert!(!in_a.block.as_deref().unwrap_or("").contains("cargo dist"));
+        assert_eq!(in_a.project_id.as_deref(), Some("jan-project:p-alpha"));
+
+        let in_b = memory_retrieve(at(&dir, Some("p-beta"), "chat-2"), None, None)
+            .await
+            .unwrap();
+        assert!(in_b.injected_ids.contains(&b.id));
+        assert!(!in_b.injected_ids.contains(&a.id), "A leaked into B");
+
+        let nowhere = memory_retrieve(at(&dir, None, "chat-3"), None, None)
+            .await
+            .unwrap();
+        assert!(!nowhere.injected_ids.contains(&a.id));
+        assert!(!nowhere.injected_ids.contains(&b.id));
+        assert!(nowhere.candidate_ids.iter().all(|id| id != &a.id && id != &b.id));
+        assert!(nowhere.project_id.is_none());
+        // User memory still applies everywhere.
+        assert!(nowhere.block.as_deref().unwrap_or("").contains("metric"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Moving a chat to another project changes what the next retrieval sees.
+    #[tokio::test]
+    async fn a_chat_that_moves_projects_sees_the_new_project_next_time() {
+        let dir = root("move");
+        let a = remember_in_project(&dir, "p-alpha", "Alpha uses tabs.").await;
+        let b = remember_in_project(&dir, "p-beta", "Beta uses spaces.").await;
+        let before = memory_retrieve(at(&dir, Some("p-alpha"), "chat-x"), None, None)
+            .await
+            .unwrap();
+        let after = memory_retrieve(at(&dir, Some("p-beta"), "chat-x"), None, None)
+            .await
+            .unwrap();
+        assert_eq!(before.injected_ids, vec![a.id.clone()]);
+        assert_eq!(after.injected_ids, vec![b.id.clone()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Managing a project's memories from Settings sees only that project.
+    #[tokio::test]
+    async fn listing_a_project_shows_only_that_project() {
+        let dir = root("list");
+        remember_in_project(&dir, "p-alpha", "Alpha fact.").await;
+        remember_in_project(&dir, "p-beta", "Beta fact.").await;
+        let page = memory_records_list(at(&dir, Some("p-beta"), "s"), "project".into(), None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert!(page.items[0].content.contains("Beta"));
+        // And no project at all is a refusal, not everything.
+        assert!(
+            memory_records_list(at(&dir, None, "s"), "project".into(), None, None, None)
+                .await
+                .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn disabled_memory_retrieves_nothing_and_says_so() {
+        let dir = root("disabled");
+        remember_in_project(&dir, "p-alpha", "Alpha deploys with make ship.").await;
+        user_memory(&dir, "The user prefers metric units.");
+
+        let settings = memory_settings_update(at(&dir, None, "s"), None, Some(false))
+            .await
+            .unwrap();
+        assert!(!settings.memory_enabled);
+        // Turning memory off did not touch the other switch.
+        assert!(!settings.automatically_save);
+
+        let out = memory_retrieve(at(&dir, Some("p-alpha"), "s"), None, None)
+            .await
+            .unwrap();
+        assert!(out.disabled);
+        assert!(out.block.is_none());
+        assert!(out.injected_ids.is_empty());
+        assert!(out.candidate_ids.is_empty());
+
+        // Back on: the records were kept, and apply again.
+        memory_settings_update(at(&dir, None, "s"), None, Some(true))
+            .await
+            .unwrap();
+        let again = memory_retrieve(at(&dir, Some("p-alpha"), "s"), None, None)
+            .await
+            .unwrap();
+        assert!(!again.disabled);
+        assert_eq!(again.injected_ids.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn each_switch_changes_only_itself() {
+        let dir = root("switches");
+        memory_settings_update(at(&dir, None, "s"), Some(true), None)
+            .await
+            .unwrap();
+        let s = memory_settings_update(at(&dir, None, "s"), None, Some(false))
+            .await
+            .unwrap();
+        assert!(s.automatically_save, "disabling memory reset automatic saving");
+        let s = memory_settings_update(at(&dir, None, "s"), Some(false), None)
+            .await
+            .unwrap();
+        assert!(!s.memory_enabled, "changing automatic saving re-enabled memory");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_older_settings_file_without_the_switch_keeps_memory_on() {
+        let dir = root("legacy");
+        let store = workspace::permanent_store(&dir);
+        std::fs::create_dir_all(crate::memory::memory_dir(&store)).unwrap();
+        std::fs::write(settings::settings_path(&store), r#"{"automaticallySave":true}"#).unwrap();
+        let loaded = settings::load(&store);
+        assert!(loaded.memory_enabled);
+        assert!(loaded.automatically_save);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_temporary_chat_in_a_project_reads_nothing() {
+        let dir = root("temporary");
+        remember_in_project(&dir, "p-alpha", "Alpha deploys with make ship.").await;
+        let out = memory_retrieve(at(&dir, Some("p-alpha"), "temporary-chat"), Some(true), None)
+            .await
+            .unwrap();
+        assert!(out.injected_ids.is_empty());
+        assert!(out.candidate_ids.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The model cannot choose a workspace project. Its memory tool takes a
+    /// `ToolContext` built from a folder, and an argument naming a workspace
+    /// project is not read -- the record lands under the folder's identity.
+    #[tokio::test]
+    async fn the_model_tool_path_cannot_supply_a_workspace_project() {
+        let dir = root("tool");
+        let store = workspace::permanent_store(&dir);
+        std::fs::create_dir_all(&store).unwrap();
+        settings::save(
+            &store,
+            &Settings {
+                automatically_save: true,
+                ..Settings::default()
+            },
+        )
+        .unwrap();
+        let project = dir.join("sandbox");
+        std::fs::create_dir_all(&project).unwrap();
+        let root_ref: &'static Path = Box::leak(project.clone().into_boxed_path());
+        let store_ref: &'static Path = Box::leak(store.clone().into_boxed_path());
+
+        // No model-facing schema offers such an argument.
+        let schema =
+            serde_json::to_string(&crate::tools::schema::builtin_tool_schemas()).unwrap_or_default();
+        assert!(schema.contains("memory_propose"), "schema list is not the one advertised");
+        assert!(!schema.contains("janProjectId"), "a tool advertises janProjectId");
+        assert!(!schema.contains("jan_project"), "a tool advertises jan_project");
+
+        let ctx = crate::tools::ToolContext::new(root_ref, store_ref, &[])
+            .in_session(Some("chat-a"), false);
+        let _ = crate::tools::handlers::execute_text(
+            crate::tools::lookup("memory_propose").unwrap(),
+            &serde_json::json!({
+                "content": "The staging host is blue.",
+                "scope": "project",
+                "janProjectId": "p-alpha",
+                "jan_project_id": "p-alpha",
+                "project_id": "jan-project:p-alpha",
+            }),
+            &ctx,
+        )
+        .await;
+
+        // Nothing was filed under the workspace project...
+        let workspace_records =
+            crate::memory::store::load(&store, Scope::Project).records;
+        assert!(
+            workspace_records
+                .iter()
+                .all(|r| r.project_id.as_deref() != Some("jan-project:p-alpha")),
+            "a tool argument chose a workspace project"
+        );
+        let in_project = memory_retrieve(at(&dir, Some("p-alpha"), "chat-a"), None, None)
+            .await
+            .unwrap();
+        assert!(!in_project
+            .block
+            .as_deref()
+            .unwrap_or("")
+            .contains("staging host"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -862,6 +1298,7 @@ mod inferred_tests {
             data_folder: dir.to_string_lossy().to_string(),
             project_root: None,
             session_id: Some("chat-a".to_string()),
+            jan_project_id: None,
         }
     }
 
@@ -1034,6 +1471,7 @@ mod inferred_tests {
                 data_folder: dir.to_string_lossy().to_string(),
                 project_root: Some(project.to_string_lossy().to_string()),
                 session_id: Some("chat-a".to_string()),
+                jan_project_id: None,
             },
             "user".to_string(),
             "The build command is `cargo xtask dist`.".to_string(),
@@ -1139,6 +1577,7 @@ mod proposal_tests {
             data_folder: dir.to_string_lossy().to_string(),
             project_root: None,
             session_id: Some("chat-a".to_string()),
+            jan_project_id: None,
         }
     }
 
