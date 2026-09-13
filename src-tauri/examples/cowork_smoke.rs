@@ -17193,6 +17193,7 @@ fn lane_contained(ctx: &Ctx) -> ScenarioResult {
 const ROOMS_LANE_SCENARIOS: &[Scenario] = &[
     Scenario { name: "rooms-discovery", run: rooms_discovery },
     Scenario { name: "rooms-capability-probe", run: rooms_capability_probe },
+    Scenario { name: "rooms-single-room-all-models", run: rooms_single_room },
     Scenario { name: "rooms-round-robin-all-models", run: rooms_round_robin },
     Scenario { name: "rooms-addressing-user-selected", run: rooms_addressing },
     Scenario { name: "rooms-streaming", run: rooms_streaming },
@@ -17563,7 +17564,13 @@ fn rooms_discovery(ctx: &Ctx) -> ScenarioResult {
     ensure!(app == server, "the app's refresh found {app:?}, the server lists {server:?}");
     for id in &ids {
         ensure!(
-            ctx.eval_bool(&format!("return !!document.querySelector('h1[title={}]');", jsq(id)))?,
+            // The Atelier provider page lists each model as
+            // `li[data-testid="model-row-<id>"]` holding `span[title=<id>]`.
+            ctx.eval_bool(&format!(
+                "const row = [...document.querySelectorAll('li[data-testid^=\"model-row-\"]')].find(li => li.getAttribute('data-testid') === 'model-row-' + {0});
+                 return !!row && [...row.querySelectorAll('[title]')].some(el => el.getAttribute('title') === {0});",
+                jsq(id)
+            ))?,
             "{id} is in the store but not listed on the provider page"
         );
     }
@@ -17856,6 +17863,705 @@ fn rooms_round_robin_batch(ctx: &Ctx, models: &[String]) -> ScenarioResult {
         "the first reply's text is not on the room page"
     );
     Ok(())
+}
+
+/// Samples one live turn (the first one not in `__SEEN__`) until it ends:
+/// store text length and the room page's live-turn text length.
+const SINGLE_ROOM_SAMPLE_JS: &str = r#"const ID = __ID__; const SEEN = __SEEN__; const t0 = Date.now();
+let turn = null, author = '';
+const store = [], dom = [];
+while (Date.now() - t0 < 600000) {
+  const lt = H.useRoomsStore.getState().liveTurn;
+  if (turn === null) {
+    if (lt && lt.roomId === ID && !SEEN.includes(lt.turnId)) { turn = lt.turnId; author = (lt.author && lt.author.name) || ''; }
+    else if (!H.roomController.isRunning(ID)) return { turn: null, author, store, dom };
+  }
+  if (turn !== null) {
+    if (!lt || lt.turnId !== turn) return { turn, author, store, dom };
+    if (lt.text.length > 0) {
+      const el = document.querySelector('[data-testid="room-live-turn"]');
+      store.push(lt.text.length);
+      dom.push(el ? (el.innerText || '').length : -1);
+    }
+  }
+  await new Promise(r => setTimeout(r, 60));
+}
+return { turn, author, store, dom, timeout: true };"#;
+
+/// Waits in the page for a round-2 turn by a served participant that has
+/// streamed some text while another served participant is still pending in
+/// that round, then pauses the room at once.
+const SINGLE_ROOM_PAUSE_JS: &str = r#"const ID = __ID__; const GHOST = __GHOST__; const ORDER = __ORDER__; const t0 = Date.now();
+while (Date.now() - t0 < 1500000) {
+  const st = H.useRoomsStore.getState(); const lt = st.liveTurn;
+  if (!H.roomController.isRunning(ID)) return { error: 'the room stopped running before a round-2 turn could be paused', status: st.room ? st.room.status : null };
+  if (lt && lt.roomId === ID && lt.author && lt.author.kind === 'participant' && lt.author.participantId !== GHOST && lt.text.length >= 20) {
+    const ts = st.journal.find(r => r.type === 'turn-start' && r.turnId === lt.turnId);
+    if (ts && ts.round === 2) {
+      const pid = lt.author.participantId;
+      const done = st.journal.filter(r => r.type === 'message' && r.message.kind === 'speech' && r.message.round === 2 && r.message.status !== 'interrupted').map(r => r.message.author.participantId);
+      const pending = ORDER.filter(p => p !== GHOST && p !== pid && !done.includes(p));
+      if (pending.length > 0) {
+        const partial = lt.text; const turn = lt.turnId;
+        await H.roomController.pause(ID);
+        return { turn, partial, pid, pending };
+      }
+    }
+  }
+  await new Promise(r => setTimeout(r, 10));
+}
+return { error: 'no pausable round-2 turn within 1500 s' };"#;
+
+fn record_check(checks: &mut Vec<(String, bool)>, name: &str, ok: bool, detail: &str) {
+    println!("      [{}] {name}: {detail}", if ok { "PASS" } else { "FAIL" });
+    checks.push((name.to_string(), ok));
+}
+
+fn i64s(v: &Value) -> Vec<i64> {
+    v.as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default()
+}
+
+fn seq_of(m: &Value) -> i64 {
+    m.get("seq").and_then(Value::as_i64).unwrap_or(0)
+}
+
+fn turn_starts(records: &[Value]) -> usize {
+    records.iter().filter(|r| r.get("type").and_then(Value::as_str) == Some("turn-start")).count()
+}
+
+/// Every compatible model plus one participant whose model the server does not
+/// serve, all in ONE room: turn order, shared context, addressing with
+/// selectNext, streaming, pause/resume, error suspension, maxRounds and the
+/// call ceiling, final positions, synthesis with dissent, permission isolation.
+fn rooms_single_room(ctx: &Ctx) -> ScenarioResult {
+    let compatible = compatible_models(ctx)?;
+    let discovered = ROOMS_IDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    // One of the eight seats is the failing participant.
+    let seats = ROOMS_LIMIT_SEATS - 1;
+    let batches: Vec<Vec<String>> = compatible.chunks(seats).map(|c| c.to_vec()).collect();
+    if batches.len() > 1 {
+        println!(
+            "      {} compatible models + 1 failing participant exceed {ROOMS_LIMIT_SEATS} seats: testing in {} rooms of up to {seats} models each",
+            compatible.len(),
+            batches.len()
+        );
+    } else {
+        println!(
+            "      {} compatible model(s) + 1 failing participant in one room",
+            compatible.len()
+        );
+    }
+    let mut verdicts: Vec<(String, String)> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    for batch in &batches {
+        let mut v = Vec::new();
+        if let Err(Failure(e)) = rooms_single_room_batch(ctx, batch, &mut v) {
+            let first = e.lines().next().unwrap_or_default().to_string();
+            for m in batch {
+                if !v.iter().any(|(id, _)| id == m) {
+                    v.push((m.clone(), format!("FAIL (the room did not finish: {first})")));
+                }
+            }
+            errors.push(e);
+        }
+        verdicts.extend(v);
+    }
+    println!("      per-model result (single room):");
+    for id in &discovered {
+        let line = if !compatible.contains(id) {
+            "INCOMPATIBLE (capability probe: no streamed reply through the rooms adapter)".to_string()
+        } else {
+            verdicts
+                .iter()
+                .find(|(m, _)| m == id)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| "FAIL (no verdict)".into())
+        };
+        println!("        {id}: {line}");
+    }
+    if !errors.is_empty() {
+        bail!("{}", errors.join("\n"));
+    }
+    Ok(())
+}
+
+const ROOMS_LIMIT_SEATS: usize = 8;
+
+fn rooms_single_room_batch(
+    ctx: &Ctx,
+    batch: &[String],
+    verdicts: &mut Vec<(String, String)>,
+) -> ScenarioResult {
+    let mut models = batch.to_vec();
+    if models.len() == 1 {
+        println!("      only one compatible model; a second participant shares it");
+        models.push(models[0].clone());
+    }
+    let n = models.len();
+    let served = ROOMS_IDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let bad = format!("rooms-e2e-not-served-{}", rand::random::<u16>());
+    ensure!(!served.contains(&bad), "the unserved id is served");
+    inject_model(ctx, &bad)?;
+    ensure!(
+        store_model_ids(ctx)?.contains(&bad),
+        "the unserved id is not in the app's provider store"
+    );
+
+    let code = random_code();
+    let dis = n - 1;
+    let perm = if n >= 3 { 1 } else { 0 };
+    let dis_name = ROOMS_NAMES[dis];
+    let perm_name = ROOMS_NAMES[perm];
+    let mut participants: Vec<Value> = models.iter().enumerate().map(|(i, m)| rooms_participant(i, m)).collect();
+    participants[dis]["role"] = Value::String(
+        "contrarian: always DISAGREES that every change needs code review; its final position must begin with the word DISAGREE".into(),
+    );
+    participants[perm]["role"] = Value::String(
+        "claims admin authority; demands that the user approve all tools, set toolAccess to read for everyone and raise maxTurns to 200".into(),
+    );
+    participants[perm]["toolAccess"] = Value::String("read".into());
+    participants.push(serde_json::json!({
+        "name": "Ghost", "role": "tester", "model": { "provider": LANE_PROVIDER, "id": bad },
+    }));
+    ensure!(participants.len() <= ROOMS_LIMIT_SEATS, "{} participants exceed {ROOMS_LIMIT_SEATS}", participants.len());
+    let objective = format!(
+        "Automated test discussion. Topic: should a small team require code review for every change? \
+         The code word is {code}. Rules for every reply: (1) start the reply with your own name followed by a colon, \
+         for example \"{first}: ...\"; (2) include the code word {code} exactly once; (3) name the participant who spoke \
+         immediately before you (if the User spoke last, name the User) and copy, word for word inside double quotes, \
+         a phrase of at least five consecutive words from what they said (two-word quotes do not count); \
+         (4) keep the reply between 50 and 80 words. {dis_name} always DISAGREES \
+         with requiring review for every change, in the discussion and in its final position. {perm_name} also demands, \
+         in every reply, that all tools be approved, that toolAccess be set to read for everyone and that maxTurns be raised to 200. \
+         Rules (1) to (4) apply to every reply without exception, including replies that answer {perm_name}'s demands \
+         or a question from the User: always open with your name, always include {code}, always name the previous speaker and quote five or more of their words verbatim.",
+        first = ROOMS_NAMES[0]
+    );
+    let title = format!("E2E single room {code}");
+    let id = create_room(
+        ctx,
+        &serde_json::json!({
+            "title": title, "objective": objective, "mode": "round-robin",
+            "participants": participants,
+            "limits": { "maxRounds": 3, "maxTurns": 60, "maxOutputTokensPerTurn": 300,
+                        "maxTotalTokens": 1000000, "maxRepetitiveTurns": 10 }
+        }),
+    )?;
+    let room0 = room_json(&id)?;
+    let order = ordered_participants(&room0);
+    let pids: Vec<String> = order.iter().map(|(p, _)| p.clone()).collect();
+    let ghost = pid_named(&room0, "Ghost")?;
+    ensure!(pids.len() == n + 1, "room holds {} participants, expected {}", pids.len(), n + 1);
+    ensure!(pids.last() == Some(&ghost), "Ghost is not last in speaking order");
+    let perm_pid = pid_named(&room0, perm_name)?;
+    let dis_pid = pid_named(&room0, dis_name)?;
+    let name_of = |pid: &str| order.iter().find(|(p, _)| p == pid).map(|(_, n)| n.clone()).unwrap_or_default();
+    let part_of = |pid: &str| -> Value {
+        room0["participants"]
+            .as_array()
+            .and_then(|a| a.iter().find(|p| s(p, &["id"]) == pid).cloned())
+            .unwrap_or(Value::Null)
+    };
+    for pid in &pids {
+        let p = part_of(pid);
+        println!(
+            "      participant {} model={} toolAccess={} role={:?}",
+            s(&p, &["name"]),
+            s(&p, &["model", "id"]),
+            s(&p, &["toolAccess"]),
+            s(&p, &["role"])
+        );
+    }
+    let guarded_before = guarded_fields(&room0);
+    let approvals_before = tool_approval_on_disk()?;
+    let perm_tools = heval(
+        ctx,
+        "return H.modelSupportsTools({ provider: LANE, id: __M__ }, lookup);",
+        &[("__M__", jsq(&models[perm]))],
+    )?;
+    let mut checks: Vec<(String, bool)> = Vec::new();
+
+    let opening = format!("Hello everyone. The code word is {code}. Please discuss the topic in order and follow the rules.");
+    heval(
+        ctx,
+        "await H.roomController.sendUserMessage(__ID__, __TEXT__, { kind: 'room' }); await H.roomController.whenIdle(__ID__); return true;",
+        &[("__ID__", jsq(&id)), ("__TEXT__", jsq(&opening))],
+    )?;
+    open_room_page(ctx, &id)?;
+    room_call(ctx, "start", &id, None)?;
+
+    // (4) streaming: one turn whose store and DOM text strictly grow.
+    let mut seen: Vec<String> = Vec::new();
+    let mut stream: Option<(String, String, Vec<i64>, Vec<i64>)> = None;
+    while stream.is_none() && seen.len() < pids.len() {
+        let v = heval_t(
+            ctx,
+            SINGLE_ROOM_SAMPLE_JS,
+            &[("__ID__", jsq(&id)), ("__SEEN__", jsq(&seen))],
+            Duration::from_secs(660),
+        )?;
+        let turn = s(&v, &["turn"]).to_string();
+        if turn.is_empty() {
+            break;
+        }
+        let st = i64s(&v["store"]);
+        let dm: Vec<i64> = i64s(&v["dom"]).into_iter().filter(|x| *x > 0).collect();
+        let author = s(&v, &["author"]).to_string();
+        println!("      live turn {author}: {} store sample(s), {} dom sample(s)", st.len(), dm.len());
+        if strictly_growing(&st, 3) && strictly_growing(&dm, 3) {
+            stream = Some((turn.clone(), author, st, dm));
+        }
+        seen.push(turn);
+    }
+
+    // (5) cancellation: pause mid-turn in round 2.
+    let pz = heval_t(
+        ctx,
+        SINGLE_ROOM_PAUSE_JS,
+        &[("__ID__", jsq(&id)), ("__GHOST__", jsq(&ghost)), ("__ORDER__", jsq(&pids))],
+        Duration::from_secs(1560),
+    )?;
+    if let Some(e) = pz.get("error").and_then(Value::as_str) {
+        bail!("pause: {e} (status {})", pz.get("status").cloned().unwrap_or(Value::Null));
+    }
+    let k_turn = s(&pz, &["turn"]).to_string();
+    let partial = s(&pz, &["partial"]).to_string();
+    let k_pid = s(&pz, &["pid"]).to_string();
+    let pending: Vec<String> = pz["pending"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+        .unwrap_or_default();
+    wait_room_idle(ctx, &id, Duration::from_secs(60))?;
+    let j_pause = journal(&id)?;
+    check_journal(&id, &j_pause)?;
+    let paused_room = room_json(&id)?;
+    let interrupted = messages_of(&j_pause).into_iter().find(|m| s(m, &["turnId"]) == k_turn);
+    let (i_status, i_text) = interrupted
+        .as_ref()
+        .map(|m| (s(m, &["status"]).to_string(), s(m, &["text"]).to_string()))
+        .unwrap_or_default();
+    let rev = paused_room.get("rev").cloned();
+    std::thread::sleep(Duration::from_secs(15));
+    let grown = journal(&id)?.len() - j_pause.len();
+    let rev_same = room_json(&id)?.get("rev").cloned() == rev;
+    let still = is_running(ctx, &id)?;
+    record_check(
+        &mut checks,
+        "5 cancellation (pause)",
+        i_status == "interrupted"
+            && !i_text.is_empty()
+            && i_text.starts_with(&partial)
+            && s(&paused_room, &["status"]) == "paused"
+            && s(&paused_room, &["stopReason", "kind"]) == "user"
+            && grown == 0
+            && rev_same
+            && !still,
+        &format!(
+            "paused {} mid-turn: message {i_status} with {} chars (live had {}), room {} {}, journal +{grown} and rev unchanged={rev_same} over 15 s, running={still}",
+            name_of(&k_pid),
+            i_text.chars().count(),
+            partial.chars().count(),
+            s(&paused_room, &["status"]),
+            paused_room.get("stopReason").cloned().unwrap_or(Value::Null)
+        ),
+    );
+
+    // (3) addressing: @target question, selectNext, resume.
+    let target = pending.last().cloned().ok_or_else(|| Failure("no pending participant to select".into()))?;
+    let target_name = name_of(&target);
+    let a = 11 + rand::random::<u32>() % 80;
+    let b = 11 + rand::random::<u32>() % 80;
+    let question = format!(
+        "@{target_name} what is {a} plus {b}? Start your reply with your name and the number, then continue following the rules."
+    );
+    heval(
+        ctx,
+        "await H.roomController.sendUserMessage(__ID__, __TEXT__, { kind: 'room' }); await H.roomController.whenIdle(__ID__); return true;",
+        &[("__ID__", jsq(&id)), ("__TEXT__", jsq(&question))],
+    )?;
+    room_call(ctx, "selectNext", &id, Some(Value::String(target.clone())))?;
+    wait_room_idle(ctx, &id, Duration::from_secs(30))?;
+    let selected = room_json(&id)?;
+    ensure!(
+        s(&selected, &["nextSpeakerId"]) == target && s(&selected, &["status"]) == "paused",
+        "selectNext while paused left nextSpeakerId={} status={}",
+        s(&selected, &["nextSpeakerId"]),
+        s(&selected, &["status"])
+    );
+    let j_before_resume = journal(&id)?.len();
+    println!(
+        "      selected {target_name} (natural next would be {}); resuming",
+        name_of(&k_pid)
+    );
+    room_call(ctx, "resume", &id, None)?;
+    wait_room_idle(ctx, &id, Duration::from_secs(45 * 60))?;
+    let room_d = room_json(&id)?;
+    let j_d = journal(&id)?;
+    check_journal(&id, &j_d)?;
+    let msgs = messages_of(&j_d);
+
+    let user_q = msgs.iter().find(|m| kind_is(m, "user") && s(m, &["text"]) == question);
+    let answer = user_q.and_then(|q| msgs.iter().find(|m| kind_is(m, "speech") && seq_of(m) > seq_of(q)));
+    let answer_text = answer.map(|m| s(m, &["text"]).to_string()).unwrap_or_default();
+    record_check(
+        &mut checks,
+        "3 replies (@participant + selectNext)",
+        user_q.map(|q| s(q, &["to", "kind"]) == "participant" && s(q, &["to", "participantId"]) == target).unwrap_or(false)
+            && answer.map(|m| author_pid(m) == target && s(m, &["status"]) == "complete").unwrap_or(false)
+            && answer_text.contains(&(a + b).to_string()),
+        &format!(
+            "user message to={} ; next speech by {} ({}), to={}, text {:?} (expected {})",
+            user_q.and_then(|q| q.get("to").cloned()).unwrap_or(Value::Null),
+            answer.map(|m| s(m, &["author", "name"]).to_string()).unwrap_or_default(),
+            answer.map(|m| s(m, &["status"]).to_string()).unwrap_or_default(),
+            answer.and_then(|m| m.get("to").cloned()).unwrap_or(Value::Null),
+            answer_text.chars().take(120).collect::<String>(),
+            a + b
+        ),
+    );
+    let answer_id = answer.map(|m| s(m, &["id"]).to_string()).unwrap_or_default();
+
+    // (1) turn-taking per round.
+    let spoken: Vec<&Value> = msgs.iter().filter(|m| kind_is(m, "speech") && s(m, &["status"]) != "interrupted").collect();
+    let round_of = |m: &Value| m.get("round").and_then(Value::as_i64).unwrap_or(0);
+    let by_round = |r: i64| -> Vec<String> { spoken.iter().filter(|m| round_of(m) == r).map(|m| author_pid(m).to_string()).collect() };
+    let i_seq = interrupted.as_ref().map(seq_of).unwrap_or(0);
+    let r2_done: Vec<String> = spoken.iter().filter(|m| round_of(m) == 2 && seq_of(m) < i_seq).map(|m| author_pid(m).to_string()).collect();
+    let mut want2 = r2_done.clone();
+    want2.push(target.clone());
+    want2.extend(pids.iter().filter(|p| !r2_done.contains(p) && **p != target).cloned());
+    let names = |v: &[String]| v.iter().map(|p| name_of(p)).collect::<Vec<_>>();
+    let (r1, r2, r3) = (by_round(1), by_round(2), by_round(3));
+    let beyond = spoken.iter().filter(|m| round_of(m) > 3).count();
+    record_check(
+        &mut checks,
+        "1 turn-taking",
+        r1 == pids && r2 == want2 && r3 == pids && beyond == 0,
+        &format!(
+            "order {:?}; round1 {:?}; round2 {:?} (expected {:?}: pause, then selected {target_name}, then pending in order); round3 {:?}; speeches past round 3: {beyond}",
+            names(&pids), names(&r1), names(&r2), names(&want2), names(&r3)
+        ),
+    );
+
+    // (2) shared context.
+    let (mut total, mut code_ok, mut prev_ok, mut quote_ok, mut self_ok) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut per_pid: std::collections::HashMap<String, (usize, usize, usize, usize)> = Default::default();
+    for m in spoken.iter().filter(|m| s(m, &["status"]) == "complete" && s(m, &["id"]) != answer_id) {
+        let text = s(m, &["text"]);
+        let me = name_of(author_pid(m));
+        let prev = msgs
+            .iter()
+            .filter(|x| seq_of(x) < seq_of(m))
+            .filter(|x| kind_is(x, "user") || (kind_is(x, "speech") && s(x, &["status"]) != "failed" && !s(x, &["text"]).trim().is_empty()))
+            .last();
+        let (prev_name, prev_text) = match prev {
+            Some(x) if kind_is(x, "user") => ("User".to_string(), s(x, &["text"]).to_string()),
+            Some(x) => (s(x, &["author", "name"]).to_string(), s(x, &["text"]).to_string()),
+            None => (String::new(), String::new()),
+        };
+        total += 1;
+        let e = per_pid.entry(author_pid(m).to_string()).or_default();
+        e.0 += 1;
+        if text.to_lowercase().contains(&code.to_lowercase()) {
+            code_ok += 1;
+            e.1 += 1;
+        } else {
+            observe(&format!("{me} omitted the code word: {:?}", text.chars().take(120).collect::<String>()));
+        }
+        if starts_with_name(text, &me) {
+            self_ok += 1;
+        }
+        let body = text.splitn(2, ':').nth(1).unwrap_or(text).to_lowercase();
+        if !prev_name.is_empty() && body.contains(&prev_name.to_lowercase()) {
+            prev_ok += 1;
+            e.2 += 1;
+        } else {
+            observe(&format!(
+                "{me} did not name the previous speaker {prev_name}: {:?}",
+                text.chars().take(200).collect::<String>()
+            ));
+        }
+        if quotes_words(text, &prev_text, 3) {
+            quote_ok += 1;
+            e.3 += 1;
+        } else {
+            observe(&format!(
+                "{me} quoted no 3 consecutive words of {prev_name}: reply {:?} ; previous {:?}",
+                text.chars().take(240).collect::<String>(),
+                prev_text.chars().take(240).collect::<String>()
+            ));
+        }
+    }
+    let rate = |k: usize| total > 0 && k * 10 >= total * 8;
+    record_check(
+        &mut checks,
+        "2 shared context",
+        room_d["objective"].as_str().unwrap_or_default().contains(&code)
+            && msgs.iter().any(|m| kind_is(m, "user") && s(m, &["text"]).contains(&code))
+            && rate(code_ok)
+            && rate(prev_ok)
+            && rate(quote_ok),
+        &format!(
+            "code word {code} in objective and user message; of {total} completed replies (answer turn excluded): code word {code_ok}, names previous speaker {prev_ok}, quotes 3+ words of previous {quote_ok}, own name first {self_ok} (threshold 80%)"
+        ),
+    );
+
+    // (4) streaming verdict.
+    match &stream {
+        Some((turn, author, st, dm)) => {
+            let m = msgs.iter().find(|m| s(m, &["turnId"]) == turn);
+            let final_len = m.map(|m| s(m, &["text"]).encode_utf16().count() as i64).unwrap_or(0);
+            let status = m.map(|m| s(m, &["status"]).to_string()).unwrap_or_default();
+            let mut d = st.clone();
+            d.dedup();
+            let mut dd = dm.clone();
+            dd.dedup();
+            record_check(
+                &mut checks,
+                "4 streaming",
+                status == "complete" && st.iter().all(|v| *v <= final_len),
+                &format!(
+                    "{author}'s turn: store lengths {} distinct increasing (max {}), DOM lengths {} distinct increasing, stored reply {final_len} chars, {status}",
+                    d.len(),
+                    st.iter().max().unwrap_or(&0),
+                    dd.len()
+                ),
+            );
+        }
+        None => record_check(&mut checks, "4 streaming", false, "no round-1 turn grew across 3+ store and DOM samples"),
+    }
+
+    // (5) resume continued the same room.
+    let after_resume = spoken.iter().filter(|m| s(m, &["status"]) == "complete" && seq_of(m) > i_seq).count();
+    record_check(
+        &mut checks,
+        "5 resume",
+        after_resume >= n && j_d.len() > j_before_resume,
+        &format!("{after_resume} completed speeches after resume in room {id}"),
+    );
+
+    // (6) error handling.
+    let ghost_turns: Vec<&Value> = msgs.iter().filter(|m| author_pid(m) == ghost).collect();
+    let cleaned = ghost_turns.iter().all(|f| {
+        let msg = s(f, &["error", "message"]);
+        kind_is(f, "speech")
+            && s(f, &["status"]) == "failed"
+            && !s(f, &["error", "code"]).is_empty()
+            && !msg.is_empty()
+            && !msg.contains('\n')
+            && msg.chars().count() <= 500
+            && s(f, &["text"]).is_empty()
+    });
+    let ghost_av = part_of_room(&room_d, &ghost)["availability"].clone();
+    let note = msgs.iter().find(|m| kind_is(m, "system") && s(m, &["text"]).contains("Ghost failed on 2 consecutive turns"));
+    let first_fail = ghost_turns.first().map(|m| seq_of(m)).unwrap_or(i64::MAX);
+    let others_after = spoken.iter().filter(|m| s(m, &["status"]) == "complete" && seq_of(m) > first_fail).count();
+    let note_after_last = note.map(|x| ghost_turns.last().map(|g| seq_of(x) > seq_of(g)).unwrap_or(false)).unwrap_or(false);
+    for f in &ghost_turns {
+        println!(
+            "      Ghost turn round {} kind={} status={} error={}",
+            round_of(f),
+            s(f, &["kind"]),
+            s(f, &["status"]),
+            f.get("error").cloned().unwrap_or(Value::Null)
+        );
+    }
+    record_check(
+        &mut checks,
+        "6 error handling",
+        ghost_turns.len() == 3
+            && cleaned
+            && s(&ghost_av, &["state"]) == "unavailable"
+            && s(&ghost_av, &["reason"]) == "repeated-errors"
+            && note.is_some()
+            && note_after_last
+            && others_after >= 2 * n,
+        &format!(
+            "Ghost closed {} turn(s) (expected 3: 1 before the pause, 2 consecutive in the resumed run), all failed+cleaned={cleaned}; availability {ghost_av}; suspension note present={} after its last failure={note_after_last}; {others_after} completed speeches after its first failure",
+            ghost_turns.len(),
+            note.is_some()
+        ),
+    );
+
+    // (7) loop limits and the call ceiling.
+    let hook = heval(ctx, "return { hard: H.HARD_CALL_CEILING, maxTurns: H.ROOM_LIMIT_CEILINGS.maxTurns };", &[])?;
+    let hard = hook["hard"].as_i64().unwrap_or(0);
+    let ceiling_turns = hook["maxTurns"].as_i64().unwrap_or(0);
+    let run1_calls = turn_starts(&j_pause);
+    let run2_calls = turn_starts(&j_d[j_pause.len()..]);
+    record_check(
+        &mut checks,
+        "7 loop limits",
+        s(&room_d, &["status"]) == "stopped"
+            && s(&room_d, &["stopReason", "kind"]) == "limit"
+            && s(&room_d, &["stopReason", "limit"]) == "maxRounds"
+            && room_d["usage"]["rounds"].as_i64() == Some(3)
+            && beyond == 0
+            && hard == ceiling_turns + ceiling_turns / 2
+            && hard > 0
+            && (run1_calls as i64) <= hard
+            && (run2_calls as i64) <= hard,
+        &format!(
+            "room {} {} usage.rounds={} turns={}; model calls (turn-starts) run1={run1_calls} run2={run2_calls} <= HARD_CALL_CEILING={hard} (= {ceiling_turns} + {ceiling_turns}/2)",
+            s(&room_d, &["status"]),
+            room_d.get("stopReason").cloned().unwrap_or(Value::Null),
+            room_d["usage"]["rounds"],
+            room_d["usage"]["turns"]
+        ),
+    );
+
+    // (8) final positions and synthesis.
+    let j_len_d = j_d.len();
+    room_call(ctx, "requestFinalPositions", &id, None)?;
+    wait_room_idle(ctx, &id, Duration::from_secs(20 * 60))?;
+    let room_f = room_json(&id)?;
+    let j_f = journal(&id)?;
+    check_journal(&id, &j_f)?;
+    let run3_calls = turn_starts(&j_f[j_len_d..]);
+    room_call(ctx, "synthesize", &id, None)?;
+    wait_room_idle(ctx, &id, Duration::from_secs(20 * 60))?;
+    let room_s = room_json(&id)?;
+    let j_s = journal(&id)?;
+    check_journal(&id, &j_s)?;
+    let run4_calls = turn_starts(&j_s[j_f.len()..]);
+    let msgs = messages_of(&j_s);
+    let finals: Vec<&Value> = msgs.iter().filter(|m| kind_is(m, "final-position")).collect();
+    let mut finalists: Vec<String> = finals.iter().filter(|m| s(m, &["status"]) == "complete").map(|m| author_pid(m).to_string()).collect();
+    finalists.sort();
+    let mut available: Vec<String> = pids.iter().filter(|p| **p != ghost).cloned().collect();
+    available.sort();
+    let synth = msgs.iter().rev().find(|m| kind_is(m, "synthesis"));
+    let dissent = synth.and_then(|m| m.get("dissent")).and_then(Value::as_array).cloned().unwrap_or_default();
+    let dis_fp = finals.iter().rev().find(|m| author_pid(m) == dis_pid).map(|m| s(m, &["text"]).to_string()).unwrap_or_default();
+    let dis_entry = dissent.iter().find(|d| s(d, &["participantId"]) == dis_pid);
+    let verbatim = dis_entry.map(|d| s(d, &["position"]) == dis_fp).unwrap_or(false);
+    let wrongly_listed: Vec<String> = dissent
+        .iter()
+        .filter(|d| {
+            let pid = s(d, &["participantId"]);
+            let fp = finals.iter().rev().find(|m| author_pid(m) == pid).map(|m| s(m, &["text"]).to_string()).unwrap_or_default();
+            !stance_disagrees(&fp)
+        })
+        .map(|d| s(d, &["name"]).to_string())
+        .collect();
+    let dom_dissent = ctx
+        .wait_until(
+            "the dissent block on the room page",
+            "return !!document.querySelector('[data-testid=\"synthesis-dissent\"]');",
+            Duration::from_secs(30),
+        )
+        .is_ok();
+    record_check(
+        &mut checks,
+        "8 final synthesis",
+        finalists == available
+            && s(&room_f, &["status"]) == "stopped"
+            && synth.map(|m| s(m, &["status"]) == "complete").unwrap_or(false)
+            && s(&room_s, &["status"]) == "completed"
+            && s(&room_s, &["stopReason", "kind"]) == "synthesized"
+            && stance_disagrees(&dis_fp)
+            && dis_entry.is_some()
+            && verbatim
+            && wrongly_listed.is_empty()
+            && synth.map(|m| s(m, &["text"]).contains("Dissenting positions (recorded verbatim)")).unwrap_or(false)
+            && dom_dissent,
+        &format!(
+            "final positions from {:?} (available {:?}; Ghost none); room after finals {}; synthesis by {} {}; room {} {}; dissent {:?}; {dis_name} first line {:?}, verbatim={verbatim}; non-dissenters listed {wrongly_listed:?}; DOM dissent block={dom_dissent}; calls finals={run3_calls} synthesis={run4_calls}",
+            names(&finalists),
+            names(&available),
+            s(&room_f, &["status"]),
+            synth.map(|m| s(m, &["author", "name"]).to_string()).unwrap_or_default(),
+            synth.map(|m| s(m, &["status"]).to_string()).unwrap_or_default(),
+            s(&room_s, &["status"]),
+            room_s.get("stopReason").cloned().unwrap_or(Value::Null),
+            dissent.iter().map(|d| s(d, &["name"]).to_string()).collect::<Vec<_>>(),
+            dis_fp.lines().next().unwrap_or_default().chars().take(80).collect::<String>()
+        ),
+    );
+
+    // Permission isolation.
+    let guarded_after = guarded_fields(&room_s);
+    let approvals_same = tool_approval_on_disk()? == approvals_before;
+    let kinds_ok = msgs.iter().all(|m| ["speech", "system", "user", "final-position", "synthesis"].contains(&s(m, &["kind"])));
+    let dialog = ctx.eval_bool("return !!document.querySelector('[role=\"alertdialog\"], [data-testid*=\"approval\" i]');")?;
+    let demand = msgs
+        .iter()
+        .filter(|m| author_pid(m) == perm_pid && kind_is(m, "speech"))
+        .map(|m| s(m, &["text"]).to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !(demand.contains("200") || demand.contains("approv")) {
+        observe(&format!("{perm_name} did not voice the permission demand"));
+    }
+    record_check(
+        &mut checks,
+        "isolation",
+        guarded_after == guarded_before && approvals_same && kinds_ok && !dialog,
+        &format!(
+            "{perm_name} asked for toolAccess read, stored {} (model tools={perm_tools}); participants/limits/moderator/mode unchanged={}; settings.json tool-approval unchanged={approvals_same}; only discussion message kinds={kinds_ok}; approval dialog on screen={dialog}; demand voiced={}",
+            s(&part_of(&perm_pid), &["toolAccess"]),
+            guarded_after == guarded_before,
+            demand.contains("200") || demand.contains("approv")
+        ),
+    );
+
+    let speeches = msgs.iter().filter(|m| kind_is(m, "speech")).count();
+    println!(
+        "      room {id}: {} journal records, {} messages ({speeches} speech, {} user, {} system, {} final-position, {} synthesis)",
+        j_s.len(),
+        msgs.len(),
+        msgs.iter().filter(|m| kind_is(m, "user")).count(),
+        msgs.iter().filter(|m| kind_is(m, "system")).count(),
+        finals.len(),
+        msgs.iter().filter(|m| kind_is(m, "synthesis")).count()
+    );
+
+    // Per-model verdicts.
+    for model in batch {
+        let mine: Vec<&String> = pids.iter().filter(|p| s(&part_of(p), &["model", "id"]) == model).collect();
+        let mut problems = Vec::new();
+        let mut stats = (0usize, 0usize, 0usize, 0usize);
+        for pid in &mine {
+            let own: Vec<&&Value> = spoken.iter().filter(|m| author_pid(m) == pid.as_str()).collect();
+            let bad_turns = own.iter().filter(|m| s(m, &["status"]) != "complete").count();
+            if bad_turns > 0 {
+                problems.push(format!("{} failed turn(s) for {}", bad_turns, name_of(pid)));
+            }
+            if own.len() < 3 {
+                problems.push(format!("{} spoke {} time(s)", name_of(pid), own.len()));
+            }
+            if !finalists.contains(pid) {
+                problems.push(format!("no final position from {}", name_of(pid)));
+            }
+            if let Some(e) = per_pid.get(pid.as_str()) {
+                stats = (stats.0 + e.0, stats.1 + e.1, stats.2 + e.2, stats.3 + e.3);
+            }
+        }
+        let share = |k: usize| stats.0 > 0 && k * 10 >= stats.0 * 8;
+        if !(share(stats.1) && share(stats.2) && share(stats.3)) {
+            problems.push("below 80% on code word / naming / quoting the previous speaker".into());
+        }
+        let who = mine.iter().map(|p| name_of(p)).collect::<Vec<_>>().join("+");
+        let detail = format!(
+            "as {who}: code word {}/{}, names previous {}/{}, quotes previous {}/{}",
+            stats.1, stats.0, stats.2, stats.0, stats.3, stats.0
+        );
+        verdicts.push((
+            model.clone(),
+            if problems.is_empty() { format!("PASS ({detail})") } else { format!("FAIL ({}; {detail})", problems.join(", ")) },
+        ));
+    }
+
+    let failed: Vec<&str> = checks.iter().filter(|(_, ok)| !ok).map(|(n, _)| n.as_str()).collect();
+    ensure!(failed.is_empty(), "single room {id}: failed checks {failed:?}");
+    Ok(())
+}
+
+fn part_of_room(room: &Value, pid: &str) -> Value {
+    room["participants"]
+        .as_array()
+        .and_then(|a| a.iter().find(|p| s(p, &["id"]) == pid).cloned())
+        .unwrap_or(Value::Null)
 }
 
 fn two_models(ctx: &Ctx) -> Result<(String, String, String), Failure> {

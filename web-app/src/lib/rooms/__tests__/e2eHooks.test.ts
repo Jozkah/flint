@@ -22,5 +22,9 @@ describe('rooms e2e hooks', () => {
     for (const key of ['roomController', 'useRoomsStore', 'createRoom', 'useModelProvider']) {
       expect(target.__janRoomsE2E?.[key]).toBeDefined()
     }
+    expect(target.__janRoomsE2E?.HARD_CALL_CEILING).toBe(300)
+    expect(
+      (target.__janRoomsE2E?.ROOM_LIMIT_CEILINGS as { maxTurns: number }).maxTurns
+    ).toBe(200)
   })
 })
