@@ -24,6 +24,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
 
 vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
   findSessionByModel: vi.fn().mockResolvedValue({ port: 3900, api_key: 'k' }),
+  engineSlotsIdle: vi.fn().mockResolvedValue(true),
   readGgufMetadata: vi.fn().mockRejectedValue(new Error('no metadata in test')),
 }))
 

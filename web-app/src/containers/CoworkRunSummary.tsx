@@ -433,6 +433,21 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                           {t('results:checks.exit', { code: check.exitCode })}
                         </span>
                       ) : null}
+                      <span className="shrink-0 text-main-view-fg/60">
+                        {t(`results:checks.completion.${check.completion}`)}
+                      </span>
+                      {check.limitations.length > 0 ? (
+                        <ul
+                          className="basis-full pl-4 text-main-view-fg/60"
+                          data-testid="cowork-check-limitations"
+                        >
+                          {check.limitations.map((limit) => (
+                            <li key={limit}>
+                              {t(`results:checks.limitation.${limit}`)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -441,8 +456,25 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                     ? t('results:checks.noneVerified')
                     : t('results:checks.observedNote')}
                 </p>
+                {verdicts.some((check) => check.outcome === 'passed') ? (
+                  <p className="text-main-view-fg/60">
+                    {t('results:checks.passNotProof')}
+                  </p>
+                ) : null}
               </>
             )}
+            {(outcome.commands ?? []).some((c) => c.verification === null) ? (
+              <p
+                className="text-main-view-fg/60"
+                data-testid="cowork-other-commands"
+              >
+                {t('results:checks.otherCommands', {
+                  count: (outcome.commands ?? []).filter(
+                    (c) => c.verification === null
+                  ).length,
+                })}
+              </p>
+            ) : null}
             {outcome.claims.length > 0 ? (
               <div className="flex flex-col gap-0.5">
                 <span className="text-main-view-fg/70">

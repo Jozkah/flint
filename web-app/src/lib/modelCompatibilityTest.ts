@@ -21,6 +21,11 @@ export interface CompatibilityTestDeps {
   ) => Promise<{ port: number; api_key: string } | null>
   fetch: typeof globalThis.fetch
   now: () => number
+  /**
+   * True when nothing is generating on the model. Checked before a test would
+   * unload another model, so a reply in progress is never cut off.
+   */
+  isModelIdle?: (modelId: string) => Promise<boolean>
 }
 
 export interface CompatibilityTestRequest {
@@ -40,10 +45,24 @@ export interface CompatibilityTestPlan {
   staysLoaded: string[]
 }
 
+/** What happened to models the test had to unload, once it finished. */
+export interface RestoreReport {
+  /** Reloaded after the test released its model. */
+  restored: string[]
+  /** Could not be reloaded; the user has to load them again. */
+  notRestored: string[]
+}
+
 export type CompatibilityTestOutcome =
   | { kind: 'needs-confirmation'; plan: CompatibilityTestPlan }
-  | { kind: 'cancelled'; released: boolean }
+  /** Nothing was loaded or unloaded. */
   | {
+      kind: 'blocked'
+      reason: 'model-busy' | 'test-in-progress'
+      models: string[]
+    }
+  | ({ kind: 'cancelled'; released: boolean } & RestoreReport)
+  | ({
       kind: 'completed'
       outcome: 'success' | 'failure'
       metrics: TestMetrics
@@ -52,7 +71,7 @@ export type CompatibilityTestOutcome =
       concurrentModels: string[]
       /** False when the test loaded the model and could not unload it. */
       released: boolean
-    }
+    } & RestoreReport)
 
 export const TEST_PROMPT = 'Reply with the single word: ready'
 export const TEST_MAX_TOKENS = 16
@@ -115,12 +134,37 @@ export function metricsFromResponse(body: unknown): TestMetrics {
   return metrics
 }
 
+/** One test at a time: two would fight over the same memory and eviction. */
+let testInFlight = false
+
+/** For tests: forget a lock left by an earlier case. */
+export function resetCompatibilityTestLock(): void {
+  testInFlight = false
+}
+
 export async function runCompatibilityTest(
   request: CompatibilityTestRequest,
   deps: CompatibilityTestDeps
 ): Promise<CompatibilityTestOutcome> {
+  if (request.signal.aborted) {
+    return { kind: 'cancelled', released: true, restored: [], notRestored: [] }
+  }
+  if (testInFlight) {
+    return { kind: 'blocked', reason: 'test-in-progress', models: [] }
+  }
+  testInFlight = true
+  try {
+    return await runLocked(request, deps)
+  } finally {
+    testInFlight = false
+  }
+}
+
+async function runLocked(
+  request: CompatibilityTestRequest,
+  deps: CompatibilityTestDeps
+): Promise<CompatibilityTestOutcome> {
   const { modelId, signal } = request
-  if (signal.aborted) return { kind: 'cancelled', released: true }
 
   const active = await deps.getActiveModels()
   const plan = planCompatibilityTest(active, modelId, request.modelsMax)
@@ -129,32 +173,84 @@ export async function runCompatibilityTest(
   )
   if (unapproved.length > 0) return { kind: 'needs-confirmation', plan }
 
+  // Consent to unload a model is not consent to cut off a reply it is
+  // writing. Checked at the last moment before anything changes.
+  if (plan.willUnload.length > 0 && deps.isModelIdle) {
+    const busy: string[] = []
+    for (const other of plan.willUnload) {
+      const idle = await deps.isModelIdle(other).catch(() => false)
+      if (!idle) busy.push(other)
+    }
+    if (busy.length > 0) {
+      return { kind: 'blocked', reason: 'model-busy', models: busy }
+    }
+  }
+
   const metrics: TestMetrics = {}
   let loadedByTest = false
+  let released = true
 
   /** Releases only what this test loaded. */
   const release = async (): Promise<boolean> => {
     if (!loadedByTest) return true
     try {
       await deps.stopModel(modelId)
+      loadedByTest = false
       return true
     } catch {
       return false
     }
   }
 
+  /**
+   * Reloads the models the engine evicted for the test. Only after the test's
+   * own model is gone: reloading first would evict it again or push the
+   * engine over its limit.
+   */
+  const restore = async (): Promise<RestoreReport> => {
+    const report: RestoreReport = { restored: [], notRestored: [] }
+    if (plan.willUnload.length === 0) return report
+    if (!released) {
+      report.notRestored = [...plan.willUnload]
+      return report
+    }
+    for (const other of plan.willUnload) {
+      try {
+        await deps.startModel(other)
+        report.restored.push(other)
+      } catch {
+        report.notRestored.push(other)
+      }
+    }
+    return report
+  }
+
+  const finish = async (): Promise<RestoreReport> => {
+    released = await release()
+    return restore()
+  }
+
+  const cancelled = async (): Promise<CompatibilityTestOutcome> => {
+    const report = await finish()
+    return { kind: 'cancelled', released, ...report }
+  }
+
   const completed = async (
     outcome: 'success' | 'failure',
     error?: { code?: string; message: string }
-  ): Promise<CompatibilityTestOutcome> => ({
-    kind: 'completed',
-    outcome,
-    metrics,
-    ...(error ? { error } : {}),
-    unloadedModels: plan.willUnload,
-    concurrentModels: plan.staysLoaded,
-    released: await release(),
-  })
+  ): Promise<CompatibilityTestOutcome> => {
+    const report = await finish()
+    return {
+      kind: 'completed',
+      outcome,
+      metrics,
+      ...(error ? { error } : {}),
+      unloadedModels: plan.willUnload,
+      concurrentModels: plan.staysLoaded,
+      released,
+      ...report,
+    }
+  }
 
   // ---- Load ----------------------------------------------------------------
   if (!plan.alreadyLoaded) {
@@ -163,17 +259,15 @@ export async function runCompatibilityTest(
       loadedByTest = true
       await deps.startModel(modelId)
     } catch (error) {
-      // A load that failed left nothing loaded; unloading is harmless and
-      // covers an engine that reports failure after partially loading.
-      if (isAbort(error, signal)) {
-        return { kind: 'cancelled', released: await release() }
-      }
+      // A failed load normally leaves nothing loaded; unloading anyway covers
+      // an engine that reports failure after partially loading.
+      if (isAbort(error, signal)) return cancelled()
       return completed('failure', describeFailure(error))
     }
     metrics.loadMs = deps.now() - loadStart
     // Loading cannot be interrupted; a cancel that arrived meanwhile is
     // honoured now by releasing what was loaded.
-    if (signal.aborted) return { kind: 'cancelled', released: await release() }
+    if (signal.aborted) return cancelled()
   }
 
   // ---- Short representative request ---------------------------------------
@@ -222,9 +316,7 @@ export async function runCompatibilityTest(
     }
     return completed('success')
   } catch (error) {
-    if (isAbort(error, signal)) {
-      return { kind: 'cancelled', released: await release() }
-    }
+    if (isAbort(error, signal)) return cancelled()
     return completed('failure', describeFailure(error))
   }
 }

@@ -31,27 +31,35 @@ export function ModelEvidenceBadges({
       s.preferredModel?.model === model.id
   )
 
-  const worked = useMemo(() => {
-    if (!results?.length) return false
-    return (
-      evidenceFor(results, {
-        // The file size is not known on a row; size changes are checked in
-        // the details view, which has it.
-        modelSizeBytes: null,
-        settings: settingsFromModel(model),
-        runtimeVersion: runtimeVersion(),
-        device: deviceSignature(hardware),
-      }).state === 'ran-successfully'
-    )
+  const state = useMemo(() => {
+    if (!results?.length) return null
+    return evidenceFor(results, {
+      // The file size is not known on a row; size changes are checked in
+      // the details view, which has it.
+      modelSizeBytes: null,
+      settings: settingsFromModel(model),
+      runtimeVersion: runtimeVersion(),
+      device: deviceSignature(hardware),
+    }).state
   }, [results, model, hardware])
+  const worked = state === 'ran-successfully'
+  // A measured refusal by the runtime is a concrete incompatibility, unlike a
+  // memory estimate, so it is stated on the row. Selecting stays possible:
+  // the engine's own error is what the user then sees, not a silent block.
+  const unsupported = state === 'unsupported'
 
-  if (!worked && !isDefault) return null
+  if (!worked && !unsupported && !isDefault) return null
 
   return (
     <span className="flex shrink-0 items-center gap-1">
       {isDefault && (
         <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
           {t('model-fit:badge.default')}
+        </span>
+      )}
+      {unsupported && (
+        <span className="rounded-full border border-destructive/40 px-1.5 py-0.5 text-[10px] text-destructive">
+          {t('model-fit:badge.unsupported')}
         </span>
       )}
       {worked && (

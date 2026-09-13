@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { findSessionByModel, readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
+import {
+  engineSlotsIdle,
+  findSessionByModel,
+  readGgufMetadata,
+} from '@janhq/tauri-plugin-llamacpp-api'
 import { cn, formatBytes } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -242,6 +246,7 @@ export const ModelSupportStatus = ({
             findSession: findSessionByModel,
             fetch: providerFetch,
             now: () => performance.now(),
+            isModelIdle: (id) => engineSlotsIdle(id),
           }
         )
         if (outcome.kind === 'needs-confirmation') {
@@ -249,12 +254,29 @@ export const ModelSupportStatus = ({
           setNotice(t('model-fit:test.needsConfirmation'))
           return
         }
+        if (outcome.kind === 'blocked') {
+          setTestState({ phase: 'idle' })
+          setNotice(
+            outcome.reason === 'model-busy'
+              ? t('model-fit:test.blockedBusy', {
+                  models: outcome.models.join(', '),
+                })
+              : t('model-fit:test.blockedInProgress')
+          )
+          return
+        }
+        const restoreText =
+          outcome.notRestored.length > 0
+            ? ` ${t('model-fit:test.notRestored', { models: outcome.notRestored.join(', ') })}`
+            : outcome.restored.length > 0
+              ? ` ${t('model-fit:test.restored', { models: outcome.restored.join(', ') })}`
+              : ''
         if (outcome.kind === 'cancelled') {
           setTestState({ phase: 'idle' })
           setNotice(
-            outcome.released
+            (outcome.released
               ? t('model-fit:test.cancelled')
-              : t('model-fit:test.cancelledNotReleased')
+              : t('model-fit:test.cancelledNotReleased')) + restoreText
           )
           return
         }
@@ -281,9 +303,9 @@ export const ModelSupportStatus = ({
                 reason: outcome.error?.message ?? '',
               })
         setNotice(
-          outcome.released
+          (outcome.released
             ? summary
-            : `${summary} ${t('model-fit:test.notReleased')}`
+            : `${summary} ${t('model-fit:test.notReleased')}`) + restoreText
         )
       } catch (error) {
         setTestState({ phase: 'idle' })

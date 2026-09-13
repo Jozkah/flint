@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   planCompatibilityTest,
   runCompatibilityTest,
   metricsFromResponse,
+  resetCompatibilityTestLock,
   type CompatibilityTestDeps,
 } from '../modelCompatibilityTest'
 
@@ -59,6 +60,8 @@ describe('planCompatibilityTest', () => {
 })
 
 describe('runCompatibilityTest', () => {
+  beforeEach(() => resetCompatibilityTestLock())
+
   it('loads, runs one short request, records reported metrics and releases', async () => {
     const d = deps()
     const outcome = await runCompatibilityTest(request(), d)
@@ -149,6 +152,8 @@ describe('runCompatibilityTest', () => {
     expect(await runCompatibilityTest(request({ signal: controller.signal }), d)).toEqual({
       kind: 'cancelled',
       released: true,
+      restored: [],
+      notRestored: [],
     })
     expect(d.getActiveModels).not.toHaveBeenCalled()
   })
@@ -161,7 +166,7 @@ describe('runCompatibilityTest', () => {
       }),
     })
     const outcome = await runCompatibilityTest(request({ signal: controller.signal }), d)
-    expect(outcome).toEqual({ kind: 'cancelled', released: true })
+    expect(outcome).toEqual({ kind: 'cancelled', released: true, restored: [], notRestored: [] })
     expect(d.stopModel).toHaveBeenCalledWith('qwen3-8b')
     expect(d.fetch).not.toHaveBeenCalled()
   })
@@ -175,7 +180,7 @@ describe('runCompatibilityTest', () => {
       }) as unknown as typeof fetch,
     })
     const outcome = await runCompatibilityTest(request({ signal: controller.signal }), d)
-    expect(outcome).toEqual({ kind: 'cancelled', released: true })
+    expect(outcome).toEqual({ kind: 'cancelled', released: true, restored: [], notRestored: [] })
     expect(d.stopModel).toHaveBeenCalled()
   })
 
@@ -183,5 +188,84 @@ describe('runCompatibilityTest', () => {
     const d = deps({ stopModel: vi.fn().mockRejectedValue(new Error('busy')) })
     const outcome = await runCompatibilityTest(request(), d)
     expect(outcome).toMatchObject({ kind: 'completed', outcome: 'success', released: false })
+  })
+
+  it('refuses to unload a model that is writing a reply, even with consent', async () => {
+    const d = deps({
+      getActiveModels: vi.fn().mockResolvedValue(['busy-model']),
+      isModelIdle: vi.fn().mockResolvedValue(false),
+    })
+    const outcome = await runCompatibilityTest(request({ allowUnload: ['busy-model'] }), d)
+    expect(outcome).toEqual({ kind: 'blocked', reason: 'model-busy', models: ['busy-model'] })
+    expect(d.startModel).not.toHaveBeenCalled()
+    expect(d.stopModel).not.toHaveBeenCalled()
+  })
+
+  it('reloads the models it unloaded once its own model is released', async () => {
+    const d = deps({
+      getActiveModels: vi.fn().mockResolvedValue(['busy-model']),
+      isModelIdle: vi.fn().mockResolvedValue(true),
+    })
+    const outcome = await runCompatibilityTest(request({ allowUnload: ['busy-model'] }), d)
+    expect(outcome).toMatchObject({ kind: 'completed', restored: ['busy-model'], notRestored: [] })
+    const order = vi.mocked(d.startModel).mock.calls.map((c) => c[0])
+    expect(order).toEqual(['qwen3-8b', 'busy-model'])
+    expect(vi.mocked(d.stopModel).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(d.startModel).mock.invocationCallOrder[1]
+    )
+  })
+
+  it('also restores unloaded models after a failed load or a cancel', async () => {
+    const failing = deps({
+      getActiveModels: vi.fn().mockResolvedValue(['other']),
+      startModel: vi
+        .fn()
+        .mockRejectedValueOnce({ code: 'OUT_OF_MEMORY', message: 'oom' })
+        .mockResolvedValue(undefined),
+    })
+    expect(
+      await runCompatibilityTest(request({ allowUnload: ['other'] }), failing)
+    ).toMatchObject({ kind: 'completed', outcome: 'failure', restored: ['other'] })
+
+    const controller = new AbortController()
+    const cancelling = deps({
+      getActiveModels: vi.fn().mockResolvedValue(['other']),
+      startModel: vi.fn().mockImplementationOnce(async () => controller.abort()),
+    })
+    expect(
+      await runCompatibilityTest(
+        request({ allowUnload: ['other'], signal: controller.signal }),
+        cancelling
+      )
+    ).toMatchObject({ kind: 'cancelled', released: true, restored: ['other'] })
+  })
+
+  it('does not reload others when its own model could not be released', async () => {
+    const d = deps({
+      getActiveModels: vi.fn().mockResolvedValue(['other']),
+      stopModel: vi.fn().mockRejectedValue(new Error('stuck')),
+    })
+    const outcome = await runCompatibilityTest(request({ allowUnload: ['other'] }), d)
+    expect(outcome).toMatchObject({ released: false, restored: [], notRestored: ['other'] })
+    expect(d.startModel).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs one test at a time', async () => {
+    let finishLoad: () => void = () => {}
+    const d = deps({
+      startModel: vi.fn().mockImplementation(
+        () => new Promise<void>((resolve) => (finishLoad = resolve))
+      ),
+    })
+    const first = runCompatibilityTest(request(), d)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(await runCompatibilityTest(request(), d)).toEqual({
+      kind: 'blocked',
+      reason: 'test-in-progress',
+      models: [],
+    })
+    finishLoad()
+    await first
   })
 })

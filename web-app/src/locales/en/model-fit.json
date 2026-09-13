@@ -81,6 +81,10 @@
     "cancelledNotReleased": "Test cancelled, but the model could not be unloaded. Unload it from the model settings.",
     "notReleased": "The model could not be unloaded afterwards; it is still using memory.",
     "couldNotRun": "The test could not run: {{reason}}",
+    "blockedBusy": "Not tested: {{models}} is writing a reply, and testing would have to unload it. Try again when it has finished. Nothing was changed.",
+    "blockedInProgress": "Another model test is already running. Nothing was changed.",
+    "restored": "{{models}} was loaded again.",
+    "notRestored": "{{models}} could not be loaded again; load it from the model settings.",
     "needsConfirmation": "Testing needs to unload another model first.",
     "confirmUnload": "To test, JAN has to unload {{models}}. Any reply it is generating will stop. It is not reloaded automatically.",
     "unloadAndTest": "Unload and test",
@@ -94,6 +98,7 @@
   "showHint": "Show this hint",
   "badge": {
     "worked": "Worked here",
+    "unsupported": "Unsupported by this runtime",
     "default": "Default"
   },
   "location": {

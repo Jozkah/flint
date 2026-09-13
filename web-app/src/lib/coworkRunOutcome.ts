@@ -41,15 +41,69 @@ export type CheckKind = 'command' | 'test' | 'build' | 'lint'
 
 export type CheckOutcome = 'passed' | 'failed' | 'not-run' | 'unknown'
 
-/** A check Jan actually executed, as the tool record shows it. */
+/** How far a command got, independent of whether it succeeded. */
+export type CommandCompletion =
+  /** Refused or cancelled before it started. */
+  | 'not-started'
+  | 'running'
+  /** Ran to the end and reported how it exited. */
+  | 'completed'
+  /** Stopped by a person or by the run ending after it started. */
+  | 'cancelled'
+  | 'timed-out'
+  /** Still waiting or running when the run ended. */
+  | 'interrupted'
+
+/**
+ * Why a recorded result proves less than it may appear to.
+ *
+ * An exit status says the command reported success or failure. It does not
+ * say the command tested the right thing, tested everything, or that the task
+ * as a whole is correct.
+ */
+export type CheckLimitation =
+  /** The verdict is the process exit status and nothing more. */
+  | 'exit-status-only'
+  /** Several commands were chained; the status is the chain's, not each one's. */
+  | 'compound-command'
+  /** Output was truncated, so failures printed later may be hidden. */
+  | 'output-truncated'
+  /** Started in the background; the status may not be the job's. */
+  | 'background'
+  /** A filter or explicit file selected only part of the suite. */
+  | 'subset-selected'
+  /** No exit status was recorded. */
+  | 'no-exit-status'
+
+/**
+ * A verification command Jan actually executed, as the tool record shows it.
+ *
+ * `outcome` answers "did the command report success", never "is the task
+ * correct"; `limitations` says what the verdict does not cover.
+ */
 export type ObservedCheck = {
   kind: CheckKind
   command: string
   outcome: CheckOutcome
   /** Always observed: built only from a recorded tool execution. */
   evidence: 'observed'
+  /** False when the permission gate refused it before it ran. */
+  attempted: boolean
+  completion: CommandCompletion
   /** The command's exit status, when the tool reported one. */
   exitCode: number | null
+  limitations: CheckLimitation[]
+  callId?: string
+}
+
+/** Every shell command in the run, whether or not it was a check. */
+export type CommandRecord = {
+  command: string
+  attempted: boolean
+  completion: CommandCompletion
+  exitCode: number | null
+  /** The verification kind, or null for an ordinary command. */
+  verification: CheckKind | null
   callId?: string
 }
 
@@ -133,7 +187,10 @@ export type RunOutcome = {
     unknown: string[]
     baseline: BaselineState | 'none'
   }
+  /** Verification commands only. */
   checks: ObservedCheck[]
+  /** Every shell command, so "a command ran" is never read as "a check passed". */
+  commands: CommandRecord[]
   claims: CheckClaim[]
   unresolved: UnresolvedItem[]
   nextActions: NextAction[]
@@ -353,7 +410,62 @@ function exitCodeOf(turn: CoworkTurn): { code: number | null; signaled: boolean 
   return { code: parsed.exit ?? null, signaled: parsed.signaled }
 }
 
-function checkFromTurn(turn: CoworkTurn): ObservedCheck | null {
+function completionOf(
+  phase: ToolPhase,
+  code: number | null,
+  signaled: boolean,
+  runEnded: boolean
+): CommandCompletion {
+  if (phase === 'refused') return 'not-started'
+  if (isUnfinished(phase)) return runEnded ? 'interrupted' : 'running'
+  if (phase === 'timed-out') return 'timed-out'
+  if (phase === 'cancelled' || phase === 'stale')
+    return code !== null || signaled ? 'cancelled' : 'not-started'
+  return 'completed'
+}
+
+/** Test selectors that run part of a suite rather than all of it. */
+const SUBSET_SELECTOR =
+  /(?:^|\s)(?:-t|--testNamePattern|--test-name-pattern|-k|--filter|--grep|-g|--only)(?:[\s=]|$)|\S+\.(?:test|spec)\.[cm]?[jt]sx?(?:\s|$)|\b(?:cargo\s+test|go\s+test)\s+(?!-)[\w:./-]+/i
+
+function limitationsOf(
+  turn: CoworkTurn,
+  command: string,
+  kind: CheckKind,
+  code: number | null,
+  signaled: boolean
+): CheckLimitation[] {
+  const out: CheckLimitation[] = []
+  out.push(code !== null || signaled ? 'exit-status-only' : 'no-exit-status')
+  const segments = command
+    .split(/&&|\|\||;|\||\n/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && !/^cd\s/i.test(segment))
+  if (segments.length > 1) out.push('compound-command')
+  if (typeof turn.result === 'string' && parseBashOutput(turn.result).truncated)
+    out.push('output-truncated')
+  if (argsOf(turn).background === true) out.push('background')
+  if (kind === 'test' && SUBSET_SELECTOR.test(command)) out.push('subset-selected')
+  return out
+}
+
+function commandFromTurn(turn: CoworkTurn, runEnded: boolean): CommandRecord | null {
+  if (turn.role !== 'tool' || turn.name !== 'bash') return null
+  const command = argsOf(turn).command
+  if (typeof command !== 'string' || !command.trim()) return null
+  const phase = phaseOf(turn)
+  const { code, signaled } = exitCodeOf(turn)
+  return {
+    command: command.trim(),
+    attempted: phase !== 'refused',
+    completion: completionOf(phase, code, signaled, runEnded),
+    exitCode: code,
+    verification: classifyCommand(command),
+    callId: turn.callId,
+  }
+}
+
+function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | null {
   if (turn.role !== 'tool' || turn.name !== 'bash') return null
   const command = argsOf(turn).command
   // Polling a background job is not running anything.
@@ -378,7 +490,10 @@ function checkFromTurn(turn: CoworkTurn): ObservedCheck | null {
     command: command.trim(),
     outcome,
     evidence: 'observed',
+    attempted: phase !== 'refused',
+    completion: completionOf(phase, code, signaled, runEnded),
     exitCode: code,
+    limitations: limitationsOf(turn, command, kind, code, signaled),
     callId: turn.callId,
   }
 }
@@ -459,12 +574,16 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
   const checks: ObservedCheck[] = []
   const checkCalls = new Set<CoworkTurn>()
   for (const turn of toolTurns) {
-    const check = checkFromTurn(turn)
+    const check = checkFromTurn(turn, !input.running)
     if (check) {
       checks.push(check)
       checkCalls.add(turn)
     }
   }
+
+  const commands = toolTurns
+    .map((turn) => commandFromTurn(turn, !input.running))
+    .filter((record): record is CommandRecord => record !== null)
 
   const lastAssistant = [...runTurns]
     .reverse()
@@ -587,6 +706,7 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
       baseline: summary?.baseline ?? 'none',
     },
     checks,
+    commands,
     claims,
     unresolved,
     nextActions,

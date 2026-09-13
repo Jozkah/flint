@@ -47,6 +47,24 @@
       "unknown": "Result unknown"
     },
     "exit": "exit {{code}}",
+    "passNotProof": "A passing check means the command reported success. It does not prove the task is correct or that everything relevant was checked.",
+    "otherCommands": "{{count}} other command(s) also ran. They are not counted as checks.",
+    "completion": {
+      "not-started": "not started",
+      "running": "still running",
+      "completed": "ran to completion",
+      "cancelled": "cancelled",
+      "timed-out": "timed out",
+      "interrupted": "interrupted"
+    },
+    "limitation": {
+      "exit-status-only": "Judged only by its exit status.",
+      "compound-command": "Several commands were chained; the status covers the chain, not each step.",
+      "output-truncated": "Output was cut off, so later failures may not be visible.",
+      "background": "Started in the background; the status may not be the job's.",
+      "subset-selected": "Only part of the test suite was selected.",
+      "no-exit-status": "No exit status was recorded."
+    },
     "observedNote": "Observed by Jan from the command's own exit status.",
     "claimsTitle": "Mentioned by the assistant, not verified by Jan:"
   },

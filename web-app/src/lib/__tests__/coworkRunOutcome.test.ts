@@ -416,6 +416,80 @@ describe('deriving a run outcome', () => {
   })
 })
 
+describe('commands versus verification checks', () => {
+  it('records every command but counts only verification commands as checks', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          bash('ls -la', { exitCode: 0 }),
+          bash('npx vitest run', { exitCode: 0 }),
+        ],
+      })
+    )
+    expect(outcome.commands.map((c) => [c.command, c.verification])).toEqual([
+      ['ls -la', null],
+      ['npx vitest run', 'test'],
+    ])
+    expect(outcome.checks).toHaveLength(1)
+  })
+
+  it('separates attempted, completed and succeeded', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          bash('npm test', { permission: 'denied', toolState: 'refused' }),
+          bash('cargo test', { toolState: 'timed-out', exitCode: undefined }),
+          bash('pytest', { toolState: 'failed', exitCode: 1 }),
+        ],
+      })
+    )
+    const [refused, timedOut, failed] = outcome.checks
+    expect(refused).toMatchObject({ attempted: false, completion: 'not-started', outcome: 'not-run' })
+    expect(timedOut).toMatchObject({ attempted: true, completion: 'timed-out' })
+    expect(timedOut.outcome).not.toBe('passed')
+    expect(failed).toMatchObject({ attempted: true, completion: 'completed', outcome: 'failed', exitCode: 1 })
+  })
+
+  it('marks a command still running when the run ended as interrupted, never passed', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        stoppedBy: 'aborted',
+        turns: [user(), bash('go test ./...', { toolState: 'running', status: 'running' })],
+      })
+    )
+    expect(outcome.checks[0]).toMatchObject({ completion: 'interrupted', outcome: 'unknown' })
+  })
+
+  it('states what an exit status does not cover', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          bash('npm run build && npx vitest run src/a.test.ts', {
+            exitCode: 0,
+            result: 'ok\n[output truncated]\n[exit 0]',
+          }),
+        ],
+      })
+    )
+    const check = outcome.checks[0]
+    expect(check.outcome).toBe('passed')
+    expect(check.limitations).toEqual(
+      expect.arrayContaining(['exit-status-only', 'compound-command', 'subset-selected'])
+    )
+  })
+
+  it('reports a missing exit status as a limitation rather than a pass', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), bash('pytest', { toolState: 'succeeded' })] })
+    )
+    expect(outcome.checks[0].outcome).toBe('unknown')
+    expect(outcome.checks[0].limitations).toContain('no-exit-status')
+  })
+})
+
 describe('claims in the assistant’s text', () => {
   it('ignores hedged, negated and instructional sentences', () => {
     expect(
