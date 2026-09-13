@@ -29,6 +29,7 @@ import {
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
+import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
 import { memoryRetrieve } from '@janhq/tauri-plugin-agent-tools-api'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -1267,6 +1268,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (useAgentToolsConfig.getState().agentToolsEnabled) {
         try {
           for (const schema of await getAgentToolSchemas()) {
+            // Session-scope tools: a chat thread has no mailbox identity.
+            if (SESSION_MESSAGING_TOOLS.has(schema.function.name)) continue
             toolsRecord[schema.function.name] = {
               description: schema.function.description,
               inputSchema: jsonSchema(schema.function.parameters),

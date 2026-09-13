@@ -20,6 +20,12 @@ export type CoworkTurn = {
    * janhq/jan#8864.
    */
   steered?: boolean
+  /**
+   * User-row only: this row is mail from another agent session, handed to the
+   * model wrapped as coordination data (docs/SESSION_MESSAGING.md). Rendered
+   * as "Message from <name>", never as something the user typed.
+   */
+  from?: AgentMessageAttribution
   callId?: string
   name?: string
   args?: unknown
@@ -76,6 +82,14 @@ export type CoworkTurn = {
    * vanished when it was given.
    */
   asks?: AskRecord[]
+}
+
+/** Who sent a mailbox message, as carried on a transcript row. */
+export type AgentMessageAttribution = {
+  sessionId: string
+  displayName: string
+  messageId: string
+  replyTo?: string | null
 }
 
 /**

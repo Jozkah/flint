@@ -13,6 +13,7 @@ import {
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { errorText } from '@/lib/errorText'
+import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -42,6 +43,9 @@ export const AGENT_TOOL_NAMES = new Set([
   // Renders a local .html/.svg with headless Chrome so the agent can see what
   // it built. Read capability: it writes nothing back.
   'screenshot',
+  // Cross-session messaging (docs/SESSION_MESSAGING.md). Read capability, no
+  // paths. Only meaningful for a Cowork session: the chat transport drops them.
+  ...SESSION_MESSAGING_TOOL_NAMES,
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat

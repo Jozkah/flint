@@ -90,7 +90,7 @@ export type CoworkSession = {
    * brings it back -- held, for the user to send or discard -- rather than
    * losing it. janhq/jan#8864.
    */
-  pendingInput?: { id: string; text: string; createdAt: number }[]
+  pendingInput?: PendingInputRecord[]
   /**
    * What this session is allowed to do. Absent on sessions from before modes
    * existed, which `modeOf` reads from `planMode` instead.
@@ -137,6 +137,18 @@ export type CoworkSession = {
    */
   forkedFrom?: ForkOrigin
   updated: number
+}
+
+/**
+ * One queued input as persisted. `from` is present when it is mail from another
+ * agent session (docs/SESSION_MESSAGING.md); it is additive, so sessions saved
+ * before it existed load unchanged and need no migration step.
+ */
+export type PendingInputRecord = {
+  id: string
+  text: string
+  createdAt: number
+  from?: QueuedMessageSender
 }
 
 /** The session a fork came from, and where it diverged. */
@@ -189,10 +201,7 @@ type CoworkSessionsState = {
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
   /** Record the input still pending for the session; empty clears it. */
-  setPendingInput: (
-    id: string,
-    pending: { id: string; text: string; createdAt: number }[]
-  ) => void
+  setPendingInput: (id: string, pending: PendingInputRecord[]) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
@@ -234,8 +243,20 @@ import { decideSessionStart } from '@/lib/coworkSessionStart'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
+import type { QueuedMessageSender } from '@/stores/message-queue-store'
 
 const now = () => Date.now()
+
+/** Only the sender fields the queue defines are persisted. */
+function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
+  return {
+    sessionId: from.sessionId,
+    displayName: from.displayName,
+    messageId: from.messageId,
+    replyTo: from.replyTo ?? null,
+    depth: from.depth,
+  }
+}
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
@@ -341,7 +362,12 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         set((s) => {
           const current = s.sessions.find((x) => x.id === id)
           if (!current) return s
-          const next = pending.map(({ id, text, createdAt }) => ({ id, text, createdAt }))
+          const next: PendingInputRecord[] = pending.map(
+            ({ id, text, createdAt, from }) =>
+              from
+                ? { id, text, createdAt, from: sanitizeSender(from) }
+                : { id, text, createdAt }
+          )
           if (JSON.stringify(current.pendingInput ?? []) === JSON.stringify(next)) {
             return s
           }
