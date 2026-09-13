@@ -2108,13 +2108,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-060"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can walk callers and callees of a function.",
@@ -2123,12 +2126,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::the_callers_and_callees_of_a_function_are_walked"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5) from the index rather than from a language server. hierarchy() walks a function's callers (the name followed by `(`, with the enclosing function taken as the nearest definition above) and its callees (names called between its definition and the next one in that file), exposed through symbol_find with calls: true. Line-shaped and said to be: a name used as a value reads like a call and two functions with one name are not told apart, so it finds places worth opening rather than claiming a call graph."
     },
     {
       "id": "AH-063",

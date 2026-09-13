@@ -1777,3 +1777,17 @@ compiler's, and ignores every other line. A parser that guesses turns a line of
 prose into a diagnostic pointing at a file that is fine.
 
 Nothing here fixes anything. It reports.
+
+
+### Who calls this (AH-062)
+
+`hierarchy()` walks one function's callers and callees from the same index: a
+caller is a place the name is written followed by `(`, with the enclosing
+function taken as the nearest definition above it in that file; a callee is a
+name called between the function's definition line and the next definition in
+the file. `symbol_find` exposes it with `calls: true`.
+
+Said plainly rather than sold as a call graph: the reading is line-shaped, so a
+name used as a value reads like a call, a macro can look like one, and two
+functions with one name are not told apart. What it does is find the places
+worth opening, which before meant reading the whole project.

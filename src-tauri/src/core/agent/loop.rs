@@ -1295,6 +1295,10 @@ impl CompositeToolInvoker {
                     .get("uses")
                     .and_then(serde_json::Value::as_bool)
                     .unwrap_or(false);
+                let want_calls = args
+                    .get("calls")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
                 let data = crate::core::app::commands::resolve_jan_data_folder();
                 let project = self.project_root.clone();
                 let cancel = std::sync::atomic::AtomicBool::new(false);
@@ -1327,6 +1331,34 @@ impl CompositeToolInvoker {
                                     if hit.is_definition { " (definition)" } else { "" },
                                     hit.text
                                 ));
+                            }
+                        }
+                        if want_calls {
+                            // AH-062: who calls it, and what it calls. Named
+                            // as places to look rather than as a call graph:
+                            // the reading is line-shaped, so a name used as a
+                            // value reads like a call.
+                            let walk =
+                                crate::core::agent::index::hierarchy(&index, &name, 50);
+                            out.push_str(&format!("
+
+{} caller(s):
+", walk.callers.len()));
+                            for call in &walk.callers {
+                                out.push_str(&format!(
+                                    "{}:{} in {}
+",
+                                    call.path,
+                                    call.line,
+                                    call.within.as_deref().unwrap_or("(top level)")
+                                ));
+                            }
+                            out.push_str(&format!("
+{} call(s) made:
+", walk.callees.len()));
+                            for call in &walk.callees {
+                                out.push_str(&format!("{}:{} {}
+", call.path, call.line, call.name));
                             }
                         }
                         out.trim_end().to_string()
@@ -2608,7 +2640,8 @@ fn advertise_local_tools(
                         "type": "object",
                         "properties": {
                             "name": { "type": "string", "description": "The symbol to look for." },
-                            "uses": { "type": "boolean", "description": "Also list every place the name is used. Default false." }
+                            "uses": { "type": "boolean", "description": "Also list every place the name is used. Default false." },
+                            "calls": { "type": "boolean", "description": "Also list who calls this function and what it calls. Default false." }
                         },
                         "required": ["name"]
                     }

@@ -536,6 +536,164 @@ fn is_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
 }
 
+/// One end of a call relationship.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Call {
+    /// The function on the other end, by name.
+    pub name: String,
+    /// Where the call is written.
+    pub path: String,
+    pub line: usize,
+    /// The function the call is written inside, when one could be named. A
+    /// call at the top level of a module has none.
+    #[serde(default)]
+    pub within: Option<String>,
+}
+
+/// Who calls this function, and what it calls (AH-062).
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Hierarchy {
+    pub name: String,
+    /// Where the function is defined, when the index knows.
+    pub defined: Vec<Definition>,
+    pub callers: Vec<Call>,
+    pub callees: Vec<Call>,
+    /// Set when either list was cut at the bound.
+    pub truncated: bool,
+}
+
+/// The most calls reported on each side.
+pub const MAX_CALLS: usize = 200;
+
+/// Walk one function's callers and callees.
+///
+/// Built on the same reading as everything else here, with the same honesty:
+/// a call is a name followed by `(` on a line, and the enclosing function is
+/// the nearest definition above it in the same file. That is right for
+/// ordinary code and wrong for a name used as a value, a macro that looks like
+/// a call, or two functions with one name -- so this says where it looked
+/// rather than claiming a call graph. A model can open the lines; what it
+/// could not do before was find them without reading the whole project.
+pub fn hierarchy(index: &Index, name: &str, limit: usize) -> Hierarchy {
+    let needle = name.trim();
+    let limit = limit.min(MAX_CALLS);
+    let mut result = Hierarchy {
+        name: needle.to_string(),
+        defined: find_symbol(index, needle, 20),
+        callers: Vec::new(),
+        callees: Vec::new(),
+        truncated: false,
+    };
+    if needle.is_empty() {
+        return result;
+    }
+    let project = PathBuf::from(&index.project);
+
+    // Callers: every place the name is called, with the function it is called
+    // from. The definition line itself is not a call.
+    for reference in find_references(index, needle, MAX_CALLS) {
+        if reference.is_definition || !reference.text.contains(&format!("{needle}(")) {
+            continue;
+        }
+        if result.callers.len() >= limit {
+            result.truncated = true;
+            break;
+        }
+        let within = enclosing(index, &reference.path, reference.line);
+        result.callers.push(Call {
+            name: within.clone().unwrap_or_else(|| "(top level)".to_string()),
+            path: reference.path,
+            line: reference.line,
+            within,
+        });
+    }
+
+    // Callees: the names called inside the function's own body, which is the
+    // lines from its definition to the next definition in that file.
+    for definition in &result.defined {
+        let Ok(text) = std::fs::read_to_string(project.join(&definition.path)) else { continue };
+        let lines: Vec<&str> = text.lines().collect();
+        let end = index
+            .files
+            .get(&definition.path)
+            .map(|file| {
+                file.symbols
+                    .iter()
+                    .map(|s| s.line)
+                    .filter(|line| *line > definition.line)
+                    .min()
+                    .unwrap_or(lines.len() + 1)
+            })
+            .unwrap_or(lines.len() + 1);
+        for (offset, line) in lines.iter().enumerate() {
+            let number = offset + 1;
+            if number <= definition.line || number >= end {
+                continue;
+            }
+            for called in called_names(line) {
+                if called == needle {
+                    continue;
+                }
+                if result.callees.len() >= limit {
+                    result.truncated = true;
+                    break;
+                }
+                if result.callees.iter().any(|c| c.name == called && c.line == number) {
+                    continue;
+                }
+                result.callees.push(Call {
+                    name: called,
+                    path: definition.path.clone(),
+                    line: number,
+                    within: Some(definition.name.clone()),
+                });
+            }
+        }
+    }
+    result
+}
+
+/// The function a line sits inside: the nearest definition above it in the
+/// same file, as the index recorded them.
+fn enclosing(index: &Index, path: &str, line: usize) -> Option<String> {
+    let file = index.files.get(path)?;
+    file.symbols
+        .iter()
+        .filter(|s| s.line <= line && s.kind == SymbolKind::Function)
+        .max_by_key(|s| s.line)
+        .map(|s| s.name.clone())
+}
+
+/// The names called on one line: an identifier immediately followed by `(`.
+fn called_names(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = line.as_bytes();
+    let mut start: Option<usize> = None;
+    for (at, byte) in bytes.iter().enumerate() {
+        let word = byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'$';
+        match (word, start) {
+            (true, None) => start = Some(at),
+            (false, Some(from)) => {
+                if *byte == b'(' {
+                    let name = &line[from..at];
+                    // Keywords read as calls otherwise: `if (x)`, `while (y)`.
+                    if !matches!(
+                        name,
+                        "if" | "while" | "for" | "match" | "switch" | "return" | "fn" | "def"
+                    ) {
+                        out.push(name.to_string());
+                    }
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -800,6 +958,58 @@ mod tests {
 
         assert!(find_references(&index, "", 10).is_empty());
         assert!(find_references(&index, "nothing_uses_this", 10).is_empty());
+    }
+
+    /// AH-062: who calls this, and what it calls.
+    #[test]
+    fn the_callers_and_callees_of_a_function_are_walked() {
+        let f = Fixture::new(
+            "hierarchy",
+            &[
+                (
+                    "src/core.rs",
+                    "pub fn helper() -> u8 {\n    1\n}\n\npub fn middle() -> u8 {\n    if helper() > 0 {\n        helper()\n    } else {\n        0\n    }\n}\n",
+                ),
+                (
+                    "src/top.rs",
+                    "use crate::core::middle;\n\npub fn run() -> u8 {\n    middle()\n}\n",
+                ),
+            ],
+        );
+        let (index, _) = f.refresh();
+
+        let middle = hierarchy(&index, "middle", 50);
+        assert_eq!(middle.defined.len(), 1, "{:?}", middle.defined);
+        // Called from `run`, in the other file.
+        let callers: Vec<(&str, usize)> = middle
+            .callers
+            .iter()
+            .map(|c| (c.path.as_str(), c.line))
+            .collect();
+        assert!(callers.contains(&("src/top.rs", 4)), "{callers:?}");
+        assert_eq!(
+            middle.callers.iter().find(|c| c.path == "src/top.rs" && c.line == 4).unwrap().within.as_deref(),
+            Some("run"),
+            "a caller says which function the call is written in"
+        );
+        // The `use` line names it but does not call it.
+        assert!(!callers.contains(&("src/top.rs", 1)), "{callers:?}");
+
+        // And it calls `helper`, twice, inside its own body only.
+        let callees: Vec<&str> = middle.callees.iter().map(|c| c.name.as_str()).collect();
+        assert!(callees.contains(&"helper"), "{callees:?}");
+        assert!(
+            middle.callees.iter().all(|c| c.line > 5),
+            "a call outside the function's body was counted: {:?}",
+            middle.callees
+        );
+        // `if` is not a call.
+        assert!(!callees.contains(&"if"), "{callees:?}");
+
+        // A name nothing defines has no hierarchy rather than a made-up one.
+        let nothing = hierarchy(&index, "no_such_function", 50);
+        assert!(nothing.defined.is_empty() && nothing.callers.is_empty() && nothing.callees.is_empty());
+        assert!(hierarchy(&index, "", 50).defined.is_empty());
     }
 
     #[test]

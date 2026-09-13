@@ -1720,3 +1720,22 @@ the run touched has a diagnostic; a project with no checker refused as
 download one; diagnostics off unless the project asked; and a real command run
 with its output parsed, one that hangs stopped at its deadline, and a cancelled
 one named a cancellation rather than a timeout.
+
+
+### Call hierarchy (AH-062)
+
+One test, plus a real run in which the model asked `symbol_find` with
+`calls: true` and was told:
+
+```
+1 caller(s):
+src/use.rs:4 in go
+
+0 call(s) made:
+```
+
+Covered by test: a caller found in another file with the function it is
+written in; a `use` line that names the function counted as a use and not as a
+call; both calls inside the function's own body found and nothing outside it;
+`if (` not read as a call; and a name nothing defines yielding an empty
+hierarchy rather than an invented one.
