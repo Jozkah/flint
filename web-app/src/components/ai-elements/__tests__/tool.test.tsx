@@ -106,6 +106,28 @@ describe('ToolApprovalActions', () => {
     ).not.toBeInTheDocument()
   })
 
+  // AH-146: the change is on screen before anyone allows it.
+  it('shows the change a file-changing call would make, before it is allowed', () => {
+    renderApproval({
+      tc1: {
+        toolCallId: 'tc1',
+        toolName: 'write',
+        preview: '@@ overwrote file @@\n+    1 | hello',
+      },
+    })
+    const shown = screen.getByTestId('approval-preview')
+    expect(shown).toHaveTextContent('hello')
+    expect(shown).toHaveAttribute(
+      'aria-label',
+      'tools:toolApproval.proposedChange'
+    )
+  })
+
+  it('shows no diff for a call that has none', () => {
+    renderApproval({ tc1: { toolCallId: 'tc1', toolName: 'bash' } })
+    expect(screen.queryByTestId('approval-preview')).not.toBeInTheDocument()
+  })
+
   it('falls back to the tool name when it has no server', () => {
     renderApproval({
       tc1: { toolCallId: 'tc1', toolName: 'do_thing', threadId: 't1' },

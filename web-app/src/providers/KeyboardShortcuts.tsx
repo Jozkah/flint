@@ -4,10 +4,12 @@ import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutAction } from '@/lib/shortcuts'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useAssistantSwitcher } from '@/hooks/useAssistantSwitcher'
 import { useMessageZoom } from '@/hooks/useMessageZoom'
+import { useKeybindings } from '@/hooks/useKeybindings'
+import { useCommandPalette } from '@/containers/CommandPalette'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 
 export function KeyboardShortcutsProvider() {
@@ -16,14 +18,18 @@ export function KeyboardShortcutsProvider() {
   const { setOpen: setProjectDialogOpen } = useProjectDialog()
   const router = useRouter()
 
-  // Get shortcut specs from centralized configuration
-  const sidebarShortcut = PlatformShortcuts[ShortcutAction.TOGGLE_SIDEBAR]
-  const newChatShortcut = PlatformShortcuts[ShortcutAction.NEW_CHAT]
-  const newProjectShortcut = PlatformShortcuts[ShortcutAction.NEW_PROJECT]
-  const settingsShortcut = PlatformShortcuts[ShortcutAction.GO_TO_SETTINGS]
-  const searchShortcut = PlatformShortcuts[ShortcutAction.SEARCH]
-  const switchAssistantShortcut =
-    PlatformShortcuts[ShortcutAction.SWITCH_ASSISTANT]
+  // The binding in force for each action: the user's own if they set one
+  // (AH-207), otherwise the platform default. Subscribing to the overrides is
+  // what re-registers a listener the moment a binding changes.
+  useKeybindings((s) => s.overrides)
+  const specFor = useKeybindings((s) => s.specFor)
+  const sidebarShortcut = specFor(ShortcutAction.TOGGLE_SIDEBAR)
+  const newChatShortcut = specFor(ShortcutAction.NEW_CHAT)
+  const newProjectShortcut = specFor(ShortcutAction.NEW_PROJECT)
+  const settingsShortcut = specFor(ShortcutAction.GO_TO_SETTINGS)
+  const searchShortcut = specFor(ShortcutAction.SEARCH)
+  const switchAssistantShortcut = specFor(ShortcutAction.SWITCH_ASSISTANT)
+  const paletteShortcut = specFor(ShortcutAction.COMMAND_PALETTE)
 
   // Toggle Sidebar
   useKeyboardShortcut({
@@ -41,15 +47,6 @@ export function KeyboardShortcutsProvider() {
       router.navigate({ to: route.home })
     },
   })
-
-  // New Agent Chat — disabled, kept as dead code for future use
-  // useKeyboardShortcut({
-  //   ...newAgentChatShortcut,
-  //   callback: () => {
-  //     useAgentMode.getState().setAgentMode(TEMPORARY_CHAT_ID, true)
-  //     router.navigate({ to: route.home })
-  //   },
-  // })
 
   // New Project
   useKeyboardShortcut({
@@ -80,6 +77,14 @@ export function KeyboardShortcutsProvider() {
     ...switchAssistantShortcut,
     callback: () => {
       useAssistantSwitcher.getState().cycleHandler?.()
+    },
+  })
+
+  // Command palette (AH-206)
+  useKeyboardShortcut({
+    ...paletteShortcut,
+    callback: () => {
+      useCommandPalette.getState().setOpen(true)
     },
   })
 

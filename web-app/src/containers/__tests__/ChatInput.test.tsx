@@ -17,6 +17,12 @@ const setPromptMock = vi.fn((val: string) => {
 })
 const addToHistoryMock = vi.fn()
 const navigateHistoryMock = vi.fn()
+// A split conversation's second composer keeps its draft under a scope.
+let scopedPromptState: Record<string, { prompt: string }> = {}
+const setScopedPromptMock = vi.fn((scope: string, val: string) => {
+  scopedPromptState = { ...scopedPromptState, [scope]: { prompt: val } }
+})
+const navigateScopedHistoryMock = vi.fn()
 
 vi.mock('@/hooks/usePrompt', () => ({
   usePrompt: (selector: any) =>
@@ -25,6 +31,9 @@ vi.mock('@/hooks/usePrompt', () => ({
       setPrompt: setPromptMock,
       addToHistory: addToHistoryMock,
       navigateHistory: navigateHistoryMock,
+      scoped: scopedPromptState,
+      setScopedPrompt: setScopedPromptMock,
+      navigateScopedHistory: navigateScopedHistoryMock,
     }),
 }))
 
@@ -311,6 +320,16 @@ vi.mock('@/components/ui/tooltip', () => {
 
 vi.mock('@/lib/platform/utils', () => ({
   isPlatformTauri: () => false,
+}))
+
+const references = vi.hoisted(() => ({
+  searchReferences: vi.fn(),
+  resolveReference: vi.fn(),
+}))
+// The lexical check stays real: aliases are validated with it.
+vi.mock('@/lib/safeReferences', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/safeReferences')>()),
+  ...references,
 }))
 
 // Import component AFTER all mocks
@@ -645,16 +664,17 @@ describe('ChatInput', () => {
   })
 
   describe('tool controls', () => {
+    // The composer draws Lucide icons, which carry `lucide-<name>` classes.
     const icons = (cls: string) =>
-      document.querySelectorAll(`.tabler-icon-${cls}`).length
+      document.querySelectorAll(`.lucide-${cls}`).length
 
     // Web access is a global capability both surfaces honour -- Cowork reads
     // the same store when it builds its tool set -- so the toggle travels.
     it('offers the web-search toggle on every surface', () => {
       renderInput()
-      expect(icons('world-search')).toBe(1)
+      expect(icons('globe')).toBe(1)
       renderInput({ ownsToolSet: false })
-      expect(icons('world-search')).toBeGreaterThan(0)
+      expect(icons('globe')).toBeGreaterThan(0)
     })
 
     // Its only switch is Settings > Agent Tools now. In the composer it read as
@@ -668,6 +688,62 @@ describe('ChatInput', () => {
       renderInput({ ownsToolSet: false })
       // The composer still works: the textarea and attachments stay.
       expect(getTextarea()).toBeInTheDocument()
+    })
+  })
+
+  // Split conversations render two composers. Each must write its own draft
+  // and queue, whatever the current thread is.
+  describe('as one pane of a split conversation', () => {
+    beforeEach(() => {
+      scopedPromptState = {}
+      setScopedPromptMock.mockClear()
+      navigateScopedHistoryMock.mockClear()
+    })
+
+    it('writes a scoped draft and leaves the main draft alone', () => {
+      promptState = 'main pane draft'
+      renderInput({ draftScope: 'split:secondary', threadId: 'thread-2' })
+      // The scoped draft is empty; the main one is not shown here.
+      expect(getTextarea()).toHaveValue('')
+      fireEvent.change(getTextarea(), { target: { value: 'second pane' } })
+      expect(setScopedPromptMock).toHaveBeenCalledWith(
+        'split:secondary',
+        'second pane'
+      )
+      expect(setPromptMock).not.toHaveBeenCalledWith('second pane')
+    })
+
+    it('walks history for its own draft', () => {
+      renderInput({ draftScope: 'split:secondary', threadId: 'thread-2' })
+      fireEvent.keyDown(getTextarea(), { key: 'ArrowUp' })
+      expect(navigateScopedHistoryMock).toHaveBeenCalledWith(
+        'split:secondary',
+        'up'
+      )
+      expect(navigateHistoryMock).not.toHaveBeenCalled()
+    })
+
+    it('queues for its own thread, not the current one', async () => {
+      promptState = ''
+      scopedPromptState = { 'split:secondary': { prompt: 'queued in pane' } }
+      renderInput({
+        draftScope: 'split:secondary',
+        threadId: 'thread-2',
+        onSubmit: vi.fn(),
+        chatStatus: 'streaming',
+      })
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      await waitFor(() =>
+        expect(enqueueMock).toHaveBeenCalledWith(
+          'thread-2',
+          expect.objectContaining({ text: 'queued in pane' })
+        )
+      )
+    })
+
+    it('does not take focus when it is not the active pane', () => {
+      renderInput({ threadId: 'thread-2', takeFocus: false })
+      expect(document.activeElement).not.toBe(getTextarea())
     })
   })
 
@@ -687,6 +763,185 @@ describe('ChatInput', () => {
       const dimmed = document.querySelector('.pointer-events-none')
       expect(dimmed).toBeTruthy()
       expect(dimmed!.contains(screen.getByText('plan'))).toBe(false)
+    })
+  })
+
+  // AH-204: `@` names something inside the attached folder, and only there.
+  describe('@ references', () => {
+    beforeEach(() => {
+      references.searchReferences.mockReset()
+      references.resolveReference.mockReset()
+      references.searchReferences.mockResolvedValue([
+        { path: 'src/index.ts', name: 'index.ts', kind: 'file' },
+      ])
+    })
+
+    const typeAt = async (value: string) => {
+      const ta = getTextarea()
+      ta.setSelectionRange?.(value.length, value.length)
+      await act(async () => {
+        fireEvent.change(ta, { target: { value } })
+      })
+    }
+
+    // The regression: the picker was drawn only in chat "agent mode", which
+    // Cowork never is, so Cowork -- the one surface with a folder -- showed
+    // nothing when someone typed `@`.
+    it('offers folder-relative entries where a folder is attached, outside agent mode', async () => {
+      agentModeOn = false
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await waitFor(() =>
+        expect(references.searchReferences).toHaveBeenCalledWith(
+          '/mock/jan/data',
+          '/repo',
+          'ind'
+        )
+      )
+      expect(await screen.findByText('src/index.ts')).toBeInTheDocument()
+    })
+
+    const sources = {
+      skills: [{ name: 'reviewer', description: 'Reviews a diff' }],
+      agents: [{ name: 'review-bot', description: 'Second opinion' }],
+    }
+
+    it('offers files, skills and agents in one list', async () => {
+      references.searchReferences.mockResolvedValue([
+        { path: 'src/review.ts', name: 'review.ts', kind: 'file' },
+      ])
+      renderInput({ referenceRoot: '/repo', referenceSources: sources })
+      await act(async () => {})
+      await typeAt('@rev')
+      const rows = await screen.findAllByRole('option')
+      expect(rows.map((r) => r.getAttribute('data-token'))).toEqual([
+        'skill:reviewer',
+        'agent:review-bot',
+        'src/review.ts',
+      ])
+    })
+
+    // Keyboard alone: the arrows move the active row, announced through
+    // aria-activedescendant, and Enter inserts it instead of sending.
+    it('is driven from the composer by the keyboard', async () => {
+      const onSubmit = vi.fn()
+      renderInput({
+        referenceRoot: '/repo',
+        referenceSources: sources,
+        onSubmit,
+      })
+      await act(async () => {})
+      await typeAt('@rev')
+      await screen.findAllByRole('option')
+      const ta = getTextarea()
+      expect(ta).toHaveAttribute('aria-expanded', 'true')
+      const first = ta.getAttribute('aria-activedescendant')
+      fireEvent.keyDown(ta, { key: 'ArrowDown' })
+      const second = ta.getAttribute('aria-activedescendant')
+      expect(second).not.toBe(first)
+      expect(document.getElementById(second!)).toHaveAttribute(
+        'data-token',
+        'agent:review-bot'
+      )
+      fireEvent.keyDown(ta, { key: 'Enter' })
+      expect(setPromptMock).toHaveBeenLastCalledWith('@agent:review-bot ')
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(screen.getByTestId('reference-status').textContent).toMatch(
+        /references?/
+      )
+    })
+
+    it('closes on Escape without sending', async () => {
+      const onSubmit = vi.fn()
+      renderInput({ referenceRoot: '/repo', onSubmit })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'Escape' })
+      expect(screen.queryByRole('listbox')).toBeNull()
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    // AH-205: the active file is named from the keyboard, and the name is
+    // offered back in the same list.
+    it('names the active file as an alias with Alt+A', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      const input = await screen.findByTestId('alias-name')
+      expect(input).toHaveAccessibleName(/Alias for src\/index\.ts/)
+      fireEvent.change(input, { target: { value: 'entry' } })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(useReferenceAliases.getState().list('/repo')).toMatchObject([
+        { name: 'entry', target: 'src/index.ts' },
+      ])
+      expect(screen.getByTestId('reference-status')).toHaveTextContent(
+        'Saved @alias:entry for src/index.ts'
+      )
+      await waitFor(() => expect(getTextarea()).toHaveFocus())
+    })
+
+    it('names a selection of the active file, with its lines', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      fireEvent.change(await screen.findByTestId('alias-name'), {
+        target: { value: 'head' },
+      })
+      const lines = screen.getByTestId('alias-lines')
+      expect(lines).toHaveAccessibleName(/Lines/)
+      fireEvent.change(lines, { target: { value: '1-2' } })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(useReferenceAliases.getState().list('/repo')).toMatchObject([
+        { name: 'head', target: 'src/index.ts:1-2' },
+      ])
+    })
+
+    it('says why an alias name was refused, and saves nothing', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      fireEvent.change(await screen.findByTestId('alias-name'), {
+        target: { value: 'two words' },
+      })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/alias name/)
+      expect(useReferenceAliases.getState().list('/repo')).toEqual([])
+    })
+
+    it('tells the model how to reach a referenced agent, and names one that is not saved', async () => {
+      promptState = 'check with @agent:review-bot and @agent:ghost'
+      const onSubmit = vi.fn()
+      renderInput({ referenceRoot: '/repo', referenceSources: sources, onSubmit })
+      await act(async () => {})
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+      const sent = onSubmit.mock.calls[0][0] as string
+      expect(sent).toContain('@agent:review-bot')
+      expect(sent).toContain('call the task tool with agent "review-bot"')
+      expect(sent).toContain('there is no saved agent named ghost')
+    })
+
+    it('offers nothing and searches nothing without an attached folder', async () => {
+      agentModeOn = true
+      renderInput()
+      await act(async () => {})
+      await typeAt('@ind')
+      expect(references.searchReferences).not.toHaveBeenCalled()
+      expect(screen.queryByText('src/index.ts')).toBeNull()
     })
   })
 })

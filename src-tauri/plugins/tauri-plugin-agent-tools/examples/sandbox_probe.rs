@@ -39,6 +39,7 @@ fn main() {
     let args = tauri_plugin_agent_tools::tools::appcontainer::helper_args(
         &workspace,
         Some(&scratch),
+        &[],
         false,
         &shell,
         &["-c".to_string(), "pwd && echo probe-ok".to_string()],

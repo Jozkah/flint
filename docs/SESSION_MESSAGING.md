@@ -136,8 +136,8 @@ Event: `agent-mailbox-updated { sessionId, messageId }` emitted after each appen
 
 ## Implementation notes: backend
 
-Module: `src-tauri/plugins/tauri-plugin-agent-tools/src/mailbox.rs` (Tauri-free),
-commands in `commands.rs`, tests in `mailbox/tests.rs`.
+Module: `src-tauri/plugins/tauri-plugin-agent-tools/src/session_mailbox.rs`
+(Tauri-free), commands in `commands.rs`, tests in `session_mailbox/tests.rs`.
 
 ### Storage
 
@@ -247,15 +247,27 @@ with the recipient's `sessionId`. No hook is installed in tests or the CLI.
   per session, off by default, release only for the focused idle session, and
   never release replies (`depth > 0`) while the last run was itself a wake-up.
 
-### Pending UI glue
+### Transcript glue (applied after the Atelier restyle landed)
 
-Three small hunks in files under restyle (`routes/cowork.tsx`,
-`containers/MessageItem.tsx`) are specified in
-`docs/SESSION_MESSAGING_UI_HUNKS.md`. Until they land, a delivered message's
-transcript row shows the wrapper text as an ordinary user turn (no "Message
-from" label or Reply) and an automatic wake-up for a session already idle and
-in view waits for a session switch or run end. They are applied after the
-restyle branch is pushed, by agreement with that session.
+The hunks in `docs/SESSION_MESSAGING_UI_HUNKS.md` are applied on top of the
+restyled files:
+
+- `routes/cowork.tsx` `takeSteering` carries the sender onto the live user
+  turn (`agentAttribution` in `lib/mailboxDelivery.ts`).
+- `runRequest(text, from?)` puts the sender on an idle send and no longer
+  titles a new session with another session's wrapped message.
+- The idle-dequeue effect also watches the ready count, so mail released by
+  Automatic wake-ups for a session already idle and in view is sent at once.
+- `containers/MessageItem.tsx` mounts `AgentMessageHeader` ("Message from
+  <name>" with Reply) on rows carrying `metadata.agentMessage`.
+
+### Relation to the run-to-run mailbox (AH-103)
+
+Main also has a *run-to-run* mailbox (`mailbox.rs`, tools `message_send` /
+`message_check`, files under `<data>/mail/`) for runs of the same
+conversation. This feature is separate: its module is `session_mailbox.rs`
+(tests in `session_mailbox/tests.rs`), its files live under `<data>/mailbox/`,
+and its four tools are offered only to session-scoped Cowork calls.
 
 ### Known limitations
 
@@ -266,6 +278,16 @@ restyle branch is pushed, by agreement with that session.
   a message can reappear after restart.
 - Ordinary chat threads do not participate.
 - No end-to-end run of the desktop app against the real backend yet.
+
+## Verification after merging fork/main (Atelier integration, 8354910923)
+
+| Check | Result |
+| --- | --- |
+| Plugin `cargo test -j 4 --lib -- session_mailbox tools:: mailbox` | 374 passed, 5 failed: the bash-sandbox tests that fail in this Windows environment on the base as well |
+| App crate `mailbox_tools_are_never_advertised_by_the_rust_loop` | passed |
+| `tsc -b` (web-app, plugin bindings built from this branch) | exit 0 |
+| Full vitest | 522 files passed, 1 failed: `src/__tests__/main.test.tsx` cannot resolve `@fontsource/ibm-plex-sans/400.css`, a new dependency not installed in the shared `node_modules` (environment); 6746 tests passed |
+| Messaging and Cowork suites (MessageItem, cowork route, mailboxDelivery, coworkTurns, AgentMessageCard, sessionMessaging) | 8 files, 115 passed; MessageItem 28 passed including the new sender-label test |
 
 ## Verification (integration branch)
 

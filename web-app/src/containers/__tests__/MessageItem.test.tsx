@@ -158,6 +158,35 @@ describe('MessageItem', () => {
     )
     expect(screen.getByText('Hi there')).toBeInTheDocument()
     expect(screen.queryByTestId('render-markdown')).not.toBeInTheDocument()
+    // An ordinary user message is not labelled as mail from another session.
+    expect(screen.queryByTestId('agent-message-header')).not.toBeInTheDocument()
+  })
+
+  it('labels a message delivered from another agent session with its sender', () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            role: 'user',
+            parts: [{ type: 'text', text: 'Schema is ready' }],
+            metadata: {
+              agentMessage: {
+                sessionId: 'session-b',
+                displayName: 'Planner',
+                messageId: 'mail-1',
+                replyTo: null,
+              },
+            },
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('agent-message-header')).toHaveTextContent(
+      'messaging:messageFrom Planner'
+    )
   })
 
   it('renders attached files from user text metadata', () => {

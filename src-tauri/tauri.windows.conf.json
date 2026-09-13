@@ -12,24 +12,9 @@
         "fullscreen": false,
         "zoomHotkeysEnabled": false,
         "center": true,
-        "hiddenTitle": true,
-        "transparent": true,
-        "trafficLightPosition": {
-          "x": 20,
-          "y": 32
-        },
-        "decorations": false,
-        "titleBarStyle": "Overlay",
-        "windowEffects": {
-          "effects": [
-            "fullScreenUI",
-            "mica",
-            "tabbed",
-            "blur",
-            "acrylic"
-          ],
-          "state": "active"
-        },
+        "visible": false,
+        "transparent": false,
+        "decorations": true,
         "dragDropEnabled": false
       }
     ]

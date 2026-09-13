@@ -1539,3 +1539,916 @@ configuration and was not touched. Every claim above is against the mock.
 (four at once), which locked the next build with "Access is denied". Runs now
 stop this worktree's own stranded harnesses afterwards, identified by path —
 never any other Jan or WebView2 process.
+
+## 2026-09-10 — Batch 2: one proposal record for patches, hunks, conflicts and worktrees (AH-146 / AH-147 / AH-148 / AH-107 / AH-109)
+
+**The architecture.** A proposed change is one versioned record
+(`tauri_plugin_agent_tools::proposal`, schema 1) from the moment an agent
+produces it to the moment it lands, is rejected or is abandoned.
+
+- *Immutable before approval.* Creating a proposal writes the exact base and
+  proposed bytes of every file to a content-addressed, write-once blob store
+  under `<data>/proposals/blobs/`, and the record to
+  `<data>/proposals/<id>.json`. Nothing is regenerated later: what is applied
+  is read back from the blobs, and a blob that no longer hashes to its name,
+  or a record whose files no longer hash to its `patchHash`, is refused.
+- *Approval binds identities.* An approval names the proposal id, its
+  `patchHash`, its `baseStateHash`, its scope (session, run, agent, project,
+  worktree) and the exact hunks chosen. Every field is compared with the stored
+  record; any difference refuses. The renderer sends ids and hashes, never
+  content, so it has no field in which to add a line.
+- *The backend builds the result.* Selection, a three-way merge against the
+  destination as it is now, and the writes all happen in Rust. Edits made in
+  the destination since the proposal are preserved; a chosen hunk whose lines
+  were also changed there is a conflict, reported by file and hunk id, and
+  nothing is written. A hunk the destination already holds exactly is not a
+  conflict (the second proposal from a worktree after a partial apply).
+- *All or nothing.* Files are written through a temporary file and a rename;
+  a failure part way puts back every file already written.
+- *Never applied:* credential-shaped files (by name or content), paths outside
+  the project, `.jan` and `.git`, and two spellings of one path.
+- *Audit.* `audit/proposals.jsonl` records created / applied / conflict /
+  refused / rolled-back / rejected with ids and hashes only — never content.
+
+**Where proposals come from today.** A Cowork session in *Managed worktree*
+mode writes only its Jan-owned worktree. `agent_proposal_from_worktree`
+checks the record the renderer sends (inside Jan's worktree root, and still
+`Ready` — same repository identity, same branch), reads every file the
+worktree changed relative to its base commit (commits on its branch,
+uncommitted edits, untracked files; Jan state excluded) and stores a proposal
+whose destination is the worktree's recorded source. `agent_proposal_apply`
+takes the destination from the *stored* proposal, never from the approval.
+
+**The UI.** The Changes panel of a managed-worktree session shows a review
+(`CoworkProposalReview`): *Review changes* creates the proposal; every file and
+hunk is listed with a checkbox, credential-shaped files cannot be selected,
+binary and oversized files are whole-file; *Apply selected* sends the
+approval; a refusal shows its message and marks each conflicting hunk; *Reject*
+discards the proposal with nothing written.
+
+**Windows evidence.** `cowork-smoke --only proposal-review-apply` passes on
+Windows, over real IPC into the real backend with real git (see the
+verification document for exactly what it asserts). It found one real defect on
+the way: the worktree-ownership check compared paths lexically, and the data
+folder Jan resolves and the one the renderer is handed differ in form on
+Windows, so a worktree Jan had just made was refused as "not a worktree Jan
+manages". It now compares canonical paths.
+
+**The boundary, stated plainly.** On Windows the review UI cannot be reached:
+Managed worktree mode is disabled because AppContainer cannot yet confine a run
+to a repository (`jail::supports_write_roots(Backend::AppContainer)` is false,
+deliberately). So on Windows the backend is proven end to end and the UI only
+by unit tests; on macOS/Linux the mode is available but was not run here.
+Because the completion definition requires the UI to be reachable and
+Windows-tested, **AH-146, AH-147, AH-148 and AH-109 stay `in-progress`**, with
+their notes updated to what now exists. AH-107 is unchanged: the Rust
+`dispatch_subagent` fan-out (headless CLI / API server) still shares one tree,
+and team children's worktrees are not yet offered for review (their owner ids
+are not recoverable from branch names, which are hashed).
+
+**Next for this batch.** (1) Windows confinement for a Jan-owned worktree:
+AppContainer write ACE on the worktree directory, with git metadata writes
+handled (the worktree's `.git` file points into the source repository). That
+single change makes the mode — and this review — reachable on Windows.
+(2) Offer team children's worktrees for review from the team report, which
+already names each child's worktree.
+
+## 2026-09-10 — Batch 4: command palette (AH-206 implemented) and rebindable shortcuts (AH-207 in progress)
+
+- **Palette.** `CommandPalette` is mounted once above every route and opened
+  by `ShortcutAction.COMMAND_PALETTE` (Ctrl/Cmd+Shift+P; Shift because the
+  unshifted chord is New Project). Entries are the app's own actions, routes,
+  settings pages and conversations, ranked in memory with Fuse. Nothing is
+  fetched.
+- **Keybindings.** `useKeybindings` stores only overrides through the backend
+  settings store (`keybindings` key) and is rehydrated with the other backend
+  stores. `bind` refuses a chord any other command uses — rebindable or not,
+  aliases included — and names it. While a new binding is being recorded,
+  every app shortcut (`useHotkeys`, zoom, the sidebar's own Ctrl+B) stands
+  down; the first Windows run showed why: Ctrl+N ran New Chat and navigated
+  away instead of being reported as taken.
+- **Also fixed on the way.** The sidebar component's hard-coded Ctrl+B toggled
+  the sidebar even after the user moved Toggle Sidebar elsewhere; it now stands
+  down when that action has an override.
+- **Left.** The sidebar's New Chat hint shows the default chord, not the
+  user's; a restart on Windows was not exercised (see the verification note).
+
+## 2026-09-10 — Batch 5: hidden utility agents (AH-208 implemented); AH-209 not started
+
+- **What changed.** `runUtilityAgent` is the one way Jan makes a model call for
+  itself. Titling (`generateThreadTitle`) and compaction summaries
+  (`compactMessages`) use it. It passes no tools and `toolChoice: 'none'`, and
+  its request type has no field for a tool, grant or write root. Every call is
+  recorded in `audit/utility-agents.jsonl` (kind, session, model, outcome,
+  duration, token counts) through `utility_agent_record`.
+- **Two leaks found and closed.** The title path logged the conversation
+  excerpt's title and the raw model output to the webview console, which is
+  written to the app log; it no longer logs either. And the first version of
+  the backend sanitizer filtered disallowed characters out of a field, which
+  turned `model\nsummary: the plan` into `modelsummarytheplan` — still the
+  content. A field that is not an identifier is now refused whole.
+- **AH-209 (project initialization assistant) is not started**: it depends on
+  AH-204 (unified @ references), which is `missing`. While reading the current
+  `@` path code for AH-204 I noted that a manually typed `@../x` or `@/abs`
+  reference in chat resolves outside the working directory (the picker itself
+  inserts a plain absolute path, not an `@` reference). The user typed it, so
+  it is not an escalation, but AH-204's "nothing outside the folder is
+  resolvable" criterion is not met today.
+- **Sidebar hints follow rebinding.** The Search, New Chat and New Project
+  hints in both sidebars now render the binding in force (`ShortcutHint`).
+
+## 2026-09-10 — Batch 6: portable session export and import (AH-203)
+
+- **Export.** A session's own menu has *Export session…*. The renderer builds a
+  `jan.cowork-session` bundle (schema 1: turns with their tool states and
+  questions, subagent runs, this session's durable tool activity, file
+  activity, and the change summary). `session_export_save` drops folder,
+  access, consent, continuity, code panel, run budget and messages, redacts
+  credentials — named fields through the snapshot redactor **and prose through
+  the text redactor** — and only then opens a save dialog *it* owns; the
+  renderer never supplies a path, so the command is not a write-anywhere
+  primitive. The toast reports how many credentials were left out.
+- **Found on the way.** The snapshot redactor alone left
+  `Authorization: Bearer …` typed into a turn untouched; it only knows
+  credential-named fields. The export now runs every string through the text
+  pass as well, and the unit test asserts both.
+- **Import.** *Import session…* in the Cowork sidebar. `session_import_open`
+  opens its own picker, caps the size, and refuses a document that is not an
+  export or whose schema version it does not understand, by name. The store
+  creates a new session under a fresh id, unbound like a fork, with pending
+  questions marked stale and file activity re-keyed; `importedFrom` makes a
+  second import of the same export a refusal that selects the session it
+  became. Durable tool activity is carried in the file but not replayed into
+  this machine's audit log, which records only what happened here; the tool
+  turns carry their states.
+- **AH-210 (PC-to-PC handoff)** builds on this and is not started.
+
+## 2026-09-10 — Windows confinement for Jan-owned worktrees; undo by turn; confined `@` references
+
+**Windows confinement for a managed worktree.** AppContainer already confined
+the shell by granting a write ACE on the thread workspace. It refused to grant
+one on the user's own folder, which is still right, but that refusal also made
+Managed worktree mode unavailable on Windows, even though a managed worktree is
+a folder Jan owns under its data folder. Now:
+
+- `jail::supports_owned_write_roots` is true for AppContainer.
+  `jail::can_confine_write_roots` holds a shell to its roots, and on
+  AppContainer only when every root is strictly inside Jan's worktree folder.
+  The helper re-exec carries each root as a marked `--write-root=` argument and
+  grants each an ACE, refusing a missing root rather than skipping it.
+- `grants::authorize` authorizes a Jan-owned worktree on Windows. The user's
+  own folder is still refused, decided on the canonical path, so no spelling of
+  a user folder passes as a worktree.
+- A separate `managed_worktree_capability` command. The renderer asks about each
+  mode separately, so Windows offers Managed worktree while still not offering
+  Edit this folder.
+
+**Bugs found on the way, all fixed with regression tests:**
+
+- *Relative data folder.* The app's configured default data folder is `./data`.
+  With a relative data folder, git resolved the worktree against the repository
+  (inside it) and everything else resolved it against the process's working
+  directory. Authorizing it then failed with "cannot find the file".
+  `worktree::absolute` now resolves the root once, and the ensure/list/discard
+  commands use it.
+- *Leaked shell probes.* When a sandboxed shell probe passed its 10-second
+  timeout it was reported unusable but never killed, because the child had been
+  moved into the wait thread. Each hung probe left its helper and shell running
+  for the life of the app. The first fix killed the tree with `taskkill /T`,
+  and that regressed every Cowork run on this host. Bisected: a scenario that
+  had passed earlier stalled before the model was called, and passed again with
+  only the kill removed. The cause is that `taskkill` itself takes about a minute
+  here and then fails ("the timeout period expired"), even against a plain
+  `ping`, and the probe sits on the readiness check every run waits for.
+  `wait_or_kill` now polls `try_wait` and kills the helper directly (the helper
+  ties its shell to itself). The test checks the pid is gone through
+  `OpenProcess`/`GetExitCodeProcess`, not `taskkill`.
+- *`taskkill` itself, fixed later in this batch:* `proc::kill_tree` (the
+  `taskkill /T /F` path) is also what stopping a background `bash` job uses,
+  and on this host it took about a minute and then reported failure. It now
+  walks the tree natively (see below).
+- *Compatibility manifest ignored late inputs.* Saved subagent names and the
+  advertised tools were read only when a scan finished. If they arrived after
+  the scan, an imported agent reusing a saved name was never reported as a
+  duplicate. Tightening one request's timing exposed this. The hook now
+  re-resolves the last scan when those inputs change. Mutation-checked.
+
+**AH-202 undo/redo by turn.** A backend journal (`undo.rs`) records the exact
+bytes before and after every file a `write` or `edit` changes, against the run
+that changed it. `execute_tool` gains `undo_run` and captures the bytes at the
+path the handler itself resolves. `undo_turn`/`redo_turn` run all-or-nothing
+with rollback. Any file changed since, by the user or a later turn, refuses the
+whole operation and names the path. Scope is re-checked when the undo is asked
+for: the session's workspace, scratch folder and live grant. The position is
+per session, on disk. The Changes panel lists the turns with an Undo or Redo
+button on each, and results are announced through `aria-live`.
+
+**AH-204 containment.** In agent mode the `@` picker searched the user's home
+directory and read references with the unconfined filesystem API, so
+`@../x`, `@/abs` or `@C:\...\.ssh\id_rsa` put that file into the prompt. Now a
+reference is a path relative to the attached folder (`referenceRoot`). It is
+checked lexically (no absolute path, drive letter, UNC path, `~` or `..`) and
+then by the backend's `project_browse` reader, which refuses symlink escapes and
+credential-shaped files. A refused reference is stated in the message rather
+than silently dropped. With no folder attached, nothing is offered and nothing
+resolves. The unconfined `searchFiles`/`resolvePathReference` were removed.
+
+**AH-146: the change is shown before it is allowed.** Cowork's *Ask before
+changes* prompt showed a tool name and an argument table; the diff arrived only
+after the write had landed. `preview_change` returns the diff a `write` or
+`edit` would make -- the same `preview_diff` the executed call reports, against
+the same path resolution -- and only inside the roots the session may write, so
+a preview cannot be used to read a file no tool may read. The dispatcher hands
+it to the prompt, which renders it as a named region above Allow Once. The
+post-run diff and the prompt share one `ChangeDiff` component.
+
+**Found by running the Windows scenarios, all fixed:**
+
+- *The `@` picker never appeared in Cowork.* It was drawn only in chat "agent
+  mode", which Cowork never is. Regression test added and mutation-checked.
+- *The proposal commands froze the window.* `agent_proposal_from_worktree`,
+  `list`, `apply` and `reject` were synchronous Tauri commands, which run on the
+  main thread. During one run the WebView stopped answering for over a minute
+  after *Review changes* was clicked. They now run on a blocking thread. The
+  command itself takes ~150 ms on the fixture, so the length of that stall is
+  not explained by the command alone; it did not recur after the change.
+- *A file reference was read as a skill request.* `parseSkillRequests`
+  counts `@name` as an explicit skill mention, so `@src/index.ts` requested a
+  skill called `src` and `@README.md` requested one called `README.md`. Neither
+  exists, so the request resolved as missing, and a missing requested skill
+  stops every change the run would make. A mention that continues with a path
+  separator, or contains a dot, is now a path unless a skill has exactly that
+  name. Regression tests added.
+- *Examples and integration tests missed a signature change.* `helper_args`
+  gained its write-roots parameter, and `examples/sandbox_probe.rs` and
+  `tests/windows_sandbox.rs` still passed the old five arguments. `--lib` runs
+  never compile them; the full suite did.
+- *A harness race.* Opening the Changes panel right after a navigation looked
+  for its button once; it now waits. A pass on retry now prints what the first
+  attempt hit, so a retry cannot hide a defect.
+- *Open, not diagnosed: WebView stalls on this host.* Four runs of
+  `restart-persist-1` in a row (and one each of `managed-worktree-review` and
+  `session-export-import`) failed the same way: the model's turn finished and
+  its write landed, but the composer never returned to idle, and later `eval`
+  calls got no answer for 60 s. During one stall, the app and its WebView2
+  processes were idle (under 0.1 s of CPU in 10 s), so this is a wait, not a
+  busy loop. The next runs of the same scenarios passed cleanly, with no retry.
+  The harness now reports what a stuck run is waiting on (the approval state,
+  the composer's buttons, the pane text), so the next occurrence names the cause.
+  Each of these runs also waited about 40 s for the environment check to probe
+  shells that cannot start here.
+
+**Windows evidence (mock provider on `v100:8080`; the real model lane is not
+reachable from this host).** Each scenario was run by itself with
+`cowork-smoke --only <name>`:
+
+| Scenario | Result |
+| --- | --- |
+| `managed-worktree-review` | passed: Managed worktree and Ask before changes chosen in the UI, the prompt shows the write's diff, the worktree gets the write, the folder does not, one hunk of two applied through Review changes. The `bash` half is reported, not passed: no sandboxed shell starts on this host |
+| `at-references-confined` | passed |
+| `proposal-review-apply` | passed |
+| `command-palette-keybindings` | passed |
+| `session-export-import` | passed (the probe-kill regression is gone) |
+| `restart-persist-1` then `restart-persist-2` | passed across two processes on one kept data folder: the rebound palette chord and the undone turn both came back, and redo after the restart restored the file |
+
+**Registry.** AH-146, AH-147, AH-148, AH-202 and AH-207 are `implemented`
+(macOS/Linux not run). AH-109 stays `in-progress`: team children's worktrees
+are not offered for review. AH-204 stays `in-progress`: containment is done, but
+the one ranked menu of files, folders, skills, agents and aliases, and
+references that survive a rename, are not built.
+
+**AH-204/AH-205: one `@` menu, and aliases.** The composer's `@` menu is a
+single ranked list of files and folders in the attached folder, the folder's
+skills, the saved agents, and the folder's aliases. Each row inserts its
+identifier rather than its label: a folder-relative path, or a typed reference
+(`@skill:name`, `@agent:name`, `@alias:name`). The prefix keeps a skill, an
+agent and a file of the same name apart, and it is what `parseSkillRequests`,
+the reference parser and the resolver key on. A skill reference stays in the
+text for the skill machinery. An agent reference adds a note that tells the
+model to use the `task` tool with that agent, or says that no such agent is
+saved. An alias is replaced by the file it names, which is read through the
+confined reader at use time. So an alias whose target has since escaped the
+folder is refused, and a broken one reports the path it can no longer find.
+Aliases belong to one folder and persist through the backend settings store.
+
+The menu works from the keyboard alone. Focus stays in the composer, the
+arrows move the active row through `aria-activedescendant`, Enter and Tab
+insert it without sending, and Escape closes the menu. Alt+A opens a labelled
+name field for the active file or folder, and closing that field returns focus
+to the composer. A polite live region announces the match count and the
+outcome of each alias save or refusal.
+
+**Found on the way:** the first alias restart run failed because phase one
+exited inside the settings debounce, before the write had left the WebView.
+The app flushes on exit what it has received; it cannot flush what it was never
+sent. The scenario now waits for the alias to reach `settings.json` before
+exiting, as a person would.
+
+A selection is named by giving the alias field a line range as well
+(`src/a.ts:12-20`). It is read as those lines of the file as it is now, and a file
+that has since shrunk below the range says which lines are missing.
+
+**AH-209: describing a newly attached project.** A folder with no `JAN.md`
+gets a *Describe this project* button beside the composer. The backend
+`project_survey` walks the folder through the same confined listing and reader
+the Code panel uses, so it honours `.gitignore`, skips dependency and build
+output, drops symlinks that lead out of the folder, and refuses
+credential-shaped files. It reads only the manifests and the README: it names
+the project from `package.json`, `Cargo.toml`, `pyproject.toml` or `go.mod`,
+takes the description from the manifest or the README's first paragraph, tallies
+languages by extension, and describes the build from what the manifests declare.
+It runs nothing. It stops after 200 folders, 4,000 entries or 4 levels, and
+lists what it did not read. The draft opens in a dialog for editing and is kept
+per folder in the backend settings store, so it survives closing the dialog and
+restarting the app. `project_init_accept` is the only write. It writes
+`<folder>/JAN.md`, only with the accepted text, by renaming a temporary file into
+place, and refuses an existing file (unless asked to overwrite), a `JAN.md` that
+is a link or a folder, and empty or oversized text. After the write, Cowork
+reads the instructions again. A survey still running when the dialog closes is
+dropped.
+
+Found while running it on Windows, both fixed with regression tests:
+
+- *A missing `JAN.md` was reported as unreadable.* The instruction probe
+  treated a read failure as "absent" only when the message said "not found",
+  "no such file" or "ENOENT". Windows reports "The system cannot find the file
+  specified (os error 2)", so every folder without a `JAN.md` was shown as
+  having one that could not be read, and the offer never appeared.
+  `isMissingFileError` now recognises both forms.
+- *The announcement of the write vanished with the offer.* Writing `JAN.md`
+  removes the offer, and the live region was inside the removed element. The
+  live region now stays mounted. Mutation-checked.
+
+**AH-210: handing a session to another computer.** A session's menu has
+*Hand off to another computer…*. It writes the AH-203 export, which uses the
+same schema and the same credential redaction and drops the authority the
+session held. It adds a `handoff` block. The block names the folder by its name,
+branch and commit, never its path. It names the model by provider and id, and
+nothing else sent under `handoff` survives, keys included. Every absolute path
+that only means something on this machine is replaced by what it means: the
+session's folder becomes `<folder>`, Jan's data folder becomes `<jan-data>`, and
+the home folder becomes `~`. The file is written and read through dialogs the
+backend owns. Nothing is uploaded, and no account or Jan service is involved.
+
+Importing a handoff creates the session unbound, like any import. It then
+states, item by item, what could not be restored:
+
+- the folder to attach, which is checked against the recorded name, branch and
+  commit once one is attached;
+- a provider that is not set up on this machine;
+- a model that its provider does not offer here.
+
+The notice stays on the session until dismissed, including across a restart.
+It is placed beside the composer and uses a polite live region.
+
+**Stopping a process tree on Windows no longer goes through `taskkill`.**
+`kill_tree` takes one process snapshot, then calls `TerminateProcess` on the
+root and on every descendant. A process counts as a child only if it was created
+after its recorded parent, because Windows recycles parent ids and an unrelated
+process (another Jan window, a WebView) could otherwise be adopted and killed.
+Stopping a background `bash` job and the shutdown reaper use it, and so does a
+timed-out shell probe. The probe used to kill only its helper, so the helper's
+shell stayed running. On this host, the five job-registry tests and two
+`kill_tree` tests that failed with "the timeout period expired" now pass in a
+fraction of a second. New tests cover a grandchild killed with its parent, an
+unrelated process left running, and a probe's shell killed with the probe. The
+tree-kill tests were mutation-checked: with descendants skipped, they fail.
+
+**Test-invocation note.** `cargo test -p tauri-plugin-agent-tools --lib` does
+not build the `jan-sandbox-helper` binary, so the sandboxed-shell probe
+re-executes the test binary, which exits with code 101. Seven `bash` tests then
+fail with "no shell could be started". Run the suite without `--lib`.
+
+## 2026-09-11 — AH-109 team-child review, AH-107 per-agent worktrees, and four defects the Windows scenario found
+
+**What changed.**
+
+- **Team children are recorded, listed and reviewed.** `core/agent/team_children.rs`
+  records each isolated team child before it runs and settles it when it ends.
+  The record names the child by parent session and task id. Its worktree,
+  branch and base commit are found from Git. When the child settles, the
+  record stores a fingerprint of what the child changed. The first ending is
+  the one kept, and a record still `running` from another process reads as
+  `interrupted`. The Changes panel lists the children (`CoworkTeamReviews`)
+  with task, branch, base, worktree, files, counts and ending. A child's
+  review is the ordinary proposal review, made by `agent_team_child_propose`
+  from the backend record, so there is no second apply path. These are typed
+  refusals, never an empty review:
+  - a deleted, corrupt or moved worktree;
+  - a worktree that holds a link out of itself;
+  - a worktree that changed after its child finished;
+  - a child that did not finish. Its changes can be reviewed only after the
+    user acknowledges this, and the proposal's subject then says so.
+- **Overlaps are decided before anything runs.** Team tasks declare `writes`,
+  `deletes`, `renames` and `reads`. `scopeConflicts` finds these overlaps
+  between tasks that could run at once:
+  - the same file, compared normalised and case-folded;
+  - a folder and something inside it;
+  - either end of a move;
+  - a delete;
+  - a lock file both tasks would regenerate.
+
+  Reads never conflict, and neither do ordered tasks. The user sees each
+  overlap (`CoworkTeamConflicts`) before any worktree is provisioned. They can
+  run the tasks one after the other, which adds an ordering-only `after` edge,
+  narrow a scope, or let the tasks run side by side. The side-by-side choice
+  is recorded on both children's records, and the apply-time check still runs.
+  `runTeam` refuses any overlap nobody decided. This is declared-path overlap,
+  not semantic conflict detection, and the dialog says so.
+- **Paths are hardened on both ends of a proposal.**
+  - A changed path in any worktree that passes through a symlink, junction or
+    other reparse point refuses the proposal.
+  - Nested `.git` and `.jan` directories are never proposed.
+  - Windows spellings are refused on every platform: `.git.`, device names,
+    streams, and trailing dots or spaces.
+  - Immediately before writing, each destination path is re-checked for a link
+    anywhere along it, so a directory swapped for a junction after review is
+    refused with nothing written.
+- **AH-107: the Rust subagent runner isolates writing children.** In a git
+  project, a child that can change files works in a Jan-owned worktree by
+  default. Its `project_root` is re-pointed there, so its tools, write roots
+  and shell all start in the worktree. `isolate: false` is the only way for a
+  writing child to share the project tree. Isolation that cannot be had is
+  `SubagentError::Isolation`, and the child does not start. The parent is told
+  where the work is.
+
+**Defects found by the Windows scenario, each fixed with a test that fails on
+the old code:**
+
+1. **A child's approval prompt could never appear.** The prompt is drawn under
+   a tool card in the transcript, and a child's calls are not message parts.
+   Before the fix, a child's prompt showed only when its call id happened to
+   match a parent card: the mock numbers calls per response, so the first call
+   matched and the second did not. Otherwise the child waited forever. Child
+   requests now carry their origin and are shown on their own
+   (`CoworkChildApprovals`).
+2. **Two requests with one call id overwrote each other.** The earlier promise
+   never resolved. Requests now queue by id and are shown in turn
+   (`useToolApprovalRequests.sameId.test.ts`, which hangs on the old code).
+3. **A reply cut off mid-stream counted as a success.** The AI SDK ends a
+   dropped stream with a normal `finish` part: `finishReason: 'other'` and no
+   `rawFinishReason`, measured against the mock. A team child cut off after
+   one word was recorded as completed. `streamCutOff` flags this case, and
+   `consumeStep` turns it into an error, for the parent and for children
+   (`coworkStreamCutOff.test.ts`).
+4. **A first message that only describes work** gets a read-only proposal, by
+   design. This is not a defect. The scenario now sends an imperative.
+
+**The sandboxed shell on this host.** The diagnosis comes from
+`examples/shell_report.rs` in the plugin, which calls the production
+`shell_reports` and `select_shell` and prints what each returns.
+
+- Git Bash and MSYS2 bash fail with `STATUS_DLL_INIT_FAILED`. Their runtime
+  cannot initialise in an AppContainer, whatever the install location. This is
+  external and has no repository-side fix that keeps confinement.
+- PowerShell starts inside the sandbox, probed in about 0.3 s, and is
+  selected. The result is the same with the full app binary as the helper.
+- **The defect was in the repository.** A Cowork run builds its tool list by
+  asking readiness with no project root. With no root, the shell probe used
+  the temporary directory itself as the sandbox's workspace. The AppContainer
+  grants a workspace by rewriting its ACL, and for all of `%TEMP%` that takes
+  longer than the probe's ten seconds. Every candidate therefore "failed to
+  start", and `bash` was withheld from every Cowork run, while the same probe
+  scoped to a folder found PowerShell in a third of a second. The in-app
+  evidence, from `cowork-smoke`: with the project root, `bash` is advertised;
+  with no root, it is withheld with "No shell on this machine could be started
+  inside the sandbox".
+- **The fix** makes the unattached probe run in an empty `jan-shell-probe`
+  directory of Jan's own under the temporary directory. Confinement is
+  unchanged. The regression test
+  `readiness::tests::an_unattached_session_finds_the_shell_a_folder_would`
+  failed on the old code on this host: no-folder unavailable versus folder
+  Degraded, with the readiness suite taking 81 s. It passes with the fix, in
+  1.6 s for the suite.
+
+- **Two more defects appeared once a shell started in the app.** Each is fixed
+  with a test that fails on the old code:
+  - *Relative sandbox paths.* Jan's data folder defaults to the relative
+    `./data`. The confined helper starts in the workspace, so a relative
+    workspace named somewhere else, and every command failed in setup with
+    "workspace does not exist". `bash` now makes every path it hands the
+    sandbox absolute:
+    `handlers::tests::a_sandboxed_command_runs_in_a_relatively_spelled_workspace`.
+  - *PowerShell's starting location.* Inside an AppContainer, Windows
+    PowerShell starts at a drive root the container can see (`G:\` here),
+    not the workspace, so a relative path in a command landed elsewhere.
+    `Set-Location` into the workspace is refused with "Access is denied",
+    because PowerShell checks each ancestor. The command now mounts the
+    workspace as its own drive and starts there:
+    `handlers::tests::a_sandboxed_command_starts_in_its_workspace`.
+
+New Windows integration tests in `tests/windows_sandbox.rs`:
+
+- the selected shell writes a Jan-owned worktree granted as a write root, and
+  is refused on the user's checkout beside it;
+- a sandboxed command stopped part-way leaves no helper, shell or grandchild
+  running.
+
+**The composer-busy stall.** The harness now asks the app's main thread
+directly when an eval times out:
+
+- Before the change, two stalls (r29, r31) read "the app's main thread is
+  answering; the page is not". The renderer had stopped running scripts while
+  the app, with idle CPU, was fine.
+- That fits Chromium backgrounding an occluded WebView, which throttles its
+  timers.
+
+The harness now starts WebView2 with occlusion and background throttling
+disabled (`COWORK_SMOKE_THROTTLE=1` keeps the default). Runs r32 to r36 had no
+eval timeouts. Retries are off by default (`COWORK_SMOKE_RETRIES=<n>` to
+allow them), so a flaky pass cannot hide.
+
+**The stall is not closed.** It came back twice with throttling disabled: in
+r39 (`managed-worktree-review`) and r43 (`team-review-persist-1`), both at
+the click that applies a proposal. Each time the main thread answered, and
+WebView2's renderer used 0.00 s of CPU across the sample, so the page was
+idle rather than busy: it was not running a script loop. No app state was
+found that stays busy, so there is no race to fix yet and no deterministic
+test. The harness now saves a screen capture (PNG) when an eval times out,
+for the next occurrence. Round r44 passed every scenario on the first
+attempt with retries off. Whether the cause is external is not proven, so
+the defect stays open.
+
+**Other harness changes.**
+
+- `cowork-smoke` builds now run at idle priority with one cargo job, and
+  vitest runs with one or two workers.
+- The mock provider gained per-request `routes`. Each child's first user
+  message selects its behaviour, and `{{FOLDER}}` becomes the folder named in
+  its system prompt.
+
+## 2026-09-11 — Review of `1e925e397`: four defects in the AH-109 batch, fixed
+
+An adversarial review of the AH-109/AH-107 commit found four defects. Each was
+reproduced, then fixed with a test, and each test fails with its fix reverted.
+
+1. **`GIT~1` got past the `.git` refusal (high).** NTFS gives `.git` the
+   8.3 short name `GIT~1`, and opens the directory by either name. A child
+   could create `GIT~1/hooks/pre-commit` in its worktree. The proposal
+   refused `.git` only by its long spelling, so applying it would have
+   written the user's Git hook. Two fixes:
+   - `proposal::is_reserved_name` refuses every `git~N` and `jan~N`, the rule
+     Git itself uses. `proposals::is_jan_state` uses the same function.
+   - At apply time, `plan` resolves the deepest existing part of each
+     destination and refuses any write whose real location is inside the
+     folder's `.git` or `.jan` (`proposal::resolves_into_reserved`). This
+     still holds if a new alias turns up.
+
+   Tests: `a_path_windows_would_read_differently_is_refused` (spellings) and
+   `a_short_name_for_git_is_refused_by_where_it_resolves` (Windows, measured
+   against a real `GIT~1`).
+2. **Typographic quotes broke out of the PowerShell prefix (medium).**
+   PowerShell also ends a single-quoted string on U+2018 to U+201B. With a
+   workspace named `Bob’s project`, every command failed to parse, and a
+   folder named to close the literal could run a command nobody approved.
+   `proc::ps_literal` now doubles all five. Tests:
+   `every_quote_powershell_honours_is_doubled`, and
+   `a_folder_named_to_close_the_literal_runs_nothing`, which runs real
+   PowerShell in a folder named `Bob’; Write-Output INJECTED; ’x`.
+3. **A second click could answer the next approval unread (medium).** When
+   two requests shared a call id, answering the first put the second under the
+   same buttons, so a double-click approved a diff that was never on screen.
+   Three fixes:
+   - Every request has its own `requestId`, and an answer names it. A second
+     answer for a request that is already gone does nothing.
+   - Answer buttons pause for 600 ms when the request under them changes
+     (`useArmedAfterChange`).
+   - `CoworkChildApprovals` also shows a child's request that waits, queued,
+     behind another session's request under the same id.
+
+   Tests: `useToolApprovalRequests.sameId.test.ts` and
+   `CoworkChildApprovals.test.tsx`.
+4. **Racing settles could relabel a child (low).** A run's teardown settles
+   its children as cancelled on a thread of its own. With no lock between a
+   settle's read and its write, the later write won, and a completed child
+   could become cancelled. The temporary file name was shared too. Reads and
+   writes of a child's record are now serialised, and each temporary file
+   name is unique. Test: `racing_settles_agree_on_one_ending`, which failed
+   three runs out of three without the lock.
+
+## 2026-09-11 — AH-079 context replay, and two harness defects
+
+**AH-079.** A prompt snapshot's panel now has "Replay this context". The
+backend (`core/agent/replay.rs`) hands out the stored request and keeps the
+record. The renderer (`lib/contextReplay.ts`) sends the request unchanged to
+the provider the turn used, and reports how it ended. The transport's own
+snapshot of the replay dispatch is compared with the original by hash, so
+"same context" is checked on the record. Refusals are typed and kept:
+
+- redacted, unavailable, foreign or missing snapshots;
+- a provider that is gone, or speaks Anthropic;
+- a local model that is not running.
+
+A replay left running when Jan stops reads as interrupted after a restart.
+Tool calls in a replay's reply are recorded and never run. Details:
+`AGENT_HARNESS_ARCHITECTURE.md` AHD-009 and the verification section.
+
+**An AH-078 defect found on the way.** Snapshot ids came from a counter that
+restarted at `snap-1` in every launch, so an id could name an earlier launch's
+record, and the timeline could show the wrong payload. Ids now carry the
+launch. `an_id_from_an_earlier_launch_is_never_issued_again` fails on the old
+scheme.
+
+**Harness: a script that does not parse read as a stalled page.** The first
+two runs of `context-replay-1` "stalled" at the same step. The cause was the
+scenario's own script, which declared `const p` twice. That made the whole
+injected script a syntax error, so nothing ran and nothing replied, which is
+exactly what a stalled page looks like. The eval body is now compiled inside
+the `try`, so a body that does not parse is reported as an error. The r39
+and r43 stalls are not explained by this: the same scripts passed in other
+runs.
+
+**Harness: the stall diagnostic captured the whole desktop.** The screen
+capture added in the AH-109 batch (`1e925e397`) recorded every monitor,
+including unrelated windows. It is removed, and the one capture it had taken
+was deleted. The diagnostic now reports the app window's visibility,
+minimised and focused state, position, size and monitor instead.
+
+**Harness: `prompt-snapshot-panel` read the prompt log once.** It checked the
+log straight after clicking send, racing the transport's write, and failed
+with "0 records" when the check came first. It now polls for up to 60 s.
+
+Scenario results on Windows with the mock provider:
+
+- `context-replay-1/2`, `prompt-snapshot-panel`, `prompt-snapshot-cross-session-refused`;
+- `team-review-persist-1/2`, `managed-worktree-review`, `proposal-review-apply`;
+- `app-startup`.
+
+All passed on their first attempt with retries off (rounds rg2 and rp4). In
+round rg1, another process emptied this session's scratch directory
+mid-run, taking the logs with it. That round is not counted.
+
+## 2026-09-11 — AH-154/155/156: dependency, lock file and migration flags
+
+A proposed change can now say more than its diff:
+
+- a manifest's dependencies were added, changed or removed, each one named;
+- a lock file changed; lock files are listed apart from source changes;
+- a migration will change a database in a way that reverting the file does
+  not undo.
+
+`review_flags.rs` works these out in the backend. `plan` works them out again
+from the stored content when the change is applied. A flagged file is written
+only when the approval acknowledges that exact path, so neither a renderer nor
+a record edited on disk can drop a flag. The review holds Apply, naming the
+files, until each flagged file that is selected has been ticked as reviewed.
+Coverage and the one thing not run through the UI are listed in the
+verification section.
+
+Environment note: during this work another process ran `yarn install` in the
+main checkout. It moved the web dependencies from the repository root into
+`jan/web-app/node_modules`, and this worktree could no longer find
+`@vitejs/plugin-react`. A junction to that folder was tried and removed: it
+resolved the workspace packages (`@janhq/core` and the plugin APIs) to the
+main checkout's older copies. The worktree now has its own install
+(`yarn install --immutable`; `yarn.lock` unchanged). Nothing in the main
+checkout was changed. Gates after the install:
+
+- web typecheck ok; 5771 + 171 + 320 tests; `build:web` ok;
+- app `core::agent` 403, plugin 795 plus 13 Windows sandbox tests, `cli` check ok;
+- Windows scenarios passed: `proposal-flags`, `proposal-review-apply`,
+  `team-review-persist-1/2`, `context-replay-1/2`, `managed-worktree-review`
+  and `prompt-snapshot-panel`.
+
+## 2026-09-11 — AH-168 worktree export
+
+"Export as patch" in a run's review, and `agent_worktree_export` over IPC, write
+the worktree's changes as a bundle under `<data>/exports/`. The bundle holds a
+unified patch that `git apply` reads, the new content of any file that is not
+text, and a manifest with hashes. The export reads the worktree the way a
+proposal does, so links refuse it. It writes nothing to the worktree or the
+checkout, and a half-made bundle never survives. The round-trip test applies a
+bundle to a fresh clone at the base and compares the result byte for byte.
+Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
+implemented.
+
+## 2026-09-11 — Shipped agent roles (AH-094..099), in progress; harness eval fix ported from 2bd94407a
+
+Six built-in subagent roles now ship in `src-tauri/src/core/agent/roles.rs`:
+explorer, planner, implementer, reviewer, tester and security. They are
+version 1 definitions in a new read-only, lowest-precedence scope,
+`SubagentScope::Builtin`. Design: architecture AHD-009f. Evidence and every
+attempt: the verification section "Shipped agent roles".
+
+- **Authority.** Each role holds an explicit minimum tool list, narrowed by
+  the parent and never widened.
+- **No nesting.** `task`, `team`, `ask` and `todo` are withheld from every
+  child.
+- **Read-only roles.** They are checked against the capability table.
+- **Windows UI run.** `agent-roles` shows a real parent dispatching the
+  reviewer and the explorer. Their scripted `write` and `bash` calls were
+  refused and never reached a prompt or the disk. Evidence is from ro9, ro9b
+  and full gate g4, each a first-attempt pass in a fresh process.
+
+**Registry.** AH-094..099 go from `missing` to `in-progress`, not
+`implemented`:
+
+- Cancellation, restart persistence and a typed refusal error are part of
+  every role's acceptance criteria. None was shown.
+- Only two of the six roles ran in the UI.
+
+**First attempts, kept.** Runs ro1 to ro7 failed: two eval timeouts, a
+parent in plan mode, an opening inspection, and two wrong scenario checks.
+ro5b exited 0 with no verdict. The verification section lists each one.
+
+**A leaked fixture server tainted the runs.** When ro5b's app shut down, the
+harness never stopped its mock provider, so it stayed on port 8080. Every
+later run started a second server beside it. In the first full gate, g3,
+`context-replay-1/2` failed against the leftover log, and 2 agent-tools bash
+tests failed to find git-bash. Both tests pass alone and in g4. g3 and the
+passes ro8 and ro8b are not counted. The leftover server was mine, and I
+checked that before stopping it. Two guards now exist:
+
+- `start_mock_provider` refuses a port that already answers.
+- The runner reports any listener left after a scenario.
+
+**Gate g4**, on this tree, retries off:
+
+- Registry: OK, 29 tests.
+- Web: typecheck; lint 0 errors (15 warnings, as before); tests
+  171 + 5788 + 320; `build:web`.
+- App: lib 885 tests; integration 885 + 8 + 1 + 1.
+- CLI check.
+- Clippy, desktop and CLI: 0 errors.
+- Agent-tools with the sandbox helper: 811 + 13.
+- `git diff --check`.
+- Scenarios: 15, each passed on its first attempt, with no leaks.
+
+**Harness transport, duplicated work.** The run reproduced the lost eval
+result twice (ro1, ro2), with the page idle. `Ctx::eval_with_timeout` now
+uses the method from `2bd94407a` (`claude/token-usage-integration`, not on
+`fork/main`): results are left in the page and collected with
+`eval_with_callback`. It keeps this branch's own additions: the in-page
+compile of the body, and the main-thread and window diagnostics. When that
+branch lands, keep one of the two versions of the function. They do the same
+thing.
+
+## 2026-09-11 — The composer/apply "stall": diagnosed elsewhere, fix not yet on main
+
+The intermittent eval timeouts at apply clicks (r39, r43) were proved by
+another session, in `2bd94407a` on `claude/token-usage-integration`, to be the
+harness losing its own results, not the page stalling.
+
+- **The cause.** Results came back over the Tauri event bus.
+  `Listeners::emit_filter` only `try_lock`s its handler table. When another
+  thread holds it, the emit is parked in a pending queue, and that queue is
+  flushed only by a later emit that reaches a handler.
+- **Why it stalled.** While the app was busy, the page's result sat in that
+  queue with nothing to flush it. Checked over DevTools: the script had run
+  and its emit had resolved.
+- **Their fix.** Results are left in the page and collected with
+  `eval_with_callback`.
+
+That commit has not reached `fork/main`. At first this branch did not
+duplicate it. The roles batch below then reproduced the loss twice (ro1,
+ro2), so that batch ports the fix as it is. See the later entry. It keeps its complementary harness
+changes: a script that does not parse is reported as an error, not a stall;
+there is no desktop-wide screenshot; the window's own state is reported. The
+two changes touch the same function, `Ctx::eval_with_timeout`, and will need
+merging when that branch lands. Retries stay off by default. Rounds f1 and f2
+ran 14 and 16 scenarios with no eval timeout.
+
+## 2026-09-11 — AH-005 rebuilt on current code, and AH-177 event export
+
+Another session (16ae36728) established that the Phase 0 harness crate was
+lost in merge 5534adb8e, not moved. It marked AH-004 in progress, and AH-005,
+008, 009, 010 and 011 missing. This entry rebuilds only AH-005, the one AH-177
+depends on, as `event_log.rs` in the agent-tools plugin. It uses the plugin's
+existing redactor and the identities the app already has (session, run,
+invocation); nothing from the old crate was resurrected.
+
+- **The log.** One JSON-lines log per session. The envelope is versioned; a
+  newer version is refused and an unknown kind is kept. Ids are stable, so a
+  retried write stays one event. `seq` is assigned by the backend. Payloads
+  are redacted and bounded, and a crash leaves at most a torn tail, which is
+  repaired.
+- **Writers.** The backend writes every tool phase from `tool_activity_record`.
+  The renderer records `run.started`, `run.ended`, `agent.dispatched`,
+  `job.started` and `job.ended`. The Rust loop's `StreamEvent`s, steering
+  and compaction are not in the log yet, so AH-004 stays in progress.
+- **AH-177.** Session details can export the log, metadata only by default,
+  with content only when ticked beside a warning. The export is written under
+  Jan's data folder, never uploaded. The inspector reads an export back as
+  untrusted input and refuses a damaged one with a typed error.
+- **Evidence.** The `event-export-1/2` scenario pair checks the export with a
+  reader written in the harness, not the app's. It checks order against the
+  durable tool-activity record, finds no content leaked, and gets the same ids
+  in the same order after a real restart. Both phases passed on the first
+  attempt.
+
+## 2026-09-11 — AH-169 bundle import, and the flag review exercised in the real UI
+
+The Changes panel can now import a patch bundle that AH-168 exported, into the
+attached project. The backend treats the bundle as hostile. It copies it into
+a private folder, checks every entry, path and hash, rebuilds the changes
+against the project's own base commit, and stores them as an ordinary
+proposal. Nothing is extracted into the repository, and no Git state is
+touched. Applying goes through the proposal's review and atomic apply, with
+the approval also bound to the bundle's hashes and the destination, all
+checked again at apply time. Binary files and deletions are now flagged in
+every proposal and need acknowledging. Details: architecture AHD-009d and the
+verification section.
+
+The `bundle-import-1/2` scenario pair also closes the gap AH-154/155/156 had:
+flags, the separate lock-file list, the Apply hold, and the refusal of
+tampered stored flags are now shown through the real review UI, not only over
+IPC.
+
+First attempts, kept: the first build failed on a helper whose name clashed
+with an existing one. The first run failed making a junction, because
+`mklink` was handed forward slashes. Both were fixed; the next run passed
+both phases.
+
+## 2026-09-11 — Registry finding: seven "implemented" items name files that are gone; AH-177 blocked
+
+A check over the registry found seven items marked `implemented` whose listed
+files do not exist at `fork/main`:
+
+| Item | Missing file |
+| --- | --- |
+| AH-004 | `src-tauri/harness/src/event.rs` |
+| AH-005 | `src-tauri/harness/src/envelope.rs` |
+| AH-008 | `src-tauri/harness/src/identity.rs` |
+| AH-009 | `src-tauri/harness/src/error.rs` |
+| AH-010 | `src-tauri/harness/src/state.rs` |
+| AH-011 | `src-tauri/harness/src/fixtures.rs` |
+| AH-199 | `web-app/src/containers/analytics/AnalyticConsent.tsx` |
+
+- The six harness files were added by `7c48d71aa` ("feat(harness): add the
+  feature registry and Phase 0 foundation"). That commit is an ancestor of
+  `HEAD`, yet the directory is absent, and no deletion appears on the
+  first-parent history. It was most likely dropped by a merge from a side
+  branch.
+- `AnalyticConsent.tsx` was removed on purpose by `3be88793f` ("remove
+  telemetry and update checking"). AH-199's file list is stale.
+- `validate-registry` does not check that listed files exist, which is why
+  this went unnoticed.
+
+The statuses are left as they are here, because deciding whether the code
+moved or was lost needs its own investigation.
+
+**AH-177 (event export) is blocked on this.** It depends on AH-005, whose
+envelope and log code is not in the tree. An "export of a run's canonical
+events" built on the tool-activity log alone would claim more than exists.
+
+One part of the finding is left open. A tool card in one conversation can
+show another conversation's request only when both conversations' main agents
+wait on the same call id at the same moment. The card shows that request's own
+diff, and the answer names that request.
+
+## 2026-09-11 — Registry finding resolved: the harness crate was lost, not moved
+
+This follows up the finding above.
+
+**Where `src-tauri/harness` went.** It was never deleted. `7c48d71aa` added the
+crate on the `feat/agent-harness-phase-1` line, which shares no commit with
+main (main is an orphan snapshot of the codebase). Merge `5534adb8e`
+("merge(feat/agent-harness-phase-1): incorporate its history; the integration
+tree already supersedes it") joined that line with the integration tree kept,
+so every commit on it became an ancestor of main while none of its files did.
+The first parent of `5534adb8e` (`9e013105d`) never had the crate, which is
+why `git log --first-parent --diff-filter=D` finds no deletion. The later
+merges `3c1dc9aa3`, `467ed7779` and `88f1e40a6` did the same for other side
+branches.
+
+**Did the code move?** No. A search of the tree finds none of the crate's
+types under any name: `HarnessEvent`, `EventPayload`, `Envelope`,
+`ENVELOPE_VERSION`, `EventLog`, `RunIdentity`, `RunId`, `HarnessError`,
+`ErrorKind`, `Retry`, `Audience`, `RunRecord`, `StateStore`,
+`STATE_SCHEMA_VERSION`, `EventStreamBuilder`. The modules have their own
+narrow error kinds (`ExportErrorKind`, `ChildErrorKind`, `ReplayErrorKind`)
+and `src-tauri/src/core/agent/events.rs` has the in-memory `StreamEvent`. No
+shared taxonomy, persisted event model or run identity exists. The code was
+not restored. It can be recovered with `git show 7c48d71aa:src-tauri/harness/…`
+if the operator decides to bring it back.
+
+**Registry changes** (`docs/agent-harness-features.json`):
+
+| Item | Was | Now | Why |
+| --- | --- | --- | --- |
+| AH-004 | implemented | in-progress | `StreamEvent` exists, but the canonical persisted event model is gone. Files: `events.rs` only. |
+| AH-005 | implemented | missing | Envelope and JSONL log lost. |
+| AH-008 | implemented | missing | Run identity lost. |
+| AH-009 | implemented | missing | Error taxonomy lost. Only per-module error kinds exist. |
+| AH-010 | implemented | missing | Versioned run record and store lost. `thread.json` is still unversioned. |
+| AH-011 | implemented | missing | Fixture library lost. |
+| AH-199 | implemented | rejected-with-decision | Telemetry was removed on purpose by `3be88793f`, so there is nothing for a control to govern. |
+
+Each item's `auditNote` records this. The lost items' `files` and `tests` are
+emptied, because they named paths that do not exist.
+
+**AH-177 (event export)** stays `missing` and is recorded as blocked on
+AH-005, which is now `missing` too. It cannot start until an event envelope
+and log exist again.
+
+**Not re-audited.** Several items still marked `implemented` depend on the lost
+foundations (AH-015, 016, 017, 020, 022, 024, 025, 027, 029, 049, 075, 078,
+172, 198). Their own listed files exist, so the new check passes them, but
+they may have been built against the crate on the side branch. They need a
+separate look.
+
+**Gate.** `validate-registry.mjs` now fails when an `implemented` or
+`verified` item lists a file that does not exist (`findMissingFiles` in
+`registry.mjs`). Unfinished items are exempt. Before the registry fix it
+reported exactly these seven items. Three tests in `registry.test.mjs` cover
+the check.

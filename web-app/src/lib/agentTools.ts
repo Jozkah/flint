@@ -1,6 +1,8 @@
+import type { ChangeActorInput, ToolResources } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   advertisedToolSchemas,
   executeTool,
+  previewChange,
   sandboxStatus,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
@@ -191,6 +193,8 @@ type AgentToolResult = {
   error?: string
   /** Unified diff from `write`/`edit`. Display-only; never sent to the model. */
   diff?: string
+  /** What the call's command used (AH-174), failed or not. */
+  resources?: ToolResources
 }
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
@@ -241,6 +245,23 @@ export type AgentToolOptions = {
    * to, so nothing a model emits can widen or redirect where a write lands.
    */
   writeGrant?: string | null
+  /**
+   * The run this call belongs to. Given, the backend journals the files a
+   * `write` or `edit` changes against it, so the turn can be undone (AH-202).
+   */
+  undoRun?: string
+  /**
+   * The call's id. With `undoRun`, what its command uses is kept against the
+   * run and returned with the result (AH-174).
+   */
+  callId?: string
+  /**
+   * Who is making the call (AH-110). Journaled with every file the call
+   * changes, so a change can name the agent that made it after a restart. The
+   * backend refuses an identity that is not an agent rather than attributing
+   * the change to no one -- or to the wrong one.
+   */
+  actor?: ChangeActorInput
 }
 
 export async function executeAgentTool(
@@ -268,12 +289,46 @@ export async function executeAgentTool(
       // binding's parameter list so a change there is visible here.
       options.readOnlyProject ?? undefined,
       options.writeGrant ?? undefined,
-      options.scope ?? ('thread' as WorkspaceScope)
+      options.scope ?? ('thread' as WorkspaceScope),
+      options.callId,
+      options.undoRun,
+      options.actor
     )
-    if (result.isError) return { error: result.content }
-    return { content: result.content, diff: result.diff ?? undefined }
+    const resources = result.resources ?? undefined
+    if (result.isError) return { error: result.content, resources }
+    return { content: result.content, diff: result.diff ?? undefined, resources }
   } catch (e) {
     return { error: messageOf(e) }
+  }
+}
+
+/**
+ * The diff a `write` or `edit` call would make, for its approval prompt
+ * (AH-146). Computed by the backend against the same path resolution the call
+ * would use, and only where it could write. `undefined` when there is none --
+ * another tool, no change, a path it may not write, or a failure: a missing
+ * preview never stops the prompt, it only leaves it without the diff.
+ */
+export async function previewAgentChange(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  options: Pick<AgentToolOptions, 'scope' | 'writeGrant'> = {}
+): Promise<string | undefined> {
+  try {
+    const dataFolder = await getServiceHub().app().getJanDataFolder()
+    if (!dataFolder) return undefined
+    const args =
+      input && typeof input === 'object'
+        ? (input as Record<string, unknown>)
+        : {}
+    const diff = await previewChange(dataFolder, threadId, toolName, args, {
+      writeGrant: options.writeGrant ?? undefined,
+      scope: options.scope ?? ('thread' as WorkspaceScope),
+    })
+    return diff ?? undefined
+  } catch {
+    return undefined
   }
 }
 

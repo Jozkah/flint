@@ -39,7 +39,7 @@ export function TermHint({
         <button
           type="button"
           className={cn(
-            'inline cursor-help rounded-sm underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'inline cursor-help rounded-sm underline decoration-muted-foreground decoration-dotted underline-offset-2 hover:decoration-brand focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
             className
           )}
           aria-label={t('glossary:explain', { term: name })}
@@ -47,9 +47,12 @@ export function TermHint({
           {children ?? name}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 max-w-[90vw] text-sm" align="start">
-        <p className="font-medium">{name}</p>
-        <p className="mt-1 text-muted-foreground">
+      <PopoverContent
+        className="w-72 max-w-[90vw] rounded-lg border-border bg-card text-sm"
+        align="start"
+      >
+        <p className="font-semibold text-foreground">{name}</p>
+        <p className="mt-1 leading-relaxed text-ink-2">
           {t(`glossary:${term}.definition`)}
         </p>
       </PopoverContent>

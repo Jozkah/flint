@@ -46,5 +46,26 @@
     "thoughtFor": "Thought for {{duration}}",
     "workedForAWhile": "Worked for a few seconds",
     "workedFor": "Worked for {{duration}}"
+  },
+  "split": {
+    "open": "Split conversation",
+    "openHint": "Open a second, independent conversation beside this one",
+    "close": "Close split",
+    "closePane": "Close this pane",
+    "label": "Split conversation",
+    "resize": "Resize conversation panes",
+    "panes": "Conversation panes",
+    "primary": "Main",
+    "secondary": "Second",
+    "streaming": "Replying",
+    "active": "Active pane",
+    "pickTitle": "Open a conversation here",
+    "pickDescription": "Pick a recent conversation or start a new one. It runs on its own: its model, draft, tools and replies stay separate from the other pane.",
+    "newChat": "New chat",
+    "recent": "Recent conversations",
+    "noRecent": "No other conversations yet.",
+    "change": "Change conversation",
+    "noModel": "Choose a model before starting a new chat.",
+    "newChatFailed": "Couldn't start a new chat"
   }
 }

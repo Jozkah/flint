@@ -9,7 +9,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { IconFolder } from '@tabler/icons-react'
+import { Folder } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
 interface ChangeDataFolderLocationProps {
@@ -36,7 +37,7 @@ export default function ChangeDataFolderLocation({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <IconFolder size={20} />
+            <Folder className="size-5 text-muted-foreground" aria-hidden />
             {t('settings:dialogs.changeDataFolder.title')}
           </DialogTitle>
           <DialogDescription>
@@ -49,7 +50,7 @@ export default function ChangeDataFolderLocation({
             <h4 className="text-sm font-medium mb-2">
               {t('settings:dialogs.changeDataFolder.currentLocation')}
             </h4>
-            <div className="bg-secondary border p-2 rounded-lg">
+            <div className="rounded-md border border-border bg-sunken p-2">
               <code className="text-xs text-muted-foreground break-all">
                 {currentPath}
               </code>
@@ -60,20 +61,20 @@ export default function ChangeDataFolderLocation({
             <h4 className="text-sm font-medium mb-2">
               {t('settings:dialogs.changeDataFolder.newLocation')}
             </h4>
-            <div className="bg-secondary border p-2 rounded-lg">
-              <code className="text-xs break-all">{newPath}</code>
+            <div className="rounded-md border border-brand/40 bg-brand-tint p-2">
+              <code className="text-xs text-foreground break-all">{newPath}</code>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="flex items-center gap-2">
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <DialogClose asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="pointer-coarse:h-11">
               {t('settings:dialogs.changeDataFolder.cancel')}
             </Button>
           </DialogClose>
           <DialogClose asChild>
-            <Button size="sm" onClick={onConfirm}>
+            <Button size="sm" className="pointer-coarse:h-11" onClick={onConfirm}>
               {t('settings:dialogs.changeDataFolder.changeLocation')}
             </Button>
           </DialogClose>

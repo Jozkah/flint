@@ -71,29 +71,29 @@ export function MemoryProposalCard({
 
   return (
     <div
-      className="rounded-md border border-main-view-fg/10 bg-main-view-fg/[0.02] p-3"
+      className="rounded-lg border border-border bg-card p-3"
       data-testid="memory-proposal-card"
       data-proposal-id={proposal.id}
       data-reason={proposal.reason}
     >
       <div className="flex items-start gap-2">
-        <Brain size={14} className="mt-0.5 shrink-0 text-main-view-fg/50" aria-hidden />
+        <Brain size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-main-view-fg/80">
+          <p className="text-xs font-medium text-ink-2">
             Remember this?
           </p>
           <p
-            className="mt-1 text-sm text-main-view-fg"
+            className="mt-1 text-sm text-foreground"
             data-testid="memory-proposal-content"
           >
             {proposal.content}
           </p>
-          <p className="mt-1 text-xs text-main-view-fg/60">
+          <p className="mt-1 text-xs text-muted-foreground">
             Would apply to {SCOPE_LABEL[proposal.scope] ?? proposal.scope}.
           </p>
           {/* The reason, from the backend. Never a generic prompt. */}
           <p
-            className="mt-1 text-xs text-main-view-fg/60"
+            className="mt-1 text-xs text-muted-foreground"
             data-testid="memory-proposal-explanation"
           >
             {proposal.explanation}

@@ -177,19 +177,24 @@ function unresolvedText(t: TFn, item: UnresolvedItem): string {
   }
 }
 
+// Semantic chips: the accent never says "passed", and a status is never told by
+// colour alone -- the label is always inside the chip.
+const CHIP =
+  'inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-none'
+
 const OUTCOME_TONE: Record<CheckOutcome, string> = {
-  passed: 'bg-primary/10 text-primary',
-  failed: 'bg-destructive/10 text-destructive',
-  'not-run': 'bg-main-view-fg/5 text-main-view-fg/70',
-  unknown: 'bg-main-view-fg/5 text-main-view-fg/70',
+  passed: 'border-success/30 bg-success-tint text-success',
+  failed: 'border-destructive/30 bg-destructive-tint text-destructive',
+  'not-run': 'border-border bg-sunken text-ink-2',
+  unknown: 'border-border bg-sunken text-ink-2',
 }
 
 const STATUS_TONE: Record<RunStatus, string> = {
-  completed: 'bg-primary/10 text-primary',
-  partial: 'bg-main-view-fg/10 text-main-view-fg',
-  cancelled: 'bg-main-view-fg/5 text-main-view-fg/70',
-  failed: 'bg-destructive/10 text-destructive',
-  running: 'bg-main-view-fg/5 text-main-view-fg/70',
+  completed: 'border-success/30 bg-success-tint text-success',
+  partial: 'border-warning/30 bg-warning-tint text-warning',
+  cancelled: 'border-border bg-sunken text-ink-2',
+  failed: 'border-destructive/30 bg-destructive-tint text-destructive',
+  running: 'border-border bg-sunken text-ink-2',
 }
 
 export function CoworkRunSummary(props: CoworkRunSummaryProps) {
@@ -219,20 +224,20 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
 
   const group = (label: string, paths: readonly string[], open = false) =>
     paths.length === 0 ? null : (
-      <div key={label} className="flex flex-col gap-0.5">
-        <span className="text-main-view-fg/70">{label}</span>
-        <ul className="flex flex-col gap-0.5">
+      <div key={label} className="flex flex-col gap-1">
+        <span className="text-ink-2">{label}</span>
+        <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
           {paths.map((path) => (
             <li
               key={path}
-              className="flex min-w-0 items-center gap-2 font-mono text-main-view-fg/90"
+              className="flex min-w-0 items-center gap-2 px-2 py-1 font-mono text-foreground"
             >
-              <span className="min-w-0 break-all">{path}</span>
+              <span className="min-w-0 flex-1 break-all">{path}</span>
               {open && openable(path) ? (
                 <Button
-                  variant="ghost"
+                  variant="link"
                   size="sm"
-                  className="h-6 shrink-0 font-sans"
+                  className="h-6 shrink-0 px-1 font-sans pointer-coarse:h-11"
                   aria-label={t('results:location.open', { path })}
                   onClick={() => props.onOpenPath?.(path)}
                 >
@@ -268,7 +273,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         key={key}
         variant="outline"
         size="sm"
-        className="h-7"
+        className="h-8 pointer-coarse:h-11"
         onClick={onClick}
       >
         {label}
@@ -311,7 +316,9 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
     outcome.nextActions.includes('retry') && Boolean(props.onRetry)
 
   const heading = (text: string) => (
-    <h4 className="font-medium text-main-view-fg/80">{text}</h4>
+    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {text}
+    </h4>
   )
 
   return (
@@ -323,37 +330,39 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       data-status={outcome.status}
       data-session-id={outcome.source.sessionId ?? undefined}
       data-run-id={outcome.source.runId ?? undefined}
-      className="my-3 rounded-md border border-main-view-fg/10 bg-main-view-fg/[0.03] p-3 text-xs"
+      className="my-3 rounded-lg border border-border bg-card text-xs"
     >
       {/* Collapsed by default after a clean finish: Jan's record of a run is
           worth keeping, but it was opening in full under every single
           message. A run that did not finish opens, because what it left
           behind is the thing to read. */}
-      <details open={interrupted}>
-        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm font-medium text-main-view-fg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-          <span>{t('common:coworkOrigins.title')}</span>
+      <details open={interrupted} className="group">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11">
+          <span className="min-w-0 flex-1 truncate">
+            {t('common:coworkOrigins.title')}
+          </span>
           <span
             data-testid="cowork-run-status"
-            className={`rounded px-1.5 py-0.5 font-normal ${STATUS_TONE[outcome.status]}`}
+            className={`${CHIP} ${STATUS_TONE[outcome.status]}`}
           >
             {statusLabel(t, outcome.status)}
           </span>
         </summary>
-        <header className="mt-2 mb-2 flex flex-col gap-0.5">
+        <header className="flex flex-col gap-0.5 border-t border-border px-3 pt-2">
           <h3 className="sr-only">{t('common:coworkOrigins.title')}</h3>
-          <p className="text-main-view-fg/60">
+          <p className="text-muted-foreground">
             {t('common:coworkOrigins.subtitle')}
           </p>
         </header>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4 px-3 pt-3 pb-3">
           <div className="flex flex-col gap-1">
             {heading(t('results:sections.happened'))}
-            <p className="text-main-view-fg/90">
+            <p className="text-sm text-foreground">
               {headlineText(t, outcome.headline)}
             </p>
             {interrupted && resultLocation.paths.length > 0 ? (
-              <p className="text-main-view-fg/70">{t('results:kept')}</p>
+              <p className="text-ink-2">{t('results:kept')}</p>
             ) : null}
           </div>
 
@@ -362,19 +371,19 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
             {resultLocation.treeKind === 'worktree' && resultLocation.tree ? (
               // Named, because "in the worktree" is true of a specific one and
               // the reader has to be able to go and look at it.
-              <p className="break-all font-mono text-main-view-fg/70">
+              <p className="break-all font-mono text-ink-2">
                 {t('common:coworkOrigins.inTree', {
                   tree: resultLocation.tree,
                 })}
               </p>
             ) : null}
             {resultLocation.destination ? (
-              <p className="text-main-view-fg/70">
+              <p className="text-ink-2">
                 {locationText(t, resultLocation.treeKind)}
               </p>
             ) : null}
             {nothingFound ? (
-              <p className="text-main-view-fg/70">
+              <p className="text-ink-2">
                 {t('common:coworkOrigins.nothing')}
               </p>
             ) : (
@@ -400,7 +409,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 {group(t('common:coworkOrigins.unknown'), changes.unknown)}
               </>
             )}
-            <p className="text-main-view-fg/60">
+            <p className="text-muted-foreground">
               {t(`common:coworkOrigins.baseline.${changes.baseline}`)}
             </p>
           </div>
@@ -408,37 +417,35 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           <div className="flex flex-col gap-1" data-testid="cowork-run-checks">
             {heading(t('results:sections.checked'))}
             {outcome.checks.length === 0 ? (
-              <p className="text-main-view-fg/70">{t('results:checks.none')}</p>
+              <p className="text-ink-2">{t('results:checks.none')}</p>
             ) : (
               <>
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
                   {outcome.checks.map((check, index) => (
                     <li
                       key={`${check.callId ?? check.command}-${index}`}
-                      className="flex min-w-0 flex-wrap items-center gap-2"
+                      className="flex min-w-0 flex-wrap items-center gap-2 px-2 py-1.5"
                     >
-                      <span
-                        className={`shrink-0 rounded px-1.5 py-0.5 ${OUTCOME_TONE[check.outcome]}`}
-                      >
+                      <span className={`${CHIP} ${OUTCOME_TONE[check.outcome]}`}>
                         {outcomeLabel(t, check.outcome)}
                       </span>
-                      <span className="shrink-0 text-main-view-fg/70">
+                      <span className="shrink-0 text-ink-2">
                         {kindLabel(t, check.kind)}
                       </span>
-                      <code className="min-w-0 break-all font-mono text-main-view-fg/90">
+                      <code className="min-w-0 break-all font-mono text-foreground">
                         {check.command}
                       </code>
                       {check.exitCode !== null ? (
-                        <span className="shrink-0 font-mono text-main-view-fg/60">
+                        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
                           {t('results:checks.exit', { code: check.exitCode })}
                         </span>
                       ) : null}
-                      <span className="shrink-0 text-main-view-fg/60">
+                      <span className="shrink-0 text-muted-foreground">
                         {t(`results:checks.completion.${check.completion}`)}
                       </span>
                       {check.limitations.length > 0 ? (
                         <ul
-                          className="basis-full pl-4 text-main-view-fg/60"
+                          className="basis-full pl-4 text-muted-foreground"
                           data-testid="cowork-check-limitations"
                         >
                           {check.limitations.map((limit) => (
@@ -451,13 +458,13 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-main-view-fg/60">
+                <p className="text-muted-foreground">
                   {verdicts.length === 0
                     ? t('results:checks.noneVerified')
                     : t('results:checks.observedNote')}
                 </p>
                 {verdicts.some((check) => check.outcome === 'passed') ? (
-                  <p className="text-main-view-fg/60">
+                  <p className="text-muted-foreground">
                     {t('results:checks.passNotProof')}
                   </p>
                 ) : null}
@@ -465,7 +472,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
             )}
             {(outcome.commands ?? []).some((c) => c.verification === null) ? (
               <p
-                className="text-main-view-fg/60"
+                className="text-muted-foreground"
                 data-testid="cowork-other-commands"
               >
                 {t('results:checks.otherCommands', {
@@ -477,15 +484,12 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
             ) : null}
             {outcome.claims.length > 0 ? (
               <div className="flex flex-col gap-0.5">
-                <span className="text-main-view-fg/70">
+                <span className="text-ink-2">
                   {t('results:checks.claimsTitle')}
                 </span>
                 <ul className="flex flex-col gap-0.5">
                   {outcome.claims.map((claim) => (
-                    <li
-                      key={claim.text}
-                      className="italic text-main-view-fg/70"
-                    >
+                    <li key={claim.text} className="italic text-ink-2">
                       “{claim.text}”
                     </li>
                   ))}
@@ -495,11 +499,11 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           </div>
 
           {outcome.unresolved.length > 0 ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 border-l-2 border-warning pl-2">
               {heading(t('results:sections.unresolved'))}
               <ul className="flex list-disc flex-col gap-0.5 pl-4">
                 {outcome.unresolved.map((item, index) => (
-                  <li key={index} className="break-words text-main-view-fg/90">
+                  <li key={index} className="break-words text-foreground">
                     {unresolvedText(t, item)}
                   </li>
                 ))}
@@ -512,7 +516,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
               {heading(t('results:sections.next'))}
               <div className="flex flex-wrap gap-2">{actions}</div>
               {offersRetry ? (
-                <p className="text-main-view-fg/60">
+                <p className="text-muted-foreground">
                   {t('results:actions.retryNote')}
                 </p>
               ) : null}

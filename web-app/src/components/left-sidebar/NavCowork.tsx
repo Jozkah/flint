@@ -30,8 +30,11 @@ import {
   Box,
   SlidersHorizontal,
   Copy,
+  Download,
   FileClock,
   GitFork,
+  Share2,
+  Upload,
   MoreHorizontal,
   Puzzle,
   Trash2,
@@ -45,11 +48,13 @@ import {
   SearchIcon,
   type SearchIconHandle,
 } from '@/components/animated-icon/search'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
-import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutHint } from '@/containers/ShortcutHint'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
-import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import {
+  useCoworkSessions,
+  type CoworkSession,
+} from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
@@ -59,6 +64,16 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
+import { loadToolActivity } from '@/lib/toolActivity'
+import { buildBundle, exportBundle, openBundle } from '@/lib/sessionBundle'
+import {
+  describeRestoreItem,
+  exportHandoff,
+  restoreReport,
+  type HandoffBundle,
+} from '@/lib/sessionHandoff'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 
 type CoworkNavItem = {
@@ -114,6 +129,9 @@ const SessionItem = memo(function SessionItem({
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
+        data-testid="cowork-session-item"
+        data-session-id={session.id}
+        data-current={isCurrent ? 'true' : 'false'}
       >
         <span className="truncate">{session.title}</span>
         {running && (
@@ -153,7 +171,9 @@ const SessionItem = memo(function SessionItem({
           <DropdownMenuItem
             data-testid="fork-session"
             onSelect={() => {
-              const forked = useCoworkSessions.getState().forkSession(session.id)
+              const forked = useCoworkSessions
+                .getState()
+                .forkSession(session.id)
               if (!forked) {
                 toast.error(t('common:forkRefused'))
                 return
@@ -172,6 +192,73 @@ const SessionItem = memo(function SessionItem({
           >
             <Copy />
             <span>{t('common:copyConversationId')}</span>
+          </DropdownMenuItem>
+          {/* AH-203. The backend drops folder, access and consent and redacts
+              credentials before writing; the path comes from a dialog the
+              backend opens, never from here. */}
+          <DropdownMenuItem
+            data-testid="export-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const out = await exportBundle(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                })
+              )
+              if (out.ok) {
+                toast.success(
+                  t('common:sessionExported', { count: out.redactions })
+                )
+              } else if (!out.cancelled) {
+                toast.error(
+                  t('common:sessionExportFailed', { reason: out.message })
+                )
+              }
+            }}
+          >
+            <Download />
+            <span>{t('common:exportSession')}</span>
+          </DropdownMenuItem>
+          {/* AH-210. The same export, plus which folder (by name, branch and
+              commit) and which model, so another computer can continue it.
+              Paths from this machine are replaced before anything is
+              written; the folder's path is never written. */}
+          <DropdownMenuItem
+            data-testid="handoff-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const models = useModelProvider.getState()
+              const out = await exportHandoff(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                }),
+                models.selectedModel
+                  ? {
+                      provider: models.selectedProvider,
+                      id: models.selectedModel.id,
+                    }
+                  : null,
+                session.folder
+              )
+              if (out.ok) {
+                toast.success(
+                  `Handoff saved. ${out.redactions} credential(s) were left out, and the folder is named rather than located.`
+                )
+              } else if (!out.cancelled) {
+                toast.error(`The handoff could not be saved: ${out.message}`)
+              }
+            }}
+          >
+            <Share2 />
+            <span>Hand off to another computer…</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -262,11 +349,62 @@ export function NavCowork() {
       onClick: () => setSkillsOpen(true),
     },
     {
+      title: t('common:importSession'),
+      icon: Upload,
+      onClick: () => void importFromFile(),
+    },
+    {
       title: t('plugins:navLabel'),
       icon: Puzzle,
       onClick: () => setPluginsOpen(true),
     },
   ]
+
+  // AH-203. Read and validated by the backend; created here under a new id.
+  const importFromFile = async () => {
+    const opened = await openBundle()
+    if (!opened.ok) {
+      if (!opened.cancelled) {
+        toast.error(t('common:sessionImportFailed', { reason: opened.message }))
+      }
+      return
+    }
+    // A handoff (AH-210) says what it needs to continue; what this computer
+    // cannot give it is worked out now and kept on the session.
+    const info = (opened.bundle as HandoffBundle).handoff
+    const handoff = info
+      ? {
+          info,
+          unrestored: restoreReport(
+            info,
+            useModelProvider.getState().providers.map((provider) => ({
+              provider: provider.provider,
+              models: provider.models.map((model) => ({ id: model.id })),
+              usable: isProviderUsable(provider),
+            }))
+          ),
+        }
+      : undefined
+    const result = useCoworkSessions
+      .getState()
+      .importSession(opened.bundle, handoff)
+    if (result.ok && handoff?.unrestored.length) {
+      toast.info(handoff.unrestored.map(describeRestoreItem).join(' '))
+    }
+    if (!result.ok) {
+      toast.error(
+        result.refusal.reason === 'already-imported'
+          ? t('common:sessionAlreadyImported')
+          : t('common:sessionImportFailed', { reason: result.refusal.message })
+      )
+      if (result.refusal.reason === 'already-imported') {
+        selectSession(result.refusal.sessionId)
+      }
+      return
+    }
+    toast.success(t('common:sessionImported'))
+    goCowork()
+  }
 
   const confirmDelete = () => {
     if (pendingDelete) {
@@ -297,14 +435,7 @@ export function NavCowork() {
               size={16}
             />
             <span>{t('common:search')}</span>
-            <KbdGroup className="ml-auto scale-90 gap-0">
-              <Kbd className="bg-transparent size-3">
-                <PlatformMetaKey />
-              </Kbd>
-              <Kbd className="bg-transparent size-3 uppercase">
-                {PlatformShortcuts[ShortcutAction.SEARCH].key}
-              </Kbd>
-            </KbdGroup>
+            <ShortcutHint action={ShortcutAction.SEARCH} />
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>

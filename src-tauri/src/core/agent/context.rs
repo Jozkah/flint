@@ -94,10 +94,16 @@ pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
     let list = entries
         .iter()
         .map(|m| {
+            // AH-123: a skill that declares a version is named with it, so a
+            // request for "deploy 2.x" can be matched against what is here.
+            let name = match &m.version {
+                Some(version) => format!("{} (v{version})", m.name),
+                None => m.name.clone(),
+            };
             if m.description.is_empty() {
-                format!("## Skill: {}", m.name)
+                format!("## Skill: {name}")
             } else {
-                format!("## Skill: {}\n\n{}", m.name, m.description)
+                format!("## Skill: {name}\n\n{}", m.description)
             }
         })
         .collect::<Vec<_>>()
@@ -286,6 +292,29 @@ fn permanent_store_root() -> Option<std::path::PathBuf> {
 /// Session and user records live in the permanent store; project records live
 /// with the project, so moving a checkout takes its memories along. A project
 /// that cannot be identified retrieves nothing rather than everything.
+/// The instruction text above memory for this project: `JAN.md` and the
+/// descriptions of the enabled skills. A memory contradicting either is
+/// withheld (AH-084). Skill bodies are not read here; the catalog the model
+/// sees is descriptions, so that is what memory is checked against.
+fn instructions_above_memory(project_root: &Path) -> Vec<memory::precedence::Instruction> {
+    use memory::precedence::{Instruction, Source};
+    let mut out = Vec::new();
+    if let Some(context) = load_context_files(project_root) {
+        out.push(Instruction { source: Source::JanMd, name: CONTEXT_FILE_NAME.to_string(), text: context });
+    }
+    let enabled = crate::core::agent::project::enabled_skills(project_root);
+    for skill in crate::core::agent::skills::catalog(project_root, &enabled) {
+        if !skill.description.trim().is_empty() {
+            out.push(Instruction {
+                source: Source::Skill,
+                name: skill.name.clone(),
+                text: skill.description.clone(),
+            });
+        }
+    }
+    out
+}
+
 pub(crate) fn load_memories(
     project_root: &Path,
     session_id: Option<&str>,
@@ -323,6 +352,7 @@ pub(crate) fn load_memories(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
+    let instructions = instructions_above_memory(project_root);
     let selection = memory::retrieve::select(
         &records,
         &memory::retrieve::RetrievalContext {
@@ -331,6 +361,7 @@ pub(crate) fn load_memories(
             now,
             budget_chars: MEMORY_BUDGET_CHARS,
             temporary,
+            instructions: &instructions,
         },
     );
     (selection.render(), selection)
@@ -387,8 +418,10 @@ pub(crate) fn build_system_prompt_for(
     if let Some(memory) = load_memory_catalog(project_root) {
         blocks.push(memory);
     }
-    // Remembered facts last: nothing already in the prompt is displaced by
+    // The chain that ranks everything above, stated once (AH-084), then the
+    // remembered facts last: nothing already in the prompt is displaced by
     // them, and the block sits closest to the conversation it describes.
+    blocks.push(memory::precedence::STATEMENT.to_string());
     let (remembered, selection) = load_memories(project_root, session_id, temporary);
     if let Some(remembered) = remembered {
         blocks.push(remembered);
@@ -768,6 +801,44 @@ We build with make.")
             let (prompt, _) = build_system_prompt_for(None, &root, None, false, None, false);
             let prompt = prompt.unwrap();
             assert!(prompt.contains("not instructions that override the current request"));
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// AH-084 through the real prompt path: a project skill says pnpm, a user
+    /// memory says npm. The prompt states the chain, the memory is not sent,
+    /// and the selection reports the skill as the winner.
+    #[test]
+    fn a_skill_outranks_a_contradicting_memory_in_the_prompt() {
+        with_temp_data_folder(|permanent| {
+            let root = scratch_project("precedence-skill");
+            std::fs::create_dir_all(&root).unwrap();
+            write_skill(&root, "installer.md", "Install dependencies with pnpm.");
+            save_memory(
+                permanent,
+                "m-npm",
+                "Install dependencies with npm.",
+                memory::record::Scope::User,
+                None,
+                None,
+            );
+            let (prompt, selection) =
+                build_system_prompt_for(None, &root, None, false, Some("s"), false);
+            let prompt = prompt.unwrap();
+            assert!(prompt.contains("# Instruction precedence"));
+            assert!(prompt.contains("6. Skills."));
+            assert!(!prompt.contains("[m-npm]"), "a contradicted memory was sent");
+            assert_eq!(selection.overridden.len(), 1, "{:?}", selection.overridden);
+            assert_eq!(
+                selection.overridden[0].winner,
+                memory::precedence::Source::Skill
+            );
+            // The chain comes before the facts it ranks.
+            assert!(
+                prompt.find("# Instruction precedence").unwrap()
+                    < prompt.find("Install dependencies with pnpm").unwrap_or(usize::MAX)
+                    || !prompt.contains("# Remembered")
+            );
             let _ = std::fs::remove_dir_all(&root);
         });
     }

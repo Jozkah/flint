@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 
 /**
  * The Cowork route, driven end to end.
@@ -33,6 +34,7 @@ const h = vi.hoisted(() => ({
   /** Tauri commands, by name. Tests install answers per case. */
   invoke: vi.fn(),
   directEditCapability: vi.fn(async () => true),
+  managedWorktreeCapability: vi.fn(async () => true),
   directEditAuthorize: vi.fn(async () => 'grant-1'),
   directEditRevoke: vi.fn(async () => true),
   directEditRevokeSession: vi.fn(async () => true),
@@ -56,6 +58,8 @@ const h = vi.hoisted(() => ({
     mcp: [],
     inert: [],
   })),
+  /** Every transport the route built, newest last. */
+  transports: [] as any[],
   /** The last run's dispatcher, captured from `runTurn`. */
   deps: null as any,
   runTurn: vi.fn(),
@@ -88,6 +92,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }))
 vi.mock('@janhq/tauri-plugin-agent-tools-api', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   directEditCapability: h.directEditCapability,
+  managedWorktreeCapability: h.managedWorktreeCapability,
   directEditAuthorize: h.directEditAuthorize,
   directEditRevoke: h.directEditRevoke,
   directEditRevokeSession: h.directEditRevokeSession,
@@ -176,11 +181,17 @@ vi.mock('@/lib/coworkTransport', () => ({
     constructor(
       public sessionId: string,
       public config: any
-    ) {}
+    ) {
+      h.transports.push(this)
+    }
     setConfig(config: any) {
       this.config = config
     }
     unfreezeTools() {}
+    memoryBinding: { projectRoot?: string; temporary?: boolean } | undefined
+    setMemoryBinding(binding: { projectRoot?: string; temporary?: boolean }) {
+      this.memoryBinding = binding
+    }
     async refreshTools() {}
     measureContext() {
       return {
@@ -204,6 +215,13 @@ vi.mock('@/lib/coworkTransport', () => ({
   },
 }))
 
+// AH-111: a team that ends with failures waits for a person to restart or
+// replace a member. Nobody is at the Tasks panel in these tests, so the wait
+// is made immediate; its own behaviour is tested in coworkTeamRunControl.
+vi.mock('@/lib/coworkTeamControl', async (orig) => ({
+  ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
+  DECISION_WINDOW_MS: 0,
+}))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
   return {
@@ -376,7 +394,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   installInvoke()
   h.deps = null
+  useTeamConflictRequests.setState({ bySession: {} })
   h.directEditCapability.mockResolvedValue(true)
+  h.managedWorktreeCapability.mockResolvedValue(true)
   h.directEditAuthorize.mockResolvedValue('grant-1')
   h.pickFolder.mockResolvedValue('/repo')
   h.dataFolder.mockResolvedValue('/data')
@@ -405,6 +425,120 @@ beforeEach(() => {
 
 afterEach(() => {
   useCoworkSessions.setState({ sessions: [], currentId: null })
+})
+
+/**
+ * The window width the route sees, through the same `matchMedia` its media
+ * queries read. Only `max-width` queries are answered, which is all it asks.
+ */
+function setViewport(width: number) {
+  ;(window.matchMedia as any).mockImplementation((query: string) => {
+    const max = /max-width:\s*(\d+)px/.exec(query)?.[1]
+    return {
+      matches: max !== undefined && width <= Number(max),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }
+  })
+}
+
+/** The `hidden` utility itself, not a class that merely contains the word. */
+const isHidden = (el: HTMLElement) => el.classList.contains('hidden')
+
+describe('the layout at each width', () => {
+  afterEach(() => setViewport(4000))
+
+  it('docks the output panel on a wide window, with one set of rail tabs', async () => {
+    setViewport(1440)
+    await renderRoute()
+    // Closed: the rail buttons are in the composer row.
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'docked')
+    // Open: the same buttons, once, in the panel header, still pressed.
+    const code = screen.getAllByRole('button', { name: 'common:rail.code' })
+    expect(code).toHaveLength(1)
+    expect(inspector.contains(code[0])).toBe(true)
+    expect(code[0]).toHaveAttribute('aria-pressed', 'true')
+
+    // Pressing the open tab again closes it, as the toolbar always did.
+    await userEvent.click(code[0])
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+  })
+
+  it('puts the panel in a drawer below 1100px that its scrim closes', async () => {
+    setViewport(900)
+    await renderRoute()
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'drawer')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:rail.closeOverlay' })
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+    expect(
+      screen.getByRole('button', { name: 'common:rail.code' })
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows one view at a time on a phone, keeping the composer mounted', async () => {
+    setViewport(390)
+    await renderRoute()
+    const switcher = await screen.findByRole('group', {
+      name: 'common:coworkLayout.views',
+    })
+    expect(switcher).toBeInTheDocument()
+    expect(screen.getByTestId('cowork-view-content')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    // The details control is a view here, not a dialog in the bar.
+    expect(screen.queryByTestId('session-details-trigger')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-output'))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'full')
+    expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(true)
+    // Hidden, not unmounted: the draft lives in the composer.
+    expect(screen.getByTestId('composer')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+
+    // Choosing a tab keeps the output view and marks the tab.
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'common:rail.code' })
+      ).toHaveAttribute('aria-pressed', 'true')
+    )
+    expect(screen.getByTestId('cowork-view-output')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:coworkLayout.back' })
+    )
+    await waitFor(() =>
+      expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(false)
+    )
+    expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-details'))
+    expect(await screen.findByTestId('cowork-details-view')).toBeInTheDocument()
+    expect(screen.getByTestId('session-details-body')).toBeInTheDocument()
+  })
 })
 
 /**
@@ -522,6 +656,13 @@ describe('what a run carries, decided by the route', () => {
         writeGrant: 'grant-1',
       })
     )
+    // Memory follows the project, not the tree this run reads: a managed
+    // worktree is the same project, so it must recall the attached folder's
+    // memory rather than start a project of its own.
+    expect(h.transports.at(-1)?.memoryBinding).toEqual({
+      projectRoot: FOLDER,
+      temporary: false,
+    })
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {
@@ -542,6 +683,7 @@ describe('what a run carries, decided by the route', () => {
 
   it('keeps a session in review when the platform cannot confine writes', async () => {
     h.directEditCapability.mockResolvedValue(false)
+    h.managedWorktreeCapability.mockResolvedValue(false)
     seedSession({ turns: PRIOR_TURNS })
     await renderRoute()
 
@@ -718,25 +860,59 @@ describe('a team, dispatched by the route', () => {
     )
   })
 
-  it('refuses a graph that could not finish, before anything is provisioned', async () => {
+  it('asks about overlapping tasks before anything is provisioned, and runs nothing when declined', async () => {
     await renderRoute()
     const deps = await runOneTurn()
 
-    const result = await deps.dispatch(
+    const pending = deps.dispatch(
       call('team', {
         tasks: [
-          { id: 'a', description: 'do a', writes: ['src/x.ts'] },
-          { id: 'b', description: 'do b', writes: ['src/x.ts'] },
+          { id: 'a', description: 'do a', writes: ['src/x.ts'], isolate: true },
+          { id: 'b', description: 'do b', writes: ['SRC\\x.ts'], isolate: true },
         ],
       })
     )
 
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain('same files')
+    // AH-109: the overlap goes to the person, named by both tasks and the
+    // path, while nothing has been provisioned or dispatched.
+    await waitFor(() =>
+      expect(
+        Object.values(useTeamConflictRequests.getState().bySession)
+      ).toHaveLength(1)
+    )
+    const request = Object.values(useTeamConflictRequests.getState().bySession)[0]
+    expect(request.conflicts[0].tasks).toEqual(['a', 'b'])
+    expect(await screen.findByTestId('team-conflicts')).toBeInTheDocument()
     expect(h.invoke).not.toHaveBeenCalledWith(
       'agent_worktree_ensure',
       expect.anything()
     )
+
+    act(() =>
+      useTeamConflictRequests
+        .getState()
+        .answer(request.sessionId, { kind: 'cancel' })
+    )
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('chose not to run')
+    expect(h.invoke).not.toHaveBeenCalledWith(
+      'agent_worktree_ensure',
+      expect.anything()
+    )
+  })
+
+  it('still refuses a graph that could not finish, without asking anyone', async () => {
+    await renderRoute()
+    const deps = await runOneTurn()
+    const result = await deps.dispatch(
+      call('team', {
+        tasks: [{ id: 'a', description: 'do a', dependsOn: [], depends_on: ['ghost'] }],
+      })
+    )
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('ghost')
+    expect(useTeamConflictRequests.getState().bySession).toEqual({})
   })
 
   it('shows the team as one unit of work with its children under it', async () => {
@@ -979,13 +1155,15 @@ describe('a repository that brings its own configuration', () => {
     await renderRoute()
     await openSessionDetails()
 
+    // The saved definition keeps the name; the imported one is reported as a
+    // duplicate rather than quietly losing. Waited for as one condition: the
+    // saved list and the repository scan arrive independently, and asserting
+    // the second as soon as the first had rendered raced them.
     await waitFor(() => {
       const section = screen.getByTestId('cowork-compat')
       expect(section).toHaveTextContent('reviewer')
+      expect(section).toHaveTextContent('duplicate')
     })
-    // The saved definition keeps the name; the imported one is reported as a
-    // duplicate rather than quietly losing.
-    expect(screen.getByTestId('cowork-compat')).toHaveTextContent('duplicate')
   })
 
   it('reports a local MCP server it cannot confine rather than running it', async () => {

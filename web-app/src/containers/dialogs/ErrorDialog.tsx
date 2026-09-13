@@ -7,8 +7,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
-import { IconCopy, IconCopyCheck } from '@tabler/icons-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+} from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { useState } from 'react'
@@ -46,74 +51,76 @@ export default function ErrorDialog() {
   return (
     <Dialog open={!!errorMessage} onOpenChange={handleDialogOpen}>
       <DialogContent showCloseButton={false}>
+        {/* What happened */}
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0">
-              <AlertTriangle className="size-4 text-destructive" />
-            </div>
-            <div>
+          <div className="flex items-start gap-3 text-left">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive-tint text-destructive">
+              <AlertTriangle className="size-4" />
+            </span>
+            <div className="min-w-0">
               <DialogTitle>{t('common:error')}</DialogTitle>
-              <DialogDescription className="mt-1 text-main-view-fg/70">
+              <DialogDescription className="mt-1 text-ink-2">
                 {errorMessage?.title ?? t('common:errorDialog.titleFallback')}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="bg-main-view-fg/2 p-2 border border-main-view-fg/5 rounded-lg space-y-2">
-          <div>
-            <button
-              type="button"
-              onClick={() => setIsDetailExpanded((prev) => !prev)}
-              className="flex items-center gap-1 text-sm text-main-view-fg/60 hover:text-main-view-fg/80 transition-colors cursor-pointer"
-            >
-              {isDetailExpanded ? (
-                <ChevronDown className="size-3" />
-              ) : (
-                <ChevronRight className="size-3" />
-              )}
-              {t('common:errorDialog.details')}
-            </button>
-
-            {isDetailExpanded && (
-              <div
-                className="mt-2 text-sm text-main-view-fg/70 leading-relaxed max-h-[150px] overflow-y-auto break-all bg-main-view-fg/10 p-2 rounded border border-main-view-fg/5"
-                ref={(el) => {
-                  if (el) {
-                    el.scrollTop = el.scrollHeight
-                  }
-                }}
-              >
-                {errorMessage?.message}
-              </div>
+        <div className="min-w-0 space-y-2 rounded-md border border-border bg-sunken p-3">
+          <button
+            type="button"
+            aria-expanded={isDetailExpanded}
+            onClick={() => setIsDetailExpanded((prev) => !prev)}
+            className="flex cursor-pointer items-center gap-1 rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground pointer-coarse:min-h-11"
+          >
+            {isDetailExpanded ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
             )}
-          </div>
-          <span className="text-sm text-main-view-fg/60">{errorMessage?.subtitle}</span>
+            {t('common:errorDialog.details')}
+          </button>
+
+          {isDetailExpanded && (
+            <div
+              className="max-h-[150px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border bg-card p-2.5 font-mono text-xs leading-relaxed text-ink-2"
+              ref={(el) => {
+                if (el) {
+                  el.scrollTop = el.scrollHeight
+                }
+              }}
+            >
+              {errorMessage?.message}
+            </div>
+          )}
+          {/* What to do */}
+          {errorMessage?.subtitle && (
+            <p className="text-sm text-ink-2">{errorMessage.subtitle}</p>
+          )}
         </div>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter>
           <Button
-            variant="link"
+            variant="outline"
             onClick={() => handleDialogOpen(false)}
-            className="flex-1 text-right sm:flex-none"
+            className="pointer-coarse:h-11"
           >
             {t('common:cancel')}
           </Button>
           <Button
-            variant="link"
             onClick={() => void handleCopy()}
             disabled={isCopying}
             autoFocus
-            className="flex-1 text-right sm:flex-none border border-main-view-fg/20 !px-2"
+            className="pointer-coarse:h-11"
           >
             {isCopying ? (
               <>
-                <IconCopyCheck className="text-accent" />
+                <Check />
                 {t('common:copied')}
               </>
             ) : (
               <>
-                <IconCopy />
+                <Copy />
                 {t('common:copy')}
               </>
             )}

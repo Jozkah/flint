@@ -26,7 +26,18 @@ const editing: EffectiveAccess = {
   destination: 'repository',
 }
 
-const SUPPORTED: CapabilityState = { known: true, directEdit: true }
+const SUPPORTED: CapabilityState = {
+  known: true,
+  directEdit: true,
+  managedWorktree: true,
+}
+
+/** Windows: a Jan-owned worktree can be confined, the user's folder cannot. */
+const WINDOWS: CapabilityState = {
+  known: true,
+  directEdit: false,
+  managedWorktree: true,
+}
 
 const open = async (
   over: Partial<Parameters<typeof CoworkAccessSelector>[0]> = {}
@@ -122,11 +133,28 @@ describe('when editing a folder cannot be offered', () => {
   // Windows, or a machine with no sandbox: the option is never offered rather
   // than failing after the user commits to it.
   it('is disabled where the platform cannot enforce it', async () => {
-    await open({ capability: { known: true, directEdit: false } })
+    await open({ capability: { known: true, directEdit: false, managedWorktree: false } })
     const edit = await option('common:coworkAccess.edit-folder.label')
 
     expect(edit).toHaveAttribute('aria-disabled', 'true')
     expect(edit).toHaveTextContent('common:coworkAccess.unsupportedPlatform')
+  })
+
+  /// The regression. Both modes used to ask one question, so Windows -- where
+  /// only direct editing is impossible -- could not offer Managed worktree
+  /// either, and the proposal review behind it was unreachable.
+  it('offers Managed worktree where only Jan-owned folders can be confined', async () => {
+    const { onRequestWorktree, onRequestDirectEdit } = await open({
+      capability: WINDOWS,
+    })
+    const edit = await option('common:coworkAccess.edit-folder.label')
+    const worktree = await option('common:coworkAccess.managed-worktree.label')
+
+    expect(edit).toHaveAttribute('aria-disabled', 'true')
+    expect(worktree).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(worktree)
+    expect(onRequestWorktree).toHaveBeenCalled()
+    expect(onRequestDirectEdit).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -199,7 +227,7 @@ describe('when editing a folder cannot be offered', () => {
   it('withholds the worktree on a platform that cannot confine writes', async () => {
     // A worktree the shell could escape is not isolation, so the option is not
     // offered rather than offered and quietly downgraded.
-    await open({ capability: { known: true, directEdit: false } })
+    await open({ capability: { known: true, directEdit: false, managedWorktree: false } })
     const worktree = await option('common:coworkAccess.managed-worktree.label')
 
     expect(worktree).toHaveAttribute('aria-disabled', 'true')

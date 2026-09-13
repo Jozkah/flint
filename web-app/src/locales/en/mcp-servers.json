@@ -171,7 +171,9 @@
       "authenticated": "authenticated",
       "expired": "expired",
       "staleResource": "issued for another URL",
-      "unauthenticated": "not authenticated"
+      "unauthenticated": "not authenticated",
+      "scopeMismatch": "scopes changed, sign in again",
+      "invalidScopes": "invalid OAuth scopes in the configuration"
     },
     "expiresIn": "expires in {{duration}}",
     "authenticate": "Sign in",
@@ -187,6 +189,15 @@
     "nothingToClear": "{{serverName}} had no stored credentials",
     "clearFailed": "Could not clear credentials for {{serverName}}",
     "renew": "Renew session",
-    "expiredAgo": "expired {{duration}} ago"
+    "expiredAgo": "expired {{duration}} ago",
+    "scopesDeclared": "Asks for: {{scopes}}",
+    "scopesGranted": "Granted: {{scopes}}",
+    "scopesNone": "no scopes"
+  },
+  "serverLog": {
+    "title": "Log for MCP server {{serverName}}",
+    "description": "What this server printed to its error stream, newest last. Secrets are removed before anything is written.",
+    "empty": "This server has not printed anything.",
+    "refresh": "Refresh"
   }
 }

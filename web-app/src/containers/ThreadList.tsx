@@ -186,12 +186,12 @@ const ThreadItem = memo(
         onKeyDown={onRowKeyDown}
       >
         {currentProjectId ?
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("bg-card dark:bg-secondary/20 mb-2 px-4 py-4 border hover:dark:bg-secondary/30 rounded-lg block max-w-full overflow-hidden", isSelected && "border-primary")}>
-              <div className="flex items-center gap-1.5 min-w-0">
+          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative mb-2 block max-w-full overflow-hidden rounded-lg border border-border bg-card px-4 py-3.5 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring", isSelected && "border-brand-soft bg-brand-tint before:absolute before:left-0 before:inset-y-3 before:w-0.5 before:rounded-full before:bg-brand")}>
+              <div className="flex items-center gap-1.5 min-w-0 pr-10">
                 {isActive && (
-                  <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
+                  <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />
                 )}
-                <span className={cn("block truncate", isSelected && "font-medium text-primary")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
+                <span className={cn("block truncate", isSelected && "font-medium text-foreground")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
               </div>
               {currentProjectId && lastUserMessageText && (
                 <div className="text-muted-foreground text-xs mt-1 line-clamp-1 pr-10">
@@ -203,7 +203,7 @@ const ThreadItem = memo(
           <SidebarMenuButton asChild isActive={isSelected}>
             <Link to="/threads/$threadId" params={{ threadId: thread.id }}>
               {isActive && (
-                <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
+                <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />
               )}
               <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
             </Link>
@@ -211,9 +211,14 @@ const ThreadItem = memo(
         }
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
+            {/* Hover reveals it with a mouse; a touch screen has no hover, so
+                the row menu stays visible there with a 44px target. */}
             <SidebarMenuAction
               showOnHover
-              className={cn("hover:bg-sidebar-foreground/8", currentProjectId && 'mt-4 mr-2')}
+              className={cn(
+                "hover:bg-sunken pointer-coarse:opacity-100 pointer-coarse:size-9 pointer-coarse:top-0.5",
+                currentProjectId && 'mt-3 mr-2'
+              )}
             >
               <MoreHorizontal />
               <span className="sr-only">More</span>

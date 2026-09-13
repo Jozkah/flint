@@ -10,11 +10,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
-  IconPlus,
-  IconTrash,
-  IconGripVertical,
-  IconCodeDots,
-} from '@tabler/icons-react'
+  Braces,
+  GripVertical,
+  Plus,
+  Trash2,
+} from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { MCPServerConfig } from '@/hooks/useMCPServers'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
@@ -61,11 +62,44 @@ function FieldMessage({
         'text-xs',
         issue.severity === 'error'
           ? 'text-destructive'
-          : 'text-amber-700 dark:text-amber-500'
+          : 'text-warning'
       )}
     >
       {t(`mcp-servers:validation.${issue.code}`)}
     </p>
+  )
+}
+
+/**
+ * A small icon action inside a form row (add, remove). A real button, so it is
+ * reachable by keyboard and named for a screen reader; 44px on touch.
+ */
+function RowIconButton({
+  label,
+  onClick,
+  destructive,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  destructive?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        'grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11 [&_svg]:size-4',
+        destructive
+          ? 'text-muted-foreground hover:text-destructive'
+          : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -118,9 +152,9 @@ function SortableArgItem({
       <div
         {...attributes}
         {...listeners}
-        className="size-6 cursor-move flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+        className="flex size-8 shrink-0 cursor-move items-center justify-center rounded-md transition-colors hover:bg-sunken pointer-coarse:size-11"
       >
-        <IconGripVertical size={16} className="text-muted-foreground" />
+        <GripVertical className="size-4 text-muted-foreground" aria-hidden />
       </div>
       <Input
         id={inputId}
@@ -130,15 +164,12 @@ function SortableArgItem({
         aria-label={placeholder}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
-        className="flex-1"
+        className="min-w-0 flex-1"
       />
       {canRemove && (
-        <div
-          className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
-          onClick={onRemove}
-        >
-          <IconTrash size={16} className="text-destructive" />
-        </div>
+        <RowIconButton label={placeholder} onClick={onRemove} destructive>
+          <Trash2 aria-hidden />
+        </RowIconButton>
       )}
     </div>
   )
@@ -477,16 +508,19 @@ export default function AddEditMCPServer({
                 ? t('mcp-servers:editServer')
                 : t('mcp-servers:addServer')}
             </span>
-            <div
+            <button
+              type="button"
               className={cn(
-                'size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out',
-                isToggled && 'bg-secondary text-primary'
+                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
+                isToggled && 'bg-brand-tint text-brand-text'
               )}
               title="Add server by JSON"
+              aria-label="Add server by JSON"
+              aria-pressed={isToggled}
               onClick={() => setIsToggled(!isToggled)}
             >
-              <IconCodeDots className="h-5 w-5 cursor-pointer transition-colors duration-200" />
-            </div>
+              <Braces className="size-5" aria-hidden />
+            </button>
           </DialogTitle>
         </DialogHeader>
         {isToggled ? (
@@ -495,7 +529,7 @@ export default function AddEditMCPServer({
               <label className="text-sm mb-2 inline-block">
                 {t('mcp-servers:editJson.placeholder')}
               </label>
-              <div className="border  rounded-md overflow-hidden">
+              <div className="overflow-hidden rounded-md border border-border bg-sunken">
                 <CodeEditor
                   value={jsonContent}
                   language="json"
@@ -522,7 +556,11 @@ export default function AddEditMCPServer({
                   className="w-full text-sm! min-h-[300px] font-mono!"
                 />
               </div>
-              {error && <div className="text-destructive text-sm">{error}</div>}
+              {error && (
+                <div role="alert" className="text-destructive text-sm">
+                  {error}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -553,7 +591,7 @@ export default function AddEditMCPServer({
                 onValueChange={(value) =>
                   setTransportType(value as 'http' | 'sse')
                 }
-                className="flex gap-6"
+                className="flex flex-wrap gap-x-6 gap-y-1"
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="stdio" id="stdio" />
@@ -628,12 +666,12 @@ export default function AddEditMCPServer({
                   <label className="text-sm">
                     {t('mcp-servers:arguments')}
                   </label>
-                  <div
-                    className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+                  <RowIconButton
+                    label={t('mcp-servers:arguments')}
                     onClick={handleAddArg}
                   >
-                    <IconPlus size={16} className="text-muted-foreground" />
-                  </div>
+                    <Plus aria-hidden />
+                  </RowIconButton>
                 </div>
 
                 <DndContext
@@ -683,12 +721,12 @@ export default function AddEditMCPServer({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm">{t('mcp-servers:envVars')}</label>
-                  <div
-                    className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+                  <RowIconButton
+                    label={t('mcp-servers:envVars')}
                     onClick={handleAddEnv}
                   >
-                    <IconPlus size={16} className="text-muted-foreground" />
-                  </div>
+                    <Plus aria-hidden />
+                  </RowIconButton>
                 </div>
 
                 {envKeys.map((key, index) => (
@@ -702,7 +740,7 @@ export default function AddEditMCPServer({
                       }
                       placeholder={t('mcp-servers:key')}
                       aria-label={t('mcp-servers:key')}
-                      className="flex-1"
+                      className="min-w-0 flex-1 font-mono"
                     />
                     <Input
                       value={envValues[index] || ''}
@@ -710,15 +748,16 @@ export default function AddEditMCPServer({
                         handleEnvValueChange(index, e.target.value)
                       }
                       placeholder={t('mcp-servers:value')}
-                      className="flex-1"
+                      className="min-w-0 flex-1"
                     />
                     {envKeys.length > 1 && (
-                      <div
-                        className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+                      <RowIconButton
+                        label={`${t('mcp-servers:envVars')} ${index + 1}`}
                         onClick={() => handleRemoveEnv(index)}
+                        destructive
                       >
-                        <IconTrash size={16} className="text-destructive" />
-                      </div>
+                        <Trash2 aria-hidden />
+                      </RowIconButton>
                     )}
                   </div>
                   <FieldMessage
@@ -735,12 +774,9 @@ export default function AddEditMCPServer({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm">Headers</label>
-                    <div
-                      className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
-                      onClick={handleAddHeader}
-                    >
-                      <IconPlus size={16} className="text-muted-foreground" />
-                    </div>
+                    <RowIconButton label="Headers" onClick={handleAddHeader}>
+                      <Plus aria-hidden />
+                    </RowIconButton>
                   </div>
 
                   {headerKeys.map((key, index) => (
@@ -754,7 +790,7 @@ export default function AddEditMCPServer({
                         }
                         placeholder="Header name"
                         aria-label="Header name"
-                        className="flex-1"
+                        className="min-w-0 flex-1 font-mono"
                       />
                       <Input
                         value={headerValues[index] || ''}
@@ -762,15 +798,16 @@ export default function AddEditMCPServer({
                           handleHeaderValueChange(index, e.target.value)
                         }
                         placeholder="Header value"
-                        className="flex-1"
+                        className="min-w-0 flex-1"
                       />
                       {headerKeys.length > 1 && (
-                        <div
-                          className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+                        <RowIconButton
+                          label={`Header ${index + 1}`}
                           onClick={() => handleRemoveHeader(index)}
+                          destructive
                         >
-                          <IconTrash size={16} className="text-destructive" />
-                        </div>
+                          <Trash2 aria-hidden />
+                        </RowIconButton>
                       )}
                     </div>
                     <FieldMessage
@@ -805,13 +842,19 @@ export default function AddEditMCPServer({
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => onOpenChange(false)}
+          >
             {t('common:cancel')}
           </Button>
           <Button
             onClick={handleSave}
             size="sm"
+            className="pointer-coarse:h-11"
             disabled={!isToggled && serverName.trim() === ''}
           >
             {t('mcp-servers:save')}

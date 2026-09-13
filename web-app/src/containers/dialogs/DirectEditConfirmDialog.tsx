@@ -67,7 +67,7 @@ const modeConsequenceKey = (mode: CoworkMode): string =>
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <dt className="shrink-0 text-main-view-fg/50">{label}</dt>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-all">{value}</dd>
     </div>
   )
@@ -137,7 +137,7 @@ export function DirectEditConfirmDialog({
           />
         </dl>
 
-        <div className="space-y-1.5 text-xs text-main-view-fg/70">
+        <div className="space-y-1.5 text-xs text-ink-2">
           {/* What the current run mode will actually do with the permission,
               so the two controls are not read independently. */}
           <p>{t(modeConsequenceKey(facts.runMode))}</p>

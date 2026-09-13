@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { isMac, PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
 import type { ShortcutSpec } from '@/lib/shortcuts'
 import { useInterfaceSettings } from './useInterfaceSettings'
+import { useKeybindings } from './useKeybindings'
 
 const matchesZoomKey = (event: KeyboardEvent, spec: ShortcutSpec) => {
   const metaKeyHeld = isMac ? event.metaKey : event.ctrlKey
@@ -24,7 +25,10 @@ export function useMessageZoom() {
     const zoomOut = PlatformShortcuts[ShortcutAction.ZOOM_OUT]
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const { zoomInMessages, zoomOutMessages } = useInterfaceSettings.getState()
+      // A shortcut is being rebound; the chord is not a zoom (AH-207).
+      if (useKeybindings.getState().recording) return
+      const { zoomInMessages, zoomOutMessages } =
+        useInterfaceSettings.getState()
       if (matchesZoomKey(event, zoomIn)) {
         event.preventDefault()
         zoomInMessages()
@@ -38,7 +42,8 @@ export function useMessageZoom() {
       if (!event.ctrlKey && !event.metaKey) return
       if (event.deltaY === 0) return
       event.preventDefault()
-      const { zoomInMessages, zoomOutMessages } = useInterfaceSettings.getState()
+      const { zoomInMessages, zoomOutMessages } =
+        useInterfaceSettings.getState()
       if (event.deltaY < 0) zoomInMessages()
       else zoomOutMessages()
     }

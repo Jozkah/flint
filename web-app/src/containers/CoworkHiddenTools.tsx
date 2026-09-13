@@ -23,7 +23,7 @@ export function CoworkHiddenTools({
         type="button"
         onClick={onReveal}
         data-testid="hidden-tools-reveal"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-main-view-fg/55 hover:bg-main-view-fg/5 hover:text-main-view-fg focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <Eye size={12} className="shrink-0" />
         {t('common:coworkDisplay.hiddenCount', { count })}

@@ -486,6 +486,29 @@ describe('runTurn', () => {
     expect(parts[0].state).toBe('output-available')
     expect(parts[0].output).toBe('ok')
   })
+
+  // One request, one invocation: the caller binds a step's tool calls to the
+  // request that asked for them, which it can only do before they run (a
+  // call that dispatches a subagent sends requests of its own).
+  it('reports each response before any of its tool calls run', async () => {
+    const order: string[] = []
+    const d = {
+      ...deps(
+        [toolStep('read'), textStep('done')],
+        vi.fn(async (): Promise<ToolOutcome> => {
+          order.push('dispatch')
+          return { output: 'ok' }
+        })
+      ),
+      onResponse: vi.fn(() => order.push('response')),
+    }
+    await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(order).toEqual(['response', 'dispatch', 'response'])
+  })
 })
 
 describe('diff sidecar', () => {

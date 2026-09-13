@@ -192,9 +192,12 @@ pub fn resolve_config_file_path() -> PathBuf {
 /// Rust runs tests on threads, so a private lock here would exclude only the
 /// other callers of this helper while the secret-store tests redirected the
 /// folder (and dropped its temp dir) underneath a run already in progress.
-#[cfg(all(test, feature = "cli"))]
+#[cfg(test)]
 pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+    // Secrets follow the data folder only in the encrypted file; the OS
+    // keyring is per user, and a test must never write the developer's.
+    crate::core::server::provider_secrets::force_file_secrets();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let prev = std::env::var_os("JAN_DATA_FOLDER");

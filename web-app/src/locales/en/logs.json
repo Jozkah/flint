@@ -1,3 +1,7 @@
 {
-  "noLogs": "No logs available"
+  "noLogs": "No logs available",
+  "title": "App logs",
+  "serverTitle": "Local API server logs",
+  "copy": "Copy logs",
+  "copied": "Copied"
 }

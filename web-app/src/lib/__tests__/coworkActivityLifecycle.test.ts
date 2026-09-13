@@ -125,7 +125,7 @@ describe('a background shell job outliving its run', () => {
     backgroundCommand(run, 'call-1', 'bash-3')
     endRun(run)
 
-    recordJobCollected('bash-3', { output: 'built in 9m' })
+    recordJobCollected(run.sessionId, 'bash-3', { output: 'built in 9m' })
 
     expect(store().tasks[idOf('call-1')]).toMatchObject({
       status: 'done',
@@ -160,7 +160,7 @@ describe('a background shell job outliving its run', () => {
       detail: CANCELLED_BY_USER,
     })
 
-    recordJobCollected('bash-3', { output: 'half a line before the kill' })
+    recordJobCollected(run.sessionId, 'bash-3', { output: 'half a line before the kill' })
 
     const task = store().tasks[idOf('call-1')]
     expect(task.status).toBe('cancelled')
@@ -172,7 +172,7 @@ describe('a background shell job outliving its run', () => {
     backgroundCommand(run, 'call-1', 'bash-3')
     endRun(run)
     store().recoverOnLoad('interrupted:restart')
-    expect(store().tasks[idOf('call-1')].status).toBe('cancelled')
+    expect(store().tasks[idOf('call-1')].status).toBe('interrupted')
   })
 })
 

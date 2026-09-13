@@ -7,8 +7,8 @@
  * `node` before any install step.
  */
 import { readFileSync } from 'node:fs'
-import { loadRegistry, renderMarkdown, validateRegistry } from './registry.mjs'
-import { JSON_PATH, MARKDOWN_PATH } from './paths.mjs'
+import { findMissingFiles, loadRegistry, renderMarkdown, validateRegistry } from './registry.mjs'
+import { JSON_PATH, MARKDOWN_PATH, REPO_ROOT } from './paths.mjs'
 
 const problems = []
 
@@ -21,6 +21,7 @@ try {
 }
 
 problems.push(...validateRegistry(doc))
+problems.push(...findMissingFiles(doc, REPO_ROOT))
 
 if (problems.length === 0) {
   let current

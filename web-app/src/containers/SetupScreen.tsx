@@ -8,12 +8,13 @@ import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
 import { AppEvent, events } from '@janhq/core'
 import { Button } from '@/components/ui/button'
 import {
-  IconAlertTriangle,
-  IconArrowRight,
-  IconCheck,
-  IconCpu,
-  IconLoader2,
-} from '@tabler/icons-react'
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Cpu,
+  Info,
+  Loader2,
+} from 'lucide-react'
 import { cn, getModelDisplayName } from '@/lib/utils'
 import {
   useSetupChecklist,
@@ -277,16 +278,17 @@ function SetupScreen() {
   }
 
   return (
-    <div className="relative flex flex-col h-svh w-full overflow-hidden">
-      <div className="flex flex-col h-svh w-full">
+    <div className="relative flex flex-col h-full w-full overflow-hidden">
+      <div className="flex flex-col h-full w-full">
         <HeaderPage />
 
         {/* Scrolls rather than clips: on a short window the intentions and the
             finish page are taller than the space, and centring with
             items-center pushed the primary actions out of reach. */}
-        <div className="flex h-[calc(100%-60px)] min-h-0 overflow-y-auto px-6 py-6">
+        <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-6 sm:px-6">
+
           <div
-            className="m-auto w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
+            className="m-auto w-full min-w-0 max-w-[520px] rounded-lg border border-border bg-card p-5 shadow-overlay pointer-events-auto sm:p-8"
             data-testid="setup-wizard"
             data-page={currentPage?.id ?? 'done'}
           >
@@ -294,7 +296,7 @@ function SetupScreen() {
               <>
                 <div className="flex items-center justify-between gap-4">
                   <span
-                    className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                    className="text-xs font-medium uppercase tracking-wider tabular-nums text-muted-foreground"
                     data-testid="setup-step-counter"
                   >
                     {t('setup:stepCounter', {
@@ -309,12 +311,12 @@ function SetupScreen() {
                       <span
                         key={page.id}
                         className={cn(
-                          'h-1 w-6 rounded-full transition-colors',
+                          'h-1 w-8 rounded-full transition-colors',
                           index === currentIndex
-                            ? 'bg-primary'
+                            ? 'bg-brand'
                             : index < currentIndex
-                              ? 'bg-muted-foreground/50'
-                              : 'bg-muted-foreground/15'
+                              ? 'bg-ink-2'
+                              : 'bg-line-strong'
                         )}
                       />
                     ))}
@@ -325,30 +327,30 @@ function SetupScreen() {
                   {isSetupPage && (
                     <span
                       className={cn(
-                        'mb-4 inline-flex size-9 items-center justify-center rounded-xl',
+                        'mb-4 inline-flex size-9 items-center justify-center rounded-md',
                         isWarning
-                          ? 'bg-destructive/10 text-destructive'
+                          ? 'bg-destructive-tint text-destructive'
                           : isSetupComplete
-                            ? 'bg-green-500/10 text-green-400'
-                            : 'bg-muted text-muted-foreground'
+                            ? 'bg-success-tint text-success'
+                            : 'bg-sunken text-muted-foreground'
                       )}
                     >
                       {isWarning ? (
-                        <IconAlertTriangle size={18} />
+                        <AlertTriangle className="size-[18px]" />
                       ) : isSetupComplete ? (
-                        <IconCheck size={18} />
+                        <Check className="size-[18px]" />
                       ) : (
-                        <IconLoader2 size={18} className="animate-spin" />
+                        <Loader2 className="size-[18px] animate-spin" />
                       )}
                     </span>
                   )}
-                  <h1 className="font-studio font-medium text-2xl tracking-tight">
+                  <h1 className="font-display text-3xl font-normal leading-tight tracking-tight text-foreground">
                     {isSetupPage && isSetupComplete
                       ? t('setup:stageSetupDone')
                       : t(currentPage.labelKey)}
                   </h1>
                   {body() && (
-                    <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    <p className="mt-2 text-sm leading-relaxed text-ink-2">
                       {body()}
                     </p>
                   )}
@@ -356,17 +358,19 @@ function SetupScreen() {
 
                 {resumed && currentPage.id !== 'welcome' && (
                   <p
-                    className="mt-3 text-xs text-muted-foreground"
+                    role="status"
+                    className="mt-4 flex items-start gap-2 rounded-md border border-border bg-sunken px-3 py-2 text-xs text-ink-2"
                     data-testid="setup-resumed"
                   >
-                    {t('onboarding:resumeNotice')}
+                    <Info className="mt-px size-3.5 shrink-0 text-brand-text" />
+                    <span>{t('onboarding:resumeNotice')}</span>
                   </p>
                 )}
 
                 {currentPage.id === 'welcome' && (
                   <>
                     <fieldset className="mt-6" data-testid="setup-intents">
-                      <legend className="text-sm font-medium">
+                      <legend className="text-sm font-semibold text-foreground">
                         {t('onboarding:intentHeading')}
                       </legend>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -375,7 +379,7 @@ function SetupScreen() {
                       <div
                         role="radiogroup"
                         aria-label={t('onboarding:intentHeading')}
-                        className="mt-2 flex flex-col gap-1.5"
+                        className="mt-3 flex flex-col gap-2"
                         onKeyDown={(event) => {
                           // Arrow keys move and select within the group, as a
                           // native radio group does; Tab still leaves it.
@@ -415,29 +419,47 @@ function SetupScreen() {
                               data-testid={`setup-intent-${intent}`}
                               onClick={() => guide.setIntent(intent)}
                               className={cn(
-                                'rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                'flex min-h-11 items-start gap-3 rounded-md border px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-primary/40 bg-primary/10'
-                                  : 'hover:bg-secondary/40'
+                                  ? 'border-brand bg-brand-tint'
+                                  : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
                               )}
                             >
-                              <span className="block font-medium">
-                                {t(`onboarding:intent.${intent}.title`)}
+                              {/* The radio mark: a ring, filled when chosen. */}
+                              <span
+                                aria-hidden
+                                className={cn(
+                                  'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
+                                  isChosen ? 'border-brand' : 'border-input'
+                                )}
+                              >
+                                {isChosen && (
+                                  <span className="size-2 rounded-full bg-brand" />
+                                )}
                               </span>
-                              <span className="block text-xs text-muted-foreground">
-                                {t(`onboarding:intent.${intent}.description`)}
+                              <span className="min-w-0">
+                                <span className="block font-medium text-foreground">
+                                  {t(`onboarding:intent.${intent}.title`)}
+                                </span>
+                                <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                                  {t(`onboarding:intent.${intent}.description`)}
+                                </span>
                               </span>
                             </button>
                           )
                         })}
                       </div>
                     </fieldset>
-                    <Button className="mt-6 w-full" onClick={beginSetup}>
+                    <Button
+                      size="lg"
+                      className="mt-6 w-full pointer-coarse:h-11"
+                      onClick={beginSetup}
+                    >
                       {t('setup:startSetup')}
                     </Button>
                     <Button
                       variant="link"
-                      className="mt-1 w-full"
+                      className="mt-1 w-full pointer-coarse:h-11"
                       data-testid="setup-skip-guide"
                       onClick={skipGuide}
                     >
@@ -451,32 +473,32 @@ function SetupScreen() {
                 {isSetupPage && (
                   <div
                     className={cn(
-                      'mt-5 flex items-start gap-2.5 rounded-xl border px-3.5 py-3',
+                      'mt-5 flex items-start gap-2.5 rounded-md border px-3.5 py-3',
                       gpu.willUse
-                        ? 'border-green-500/25 bg-green-500/8'
-                        : 'border-border bg-muted/40'
+                        ? 'border-success/30 bg-success-tint'
+                        : 'border-border bg-sunken'
                     )}
                     data-testid="setup-gpu-badge"
                   >
                     <span
                       className={cn(
                         'mt-0.5 shrink-0',
-                        gpu.willUse ? 'text-green-400' : 'text-muted-foreground'
+                        gpu.willUse ? 'text-success' : 'text-muted-foreground'
                       )}
                     >
                       {gpu.willUse === undefined ? (
-                        <IconLoader2 size={15} className="animate-spin" />
+                        <Loader2 className="size-[15px] animate-spin" />
                       ) : gpu.willUse ? (
-                        <IconCheck size={15} />
+                        <Check className="size-[15px]" />
                       ) : (
-                        <IconCpu size={15} />
+                        <Cpu className="size-[15px]" />
                       )}
                     </span>
                     <div className="min-w-0">
                       <p
                         className={cn(
                           'text-sm font-medium',
-                          gpu.willUse ? 'text-green-400' : 'text-foreground'
+                          gpu.willUse ? 'text-success' : 'text-foreground'
                         )}
                       >
                         {gpu.willUse === undefined
@@ -507,7 +529,8 @@ function SetupScreen() {
                       <>
                         <button
                           type="button"
-                          className="text-xs text-muted-foreground underline"
+                          aria-expanded={showDetails}
+                          className="rounded-sm text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
                           onClick={() => setShowDetails((prev) => !prev)}
                         >
                           {showDetails
@@ -515,7 +538,7 @@ function SetupScreen() {
                             : t('setup:showDetails')}
                         </button>
                         {showDetails && (
-                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-sunken p-2.5 font-mono text-xs text-ink-2">
                             {currentPage.detail}
                           </pre>
                         )}
@@ -536,17 +559,20 @@ function SetupScreen() {
                   <>
                     {/* The engine's asset name: a caption, never the sentence. */}
                     {engineBackendName && (
-                      <p className="mt-3 truncate font-mono text-[11px] text-muted-foreground/60">
+                      <p
+                        className="mt-3 truncate font-mono text-[11px] text-muted-foreground"
+                        title={engineBackendName}
+                      >
                         {engineBackendName}
                       </p>
                     )}
-                    <div className="mt-5 flex items-center gap-3">
+                    <div className="mt-5 flex flex-wrap items-center gap-3">
                       {/* Continue once the work is done; the same button skips
                           ahead while it is still running, since this page covers
                           a backend download and waiting must not be the only
                           option. */}
                       <Button
-                        className="flex-1"
+                        className="flex-1 pointer-coarse:h-11"
                         onClick={() => acknowledge('setup')}
                       >
                         {isSetupComplete
@@ -572,24 +598,24 @@ function SetupScreen() {
                   <div className="mt-5" data-testid="setup-finish">
                     <section
                       aria-labelledby="setup-processing-heading"
-                      className="mb-4 rounded-xl border bg-muted/40 px-3.5 py-3 text-xs"
+                      className="mb-4 rounded-md border border-border bg-sunken px-3.5 py-3 text-xs leading-relaxed"
                       data-testid="setup-processing"
                     >
                       <h2
                         id="setup-processing-heading"
-                        className="text-sm font-medium text-foreground"
+                        className="text-sm font-semibold text-foreground"
                       >
                         {t('onboarding:processingHeading')}
                       </h2>
-                      <p className="mt-1 text-muted-foreground">
+                      <p className="mt-1.5 text-ink-2">
                         {t('onboarding:processingLocal')}
                       </p>
-                      <p className="mt-1 text-muted-foreground">
+                      <p className="mt-1.5 text-ink-2">
                         {t('onboarding:processingRemote')}
                       </p>
                       <Button
                         variant="link"
-                        className="h-auto px-0 text-xs"
+                        className="mt-1 h-auto px-0 text-xs pointer-coarse:min-h-11"
                         data-testid="setup-connect-remote"
                         onClick={() =>
                           navigate({ to: route.settings.model_providers })
@@ -615,17 +641,17 @@ function SetupScreen() {
                               data-testid="setup-local-model"
                               onClick={() => setChosenModel(model.id)}
                               className={cn(
-                                'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                                'flex min-h-11 items-center justify-between gap-2 rounded-md border px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-primary/40 bg-primary/10'
-                                  : 'hover:bg-secondary/40'
+                                  ? 'border-brand bg-brand-tint'
+                                  : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
                               )}
                             >
                               <span className="truncate">
                                 {getModelDisplayName(model)}
                               </span>
                               {isChosen && (
-                                <IconCheck size={16} className="shrink-0" />
+                                <Check className="size-4 shrink-0 text-brand-text" />
                               )}
                             </button>
                           )
@@ -637,9 +663,10 @@ function SetupScreen() {
                       </p>
                     )}
 
-                    <div className="mt-5 flex items-center gap-2">
+                    <div className="mt-5 flex flex-wrap items-center gap-2">
                       <Button
                         data-testid="setup-finish-start"
+                        className="pointer-coarse:h-11"
                         onClick={() =>
                           void completeSetup(chosenModel ?? undefined)
                         }
@@ -647,10 +674,11 @@ function SetupScreen() {
                         {chosenModel
                           ? t('setup:finishStartChat')
                           : t('setup:finishWithoutModel')}
-                        <IconArrowRight size={16} />
+                        <ArrowRight className="size-4" />
                       </Button>
                       <Button
                         variant="link"
+                        className="pointer-coarse:h-11"
                         data-testid="setup-finish-import"
                         onClick={() =>
                           navigate({

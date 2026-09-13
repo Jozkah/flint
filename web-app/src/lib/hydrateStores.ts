@@ -22,12 +22,16 @@ import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import { useKeybindings } from '@/hooks/useKeybindings'
+import { useReferenceAliases } from '@/lib/referenceAliases'
+import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 // Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
 import '@/lib/rooms/e2eHooks'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -63,9 +67,13 @@ const secondaryStores = [
   useAgentToolsConfig,
   useModelOverrides,
   useCoworkDisplay,
+  useKeybindings,
+  useReferenceAliases,
+  useProjectInitDrafts,
   useModelEvidence,
   useOnboardingGuide,
   useSessionMessaging,
+  useSplitConversation,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

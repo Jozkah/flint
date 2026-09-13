@@ -47,6 +47,27 @@ pub fn scripted_response() -> Option<Option<serde_json::Value>> {
     Some(Some(serde_json::Value::String(script)))
 }
 
+/// Resolve the scripted answer of a *save* picker.
+///
+/// A save picker names a file that usually does not exist yet, so the rule is
+/// the folder it goes in must: the seam still cannot conjure a location the
+/// native dialog could not have offered.
+pub fn scripted_save_response() -> Option<Option<String>> {
+    let script = std::env::var(SCRIPT_ENV).ok()?;
+    if script.is_empty() {
+        return None;
+    }
+    if script == CANCEL {
+        return Some(None);
+    }
+    let parent_exists = Path::new(&script).parent().is_some_and(|p| p.is_dir());
+    if !parent_exists {
+        log::warn!("{SCRIPT_ENV} names {script:?}, whose folder does not exist; ignoring the script");
+        return None;
+    }
+    Some(Some(script))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +111,16 @@ mod tests {
             "a path that does not exist must fall through, not be fabricated"
         );
 
+        std::env::remove_var(SCRIPT_ENV);
+
+        // A save picker may name a new file, but only in a folder that exists.
+        let new_file = dir.path().join("export.json").to_string_lossy().to_string();
+        std::env::set_var(SCRIPT_ENV, &new_file);
+        assert_eq!(scripted_save_response(), Some(Some(new_file)));
+        std::env::set_var(SCRIPT_ENV, "/definitely/not/here/export.json");
+        assert!(scripted_save_response().is_none());
+        std::env::set_var(SCRIPT_ENV, CANCEL);
+        assert_eq!(scripted_save_response(), Some(None));
         std::env::remove_var(SCRIPT_ENV);
     }
 }

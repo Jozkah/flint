@@ -101,6 +101,11 @@ pub struct ProposedFile {
     pub deletions: usize,
     /// Empty for binary and oversized files, which are decided whole.
     pub hunks: Vec<ProposedHunk>,
+    /// A dependency, lock file or migration change (AH-154/155/156). Shown to
+    /// the reviewer; applying the file needs it acknowledged. Worked out again
+    /// from the stored content when the change is applied.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<crate::review_flags::ReviewFlag>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +179,10 @@ pub struct Approval {
     pub base_state_hash: String,
     pub scope: ProposalScope,
     pub files: Vec<FileSelection>,
+    /// Flagged files the person said they reviewed as flagged. A selected
+    /// file with a flag that is not named here is not applied.
+    #[serde(default)]
+    pub acknowledged: Vec<String>,
 }
 
 /// A selected hunk that cannot be applied without overwriting an edit made at
@@ -202,6 +211,12 @@ pub enum ProposalError {
     DuplicateSelection(String),
     WholeFileOnly(String),
     Sensitive(String),
+    /// A path at the destination that passes through a symlink, junction or
+    /// other reparse point, so writing it would land somewhere else.
+    LinkedDestination(String),
+    /// Selected files with a dependency, lock file or migration flag that the
+    /// approval did not acknowledge.
+    Unacknowledged(Vec<String>),
     Conflicts(Vec<Conflict>),
     Io(String),
 }
@@ -235,6 +250,13 @@ impl ProposalError {
             ProposalError::Sensitive(p) => {
                 format!("{p} looks like it holds a credential, so it is never applied")
             }
+            ProposalError::LinkedDestination(p) => format!(
+                "{p} passes through a link in your folder, so writing it would land elsewhere; nothing was written"
+            ),
+            ProposalError::Unacknowledged(paths) => format!(
+                "{} changes a dependency, lock file or migration and was not acknowledged as reviewed; nothing was written",
+                paths.join(", ")
+            ),
             ProposalError::Conflicts(c) => format!(
                 "{} selected change(s) overlap edits made since the proposal; nothing was written",
                 c.len()
@@ -407,22 +429,148 @@ fn audit(data_folder: &Path, record: &ProposalRecord, event: &str, detail: Strin
 // ---------------------------------------------------------------------------
 
 /// A path the change may name: relative, no `..`, no drive or root, and not
-/// Jan's own state directory.
+/// Jan's own state directory or Git's.
+///
+/// Judged by what Windows would open, not by the spelling: `.git.` and
+/// `.GIT ` name `.git` there, `a.txt:stream` names a stream of `a.txt`, and
+/// `NUL` or `con.txt` name a device. Each is refused on every platform, so a
+/// proposal made on one machine cannot mean something else on another.
 fn normalize_path(raw: &str) -> Result<String, ProposalError> {
     let raw = raw.replace('\\', "/");
     let path = Path::new(&raw);
     let mut parts = Vec::new();
     for c in path.components() {
         match c {
-            Component::Normal(p) => parts.push(p.to_string_lossy().to_string()),
+            Component::Normal(p) => {
+                let part = p.to_string_lossy().to_string();
+                if !portable_component(&part) {
+                    return Err(ProposalError::InvalidPath(raw.clone()));
+                }
+                parts.push(part)
+            }
             Component::CurDir => {}
             _ => return Err(ProposalError::InvalidPath(raw.clone())),
         }
     }
-    if parts.is_empty() || parts[0].eq_ignore_ascii_case(".jan") {
+    if parts.is_empty() || parts.iter().any(|p| is_reserved_name(p)) {
         return Err(ProposalError::InvalidPath(raw));
     }
     Ok(parts.join("/"))
+}
+
+/// A path from outside Jan, checked the way a proposal checks its own:
+/// relative, no `..`, no drive, root, UNC or stream, no device name, not
+/// Git's or Jan's state under any spelling. The normalized form on success.
+pub fn validate_path(raw: &str) -> Result<String, ProposalError> {
+    if raw.starts_with('/') || raw.starts_with('\\') {
+        return Err(ProposalError::InvalidPath(raw.to_string()));
+    }
+    normalize_path(raw)
+}
+
+/// `.git` or `.jan`, however Windows lets it be spelled.
+///
+/// NTFS gives `.git` an 8.3 short name, `GIT~1`, and opens the directory by
+/// either. A proposal naming `GIT~1/hooks/pre-commit` would write the user's
+/// Git hooks. The number is not always 1 -- it depends on what else was named
+/// alike first -- so every `git~N` and `jan~N` is refused, as Git itself does.
+pub fn is_reserved_name(part: &str) -> bool {
+    let lower = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    if lower == ".git" || lower == ".jan" {
+        return true;
+    }
+    ["git~", "jan~"].iter().any(|prefix| {
+        lower
+            .strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    })
+}
+
+/// Whether `root/rel` resolves into `root/.git` or `root/.jan`, whatever it
+/// is spelled as.
+///
+/// The spelling rules above know the aliases Windows has today; this asks the
+/// file system. The deepest part of the path that exists is resolved, and a
+/// write whose real location is inside Git's or Jan's state is refused. It is
+/// the check that still holds if a new alias turns up.
+pub fn resolves_into_reserved(root: &Path, rel: &str) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let reserved: Vec<PathBuf> = [".git", ".jan"]
+        .iter()
+        .filter_map(|name| root.join(name).canonicalize().ok())
+        .collect();
+    if reserved.is_empty() {
+        return false;
+    }
+    let mut deepest = root.clone();
+    let mut probe = root.clone();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        probe.push(part);
+        match probe.canonicalize() {
+            Ok(real) => deepest = real,
+            Err(_) => break,
+        }
+    }
+    reserved.iter().any(|r| deepest.starts_with(r))
+}
+
+/// One path component that names the same file on every platform Jan runs on.
+fn portable_component(part: &str) -> bool {
+    const DEVICES: &[&str] = &[
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+        "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    if part.is_empty() || part.ends_with('.') || part.ends_with(' ') {
+        return false;
+    }
+    if part
+        .chars()
+        .any(|c| c.is_control() || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+    {
+        return false;
+    }
+    let stem = part.split('.').next().unwrap_or(part).to_ascii_lowercase();
+    !DEVICES.contains(&stem.trim_end())
+}
+
+/// Whether anything between `root` and `root/rel` is a link.
+///
+/// Every existing component is looked at without following it. A symlink, a
+/// junction or any other reparse point part-way down means the path names
+/// something other than what its spelling says, and a write through it lands
+/// wherever the link points. Components that do not exist yet end the walk:
+/// nothing beneath a missing directory can be a link.
+pub fn passes_through_link(root: &Path, rel: &str) -> bool {
+    let mut at = root.to_path_buf();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) => {
+                if is_link(&meta) {
+                    return true;
+                }
+            }
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_binary(bytes: &[u8]) -> bool {
@@ -517,6 +665,11 @@ pub fn create(
             .max(input.proposed.as_ref().map_or(0, Vec::len));
         let oversized = size > OVERSIZED_BYTES;
         let sensitive = is_sensitive(&path, input.proposed.as_deref());
+        let flags = crate::review_flags::flags_for(
+            &path,
+            input.base.as_deref(),
+            input.proposed.as_deref(),
+        );
 
         let (mut additions, mut deletions, mut hunks) = (0, 0, Vec::new());
         if !binary && !oversized {
@@ -552,6 +705,7 @@ pub fn create(
             additions,
             deletions,
             hunks,
+            flags,
         });
     }
 
@@ -579,6 +733,66 @@ pub fn create(
         format!("{} file(s)", record.files.len()),
     );
     Ok(record)
+}
+
+/// One file of a change, counted the way a proposal would count it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSummary {
+    pub path: String,
+    pub change: Change,
+    pub additions: usize,
+    pub deletions: usize,
+    pub binary: bool,
+}
+
+/// What a set of changes amounts to, without storing anything.
+///
+/// For a list of work waiting for review: the counts are staged exactly as
+/// [`create`] stages them, so the number beside a file in the list is the
+/// number the review shows when it is opened.
+pub fn summarize(inputs: &[FileInput]) -> Result<Vec<FileSummary>, ProposalError> {
+    let mut out = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        if input.base == input.proposed {
+            continue;
+        }
+        let path = normalize_path(&input.path)?;
+        let change = match (&input.base, &input.proposed) {
+            (None, Some(_)) => Change::Added,
+            (Some(_), None) => Change::Deleted,
+            _ => Change::Modified,
+        };
+        let binary = input.base.as_deref().is_some_and(is_binary)
+            || input.proposed.as_deref().is_some_and(is_binary);
+        let size = input
+            .base
+            .as_ref()
+            .map_or(0, Vec::len)
+            .max(input.proposed.as_ref().map_or(0, Vec::len));
+        let (mut additions, mut deletions) = (0, 0);
+        if !binary && size <= OVERSIZED_BYTES {
+            let base_text = input.base.as_deref().map(|b| String::from_utf8_lossy(b).to_string());
+            let new_text = input
+                .proposed
+                .as_deref()
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_default();
+            for h in crate::patch::StagedPatch::stage(base_text.as_deref(), &new_text).hunks() {
+                additions += h.added.len();
+                deletions += h.removed.len();
+            }
+        }
+        out.push(FileSummary {
+            path,
+            change,
+            additions,
+            deletions,
+            binary,
+        });
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -648,6 +862,16 @@ fn merge_text<'a>(
     selected: &[Edit<'a>],
     path: &str,
 ) -> Result<String, Vec<Conflict>> {
+    // A selected hunk the destination already holds, exactly, is not a
+    // conflict with itself: it is what a second proposal from the same
+    // worktree looks like after part of the first was applied.
+    let same = |s: &Edit, u: &Edit| s.start == u.start && s.end == u.end && s.lines == u.lines;
+    let selected: Vec<Edit<'a>> = selected
+        .iter()
+        .filter(|s| !user.iter().any(|u| same(s, u)))
+        .cloned()
+        .collect();
+    let selected = selected.as_slice();
     let conflicts: Vec<Conflict> = selected
         .iter()
         .filter(|s| user.iter().any(|u| collides(s, u)))
@@ -723,6 +947,7 @@ pub fn plan(
     let mut seen_paths = BTreeSet::new();
     let mut planned = Vec::new();
     let mut conflicts = Vec::new();
+    let mut unacknowledged = Vec::new();
 
     for sel in &approval.files {
         let Some(file) = by_path.get(sel.path.as_str()).copied() else {
@@ -733,6 +958,15 @@ pub fn plan(
         }
         if file.sensitive {
             return Err(ProposalError::Sensitive(file.path.clone()));
+        }
+        // Looked at now, immediately before anything is written, rather than
+        // when the proposal was made: a directory replaced by a junction
+        // after the review was shown is exactly the substitution this stops.
+        if passes_through_link(dest_root, &file.path) {
+            return Err(ProposalError::LinkedDestination(file.path.clone()));
+        }
+        if resolves_into_reserved(dest_root, &file.path) {
+            return Err(ProposalError::InvalidPath(file.path.clone()));
         }
         let chosen: Vec<&ProposedHunk> = match &sel.hunks {
             HunkChoice::All => file.hunks.iter().collect(),
@@ -766,6 +1000,15 @@ pub fn plan(
             Some(id) => Some(read_blob(data_folder, id).map_err(ProposalError::Io)?),
             None => None,
         };
+        // From the content, not from the record's `flags`: a record whose
+        // flags were emptied on disk still needs the acknowledgement.
+        let flagged = !file.flags.is_empty()
+            || !crate::review_flags::flags_for(&file.path, base.as_deref(), proposed.as_deref())
+                .is_empty();
+        if flagged && !approval.acknowledged.iter().any(|p| p == &file.path) {
+            unacknowledged.push(file.path.clone());
+            continue;
+        }
         let current = read_current(dest_root, &file.path)?;
 
         // Whole-file changes: the destination must still be the base.
@@ -839,6 +1082,9 @@ pub fn plan(
         }
     }
 
+    if !unacknowledged.is_empty() {
+        return Err(ProposalError::Unacknowledged(unacknowledged));
+    }
     if !conflicts.is_empty() {
         return Err(ProposalError::Conflicts(conflicts));
     }
@@ -1025,6 +1271,7 @@ mod tests {
             base_state_hash: record.base_state_hash.clone(),
             scope: scope(dest),
             files,
+            acknowledged: Vec::new(),
         }
     }
 
@@ -1240,7 +1487,14 @@ mod tests {
             apply(&data, &dest, &partial),
             Err(ProposalError::WholeFileOnly("img.bin".into()))
         );
-        apply(&data, &dest, &approve(&record, &dest, vec![all("img.bin")])).unwrap();
+        // A binary file is flagged: it lands only once acknowledged (AH-169).
+        assert_eq!(
+            apply(&data, &dest, &approve(&record, &dest, vec![all("img.bin")])),
+            Err(ProposalError::Unacknowledged(vec!["img.bin".into()]))
+        );
+        let mut ok = approve(&record, &dest, vec![all("img.bin")]);
+        ok.acknowledged = vec!["img.bin".into()];
+        apply(&data, &dest, &ok).unwrap();
         assert_eq!(std::fs::read(dest.join("img.bin")).unwrap(), bytes);
     }
 
@@ -1443,13 +1697,33 @@ mod tests {
             }],
         )
         .unwrap();
-        std::fs::write(dest.join("old.txt"), "kept by the user\n").unwrap();
+        // A deletion is flagged: it needs acknowledging (AH-169).
         let err = apply(&data, &dest, &approve(&record, &dest, vec![all("old.txt")])).unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["old.txt".into()]));
+        let acked = || {
+            let mut a = approve(&record, &dest, vec![all("old.txt")]);
+            a.acknowledged = vec!["old.txt".into()];
+            a
+        };
+        std::fs::write(dest.join("old.txt"), "kept by the user\n").unwrap();
+        let err = apply(&data, &dest, &acked()).unwrap_err();
         assert!(matches!(err, ProposalError::Conflicts(_)));
         assert!(dest.join("old.txt").exists());
         std::fs::write(dest.join("old.txt"), "gone\n").unwrap();
-        apply(&data, &dest, &approve(&record, &dest, vec![all("old.txt")])).unwrap();
+        apply(&data, &dest, &acked()).unwrap();
         assert!(!dest.join("old.txt").exists());
+    }
+
+    /// After part of a proposal landed, a fresh proposal from the same worktree
+    /// carries that part again. The destination already holding it exactly is
+    /// not a conflict.
+    #[test]
+    fn a_hunk_the_destination_already_holds_is_not_a_conflict() {
+        let (data, dest) = dirs("already");
+        let record = two_hunks(&data, &dest);
+        std::fs::write(dest.join("a.txt"), BASE.replace("one\n", "ONE\n")).unwrap();
+        apply(&data, &dest, &approve(&record, &dest, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), PROPOSED);
     }
 
     #[test]
@@ -1462,5 +1736,255 @@ mod tests {
             Err(ProposalError::NotPending(ProposalState::Rejected))
         );
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+    }
+
+    /// Spellings that Windows resolves to Git's directory, a device or an
+    /// alternate stream are refused, on every platform.
+    #[test]
+    fn a_path_windows_would_read_differently_is_refused() {
+        for bad in [
+            ".git/config",
+            ".GIT/hooks/pre-commit",
+            ".git./config",
+            ".git /config",
+            "sub/.git/config",
+            ".Jan/state",
+            "notes.txt:hidden",
+            "NUL",
+            "src/con.txt",
+            "Lpt1.log",
+            "trailing.",
+            "trailing ",
+            "../outside.txt",
+            "/abs.txt",
+            "C:/abs.txt",
+            "a/../../b.txt",
+            // 8.3 short names of `.git` and `.jan`.
+            "GIT~1/hooks/pre-commit",
+            "git~2/config",
+            "sub/Git~13/HEAD",
+            "JAN~1/state",
+        ] {
+            assert!(
+                matches!(normalize_path(bad), Err(ProposalError::InvalidPath(_))),
+                "{bad} was accepted"
+            );
+        }
+        for good in [
+            "a.txt",
+            "src/a.rs",
+            "./b.txt",
+            "console.txt",
+            "com10.txt",
+            ".gitignore",
+            "git~notes.txt",
+            "git~",
+        ] {
+            assert!(normalize_path(good).is_ok(), "{good} was refused");
+        }
+    }
+
+    /// Whatever it is spelled as, a destination that resolves into the
+    /// folder's `.git` is refused at apply time. Measured with the short name
+    /// NTFS gives `.git`, where the volume has short names at all.
+    #[cfg(windows)]
+    #[test]
+    fn a_short_name_for_git_is_refused_by_where_it_resolves() {
+        let (_data, dest) = dirs("shortname");
+        std::fs::create_dir_all(dest.join(".git").join("hooks")).unwrap();
+        let alias = dest.join("GIT~1");
+        if !alias.exists() {
+            eprintln!("short names are off on this volume; nothing to measure");
+            return;
+        }
+        assert!(resolves_into_reserved(&dest, "GIT~1/hooks/pre-commit"));
+        assert!(resolves_into_reserved(&dest, "GIT~1"));
+        assert!(!resolves_into_reserved(&dest, "src/GIT~1.txt"));
+        assert!(!resolves_into_reserved(&dest, "a.txt"));
+    }
+
+    fn link_dir(link: &Path, target: &Path) -> bool {
+        #[cfg(windows)]
+        {
+            // A junction needs no privilege, which is why it is the link a
+            // user's folder is most likely to hold.
+            std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+    }
+
+    /// A directory in the folder replaced by a link after the review was shown
+    /// is refused at apply time, with nothing written anywhere.
+    #[test]
+    fn a_destination_path_through_a_link_is_refused_and_nothing_is_written() {
+        let (data, dest) = dirs("linked");
+        let outside = dest.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub").join("a.txt"), BASE).unwrap();
+        std::fs::write(outside.join("a.txt"), BASE).unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc123",
+            vec![FileInput {
+                path: "sub/a.txt".into(),
+                base: Some(BASE.as_bytes().to_vec()),
+                proposed: Some(PROPOSED.as_bytes().to_vec()),
+            }],
+        )
+        .unwrap();
+        // The swap: the reviewed directory becomes a link to somewhere else.
+        std::fs::remove_dir_all(dest.join("sub")).unwrap();
+        assert!(link_dir(&dest.join("sub"), &outside), "could not make a link");
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("sub/a.txt")])).unwrap_err();
+        assert_eq!(err, ProposalError::LinkedDestination("sub/a.txt".into()));
+        assert_eq!(std::fs::read_to_string(outside.join("a.txt")).unwrap(), BASE);
+        assert_eq!(load(&data, &record.id).unwrap().state, ProposalState::Pending);
+    }
+
+    #[test]
+    fn a_summary_counts_what_the_proposal_would_show() {
+        let (data, dest) = dirs("summary");
+        let inputs = vec![
+            FileInput {
+                path: "a.txt".into(),
+                base: Some(BASE.as_bytes().to_vec()),
+                proposed: Some(PROPOSED.as_bytes().to_vec()),
+            },
+            FileInput {
+                path: "new.txt".into(),
+                base: None,
+                proposed: Some(b"x\ny\n".to_vec()),
+            },
+        ];
+        let summary = summarize(&inputs).unwrap();
+        let record = create(&data, scope(&dest), "abc", inputs).unwrap();
+        assert_eq!(summary.len(), record.files.len());
+        for (s, f) in summary.iter().zip(&record.files) {
+            assert_eq!((&s.path, s.change, s.additions, s.deletions), (&f.path, f.change, f.additions, f.deletions));
+        }
+        assert_eq!((summary[0].additions, summary[0].deletions), (2, 2));
+    }
+
+    // ---- AH-154/155/156: flagged changes need acknowledging ---------------
+
+    const PKG_BEFORE: &str = "{\n  \"dependencies\": {\n    \"react\": \"^18.0.0\"\n  }\n}\n";
+    const PKG_AFTER: &str =
+        "{\n  \"dependencies\": {\n    \"react\": \"^18.0.0\",\n    \"left-pad\": \"1.3.0\"\n  }\n}\n";
+
+    fn flagged(data: &Path, dest: &Path) -> ProposalRecord {
+        std::fs::write(dest.join("package.json"), PKG_BEFORE).unwrap();
+        std::fs::write(dest.join("a.txt"), BASE).unwrap();
+        create(
+            data,
+            scope(dest),
+            "abc123",
+            vec![
+                FileInput {
+                    path: "package.json".into(),
+                    base: Some(PKG_BEFORE.as_bytes().to_vec()),
+                    proposed: Some(PKG_AFTER.as_bytes().to_vec()),
+                },
+                FileInput {
+                    path: "a.txt".into(),
+                    base: Some(BASE.as_bytes().to_vec()),
+                    proposed: Some(PROPOSED.as_bytes().to_vec()),
+                },
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_dependency_change_is_flagged_and_not_applied_unacknowledged() {
+        let (data, dest) = dirs("flag-refused");
+        let record = flagged(&data, &dest);
+        let pkg = record.files.iter().find(|f| f.path == "package.json").unwrap();
+        assert_eq!(pkg.flags[0].kind, crate::review_flags::FlagKind::Dependency);
+        assert!(pkg.flags[0].details.iter().any(|d| d.contains("left-pad")));
+        assert!(record.files.iter().find(|f| f.path == "a.txt").unwrap().flags.is_empty());
+
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("package.json"), all("a.txt")]))
+            .unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["package.json".into()]));
+        // Nothing was written, the unflagged file included.
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_BEFORE);
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+        assert_eq!(load(&data, &record.id).unwrap().state, ProposalState::Pending);
+
+        // Acknowledging another file does not cover this one.
+        let mut other = approve(&record, &dest, vec![all("package.json")]);
+        other.acknowledged = vec!["a.txt".into(), "PACKAGE.JSON".into()];
+        assert!(matches!(apply(&data, &dest, &other), Err(ProposalError::Unacknowledged(_))));
+    }
+
+    #[test]
+    fn an_acknowledged_dependency_change_applies() {
+        let (data, dest) = dirs("flag-acked");
+        let record = flagged(&data, &dest);
+        let mut ok = approve(&record, &dest, vec![all("package.json"), all("a.txt")]);
+        ok.acknowledged = vec!["package.json".into()];
+        apply(&data, &dest, &ok).unwrap();
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_AFTER);
+        // An unflagged file alone never needed it.
+        let (data2, dest2) = dirs("flag-unflagged");
+        let r2 = flagged(&data2, &dest2);
+        apply(&data2, &dest2, &approve(&r2, &dest2, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(dest2.join("a.txt")).unwrap(), PROPOSED);
+    }
+
+    /// The flag is worked out again from the stored content: emptying it in
+    /// the record on disk, and re-hashing so the record still verifies, does
+    /// not let the change through unacknowledged.
+    #[test]
+    fn a_flag_removed_from_the_stored_record_still_needs_acknowledging() {
+        let (data, dest) = dirs("flag-tampered");
+        let mut record = flagged(&data, &dest);
+        for f in &mut record.files {
+            f.flags.clear();
+        }
+        record.patch_hash = patch_hash_of(&record.files);
+        save(&data, &record).unwrap();
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("package.json")])).unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["package.json".into()]));
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_BEFORE);
+    }
+
+    #[test]
+    fn lock_files_and_migrations_need_acknowledging_too() {
+        let (data, dest) = dirs("flag-lock-migration");
+        std::fs::create_dir_all(dest.join("db/migrations")).unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc",
+            vec![
+                FileInput { path: "Cargo.lock".into(), base: None, proposed: Some(b"x\n".to_vec()) },
+                FileInput {
+                    path: "db/migrations/0002.sql".into(),
+                    base: None,
+                    proposed: Some(b"DROP TABLE users;\n".to_vec()),
+                },
+            ],
+        )
+        .unwrap();
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("Cargo.lock"), all("db/migrations/0002.sql")]))
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ProposalError::Unacknowledged(vec!["Cargo.lock".into(), "db/migrations/0002.sql".into()])
+        );
+        assert!(!dest.join("Cargo.lock").exists());
+        assert!(!dest.join("db/migrations/0002.sql").exists());
     }
 }

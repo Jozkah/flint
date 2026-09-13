@@ -10,10 +10,8 @@ import { Button } from '@/components/ui/button'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import {
-  IconLoader2,
-  IconCheck,
-} from '@tabler/icons-react'
+import { Check, LoaderCircle } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { ExtensionManager } from '@/lib/extension'
 
 type ImportMlxModelDialogProps = {
@@ -168,7 +166,7 @@ export const ImportMlxModelDialog = ({
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
               placeholder="my-mlx-model"
-              className="w-full px-3 py-2 bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className="w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring md:text-sm"
             />
             <p className="text-xs text-muted-foreground">
               Only alphanumeric and _ - . characters are allowed
@@ -176,22 +174,22 @@ export const ImportMlxModelDialog = ({
           </div>
 
           {/* File Selection Area */}
-          <div className="border rounded-lg p-4 space-y-3">
+          <div className="border border-border rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
               <h3 className="font-medium">
                 Model Folder
               </h3>
-              <span className="text-xs bg-secondary px-2 py-1 rounded-sm">
+              <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
                 Required
               </span>
             </div>
 
             {displayPath ? (
-              <div className="bg-accent/10 border rounded-lg p-3">
+              <div className="bg-sunken border border-border rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <IconCheck size={16} className="text-accent" />
-                    <span className="text-sm font-medium">
+                    <Check size={16} className="text-success" />
+                    <span className="min-w-0 truncate font-mono text-sm">
                       {displayPath}
                     </span>
                   </div>
@@ -211,7 +209,7 @@ export const ImportMlxModelDialog = ({
                 variant="link"
                 onClick={handleFileSelect}
                 disabled={importing}
-                className="w-full h-12 border border-dashed text-muted-foreground"
+                className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
               >
                 Select Model Folder
               </Button>
@@ -233,7 +231,7 @@ export const ImportMlxModelDialog = ({
           )}
         </div>
 
-        <div className="flex gap-2 pt-4 justify-end">
+        <div className={`flex flex-col-reverse gap-2 sm:flex-row sm:justify-end ${STICKY_DIALOG_FOOTER}`}>
           <Button
             variant="ghost"
             size="sm"
@@ -247,7 +245,7 @@ export const ImportMlxModelDialog = ({
             size="sm"
             disabled={importing || !selectedPath || !modelName}
           >
-            {importing && <IconLoader2 className="mr-2 size-4 animate-spin" />}
+            {importing && <LoaderCircle className="mr-2 size-4 animate-spin" />}
             {importing ? 'Importing...' : 'Import Model'}
           </Button>
         </div>

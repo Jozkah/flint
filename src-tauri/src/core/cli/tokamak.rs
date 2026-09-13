@@ -80,8 +80,7 @@ pub fn sanitize_key(raw: &str) -> Result<String, String> {
 /// to. An empty list is a valid answer (the account has no models yet), so the
 /// caller decides whether that is usable.
 async fn verify_key(api_key: &str) -> Result<Vec<String>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(VERIFY_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| e.to_string())?;
     let root = base_url();
@@ -250,7 +249,7 @@ fn stored_api_key() -> Option<String> {
 /// `401 user context missing`, while `DELETE /auth/api-keys` (no id) and
 /// `GET /auth/api-keys/{id}` both answer `404 auth route not found`.
 async fn revoke_key(key_id: &str, api_key: &str) -> bool {
-    let Ok(client) = reqwest::Client::builder().timeout(VERIFY_TIMEOUT).build() else {
+    let Ok(client) = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT)).build() else {
         return false;
     };
     let root = super::device_auth::api_root(&base_url());

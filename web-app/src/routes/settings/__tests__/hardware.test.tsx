@@ -144,7 +144,7 @@ describe('Hardware Settings', () => {
     render(<Component />)
     
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('displays OS information', async () => {

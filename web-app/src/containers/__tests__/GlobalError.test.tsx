@@ -94,13 +94,13 @@ describe('GlobalError Component', () => {
       'w-full',
       'md:w-4/5',
       'mx-auto',
-      'rounded',
+      'rounded-lg',
       'border',
-      'border-red-400',
-      'bg-red-100',
+      'border-destructive/40',
+      'bg-destructive-tint',
       'px-4',
       'py-3',
-      'text-red-700'
+      'text-destructive'
     )
   })
 })

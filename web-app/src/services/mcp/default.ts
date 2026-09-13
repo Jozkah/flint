@@ -41,6 +41,12 @@ export class DefaultMCPService implements MCPService {
     return []
   }
 
+  async getServerLog(serverName: string, lines?: number): Promise<string[]> {
+    void serverName
+    void lines
+    return []
+  }
+
   async getConnectedServers(): Promise<string[]> {
     return []
   }
@@ -161,6 +167,10 @@ export class DefaultMCPService implements MCPService {
       hasCredentials: false,
       renewable: false,
       expiresAt: null,
+      declaredScopes: [],
+      requestedScopes: [],
+      grantedScopes: [],
+      detail: null,
     }
   }
 

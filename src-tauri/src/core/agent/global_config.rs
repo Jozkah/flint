@@ -108,6 +108,17 @@ struct GlobalConfigToml {
     /// one cell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     wave: Option<String>,
+    /// A PEM bundle of extra certificate authorities to trust for outbound
+    /// HTTPS (AH-190). Set with `jan cli net ca set`, which checks it first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ca_bundle: Option<String>,
+    /// The forge API pull requests are opened through (AH-162). A user
+    /// setting only: a project cannot redirect where a forge token is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forge_api: Option<String>,
+    /// The embedding model semantic code search uses, `provider/model` (AH-071).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    embeddings_model: Option<String>,
     #[serde(default)]
     providers: HashMap<String, GlobalProviderEntry>,
 }
@@ -233,6 +244,32 @@ pub(crate) fn default_model() -> Result<Option<String>, String> {
 pub(crate) fn smol_model() -> Result<Option<String>, String> {
     let config = load_raw()?;
     Ok(config.smol_model.filter(|m| !m.trim().is_empty()))
+}
+
+/// The CA bundle named in `~/.jan/config.toml` (AH-190), if any.
+pub fn ca_bundle() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.ca_bundle.filter(|p| !p.trim().is_empty()))
+}
+
+/// The embedding model named in `~/.jan/config.toml` (`embeddings_model`).
+pub fn embeddings_model() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.embeddings_model.filter(|m| !m.trim().is_empty()))
+}
+
+/// The forge API named in `~/.jan/config.toml` (`forge_api`), if any.
+pub fn forge_api() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.forge_api.filter(|p| !p.trim().is_empty()))
+}
+
+/// Name, or with `None` forget, the CA bundle in `~/.jan/config.toml`.
+/// Returns the path of the file written.
+pub fn set_ca_bundle(path: Option<&str>) -> Result<PathBuf, String> {
+    let mut config = load_raw()?;
+    config.ca_bundle = path.map(str::to_string);
+    write_raw(&config)
 }
 
 /// Whether the TUI should track the mouse (`mouse` in `~/.jan/config.toml`),

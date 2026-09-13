@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import type { HandoffRecord } from '@/lib/sessionHandoff'
 import type { ContinuityRecord } from '@/lib/coworkContinuity'
 import {
   emptyCodePanelState,
@@ -129,6 +130,15 @@ export type CoworkSession = {
    */
   runBudget?: RunBudgetRecord
   /**
+   * The turn the run in progress is in the middle of (AH-026).
+   *
+   * Written while the run goes and cleared when its turns are committed, so a
+   * run the app was closed or killed under comes back as an interrupted turn
+   * -- its completed tool calls and its unfinished reply -- rather than as
+   * nothing. Absent on sessions with nothing in flight.
+   */
+  inFlight?: InFlightRecord
+  /**
    * Where this session came from, when it was forked from another. AH-201.
    *
    * Provenance only. It grants nothing: a fork carries no folder, no grant, no
@@ -136,6 +146,19 @@ export type CoworkSession = {
    * that was started rather than forked.
    */
   forkedFrom?: ForkOrigin
+  /**
+   * The export this session was imported from. AH-203.
+   *
+   * Provenance, and what makes a second import of the same file a refusal
+   * rather than a duplicate. Grants nothing.
+   */
+  importedFrom?: ImportedFrom
+  /**
+   * What a handed-off session could not bring from the other computer.
+   * AH-210. Grants nothing: the folder it names must be attached here, by
+   * the user, like any other.
+   */
+  handoff?: HandoffRecord
   updated: number
 }
 
@@ -197,6 +220,19 @@ type CoworkSessionsState = {
    * conversation.
    */
   forkSession: (id: string, throughTurn?: number) => string | null
+  /**
+   * Create a session from an export. AH-203.
+   *
+   * A new id, no folder, no access; questions left pending come back stale.
+   * An export already imported is refused, naming the session it became.
+   */
+  importSession: (
+    bundle: SessionBundle,
+    /** For a handoff (AH-210): what could not be restored here. */
+    handoff?: HandoffRecord
+  ) => { ok: true; id: string } | { ok: false; refusal: ImportRefusal }
+  /** The user has read what a handoff could not restore. */
+  dismissHandoff: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
@@ -207,6 +243,13 @@ type CoworkSessionsState = {
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
   /** Record, or clear, what the run in progress has spent. */
   setRunBudget: (id: string, budget: RunBudgetRecord | null) => void
+  /** Keep, or clear, the turn the session's run is in the middle of. AH-026. */
+  setInFlight: (id: string, record: InFlightRecord | null) => void
+  /**
+   * Take an interrupted turn back into the session, as the user chose, so the
+   * next run continues from it. AH-026.
+   */
+  recoverInFlight: (id: string, choice: InterruptedChoice) => boolean
   setAccess: (id: string, access: AccessMode) => void
   /** Record the user's confirmation to edit `folder` in this session. */
   grantEditConsent: (id: string, folder: string) => void
@@ -240,12 +283,35 @@ type CoworkSessionsState = {
 }
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
+import {
+  recover as recoverInterrupted,
+  type InFlightRecord,
+  type InterruptedChoice,
+} from '@/lib/coworkInflight'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import type { QueuedMessageSender } from '@/stores/message-queue-store'
+import {
+  checkBundle,
+  importedFileActivity,
+  importedTurns,
+  type ImportedFrom,
+  type ImportRefusal,
+  type SessionBundle,
+} from '@/lib/sessionBundle'
+import { fromCoworkUsage, toCoworkUsage } from '@/lib/tokenUsage'
+import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
+
+/** An imported session's usage, normalised the same way a live one is. */
+function importedUsage(raw: unknown): Usage | undefined {
+  const usage = fromCoworkUsage(
+    raw && typeof raw === 'object' ? (raw as Usage) : undefined
+  )
+  return usage && Object.keys(usage).length > 0 ? toCoworkUsage(usage) : undefined
+}
 
 /** Only the sender fields the queue defines are persisted. */
 function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
@@ -343,8 +409,64 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return forkId
       },
 
+      dismissHandoff: (id) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id && x.handoff
+              ? { ...x, handoff: { ...x.handoff, dismissed: true } }
+              : x
+          ),
+        })),
+
+      importSession: (bundle, handoff) => {
+        const problem = checkBundle(bundle)
+        if (problem) {
+          return { ok: false, refusal: { reason: 'invalid', message: problem } }
+        }
+        const existing = get().sessions.find(
+          (x) => x.importedFrom?.exportId === bundle.exportId
+        )
+        if (existing) {
+          return {
+            ok: false,
+            refusal: { reason: 'already-imported', sessionId: existing.id },
+          }
+        }
+        const id = crypto.randomUUID()
+        const turns = importedTurns(bundle.session.turns, id)
+        const session: CoworkSession = {
+          id,
+          title: bundle.session.title || 'Imported session',
+          turns,
+          messages: coworkTurnsToUIMessages(turns, id),
+          subagents: bundle.session.subagents,
+          // Unbound, like a fork: the export carried no authority and this
+          // machine has granted none.
+          folder: null,
+          mode: bundle.session.mode,
+          goal: bundle.session.goal,
+          todos: bundle.session.todos,
+          forkedFrom: bundle.session.forkedFrom,
+          // Re-read rather than trusted: a hand-edited file cannot plant a
+          // negative, a string or a cached count larger than the input.
+          lastUsage: importedUsage(bundle.session.lastUsage),
+          importedFrom: {
+            exportId: bundle.exportId,
+            sessionId: bundle.session.id,
+            at: now(),
+          },
+          handoff,
+          updated: now(),
+        }
+        set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
+        const events = importedFileActivity(bundle.fileActivity ?? [], id)
+        if (events.length) useFileActivity.getState().record(id, events)
+        return { ok: true, id }
+      },
+
       deleteSession: (id) =>
         set((s) => {
+          void deletePromptSnapshots(id)
           const sessions = s.sessions.filter((x) => x.id !== id)
           const currentId =
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId
@@ -472,6 +594,40 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
+      setInFlight: (id, record) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, inFlight: record ?? undefined } : x
+          ),
+        })),
+
+      recoverInFlight: (id, choice) => {
+        const session = get().sessions.find((x) => x.id === id)
+        if (!session?.inFlight) return false
+        const { turns, messages } = recoverInterrupted(
+          session.messages ?? [],
+          session.inFlight,
+          choice,
+          id
+        )
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  turns: [...x.turns, ...turns],
+                  messages,
+                  inFlight: undefined,
+                  // The dead run's budget is not this one's.
+                  runBudget: undefined,
+                  updated: now(),
+                }
+              : x
+          ),
+        }))
+        return true
+      },
+
       setMode: (id, mode) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
@@ -523,6 +679,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                 ...subagents,
               ],
               lastUsage: usage ?? x.lastUsage,
+              // Committed, so nothing of this run is in flight any more.
+              inFlight: undefined,
               updated: now(),
             }
           }),
@@ -630,7 +788,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               if (raw.startsWith(LEGACY_SANDBOX_PREFIX)) {
                 // The tab is stored on its own session, so that session owns it.
                 tabs.push(
-                  sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length), session.id)
+                  sandboxTab(
+                    raw.slice(LEGACY_SANDBOX_PREFIX.length),
+                    session.id
+                  )
                 )
               } else if (projectKey) {
                 tabs.push(projectTab(raw, projectKey))
@@ -651,13 +812,17 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ...session,
               codePanel: {
                 tabs,
-                activeTabId: active ? tabId(active) : (tabs[0] ? tabId(tabs[0]) : null),
+                activeTabId: active
+                  ? tabId(active)
+                  : tabs[0]
+                    ? tabId(tabs[0])
+                    : null,
                 expandedDirs: Array.isArray(
                   (session.codePanel as unknown as { expandedDirs?: unknown })
                     ?.expandedDirs
                 )
-                  ? ((session.codePanel as unknown as { expandedDirs: string[] })
-                      .expandedDirs)
+                  ? (session.codePanel as unknown as { expandedDirs: string[] })
+                      .expandedDirs
                   : [],
                 wordWrap: Boolean(
                   (session.codePanel as unknown as { wordWrap?: unknown })

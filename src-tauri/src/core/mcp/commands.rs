@@ -415,6 +415,50 @@ pub async fn get_server_summaries(
 /// 4. When found, calls the tool on that server with the provided arguments
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
+/// The prompts a connected server offers (AH-138).
+///
+/// A prompt is a message the *server* composes -- a template its author wrote,
+/// filled in with arguments. It is content, not instruction: what comes back
+/// is handed to the model as a user message, exactly as a person pasting it
+/// would, and nothing in it decides what the harness may do.
+pub async fn list_prompts(
+    server: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) -> Result<Vec<rmcp::model::Prompt>, String> {
+    server
+        .list_all_prompts()
+        .await
+        .map_err(|e| format!("prompts/list failed: {e}"))
+}
+
+/// One prompt, filled in (AH-138).
+///
+/// `arguments` are the server's own, by the names it declared; an argument it
+/// did not declare is its business to refuse, and its refusal is returned
+/// rather than smoothed over.
+pub async fn get_prompt(
+    server: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    name: &str,
+    arguments: serde_json::Map<String, serde_json::Value>,
+) -> Result<rmcp::model::GetPromptResult, String> {
+    server
+        .get_prompt(rmcp::model::GetPromptRequestParam {
+            name: name.to_string(),
+            arguments: (!arguments.is_empty()).then_some(arguments),
+        })
+        .await
+        .map_err(|e| format!("prompts/get failed: {e}"))
+}
+
+/// One server's own log, newest last (AH-140).
+#[tauri::command]
+pub async fn get_mcp_server_log(name: String, lines: Option<usize>) -> Result<Vec<String>, String> {
+    Ok(crate::core::mcp::server_log::tail(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        &name,
+        lines.unwrap_or(200).min(2000),
+    ))
+}
+
 /// Server definitions saved in `mcp_config.json`, by name. Empty when the file
 /// is missing or unreadable: identity is then unknown, which permits nothing.
 fn saved_server_configs(data_folder: &Path) -> Map<String, Value> {
@@ -736,6 +780,18 @@ pub async fn call_tool(
             return Err(refusal.message());
         }
 
+        // AH-144: the server's own budget, before its arguments are sent.
+        let budget = crate::core::mcp::budget::ServerBudget::for_server(
+            &crate::core::app::commands::resolve_jan_data_folder(),
+            srv_name,
+        );
+        if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
+            cleanup_cancellation_token(&state, &cancellation_token).await;
+            return Err(refusal);
+        }
+        let server_cap = budget.result_cap(tool_output_cap);
+        let charged_server = srv_name.to_string();
+
         // Call the tool with timeout and cancellation support
         let tool_call = service.call_tool(CallToolRequestParam {
             name: tool_name.clone().into(),
@@ -784,7 +840,14 @@ pub async fn call_tool(
         // Cap here rather than at each caller: this is the single point every
         // desktop MCP tool result passes through on its way into conversation
         // history, so an unbounded result can never reach the model.
-        return result.map(|res| truncate_tool_result(&res, tool_output_cap));
+        return result.map(|res| {
+            let capped = truncate_tool_result(&res, server_cap);
+            crate::core::mcp::budget::charge(
+                &charged_server,
+                crate::core::mcp::budget::result_chars(&capped),
+            );
+            capped
+        });
     }
 
     // No server had the tool — check if it's because of transport errors
@@ -857,7 +920,7 @@ pub async fn get_mcp_auth_status<R: Runtime>(
 ) -> Result<oauth::AuthStatusInfo, String> {
     let config = read_server_config(&app, &name)?;
     let folder = get_jan_data_folder_path(app);
-    Ok(oauth::status(&folder, &name, &config).into())
+    Ok(oauth::status_info(&folder, &name, &config))
 }
 
 /// Run an interactive OAuth authorization for one server: discover the
@@ -882,10 +945,11 @@ pub async fn authorize_mcp_server<R: Runtime>(
             format!("'{name}' is a stdio server - OAuth applies to http/sse servers only")
         })?;
 
-    let pending = oauth::begin(&name, url).await?;
+    let scopes = oauth::declared_scopes(&config).map_err(|e| e.message().to_string())?;
+    let pending = oauth::begin(&name, url, &scopes).await?;
     if let Err(e) = app.emit(
         "mcp-oauth-url",
-        json!({ "server": &name, "url": &pending.authorization_url }),
+        json!({ "server": &name, "url": &pending.authorization_url, "scopes": &pending.scopes }),
     ) {
         log::error!("Failed to emit mcp-oauth-url event: {e}");
     }

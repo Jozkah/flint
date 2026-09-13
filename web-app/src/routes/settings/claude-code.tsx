@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -21,7 +20,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover'
-import { IconChevronDown, IconPlus, IconX } from '@tabler/icons-react'
+import { ChevronDown, Plus, X } from 'lucide-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
@@ -213,21 +212,14 @@ function ClaudeCodeIntegration() {
   }
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             <Card
               header={
-                <div className="mb-3 flex w-full items-center gap-3">
+                <div className="mb-4 flex w-full items-center gap-3">
                   <svg
                     width="20"
                     height="20"
@@ -246,7 +238,7 @@ function ClaudeCodeIntegration() {
                     <path d="M27 54H36V72H27V54Z" fill="#D77757" />
                     <path d="M81 54H90V72H81V54Z" fill="#D77757" />
                   </svg>
-                  <h1 className="text-foreground font-studio font-medium text-base">
+                  <h1 className="font-display text-xl font-normal text-foreground">
                     Claude Code integration
                   </h1>
                 </div>
@@ -292,19 +284,21 @@ function ClaudeCodeIntegration() {
                 }
               />
 
-              <div className="flex mt-2 justify-between gap-2 border-t pt-4">
+              <div className="mt-4 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="pointer-coarse:h-11"
                   onClick={() => setIsCustomCliDialogOpen(true)}
                 >
-                  <IconPlus className="text-muted-foreground" size={14} />
+                  <Plus className="text-muted-foreground" aria-hidden />
                   Environment Variables
                 </Button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   <Button
                     size="sm"
                     variant="outline"
+                    className="pointer-coarse:h-11"
                     onClick={async () => {
                       clearModels()
                       try {
@@ -319,6 +313,7 @@ function ClaudeCodeIntegration() {
                   </Button>
                   <Button
                     size="sm"
+                    className="pointer-coarse:h-11"
                     onClick={handleLaunchClaudeCode}
                     disabled={isModelLoading}
                   >
@@ -328,9 +323,12 @@ function ClaudeCodeIntegration() {
               </div>
 
               {(helperModels.customCli || helperModels.envVars.length > 0) && (
-                <div className="mt-3 text-sm text-muted-foreground">
+                <div className="mt-3 space-y-1 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
                   {helperModels.customCli && (
-                    <div>Command: {helperModels.customCli}</div>
+                    <div className="break-all">
+                      Command:{' '}
+                      <span className="font-mono">{helperModels.customCli}</span>
+                    </div>
                   )}
                   {helperModels.envVars.length > 0 && (
                     <div className="break-all">
@@ -441,7 +439,11 @@ function HelperModelSelector({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="max-w-[280px]">
+        <Button
+          variant="outline"
+          size="sm"
+          className="max-w-[min(100%,280px)] pointer-coarse:h-11"
+        >
           <span className="flex items-center gap-2 truncate leading-normal">
             {selectedModel && currentModel ? (
               <>
@@ -449,8 +451,8 @@ function HelperModelSelector({
                   className={cn(
                     'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
                     currentModel.isLocal
-                      ? 'bg-emerald-500/10 text-emerald-600'
-                      : 'bg-blue-500/10 text-blue-600'
+                      ? 'bg-success-tint text-success'
+                      : 'bg-sunken text-ink-2'
                   )}
                 >
                   {currentModel.isLocal ? 'Local' : 'Remote'}
@@ -461,27 +463,27 @@ function HelperModelSelector({
               placeholder
             )}
           </span>
-          <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </Button>
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[280px] p-0 bg-background/95 border"
+        className="w-[min(100vw-2rem,280px)] border border-border bg-popover p-0"
         align="end"
         sideOffset={8}
       >
         <div className="flex flex-col size-full">
-          <div className="relative p-2 border-b">
+          <div className="relative border-b border-border p-2">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder="Search models..."
-              className="text-sm font-normal outline-0 w-full"
+              className="w-full bg-transparent pr-8 text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
               <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <IconX
+                <X
                   size={16}
                   className="text-muted-foreground cursor-pointer"
                   onClick={() => setSearchValue('')}
@@ -506,7 +508,7 @@ function HelperModelSelector({
                   return (
                     <div
                       key={providerKey}
-                      className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 first:mt-1 py-1"
+                      className="mx-1.5 my-1.5 rounded-md bg-sunken/50 py-1 first:mt-1"
                     >
                       <div className="flex items-center gap-1.5 px-2 py-1">
                         <ProvidersAvatar provider={providerInfo} />
@@ -525,10 +527,10 @@ function HelperModelSelector({
                             title={model.id}
                             onClick={() => handleSelect(model)}
                             className={cn(
-                              'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                              'hover:bg-secondary/40',
+                              'mx-1 mb-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors pointer-coarse:min-h-11',
+                              'hover:bg-card',
                               isSelected &&
-                                'bg-secondary/60 hover:bg-secondary/60'
+                                'bg-brand-tint shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand-tint'
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">

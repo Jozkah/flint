@@ -59,5 +59,9 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_System_JobObjects",
   "Win32_System_Memory",
   "Win32_System_Threading",
+  # AH-187: the machine's ProgramData folder, asked of Windows rather than of
+  # the environment, which the process being constrained can set.
+  "Win32_System_Com",
+  "Win32_UI_Shell",
 ] }
 

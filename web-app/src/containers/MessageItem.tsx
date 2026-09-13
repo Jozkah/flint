@@ -3,7 +3,6 @@ import { memo, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
 import { cn } from '@/lib/utils'
-import { TONE_CLASSES } from '@/lib/semanticTone'
 import { formatDuration } from '@/lib/utils'
 import {
   activeToolPart,
@@ -12,10 +11,29 @@ import {
   type ActivityLabel,
 } from '@/lib/agentActivity'
 import type { SubagentRun } from '@/types/coworkSession'
-import { Loader } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader,
+  Paperclip,
+  Play,
+  RefreshCw,
+  TriangleAlert,
+} from 'lucide-react'
 
 /** How close to the cap the step counter becomes visible. */
 const BUDGET_WARN_STEPS = 5
+
+/**
+ * Message actions appear on hover or keyboard focus, and stay visible on a
+ * touch screen, which has no hover to reveal them.
+ */
+const REVEAL_ACTIONS =
+  'opacity-0 motion-safe:transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100'
+
+/** Icon actions: compact with a mouse, 44px with a finger. */
+const ACTION_BUTTON =
+  'size-7 text-ink-2 hover:text-foreground pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
 import {
   CHAT_STATUS,
@@ -26,18 +44,11 @@ import {
 import { CopyButton } from './CopyButton'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatDate } from '@/utils/formatDate'
-import { useModelProvider } from '@/hooks/useModelProvider'
+import { useConversationModel } from '@/hooks/useConversationPane'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
-import {
-  IconRefresh,
-  IconPlayerPlay,
-  IconPaperclip,
-  IconAlertTriangle,
-  IconChevronLeft,
-  IconChevronRight,
-} from '@tabler/icons-react'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
+import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
@@ -103,7 +114,8 @@ export const MessageItem = memo(
     onSwitchVersion,
   }: MessageItemProps) => {
     const { t } = useTranslation()
-    const selectedModel = useModelProvider((state) => state.selectedModel)
+    // This conversation's model, so a split pane gates on its own.
+    const { selectedModel } = useConversationModel()
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
@@ -362,17 +374,13 @@ export const MessageItem = memo(
             <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
               <div
                 className={cn(
-                  'relative p-2 rounded-md inline-block max-w-[80%]',
+                  'relative inline-block max-w-[85%] rounded-lg border px-3.5 py-2.5 text-foreground',
                   coloredUserBubble
-                    ? 'bg-primary text-primary-foreground'
-                    : // Faint primary rather than flat grey, so the user's own
-                      // turns are findable when scanning back. The setting
-                      // above still gives the solid treatment.
-                      cn(
-                        'border text-foreground',
-                        TONE_CLASSES.user.surface,
-                        TONE_CLASSES.user.border
-                      )
+                    ? // The accent tint, only when the setting asks for it.
+                      'border-brand-soft bg-brand-tint'
+                    : // Neutral paper otherwise: the right-aligned column and
+                      // the border are enough to find the user's own turns.
+                      'border-border bg-card'
                 )}
               >
                 {/* janhq/jan#8864: typed while the agent worked and handed to
@@ -380,24 +388,24 @@ export const MessageItem = memo(
                 {metadata?.steered === true && partIndex === 0 && (
                   <div
                     data-testid="steered-label"
-                    className="mb-1 text-[11px] opacity-70"
+                    className="mb-1 text-[11px] text-ink-2"
                   >
                     {t('common:steering.delivered')}
                   </div>
                 )}
+                {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {attachedFiles.map((file: FileMetadata, idx: number) => (
                       <div
                         key={`file-${idx}-${file.id}`}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-sm bg-secondary text-secondary-foreground border text-xs"
+                        className="flex min-w-0 max-w-full items-center gap-1.5 px-2 py-1 rounded-md bg-sunken text-foreground border border-border text-xs"
                       >
-                        <IconPaperclip
-                          size={14}
-                          className="text-muted-foreground"
-                        />
-                        <span className="font-medium">{file.name}</span>
+                        <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 truncate font-medium" title={file.name}>
+                          {file.name}
+                        </span>
                         {file.injectionMode && (
                           <span className="text-muted-foreground">
                             ({file.injectionMode})
@@ -470,7 +478,7 @@ export const MessageItem = memo(
             <video
               controls
               src={part.url}
-              className="max-w-[80%] max-h-80 rounded-md border"
+              className="max-w-[80%] max-h-80 rounded-md border border-border"
             />
           </div>
         )
@@ -487,7 +495,7 @@ export const MessageItem = memo(
                 <img
                   src={part.url}
                   alt={part.filename || 'Uploaded attachment'}
-                  className="size-20 rounded-lg object-cover border cursor-pointer"
+                  className="size-20 rounded-md object-cover border border-border cursor-pointer"
                   onClick={() =>
                     setPreviewImage({ url: part.url!, filename: part.filename })
                   }
@@ -586,24 +594,24 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="hover:text-foreground disabled:opacity-40"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
           >
-            <IconChevronLeft size={14} />
+            <ChevronLeft className="size-3.5" />
           </button>
           <span className="tabular-nums">
             {versionInfo.index}/{versionInfo.count}
           </span>
           <button
             type="button"
-            className="hover:text-foreground disabled:opacity-40"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"
           >
-            <IconChevronRight size={14} />
+            <ChevronRight className="size-3.5" />
           </button>
         </div>
       ) : null
@@ -626,7 +634,7 @@ export const MessageItem = memo(
         {message.role === 'assistant' && !isStreaming && usedSkills.length > 0 && (
           <div
             aria-label={t('common:skillsUsedLabel')}
-            className="mt-2 inline-flex rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground"
+            className="mt-2 inline-flex max-w-full rounded-full border border-border bg-sunken px-2.5 py-1 text-xs font-medium text-ink-2"
           >
             {t('common:skillsUsed', { skills: usedSkills.join(', ') })}
           </div>
@@ -643,7 +651,7 @@ export const MessageItem = memo(
                   aria-live="polite"
                   className="flex items-center gap-2 text-xs"
                 >
-                  <Loader className="animate-spin w-3.5 h-3.5 text-primary shrink-0" />
+                  <Loader className="motion-safe:animate-spin size-3.5 text-brand shrink-0" />
                   <span className="font-medium text-foreground">
                     {activityLabel.text}
                   </span>
@@ -666,16 +674,16 @@ export const MessageItem = memo(
           )}
 
         {typeof messageError === 'string' && messageError.length > 0 && (
-          <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-            <IconAlertTriangle
-              size={16}
-              className="mt-0.5 shrink-0 text-destructive"
-            />
+          <div
+            role="alert"
+            className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg border border-destructive/30 bg-destructive-tint px-3 py-2.5 text-sm"
+          >
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-destructive">
                 Generation failed
               </div>
-              <div className="text-muted-foreground break-words">
+              <div className="text-ink-2 break-words">
                 {messageError}
               </div>
             </div>
@@ -685,9 +693,9 @@ export const MessageItem = memo(
                   variant="outline"
                   size="sm"
                   onClick={handleRegenerate}
-                  className="shrink-0"
+                  className="shrink-0 pointer-coarse:h-11"
                 >
-                  <IconRefresh size={14} />
+                  <RefreshCw className="size-3.5" />
                   <span>Regenerate</span>
                 </Button>
               )}
@@ -696,12 +704,19 @@ export const MessageItem = memo(
 
         {/* Message actions for user messages */}
         {message.role === 'user' && !hideActions && (
-          <div className="flex items-center justify-end gap-1 text-muted-foreground text-xs opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
-            <span className="text-muted-foreground">
+          <div
+            className={cn(
+              'mt-1 flex flex-wrap items-center justify-end gap-0.5 text-muted-foreground text-xs',
+              REVEAL_ACTIONS
+            )}
+          >
+            <span className="mr-1 text-muted-foreground tabular-nums">
               {formatDate(createdAt)}
             </span>
             {versionNav}
-            <CopyButton text={getFullTextContent()} />
+            <span className="inline-flex pointer-coarse:[&_button]:size-11">
+              <CopyButton text={getFullTextContent()} />
+            </span>
 
             {onEdit && status !== CHAT_STATUS.STREAMING &&
               status !== CHAT_STATUS.SUBMITTED && (
@@ -721,20 +736,25 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && (
-            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
               {!isStreaming && (
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground tabular-nums">
                   {formatDate(createdAt)}
                 </span>
               )}
               <div
                 className={cn(
-                  'flex items-center gap-1',
+                  'flex items-center gap-0.5',
+                  // The latest reply keeps its actions in view: retrying or
+                  // continuing it is the likely next step.
+                  !isLastMessage && REVEAL_ACTIONS,
                   (isStreaming || hideActions) && 'hidden'
                 )}
               >
                 {versionNav}
-                <CopyButton text={getFullTextContent()} />
+                <span className="inline-flex pointer-coarse:[&_button]:size-11">
+                  <CopyButton text={getFullTextContent()} />
+                </span>
 
                 {onEdit && !isStreaming && (
                   <EditMessageDialog
@@ -755,10 +775,11 @@ export const MessageItem = memo(
                     <Button
                       variant="ghost"
                       size="icon-xs"
+                      className={ACTION_BUTTON}
                       onClick={handleContinue}
                       title={t('chat:actions.continue')}
                     >
-                      <IconPlayerPlay size={16} />
+                      <Play className="size-4" />
                     </Button>
                   )}
 
@@ -766,10 +787,11 @@ export const MessageItem = memo(
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    className={ACTION_BUTTON}
                     onClick={handleRegenerate}
                     title={t('chat:actions.regenerate')}
                   >
-                    <IconRefresh size={16} />
+                    <RefreshCw className="size-4" />
                   </Button>
                 )}
               </div>
@@ -784,7 +806,7 @@ export const MessageItem = memo(
         {/* Image Preview Dialog */}
         {previewImage && (
           <div
-            className="fixed inset-0 z-100 bg-black/50 backdrop-blur-md flex items-center justify-center cursor-pointer"
+            className="fixed inset-0 z-100 bg-background/80 backdrop-blur-md flex items-center justify-center cursor-pointer"
             onClick={() => setPreviewImage(null)}
           >
             <img

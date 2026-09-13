@@ -137,9 +137,12 @@ function teamTool(subagentNames: string[]): Tool {
       'declare. Use it when the work splits into parts that can go at once, ' +
       'or where one part must finish before another starts. Each task is run ' +
       'by a child that cannot see this conversation, so describe it in full. ' +
-      'Declare in `writes` the files a task will change: two tasks that would ' +
-      'change the same file with nothing ordering them are refused before ' +
-      'anything runs. Set `isolate` on a task that should work in a checkout ' +
+      'Declare in `writes` the files or folders a task will change, and in ' +
+      '`deletes` and `renames` what it removes or moves: when two tasks with ' +
+      'nothing ordering them would change the same paths, the user is shown ' +
+      'the overlap before anything runs and decides whether to order them, ' +
+      'narrow a scope, or run them side by side. Paths only read go in ' +
+      '`reads` and never conflict. Set `isolate` on a task that should work in a checkout ' +
       'of its own, when its changes must not reach the attached folder or its ' +
       'siblings.' +
       known,
@@ -169,7 +172,30 @@ function teamTool(subagentNames: string[]): Tool {
               writes: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Files this task expects to change.',
+                description:
+                  'Files or folders this task expects to change, relative to the project.',
+              },
+              reads: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Paths this task only reads. Never a conflict.',
+              },
+              deletes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Files or folders this task expects to delete.',
+              },
+              renames: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    from: { type: 'string' },
+                    to: { type: 'string' },
+                  },
+                  required: ['from', 'to'],
+                },
+                description: 'Moves this task expects to make.',
               },
               retries: {
                 type: 'number',

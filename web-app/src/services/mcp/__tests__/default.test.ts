@@ -125,6 +125,10 @@ describe('DefaultMCPService', () => {
         hasCredentials: false,
         renewable: false,
         expiresAt: null,
+        declaredScopes: [],
+        requestedScopes: [],
+        grantedScopes: [],
+        detail: null,
       })
       await expect(svc.authorizeMCPServer('remote')).resolves.toBeUndefined()
       await expect(svc.clearMCPAuth('remote')).resolves.toBe(false)

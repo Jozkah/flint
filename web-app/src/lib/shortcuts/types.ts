@@ -13,6 +13,7 @@ export enum ShortcutAction {
   SWITCH_ASSISTANT = 'switchAssistant',
   ZOOM_IN = 'zoomIn',
   ZOOM_OUT = 'zoomOut',
+  COMMAND_PALETTE = 'commandPalette',
 }
 
 export interface ShortcutSpec {

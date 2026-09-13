@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   directEditAuthorize,
   directEditCapability,
+  managedWorktreeCapability,
   directEditRevoke,
   directEditRevokeSession,
 } from '@janhq/tauri-plugin-agent-tools-api'
@@ -29,7 +30,17 @@ export type CapabilityState =
   | { known: false; reason: 'loading' }
   /** The query failed. Not permission — the absence of an answer. */
   | { known: false; reason: 'failed'; message: string }
-  | { known: true; directEdit: boolean }
+  | {
+      known: true
+      /** The sandbox can hold a run to the user's own folder. */
+      directEdit: boolean
+      /**
+       * The sandbox can hold a run to a worktree Jan owns. True on Windows,
+       * where `directEdit` is not: AppContainer grants Jan's own folders but
+       * will not write an ACE onto the user's.
+       */
+      managedWorktree: boolean
+    }
 
 export type AuthorizeOutcome =
   | { ok: true; grant: LiveGrant }
@@ -70,8 +81,11 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
 
     refreshCapability: async () => {
       try {
-        const directEdit = await directEditCapability()
-        set({ capability: { known: true, directEdit } })
+        const [directEdit, managedWorktree] = await Promise.all([
+          directEditCapability(),
+          managedWorktreeCapability(),
+        ])
+        set({ capability: { known: true, directEdit, managedWorktree } })
       } catch (e) {
         // An unanswered question is not a yes. `effectiveAccess` reads this as
         // `capability-unknown` and keeps the session in Review only.

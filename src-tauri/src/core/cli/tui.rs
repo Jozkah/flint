@@ -1655,6 +1655,10 @@ struct App {
     configured_context_window: Option<u64>,
     /// Tokens to reserve for the model's response (compaction triggers at limit - reserve).
     reserve_tokens: u64,
+    /// Whether to compact proactively, and the tail an automatic compaction
+    /// keeps, from the shared policy (AH-076).
+    compaction_auto: bool,
+    compaction_keep_recent: usize,
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     max_tokens: Option<u64>,
@@ -1912,6 +1916,10 @@ struct App {
     /// Overflow retries spent in the current user turn, capped so a model that
     /// overflows no matter how small the context cannot spin forever.
     overflow_retries: u8,
+    /// The context-pressure warning (AH-077) has been shown for this fill;
+    /// cleared when the fill drops back below the line, so it is said once per
+    /// approach rather than every turn.
+    context_warned: bool,
     /// Lines scrolled back from the tail; 0 pins the view to the bottom so new
     /// content follows. Non-zero survives streaming so scroll-back stays usable.
     scrollback: u16,
@@ -2286,6 +2294,8 @@ impl App {
                 _ => None,
             },
             reserve_tokens: limits.reserve_tokens,
+            compaction_auto: limits.compaction.auto,
+            compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
             max_session_tokens: limits.max_session_tokens,
             repo_root,
@@ -2375,6 +2385,7 @@ impl App {
             compact_started: None,
             retry_after_compact: false,
             overflow_retries: 0,
+            context_warned: false,
             scrollback: 0,
             repaint: false,
             pending_bug_report: None,
@@ -4354,6 +4365,16 @@ struct ContextSnapshot {
 /// path the compaction gauge uses), which is why the section is headed
 /// "Context breakdown (estimated)" regardless of the headline's source.
 async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
+    // AH-087: what the last request was actually made of, read from the
+    // request itself. Every surface reads this same classification, so the
+    // TUI, the headless CLI and the desktop cannot disagree about what is
+    // filling the window -- and what is reported is what went out, not a
+    // rebuild of it from whatever is on disk now.
+    if let Some(report) = report_from_the_last_request(&snapshot) {
+        return report;
+    }
+    // Nothing has been sent yet in this session, so there is no request to
+    // read. Fall back to sizing what the next one would carry.
     let mut segments = Vec::new();
     let args = snapshot.args.as_ref();
     let root = args.and_then(|a| a.project_root.clone());
@@ -4462,6 +4483,76 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
         fill_reported: reported,
         segments,
     }
+}
+
+/// The `/context` view built from the session's last dispatched request
+/// (AH-087), or `None` when the session has not sent one.
+fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextReport> {
+    use tauri_plugin_agent_tools::context_report::Category;
+    let session = snapshot.args.as_ref()?.session_id.clone()?;
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    let window = (snapshot.context_window > 0).then_some(snapshot.context_window);
+    let breakdown =
+        tauri_plugin_agent_tools::context_report::of_snapshot(&data, &session, None, window, 0)
+            .ok()?;
+
+    // The same marker letters the legend has always used, so a reader who
+    // knows the view still knows it.
+    let key = |category: Category| match category {
+        Category::SystemPrompt => Some(('P', "System prompt")),
+        Category::ProjectContext => Some(('C', "Project context")),
+        Category::Skills => Some(('K', "Skills")),
+        Category::Memory => Some(('Y', "Memory")),
+        Category::CustomAgents => Some(('A', "Custom agents")),
+        Category::ToolsTransmitted => Some(('T', "System tools")),
+        Category::CompactedHistory => Some(('H', "Compacted history")),
+        Category::Messages => Some(('M', "Messages")),
+        Category::Attachments => Some(('F', "Attachments")),
+        // Reported by the breakdown, but not part of the window's fill: a
+        // definition that was not sent cost nothing, and free space and the
+        // reserve are added below in the view's own terms.
+        Category::ToolsDeferred | Category::ReservedOutput | Category::FreeSpace => None,
+    };
+    let mut segments: Vec<ContextSegment> = breakdown
+        .slices
+        .iter()
+        .filter_map(|slice| {
+            key(slice.category).map(|(key, label)| ContextSegment {
+                key,
+                label,
+                tokens: slice.tokens,
+            })
+        })
+        .collect();
+
+    // The provider's own count for the last turn is the authority on the fill
+    // when the history it measured is still the history (`tokens_estimated`
+    // goes true the moment a compaction rewrites it).
+    let reported = !snapshot.tokens_estimated && snapshot.turn_prompt_tokens > 0;
+    let used: u64 = segments.iter().map(|s| s.tokens).sum();
+    let buffer = snapshot.reserve_tokens.min(snapshot.context_window);
+    let free = snapshot.context_window.saturating_sub(used + buffer);
+    segments.push(ContextSegment {
+        key: '.',
+        label: "Available",
+        tokens: free,
+    });
+    segments.push(ContextSegment {
+        key: 'B',
+        label: "Auto-compact reserve",
+        tokens: buffer,
+    });
+    Some(ContextReport {
+        model_id: snapshot.model.clone(),
+        window: snapshot.context_window,
+        fill: if reported {
+            snapshot.turn_prompt_tokens
+        } else {
+            used
+        },
+        fill_reported: reported,
+        segments,
+    })
 }
 
 impl App {
@@ -4833,7 +4924,9 @@ impl App {
             // wildcard, so a new event breaks this build rather than being
             // silently dropped from the interface.
             StreamEvent::PromptSnapshot { .. } => {}
-            StreamEvent::Done { .. } | StreamEvent::Error { .. } => {}
+            // AH-174: the run's resource figures are recorded with its end and
+            // shown on the timeline; the TUI's transcript does not repeat them.
+            StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
                 self.persist();
@@ -5084,8 +5177,40 @@ impl App {
     /// override, catalog, or fallback), so proactive compaction never silently
     /// stands down on accepted prompt usage.
     fn should_auto_compact(&self) -> bool {
-        let limit = self.context_window.saturating_sub(self.reserve_tokens);
-        self.tokens > limit && self.tokens > 0 && self.history.len() > 4
+        // AH-076: `auto = false` in the shared policy turns this off on every
+        // surface; an overflow still compacts reactively.
+        // The reserve never exceeds a quarter of the window, the same rule
+        // `compaction_policy::Policy::effective_reserve` applies everywhere.
+        let reserve = self.reserve_tokens.min(self.context_window / 4);
+        let limit = self.context_window.saturating_sub(reserve);
+        self.compaction_auto && self.tokens > limit && self.tokens > 0 && self.history.len() > 4
+    }
+
+    /// Warn once as the context window fills (AH-077), before auto-compaction
+    /// or an overflow takes the decision out of the user's hands. Said again
+    /// only after the fill has dropped back below the line. Nothing is said
+    /// when the window is unknown: there is no fraction to report.
+    fn check_context_pressure(&mut self) {
+        use crate::core::agent::context_pressure::{line, pressure};
+        // `tokens_estimated` is the difference between "the provider counted
+        // this" and "Jan measured the history itself", and the warning says
+        // which it is rather than letting an estimate read as a measurement.
+        let Some(found) = pressure(
+            self.tokens,
+            self.context_window,
+            self.reserve_tokens,
+            !self.tokens_estimated,
+        ) else {
+            // Below the line again (a compaction, a new conversation, a bigger
+            // window): the next approach is worth saying out loud.
+            self.context_warned = false;
+            return;
+        };
+        if self.context_warned {
+            return;
+        }
+        self.context_warned = true;
+        self.system(Level::Warn, &line(&found));
     }
 
     /// Queue a compaction and a retry for a context-overflow error, reporting
@@ -5136,9 +5261,10 @@ impl App {
     /// paths cannot drift.
     fn halt_turn(&mut self) {
         // A run that died on an error rather than Esc is still an abnormal exit:
-        // it may well have run tools whose side effects exist on disk, but a
-        // mid-turn `MessagesUpdated` was never published (the stream errored
-        // before a natural stop), so those calls are absent from `history`.
+        // it may well have run tools whose side effects exist on disk, and the
+        // calls of a step still in progress when the stream errored were never
+        // published (the loop publishes after each completed step), so they
+        // are absent from `history`.
         // Fold them in exactly as a hard cancel does, so a later prompt or
         // /resume sees the tools it ran and what they returned. The overflow-
         // retry path deliberately avoids this (see `on_error`): that turn
@@ -7657,6 +7783,7 @@ async fn apply_stream_event(
         Some(StreamEvent::Done { stop_reason, usage }) => {
             app.on_done(stop_reason, usage);
             *current = None;
+            app.check_context_pressure();
             // Auto-compact when approaching the context limit. Handed to
             // the loop like `/compact` so the summarizing call runs off
             // the render loop.
@@ -7684,10 +7811,10 @@ async fn apply_stream_event(
             if app.status == Status::Running {
                 app.flush_assistant();
                 app.abort_tool_rows();
-                // The task was killed without a natural stop, so the
-                // mid-turn `MessagesUpdated` that would have folded the
-                // completed tool calls never fired -- fold them here,
-                // exactly as the cancel/error paths do.
+                // The task was killed without a natural stop, so calls of the
+                // step in progress were never published -- fold them here,
+                // exactly as the cancel/error paths do; calls already
+                // published are skipped by id.
                 app.append_cancelled_turn_tools();
                 app.status = Status::Idle;
                 app.run_started = None;
@@ -7790,7 +7917,11 @@ async fn chat_loop<B: Backend>(
 
     // Compaction is a summarizing model call, so it runs off the render loop
     // too; `compact_base` is the history length it was computed from.
-    let mut compact_task: Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>> =
+    let mut compact_task: Option<
+        tokio::task::JoinHandle<
+            Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
+        >,
+    > =
         None;
     let mut compact_base = 0usize;
 
@@ -7968,6 +8099,7 @@ async fn chat_loop<B: Backend>(
                 let args = args.clone();
                 let model = app.model.clone();
                 let history = app.history.clone();
+                let keep = kind.keep_recent(app.compaction_keep_recent);
                 compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
@@ -7976,7 +8108,7 @@ async fn chat_loop<B: Backend>(
                         &args,
                         &model,
                         &history,
-                        kind.keep_recent(),
+                        keep,
                     )
                     .await
                 }));
@@ -10351,10 +10483,11 @@ enum CompactKind {
 }
 
 impl CompactKind {
-    fn keep_recent(self) -> usize {
+    fn keep_recent(self, auto_keep: usize) -> usize {
         match self {
             CompactKind::Manual => crate::core::agent::compaction::MANUAL_KEEP_RECENT,
-            CompactKind::Auto => crate::core::agent::compaction::DEFAULT_KEEP_RECENT,
+            // AH-076: the automatic tail is the shared policy's.
+            CompactKind::Auto => auto_keep,
         }
     }
 
@@ -10376,8 +10509,8 @@ impl CompactKind {
 /// Await an in-flight compaction, parking forever when none is running so this
 /// can sit in the loop's `select!` unconditionally.
 async fn await_compaction(
-    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>>,
-) -> Result<Vec<serde_json::Value>, String> {
+    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>>>,
+) -> Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError> {
     let joined = match task.as_mut() {
         Some(h) => h.await,
         None => return pending().await,
@@ -10385,7 +10518,7 @@ async fn await_compaction(
     *task = None;
     match joined {
         Ok(inner) => inner,
-        Err(e) => Err(format!("compaction task failed: {e}")),
+        Err(e) => Err(tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!("compaction task failed: {e}"))),
     }
 }
 
@@ -10394,7 +10527,7 @@ async fn await_compaction(
 /// in flight) is carried over rather than dropped.
 fn finish_compaction(
     app: &mut App,
-    result: Result<Vec<serde_json::Value>, String>,
+    result: Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
     base_len: usize,
 ) {
     let kind = app.compacting.take().unwrap_or(CompactKind::Manual);
@@ -10436,7 +10569,9 @@ fn finish_compaction(
             }
         }
         Err(e) => {
-            app.note(&format!("{} failed: {e}", kind.label()));
+            // The words, not the classification: the kind drives what happens
+            // next (below), and repeating it here only reads as noise.
+            app.note(&format!("{} failed: {}", kind.label(), e.message()));
             // A target-model compaction (model switch) that itself overflows
             // must block the oversized ordinary request: history stays
             // untouched, the target model stays selected, and the turn is
@@ -10445,7 +10580,10 @@ fn finish_compaction(
             // disarm a queued `want_start`, so a gated ordinary request is
             // explicitly deferred too -- otherwise the loop would re-send the
             // oversized history the moment the compaction task clears.
-            let overflow = crate::core::agent::upstream::is_context_overflow_error(&e);
+            // AH-009: the kind says what happened; the TUI does not read the
+            // wording to decide whether the history may be reused.
+            let overflow =
+                e.kind() == tauri_plugin_agent_tools::harness_error::ErrorKind::ContextOverflow;
             if retrying || overflow {
                 app.halt_turn();
             }
@@ -10822,6 +10960,13 @@ impl McpPrompt {
             Some(self.url.trim()).filter(|s| !s.is_empty()),
             super::mcp::parse_pairs(self.headers.trim(), "header")?,
             self.active,
+            // The form has no field for OAuth scopes (AH-135); an edit keeps
+            // the ones the entry already declares instead of dropping them.
+            self.editing
+                .as_deref()
+                .and_then(super::mcp::get_server)
+                .map(|e| crate::core::mcp::oauth::declared_scopes(&e.config).unwrap_or_default())
+                .unwrap_or_default(),
         )?;
         // Read the *previous* active flag before the write. `upsert_server` has
         // already replaced the entry by the time it lands on disk, so reading it
@@ -12243,8 +12388,12 @@ async fn open_mcp_picker(app: &mut App, mcp_servers: &crate::core::state::Shared
                     match super::mcp::auth_status(&s.name, &s.config) {
                         crate::core::mcp::oauth::AuthStatus::Unauthenticated
                         | crate::core::mcp::oauth::AuthStatus::Expired { .. }
-                        | crate::core::mcp::oauth::AuthStatus::StaleResource => {
+                        | crate::core::mcp::oauth::AuthStatus::StaleResource
+                        | crate::core::mcp::oauth::AuthStatus::ScopeMismatch { .. } => {
                             "needs auth".to_string()
+                        }
+                        crate::core::mcp::oauth::AuthStatus::InvalidScopes { .. } => {
+                            "invalid oauth scopes".to_string()
                         }
                         _ => "not connected".to_string(),
                     }
@@ -12314,9 +12463,13 @@ fn mcp_action_items(server: &super::mcp::ServerDetail) -> Vec<PickerItem> {
         AuthStatus::NotApplicable | AuthStatus::StaticHeader => {}
         // Anything with tokens on disk can be renewed *and* forgotten, whether
         // they still work or not.
+        // A configuration that cannot be read has to be fixed first: signing in
+        // under scopes nobody can state would authorize nothing sensible.
+        AuthStatus::InvalidScopes { .. } => {}
         AuthStatus::Authenticated { .. }
         | AuthStatus::Expired { .. }
-        | AuthStatus::StaleResource => {
+        | AuthStatus::StaleResource
+        | AuthStatus::ScopeMismatch { .. } => {
             actions.push((MCP_ACTION_AUTH, "Re-authenticate".to_string()));
             actions.push((MCP_ACTION_CLEAR_AUTH, "Clear authentication".to_string()));
         }
@@ -12374,13 +12527,18 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
         AuthStatus::StaticHeader => {
             vec![Span::styled("✓ Authorization header (configured)", good)]
         }
-        AuthStatus::Authenticated { expires_at } => {
+        AuthStatus::Authenticated { expires_at, granted } => {
             let mut spans = vec![Span::styled("✓ authenticated", good)];
             if let Some(at) = expires_at {
                 spans.push(Span::styled(
                     format!("  (expires in {})", until_label(*at)),
                     dim,
                 ));
+            }
+            // AH-135: the authority the token carries, next to the fact that it
+            // works.
+            if !granted.is_empty() {
+                spans.push(Span::styled(format!("  scopes: {}", granted.join(" ")), dim));
             }
             spans
         }
@@ -12396,6 +12554,17 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
             "! tokens were issued for a different url",
             warn,
         )],
+        AuthStatus::ScopeMismatch { declared, requested, .. } => vec![Span::styled(
+            format!(
+                "! token asked for [{}], configuration declares [{}] - re-authenticate",
+                requested.join(" "),
+                declared.join(" ")
+            ),
+            warn,
+        )],
+        AuthStatus::InvalidScopes { detail } => {
+            vec![Span::styled(format!("✗ {detail}"), bad)]
+        }
         AuthStatus::Unauthenticated => vec![Span::styled("✗ not authenticated", bad)],
     };
     rows.push(("Auth", auth));
@@ -16606,6 +16775,7 @@ mod tests {
             context_window_source:
                 crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
             reserve_tokens: 16_384,
+            compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
         };
@@ -16902,6 +17072,7 @@ mod tests {
                     context_window_source:
                         crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
                     reserve_tokens: 16_384,
+            compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
                 },
@@ -21600,6 +21771,10 @@ mod tests {
                 crate::core::state::ProviderConfig,
             > = std::collections::HashMap::new();
             let args = std::sync::Arc::new(super::OrchestrationArgs {
+                profile: None,
+            parent_run: None,
+            dispatch_id: None,
+                fallback_models: Vec::new(),
                 client: crate::core::agent::upstream::agent_http_client(),
                 provider_configs: std::sync::Arc::new(tokio::sync::Mutex::new(provider_configs)),
                 mcp_servers: std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -24029,8 +24204,8 @@ mod tests {
             diff: None,
         });
         // The run dies on an upstream error before the model emits any answer
-        // prose. The backend never publishes a mid-turn `MessagesUpdated`, so
-        // the completed call must be folded into history by the error path
+        // prose. This stub stream publishes no `MessagesUpdated` for the step,
+        // so the completed call must be folded into history by the error path
         // (the same guarantee the Esc-cancel path already provides).
         app.on_error("upstream".into(), "connection reset".into());
         let wire = app
@@ -26460,6 +26635,7 @@ mod tests {
                         prompt_tokens: Some(12_800 + i as u64 * 12_800),
                         completion_tokens: Some(100),
                         total_tokens: Some(12_900),
+                        ..Default::default()
                     },
                 },
             );
@@ -27082,6 +27258,7 @@ mod tests {
                     prompt_tokens: Some(40_000),
                     completion_tokens: Some(500),
                     total_tokens: Some(40_500),
+                    ..Default::default()
                 },
             });
         }
@@ -27465,6 +27642,7 @@ mod tests {
                 prompt_tokens: Some(90_000),
                 completion_tokens: Some(10),
                 total_tokens: Some(90_010),
+                ..Default::default()
             },
         });
         assert!(
@@ -27489,6 +27667,7 @@ mod tests {
                 prompt_tokens: Some(120_000),
                 completion_tokens: Some(10),
                 total_tokens: Some(120_010),
+                ..Default::default()
             },
         });
         assert!(app.context_report().await.fill_reported);
@@ -30702,6 +30881,52 @@ mod tests {
         assert!(app.should_auto_compact());
     }
 
+    /// AH-077: the user is warned once as the window fills, before
+    /// auto-compaction or an overflow, and warned again only after the fill
+    /// has dropped back below the line (a compaction, a new conversation).
+    #[test]
+    fn context_pressure_is_warned_once_before_the_window_fills() {
+        let warnings =
+            |app: &App| transcript_text(app).matches("of the context window is in use").count();
+        let mut app = test_app();
+        app.context_window = 100_000;
+        app.reserve_tokens = 10_000;
+        app.tokens = 50_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 0, "no warning with room to spare");
+
+        app.tokens = 82_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1);
+        let text = transcript_text(&app);
+        assert!(text.contains("82% of the context window is in use"), "{text}");
+        assert!(text.contains("8,000 tokens before auto-compact"), "{text}");
+        // The figures, and where they came from, are part of the warning.
+        // Wrapped in the transcript, so the fragment is short on purpose.
+        assert!(text.contains("82,000 of 100,000 tokens"), "{text}");
+        assert!(text.contains("/compact"), "{text}");
+
+        app.tokens = 86_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1, "not repeated every turn");
+
+        app.tokens = 30_000;
+        app.check_context_pressure();
+        app.tokens = 81_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 2, "re-armed after the fill dropped");
+    }
+
+    /// With no known window there is no fraction to warn about.
+    #[test]
+    fn no_context_pressure_warning_without_a_window() {
+        let mut app = test_app();
+        app.context_window = 0;
+        app.tokens = 1_000_000;
+        app.check_context_pressure();
+        assert!(!transcript_text(&app).contains("of the context window is in use"));
+    }
+
     #[test]
     fn should_not_auto_compact_when_history_too_short() {
         let mut app = test_app();
@@ -30991,7 +31216,7 @@ mod tests {
             "[{}] Upstream returned HTTP 400: prompt is too long",
             crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
         );
-        finish_compaction(&mut app, Err(overflow), 1);
+        finish_compaction(&mut app, Err(overflow.into()), 1);
 
         assert!(
             app.compacting.is_none(),

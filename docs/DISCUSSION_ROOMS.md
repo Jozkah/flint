@@ -353,7 +353,19 @@ limits (no pricing entered) and more than eight participants.
 - `toolAccess: 'read'` is accepted but runs without tools, with a system note.
 - The context window for OpenAI-compatible servers comes from JAN's existing
   capability resolution; a server-reported `max_model_len` is not used.
-- The Rooms rail entry is pending in `docs/DISCUSSION_ROOMS_UI_HUNKS.md` (owned
-  by the shell restyle); the pages are reachable at `/rooms`.
+- The Rooms rail entry (`lib/shellNavigation.ts` `RAIL_ITEMS`, icon in
+  `components/shell/AppRail.tsx`, `common:appRail.rooms`) is applied on top of
+  the Atelier shell; only the English label exists, like the other rail keys.
 - No visual browser review of the rooms pages beyond the real-app harness DOM
   checks.
+
+### After merging session messaging on fork/main (Atelier integration)
+
+| Check | Result |
+| --- | --- |
+| `tsc -b`, `scripts/local-only-guard.mjs` | exit 0 |
+| Full vitest | 540 files passed, 1 failed: `src/__tests__/main.test.tsx` cannot resolve `@fontsource/ibm-plex-sans/400.css`, a new dependency not installed in the shared `node_modules` (environment); 6900 tests passed |
+| Rooms suites | 17 files, 145 passed |
+| `cargo test -j 4 --lib --no-default-features --features test-tauri rooms` | 14 passed |
+
+The real-provider rooms lane was not re-run after this merge.

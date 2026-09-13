@@ -86,6 +86,16 @@ pub struct SkillMeta {
     pub user_invocable: bool,
     /// Offered to the model (system-prompt catalog, `skill_list`/`skill_read`).
     pub model_invocable: bool,
+    /// The tools this skill says it needs (AH-040). Empty means it did not
+    /// say, which is not the same as "none": an unsaid requirement is checked
+    /// at the gate when the call is made, like any other call.
+    #[serde(default)]
+    pub needs: Vec<String>,
+    /// The version the skill declares (AH-123), exactly as written. `None`
+    /// means it declares none, which is not version zero: a skill that has
+    /// never said what it is cannot satisfy a constraint on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// The two `agent.toml` keys skill discovery depends on.
@@ -150,6 +160,167 @@ struct Frontmatter {
     /// from the model's reach (no context load).
     #[serde(rename = "disable-model-invocation")]
     disable_model_invocation: Option<bool>,
+    /// AH-040. The tools a skill's instructions actually require, by the
+    /// convention Claude Code uses. Declaring them lets the harness withhold a
+    /// skill this run could never carry out, rather than handing over
+    /// instructions whose every step will be refused.
+    ///
+    /// It is a *ceiling claim*, never a grant: a skill that names `bash` in a
+    /// run where `bash` is denied is withheld; a skill can never make a denied
+    /// tool callable.
+    #[serde(rename = "allowed-tools")]
+    allowed_tools: Option<Vec<String>>,
+    /// AH-123. What this skill calls itself, so another skill can say which
+    /// version of it it was written against.
+    version: Option<serde_yaml::Value>,
+    /// AH-124. The skills this one's instructions depend on, optionally with
+    /// a version bound: `requires: ["formatting", "deploy >=2.1"]`.
+    requires: Option<Vec<String>>,
+}
+
+/// A declared version (AH-123): three numbers, and whatever the author wrote.
+///
+/// Deliberately a small subset of semver. Ordering is by the numbers alone; a
+/// pre-release or build suffix is kept as written and carried into every
+/// message, but never used to decide an order, because guessing at an ordering
+/// nobody declared is how a constraint comes to be judged wrongly.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SkillVersion {
+    numbers: (u64, u64, u64),
+}
+
+impl std::fmt::Display for SkillVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (a, b, c) = self.numbers;
+        write!(f, "{a}.{b}.{c}")
+    }
+}
+
+/// Read a declared version. `1`, `1.2` and `1.2.3` are all versions; the
+/// missing parts are zero, as every version scheme that omits them means.
+/// Anything else -- a word, an empty string, a negative number, a part that is
+/// not a number -- is not a version, and is refused rather than guessed at.
+pub fn parse_version(text: &str) -> Option<SkillVersion> {
+    let core = text.trim().trim_start_matches('v');
+    let core = core.split(['-', '+']).next().unwrap_or("").trim();
+    if core.is_empty() {
+        return None;
+    }
+    let mut parts = core.split('.');
+    let mut numbers = [0u64; 3];
+    for slot in numbers.iter_mut() {
+        match parts.next() {
+            None => break,
+            Some(part) => *slot = part.trim().parse::<u64>().ok()?,
+        }
+    }
+    // `1.2.3.4` is not a version this understands, and pretending the fourth
+    // number is not there would silently accept two different skills as one.
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(SkillVersion {
+        numbers: (numbers[0], numbers[1], numbers[2]),
+    })
+}
+
+/// How a requirement bounds the version it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bound {
+    AtLeast,
+    Above,
+    AtMost,
+    Below,
+    Exactly,
+}
+
+impl Bound {
+    fn symbol(self) -> &'static str {
+        match self {
+            Bound::AtLeast => ">=",
+            Bound::Above => ">",
+            Bound::AtMost => "<=",
+            Bound::Below => "<",
+            Bound::Exactly => "==",
+        }
+    }
+
+    fn holds(self, found: &SkillVersion, wanted: &SkillVersion) -> bool {
+        match self {
+            Bound::AtLeast => found >= wanted,
+            Bound::Above => found > wanted,
+            Bound::AtMost => found <= wanted,
+            Bound::Below => found < wanted,
+            Bound::Exactly => found == wanted,
+        }
+    }
+}
+
+/// One `requires:` entry (AH-124): a skill name, and what it must be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillRequirement {
+    pub skill: String,
+    /// `None` means the requirement is only that the skill be there at all.
+    pub bound: Option<(Bound, SkillVersion)>,
+    /// What the author wrote, for the message that names the failure.
+    pub raw: String,
+}
+
+/// Read one `requires:` entry. `deploy`, `deploy >=2.1`, `deploy>=2.1` and
+/// `deploy 2.1` (an exact version, the way a lockfile writes one) are all
+/// understood. An entry naming no skill, or a bound whose version cannot be
+/// read, is not a requirement that can be judged -- it is returned as a
+/// requirement on a skill that cannot exist, so loading fails closed rather
+/// than silently ignoring a line the author meant as a constraint.
+pub fn parse_requirement(entry: &str) -> Option<SkillRequirement> {
+    let raw = entry.trim().to_string();
+    if raw.is_empty() {
+        return None;
+    }
+    let ops = [
+        (">=", Bound::AtLeast),
+        ("<=", Bound::AtMost),
+        ("==", Bound::Exactly),
+        (">", Bound::Above),
+        ("<", Bound::Below),
+        ("=", Bound::Exactly),
+    ];
+    for (symbol, bound) in ops {
+        if let Some((name, version)) = raw.split_once(symbol) {
+            let skill = name.trim().to_string();
+            if skill.is_empty() {
+                return None;
+            }
+            return Some(SkillRequirement {
+                bound: parse_version(version).map(|v| (bound, v)),
+                skill,
+                // A bound that could not be read is kept in `raw`, and judged
+                // as unmet: `None` here would quietly widen the requirement to
+                // "any version at all".
+                raw,
+            });
+        }
+    }
+    let mut words = raw.split_whitespace();
+    let skill = words.next()?.to_string();
+    match words.next() {
+        None => Some(SkillRequirement {
+            skill,
+            bound: None,
+            raw,
+        }),
+        Some(version) => Some(SkillRequirement {
+            bound: parse_version(version).map(|v| (Bound::Exactly, v)),
+            skill,
+            raw,
+        }),
+    }
+}
+
+/// Whether a requirement is one this build can judge at all: an unreadable
+/// bound is a requirement whose answer is unknown, and unknown fails closed.
+fn bound_is_readable(requirement: &SkillRequirement) -> bool {
+    requirement.bound.is_some() || !requirement.raw.contains(|c: char| c.is_ascii_digit())
 }
 
 /// A skill's parsed content: optional frontmatter description + markdown body
@@ -159,6 +330,13 @@ pub struct ParsedSkill {
     pub body: String,
     pub user_invocable: bool,
     pub model_invocable: bool,
+    /// The tools the skill declared it needs (AH-040), lowercased and trimmed.
+    pub needs: Vec<String>,
+    /// The version the skill declares (AH-123), as written. `None` is "said
+    /// nothing", never "0".
+    pub version: Option<String>,
+    /// The skills this one depends on (AH-124).
+    pub requires: Vec<SkillRequirement>,
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from the markdown body.
@@ -172,6 +350,9 @@ pub fn parse(content: &str) -> ParsedSkill {
             body: content.to_string(),
             user_invocable: true,
             model_invocable: true,
+            needs: Vec::new(),
+            version: None,
+            requires: Vec::new(),
         };
     }
     let mut yaml = String::new();
@@ -196,6 +377,9 @@ pub fn parse(content: &str) -> ParsedSkill {
             body: content.to_string(),
             user_invocable: true,
             model_invocable: true,
+            needs: Vec::new(),
+            version: None,
+            requires: Vec::new(),
         };
     }
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -204,7 +388,136 @@ pub fn parse(content: &str) -> ParsedSkill {
         body: body.join("\n").trim_start_matches('\n').to_string(),
         user_invocable: fm.user_invocable.unwrap_or(true),
         model_invocable: !fm.disable_model_invocation.unwrap_or(false),
+        needs: fm
+            .allowed_tools
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.trim().to_ascii_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        // Taken as written. A version is read as YAML, where `1.2` is a
+        // number and `1.2.3` is a string, and rendering the number back is
+        // what keeps `version: 1.2` from arriving as nothing at all.
+        version: fm
+            .version
+            .and_then(|v| match v {
+                serde_yaml::Value::String(s) => Some(s),
+                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            })
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        requires: fm
+            .requires
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|entry| parse_requirement(entry))
+            .collect(),
     }
+}
+
+/// What a skill declares that this run cannot supply (AH-123, AH-124).
+///
+/// Empty means the skill can be loaded. Each entry is a sentence naming one
+/// unmet requirement, for the refusal the caller returns; they are written to
+/// be read by whoever has to fix the skill, so they say what was found as well
+/// as what was wanted.
+///
+/// `lookup` answers with a skill's raw text, or `None` when it is not
+/// installed here -- the caller owns resolution, because the project store,
+/// the user's store and the plugins are its business, not this function's.
+///
+/// `known_tools` is every tool this run could call, when the caller knows:
+/// `None` skips the check rather than guessing that an unrecognised name is
+/// absent. A tool that exists but is denied is AH-040's business
+/// ([`unusable_tools`]), and is not repeated here.
+pub fn unmet_requirements(
+    name: &str,
+    parsed: &ParsedSkill,
+    lookup: &dyn Fn(&str) -> Option<String>,
+    known_tools: Option<&[String]>,
+) -> Vec<String> {
+    let mut unmet = Vec::new();
+    if let Some(known) = known_tools {
+        for tool in &parsed.needs {
+            if !known.iter().any(|k| k.eq_ignore_ascii_case(tool)) {
+                unmet.push(format!(
+                    "'{name}' needs the tool '{tool}', which this run does not have"
+                ));
+            }
+        }
+    }
+    // A dependency may depend on something in turn, and a pair of skills may
+    // name each other. Both are ordinary; neither may loop.
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    seen.insert(name.to_string());
+    let mut queue: Vec<(String, SkillRequirement)> = parsed
+        .requires
+        .iter()
+        .map(|r| (name.to_string(), r.clone()))
+        .collect();
+    while let Some((dependent, requirement)) = queue.pop() {
+        if !bound_is_readable(&requirement) {
+            unmet.push(format!(
+                "'{dependent}' requires \"{}\", whose version is not one this understands \
+                 (expected forms: 1, 1.2, 1.2.3)",
+                requirement.raw
+            ));
+            continue;
+        }
+        let Some(raw) = lookup(&requirement.skill) else {
+            unmet.push(format!(
+                "'{dependent}' requires the skill '{}', which is not installed",
+                requirement.skill
+            ));
+            continue;
+        };
+        let required = parse(&raw);
+        if let Some((bound, wanted)) = &requirement.bound {
+            match required.version.as_deref().and_then(parse_version) {
+                Some(found) if bound.holds(&found, wanted) => {}
+                Some(found) => unmet.push(format!(
+                    "'{dependent}' requires '{}' {} {wanted}, and the installed one is {found}",
+                    requirement.skill,
+                    bound.symbol()
+                )),
+                None => unmet.push(format!(
+                    "'{dependent}' requires '{}' {} {wanted}, and the installed one declares no \
+                     version",
+                    requirement.skill,
+                    bound.symbol()
+                )),
+            }
+        }
+        if seen.insert(requirement.skill.clone()) {
+            queue.extend(
+                required
+                    .requires
+                    .iter()
+                    .map(|r| (requirement.skill.clone(), r.clone())),
+            );
+        }
+    }
+    unmet.sort();
+    unmet.dedup();
+    unmet
+}
+
+/// Which of a skill's declared tools this run may not use (AH-040).
+///
+/// Empty when the skill can be carried out here. The check is one-directional
+/// on purpose: it can withhold a skill, and it can never make a denied tool
+/// callable.
+pub fn unusable_tools(
+    needs: &[String],
+    permissions: &crate::permissions::ToolPermissions,
+    subject: &crate::subject::Subject,
+) -> Vec<String> {
+    needs
+        .iter()
+        .filter(|tool| permissions.is_denied(tool, subject))
+        .cloned()
+        .collect()
 }
 
 /// First non-empty, non-heading line of `body`, capped at 120 chars. Fallback
@@ -504,6 +817,8 @@ fn default_jan_skill_meta() -> SkillMeta {
         // invoke it directly.
         user_invocable: true,
         model_invocable: true,
+        needs: parsed.needs.clone(),
+        version: parsed.version.clone(),
     }
 }
 
@@ -514,6 +829,8 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         plugin: entry.plugin.clone(),
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
+        needs: parsed.needs.clone(),
+        version: parsed.version.clone(),
     }
 }
 
@@ -542,7 +859,18 @@ fn side_catalog(
     side: impl Fn(&ParsedSkill) -> bool,
     include_default: bool,
 ) -> Vec<SkillMeta> {
-    let mut skills = discover_all(root)
+    entries_catalog(discover_all(root), enabled, side, include_default)
+}
+
+/// [`side_catalog`] over an explicit list of entries (the user layer offers
+/// only its native skills, not a whole store's plugins).
+fn entries_catalog(
+    entries: Vec<SkillEntry>,
+    enabled: &[String],
+    side: impl Fn(&ParsedSkill) -> bool,
+    include_default: bool,
+) -> Vec<SkillMeta> {
+    let mut skills = entries
         .into_iter()
         .filter(|e| entry_enabled(enabled, e))
         .filter_map(|e| {
@@ -578,8 +906,16 @@ fn side_catalog(
 ///
 /// `enabled` is a whitelist of skill names; an empty list means "all skills"
 /// (backward-compatible with the agent.toml scaffold, which ships `enabled = []`).
+///
+/// The `skill_list` tool goes through [`catalog_for_model_with_user`].
 pub fn catalog(root: &Path, enabled: &[String]) -> Vec<SkillMeta> {
     side_catalog(root, enabled, |p| p.model_invocable, true)
+}
+
+/// The user's own skills layer (AH-121): `user` unless it is the store itself
+/// (the desktop, whose store is the user store), so nothing is offered twice.
+fn user_layer<'a>(store: &Path, user: Option<&'a Path>) -> Option<&'a Path> {
+    user.filter(|u| *u != store)
 }
 
 /// Raw SKILL.md text (frontmatter included) for the editor. Resolves store
@@ -591,6 +927,19 @@ pub fn read_raw(store: &Path, name: &str) -> Result<String, String> {
     let disabled = load_config(store).disabled_plugins;
     let entry = resolve_readable(store, name, &disabled)?;
     std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))
+}
+
+/// [`read_raw`], falling back to the user's own skills when the store has
+/// none of that name (AH-121). No whitelist: this answers "is it installed",
+/// for dependency checks, not "may the model read it".
+pub fn read_raw_with_user(store: &Path, user: Option<&Path>, name: &str) -> Result<String, String> {
+    match read_raw(store, name) {
+        Ok(raw) => Ok(raw),
+        Err(missing) => match user_layer(store, user) {
+            Some(user) => read_raw(user, name),
+            None => Err(missing),
+        },
+    }
 }
 
 /// What one skill layer says about a name the model asked for.
@@ -631,18 +980,51 @@ fn read_in_layer(store: &Path, enabled: &[String], name: &str) -> Result<LayerRe
         .map_err(|e| format!("ERROR: {e}"))
 }
 
+/// The user layer (AH-121) is the user's native skills only: a plain name
+/// with a skill in the user store's `skills/`, under the caller's whitelist.
+fn read_in_user_layer(user: &Path, enabled: &[String], name: &str) -> Result<LayerRead, String> {
+    if name.contains(':') {
+        return Ok(LayerRead::Missing);
+    }
+    let Ok(entry) = resolve_store_skill(user, name) else {
+        return Ok(LayerRead::Missing);
+    };
+    if !entry_enabled(enabled, &entry) {
+        return Ok(LayerRead::Hidden);
+    }
+    std::fs::read_to_string(&entry.file)
+        .map(LayerRead::Found)
+        .map_err(|e| format!("ERROR: {e}"))
+}
+
 /// Raw text of a skill the model may read, honouring the whitelist and the
-/// disabled-plugin list, across up to two layers.
+/// disabled-plugin list, across up to two layers. See
+/// [`read_for_model_with_user`], of which this is the no-user-store form.
+pub fn read_for_model(
+    project: Option<&Path>,
+    store: &Path,
+    enabled: &[String],
+    name: &str,
+) -> Result<String, String> {
+    read_for_model_with_user(project, store, None, enabled, name)
+}
+
+/// Raw text of a skill the model may read, across three layers in precedence
+/// order: project, store, user.
 ///
 /// `project` is an attached project's store (`<folder>/.jan/agent`): its own
 /// skills and its enabled plugins' skills, filtered by that project's
 /// `[skills].enabled`, both read from its `agent.toml` here rather than taken
 /// from the caller. `store` is the surface's own store with the caller's
-/// `enabled` list. A name found in the project layer never falls through, so a
-/// disabled project or plugin skill cannot be replaced by a same-named one.
-pub fn read_for_model(
+/// `enabled` list. `user` is the user's own skills (AH-121), under the same
+/// `enabled` list, consulted only for names neither higher layer knows. A name
+/// a layer knows -- enabled or hidden -- never falls through, so a disabled
+/// skill cannot be replaced by a same-named one from a lower layer, and a store
+/// skill shadows a user skill of the same name.
+pub fn read_for_model_with_user(
     project: Option<&Path>,
     store: &Path,
+    user: Option<&Path>,
     enabled: &[String],
     name: &str,
 ) -> Result<String, String> {
@@ -657,36 +1039,68 @@ pub fn read_for_model(
         }
     }
     match read_in_layer(store, enabled, name)? {
-        LayerRead::Found(raw) => Ok(raw),
-        LayerRead::Hidden | LayerRead::Missing => Err(not_found()),
+        LayerRead::Found(raw) => return Ok(raw),
+        LayerRead::Hidden => return Err(not_found()),
+        LayerRead::Missing => {}
+    }
+    match user_layer(store, user) {
+        Some(user) => match read_in_user_layer(user, enabled, name)? {
+            LayerRead::Found(raw) => Ok(raw),
+            LayerRead::Hidden | LayerRead::Missing => Err(not_found()),
+        },
+        None => Err(not_found()),
     }
 }
 
-/// The model-side catalog across the same two layers as [`read_for_model`]:
-/// the attached project's skills first (its own whitelist, its enabled
-/// plugins), then the store's skills whose names the project does not claim.
+/// The model-side catalog across the same two layers as [`read_for_model`].
 pub fn catalog_for_model(
     project: Option<&Path>,
     store: &Path,
     enabled: &[String],
 ) -> Vec<SkillMeta> {
-    let Some(project) = project else {
-        return catalog(store, enabled);
-    };
-    let config = load_config(project);
-    let mut out = catalog(project, &config.enabled);
-    // Every name the project layer knows, enabled or not: a disabled project
-    // skill must not reappear from the store under the same name.
-    let mut claimed: std::collections::HashSet<String> = discover_all(project)
-        .iter()
-        .map(qualified_name)
-        .chain(out.iter().map(|m| m.name.clone()))
-        .collect();
-    claimed.insert(DEFAULT_JAN_SKILL_NAME.to_string());
-    for meta in side_catalog(store, enabled, |p| p.model_invocable, false) {
-        if claimed.insert(meta.name.clone()) {
-            out.push(meta);
+    catalog_for_model_with_user(project, store, None, enabled)
+}
+
+/// The model-side catalog across the same three layers as
+/// [`read_for_model_with_user`]: the attached project's skills first (its own
+/// whitelist, its enabled plugins), then the store's skills whose names the
+/// project does not claim, then the user's own skills neither claims.
+pub fn catalog_for_model_with_user(
+    project: Option<&Path>,
+    store: &Path,
+    user: Option<&Path>,
+    enabled: &[String],
+) -> Vec<SkillMeta> {
+    let mut out: Vec<SkillMeta> = Vec::new();
+    // Every name a higher layer knows, enabled or not: a disabled skill must
+    // not reappear from a lower layer under the same name. The built-in Jan
+    // skill belongs to the first layer, which answers for it either way.
+    let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut take = |metas: Vec<SkillMeta>, known: Vec<SkillEntry>, out: &mut Vec<SkillMeta>| {
+        for meta in metas {
+            if !claimed.contains(&meta.name) {
+                out.push(meta);
+            }
         }
+        claimed.extend(out.iter().map(|m| m.name.clone()));
+        claimed.extend(known.iter().map(qualified_name));
+        claimed.insert(DEFAULT_JAN_SKILL_NAME.to_string());
+    };
+    if let Some(project) = project {
+        let config = load_config(project);
+        take(catalog(project, &config.enabled), discover_all(project), &mut out);
+    }
+    take(
+        side_catalog(store, enabled, |p| p.model_invocable, project.is_none()),
+        discover_all(store),
+        &mut out,
+    );
+    if let Some(user) = user_layer(store, user) {
+        take(
+            entries_catalog(discover(user), enabled, |p| p.model_invocable, false),
+            Vec::new(),
+            &mut out,
+        );
     }
     out
 }
@@ -753,6 +1167,233 @@ pub fn delete(store: &Path, name: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A store of skills, each installed by name with whatever frontmatter it
+    /// declares. Named for this process and this moment so concurrent tests
+    /// never read each other's skills.
+    fn store_with(skills: &[(&str, &str)]) -> std::path::PathBuf {
+        let store = std::env::temp_dir().join(format!(
+            "jan_skill_requires_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
+        ));
+        let root = skills_dir(&store);
+        std::fs::create_dir_all(&root).expect("skills dir");
+        for (name, content) in skills {
+            let folder = root.join(name);
+            std::fs::create_dir_all(&folder).expect("skill folder");
+            std::fs::write(folder.join("SKILL.md"), content).expect("skill file");
+        }
+        store
+    }
+
+    /// What a store answers when asked for a skill by name.
+    fn lookup_in(store: &std::path::Path) -> impl Fn(&str) -> Option<String> + '_ {
+        move |name: &str| read_raw(store, name).ok()
+    }
+
+    /// A version is three numbers, and the parts nobody wrote are zero.
+    #[test]
+    fn a_version_is_read_as_written_and_ordered_by_its_numbers() {
+        assert_eq!(parse_version("1.2.3").unwrap().to_string(), "1.2.3");
+        assert_eq!(parse_version("2").unwrap().to_string(), "2.0.0");
+        assert_eq!(parse_version(" v1.4 ").unwrap().to_string(), "1.4.0");
+        // The suffix is not ordered, and saying so is the point: it is dropped
+        // from the comparison rather than guessed at.
+        assert_eq!(parse_version("1.2.3-beta.1").unwrap().to_string(), "1.2.3");
+        assert!(parse_version("2.0.0") > parse_version("1.9.9"));
+        assert!(parse_version("1.10.0") > parse_version("1.9.0"));
+    }
+
+    /// What is not a version is refused, never guessed at.
+    #[test]
+    fn what_is_not_a_version_is_not_read_as_one() {
+        for text in ["", "   ", "latest", "1.x", "-1", "1.2.3.4", "1..2", "one.two"] {
+            assert!(parse_version(text).is_none(), "{text:?} was read as a version");
+        }
+    }
+
+    /// A declared version reaches the parsed skill, whether YAML made it a
+    /// string or a number, and a skill that declares none says none.
+    #[test]
+    fn a_skill_declares_its_version_in_frontmatter() {
+        let quoted = parse("---\nname: deploy\nversion: \"1.2.3\"\n---\n\nbody");
+        assert_eq!(quoted.version.as_deref(), Some("1.2.3"));
+        // `version: 1.2` is a YAML number, and arriving as nothing at all is
+        // the bug this covers.
+        let bare = parse("---\nname: deploy\nversion: 1.2\n---\n\nbody");
+        assert_eq!(bare.version.as_deref(), Some("1.2"));
+        assert!(parse("---\nname: deploy\n---\n\nbody").version.is_none());
+    }
+
+    /// Every form a requirement may be written in, and what it means.
+    #[test]
+    fn a_requirement_names_a_skill_and_optionally_bounds_it() {
+        let plain = parse_requirement("formatting").unwrap();
+        assert_eq!(plain.skill, "formatting");
+        assert!(plain.bound.is_none());
+
+        let bounded = parse_requirement("deploy >=2.1").unwrap();
+        assert_eq!(bounded.skill, "deploy");
+        assert_eq!(bounded.bound.unwrap().0, Bound::AtLeast);
+
+        let tight = parse_requirement("deploy<1.0").unwrap();
+        assert_eq!(tight.skill, "deploy");
+        assert_eq!(tight.bound.unwrap().0, Bound::Below);
+
+        // A bare version beside the name is an exact version, the way a
+        // lockfile writes one.
+        let exact = parse_requirement("deploy 2.0.0").unwrap();
+        assert_eq!(exact.bound.unwrap().0, Bound::Exactly);
+
+        assert!(parse_requirement("   ").is_none());
+        assert!(parse_requirement(">=2.1").is_none());
+    }
+
+    /// The ordinary case: a dependency that is installed, at a version the
+    /// requirement allows, is met.
+    #[test]
+    fn a_dependency_that_is_here_at_the_right_version_is_met() {
+        let store = store_with(&[
+            ("deploy", "---\nname: deploy\nversion: 2.4.0\n---\n\nship"),
+            (
+                "release",
+                "---\nname: release\nrequires:\n  - deploy >=2.1\n---\n\ncut a release",
+            ),
+        ]);
+        let parsed = parse(&read_raw(&store, "release").unwrap());
+        assert_eq!(parsed.version, None);
+        assert!(
+            unmet_requirements("release", &parsed, &lookup_in(&store), None).is_empty(),
+            "{:?}",
+            unmet_requirements("release", &parsed, &lookup_in(&store), None)
+        );
+    }
+
+    /// A dependency that is not installed, one installed too old, and one that
+    /// declares no version at all are each refused, and each says which.
+    #[test]
+    fn a_dependency_that_is_absent_or_too_old_is_unmet_and_says_why() {
+        let store = store_with(&[
+            ("old", "---\nname: old\nversion: 1.0.0\n---\n\nbody"),
+            ("silent", "---\nname: silent\n---\n\nbody"),
+            (
+                "needs-missing",
+                "---\nname: needs-missing\nrequires:\n  - nowhere\n---\n\nbody",
+            ),
+            (
+                "needs-newer",
+                "---\nname: needs-newer\nrequires:\n  - old >=2.0\n---\n\nbody",
+            ),
+            (
+                "needs-versioned",
+                "---\nname: needs-versioned\nrequires:\n  - silent >=1.0\n---\n\nbody",
+            ),
+        ]);
+        let unmet = |name: &str| {
+            let parsed = parse(&read_raw(&store, name).unwrap());
+            unmet_requirements(name, &parsed, &lookup_in(&store), None)
+        };
+        let missing = unmet("needs-missing");
+        assert_eq!(missing.len(), 1, "{missing:?}");
+        assert!(missing[0].contains("is not installed"), "{missing:?}");
+
+        let newer = unmet("needs-newer");
+        assert_eq!(newer.len(), 1, "{newer:?}");
+        assert!(newer[0].contains(">= 2.0.0"), "{newer:?}");
+        assert!(newer[0].contains("is 1.0.0"), "{newer:?}");
+
+        let silent = unmet("needs-versioned");
+        assert_eq!(silent.len(), 1, "{silent:?}");
+        assert!(silent[0].contains("declares no version"), "{silent:?}");
+    }
+
+    /// A requirement carrying a version this build cannot read is unmet, not
+    /// quietly widened to "any version at all".
+    #[test]
+    fn a_bound_that_cannot_be_read_fails_closed() {
+        let store = store_with(&[
+            ("deploy", "---\nname: deploy\nversion: 3.0.0\n---\n\nbody"),
+            (
+                "vague",
+                "---\nname: vague\nrequires:\n  - deploy >=2.x\n---\n\nbody",
+            ),
+        ]);
+        let parsed = parse(&read_raw(&store, "vague").unwrap());
+        let unmet = unmet_requirements("vague", &parsed, &lookup_in(&store), None);
+        assert_eq!(unmet.len(), 1, "{unmet:?}");
+        assert!(unmet[0].contains("not one this understands"), "{unmet:?}");
+    }
+
+    /// Requirements are followed through: a dependency's own missing
+    /// dependency is missing here too, and skills that require each other do
+    /// not send the check round forever.
+    #[test]
+    fn requirements_are_followed_through_and_a_cycle_ends() {
+        let store = store_with(&[
+            (
+                "top",
+                "---\nname: top\nrequires:\n  - middle\n---\n\nbody",
+            ),
+            (
+                "middle",
+                "---\nname: middle\nrequires:\n  - bottom\n---\n\nbody",
+            ),
+            ("a", "---\nname: a\nrequires:\n  - b\n---\n\nbody"),
+            ("b", "---\nname: b\nrequires:\n  - a\n---\n\nbody"),
+        ]);
+        let parsed = parse(&read_raw(&store, "top").unwrap());
+        let unmet = unmet_requirements("top", &parsed, &lookup_in(&store), None);
+        assert_eq!(unmet.len(), 1, "{unmet:?}");
+        assert!(unmet[0].contains("'middle' requires the skill 'bottom'"), "{unmet:?}");
+
+        let parsed = parse(&read_raw(&store, "a").unwrap());
+        assert!(
+            unmet_requirements("a", &parsed, &lookup_in(&store), None).is_empty(),
+            "a pair that requires each other is satisfied, not looped"
+        );
+    }
+
+    /// A tool the run does not have makes the skill unloadable; a tool it has
+    /// does not, and a caller that did not say which tools exist is not
+    /// answered with a guess.
+    #[test]
+    fn a_tool_nothing_provides_is_unmet_and_an_unknown_toolset_is_not_guessed_at() {
+        let store = store_with(&[(
+            "shipping",
+            "---\nname: shipping\nallowed-tools:\n  - bash\n  - deploy_tool\n---\n\nbody",
+        )]);
+        let parsed = parse(&read_raw(&store, "shipping").unwrap());
+        let here = vec!["bash".to_string(), "read".to_string()];
+        let unmet = unmet_requirements("shipping", &parsed, &lookup_in(&store), Some(&here));
+        assert_eq!(unmet.len(), 1, "{unmet:?}");
+        assert!(unmet[0].contains("deploy_tool"), "{unmet:?}");
+
+        let all = vec!["bash".to_string(), "deploy_tool".to_string()];
+        assert!(unmet_requirements("shipping", &parsed, &lookup_in(&store), Some(&all)).is_empty());
+        assert!(
+            unmet_requirements("shipping", &parsed, &lookup_in(&store), None).is_empty(),
+            "an unsaid toolset is not evidence a tool is absent"
+        );
+    }
+
+    /// A skill that declares a version carries it into the catalogue, so what
+    /// is installed can be seen rather than assumed.
+    #[test]
+    fn the_catalogue_carries_a_declared_version() {
+        let store = store_with(&[
+            ("deploy", "---\nname: deploy\ndescription: Ship it\nversion: 2.4.0\n---\n\nbody"),
+            ("plain", "---\nname: plain\ndescription: Ordinary\n---\n\nbody"),
+        ]);
+        let metas = list_meta(&store);
+        let deploy = metas.iter().find(|m| m.name == "deploy").expect("deploy");
+        assert_eq!(deploy.version.as_deref(), Some("2.4.0"));
+        let plain = metas.iter().find(|m| m.name == "plain").expect("plain");
+        assert_eq!(plain.version, None);
+    }
 
     #[test]
     fn parse_extracts_description_and_strips_frontmatter() {
@@ -1149,6 +1790,68 @@ mod tests {
         assert!(!project_claims(&project, "muted:hush"));
         let _ = std::fs::remove_dir_all(&project);
         let _ = std::fs::remove_dir_all(&store);
+    }
+
+    /// Project, store and the user's own skills (AH-121) as three layers: a
+    /// name a higher layer knows -- enabled or hidden -- never falls through,
+    /// the store shadows a same-named user skill, and the user layer answers
+    /// only names neither higher layer knows.
+    #[test]
+    fn three_layers_resolve_project_then_store_then_user() {
+        let project = plugin_store("tri_project");
+        let store = plugin_store("tri_store");
+        let user = plugin_store("tri_user");
+        write(&project, "deploy", "project deploy").unwrap();
+        write(&project, "off", "project off").unwrap();
+        agent_toml(&project, "[skills]\nenabled = [\"deploy\"]\n");
+        write(&store, "off", "store off").unwrap();
+        write(&store, "style", "store style").unwrap();
+        write(&user, "off", "user off").unwrap();
+        write(&user, "deploy", "user deploy").unwrap();
+        write(&user, "style", "user style").unwrap();
+        write(&user, "personal", "user personal").unwrap();
+        write(&user, "jan", "user jan").unwrap();
+
+        let read = |name: &str| read_for_model_with_user(Some(&project), &store, Some(&user), &[], name);
+        assert_eq!(read("deploy").unwrap(), "project deploy");
+        // Hidden in the project: neither the store's nor the user's copy.
+        let off = read("off");
+        assert!(off.is_err(), "{off:?}");
+        // The store shadows the user.
+        assert_eq!(read("style").unwrap(), "store style");
+        // Only names no higher layer knows reach the user layer.
+        assert_eq!(read("personal").unwrap(), "user personal");
+        assert!(read("nowhere").is_err());
+        assert!(read("user:personal").is_err());
+
+        let listed = names(&catalog_for_model_with_user(Some(&project), &store, Some(&user), &[]));
+        assert_eq!(listed, vec!["deploy", "style", "personal"]);
+
+        // Without a project: the store shadows the user, and a name the store
+        // hides (the built-in Jan skill, off by the whitelist) is not answered
+        // by the user's same-named skill.
+        let bare = |enabled: &[String], name: &str| {
+            read_for_model_with_user(None, &store, Some(&user), enabled, name)
+        };
+        assert_eq!(bare(&[], "off").unwrap(), "store off");
+        assert_eq!(bare(&[], "deploy").unwrap(), "user deploy");
+        assert_ne!(bare(&[], "jan").unwrap(), "user jan");
+        let only_personal = vec!["personal".to_string()];
+        assert!(bare(&only_personal, "jan").is_err());
+        assert_eq!(bare(&only_personal, "personal").unwrap(), "user personal");
+        // The whitelist governs the user layer too.
+        assert!(bare(&only_personal, "deploy").is_err());
+        let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &only_personal));
+        assert_eq!(listed, vec!["personal"]);
+        let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &[]));
+        assert_eq!(listed, vec!["off", "style", "jan", "deploy", "personal"]);
+
+        // A user store equal to the store (the desktop) adds nothing twice.
+        let same = names(&catalog_for_model_with_user(None, &store, Some(&store), &[]));
+        assert_eq!(same, names(&catalog(&store, &[])));
+        for dir in [&project, &store, &user] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     #[test]

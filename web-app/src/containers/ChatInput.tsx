@@ -2,7 +2,15 @@ import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  memo,
+} from 'react'
 import type { ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
@@ -21,20 +29,21 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu'
-import { ArrowRight, PlusIcon } from 'lucide-react'
 import {
-  IconPhoto,
-  IconMusic,
-  IconVideo,
-  IconBrain,
-  IconTool,
-  IconCodeCircle2,
-  IconPlayerStopFilled,
-  IconX,
-  IconPaperclip,
-  IconLoader2,
-  IconWorldSearch,
-} from '@tabler/icons-react'
+  ArrowUp,
+  Brain,
+  CodeXml,
+  Globe,
+  ImageIcon,
+  Loader2,
+  Music,
+  Paperclip,
+  PlusIcon,
+  Square,
+  Video,
+  Wrench,
+  X,
+} from 'lucide-react'
 import { generateId } from 'ai'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageChip } from '@/containers/QueuedMessageBubble'
@@ -43,6 +52,7 @@ import { BotIcon } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useConversationModel } from '@/hooks/useConversationPane'
 import { useTokensCount } from '@/hooks/useTokensCount'
 import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
 import {
@@ -118,12 +128,20 @@ import {
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import {
+  formatPathReferenceText,
   parsePromptForReferences,
-  resolvePathReference,
-  searchFiles,
   stripPromptReferences,
-  type FilePickerEntry as FileEntry,
+  typedReference,
 } from '@/lib/path-references'
+import { resolveReference, searchReferences } from '@/lib/safeReferences'
+import {
+  optionId,
+  rankReferences,
+  type NamedSource,
+  type ReferenceEntry,
+} from '@/lib/referenceMenu'
+import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
+import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { readFileAsText } from '@/lib/fileSafety'
 
@@ -155,6 +173,20 @@ type ChatInputProps = {
    */
   ownsToolSet?: boolean
   /**
+   * The folder `@` references may name (AH-204). A reference is a path inside
+   * it, read through the backend's confined reader; with none, the picker
+   * offers nothing and a typed reference resolves to nothing. Never the home
+   * directory: that used to make every file under it, keys included, one `@`
+   * away from the prompt.
+   */
+  referenceRoot?: string | null
+  /**
+   * What else `@` can name besides files (AH-204): the skills and saved agents
+   * of the surface. Offered in the same ranked list, inserted as typed
+   * references (`@skill:name`, `@agent:name`).
+   */
+  referenceSources?: { skills?: NamedSource[]; agents?: NamedSource[] }
+  /**
    * Surface-specific controls docked in the composer's control row (Cowork's
    * plan toggle and folder chip). They sit outside the streaming dim, because
    * both configure the *next* message rather than the run in flight.
@@ -175,6 +207,24 @@ type ChatInputProps = {
    * across surfaces.
    */
   tokenSource?: TokenUsageSource
+  /**
+   * The thread this composer writes to, when that is not the current thread:
+   * a split conversation pane passes its own, because the current thread is
+   * whichever pane is active. Defaults to useThreads' currentThreadId.
+   */
+  threadId?: string
+  /**
+   * Keeps this composer's draft apart from the main one. The second pane of a
+   * split conversation passes a scope; without one the shared main draft is
+   * used, as before.
+   */
+  draftScope?: string
+  /**
+   * Whether the composer may take focus on its own -- on mount, on a thread
+   * change, when a reply finishes. A split pane the user is not working in
+   * must not pull focus away from the one they are.
+   */
+  takeFocus?: boolean
 }
 
 // Video containers llama-server can decode via ffmpeg/ffprobe into frames.
@@ -205,9 +255,14 @@ const ChatInput = memo(function ChatInput({
   chatStatus,
   scopeKey,
   ownsToolSet = true,
+  referenceRoot,
+  referenceSources,
   surfaceControls,
   stopControl,
   tokenSource,
+  threadId: threadIdProp,
+  draftScope,
+  takeFocus = true,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -236,11 +291,34 @@ const ChatInput = memo(function ChatInput({
   const abortControllers = useAppState((state) => state.abortControllers)
   const tools = useAppState((state) => state.tools)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
-  const prompt = usePrompt((state) => state.prompt)
-  const setPrompt = usePrompt((state) => state.setPrompt)
+  // The main draft, or this composer's own when it has a scope (the second
+  // pane of a split conversation), so typing in one never edits the other.
+  const mainPrompt = usePrompt((state) => state.prompt)
+  const scopedPrompt = usePrompt((state) =>
+    draftScope ? (state.scoped?.[draftScope]?.prompt ?? '') : ''
+  )
+  const prompt = draftScope ? scopedPrompt : mainPrompt
+  const setMainPrompt = usePrompt((state) => state.setPrompt)
+  const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
+  const setPrompt = useCallback(
+    (value: string) =>
+      draftScope ? setScopedPrompt(draftScope, value) : setMainPrompt(value),
+    [draftScope, setScopedPrompt, setMainPrompt]
+  )
   const addToHistory = usePrompt((state) => state.addToHistory)
-  const navigateHistory = usePrompt((state) => state.navigateHistory)
-  const currentThreadId = useThreads((state) => state.currentThreadId)
+  const navigateMainHistory = usePrompt((state) => state.navigateHistory)
+  const navigateScopedHistory = usePrompt(
+    (state) => state.navigateScopedHistory
+  )
+  const navigateHistory = useCallback(
+    (direction: 'up' | 'down') =>
+      draftScope
+        ? navigateScopedHistory(draftScope, direction)
+        : navigateMainHistory(direction),
+    [draftScope, navigateScopedHistory, navigateMainHistory]
+  )
+  const routeThreadId = useThreads((state) => state.currentThreadId)
+  const currentThreadId = threadIdProp ?? routeThreadId
   // Subscribed to the map, not read through getState(), so the control
   // re-renders when this chat's overrides change.
   const overridesByThread = useModelOverrides((state) => state.byThread)
@@ -249,7 +327,9 @@ const ChatInput = memo(function ChatInput({
     : undefined
   const setThreadOverride = useModelOverrides((state) => state.setForThread)
   const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
-  const currentThread = useThreads((state) => state.getCurrentThread())
+  const currentThread = useThreads((state) =>
+    threadIdProp ? state.threads?.[threadIdProp] : state.getCurrentThread()
+  )
   const updateCurrentThreadAssistant = useThreads(
     (state) => state.updateCurrentThreadAssistant
   )
@@ -286,7 +366,19 @@ const ChatInput = memo(function ChatInput({
 
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerQuery, setFilePickerQuery] = useState('')
-  const [filePickerEntries, setFilePickerEntries] = useState<FileEntry[]>([])
+  const [filePickerEntries, setFilePickerEntries] = useState<ReferenceEntry[]>(
+    []
+  )
+  // The `@` menu's active row, moved from the composer with the arrow keys.
+  const [referenceActive, setReferenceActive] = useState(0)
+  // A file or folder being named as an alias (AH-205), and why a name failed.
+  const [aliasDraft, setAliasDraft] = useState<ReferenceEntry | null>(null)
+  const [aliasError, setAliasError] = useState<string | null>(null)
+  // Announced: how many references match, or what happened to an alias.
+  const [referenceStatus, setReferenceStatus] = useState('')
+  const referenceListId = useId()
+  const referenceSkills = referenceSources?.skills
+  const referenceAgents = referenceSources?.agents
   const [filePickerPosition, setFilePickerPosition] = useState<{
     top: number
     left: number
@@ -295,30 +387,37 @@ const ChatInput = memo(function ChatInput({
   // Textarea cursor position snapshot at the time @ was typed
   const filePickerCursorPos = useRef<number | null>(null)
 
-  // Pre-load working directory
+  // The folder references may name, and the data folder the confined reader
+  // needs. No folder means no references at all -- not the home directory.
+  const [referenceDataFolder, setReferenceDataFolder] = useState<
+    string | undefined
+  >(undefined)
+  // Whatever the mode: a surface that attached a folder (Cowork) names it
+  // here, and one that did not gets no references at all.
   useEffect(() => {
-    const loadWorkingDir = async () => {
-      try {
-        // Try to get project home directory
-        const { homeDir } = await import('@tauri-apps/api/path')
-        const home = await homeDir()
-        setWorkingDir(home)
-      } catch {
-        setWorkingDir(undefined)
-      }
+    setWorkingDir(referenceRoot ?? undefined)
+    if (!referenceRoot) return
+    let alive = true
+    void getServiceHub()
+      .app()
+      .getJanDataFolder()
+      .then((folder) => {
+        if (alive) setReferenceDataFolder(folder ?? undefined)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
     }
-    if (effectiveAgentMode) {
-      loadWorkingDir()
-    }
-  }, [effectiveAgentMode])
+  }, [referenceRoot])
 
   // Detect `@` in the prompt text and open the file picker
   const handlePromptChange = useCallback(
     (value: string) => {
       setPrompt(value)
 
-      // Only enable in agent mode
-      if (!effectiveAgentMode) {
+      // Only where a folder is attached: it is the only thing a reference can
+      // name (AH-204).
+      if (!workingDir) {
         setFilePickerOpen(false)
         return
       }
@@ -329,19 +428,37 @@ const ChatInput = memo(function ChatInput({
       // @ (the @ must not be glued to a preceding word char, so `user@host`
       // never opens the picker)
       const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = beforeCursor.match(/(?<![A-Za-z0-9_])@([\w./-]*)$/)
+      const atMatch = beforeCursor.match(/(?<![A-Za-z0-9_])@([\w./:-]*)$/)
 
       if (atMatch) {
         const query = atMatch[1] ?? ''
         setFilePickerQuery(query)
 
-        // If we have a working directory, search files
-        if (workingDir) {
-          searchFiles(workingDir, query)
-            .then((entries) => setFilePickerEntries(entries.slice(0, 50)))
-            .catch(() => setFilePickerEntries([]))
+        // One ranked list. The file index is searched through the backend's
+        // confined listing; if it cannot be read the rest are still offered,
+        // and typing is never waited on.
+        const rank = (files: Awaited<ReturnType<typeof searchReferences>>) => {
+          const ranked = rankReferences(query, {
+            files,
+            skills: referenceSkills ?? [],
+            agents: referenceAgents ?? [],
+            aliases: useReferenceAliases.getState().list(workingDir),
+          })
+          setFilePickerEntries(ranked)
+          setReferenceActive(0)
+          setReferenceStatus(
+            ranked.length === 0
+              ? 'No references match'
+              : `${ranked.length} reference${ranked.length === 1 ? '' : 's'}`
+          )
+        }
+        const fileQuery = /^(skill|agent|alias):/.test(query) ? null : query
+        if (referenceDataFolder && fileQuery !== null) {
+          searchReferences(referenceDataFolder, workingDir, fileQuery)
+            .then(rank)
+            .catch(() => rank([]))
         } else {
-          setFilePickerEntries([])
+          rank([])
         }
 
         // Position the picker above the text
@@ -359,20 +476,26 @@ const ChatInput = memo(function ChatInput({
         setFilePickerOpen(false)
       }
     },
-    [effectiveAgentMode, workingDir, setPrompt]
+    [workingDir, referenceDataFolder, setPrompt, referenceSkills, referenceAgents]
   )
 
-  // Insert a selected file reference into the prompt
+  // Insert the selected reference into the prompt
   const handleFilePickerSelect = useCallback(
-    (entry: FileEntry) => {
+    (entry: ReferenceEntry) => {
       if (filePickerCursorPos.current == null) return
 
       const beforeCursor = prompt.slice(0, filePickerCursorPos.current)
       const afterCursor = prompt.slice(filePickerCursorPos.current)
 
-      // Replace the `@query` with `path/to/file` (the resolved reference)
-      const textBefore = beforeCursor.replace(/(?<![A-Za-z0-9_])@[\w./-]*$/, '')
-      const refText = entry.path
+      // Replace the `@query` with the entry's token
+      const textBefore = beforeCursor.replace(
+        /(?<![A-Za-z0-9_])@[\w./:-]*$/,
+        ''
+      )
+      // The identifier, not the label: a folder-relative path, or a typed
+      // reference. It means the same thing however it is displayed, and a
+      // path cannot name anything outside the folder.
+      const refText = formatPathReferenceText(entry.token) + ' '
       const newPrompt = textBefore + refText + afterCursor
 
       setPrompt(newPrompt)
@@ -387,7 +510,53 @@ const ChatInput = memo(function ChatInput({
 
   const handleFilePickerClose = useCallback(() => {
     setFilePickerOpen(false)
+    setAliasDraft(null)
+    setAliasError(null)
     filePickerCursorPos.current = null
+  }, [])
+
+  // Name the file or folder being drafted as an alias (AH-205). Focus goes
+  // back to the composer either way, where it was when the draft began.
+  const handleAliasSave = useCallback(
+    (name: string, lines = '') => {
+      if (!aliasDraft) return
+      const out = useReferenceAliases
+        .getState()
+        .add(workingDir, name, aliasDraft.token, lines)
+      if (!out.ok) {
+        setAliasError(out.message)
+        setReferenceStatus(`Alias not saved: ${out.message}`)
+        return
+      }
+      setAliasDraft(null)
+      setAliasError(null)
+      setReferenceStatus(
+        `Saved @alias:${out.alias.name} for ${out.alias.target}`
+      )
+      setFilePickerEntries((entries) =>
+        rankReferences(filePickerQuery, {
+          files: entries
+            .filter((e) => e.kind === 'file' || e.kind === 'directory')
+            .map((e) => ({
+              path: e.token,
+              name: e.name,
+              kind: e.kind as 'file' | 'directory',
+              extension: e.extension,
+            })),
+          skills: referenceSkills ?? [],
+          agents: referenceAgents ?? [],
+          aliases: useReferenceAliases.getState().list(workingDir),
+        })
+      )
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    },
+    [aliasDraft, workingDir, filePickerQuery, referenceSkills, referenceAgents]
+  )
+
+  const handleAliasCancel = useCallback(() => {
+    setAliasDraft(null)
+    setAliasError(null)
+    setTimeout(() => textareaRef.current?.focus(), 0)
   }, [])
 
   // Resolve @path references in the prompt text, returning the resolved content
@@ -397,25 +566,50 @@ const ChatInput = memo(function ChatInput({
       resolvedContents: string
     }> => {
       const refs = parsePromptForReferences(text)
-      if (refs.length === 0) return { text, resolvedContents: '' }
+      // No folder, no references: an `@name` in an ordinary chat is left as
+      // typed. It used to be read as a path -- relative to nothing, or
+      // absolute -- so `@C:\Users\me\.ssh\id_rsa` put that file in the prompt.
+      if (refs.length === 0 || !workingDir) return { text, resolvedContents: '' }
 
       const parts: string[] = []
       for (const ref of refs) {
-        const resolved = await resolvePathReference(ref, workingDir)
-        if (resolved) {
-          if (resolved.kind === 'file') {
-            parts.push(
-              `--- File: ${resolved.absolutePath} ---\n${resolved.content}`
-            )
-          } else if (resolved.kind === 'directory') {
-            parts.push(
-              `--- Directory: ${resolved.absolutePath} ---\n${resolved.content}`
-            )
-          }
-        } else {
+        const typed = typedReference(ref)
+        // A skill reference is acted on by the skill machinery, which reads
+        // it from the text; it stays there and needs nothing inlined.
+        if (typed?.kind === 'skill') continue
+        if (typed?.kind === 'agent') {
+          const agent = referenceAgents?.find((one) => one.name === typed.name)
           parts.push(
-            `[File not found or too large: ${ref}]`
+            agent
+              ? `[Agent @agent:${agent.name}${agent.description ? `: ${agent.description}` : ''}. To hand work to it, call the task tool with agent "${agent.name}".]`
+              : `[Reference @${ref} was not included: there is no saved agent named ${typed.name}]`
           )
+          continue
+        }
+        if (typed?.kind === 'alias') {
+          const alias = await resolveAlias(
+            referenceDataFolder ?? '',
+            workingDir,
+            typed.name
+          )
+          parts.push(
+            alias.ok
+              ? alias.content
+              : `[Reference @${ref} was not included: ${alias.message}]`
+          )
+          continue
+        }
+        const resolved = await resolveReference(
+          referenceDataFolder ?? '',
+          workingDir,
+          ref
+        )
+        if (resolved.ok) {
+          parts.push(resolved.content)
+        } else {
+          // Said in the message, not dropped: the model should know a
+          // reference was refused, and why, rather than miss it silently.
+          parts.push(`[Reference @${ref} was not included: ${resolved.message}]`)
         }
       }
 
@@ -427,7 +621,7 @@ const ChatInput = memo(function ChatInput({
 
       return { text: cleanText, resolvedContents }
     },
-    [workingDir]
+    [workingDir, referenceDataFolder, referenceAgents]
   )
 
   const handleAgentToggle = useCallback(() => {
@@ -444,7 +638,10 @@ const ChatInput = memo(function ChatInput({
   const maxRows = 10
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
-  const selectedModel = useModelProvider((state) => state.selectedModel)
+  // This conversation's model: a split pane's own thread model, otherwise the
+  // global picker.
+  const conversationModel = useConversationModel()
+  const selectedModel = conversationModel.selectedModel
 
   /** What the picker offers, which follows the model's actual capabilities. */
   const attachmentAccept = useMemo(
@@ -456,7 +653,7 @@ const ChatInput = memo(function ChatInput({
       }),
     [selectedModel?.capabilities]
   )
-  const selectedProvider = useModelProvider((state) => state.selectedProvider)
+  const selectedProvider = conversationModel.selectedProvider
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
   )
@@ -554,8 +751,9 @@ const ChatInput = memo(function ChatInput({
   useEffect(() => {
     // Only the general chat migrates a draft: it composes under the "new
     // thread" key until the thread exists. A scopeKey caller has a stable id
-    // from the start, so there is nothing to move.
-    if (scopeKey) return
+    // from the start, so there is nothing to move. Nor does a split's second
+    // pane: the home screen's draft belongs to the conversation it started.
+    if (scopeKey || draftScope) return
     if (
       currentThreadId &&
       lastTransferredThreadId.current !== currentThreadId
@@ -563,7 +761,7 @@ const ChatInput = memo(function ChatInput({
       transferAttachments(NEW_THREAD_ATTACHMENT_KEY, currentThreadId)
       lastTransferredThreadId.current = currentThreadId
     }
-  }, [scopeKey, currentThreadId, transferAttachments])
+  }, [scopeKey, draftScope, currentThreadId, transferAttachments])
 
   // Check for mmproj existence or vision capability when model changes
   useEffect(() => {
@@ -796,9 +994,10 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (textareaRef.current) {
+    if (takeFocus && textareaRef.current) {
       textareaRef.current.focus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -809,20 +1008,21 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (textareaRef.current) {
+    if (takeFocus && textareaRef.current) {
       textareaRef.current.focus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
   // Focus when streaming content finishes
   useEffect(() => {
-    if (chatStatus !== 'submitted' && textareaRef.current) {
+    if (takeFocus && chatStatus !== 'submitted' && textareaRef.current) {
       // Small delay to ensure UI has updated
       setTimeout(() => {
         textareaRef.current?.focus()
       }, 10)
     }
-  }, [chatStatus])
+  }, [chatStatus, takeFocus])
 
   const stopStreaming = useCallback(
     (threadId: string) => {
@@ -2023,15 +2223,18 @@ const ChatInput = memo(function ChatInput({
       <div className="relative">
         <div
           className={cn(
-            'relative overflow-hidden p-0.5 rounded-3xl'
+            'relative overflow-hidden p-px rounded-lg'
           )}
         >
           {isStreaming && (
-            <div className="absolute inset-0">
-              <MovingBorder rx="10%" ry="10%">
+            // The accent travelling round the edge says a reply is streaming.
+            // Hidden when the reader asked for less motion; the Stop button
+            // still says the same thing.
+            <div className="absolute inset-0 motion-reduce:hidden" aria-hidden>
+              <MovingBorder rx="2%" ry="2%">
                 <div
                   className={cn(
-                    'h-100 w-100 bg-[radial-gradient(var(--app-primary),transparent_60%)]'
+                    'h-100 w-100 bg-[radial-gradient(var(--brand),transparent_60%)]'
                   )}
                 />
               </MovingBorder>
@@ -2046,9 +2249,9 @@ const ChatInput = memo(function ChatInput({
             // reserve now follows the row's measured height.
             style={{ paddingBottom: `${footerHeight}px` }}
             className={cn(
-              'relative z-20 px-0 border rounded-3xl border-input bg-white dark:bg-input/30',
-              isFocused && 'ring-1 ring-ring/50',
-              isDragOver && 'ring-2 ring-ring/50 border-primary'
+              'relative z-20 px-0 border rounded-lg border-line-strong bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[outline-color]',
+              isFocused && 'outline-2 outline-offset-0 outline-ring/50',
+              isDragOver && 'outline-2 outline-ring border-brand bg-brand-tint'
             )}
             data-drop-zone={dropAcceptsAnything ? 'true' : undefined}
             onDragEnter={dropAcceptsAnything ? handleDragEnter : undefined}
@@ -2058,7 +2261,9 @@ const ChatInput = memo(function ChatInput({
           >
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
-                <div className="flex gap-3 items-center">
+                {/* Attachments as chips: a thumbnail or kind icon, the name,
+                    and a remove button, wrapping instead of overflowing. */}
+                <div className="flex min-w-0 flex-wrap gap-1.5 items-center">
                   {attachments
                     .map((att, idx) => ({ att, idx }))
                     .map(({ att, idx }) => {
@@ -2075,44 +2280,38 @@ const ChatInput = memo(function ChatInput({
                       return (
                         <div
                           key={`${att.type}-${idx}-${att.name}`}
-                          className="relative"
+                          data-testid="composer-attachment-chip"
+                          className="relative flex h-9 min-w-0 max-w-56 items-center gap-1.5 rounded-md border border-border bg-sunken pl-1 pr-1 text-xs text-foreground pointer-coarse:h-11"
                         >
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div
                                 className={cn(
-                                  'relative border rounded-xl size-14 overflow-hidden',
-                                  'flex items-center justify-center'
+                                  'flex min-w-0 items-center gap-1.5'
                                 )}
                               >
-                                {isImage && att.dataUrl ? (
-                                  <img
-                                    className="object-cover w-full h-full"
-                                    src={att.dataUrl}
-                                    alt={`${att.name}`}
-                                  />
-                                ) : isAudio ? (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconMusic size={20} />
-                                    {durLabel && (
-                                      <span className="text-[10px] leading-none mt-0.5 tabular-nums opacity-70">
-                                        {durLabel}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : isVideo ? (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconVideo size={20} />
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center text-muted-foreground">
-                                    <IconPaperclip size={18} />
-                                    {ext && (
-                                      <span className="text-[10px] leading-none mt-0.5 uppercase opacity-70">
-                                        .{ext}
-                                      </span>
-                                    )}
-                                  </div>
+                                <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-card text-muted-foreground">
+                                  {isImage && att.dataUrl ? (
+                                    <img
+                                      className="object-cover w-full h-full"
+                                      src={att.dataUrl}
+                                      alt={`${att.name}`}
+                                    />
+                                  ) : isAudio ? (
+                                    <Music className="size-4" />
+                                  ) : isVideo ? (
+                                    <Video className="size-4" />
+                                  ) : (
+                                    <Paperclip className="size-4" />
+                                  )}
+                                </span>
+                                <span className="min-w-0 truncate font-medium">
+                                  {att.name}
+                                </span>
+                                {(durLabel || (!isImage && !isAudio && !isVideo && ext)) && (
+                                  <span className="shrink-0 text-[11px] uppercase text-muted-foreground tabular-nums">
+                                    {durLabel ?? `.${ext}`}
+                                  </span>
                                 )}
                               </div>
                             </TooltipTrigger>
@@ -2152,17 +2351,18 @@ const ChatInput = memo(function ChatInput({
                             </TooltipContent>
                           </Tooltip>
 
-                          {/* Remove button disabled while processing - outside overflow-hidden container */}
-                          {!att.processing && (
-                            <div
-                              className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
+                          {/* No remove while it is still being processed. */}
+                          {att.processing ? (
+                            <Loader2 className="mx-1 size-3.5 shrink-0 motion-safe:animate-spin text-muted-foreground" />
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`${t('common:dismiss')} ${att.name}`}
+                              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-9"
                               onClick={() => handleRemoveAttachment(idx)}
                             >
-                              <IconX
-                                className="text-neutral-200"
-                                size={14}
-                              />
-                            </div>
+                              <X className="size-3.5" />
+                            </button>
                           )}
                         </div>
                       )
@@ -2195,6 +2395,20 @@ const ChatInput = memo(function ChatInput({
               maxRows={10}
               value={prompt}
               data-testid={'chat-input'}
+              // The `@` menu is a listbox the composer drives; these tell
+              // assistive technology which row is active without moving focus.
+              aria-autocomplete={workingDir ? 'list' : undefined}
+              aria-expanded={
+                workingDir
+                  ? filePickerOpen && filePickerEntries.length > 0
+                  : undefined
+              }
+              aria-controls={filePickerOpen ? referenceListId : undefined}
+              aria-activedescendant={
+                filePickerOpen && filePickerEntries.length > 0
+                  ? optionId(referenceListId, referenceActive)
+                  : undefined
+              }
               onChange={(e) => {
                 const value = e.target.value
                 const cursorIdx = e.target.selectionStart
@@ -2223,6 +2437,49 @@ const ChatInput = memo(function ChatInput({
                 // e.keyCode 229 is for IME input with Safari
                 const isComposing =
                   e.nativeEvent.isComposing || e.keyCode === 229
+                // The `@` menu owns these keys while it is open: Enter inserts
+                // the reference rather than sending, and the arrows move the
+                // active row rather than walking prompt history.
+                if (filePickerOpen && !aliasDraft && !isComposing) {
+                  const count = filePickerEntries.length
+                  const active =
+                    filePickerEntries[Math.min(referenceActive, count - 1)]
+                  if (count > 0 && e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setReferenceActive((i) => (i + 1) % count)
+                    return
+                  }
+                  if (count > 0 && e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setReferenceActive((i) => (i - 1 + count) % count)
+                    return
+                  }
+                  if (
+                    count > 0 &&
+                    (e.key === 'Enter' || e.key === 'Tab') &&
+                    !e.shiftKey
+                  ) {
+                    e.preventDefault()
+                    handleFilePickerSelect(active)
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    handleFilePickerClose()
+                    return
+                  }
+                  if (e.altKey && e.key.toLowerCase() === 'a' && active) {
+                    e.preventDefault()
+                    if (active.kind === 'file' || active.kind === 'directory') {
+                      setAliasDraft(active)
+                      setAliasError(null)
+                      setReferenceStatus(`Name ${active.token} as an alias`)
+                    } else {
+                      setReferenceStatus('Only a file or folder can be named')
+                    }
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
                   e.preventDefault()
                   // Submit prompt when Enter is pressed without Shift and prompt is not empty.
@@ -2253,45 +2510,52 @@ const ChatInput = memo(function ChatInput({
                     navigateHistory('down')
                   }
                 }
-                // Tab completes the selected @path file reference
-                if (
-                  e.key === 'Tab' &&
-                  filePickerOpen &&
-                  filePickerEntries.length > 0 &&
-                  !isComposing
-                ) {
-                  e.preventDefault()
-                  // Select the first entry as the default Tab completion
-                  handleFilePickerSelect(filePickerEntries[0])
-                }
               }}
               onPaste={handlePaste}
               placeholder={t('common:placeholder.chatInput')}
-              autoFocus
+              autoFocus={takeFocus}
               spellCheck={spellCheckChatInput}
               data-gramm={spellCheckChatInput}
               data-gramm_editor={spellCheckChatInput}
               data-gramm_grammarly={spellCheckChatInput}
               className={cn(
-                'bg-transparent pt-4 w-full shrink-0 border-none resize-none outline-0 px-4',
+                // 16px below md so a phone does not zoom into the field.
+                'bg-transparent pt-3.5 w-full shrink-0 border-none resize-none outline-0 px-4 text-base leading-relaxed text-foreground placeholder:text-muted-foreground md:text-[15px]',
                 rows < maxRows && 'scrollbar-hide',
                 className
               )}
             />
             {/* @path file reference picker popover */}
-            {filePickerOpen && effectiveAgentMode && (
+            {/* Shown wherever a folder is attached -- Cowork included, which
+                is not "agent mode" -- because that folder is all it offers. */}
+            {filePickerOpen && workingDir && (
               <div className="relative">
                 <FilePickerPopover
                   entries={filePickerEntries}
                   query={filePickerQuery}
                   open={filePickerOpen}
                   position={filePickerPosition}
+                  activeIndex={referenceActive}
+                  onActiveChange={setReferenceActive}
                   onSelect={handleFilePickerSelect}
                   onClose={handleFilePickerClose}
                   textareaRef={textareaRef}
+                  listId={referenceListId}
+                  aliasDraft={aliasDraft}
+                  aliasError={aliasError}
+                  onAliasSave={handleAliasSave}
+                  onAliasCancel={handleAliasCancel}
                 />
               </div>
             )}
+            <span
+              role="status"
+              aria-live="polite"
+              className="sr-only"
+              data-testid="reference-status"
+            >
+              {workingDir ? referenceStatus : ''}
+            </span>
           </div>
         </div>
 
@@ -2308,8 +2572,12 @@ const ChatInput = memo(function ChatInput({
                 {!effectiveAgentMode && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="secondary" size="icon-sm" className='rounded-full mr-2 mb-1'>
-                      <PlusIcon size={18} className="text-muted-foreground" />
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      className="mr-1.5 text-ink-2 pointer-coarse:size-11"
+                    >
+                      <PlusIcon className="size-4.5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
@@ -2318,7 +2586,7 @@ const ChatInput = memo(function ChatInput({
                         image capability left text-only models with no way to
                         attach anything at all. */}
                     <DropdownMenuItem onClick={() => void openImagePicker()}>
-                      <IconPhoto size={18} className="text-muted-foreground" />
+                      <ImageIcon className="size-4 text-muted-foreground" />
                       <span>
                         {hasMmproj
                           ? t('common:attachFiles.addFilesOrImages')
@@ -2335,7 +2603,7 @@ const ChatInput = memo(function ChatInput({
                     </DropdownMenuItem>
                     {audioSupported && (
                       <DropdownMenuItem onClick={() => void openAudioPicker()}>
-                        <IconMusic size={18} className="text-muted-foreground" />
+                        <Music className="size-4 text-muted-foreground" />
                         <span>Add Audio</span>
                         <input
                           type="file"
@@ -2349,7 +2617,7 @@ const ChatInput = memo(function ChatInput({
                     )}
                     {videoSupported && (
                       <DropdownMenuItem onClick={() => void openVideoPicker()}>
-                        <IconVideo size={18} className="text-muted-foreground" />
+                        <Video className="size-4 text-muted-foreground" />
                         <span>Add Video</span>
                         <input
                           type="file"
@@ -2367,15 +2635,9 @@ const ChatInput = memo(function ChatInput({
                       disabled={!selectedModel?.capabilities?.includes('tools')}
                     >
                       {ingestingDocs ? (
-                        <IconLoader2
-                          size={18}
-                          className="text-muted-foreground animate-spin"
-                        />
+                        <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
                       ) : (
-                        <IconPaperclip
-                          size={18}
-                          className="text-muted-foreground"
-                        />
+                        <Paperclip className="size-4 text-muted-foreground" />
                       )}
                       <span>
                         {ingestingDocs
@@ -2418,11 +2680,9 @@ const ChatInput = memo(function ChatInput({
                       <Button
                           variant="ghost"
                           size="icon-xs"
+                          className="size-8 pointer-coarse:size-11"
                         >
-                        <IconCodeCircle2
-                          size={18}
-                          className="text-muted-foreground"
-                        />
+                        <CodeXml className="size-4 text-muted-foreground" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -2456,6 +2716,7 @@ const ChatInput = memo(function ChatInput({
                         <Button
                           variant="ghost"
                           size="icon-xs"
+                          className="size-8 pointer-coarse:size-11"
                           onClick={(e) => {
                             setDropdownToolsAvailable(false)
                             e.stopPropagation()
@@ -2476,10 +2737,9 @@ const ChatInput = memo(function ChatInput({
                                     'p-1 flex items-center justify-center rounded-sm transition-all duration-200 ease-in-out gap-1 cursor-pointer',
                                   )}
                                 >
-                                  <IconTool
-                                    size={18}
+                                  <Wrench
                                     className={cn(
-                                      'text-muted-foreground',
+                                      'size-4 text-muted-foreground',
                                     )}
                                   />
                                 </div>
@@ -2503,14 +2763,14 @@ const ChatInput = memo(function ChatInput({
                         size="icon-xs"
                         onClick={currentThreadId ? handleAgentToggle : undefined}
                         className={cn(
-                          isAgentMode && 'text-primary bg-primary/10 hover:bg-primary/10 items-center',
+                          isAgentMode && 'text-brand-text bg-brand-tint hover:bg-brand-tint items-center',
                           !currentThreadId && 'cursor-default pointer-events-none'
                         )}
                       >
                         <BotIcon
                           className={cn(
                             'text-muted-foreground -mt-0.5',
-                            isAgentMode && 'text-primary'
+                            isAgentMode && 'text-brand-text'
                           )}
                         />
                       </Button>
@@ -2531,14 +2791,17 @@ const ChatInput = memo(function ChatInput({
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className={cn(webSearchEnabled && 'text-primary')}
+                        aria-pressed={webSearchEnabled}
+                        className={cn(
+                          'size-8 pointer-coarse:size-11',
+                          webSearchEnabled && 'bg-brand-tint text-brand-text hover:bg-brand-tint'
+                        )}
                         onClick={() => setWebSearchEnabled(!webSearchEnabled)}
                       >
-                        <IconWorldSearch
-                          size={18}
+                        <Globe
                           className={cn(
-                            'text-muted-foreground',
-                            webSearchEnabled && 'text-primary'
+                            'size-4 text-muted-foreground',
+                            webSearchEnabled && 'text-brand-text'
                           )}
                         />
                       </Button>
@@ -2712,13 +2975,13 @@ const ChatInput = memo(function ChatInput({
                               <Button
                                 variant="ghost"
                                 size="icon-xs"
+                                className="size-8 pointer-coarse:size-11"
                                 aria-label={`Reasoning: ${label}`}
                               >
-                                <IconBrain
-                                  size={18}
+                                <Brain
                                   className={cn(
-                                    'text-muted-foreground',
-                                    reasoningValue === 'on' && 'text-primary',
+                                    'size-4 text-muted-foreground',
+                                    reasoningValue === 'on' && 'text-brand-text',
                                     reasoningValue === 'off' && 'opacity-50'
                                   )}
                                 />
@@ -2858,10 +3121,18 @@ const ChatInput = memo(function ChatInput({
               ) : isStreaming ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    {/* Stopping is not destructive -- the partial reply is
+                        kept -- so it is a secondary button, not a red one. */}
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="icon-sm"
-                      className="rounded-full mr-1 mb-1"
+                      className="mr-1 mb-1 pointer-coarse:size-11"
+                      data-test-id="stop-button"
+                      aria-label={
+                        queueLength > 0
+                          ? `Clear ${queueLength} queued message(s)`
+                          : 'Stop generating'
+                      }
                       onClick={() => {
                         // Stopping with messages queued clears the queue —
                         // there is nothing to interrupt yet. The old
@@ -2879,7 +3150,7 @@ const ChatInput = memo(function ChatInput({
                         stopStreaming(currentThreadId ?? '')
                       }}
                     >
-                      <IconPlayerStopFilled />
+                      <Square className="size-3.5 fill-current" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -2892,10 +3163,11 @@ const ChatInput = memo(function ChatInput({
                   size="icon-sm"
                   disabled={(!prompt.trim() && !hasSendableMedia) || ingestingAny}
                   data-test-id="send-message-button"
+                  aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
-                  className="rounded-full mr-1 mb-1"
+                  className="mr-1 mb-1 pointer-coarse:size-11"
                 >
-                  <ArrowRight className="text-primary-fg" />
+                  <ArrowUp className="size-4.5" />
                 </Button>
               )}
             </div>
@@ -2904,11 +3176,16 @@ const ChatInput = memo(function ChatInput({
       </div>
 
       {message && (
-        <div className="-mt-0.5 mx-2 pb-2 px-3 pt-1.5 rounded-b-lg text-xs text-destructive transition-all duration-200 ease-in-out">
-          <div className="flex items-center gap-1 justify-between">
-            {message}
-            <IconX
-              className="size-3 text-muted-foreground cursor-pointer"
+        <div
+          role="alert"
+          className="mt-1.5 mx-1 rounded-md border border-destructive/30 bg-destructive-tint px-3 py-1.5 text-xs text-destructive"
+        >
+          <div className="flex items-center gap-2 justify-between">
+            <span className="min-w-0 wrap-break-word">{message}</span>
+            <button
+              type="button"
+              aria-label={t('common:dismiss')}
+              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
               onClick={() => {
                 setMessage('')
                 // Reset file input to allow re-uploading the same file
@@ -2916,7 +3193,9 @@ const ChatInput = memo(function ChatInput({
                   fileInputRef.current.value = ''
                 }
               }}
-            />
+            >
+              <X className="size-3.5" />
+            </button>
           </div>
         </div>
       )}

@@ -55,6 +55,12 @@ type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
   /** Ends a turn: nothing still queued will run, so stop showing it as waiting. */
   settleRemaining: () => void
   reset: () => void
+  /**
+   * Drops these calls' entries and nothing else. `reset` clears every
+   * conversation's, which is right when only one is on screen and wrong when
+   * a split pane is still showing the other's timings and diffs.
+   */
+  forget: (toolCallIds: string[]) => void
 }
 
 /**
@@ -153,4 +159,20 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
     }),
 
   reset: () => set({ queue: [], timings: {}, progress: {}, diffs: {} }),
+
+  forget: (toolCallIds) =>
+    set((s) => {
+      if (toolCallIds.length === 0) return s
+      const drop = new Set(toolCallIds)
+      const keep = <T,>(record: Record<string, T>) =>
+        Object.fromEntries(
+          Object.entries(record).filter(([id]) => !drop.has(id))
+        ) as Record<string, T>
+      return {
+        queue: s.queue.filter((id) => !drop.has(id)),
+        timings: keep(s.timings),
+        progress: keep(s.progress),
+        diffs: keep(s.diffs),
+      }
+    }),
 }))

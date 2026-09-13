@@ -27,6 +27,47 @@ pub(crate) fn skills_dir(root: &Path) -> PathBuf {
     tool_skills::skills_dir(&project_store(root))
 }
 
+/// The user's own skills, shared by every project (AH-121):
+/// `<jan_data_folder>/agent-workspace/skills`, the same store the desktop
+/// writes native skills to, so a skill saved in the app is available to the
+/// CLI in any project. `None` when no data folder resolves.
+pub(crate) fn user_skills_dir() -> Option<PathBuf> {
+    user_skill_store().map(|store| tauri_plugin_agent_tools::skills::skills_dir(&store))
+}
+
+/// The store root holding the user's skills (`<jan_data_folder>/agent-workspace`),
+/// in the form the plugin's skill functions and `ToolContext` take: they add
+/// `skills/` themselves.
+#[cfg(not(test))]
+pub(crate) fn user_skill_store() -> Option<PathBuf> {
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    (!data.as_os_str().is_empty())
+        .then(|| tauri_plugin_agent_tools::workspace::permanent_store(&data))
+}
+
+// Tests point the user scope at a temp store rather than the real data
+// folder, whose skills would otherwise leak into every discovery test.
+#[cfg(test)]
+thread_local! {
+    static TEST_USER_SKILLS: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn user_skill_store() -> Option<PathBuf> {
+    TEST_USER_SKILLS.with(|d| d.borrow().clone())
+}
+
+/// User skills, minus any a project skill of the same name shadows.
+fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
+    let Some(dir) = user_skills_dir() else {
+        return Vec::new();
+    };
+    tool_skills::scan_skill_dir(&dir)
+        .into_iter()
+        .filter(|u| !project.iter().any(|p| p.name == u.name))
+        .collect()
+}
+
 /// One skill on disk, located by its identity name (folder name or flat stem),
 /// tagged with the plugin it ships in. The type, and every plugin discovery
 /// rule below, live in the tool plugin crate so the desktop's skill tools and
@@ -46,6 +87,10 @@ pub struct SkillMeta {
     pub user_invocable: bool,
     /// Offered to the model (system-prompt catalog, `skill_list`/`skill_read`).
     pub model_invocable: bool,
+    /// The version the skill declares (AH-123), as written. `None` is "said
+    /// nothing", which no constraint can be satisfied by.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// Frontmatter fields we recognize; everything else is ignored.
@@ -72,6 +117,11 @@ pub(crate) struct ParsedSkill {
     pub body: String,
     pub user_invocable: bool,
     pub model_invocable: bool,
+    /// AH-123, read by the plugin's parser so the two surfaces can never
+    /// disagree about what a skill calls itself.
+    pub version: Option<String>,
+    /// AH-124, read by the same parser, for the same reason.
+    pub requires: Vec<tauri_plugin_agent_tools::skills::SkillRequirement>,
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from a markdown body.
@@ -109,6 +159,10 @@ pub(crate) fn split_frontmatter(content: &str) -> (Option<String>, String) {
 }
 
 pub(crate) fn parse(content: &str) -> ParsedSkill {
+    // Version and dependencies come from the plugin's parser rather than being
+    // read twice here: two readers of one frontmatter is two answers waiting to
+    // differ, and the answer decides whether a skill loads at all.
+    let declared = tauri_plugin_agent_tools::skills::parse(content);
     let (yaml, body) = split_frontmatter(content);
     let Some(yaml) = yaml else {
         return ParsedSkill {
@@ -116,6 +170,8 @@ pub(crate) fn parse(content: &str) -> ParsedSkill {
             body,
             user_invocable: true,
             model_invocable: true,
+            version: declared.version,
+            requires: declared.requires,
         };
     };
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -124,7 +180,36 @@ pub(crate) fn parse(content: &str) -> ParsedSkill {
         body,
         user_invocable: fm.user_invocable.unwrap_or(true),
         model_invocable: !fm.disable_model_invocation.unwrap_or(false),
+        version: declared.version,
+        requires: declared.requires,
     }
+}
+
+/// What a skill declares and this project cannot supply (AH-123, AH-124).
+///
+/// The tool half is left to the surfaces that know their own toolset: here the
+/// question is only whether the skills a skill depends on are installed, and at
+/// a version its requirement allows.
+pub(crate) fn unmet_requirements(
+    root: &Path,
+    name: &str,
+    requires: &[tauri_plugin_agent_tools::skills::SkillRequirement],
+) -> Vec<String> {
+    let declared = tauri_plugin_agent_tools::skills::ParsedSkill {
+        description: None,
+        body: String::new(),
+        user_invocable: true,
+        model_invocable: true,
+        needs: Vec::new(),
+        version: None,
+        requires: requires.to_vec(),
+    };
+    let lookup = |wanted: &str| {
+        resolve_readable(root, wanted)
+            .ok()
+            .and_then(|entry| std::fs::read_to_string(&entry.file).ok())
+    };
+    tauri_plugin_agent_tools::skills::unmet_requirements(name, &declared, &lookup, None)
 }
 
 /// First non-empty, non-heading line of `body`, capped at 120 chars. Fallback
@@ -227,10 +312,13 @@ fn scan_plugin_skills(root: &Path, disabled: &[String]) -> Vec<SkillEntry> {
     tool_skills::discover_plugins(&project_store(root), disabled)
 }
 
-/// Project skills followed by plugin skills (qualified). Project skills shadow
-/// plugin skills of the same plain name.
+/// Project skills, then the user's own skills (AH-121), then plugin skills
+/// (qualified). A project skill shadows a user skill and a plugin skill of the
+/// same plain name: the project is the more specific scope.
 pub(crate) fn discover_all(root: &Path) -> Vec<SkillEntry> {
     let mut out = discover(root);
+    let user = discover_user(&out);
+    out.extend(user);
     out.extend(discover_plugins(root));
     out
 }
@@ -247,8 +335,16 @@ pub(crate) fn qualified_name(entry: &SkillEntry) -> String {
 /// disabling would only hide them from the catalog. Used by invocation
 /// dispatch so it reaches plugin skills with the names the catalogs advertise.
 pub(crate) fn resolve_readable(root: &Path, name: &str) -> Result<SkillEntry, String> {
+    let store = project_store(root);
+    if let Ok(entry) = tool_skills::resolve_store_skill(&store, name) {
+        return Ok(entry);
+    }
+    // The user's own skill, when no project skill has the name (AH-121).
+    if let Some(entry) = discover_user(&[]).into_iter().find(|e| e.name == name) {
+        return Ok(entry);
+    }
     let disabled = crate::core::agent::project::disabled_plugins(root);
-    tool_skills::resolve_readable(&project_store(root), name, &disabled)
+    tool_skills::resolve_readable(&store, name, &disabled)
 }
 
 /// Whether a skill is advertised given the `[skills].enabled` whitelist. An
@@ -276,6 +372,7 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         plugin: entry.plugin.clone(),
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
+        version: parsed.version.clone(),
     }
 }
 /// Whether a name refers to the built-in Jan skill (aliased `jan`), which is
@@ -297,6 +394,7 @@ fn default_jan_skill_meta() -> SkillMeta {
         plugin: None,
         user_invocable: true,
         model_invocable: true,
+        version: parsed.version.clone(),
     }
 }
 
@@ -473,11 +571,13 @@ pub(crate) fn build_invocation_message(
     let user_skills = user_catalog(root, &enabled);
     let meta =
         find_user_skill(&user_skills, name).ok_or_else(|| format!("skill '{name}' not found"))?;
+    let mut declared: Vec<tauri_plugin_agent_tools::skills::SkillRequirement> = Vec::new();
     let body = match resolve_readable(root, name) {
         Ok(entry) => {
-            let body =
-                parse(&std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?)
-                    .body;
+            let parsed =
+                parse(&std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?);
+            declared = parsed.requires.clone();
+            let body = parsed.body;
             // Folder skills (and single-skill plugins) may bundle files next to
             // their SKILL.md; announce that directory so relative paths resolve.
             let dir_note = entry.is_folder.then(|| {
@@ -494,6 +594,15 @@ pub(crate) fn build_invocation_message(
         Err(_) if is_default_jan_skill(name) => (parse(DEFAULT_JAN_SKILL).body, None),
         Err(e) => return Err(e),
     };
+    // AH-124: a skill that depends on skills this project does not have is
+    // refused by name, rather than invoked so its first instruction can fail.
+    let unmet = unmet_requirements(root, name, &declared);
+    if !unmet.is_empty() {
+        return Err(format!(
+            "skill '{name}' cannot be used here: {}",
+            unmet.join("; ")
+        ));
+    }
     let args = args.trim();
     let mut msg = format!("{}\n\n{}", invocation_wrapper(name, "skill"), body.0);
     if let Some(note) = body.1 {
@@ -741,6 +850,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// AH-124: a human invoking a skill whose dependency is missing is told
+    /// so by name, rather than handed instructions whose first step refers to
+    /// a skill that is not there. Installing the dependency at an allowed
+    /// version makes the same invocation work.
+    #[test]
+    fn a_skill_whose_dependency_is_missing_is_not_invoked() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_skills_requires_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
+        ));
+        let skills = skills_dir(&root);
+        std::fs::create_dir_all(skills.join("release")).unwrap();
+        std::fs::write(
+            skills.join("release").join("SKILL.md"),
+            "---\ndescription: Cut a release\nrequires:\n  - deploy >=2.0\n---\n\nCut it.\n",
+        )
+        .unwrap();
+
+        let refused = build_invocation_message(&root, "release", "").unwrap_err();
+        assert!(refused.contains("'deploy'"), "{refused}");
+        assert!(refused.contains("not installed"), "{refused}");
+
+        std::fs::create_dir_all(skills.join("deploy")).unwrap();
+        std::fs::write(
+            skills.join("deploy").join("SKILL.md"),
+            "---\ndescription: Ship it\nversion: 1.0.0\n---\n\nShip it.\n",
+        )
+        .unwrap();
+        let too_old = build_invocation_message(&root, "release", "").unwrap_err();
+        assert!(too_old.contains("is 1.0.0"), "{too_old}");
+
+        std::fs::write(
+            skills.join("deploy").join("SKILL.md"),
+            "---\ndescription: Ship it\nversion: 2.0.0\n---\n\nShip it.\n",
+        )
+        .unwrap();
+        let (msg, _) = build_invocation_message(&root, "release", "").expect("now satisfied");
+        assert!(msg.contains("Cut it."), "{msg}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn build_invocation_message_injects_body_and_args() {
         let root = std::env::temp_dir().join(format!(
@@ -852,6 +1006,48 @@ mod tests {
         let dir = skills_dir(root).join(name);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), body).unwrap();
+    }
+
+    /// AH-121: the user's own skills are offered in every project, readable
+    /// by name, and a project skill of the same name wins.
+    #[test]
+    fn user_skills_apply_in_every_project_and_a_project_skill_shadows_them() {
+        let user = temp_root("user-scope");
+        let user_dir = user.join("skills");
+        for (name, body) in [
+            ("house-style", "---\ndescription: How this user writes commit messages\n---\nUse the imperative.\n"),
+            ("deploy", "---\ndescription: user deploy\n---\nuser deploy body\n"),
+        ] {
+            let d = user_dir.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("SKILL.md"), body).unwrap();
+        }
+        TEST_USER_SKILLS.with(|d| *d.borrow_mut() = Some(user.clone()));
+
+        for tag in ["proj-a", "proj-b"] {
+            let root = temp_root(tag);
+            let names: Vec<String> = discover_all(&root).iter().map(qualified_name).collect();
+            assert!(names.contains(&"house-style".to_string()), "{tag}: {names:?}");
+            assert!(read_raw(&root, "house-style").unwrap().contains("Use the imperative."));
+            let listed = catalog(&root, &[]);
+            let meta = listed.iter().find(|m| m.name == "house-style").expect("in the catalog");
+            assert_eq!(meta.description, "How this user writes commit messages");
+        }
+
+        // A project skill with the same name shadows the user's.
+        let root = temp_root("proj-shadow");
+        project_skill(&root, "deploy", "---\ndescription: project deploy\n---\nproject deploy body\n");
+        let deploys: Vec<SkillEntry> = discover_all(&root).into_iter().filter(|e| e.name == "deploy").collect();
+        assert_eq!(deploys.len(), 1, "one deploy, not both");
+        assert!(read_raw(&root, "deploy").unwrap().contains("project deploy body"));
+
+        // The enabled whitelist still applies to user skills.
+        assert!(catalog(&root, &["deploy".to_string()]).iter().all(|m| m.name != "house-style"));
+
+        TEST_USER_SKILLS.with(|d| *d.borrow_mut() = None);
+        let root = temp_root("proj-none");
+        assert!(discover_all(&root).iter().all(|e| e.name != "house-style"));
+        assert!(read_raw(&root, "house-style").is_err());
     }
 
     #[test]
