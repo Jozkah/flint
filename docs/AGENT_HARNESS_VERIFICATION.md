@@ -1661,3 +1661,40 @@ reported and the file is still conflicted afterwards; a repository with no
 remote is not mistaken for one in sync; a credential sitting in the repository
 never reaches an answer; and a file past the size bound makes the answer say
 it is partial.
+
+
+### The repository index (AH-053/054/055/056) and symbols (AH-059/060/061)
+
+Nine tests, plus this repository indexed for real:
+
+```
+$ jan cli agent index --project .
+1665 files, 27516 symbols (a bound stopped the walk)
+  read 1665 new, 0 changed; reused 0 without reading; 0 gone     [0.77s]
+$ jan cli agent index --project .
+  read 0 new, 0 changed; reused 1665 without reading; 0 gone     [0.22s]
+$ jan cli agent index --project . --symbol classify_tool
+src-tauri/plugins/tauri-plugin-agent-tools/src/harness_error.rs:753 Function classify_tool
+```
+
+And a real run in which the model called `symbol_find` and was told:
+
+```
+src/store.rs:3 defines load_settings (Function)
+
+3 use(s):
+src/store.rs:3 (definition) pub fn load_settings() -> u8 {
+src/use.rs:1 use crate::store::load_settings;
+src/use.rs:4 let payload = load_settings();
+```
+
+Covered by test: a first build reading the repository while skipping documents
+and vendored trees; symbols found by name in Rust, TypeScript and Python with
+an exact match never buried under near ones; a second pass reading nothing; a
+changed file re-read and its new symbol visible; an added file added and a
+deleted file's symbols gone; a file restored to an *older* copy still re-read;
+a moved checkout reconciling without rebuilding; a cancelled build leaving no
+index at all, with the next build being a first build; an index for another
+project or an older shape not used; a directory that is not a project refused;
+and every use of a name found, with `payload` not matching `load` and the
+definition line marked.

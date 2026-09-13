@@ -1281,6 +1281,63 @@ impl CompositeToolInvoker {
                 }
                 crate::core::agent::subagent::format_subagent_cancel(&run_id, cancelled)
             }
+            "symbol_find" => {
+                let name = args
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                if name.is_empty() {
+                    return "ERROR [invalid_input]: symbol_find needs a `name`.".to_string();
+                }
+                let want_uses = args
+                    .get("uses")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                let data = crate::core::app::commands::resolve_jan_data_folder();
+                let project = self.project_root.clone();
+                let cancel = std::sync::atomic::AtomicBool::new(false);
+                match crate::core::agent::index::refresh(&data, &project, &cancel) {
+                    Ok((index, _)) => {
+                        let mut out = String::new();
+                        let definitions =
+                            crate::core::agent::index::find_symbol(&index, &name, 20);
+                        if definitions.is_empty() {
+                            out.push_str(&format!(
+                                "Nothing named {name:?} is defined in the {} files indexed here.\n",
+                                index.files.len()
+                            ));
+                        }
+                        for hit in &definitions {
+                            out.push_str(&format!(
+                                "{}:{} defines {} ({:?})\n",
+                                hit.path, hit.line, hit.name, hit.kind
+                            ));
+                        }
+                        if want_uses {
+                            let uses =
+                                crate::core::agent::index::find_references(&index, &name, 100);
+                            out.push_str(&format!("\n{} use(s):\n", uses.len()));
+                            for hit in uses {
+                                out.push_str(&format!(
+                                    "{}:{}{} {}\n",
+                                    hit.path,
+                                    hit.line,
+                                    if hit.is_definition { " (definition)" } else { "" },
+                                    hit.text
+                                ));
+                            }
+                        }
+                        out.trim_end().to_string()
+                    }
+                    Err(e) => {
+                        let harness: tauri_plugin_agent_tools::harness_error::HarnessError =
+                            (&e).into();
+                        format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+                    }
+                }
+            }
             "dispatch_subagent" => {
                 let req = match parse_dispatch_args(args) {
                     Ok(r) => r,
@@ -1854,7 +1911,7 @@ impl CompositeToolInvoker {
             }
             // Subagent tools are handled ahead of the fs/exec gate and the MCP
             // fallback: they orchestrate nested runs, not filesystem access.
-            if crate::core::agent::subagent::is_subagent_tool(name) {
+            if name == "symbol_find" || crate::core::agent::subagent::is_subagent_tool(name) {
                 let id = tc
                     .get("id")
                     .and_then(|v| v.as_str())
@@ -2451,6 +2508,32 @@ fn advertise_local_tools(
         // Subagent tools are advertised only when this run may dispatch them
         // (never for a child run, capping recursion depth at one) and the run
         // isn't in read-only Plan mode (a dispatched subagent could mutate).
+        if let Some(_root) = project_root {
+            // AH-059/060/061: looking a name up in the project's own index,
+            // instead of grepping for it and reading whatever matched. Offered
+            // in Plan mode too: it reads.
+            let schema = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "symbol_find",
+                    "description": "Find where a name is defined in this project, and optionally every place it is used. Faster and narrower than grep: it reads the project's own index, which skips vendored and generated trees, and it matches whole words only. Two unrelated things with one name are both reported -- this locates, it does not resolve.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string", "description": "The symbol to look for." },
+                            "uses": { "type": "boolean", "description": "Also list every place the name is used. Default false." }
+                        },
+                        "required": ["name"]
+                    }
+                }
+            });
+            let named = schema["function"]["name"].as_str().unwrap_or_default();
+            let offered = !permissions.is_denied(named, subject)
+                && allowed_names.is_none_or(|allow| allow.contains(named));
+            if offered {
+                openai_tools.push(schema);
+            }
+        }
         if subagents_enabled && !planning {
             if let Some(root) = project_root {
                 let registry = crate::core::agent::subagent::SubagentRegistry::load(root);

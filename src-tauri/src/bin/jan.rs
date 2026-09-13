@@ -391,6 +391,22 @@ enum AgentCommands {
         #[arg(long)]
         accept_widening: bool,
     },
+    /// Build or update this project's index, and look symbols up in it
+    /// (AH-053/054/055/056)
+    Index {
+        /// The project to index. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Look this name up instead of printing what the update did.
+        #[arg(long)]
+        symbol: Option<String>,
+        /// The most matches to print.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read or write a run's mailbox (AH-103)
     Mail {
         /// The run whose mailbox this is about.
@@ -1186,6 +1202,70 @@ async fn handle_agent(cmd: AgentCommands) {
                     );
                 }
             })
+        }
+        AgentCommands::Index {
+            project,
+            symbol,
+            limit,
+            json,
+        } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            // Nothing cancels a one-shot command, but the index takes the flag
+            // rather than assuming: the same call is made from a run, where
+            // stopping it has to leave no half index behind.
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            app_lib::core::agent::index::refresh(&data, &root, &cancel)
+                .map_err(|e| HarnessError::from(&e))
+                .map(|(index, update)| {
+                    if let Some(name) = symbol {
+                        let found = app_lib::core::agent::index::find_symbol(&index, &name, limit);
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&found).unwrap_or_default()
+                            );
+                            return;
+                        }
+                        if found.is_empty() {
+                            println!("nothing named {name:?} is defined in {} files", index.files.len());
+                        }
+                        for hit in found {
+                            println!("{}:{} {:?} {}", hit.path, hit.line, hit.kind, hit.name);
+                        }
+                        return;
+                    }
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "files": index.files.len(),
+                                "symbols": index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
+                                "commit": index.commit,
+                                "truncated": index.truncated,
+                                "update": update,
+                            }))
+                            .unwrap_or_default()
+                        );
+                        return;
+                    }
+                    println!(
+                        "{} files, {} symbols{}",
+                        index.files.len(),
+                        index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
+                        if index.truncated { " (a bound stopped the walk)" } else { "" }
+                    );
+                    println!(
+                        "  read {} new, {} changed; reused {} without reading; {} gone{}",
+                        update.added,
+                        update.changed,
+                        update.unchanged,
+                        update.removed,
+                        if update.reconciled { "; the checkout moved, so every entry was re-checked" } else { "" }
+                    );
+                })
         }
         AgentCommands::Mail {
             run,

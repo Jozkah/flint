@@ -122,15 +122,15 @@ per-OS evidence log rather than backlog items.
 | `AH-050` | Tool invocation audit log | 2 | security | P0 | `implemented` | high | `AH-049` |
 | `AH-051` | Emergency kill switch | 2 | security | P0 | `implemented` | critical | `AH-022` |
 | `AH-052` | Permission policy import and export | 2 | security | P2 | `implemented` | high | `AH-007` |
-| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `in-progress` | medium | `AH-010` |
-| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `in-progress` | low | `AH-053` |
-| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `missing` | low | `AH-053` |
-| `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `missing` | low | `AH-055` |
+| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `implemented` | medium | `AH-010` |
+| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
+| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
+| `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `implemented` | low | `AH-055` |
 | `AH-057` | LSP client integration | 3 | repo-intelligence | P1 | `missing` | medium | `AH-053` |
 | `AH-058` | LSP server lifecycle management | 3 | repo-intelligence | P1 | `missing` | medium | `AH-057` |
-| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
-| `AH-060` | Find references | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
-| `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
+| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `implemented` | low | `AH-057` |
+| `AH-060` | Find references | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
+| `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
 | `AH-062` | Call hierarchy | 3 | repo-intelligence | P2 | `missing` | low | `AH-060` |
 | `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
 | `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `missing` | low | `AH-063` |

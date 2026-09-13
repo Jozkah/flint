@@ -1698,3 +1698,47 @@ The mailbox path is a hash of the run id, so a conversation id is never a path
 component on a shared machine, and message bodies are scrubbed on the way in.
 A message is data: `message_check` presents it as another agent's words, which
 this run may act on or ignore.
+
+
+## The repository index, and looking a name up in it (AH-053 ... AH-061)
+
+`impact.rs` reads a repository every time it is asked anything, which is right
+for a one-off question and wrong as a foundation: a symbol search that re-reads
+a thousand files per query is a search nobody runs twice. `index.rs` is that
+same reading, kept.
+
+Stored per file: path, size, modification time, a content hash, and the symbols
+it defines. Stored under the data folder keyed by a hash of the project path --
+an index is state *about* a checkout, not part of it, and writing it into the
+repository would put it in somebody's diff.
+
+What makes it trustworthy rather than merely fast:
+
+* *A stale entry is never used.* A file is re-read when its size or
+  modification time differs from what was stored -- **any** difference, not a
+  newer one, because a checkout or a restore can put an older file in place.
+* *An update says what it did.* added, changed, unchanged, removed. Reporting
+  how much was re-read is what makes "incremental" checkable rather than
+  claimed: on this repository the first pass reads 1,665 files in 0.77 s and
+  the second reads none in 0.22 s.
+* *A moved checkout reconciles rather than trusting.* The index records the
+  commit it was built at; when that has moved, every entry is re-checked
+  against disk. Still incremental -- unchanged files are stat-compared, not
+  re-read -- but nothing is believed because it was true on another branch.
+* *A stopped build writes nothing.* Half an index that looks whole is worse
+  than none, so cancellation returns `cancelled` and leaves no file. The index
+  is written to a temporary file and moved into place for the same reason.
+* *An index from another project or an older shape is not used.* Not an error
+  either: the next build is simply a full one.
+
+On top of it, `symbol_find` (a model-facing tool) and
+`jan cli agent index --symbol`: where a name is defined, and optionally every
+place it is used. Whole-word matching over the indexed files only, so `load`
+does not match `payload` and vendored trees are not searched. It locates and
+does not resolve: two unrelated things with one name are both reported, and
+definition lines are marked so the difference is visible rather than guessed
+at.
+
+This is not a language server (AH-057 and AH-058 remain missing, and one would
+answer questions this cannot -- types, overloads, which of two same-named
+symbols an expression means). It is the part that does not need one.

@@ -1822,15 +1822,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs",
-        "web-app/src/lib/coworkRepoMap.ts"
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -1840,10 +1841,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). index.rs stores a project's files and the symbols they define under the data folder, keyed by a hash of the project path. Each entry carries size, modification time and a content hash, so a stale entry is never used; the file is written whole and moved into place; an index from another project or an older shape is not used, and the next build is simply a full one."
     },
     {
       "id": "AH-054",
@@ -1851,14 +1854,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -1868,10 +1873,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). The first build walks the repository, skipping dotted, vendored and generated directories and files past the size bound, and says when a bound stopped it. Measured on this repository: 1,665 files and 27,516 symbols in 0.77s. A build can be cancelled, and then writes nothing at all -- half an index that looks whole is worse than none."
     },
     {
       "id": "AH-055",
@@ -1879,13 +1886,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "File changes update the index without a full rebuild.",
@@ -1894,10 +1905,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The repository map is re-walked in full on each use; there is no cache to update."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A later pass re-reads only files whose size or modification time differs from what was stored -- any difference, not a newer one, so a file restored to an older copy is still re-read -- and reports added/changed/unchanged/removed so incremental is checkable rather than claimed. Second pass on this repository: 0 files read, 1,665 reused, 0.22s."
     },
     {
       "id": "AH-056",
@@ -1905,13 +1918,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-055"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Switching branches or rewinding a checkpoint reconciles the index with the new tree.",
@@ -1920,10 +1937,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). The index records the commit it was built at; when that has moved, every entry is re-checked against disk and the update says reconciled. Still incremental: unchanged files are stat-compared rather than re-read. Proven with a real branch switch in which one file differed and exactly one file was re-read."
     },
     {
       "id": "AH-057",
@@ -1987,13 +2006,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-057"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can look up a symbol by name instead of grepping for it.",
@@ -2002,12 +2025,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5) from the index rather than from a language server (AH-057 and AH-058 remain missing). find_symbol looks a name up in the stored index, exact matches first and then names containing the query, and the model reaches it through the symbol_find tool. Proven in a real run."
     },
     {
       "id": "AH-060",
@@ -2015,13 +2040,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-059"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can enumerate every reference to a symbol.",
@@ -2030,12 +2059,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). find_references lists every use of a name across the indexed files, whole-word only (load does not match payload) and never outside what the index calls source, with definition lines marked so a use is not mistaken for the definition. Bounded at 500. It locates rather than resolves: two unrelated things with one name are both reported, which is said rather than hidden."
     },
     {
       "id": "AH-061",
@@ -2043,13 +2074,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-059"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can resolve a symbol to its definition site.",
@@ -2058,12 +2093,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A name resolves to the file and line the index recorded the definition at, through the same symbol_find tool and jan cli agent index --symbol. Verified in a real run: src/store.rs:3 defines load_settings (Function)."
     },
     {
       "id": "AH-062",
