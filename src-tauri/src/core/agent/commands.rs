@@ -1495,6 +1495,42 @@ pub async fn agent_events_list(
     .map_err(|e| e.to_string())?
 }
 
+/// The session's finished runs, each one steppable in the timeline. AH-176.
+#[tauri::command]
+pub async fn agent_events_runs(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::run_replay::FinishedRun>,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_replay::finished_runs(&data_folder, &session)
+    })
+    .await
+    .map_err(|e| tauri_plugin_agent_tools::harness_error::HarnessError::internal(e.to_string()))?
+}
+
+/// One finished run's recorded events, to step through. A run that has not
+/// ended, or is not in the log, is refused by kind. AH-176.
+#[tauri::command]
+pub async fn agent_events_run(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<
+    tauri_plugin_agent_tools::run_replay::RunRecording,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_replay::recording(&data_folder, &session, &run)
+    })
+    .await
+    .map_err(|e| tauri_plugin_agent_tools::harness_error::HarnessError::internal(e.to_string()))?
+}
+
 /// Read an export back as untrusted input and summarize it. Nothing in it is
 /// run or replayed.
 #[tauri::command]

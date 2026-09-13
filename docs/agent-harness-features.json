@@ -6258,14 +6258,21 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-032"
       ],
       "owner": "lane-09-ux-observability",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/run_replay.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "src-tauri/src/core/cli/journal.rs",
+        "src-tauri/src/lib.rs",
+        "web-app/src/containers/CoworkTimelinePanel.tsx",
+        "web-app/src/lib/runReplay.ts",
+        "web-app/src/locales/en/common.json"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -6275,10 +6282,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/run_replay.rs",
+        "web-app/src/containers/__tests__/CoworkTimelineReplay.test.tsx",
+        "web-app/src/lib/__tests__/runReplay.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The CLI replays a rendering journal; there is no event-level replay UI."
+      "auditNote": "The CLI replays a rendering journal; there is no event-level replay UI. 2026-09-13 (Phase 6): implemented. A finished run (recorded start and end) is stepped through in the timeline panel: step N renders the timeline built from the run's first N events, so intermediate states (running, awaiting approval) are visible; the changed row is marked; buttons, slider and keys move between steps. Unknown, unfinished and unreadable runs are refused by kind (not_found / invalid_input / malformed_state, stage replay). Abandoned loads are dropped by token. Proven by real desktop scenario timeline-replay-after-a-restart (21 steps, after a restart)."
     },
     {
       "id": "AH-177",

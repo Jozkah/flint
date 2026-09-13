@@ -103,6 +103,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_events_export,
         core::agent::commands::agent_events_export_cancel,
         core::agent::commands::agent_events_inspect,
+        core::agent::commands::agent_events_runs,
+        core::agent::commands::agent_events_run,
         core::agent::commands::agent_bundle_import,
         core::agent::commands::agent_bundle_import_cancel,
         core::agent::commands::agent_bundle_imports_list,

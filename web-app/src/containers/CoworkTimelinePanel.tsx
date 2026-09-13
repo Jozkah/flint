@@ -5,11 +5,15 @@ import {
   Ban,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Clock,
   Hand,
   Loader2,
   PauseCircle,
+  SkipBack,
+  SkipForward,
   XCircle,
 } from 'lucide-react'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
@@ -28,6 +32,16 @@ import {
   type TimelineRow,
   type TimelineStatus,
 } from '@/lib/executionTimeline'
+import {
+  clampStep,
+  listFinishedRuns,
+  loadRunRecording,
+  rowChangedAt,
+  rowsAtStep,
+  type FinishedRun,
+  type ReplayError,
+  type RunRecording,
+} from '@/lib/runReplay'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
@@ -46,6 +60,17 @@ const STATUS_ICON: Record<TimelineStatus, React.ReactNode> = {
   cancelled: <CircleDot className="size-3.5 text-muted-foreground" aria-hidden />,
   interrupted: <PauseCircle className="size-3.5 text-amber-600" aria-hidden />,
 }
+
+/**
+ * Stepping through a finished run (AH-176). Leaving replay or changing session
+ * moves the request token on, so an answer that lands afterwards is dropped
+ * rather than shown.
+ */
+type Replay =
+  | { phase: 'loading' }
+  | { phase: 'failed'; error: ReplayError }
+  | { phase: 'none' }
+  | { phase: 'ready'; runs: FinishedRun[]; recording: RunRecording; step: number }
 
 const time = (at: string) => {
   const d = new Date(at)
@@ -79,6 +104,8 @@ export function CoworkTimelinePanel({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [following, setFollowing] = useState(true)
   const [linked, setLinked] = useState<string | null>(null)
+  const [replay, setReplay] = useState<Replay | null>(null)
+  const replayToken = useRef(0)
   const lastSeq = useRef(0)
   const session = useRef(sessionId)
   const listRef = useRef<HTMLDivElement>(null)
@@ -93,6 +120,8 @@ export function CoworkTimelinePanel({
     setExpanded(new Set())
     setLinked(null)
     setFollowing(true)
+    replayToken.current += 1
+    setReplay(null)
   }, [sessionId])
 
   const read = useCallback(async () => {
@@ -121,7 +150,49 @@ export function CoworkTimelinePanel({
     if (!running) void read()
   }, [running, read])
 
-  const rows = useMemo(() => buildTimeline(events, sessionId), [events, sessionId])
+  const liveRows = useMemo(() => buildTimeline(events, sessionId), [events, sessionId])
+  const replaying = replay?.phase === 'ready' ? replay : null
+  const rows = useMemo(
+    () =>
+      replaying ? rowsAtStep(replaying.recording.events, replaying.step, sessionId) : liveRows,
+    [replaying, liveRows, sessionId]
+  )
+  const currentRow = useMemo(
+    () =>
+      replaying ? rowChangedAt(replaying.recording.events, replaying.step, sessionId) : undefined,
+    [replaying, sessionId]
+  )
+
+  const openRun = useCallback(
+    async (run: string | null) => {
+      const token = ++replayToken.current
+      const asked = sessionId
+      setReplay({ phase: 'loading' })
+      const listed = await listFinishedRuns(asked)
+      if (replayToken.current !== token || session.current !== asked) return
+      if (!listed.ok) return setReplay({ phase: 'failed', error: listed.error })
+      if (listed.value.length === 0) return setReplay({ phase: 'none' })
+      const chosen = run ?? listed.value[listed.value.length - 1].run
+      const loaded = await loadRunRecording(asked, chosen)
+      if (replayToken.current !== token || session.current !== asked) return
+      if (!loaded.ok) return setReplay({ phase: 'failed', error: loaded.error })
+      setExpanded(new Set())
+      setLinked(null)
+      setReplay({ phase: 'ready', runs: listed.value, recording: loaded.value, step: 1 })
+    },
+    [sessionId]
+  )
+  const exitReplay = () => {
+    replayToken.current += 1
+    setReplay(null)
+    setFollowing(true)
+  }
+  const goToStep = (step: number) =>
+    setReplay((cur) =>
+      cur?.phase === 'ready'
+        ? { ...cur, step: clampStep(step, cur.recording.events.length) }
+        : cur
+    )
   const counts = useMemo(() => countByCategory(rows), [rows])
   const visible = useMemo(() => filterTimeline(rows, enabled), [rows, enabled])
   const virtual = visible.length > TIMELINE_FULL_RENDER_LIMIT
@@ -135,18 +206,30 @@ export function CoworkTimelinePanel({
 
   // Follow live: stay at the end while following.
   useEffect(() => {
-    if (!following) return
+    if (!following || replaying) return
     const el = listRef.current
     if (!el) return
     if (virtual) virtualizer.scrollToIndex(visible.length - 1, { align: 'end' })
     else el.scrollTop = el.scrollHeight
-  }, [visible.length, following, virtual, virtualizer])
+  }, [visible.length, following, virtual, virtualizer, replaying])
+
+  // In replay the row the current step touched is kept in view.
+  useEffect(() => {
+    if (!currentRow) return
+    const index = visible.findIndex((r) => r.id === currentRow)
+    if (index < 0) return
+    if (virtual) virtualizer.scrollToIndex(index, { align: 'auto' })
+    else
+      [...(listRef.current?.querySelectorAll<HTMLElement>('[data-row-id]') ?? [])]
+        .find((el) => el.dataset.rowId === currentRow)
+        ?.scrollIntoView?.({ block: 'nearest' })
+  }, [currentRow, visible, virtual, virtualizer])
 
   const onScroll = () => {
     const el = listRef.current
     if (!el) return
     const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 24
-    if (!atEnd && following) setFollowing(false)
+    if (!atEnd && following && !replaying) setFollowing(false)
   }
 
   const toggle = (id: string) =>
@@ -184,6 +267,7 @@ export function CoworkTimelinePanel({
       open={expanded.has(row.id)}
       onToggle={() => toggle(row.id)}
       linked={!!linked && row.invocation === linked}
+      current={row.id === currentRow}
       onLink={(inv) => setLinked((cur) => (cur === inv ? null : inv))}
     />
   )
@@ -230,9 +314,35 @@ export function CoworkTimelinePanel({
         </div>
         <div className="flex items-center justify-between border-b px-2 py-1 text-[11px] text-muted-foreground">
           <span aria-live="polite" data-testid="timeline-live-state">
-            {following ? t('common:timeline.following') : t('common:timeline.paused')}
+            {replaying
+              ? t('common:timeline.replay.replaying')
+              : following
+                ? t('common:timeline.following')
+                : t('common:timeline.paused')}
           </span>
-          {!following && (
+          {!replay && (
+            <button
+              type="button"
+              data-testid="timeline-replay"
+              disabled={running}
+              title={running ? t('common:timeline.replay.whileRunning') : undefined}
+              className="rounded border px-1.5 py-0.5 text-foreground disabled:opacity-50"
+              onClick={() => void openRun(null)}
+            >
+              {t('common:timeline.replay.start')}
+            </button>
+          )}
+          {replay && (
+            <button
+              type="button"
+              data-testid="timeline-replay-exit"
+              className="rounded border px-1.5 py-0.5 text-foreground"
+              onClick={exitReplay}
+            >
+              {t('common:timeline.replay.exit')}
+            </button>
+          )}
+          {!following && !replaying && (
             <button
               type="button"
               data-testid="timeline-follow"
@@ -253,6 +363,33 @@ export function CoworkTimelinePanel({
             </button>
           )}
         </div>
+        {replay?.phase === 'loading' && (
+          <p className="px-3 py-2 text-xs text-muted-foreground" data-testid="timeline-replay-loading">
+            {t('common:timeline.replay.loading')}
+          </p>
+        )}
+        {replay?.phase === 'none' && (
+          <p className="px-3 py-2 text-xs text-muted-foreground" data-testid="timeline-replay-none">
+            {t('common:timeline.replay.none')}
+          </p>
+        )}
+        {replay?.phase === 'failed' && (
+          <p
+            role="alert"
+            className="px-3 py-2 text-xs text-destructive"
+            data-testid="timeline-replay-error"
+            data-kind={replay.error.kind}
+          >
+            {t('common:timeline.replay.refused', { error: replay.error.message })}
+          </p>
+        )}
+        {replaying && (
+          <ReplayControls
+            replay={replaying}
+            onStep={goToStep}
+            onRun={(run) => void openRun(run)}
+          />
+        )}
         {error && (
           <p role="alert" className="px-3 py-2 text-xs text-destructive" data-testid="timeline-error">
             {t('common:timeline.unreadable', { error })}
@@ -295,6 +432,137 @@ export function CoworkTimelinePanel({
   )
 }
 
+function ReplayControls({
+  replay,
+  onStep,
+  onRun,
+}: {
+  replay: Extract<Replay, { phase: 'ready' }>
+  onStep: (step: number) => void
+  onRun: (run: string) => void
+}) {
+  const { t } = useTranslation()
+  const total = replay.recording.events.length
+  const event = replay.recording.events[replay.step - 1]
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).tagName === 'SELECT') return
+    const to =
+      e.key === 'ArrowRight'
+        ? replay.step + 1
+        : e.key === 'ArrowLeft'
+          ? replay.step - 1
+          : e.key === 'Home'
+            ? 1
+            : e.key === 'End'
+              ? total
+              : null
+    if (to === null) return
+    e.preventDefault()
+    onStep(to)
+  }
+  const button = 'rounded border px-1.5 py-0.5 text-foreground disabled:opacity-40'
+  return (
+    <div
+      role="group"
+      aria-label={t('common:timeline.replay.controls')}
+      className="space-y-1 border-b px-2 py-1.5 text-[11px]"
+      data-testid="timeline-replay-controls"
+      data-run={replay.recording.run}
+      data-step={replay.step}
+      data-total={total}
+      onKeyDown={onKeyDown}
+    >
+      {replay.runs.length > 1 && (
+        <select
+          aria-label={t('common:timeline.replay.run')}
+          data-testid="timeline-replay-run"
+          value={replay.recording.run}
+          onChange={(e) => onRun(e.target.value)}
+          className="w-full rounded border bg-transparent px-1 py-0.5"
+        >
+          {replay.runs.map((r) => (
+            <option key={r.run} value={r.run}>
+              {t('common:timeline.replay.runOption', {
+                at: time(r.startedAt),
+                steps: r.steps,
+                stoppedBy: r.stoppedBy,
+              })}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={button}
+          aria-label={t('common:timeline.replay.first')}
+          data-testid="timeline-replay-first"
+          disabled={replay.step <= 1}
+          onClick={() => onStep(1)}
+        >
+          <SkipBack className="size-3" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={button}
+          aria-label={t('common:timeline.replay.previous')}
+          data-testid="timeline-replay-previous"
+          disabled={replay.step <= 1}
+          onClick={() => onStep(replay.step - 1)}
+        >
+          <ChevronLeft className="size-3" aria-hidden />
+        </button>
+        <input
+          type="range"
+          min={1}
+          max={total}
+          value={replay.step}
+          aria-label={t('common:timeline.replay.step')}
+          aria-valuetext={t('common:timeline.replay.position', { step: replay.step, total })}
+          data-testid="timeline-replay-slider"
+          onChange={(e) => onStep(Number(e.target.value))}
+          className="min-w-0 flex-1"
+        />
+        <button
+          type="button"
+          className={button}
+          aria-label={t('common:timeline.replay.next')}
+          data-testid="timeline-replay-next"
+          disabled={replay.step >= total}
+          onClick={() => onStep(replay.step + 1)}
+        >
+          <ChevronRight className="size-3" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={button}
+          aria-label={t('common:timeline.replay.last')}
+          data-testid="timeline-replay-last"
+          disabled={replay.step >= total}
+          onClick={() => onStep(total)}
+        >
+          <SkipForward className="size-3" aria-hidden />
+        </button>
+      </div>
+      <p className="flex flex-wrap gap-x-2 text-muted-foreground" aria-live="polite">
+        <span data-testid="timeline-replay-position" className="tabular-nums">
+          {t('common:timeline.replay.position', { step: replay.step, total })}
+        </span>
+        {event && (
+          <span data-testid="timeline-replay-event" className="font-mono">
+            {event.kind} · {time(event.at)}
+          </span>
+        )}
+        {replay.recording.truncated && (
+          <span data-testid="timeline-replay-truncated">
+            {t('common:timeline.replay.truncated')}
+          </span>
+        )}
+      </p>
+    </div>
+  )
+}
+
 function TimelineItem({
   row,
   index,
@@ -303,6 +571,7 @@ function TimelineItem({
   open,
   onToggle,
   linked,
+  current = false,
   onLink,
 }: {
   row: TimelineRow
@@ -312,6 +581,7 @@ function TimelineItem({
   open: boolean
   onToggle: () => void
   linked: boolean
+  current?: boolean
   onLink: (invocation: string) => void
 }) {
   const { t } = useTranslation()
@@ -328,7 +598,10 @@ function TimelineItem({
       data-invocation={row.invocation ?? ''}
       data-seq={row.seq}
       data-linked={linked}
-      className={cn('border-b', linked && 'bg-primary/5')}
+      data-row-id={row.id}
+      data-current={current}
+      aria-current={current ? 'step' : undefined}
+      className={cn('border-b', linked && 'bg-primary/5', current && 'bg-amber-500/10')}
     >
       <div className="flex items-start gap-1 px-2 py-1.5">
         <button

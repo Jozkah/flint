@@ -1364,6 +1364,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
         run: scenario_execution_timeline_restart,
     },
     Scenario {
+        name: "timeline-replay-after-a-restart",
+        run: scenario_timeline_replay_after_restart,
+    },
+    Scenario {
         name: "context-diff-restart",
         run: scenario_context_diff_restart,
     },
@@ -5221,6 +5225,148 @@ fn scenario_execution_timeline_restart(ctx: &Ctx) -> ScenarioResult {
     ensure!(rows == expected, "after a restart the timeline is {rows:?}, not {expected:?}");
     ensure!(mock_requests(ctx)?.is_empty(), "reading the timeline sent a request");
     println!("      same {} rows after the restart", rows.len());
+    Ok(())
+}
+
+/// AH-176: the run the first half recorded, stepped through in a fresh
+/// process. Step 1 is the run's start alone; each Next adds or changes one
+/// row, at least one step shows a call in a state it later left, and the last
+/// step is exactly the timeline the first half saw. A run the log does not
+/// hold is refused by kind, and stepping sends no request anywhere.
+fn scenario_timeline_replay_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, TIMELINE_HANDOFF, "execution-timeline")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    let expected: Vec<String> = handoff["rows"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    ensure!(!expected.is_empty(), "the handoff holds no rows");
+    open_cowork_session(ctx, &session)?;
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the recorded timeline",
+        &format!(
+            "return document.querySelectorAll('[data-testid=\"timeline-row\"]').length >= {};",
+            expected.len()
+        ),
+        Duration::from_secs(20),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"timeline-replay\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the replay controls",
+        "return !!document.querySelector('[data-testid=\"timeline-replay-controls\"]');",
+        Duration::from_secs(15),
+    )?;
+    // The session holds the agent run and the chat run inside it; the one
+    // that most recently finished is offered first (the first attempt offered
+    // the chat run, listed by when it started). The agent run is the one with
+    // the tool calls, so it is chosen explicitly if it is not already shown.
+    let runs = ctx.eval(
+        "const s = document.querySelector('[data-testid=\"timeline-replay-run\"]');
+         return s ? [...s.options].map(o => [o.value, o.textContent]) : [];",
+    )?;
+    println!("      runs offered: {runs}");
+    ctx.eval(
+        "const s = document.querySelector('[data-testid=\"timeline-replay-run\"]');
+         if (s) {
+           const steps = o => Number((o.textContent.match(/([0-9]+) steps/) || [])[1] || 0);
+           const best = [...s.options].sort((a, b) => steps(b) - steps(a))[0];
+           if (best && best.value !== s.value) {
+             const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+             set.call(s, best.value);
+             s.dispatchEvent(new Event('change', { bubbles: true }));
+           }
+         }
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the run with the tool calls",
+        "const c = document.querySelector('[data-testid=\"timeline-replay-controls\"]');
+         return !!c && Number(c.dataset.total) >= 10;",
+        Duration::from_secs(15),
+    )?;
+    let total: usize = ctx
+        .eval_string("return document.querySelector('[data-testid=\"timeline-replay-controls\"]').dataset.total;")?
+        .parse()
+        .unwrap_or(0);
+    ensure!(total >= 3, "the run has {total} recorded steps");
+    let position = ctx.eval_string(
+        "return document.querySelector('[data-testid=\"timeline-replay-position\"]').textContent;",
+    )?;
+    ensure!(position == format!("Step 1 of {total}"), "replay opened at {position:?}");
+    let first = timeline_rows(ctx)?;
+    let first_label = ctx.eval_string(
+        "const r = document.querySelector('[data-testid=\"timeline-row\"]'); return r ? r.getAttribute('aria-label') : '';",
+    )?;
+    ensure!(first.len() == 1 && first_label == "Run started, Completed", "step 1 shows {first:?} ({first_label})");
+
+    let final_status = |rows: &[String], seq: &str| {
+        rows.iter().find(|r| r.split('|').next() == Some(seq)).and_then(|r| r.split('|').nth(1).map(str::to_string))
+    };
+    let mut previous = first.len();
+    let mut transient = Vec::new();
+    for step in 2..=total {
+        ctx.eval("document.querySelector('[data-testid=\"timeline-replay-next\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the next step",
+            &format!(
+                "return document.querySelector('[data-testid=\"timeline-replay-controls\"]').dataset.step === '{step}';"
+            ),
+            Duration::from_secs(5),
+        )?;
+        let rows = timeline_rows(ctx)?;
+        ensure!(rows.len() >= previous, "step {step} lost rows: {} after {previous}", rows.len());
+        previous = rows.len();
+        for r in &rows {
+            let seq = r.split('|').next().unwrap_or_default();
+            let now = r.split('|').nth(1).unwrap_or_default();
+            if let Some(end) = final_status(&expected, seq) {
+                if end != now {
+                    transient.push(format!("step {step}: row {seq} {now} (ends {end})"));
+                }
+            }
+        }
+    }
+    println!("      {total} steps; states later left: {transient:?}");
+    ensure!(!transient.is_empty(), "no step showed a row in a state it later left");
+    // The last step is this run's part of the recorded timeline, row for row:
+    // every row it shows is one the first half saw, with the same status,
+    // categories and request, and the edits are among them.
+    let last = timeline_rows(ctx)?;
+    println!("      last step: {last:?}");
+    ensure!(
+        last.iter().all(|r| expected.contains(r)),
+        "the last step shows rows the recorded timeline does not: {last:?} vs {expected:?}"
+    );
+    ensure!(
+        last.iter().filter(|r| r.split('|').nth(2).is_some_and(|c| c.contains("edits"))).count()
+            == expected.iter().filter(|r| r.split('|').nth(2).is_some_and(|c| c.contains("edits"))).count(),
+        "the last step does not hold every recorded edit: {last:?}"
+    );
+    let next_disabled = ctx.eval_bool(
+        "return document.querySelector('[data-testid=\"timeline-replay-next\"]').disabled;",
+    )?;
+    ensure!(next_disabled, "Next is still offered past the last step");
+
+    // A run the log does not hold is refused by kind, not replayed as empty.
+    let kind = ctx.eval_string(&format!(
+        "return window.__TAURI_INTERNALS__.invoke('agent_events_run', {{ session: {session:?}, run: 'no-such-run' }})
+           .then(() => 'accepted', e => (e && e.kind) || String(e));"
+    ))?;
+    ensure!(kind == "not_found", "an unknown run came back as {kind:?}");
+
+    ctx.eval("document.querySelector('[data-testid=\"timeline-replay-exit\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the live timeline back",
+        &format!(
+            "return !document.querySelector('[data-testid=\"timeline-replay-controls\"]')
+               && document.querySelectorAll('[data-testid=\"timeline-row\"]').length === {};",
+            expected.len()
+        ),
+        Duration::from_secs(10),
+    )?;
+    ensure!(timeline_rows(ctx)? == expected, "leaving replay did not restore the recorded timeline");
+    ensure!(mock_requests(ctx)?.is_empty(), "stepping through the run sent a request");
     Ok(())
 }
 
