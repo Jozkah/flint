@@ -375,6 +375,19 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::activity::settle_unfinished(&get_jan_data_folder_path(
                 app.handle().clone(),
             ));
+            // Request snapshots and usage counts are bounded rather than kept
+            // forever. Off the main thread: a large log is a rewrite, and the
+            // window should not wait for it.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                std::thread::spawn(move || {
+                    if let Err(e) =
+                        tauri_plugin_agent_tools::retention::compact_default(&data_folder)
+                    {
+                        log::warn!("request log compaction failed: {e}");
+                    }
+                });
+            }
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)

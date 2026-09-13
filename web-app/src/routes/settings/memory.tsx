@@ -28,6 +28,8 @@ import {
 } from '@/lib/settingsSearch'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { useThreadManagement } from '@/hooks/useThreadManagement'
+import { memoryLocation, setMemoryEnabled } from '@/lib/memoryBinding'
 import {
   memoryRecordEdit,
   memoryRecordForget,
@@ -64,8 +66,8 @@ const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
   },
   {
     scope: 'project',
-    label: 'This project',
-    blurb: 'Available to every conversation attached to this project.',
+    label: 'Project',
+    blurb: 'Available to every conversation in the project you choose below, and to no other project.',
   },
   {
     scope: 'user',
@@ -143,16 +145,29 @@ function MemorySettings() {
     }
   }, [])
 
+  /**
+   * The Jan project whose memories the Project tab shows. Projects have no
+   * folder, so the page names one; the backend scopes it (`jan-project:<id>`)
+   * and shows that project's records and no other's.
+   */
+  const { folders: projects } = useThreadManagement()
+  const [projectId, setProjectId] = useState('')
+  const selectedProject = projects.find((p) => p.id === projectId)
+  useEffect(() => {
+    // A project deleted while selected is no longer a scope to show.
+    if (projectId && !projects.some((p) => p.id === projectId)) setProjectId('')
+  }, [projects, projectId])
+
   const location: MemoryLocation | null = useMemo(
     () =>
       dataFolder == null
         ? null
-        : {
+        : memoryLocation(
             dataFolder,
-            projectRoot: window.core?.api?.projectRoot ?? undefined,
-            sessionId: window.core?.api?.activeSessionId ?? undefined,
-          },
-    [dataFolder]
+            { janProjectId: projectId || undefined },
+            window.core?.api?.activeSessionId ?? undefined
+          ),
+    [dataFolder, projectId]
   )
 
   /**
@@ -165,11 +180,17 @@ function MemorySettings() {
     location: proposalLocation,
     reload: reloadProposals,
     onResolved: onProposalResolved,
-  } = useMemoryProposals()
+  } = useMemoryProposals({ janProjectId: projectId || undefined })
 
   const refresh = useCallback(
     async (nextScope: MemoryScope, nextQuery: string, nextOffset: number) => {
       if (!location) return
+      if (nextScope === 'project' && !projectId) {
+        setPage([])
+        setTotal(0)
+        setUnavailable('Choose a project above to see and manage its memories.')
+        return
+      }
       try {
         const result = await memoryRecordsList(location, nextScope, {
           query: nextQuery || undefined,
@@ -187,7 +208,7 @@ function MemorySettings() {
         setUnavailable(errorText(error))
       }
     },
-    [location]
+    [location, projectId]
   )
 
   useEffect(() => {
@@ -199,7 +220,13 @@ function MemorySettings() {
     void (async () => {
       try {
         setSummary(await memoryStorageSummary(location))
-        setAutoSave((await memorySettingsGet(location)).automaticallySave)
+        const settings = (await memorySettingsGet(location)) as {
+          automaticallySave: boolean
+          memoryEnabled?: boolean
+        }
+        setAutoSave(settings.automaticallySave)
+        // Older backends have no switch; memory was always on there.
+        setMemoryOn(settings.memoryEnabled ?? true)
       } catch {
         // Storage and settings are informational here; the list is the page.
       }
@@ -326,6 +353,34 @@ function MemorySettings() {
     [location, autoSave]
   )
 
+  /**
+   * Whether saved memory is added to requests at all. Same optimistic,
+   * one-write-at-a-time pattern as automatic saving; the backend's answer is
+   * what the switch settles on.
+   */
+  const [memoryOn, setMemoryOn] = useState(true)
+  const [memoryOnPending, setMemoryOnPending] = useState(false)
+  const onToggleMemory = useCallback(
+    async (next: boolean) => {
+      if (!location || memoryOnPending) return
+      const previous = memoryOn
+      setMemoryOnPending(true)
+      setMemoryOn(next)
+      try {
+        const saved = await setMemoryEnabled(location, next)
+        setMemoryOn(saved.memoryEnabled ?? next)
+      } catch (error) {
+        setMemoryOn(previous)
+        toast.error('Memory settings could not be saved', {
+          description: errorText(error),
+        })
+      } finally {
+        setMemoryOnPending(false)
+      }
+    },
+    [location, memoryOn, memoryOnPending]
+  )
+
   const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
 
   return (
@@ -338,6 +393,19 @@ function MemorySettings() {
         <div className="p-4 w-full h-[calc(100%-32px)] overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             <Card title="Memory">
+              <CardItem
+                title="Use saved memory in conversations"
+                description="When this is off, Jan adds no saved memory to any request. Your memories are kept and can still be managed here."
+                actions={
+                  <Switch
+                    checked={memoryOn}
+                    disabled={memoryOnPending || location == null}
+                    aria-busy={memoryOnPending}
+                    aria-label="Use saved memory in conversations"
+                    onCheckedChange={(checked) => void onToggleMemory(checked)}
+                  />
+                }
+              />
               <CardItem
                 anchor={MEMORY_AUTOSAVE_ANCHOR}
                 title="Automatically save local memories"
@@ -359,7 +427,11 @@ function MemorySettings() {
                 <CardItem
                   anchor={MEMORY_STORAGE_ANCHOR}
                   title="Stored on this machine"
-                  description={`${summary.userCount} across chats · ${summary.projectCount} in this project · ${summary.sessionCount} in this chat · ${formatBytes(summary.bytes)}`}
+                  description={`${summary.userCount} across chats · ${
+                    selectedProject
+                      ? `${summary.projectCount} in ${selectedProject.name}`
+                      : 'choose a project to count its memories'
+                  } · ${formatBytes(summary.bytes)}`}
                 />
               )}
             </Card>
@@ -415,6 +487,30 @@ function MemorySettings() {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
+
+                {scope === 'project' && (
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="memory-project" className="text-sm">
+                      Project
+                    </label>
+                    <select
+                      id="memory-project"
+                      value={projectId}
+                      onChange={(e) => {
+                        setProjectId(e.target.value)
+                        setOffset(0)
+                      }}
+                      className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    >
+                      <option value="">Choose a project</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <Input
                   value={query}

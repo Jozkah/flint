@@ -844,6 +844,8 @@ function ThreadDetail() {
     onResolved: onMemoryProposalResolved,
   } = useMemoryProposals({
     sessionId: threadId,
+    // So a project memory proposed in this chat can be listed and approved.
+    janProjectId: thread?.metadata?.project?.id,
     enabled: threadId !== TEMPORARY_CHAT_ID,
   })
   const navigate = useNavigate()
