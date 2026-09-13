@@ -33,13 +33,13 @@ This build does not phone home. There is no telemetry, no analytics, no update c
 | MCP servers | You add a server that is not on your machine |
 | Web search | You turn it on and supply a key |
 
-Automated guards in `web-app/src/__tests__/localOnly.test.ts` and `scripts/local-only-guard.mjs` fail the build if telemetry, update checks, vendor services or download sources are reintroduced.
+`web-app/src/__tests__/localOnly.test.ts` runs with the test suite and fails it if telemetry, an update check or a vendor URL is reintroduced. `scripts/local-only-guard.mjs` checks the same over the wider source tree, including the shipped app, and is run on demand with `yarn guard:local-only` — no build or CI job invokes it yet.
 
 ## Install
 
 This repository does not publish installers. Build JAN from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
-**You bring your own models.** Use a GGUF model file you already have (Settings → Models → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
+**You bring your own models.** Use a GGUF model file you already have (Settings → Model Providers → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
 ## Getting started
 
