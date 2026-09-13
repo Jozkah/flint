@@ -72,9 +72,9 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
     <section
       data-testid="cowork-worktree-recovery"
       aria-label={t('common:worktreeRecovery.title')}
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
     >
-      <p className="mb-1 flex items-center gap-1.5 text-main-view-fg/70">
+      <p className="mb-1 flex items-center gap-1.5 text-ink-2">
         <GitBranch aria-hidden className="size-3.5 shrink-0" />
         {t('common:worktreeRecovery.found', { count: props.orphans.length })}
       </p>
@@ -83,7 +83,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
           <li key={record.path} className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate" title={record.path}>
               {record.branch}
-              <span className="text-main-view-fg/50"> — {record.path}</span>
+              <span className="text-muted-foreground"> — {record.path}</span>
             </span>
             <Button
               variant="outline"
@@ -108,7 +108,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
       </ul>
       {/* Adopting a checkout is not regaining write access to it, and saying so
           here is cheaper than the support thread that follows not saying it. */}
-      <p className="mt-1 text-main-view-fg/50">
+      <p className="mt-1 text-muted-foreground">
         {t('common:worktreeRecovery.noAuthority')}
       </p>
 

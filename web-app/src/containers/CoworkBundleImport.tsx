@@ -45,7 +45,7 @@ function ImportRow({
   const pending = view.state === 'pending'
   return (
     <li
-      className="rounded border border-main-view-fg/10 p-2 text-xs"
+      className="rounded border border-border p-2 text-xs"
       data-testid="bundle-import-row"
       data-id={view.id}
       data-state={view.state}
@@ -54,17 +54,17 @@ function ImportRow({
         className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5"
         data-testid="bundle-import-origin"
       >
-        <dt className="text-main-view-fg/50">From</dt>
+        <dt className="text-muted-foreground">From</dt>
         <dd className="min-w-0 truncate">{view.originRepository || '—'}</dd>
-        <dt className="text-main-view-fg/50">Branch</dt>
+        <dt className="text-muted-foreground">Branch</dt>
         <dd className="min-w-0 truncate font-mono">{view.branch || '—'}</dd>
-        <dt className="text-main-view-fg/50">Base</dt>
+        <dt className="text-muted-foreground">Base</dt>
         <dd className="font-mono">{short(view.baseSha)}</dd>
-        <dt className="text-main-view-fg/50">Bundle</dt>
+        <dt className="text-muted-foreground">Bundle</dt>
         <dd className="font-mono">
           {short(view.bundleSha256, 12)} (schema {view.bundleSchema})
         </dd>
-        <dt className="text-main-view-fg/50">State</dt>
+        <dt className="text-muted-foreground">State</dt>
         <dd>{view.state}</dd>
       </dl>
       {pending ? (
@@ -151,13 +151,13 @@ export function CoworkBundleImport({
 
   return (
     <section
-      className="mb-2 rounded-md border border-main-view-fg/10 p-2"
+      className="mb-2 rounded-md border border-border p-2"
       data-testid="bundle-imports"
       aria-label="Imported patch bundles"
     >
       <div className="flex items-center gap-2">
-        <PackageOpen size={14} className="text-main-view-fg/60" />
-        <p className="flex-1 text-xs font-medium text-main-view-fg/80">
+        <PackageOpen size={14} className="text-muted-foreground" />
+        <p className="flex-1 text-xs font-medium text-ink-2">
           Patch bundles for this project
         </p>
         {running ? (
@@ -181,7 +181,7 @@ export function CoworkBundleImport({
         )}
       </div>
       {running ? (
-        <p className="mt-1 text-xs text-main-view-fg/60" data-testid="bundle-import-running">
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="bundle-import-running">
           Checking the bundle…
         </p>
       ) : null}

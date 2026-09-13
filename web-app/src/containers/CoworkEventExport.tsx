@@ -63,11 +63,11 @@ export function CoworkEventExport({
 
   return (
     <section
-      className="flex flex-col gap-2 rounded-md border border-main-view-fg/10 p-2 text-xs"
+      className="flex flex-col gap-2 rounded-md border border-border p-2 text-xs"
       aria-label="Export this session's events"
       data-testid="event-export"
     >
-      <p className="font-medium text-main-view-fg/80">Session events</p>
+      <p className="font-medium text-ink-2">Session events</p>
       <label className="flex items-start gap-2">
         <input
           type="checkbox"
@@ -78,12 +78,12 @@ export function CoworkEventExport({
         <span>
           Include content: prompts, tool inputs and outputs, and file paths.
           {includeContent ? (
-            <span className="block text-amber-700 dark:text-amber-300" data-testid="event-export-warning">
+            <span className="block text-warning" data-testid="event-export-warning">
               The export will hold what the model and tools saw. Secrets were
               removed when the events were recorded; share it with care.
             </span>
           ) : (
-            <span className="block text-main-view-fg/60">
+            <span className="block text-muted-foreground">
               Off: kinds, order, times and statuses only.
             </span>
           )}
@@ -104,7 +104,7 @@ export function CoworkEventExport({
         </Button>
       </div>
       {exported ? (
-        <p className="break-all text-main-view-fg/70" data-testid="event-export-path" data-count={exported.count} data-metadata-only={String(exported.metadataOnly)}>
+        <p className="break-all text-ink-2" data-testid="event-export-path" data-count={exported.count} data-metadata-only={String(exported.metadataOnly)}>
           {exported.count} event(s){exported.metadataOnly ? ', metadata only,' : ', with content,'} written to {exported.path}
         </p>
       ) : null}

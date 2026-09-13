@@ -243,7 +243,7 @@ export function CoworkTasksPanel({
       title={t('common:tasks.title')}
       summary={
         totals.total > 0 ? (
-          <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
+          <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
             {totals.tokens > 0
               ? t('common:tasks.summary', {
                   count: totals.total,
@@ -257,14 +257,14 @@ export function CoworkTasksPanel({
     >
       <div className="flex h-full min-h-0 flex-col">
         {workflows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
             {t('common:tasks.empty')}
           </p>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             {running.length > 0 && (
               <>
-                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {t('common:tasks.running', { count: running.length })}
                 </p>
                 {running.map(section)}
@@ -283,11 +283,11 @@ export function CoworkTasksPanel({
                     <ChevronDown
                       size={12}
                       className={cn(
-                        'shrink-0 text-main-view-fg/40 transition-transform',
+                        'shrink-0 text-muted-foreground transition-transform',
                         !showFinished && '-rotate-90'
                       )}
                     />
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                       {t('common:tasks.finished', { count: finished.length })}
                     </span>
                   </button>
@@ -404,7 +404,7 @@ function WorkflowSection({
           >
             {workflow.title}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="tabular-nums">
               {t('common:tasks.progress', {
                 finished: progress.finished,
@@ -429,7 +429,7 @@ function WorkflowSection({
         <ChevronDown
           size={12}
           className={cn(
-            'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+            'mt-1 shrink-0 text-muted-foreground transition-transform',
             !expanded && '-rotate-90'
           )}
         />
@@ -456,7 +456,7 @@ function WorkflowSection({
         <div className="pb-1">
           {view.phases.map(({ phase, tasks }) => (
             <div key={phase.id}>
-              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {t('common:tasks.phase', { name: phase.name })}
               </p>
               {tasks.map(taskRow)}
@@ -465,7 +465,7 @@ function WorkflowSection({
           {view.unphased.length > 0 && (
             <div>
               {view.phases.length > 0 && (
-                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {t('common:tasks.unphased')}
                 </p>
               )}
@@ -517,7 +517,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <Loader2
           size={13}
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(shared, 'animate-spin text-primary')}
+          className={cn(shared, 'animate-spin text-brand-text')}
           data-testid="task-status-running"
         />
       )
@@ -526,7 +526,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <Clock
           size={13}
           aria-label={t('common:tasks.statusQueued')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-queued"
         />
       )
@@ -544,7 +544,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleSlash
           size={13}
           aria-label={t('common:tasks.statusCancelled')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-cancelled"
         />
       )
@@ -553,7 +553,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleOff
           size={13}
           aria-label={t('common:tasks.statusInterrupted')}
-          className={cn(shared, 'text-amber-600 dark:text-amber-400')}
+          className={cn(shared, 'text-warning')}
           data-testid="task-status-interrupted"
         />
       )
@@ -562,7 +562,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleCheck
           size={13}
           aria-label={t('common:tasks.statusDone')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-done"
         />
       )
@@ -715,9 +715,9 @@ function TaskItem({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               {task.kind === 'shell' ? (
-                <Terminal size={12} className="shrink-0 text-main-view-fg/40" />
+                <Terminal size={12} className="shrink-0 text-muted-foreground" />
               ) : (
-                <Bot size={12} className="shrink-0 text-main-view-fg/40" />
+                <Bot size={12} className="shrink-0 text-muted-foreground" />
               )}
               <span
                 className={cn(
@@ -729,7 +729,7 @@ function TaskItem({
                 {task.title}
               </span>
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
               {/* Kind in words as well as the icon, so it is read out and
                 does not rest on telling two glyphs apart. */}
               <span className="uppercase tracking-wider">
@@ -800,7 +800,7 @@ function TaskItem({
           <ChevronDown
             size={12}
             className={cn(
-              'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+              'mt-1 shrink-0 text-muted-foreground transition-transform',
               !expanded && '-rotate-90'
             )}
           />
@@ -828,7 +828,7 @@ function TaskItem({
 
       {teamControl && <TeamMemberControls task={task} control={teamControl} />}
       {(task.attempts ?? 0) > 0 && (
-        <p className="pb-2 pl-5 text-[11px] text-main-view-fg/50" data-testid="team-member-attempts">
+        <p className="pb-2 pl-5 text-[11px] text-muted-foreground" data-testid="team-member-attempts">
           {task.replacedWith
             ? t('common:tasks.replacedAttempts', { count: task.attempts })
             : t('common:tasks.restartedAttempts', { count: task.attempts })}
@@ -836,7 +836,7 @@ function TaskItem({
       )}
       {expanded && (
         <div className="border-t bg-background px-3 py-2 pl-5">
-          <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-main-view-fg/50">
+          <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
             <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
             {task.endedAt != null && (
               <span>{t('common:tasks.finishedAt', { time: clockTime(task.endedAt) })}</span>
@@ -846,18 +846,18 @@ function TaskItem({
             )}
           </p>
           {task.description && (
-            <p className="mb-2 text-[11px] text-main-view-fg/70">
+            <p className="mb-2 text-[11px] text-ink-2">
               {task.description}
             </p>
           )}
           {task.detail && (
-            <p className="mb-2 text-[11px] text-main-view-fg/50">
+            <p className="mb-2 text-[11px] text-muted-foreground">
               {reasonLabel(task.detail, t)}
             </p>
           )}
           {task.transcript && task.transcript.length > 0 && (
             <>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {t('common:tasks.transcript')}
               </p>
               <ol className="mb-2 space-y-1">
@@ -866,7 +866,7 @@ function TaskItem({
                     key={`${task.id}-${i}`}
                     className="flex items-baseline gap-2 text-[11px]"
                   >
-                    <span className="w-14 shrink-0 text-main-view-fg/40">
+                    <span className="w-14 shrink-0 text-muted-foreground">
                       {turn.role === 'tool' ? turn.name : turn.role}
                     </span>
                     <span
@@ -902,7 +902,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   const output = task.output
   if (!output) {
     return (
-      <p className="text-[11px] text-main-view-fg/40">
+      <p className="text-[11px] text-muted-foreground">
         {task.status === 'queued' || task.status === 'running'
           ? t('common:tasks.noOutput')
           : t('common:tasks.detailsUnavailable')}
@@ -925,7 +925,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   return (
     <>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-main-view-fg/40">
+        <span className="text-[11px] text-muted-foreground">
           {task.outputTruncated && t('common:tasks.outputPartial')}{' '}
           {truncated &&
             t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}

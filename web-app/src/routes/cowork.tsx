@@ -24,6 +24,16 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import {
+  CoworkInspectorFrame,
+  CoworkInspectorProvider,
+  CoworkSidePanel,
+  type InspectorLayout,
+} from '@/containers/CoworkSidePanel'
+import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
@@ -354,6 +364,10 @@ const configuredContextTokens = (
 
 /** Stable empty lane, so a session with no run does not re-render per write. */
 const NO_LIVE_TURNS: CoworkTurn[] = []
+
+/** Below 768px Cowork shows one of these at a time. */
+type CoworkPhoneView = 'content' | 'output' | 'details'
+const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
@@ -3606,88 +3620,278 @@ function CoworkPage() {
     if (previous != null && previous !== session?.id) setRail(null)
   }, [session?.id])
 
+  // Layout. Wide windows dock the output panel beside the conversation; below
+  // 1100px it becomes a drawer over the conversation's right edge; below 768px
+  // Cowork shows one view at a time -- the conversation, the output, or the
+  // session details -- chosen from the context bar. The conversation stays
+  // mounted while hidden, so the composer keeps its draft, and its scroll
+  // position is put back on return.
+  const narrow = useMediaQuery('(max-width: 1099px)')
+  const phone = useMediaQuery('(max-width: 767px)')
+  const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
+  const view: CoworkPhoneView = phone ? phoneView : 'content'
+  const transcriptScroll = useRef<number | null>(null)
+  const showView = useCallback(
+    (next: CoworkPhoneView) => {
+      if (phoneView === 'content' && next !== 'content') {
+        const node = scrollNode()
+        transcriptScroll.current = node ? node.scrollTop : null
+      }
+      setPhoneView(next)
+    },
+    [phoneView, scrollNode]
+  )
+  useEffect(() => {
+    if (view !== 'content' || transcriptScroll.current == null) return
+    const top = transcriptScroll.current
+    transcriptScroll.current = null
+    requestAnimationFrame(() => {
+      const node = scrollNode()
+      if (node) node.scrollTop = top
+    })
+  }, [view, scrollNode])
+
+  // On a phone, an explicit request to see output also shows the output view.
+  // Automatic opens (an artifact finishing) change the tab but not the view.
+  const revealOutput = useCallback(() => {
+    if (phone) showView('output')
+  }, [phone, showView])
+  const openRail = useCallback(
+    (next: CoworkRail) => {
+      setRail(next)
+      revealOutput()
+    },
+    [setRail, revealOutput]
+  )
+  const closeRail = useCallback(() => {
+    setRail(null)
+    if (phone) showView('content')
+  }, [setRail, phone, showView])
+  const selectRailInView = useCallback(
+    (next: RailMode) => {
+      selectRail(next)
+      revealOutput()
+    },
+    [selectRail, revealOutput]
+  )
+  // Code and Timeline describe a session, so neither renders without one.
+  const panelShown =
+    rail != null &&
+    (rail.kind === 'preview' ||
+      rail.kind === 'diff' ||
+      rail.kind === 'tasks' ||
+      Boolean(session?.id))
+  const inspectorLayout: InspectorLayout = phone
+    ? 'full'
+    : narrow
+      ? 'drawer'
+      : 'docked'
+  const inspectorVisible = phone ? view === 'output' : panelShown
+  // One set of rail buttons on the page at a time: in the panel header while
+  // the output panel is on screen, in the composer row otherwise. The smoke
+  // harness finds them by exact name and reads `aria-pressed`.
+  const railToolbar = (presentation: 'toolbar' | 'tabs') => (
+    <CoworkRailToolbar
+      presentation={presentation}
+      active={activeRail}
+      onSelect={selectRailInView}
+      changeCount={changeCounts.fileCount}
+      additions={changeCounts.additions}
+      deletions={changeCounts.deletions}
+      changeSummary={formatChangeSummary(changeCounts)}
+      activity={taskCounts}
+    />
+  )
+
+  // The session's own model (janhq/jan#8905): keyed by session so switching
+  // re-reads it, and a choice is written to the session in view only.
+  const modelSelector = (
+    <DropdownModelProvider
+      key={session?.id ?? 'none'}
+      model={session?.model}
+      useLastUsedModel={!session?.model}
+      onModelChange={(model) =>
+        useCoworkSessions.getState().setModel(ensureCurrentSession(), {
+          provider: model.provider,
+          id: model.id,
+        })
+      }
+    />
+  )
+
+  // Mode, access and workspace: in the context bar on wide screens, in the
+  // composer row on phones where the bar holds the view switch.
+  const sessionControls = (
+    <>
+      <CoworkWorkspacePill
+        folder={folder}
+        workspacePath={workspacePath}
+        gitBranch={gitBranch}
+        onAttach={() => void attachFolder()}
+        onDetach={detachFolder}
+      />
+      <CoworkModeSelector
+        mode={mode}
+        onChange={(next) => {
+          if (session?.id)
+            useCoworkSessions.getState().setMode(session.id, next)
+        }}
+      />
+      <CoworkAccessSelector
+        effective={effective}
+        capability={capabilityState}
+        hasFolder={Boolean(folder)}
+        // Authority must not move under work already running. A background
+        // shell job outlives its run and can still write, so it holds
+        // authority in place just as a live turn does.
+        busyReason={blockingKind}
+        onRequestDirectEdit={() => setConfirmDirectEdit(true)}
+        onRequestWorktree={() => void authorizeManagedWorktree()}
+        onReviewOnly={() => void returnToReviewOnly()}
+      />
+    </>
+  )
+
+  // Everything about the session that is reference material rather than
+  // conversation: behind a dialog on wide screens, a view of its own on phones.
+  const detailsBody = (
+    <>
+      <CoworkReadinessCard manifest={readiness} />
+      {/* AH-177: this session's canonical events, written to a file. */}
+      <CoworkEventExport
+        sessionId={session?.id}
+        pickFolder={async () => {
+          const picked = await serviceHub.dialog().open({ directory: true })
+          return typeof picked === 'string' ? picked : null
+        }}
+      />
+      {/* Collapsed, and inside session details rather than above the
+          composer: someone whose session works should never read it. */}
+      <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
+      {runContext && <CoworkContextBreakdown context={runContext} />}
+      <CoworkCompatSection
+        manifest={compat}
+        hasFolder={Boolean(folder)}
+        onToggle={(on) =>
+          folder && useClaudeCompat.getState().setEnabled(folder, on)
+        }
+        // Drives Jan's own MCP subsystem, against the definition as it
+        // stands on disk: consent is permission to run *this* server,
+        // not whatever the file says later.
+        onMcpConsent={(server, allowed) => {
+          const probe = mcpProbes.find((one) => one.name === server)
+          if (probe) void setMcpConsent(probe, allowed)
+        }}
+      />
+      <ClaudeSkillRootsSettings
+        roots={skillRoots}
+        onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
+        janData={janDataFolder}
+        onRescan={rescanCompat}
+        pickFolder={async () => {
+          const picked = await serviceHub.dialog().open({ directory: true })
+          return typeof picked === 'string' ? picked : null
+        }}
+        // The backend is the only thing that can tell a directory from a
+        // file, or from a path that has since gone.
+        confirmDirectory={async (path) => {
+          const dataFolder = janDataFolder
+          if (!dataFolder) return false
+          try {
+            await projectListDir(dataFolder, path, '.')
+            return true
+          } catch {
+            return false
+          }
+        }}
+      />
+    </>
+  )
+
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 bg-background">
       <HeaderPage>
         {/* The same row component the chat page uses, so the selector and the
             control beside it match in size, spacing and order. */}
         <PageHeaderRow>
-          {/* The session's own model (janhq/jan#8905): keyed by session so
-              switching re-reads it, and a choice is written to the session in
-              view only. */}
-          <DropdownModelProvider
-            key={session?.id ?? 'none'}
-            model={session?.model}
-            useLastUsedModel={!session?.model}
-            onModelChange={(model) =>
-              useCoworkSessions.getState().setModel(ensureCurrentSession(), {
-                provider: model.provider,
-                id: model.id,
-              })
-            }
-          />
-          {/* Everything about the session that is reference material rather
-              than conversation, closed until asked for. */}
-          <CoworkSessionDetails summary={sessionDetailsSummary}>
-            <CoworkReadinessCard manifest={readiness} />
-            {/* AH-177: this session's canonical events, written to a file. */}
-            <CoworkEventExport
-              sessionId={session?.id}
-              pickFolder={async () => {
-                const picked = await serviceHub.dialog().open({ directory: true })
-                return typeof picked === 'string' ? picked : null
-              }}
-            />
-            {/* Collapsed, and inside session details rather than above the
-                composer: someone whose session works should never read it. */}
-            <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
-            {runContext && <CoworkContextBreakdown context={runContext} />}
-            <CoworkCompatSection
-              manifest={compat}
-              hasFolder={Boolean(folder)}
-              onToggle={(on) =>
-                folder && useClaudeCompat.getState().setEnabled(folder, on)
-              }
-              // Drives Jan's own MCP subsystem, against the definition as it
-              // stands on disk: consent is permission to run *this* server,
-              // not whatever the file says later.
-              onMcpConsent={(server, allowed) => {
-                const probe = mcpProbes.find((one) => one.name === server)
-                if (probe) void setMcpConsent(probe, allowed)
-              }}
-            />
-            <ClaudeSkillRootsSettings
-              roots={skillRoots}
-              onChange={(next) =>
-                useClaudeCompat.getState().setSkillRoots(next)
-              }
-              janData={janDataFolder}
-              onRescan={rescanCompat}
-              pickFolder={async () => {
-                const picked = await serviceHub
-                  .dialog()
-                  .open({ directory: true })
-                return typeof picked === 'string' ? picked : null
-              }}
-              // The backend is the only thing that can tell a directory from a
-              // file, or from a path that has since gone.
-              confirmDirectory={async (path) => {
-                const dataFolder = janDataFolder
-                if (!dataFolder) return false
-                try {
-                  await projectListDir(dataFolder, path, '.')
-                  return true
-                } catch {
-                  return false
-                }
-              }}
-            />
-          </CoworkSessionDetails>
+          {!phone && session?.title ? (
+            <h1
+              className="hidden min-w-0 max-w-[18rem] shrink truncate font-display text-lg leading-tight text-foreground lg:block"
+              title={session.title}
+              data-testid="cowork-session-title"
+            >
+              {session.title}
+            </h1>
+          ) : null}
+          {!phone && modelSelector}
+          {!phone && (
+            <div className="flex min-w-0 items-center gap-1">
+              {sessionControls}
+            </div>
+          )}
+          {phone && (
+            // One view at a time on a phone, chosen here rather than by
+            // swiping, so every view is reachable from the keyboard too.
+            <div
+              role="group"
+              aria-label={t('common:coworkLayout.views')}
+              className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-line-strong bg-card pointer-coarse:h-11"
+            >
+              {PHONE_VIEWS.map((option, index) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={view === option}
+                  data-testid={`cowork-view-${option}`}
+                  onClick={() => showView(option)}
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                    index > 0 && 'border-l border-line-strong',
+                    view === option
+                      ? 'bg-brand-tint text-foreground'
+                      : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
+                  )}
+                >
+                  <span className="truncate">
+                    {t(`common:coworkLayout.${option}`)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* The composer's stop control is out of sight in the other phone
+              views, so a running session can still be stopped from here. */}
+          {phone && running && view !== 'content' ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="shrink-0 pointer-coarse:h-11"
+              onClick={handleStop}
+              data-testid="cowork-header-stop"
+            >
+              {t('common:stop')}
+            </Button>
+          ) : null}
+          {!phone && (
+            <div className="ml-auto flex shrink-0 items-center">
+              {/* Closed until asked for. */}
+              <CoworkSessionDetails summary={sessionDetailsSummary}>
+                {detailsBody}
+              </CoworkSessionDetails>
+            </div>
+          )}
         </PageHeaderRow>
       </HeaderPage>
 
-      <div className="flex flex-1 h-full overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col h-full overflow-hidden">
+      <CoworkInspectorProvider layout={inspectorLayout}>
+      <div className="relative flex min-h-0 flex-1 h-full overflow-hidden">
+        <div
+          className={cn(
+            'flex min-w-0 flex-1 flex-col h-full overflow-hidden',
+            view !== 'content' && 'hidden'
+          )}
+          data-testid="cowork-content-view"
+        >
           <div className="flex-1 relative">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
@@ -3732,8 +3936,14 @@ function CoworkPage() {
                             <CoworkWorkflowCard
                               view={view}
                               now={activityNow}
-                              onOpenTask={showTaskInPanel}
-                              onOpenPanel={showWorkflowInPanel}
+                              onOpenTask={(task) => {
+                                showTaskInPanel(task)
+                                revealOutput()
+                              }}
+                              onOpenPanel={(workflowId) => {
+                                showWorkflowInPanel(workflowId)
+                                revealOutput()
+                              }}
                             />
                           ) : null
                         })()}
@@ -3819,7 +4029,10 @@ function CoworkPage() {
                             key={artifact.path}
                             artifact={artifact}
                             root={workspacePath}
-                            onPreview={showPreview}
+                            onPreview={(path) => {
+                              showPreview(path)
+                              revealOutput()
+                            }}
                           />
                         ))}
                       </Fragment>
@@ -3861,8 +4074,8 @@ function CoworkPage() {
                               ? openToolPath
                               : undefined
                         }
-                        onReviewChanges={() => setRail({ kind: 'diff' })}
-                        onRestore={() => setRail({ kind: 'diff' })}
+                        onReviewChanges={() => openRail({ kind: 'diff' })}
+                        onRestore={() => openRail({ kind: 'diff' })}
                         onRetry={() => void runRequest(null)}
                         onContinue={() =>
                           document
@@ -3873,6 +4086,15 @@ function CoworkPage() {
                         }
                       />
                     )}
+                  {/* The session's changed files, one step from review. */}
+                  {!running && (
+                    <CoworkReviewReady
+                      fileCount={changeCounts.fileCount}
+                      additions={changeCounts.additions}
+                      deletions={changeCounts.deletions}
+                      onReview={() => openRail({ kind: 'diff' })}
+                    />
+                  )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"
@@ -4025,43 +4247,9 @@ function CoworkPage() {
                 tokenSource={tokenSource}
                 surfaceControls={
                   <>
-                    <CoworkModeSelector
-                      mode={mode}
-                      onChange={(next) => {
-                        if (session?.id)
-                          useCoworkSessions.getState().setMode(session.id, next)
-                      }}
-                    />
-                    <CoworkAccessSelector
-                      effective={effective}
-                      capability={capabilityState}
-                      hasFolder={Boolean(folder)}
-                      // Authority must not move under work already running.
-                      // A background shell job outlives its run and can still
-                      // write, so it holds authority in place just as a live
-                      // turn does.
-                      busyReason={blockingKind}
-                      onRequestDirectEdit={() => setConfirmDirectEdit(true)}
-                      onRequestWorktree={() => void authorizeManagedWorktree()}
-                      onReviewOnly={() => void returnToReviewOnly()}
-                    />
-                    <CoworkWorkspacePill
-                      folder={folder}
-                      workspacePath={workspacePath}
-                      gitBranch={gitBranch}
-                      onAttach={() => void attachFolder()}
-                      onDetach={detachFolder}
-                    />
+                    {phone && sessionControls}
                     <CoworkSandboxChip />
-                    <CoworkRailToolbar
-                      active={activeRail}
-                      onSelect={selectRail}
-                      changeCount={changeCounts.fileCount}
-                      additions={changeCounts.additions}
-                      deletions={changeCounts.deletions}
-                      changeSummary={formatChangeSummary(changeCounts)}
-                      activity={taskCounts}
-                    />
+                    {!inspectorVisible && railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
@@ -4072,11 +4260,38 @@ function CoworkPage() {
           </div>
         </div>
 
+        {view === 'details' && (
+          <div
+            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3"
+            data-testid="cowork-details-view"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start pointer-coarse:h-11"
+              onClick={() => showView('content')}
+            >
+              <ArrowLeft className="size-4" aria-hidden />
+              {t('common:coworkLayout.back')}
+            </Button>
+            {modelSelector}
+            <CoworkSessionDetails inline summary={sessionDetailsSummary}>
+              {detailsBody}
+            </CoworkSessionDetails>
+          </div>
+        )}
+
+        {inspectorVisible && (
+          <CoworkInspectorFrame
+            tabs={railToolbar('tabs')}
+            onBack={() => showView('content')}
+            onDismiss={closeRail}
+          >
         {rail?.kind === 'preview' && (
           <CoworkPreviewPanel
             root={workspacePath}
             path={rail.path}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'diff' && (
@@ -4177,7 +4392,7 @@ function CoworkPage() {
             folder={treeRoot}
             git={git}
             origins={runOrigins?.entries}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'tasks' && (
@@ -4198,14 +4413,14 @@ function CoworkPage() {
                 useCoworkActivity.getState().clearFinished(session.id)
               }
             }}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'timeline' && session?.id && (
           <CoworkTimelinePanel
             sessionId={session.id}
             running={running}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'code' && session?.id && (
@@ -4224,10 +4439,23 @@ function CoworkPage() {
             }
             onAddToChat={addCodeToChat}
             onAttach={() => void attachFolder()}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
+        {phone && !panelShown && (
+          <CoworkSidePanel
+            title={t('common:coworkLayout.output')}
+            onClose={() => showView('content')}
+          >
+            <p className="p-4 text-sm text-muted-foreground">
+              {t('common:rail.chooseView')}
+            </p>
+          </CoworkSidePanel>
+        )}
+          </CoworkInspectorFrame>
+        )}
       </div>
+      </CoworkInspectorProvider>
       {/* Mounted outside the panels so it survives a rail change while the
           authorization is in flight. */}
       <DirectEditConfirmDialog

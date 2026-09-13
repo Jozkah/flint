@@ -18,19 +18,19 @@ function StatusDot({ status }: { status: TodoStatus }) {
   }
   if (status === 'abandoned') {
     return (
-      <span className={cn(base, 'bg-main-view-fg/20 text-main-view-fg/70')}>
+      <span className={cn(base, 'bg-line-strong text-ink-2')}>
         <Minus size={11} strokeWidth={3} />
       </span>
     )
   }
   if (status === 'in_progress') {
     return (
-      <span className={cn(base, 'text-primary')}>
+      <span className={cn(base, 'text-brand-text')}>
         <Loader2 size={13} className="animate-spin" />
       </span>
     )
   }
-  return <span className={cn(base, 'border-[1.5px] border-main-view-fg/25')} />
+  return <span className={cn(base, 'border-[1.5px] border-line-strong')} />
 }
 
 /**
@@ -67,7 +67,7 @@ export function CoworkTodoPanel({
       title={t('common:todoPanelTitle')}
       summary={
         tasks.length > 0 ? (
-          <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
+          <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
             {done}/{tasks.length}
           </span>
         ) : null
@@ -78,7 +78,7 @@ export function CoworkTodoPanel({
         {tasks.length > 0 && (
           // Thin progress bar under the header, so overall completion reads at
           // a glance without parsing the list.
-          <div className="h-0.5 shrink-0 bg-main-view-fg/10">
+          <div className="h-0.5 shrink-0 bg-sunken">
             <div
               className="h-full bg-primary transition-[width] duration-300"
               style={{ width: `${pct}%` }}
@@ -87,7 +87,7 @@ export function CoworkTodoPanel({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
           {phases.length === 0 ? (
-            <p className="text-sm text-main-view-fg/50">{t('common:todoPanelEmpty')}</p>
+            <p className="text-sm text-muted-foreground">{t('common:todoPanelEmpty')}</p>
           ) : (
             phases.map((phase, phaseIdx) => {
               const isCollapsed = collapsed.has(phase.name)
@@ -107,14 +107,14 @@ export function CoworkTodoPanel({
                       <ChevronDown
                         size={11}
                         className={cn(
-                          'shrink-0 text-main-view-fg/40 transition-transform',
+                          'shrink-0 text-muted-foreground transition-transform',
                           isCollapsed && '-rotate-90'
                         )}
                       />
-                      <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-main-view-fg/50">
+                      <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                         {phase.name}
                       </span>
-                      <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-main-view-fg/35">
+                      <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
                         {phaseDone}/{phase.tasks.length}
                       </span>
                     </button>
@@ -133,7 +133,7 @@ export function CoworkTodoPanel({
                             <span
                               className={cn(
                                 'text-[13px] leading-5',
-                                resolved && 'text-main-view-fg/40 line-through',
+                                resolved && 'text-muted-foreground line-through',
                                 task.status === 'in_progress' && 'font-medium'
                               )}
                             >

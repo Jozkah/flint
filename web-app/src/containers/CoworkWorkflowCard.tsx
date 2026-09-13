@@ -48,7 +48,7 @@ export function CoworkWorkflowCard({
   return (
     <div
       data-testid="workflow-card"
-      className="my-2 rounded-md border bg-main-view-fg/[0.02] text-xs"
+      className="my-2 rounded-md border bg-sunken/60 text-xs"
     >
       <div className="flex items-start gap-2 px-3 py-2">
         <span className="pt-0.5">
@@ -58,7 +58,7 @@ export function CoworkWorkflowCard({
           <p className="truncate font-medium" title={workflow.title}>
             {workflow.title}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="tabular-nums">
               {t('common:tasks.progress', {
                 finished: progress.finished,
@@ -104,7 +104,7 @@ export function CoworkWorkflowCard({
       {tasks.length === 0 ? (
         // A workflow exists because a dispatch happened; its children arrive a
         // moment later. Saying so beats an empty box that looks broken.
-        <p className="border-t px-3 py-2 text-[11px] text-main-view-fg/40">
+        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
           {t('common:tasks.noOutput')}
         </p>
       ) : (
@@ -120,10 +120,10 @@ export function CoworkWorkflowCard({
                 {task.kind === 'shell' ? (
                   <Terminal
                     size={11}
-                    className="shrink-0 text-main-view-fg/40"
+                    className="shrink-0 text-muted-foreground"
                   />
                 ) : (
-                  <Bot size={11} className="shrink-0 text-main-view-fg/40" />
+                  <Bot size={11} className="shrink-0 text-muted-foreground" />
                 )}
                 <span
                   className={cn(
@@ -134,7 +134,7 @@ export function CoworkWorkflowCard({
                 >
                   {task.title}
                 </span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-main-view-fg/40">
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                   {Math.round(taskElapsedMs(task, now) / 1000)}s
                 </span>
               </button>
@@ -154,14 +154,14 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
       return (
         <Loader2
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(common, 'animate-spin text-primary')}
+          className={cn(common, 'animate-spin text-brand-text')}
         />
       )
     case 'queued':
       return (
         <Clock
           aria-label={t('common:tasks.statusQueued')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-muted-foreground')}
         />
       )
     case 'error':
@@ -175,21 +175,21 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
       return (
         <CircleSlash
           aria-label={t('common:tasks.statusCancelled')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-muted-foreground')}
         />
       )
     case 'interrupted':
       return (
         <CircleOff
           aria-label={t('common:tasks.statusInterrupted')}
-          className={cn(common, 'text-amber-600 dark:text-amber-400')}
+          className={cn(common, 'text-warning')}
         />
       )
     default:
       return (
         <CircleCheck
           aria-label={t('common:tasks.statusDone')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-muted-foreground')}
         />
       )
   }

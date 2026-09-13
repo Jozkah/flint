@@ -33,7 +33,7 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
     <div className="absolute inset-0 flex flex-col justify-end px-3 pb-2">
       <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
         <div className="animate-in fade-in-0 duration-500 motion-reduce:animate-none">
-          <Handshake size={20} className="text-primary" aria-hidden />
+          <Handshake size={20} className="text-brand-text" aria-hidden />
           <h1 className="mt-3 font-studio text-2xl font-medium tracking-tight">
             {t('common:coworkEmpty.title')}
           </h1>

@@ -147,6 +147,7 @@
     "turn": "Turn {{n}}: {{files}}",
     "undo": "Undo",
     "redo": "Redo",
+    "scope": "Undo puts back only the files that turn wrote, and only while none of them has been edited since. Messages and commands that already ran are not reversed.",
     "undone": "Undone: {{count}} file(s) put back as they were before the turn.",
     "redone": "Redone: {{count}} file(s) put back as the turn left them.",
     "changedBy": "Changed by {{who}}",
@@ -188,7 +189,24 @@
     "preview": "Preview",
     "changes": "Changes",
     "activity": "Activity",
-    "timeline": "Timeline"
+    "timeline": "Timeline",
+    "resize": "Resize panel",
+    "narrower": "Narrower",
+    "wider": "Wider",
+    "chooseView": "Choose what to show: code, a preview, changes, activity or the timeline.",
+    "closeOverlay": "Close panel"
+  },
+  "coworkLayout": {
+    "views": "Cowork view",
+    "content": "Content",
+    "output": "Output",
+    "details": "Details",
+    "back": "Back to conversation"
+  },
+  "coworkReview": {
+    "ready_one": "{{count}} file ready for review",
+    "ready_other": "{{count}} files ready for review",
+    "open": "Review changes"
   },
   "changes": {
     "title": "Changes",

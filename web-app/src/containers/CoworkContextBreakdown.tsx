@@ -64,17 +64,17 @@ export function CoworkContextBreakdown({
   // every single message, pushing the conversation up the screen.
   return (
     <details
-      className="group rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
+      className="group rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
     >
-      <summary className="cursor-pointer list-none text-main-view-fg/50 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
+      <summary className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
         {t('common:readiness.contextBreakdown')}
       </summary>
       <div className="mt-1">
       <dl className="grid gap-1">
         {CONTEXT_CATEGORIES.map((category) => (
           <div key={category} className="flex items-baseline gap-2">
-            <dt className="shrink-0 text-main-view-fg/50">
+            <dt className="shrink-0 text-muted-foreground">
               {t(categoryLabelKey(category))}
             </dt>
             <dd className="min-w-0 truncate">
@@ -83,7 +83,7 @@ export function CoworkContextBreakdown({
           </div>
         ))}
         <div className="flex items-baseline gap-2">
-          <dt className="shrink-0 text-main-view-fg/50">
+          <dt className="shrink-0 text-muted-foreground">
             {t('common:readiness.budgetLabel')}
           </dt>
           <dd className="min-w-0 truncate">

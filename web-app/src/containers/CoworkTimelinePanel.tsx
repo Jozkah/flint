@@ -54,11 +54,11 @@ const STATUS_ICON: Record<TimelineStatus, React.ReactNode> = {
   running: <Loader2 className="size-3.5 animate-spin" aria-hidden />,
   queued: <Clock className="size-3.5" aria-hidden />,
   awaiting: <Hand className="size-3.5" aria-hidden />,
-  completed: <CheckCircle2 className="size-3.5 text-emerald-600" aria-hidden />,
+  completed: <CheckCircle2 className="size-3.5 text-success" aria-hidden />,
   failed: <XCircle className="size-3.5 text-destructive" aria-hidden />,
-  refused: <Ban className="size-3.5 text-amber-600" aria-hidden />,
+  refused: <Ban className="size-3.5 text-warning" aria-hidden />,
   cancelled: <CircleDot className="size-3.5 text-muted-foreground" aria-hidden />,
-  interrupted: <PauseCircle className="size-3.5 text-amber-600" aria-hidden />,
+  interrupted: <PauseCircle className="size-3.5 text-warning" aria-hidden />,
 }
 
 /**
@@ -289,7 +289,7 @@ export function CoworkTimelinePanel({
     <CoworkSidePanel
       title={t('common:timeline.title')}
       summary={
-        <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
           {t('common:timeline.count', { count: rows.length })}
         </span>
       }
@@ -614,7 +614,7 @@ function TimelineItem({
       data-row-id={row.id}
       data-current={current}
       aria-current={current ? 'step' : undefined}
-      className={cn('border-b', linked && 'bg-primary/5', current && 'bg-amber-500/10')}
+      className={cn('border-b', linked && 'bg-brand-tint', current && 'bg-warning-tint')}
     >
       <div className="flex items-start gap-1 px-2 py-1.5">
         <button

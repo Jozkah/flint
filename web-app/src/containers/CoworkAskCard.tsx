@@ -19,7 +19,7 @@ function CheckSquare({ checked }: { checked: boolean }) {
         'mt-[3px] flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
         checked
           ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-main-view-fg/30'
+          : 'border-line-strong'
       )}
     >
       {checked && <Check size={11} strokeWidth={3} />}
@@ -145,7 +145,7 @@ export function CoworkAskCard({
 
   return (
     <div
-      className="w-full overflow-hidden rounded-lg border bg-main-view"
+      className="w-full overflow-hidden rounded-lg border bg-card"
       data-testid="cowork-ask-card"
       role="group"
       aria-label={question.question}
@@ -156,7 +156,7 @@ export function CoworkAskCard({
         <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-pretty">
           {question.question}
         </p>
-        <div className="flex shrink-0 items-center gap-0.5 text-main-view-fg/50">
+        <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
           {questions.length > 1 && (
             <>
               <button
@@ -164,7 +164,7 @@ export function CoworkAskCard({
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
                 disabled={index === 0}
                 aria-label={t('common:askPrev')}
-                className="rounded p-0.5 hover:text-main-view-fg disabled:opacity-30"
+                className="rounded p-0.5 hover:text-foreground disabled:opacity-30"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -178,7 +178,7 @@ export function CoworkAskCard({
                 }
                 disabled={isLast}
                 aria-label={t('common:askNext')}
-                className="rounded p-0.5 hover:text-main-view-fg disabled:opacity-30"
+                className="rounded p-0.5 hover:text-foreground disabled:opacity-30"
               >
                 <ChevronRight size={14} />
               </button>
@@ -188,7 +188,7 @@ export function CoworkAskCard({
             type="button"
             onClick={decline}
             aria-label={t('common:close')}
-            className="rounded p-0.5 hover:text-main-view-fg"
+            className="rounded p-0.5 hover:text-foreground"
           >
             <X size={14} />
           </button>
@@ -211,9 +211,9 @@ export function CoworkAskCard({
                 data-testid={row.isCustom ? 'ask-custom-option' : 'ask-option'}
                 className={cn(
                   'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left',
-                  'hover:bg-main-view-fg/5 focus-visible:outline-none',
+                  'hover:bg-sunken focus-visible:outline-none',
                   'focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  checked && 'bg-main-view-fg/5'
+                  checked && 'bg-sunken'
                 )}
               >
                 <CheckSquare checked={checked} />
@@ -221,13 +221,13 @@ export function CoworkAskCard({
                   <span className="block text-[13px] leading-5">
                     {row.label}
                     {question.recommended === i && row.fromModel && (
-                      <span className="ml-1.5 text-[11px] text-main-view-fg/45">
+                      <span className="ml-1.5 text-[11px] text-muted-foreground">
                         {t('common:askRecommended')}
                       </span>
                     )}
                   </span>
                   {row.description && (
-                    <span className="mt-0.5 block text-[11px] leading-4 text-main-view-fg/50 text-pretty">
+                    <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground text-pretty">
                       {row.description}
                     </span>
                   )}
@@ -262,7 +262,7 @@ export function CoworkAskCard({
       </div>
 
       <div className="flex items-center gap-2 border-t px-3 py-2">
-        <span className="text-xs text-main-view-fg/50">
+        <span className="text-xs text-muted-foreground">
           {question.multi && selectedCount > 0
             ? t('common:askSelectedCount', { count: selectedCount })
             : null}

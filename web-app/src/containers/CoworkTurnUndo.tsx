@@ -115,12 +115,17 @@ export function CoworkTurnUndo({
   const ordered = [...turns].reverse()
   return (
     <section
-      className="mb-2 rounded-md border border-main-view-fg/10 p-2"
+      className="border-b border-border px-3 py-2.5"
       aria-label={t('common:turnUndo.title')}
       data-testid="turn-undo"
     >
-      <p className="mb-1 text-xs font-medium text-main-view-fg/80">
+      <p className="text-xs font-medium text-ink-2">
         {t('common:turnUndo.title')}
+      </p>
+      {/* The recovery boundary, stated before the buttons rather than learned
+          from a refusal. */}
+      <p className="mt-0.5 mb-1.5 text-xs text-muted-foreground">
+        {t('common:turnUndo.scope')}
       </p>
       <ul className="flex flex-col gap-1">
         {ordered.map((turn, i) => {
@@ -149,7 +154,7 @@ export function CoworkTurnUndo({
                 {label}
                 {who && (
                   <span
-                    className="ml-1 text-main-view-fg/60"
+                    className="ml-1 text-muted-foreground"
                     data-testid="turn-undo-actor"
                     data-actor-ids={turnActors(turn)
                       .map((a) => a?.id ?? 'unknown')
@@ -163,7 +168,8 @@ export function CoworkTurnUndo({
               {undone ? (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
+                  className="h-7 pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, false)}
                   aria-label={`${t('common:turnUndo.redo')}: ${label}. ${who}`}
@@ -175,7 +181,8 @@ export function CoworkTurnUndo({
               ) : (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
+                  className="h-7 pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, true)}
                   aria-label={`${t('common:turnUndo.undo')}: ${label}. ${who}`}
@@ -196,7 +203,7 @@ export function CoworkTurnUndo({
         className={
           status?.ok === false
             ? 'mt-1 text-xs text-destructive'
-            : 'mt-1 text-xs text-main-view-fg/70'
+            : 'mt-1 text-xs text-ink-2'
         }
         data-testid="turn-undo-status"
       >
