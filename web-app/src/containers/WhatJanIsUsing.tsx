@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { UIMessage } from '@ai-sdk/react'
 import { useNavigate } from '@tanstack/react-router'
+import { invoke } from '@tauri-apps/api/core'
 import { ExtensionTypeEnum, type VectorDBExtension } from '@janhq/core'
 import {
   memoryRecordGet,
@@ -31,11 +32,25 @@ import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { isLocalProvider } from '@/lib/utils'
 import {
+  evidenceFromSnapshot,
   summarizeChatContext,
   type ContextAction,
   type ContextItem,
+  type ContextNotice,
+  type SnapshotEvidence,
 } from '@/lib/contextSummary'
+import {
+  janProjectIdOf,
+  memoryLocation,
+  type ScopedMemoryRetrieved,
+} from '@/lib/memoryBinding'
+import {
+  attributionOf,
+  requestAttributions,
+  type RequestAttribution,
+} from '@/lib/requestAttribution'
 import { TermHint } from '@/containers/TermHint'
+import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
 const MEMORY_SCOPES: MemoryScope[] = ['chat', 'project', 'user']
 /** Enough to describe a normal selection; the budget rarely injects more. */
@@ -54,10 +69,42 @@ function sentFilesFrom(messages: UIMessage[]): FileMetadata[] {
   return files
 }
 
+/** The newest attribution persisted on an assistant message, after a reload. */
+function persistedAttribution(messages: UIMessage[]): RequestAttribution | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'assistant') continue
+    const found = attributionOf(messages[i])
+    if (found) return found
+  }
+  return null
+}
+
+/** A memory selection rebuilt from an attribution, when no live one exists. */
+function memoryFromAttribution(
+  attribution: RequestAttribution | null
+): ScopedMemoryRetrieved | null {
+  if (!attribution || attribution.memory.unavailable) return null
+  const m = attribution.memory
+  return {
+    block: null,
+    injectedIds: m.injectedIds,
+    injectedHashes: m.injectedHashes,
+    conflictIds: m.conflictIds,
+    droppedIds: m.droppedIds,
+    charsUsed: 0,
+    candidateIds: m.candidateIds,
+    projectId: m.projectId,
+    disabled: m.disabled,
+  }
+}
+
+type SnapshotRecord = { payload?: unknown; unavailable?: string | null }
+
 /**
  * A plain summary of what a chat conversation is using: model and where it
  * runs, instructions, attachments, saved memory and tools, each labelled with
- * how much is actually known (available, chosen, or sent).
+ * how much is actually known -- available, retrieved, chosen, or verified in
+ * the sanitized copy of the last request.
  */
 export function WhatJanIsUsing({
   threadId,
@@ -87,10 +134,36 @@ export function WhatJanIsUsing({
     { id: string; name?: string; chunk_count?: number }[] | null
   >([])
   const [memoryViews, setMemoryViews] = useState<MemoryView[]>([])
+  const [evidence, setEvidence] = useState<SnapshotEvidence>({ status: 'none' })
   const [refreshKey, setRefreshKey] = useState(0)
+  // Attribution moves through its send states while the panel is open.
+  const [attributionTick, setAttributionTick] = useState(0)
+  useEffect(
+    () => requestAttributions.subscribe(() => setAttributionTick((n) => n + 1)),
+    []
+  )
 
   const temporary = threadId === TEMPORARY_CHAT_ID
-  const memory = open ? (transport?.memoryUsed() ?? null) : null
+
+  const attribution = useMemo<RequestAttribution | null>(() => {
+    if (!open) return null
+    return (
+      transport?.lastAttribution?.() ??
+      requestAttributions.latest(threadId) ??
+      persistedAttribution(messages)
+    )
+    // `attributionTick` re-reads the live registry as a request progresses.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, transport, threadId, messages, attributionTick, refreshKey])
+
+  const memory = open
+    ? ((transport?.memoryUsed() as ScopedMemoryRetrieved | null | undefined) ??
+      memoryFromAttribution(attribution))
+    : null
+  const lastProjectName =
+    attribution?.memory.projectName ??
+    transport?.memoryBindingForLastRequest?.()?.janProjectName ??
+    null
 
   // Loaded when the panel opens (and on refresh), not on every render.
   useEffect(() => {
@@ -114,9 +187,50 @@ export function WhatJanIsUsing({
     }
   }, [open, threadId, refreshKey])
 
-  const injectedIds = memory?.injectedIds.join(',') ?? ''
+  // The sanitized snapshot is the evidence for "included". Only its id is
+  // held in the renderer; the record is read back from disk, scoped to this
+  // conversation.
+  const snapshotId = attribution?.snapshotId ?? null
+  const snapshotStatus = attribution?.snapshotStatus
   useEffect(() => {
-    if (!open || !injectedIds) {
+    if (!open) return
+    if (!snapshotId) {
+      setEvidence(
+        snapshotStatus === 'not-captured'
+          ? { status: 'unavailable', reason: 'not-captured' }
+          : { status: 'none' }
+      )
+      return
+    }
+    let cancelled = false
+    setEvidence({ status: 'loading' })
+    ;(async () => {
+      try {
+        const found = await invoke<SnapshotRecord[]>('agent_prompt_snapshots', {
+          snapshotId,
+          session: threadId,
+        })
+        if (!cancelled) setEvidence(evidenceFromSnapshot(found?.[0] ?? null))
+      } catch {
+        if (!cancelled) setEvidence({ status: 'unavailable', reason: 'error' })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, snapshotId, snapshotStatus, threadId, refreshKey])
+
+  const lookupIds = [
+    ...(memory?.injectedIds ?? []),
+    ...(memory?.candidateIds ?? []).filter(
+      (id) => !(memory?.injectedIds ?? []).includes(id)
+    ),
+  ]
+    .slice(0, MAX_MEMORY_LOOKUPS)
+    .join(',')
+  const lookupProject = janProjectIdOf(memory?.projectId)
+  useEffect(() => {
+    if (!open || !lookupIds) {
       setMemoryViews([])
       return
     }
@@ -129,15 +243,20 @@ export function WhatJanIsUsing({
         return
       }
       if (!dataFolder) return
+      // The project the last request used, so its project memories resolve
+      // even after the conversation has moved.
+      const location = memoryLocation(
+        dataFolder,
+        { janProjectId: lookupProject },
+        threadId
+      )
       const views: MemoryView[] = []
-      for (const id of injectedIds.split(',').slice(0, MAX_MEMORY_LOOKUPS)) {
+      for (const id of lookupIds.split(',')) {
         // The retrieval result names ids, not scopes; the record lives in
         // exactly one of them.
         for (const scope of MEMORY_SCOPES) {
           try {
-            views.push(
-              await memoryRecordGet({ dataFolder, sessionId: threadId }, scope, id)
-            )
+            views.push(await memoryRecordGet(location, scope, id))
             break
           } catch {
             // Not in this scope.
@@ -149,8 +268,9 @@ export function WhatJanIsUsing({
     return () => {
       cancelled = true
     }
-  }, [open, injectedIds, threadId, serviceHub, refreshKey])
+  }, [open, lookupIds, lookupProject, threadId, serviceHub, refreshKey])
 
+  const currentProject = thread?.metadata?.project
   const sections = useMemo(
     () =>
       summarizeChatContext({
@@ -180,6 +300,12 @@ export function WhatJanIsUsing({
           known: mcpTools.map((tool) => `${tool.server}::${tool.name}`),
           disabled: disabledTools,
         },
+        attribution,
+        evidence,
+        currentProject: currentProject
+          ? { id: currentProject.id, name: currentProject.name }
+          : null,
+        lastProjectName,
       }),
     [
       selectedModel,
@@ -194,6 +320,10 @@ export function WhatJanIsUsing({
       memoryViews,
       mcpTools,
       disabledTools,
+      attribution,
+      evidence,
+      currentProject,
+      lastProjectName,
     ]
   )
 
@@ -235,6 +365,14 @@ export function WhatJanIsUsing({
   const labelFor = (item: ContextItem) =>
     item.labelIsKey ? t(`context:label.${item.label}`) : item.label
 
+  const noticeText = (notice: ContextNotice) => {
+    const values: Record<string, string> = {}
+    for (const [key, value] of Object.entries(notice.values ?? {})) {
+      values[key] = value ?? t('context:notice.noProject')
+    }
+    return t(`context:notice.${notice.key}`, values)
+  }
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -267,6 +405,16 @@ export function WhatJanIsUsing({
               <h3 id={`context-${section.id}`} className="font-medium">
                 {t(`context:section.${section.id}`)}
               </h3>
+              {section.notices?.map((notice) => (
+                <p
+                  key={notice.key}
+                  role="note"
+                  className="mt-1 text-xs text-muted-foreground"
+                  data-testid={`context-notice-${notice.key}`}
+                >
+                  {noticeText(notice)}
+                </p>
+              ))}
               {section.items.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-1">
                   {t(`context:empty.${section.emptyReason}`)}
@@ -274,7 +422,12 @@ export function WhatJanIsUsing({
               ) : (
                 <ul className="mt-1 space-y-2">
                   {section.items.map((item) => (
-                    <li key={item.key} className="rounded-md border p-2">
+                    <li
+                      key={item.key}
+                      className="rounded-md border p-2"
+                      data-testid={`context-item-${item.key}`}
+                      data-state={item.state}
+                    >
                       <div className="flex flex-wrap items-baseline justify-between gap-x-2">
                         <span className="break-words font-medium">
                           {labelFor(item)}
@@ -312,6 +465,19 @@ export function WhatJanIsUsing({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t('context:memoryScopeNote')}
                 </p>
+              )}
+              {section.snapshotId && (
+                <div className="mt-2" data-testid="context-inspect-request">
+                  <p className="mb-1 text-xs text-muted-foreground">
+                    {t('context:inspect')}
+                  </p>
+                  {/* Advanced and collapsed by default: the sanitized record,
+                      read back from disk and scoped to this conversation. */}
+                  <PromptSnapshotView
+                    snapshotId={section.snapshotId}
+                    sessionId={threadId}
+                  />
+                </div>
               )}
             </section>
           ))}

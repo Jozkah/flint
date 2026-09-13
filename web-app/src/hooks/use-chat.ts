@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
+import { useChatMemoryBinding } from '@/hooks/useChatMemoryBinding'
 
 type CustomChatOptions = Omit<ChatInit<UIMessage>, 'transport'> &
   Pick<UseChatOptions<UIMessage>, 'experimental_throttle' | 'resume'> & {
@@ -66,6 +67,9 @@ export function useChat(
       transportRef.current.updateSystemMessage(systemMessage)
     }
   }, [systemMessage])
+
+  // Which project's memory this chat uses, and whether it is temporary.
+  useChatMemoryBinding(sessionId, transportRef.current)
 
   // Update the token usage callback when it changes
   useEffect(() => {
