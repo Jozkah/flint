@@ -1071,6 +1071,9 @@ impl Drop for AbortOnDrop {
 /// its `send_reasoning` answer.
 #[derive(Clone)]
 pub(crate) struct ParentRun {
+    /// The project's routing rules (AH-194), so a rule written about a
+    /// subagent by name decides which model answers it.
+    pub(crate) routing: Vec<crate::core::agent::routing::Rule>,
     /// The parent's conversation, when the dispatch asked to fork it
     /// (AH-100). `None` is the default: a clean brief.
     pub(crate) conversation: Option<Vec<serde_json::Value>>,
@@ -1091,6 +1094,18 @@ fn child_body(
         .model
         .clone()
         .unwrap_or_else(|| parent.model.clone());
+    // AH-194: a rule written about this subagent by name outranks both the
+    // definition's model and the parent's -- that rule is the more specific
+    // statement, and it is the one somebody wrote down on purpose.
+    let model = crate::core::agent::routing::route(
+        &parent.routing,
+        &crate::core::agent::routing::Request {
+            role: "task",
+            agent: Some(&resolved.definition.name),
+            model: &model,
+        },
+    )
+    .unwrap_or(model);
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
     // AH-100: a fork starts from a copy of the parent's conversation; the
@@ -2546,6 +2561,7 @@ mod tests {
     /// cares about scheduling wants.
     fn parent_run() -> ParentRun {
         ParentRun {
+            routing: Vec::new(),
             conversation: None,
             model: "m".to_string(),
             budget_remaining: None,

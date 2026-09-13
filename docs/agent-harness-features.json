@@ -6749,14 +6749,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-193"
       ],
       "owner": "lane-10-provider-enterprise",
       "files": [
-        "src-tauri/src/core/agent/upstream.rs"
+        "src-tauri/src/core/agent/routing.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/agent/subagent.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -6766,10 +6770,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/routing.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules."
+      "auditNote": "Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules. 2026-09-13 (Phase 5): user-authored rules now exist. [[routing]] entries in agent.toml declare match = \"role:<name>\" | \"agent:<name>\" | \"model:<pattern>\" | \"*\" and use = \"<model>\"; they are read in written order and the first match wins, with `*` the only wildcard in a model pattern. Routing narrows nothing and grants nothing -- what no rule matches resolves exactly as before, and a rule naming the model already chosen is not reported as a change. A rule that cannot be honoured (an unknown match form, or nothing to use) refuses the run, because ignoring it would send the run to a model nobody chose while looking as though the rule had been honoured. A rule about a subagent by name outranks that subagent's own model and the parent's, being the more specific statement. Proven by real runs read from the provider's own request log: the run's model redirected, its subagent's redirected separately, and an unreadable rule refusing the run."
     },
     {
       "id": "AH-195",

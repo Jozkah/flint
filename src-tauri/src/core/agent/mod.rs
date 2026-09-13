@@ -42,6 +42,7 @@ pub mod review;
 pub mod spend;
 pub mod state_schema;
 pub mod roles;
+pub mod routing;
 pub mod session_bundle;
 pub mod session;
 pub mod skill_hub;

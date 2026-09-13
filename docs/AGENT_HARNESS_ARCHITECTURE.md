@@ -2335,3 +2335,42 @@ The export is what is on disk, not a summary of it: the tool calls and their
 results are part of what the run did, and an export that dropped them would
 read as a model that described work instead of doing it. `--format json` hands
 back the stored lines themselves.
+
+
+## Rules about which model answers what (AH-194)
+
+Resolution already preferred a provider with a credential, and already knew a
+small-model role. What nobody could express is the thing people actually want:
+*this* kind of work goes to *that* model.
+
+```toml
+[[routing]]
+match = "agent:reviewer"        # a subagent, by the name it is dispatched under
+use = "provider/careful-model"
+
+[[routing]]
+match = "role:smol"             # role:task and role:smol
+use = "provider/small-fast-model"
+
+[[routing]]
+match = "model:gpt-*"           # the model that would otherwise be used
+use = "provider/one-we-have-a-key-for"
+```
+
+Rules are read in the order they are written and the first match wins, because
+that is how a person reads a list. `*` is a catch-all. The only wildcard in a
+model pattern is `*`, anywhere in the string -- a wildcard language is a thing
+to learn, and one character is not.
+
+**Routing narrows nothing and grants nothing.** It redirects what it was asked
+to redirect; anything no rule matches resolves exactly as it did before. A rule
+whose `use` is the model already chosen changes nothing and is not reported as
+a change.
+
+**A rule that cannot be honoured refuses the run** -- an unknown match form, or
+a rule that says nothing to use. Ignoring it would send the run to a model
+nobody chose while looking as though their rule had been honoured.
+
+A rule about a subagent by name outranks both that subagent's own declared
+model and the parent's, because naming the agent is the more specific
+statement and the one somebody wrote on purpose.

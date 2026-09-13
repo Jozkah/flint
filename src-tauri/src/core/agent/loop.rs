@@ -866,6 +866,9 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// The project's routing rules (AH-194), resolved once per run, so a rule
+    /// about a subagent by name reaches the dispatch that starts it.
+    routing: Vec<crate::core::agent::routing::Rule>,
     /// Whether an edited file is handed to the project's own formatter before
     /// its diff is shown (AH-149). Resolved once per run from
     /// `[tools].format_on_edit`.
@@ -1680,6 +1683,7 @@ impl CompositeToolInvoker {
                     &ctx.parent_args,
                     req,
                     &crate::core::agent::subagent::ParentRun {
+                        routing: self.routing.clone(),
                         conversation: forked,
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
@@ -3676,7 +3680,18 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
+        // Rules that cannot be honoured were already refused where the run was
+        // started; a project whose file is unreadable here simply has none,
+        // rather than failing a run twice for one reason.
+        let routing = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
+            .unwrap_or_default();
         let tools = CompositeToolInvoker {
+            routing,
             format_on_edit: settings.format_on_edit,
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -7044,6 +7059,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            routing: Vec::new(),
             format_on_edit: false,
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
                 .iter()

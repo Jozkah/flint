@@ -938,12 +938,42 @@ fn prepare_agent_session(
                 .to_string(),
         );
     }
+    // AH-194: the project's own rules about which model answers what. Read
+    // here, where the model has been resolved and before anything is sent, and
+    // refused at startup when a rule cannot be honoured -- a rule quietly
+    // ignored would send the run to a model nobody chose while looking as
+    // though the rule had been honoured.
+    let routing = crate::core::agent::routing::rules(&cfg.routing)
+        .map_err(|e| format!("{}", e.message()))?;
+    let model = match crate::core::agent::routing::route(
+        &routing,
+        &crate::core::agent::routing::Request {
+            role: "task",
+            agent: None,
+            model: &model,
+        },
+    ) {
+        Some(routed) => {
+            eprintln!("(routing: the run's model is {routed})");
+            routed
+        }
+        None => model,
+    };
     // The `smol` role (used by /goal evaluation): an explicit smol_model in
     // ~/.jan/config.toml, else reuse the main model so evaluation always works.
     let smol_model = crate::core::agent::global_config::smol_model()
         .ok()
         .flatten()
         .unwrap_or_else(|| model.clone());
+    let smol_model = crate::core::agent::routing::route(
+        &routing,
+        &crate::core::agent::routing::Request {
+            role: "smol",
+            agent: None,
+            model: &smol_model,
+        },
+    )
+    .unwrap_or(smol_model);
 
     let provider_configs = load_provider_configs(Some(&project_root), &overrides)?;
 

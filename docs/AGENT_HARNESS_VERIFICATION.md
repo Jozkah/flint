@@ -2295,3 +2295,28 @@ role and by a count; a regular expression honoured and a broken one refused as
 a credential sitting in a transcript not re-printed by a search that matched
 its line; and an export coming out whole in text, markdown and stored-line
 form, with an unknown session refused by name.
+
+
+### Provider routing rules (AH-194)
+
+Five tests plus real runs, reading the models the provider was actually asked
+for:
+
+```
+=== no rules: the run and its subagent both use the configured model
+  models the provider was asked for: ['m', 'm', 'm', 'm']
+
+=== a rule for the run's model, and one for the subagent by name
+(routing: the run's model is mock/routed)
+  models the provider was asked for: [… 'routed', 'routed', 'careful', 'careful']
+
+=== a rule nobody can honour
+rc=64  Error [invalid_input]: "whenever" is not a routing match this
+       understands (role:<name>, agent:<name>, model:<pattern>, or *)
+```
+
+Covered by test: the first matching rule deciding, with a catch-all behind it;
+no rules redirecting nothing; a model pattern matching as a prefix, a suffix
+and in the middle, and not matching what it should not; a rule that names the
+model already in use reporting no change; and an unknown match form, an empty
+role and a rule with nothing to use each refused as `invalid_input`.

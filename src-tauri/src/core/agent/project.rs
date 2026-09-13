@@ -33,6 +33,9 @@ pub(crate) struct AgentToml {
     /// chosen per run (AH-186).
     #[serde(default)]
     pub profiles: std::collections::BTreeMap<String, ProfileSection>,
+    /// `[[routing]]` -- which model answers what (AH-194).
+    #[serde(default)]
+    pub routing: Vec<crate::core::agent::routing::RoutingRule>,
 }
 
 /// A named variation on a project's settings (AH-186).
@@ -355,6 +358,12 @@ inject = "always"
 # command = ["notify-send", "Jan"]      # argument vector; no shell
 # webhook = "https://example.invalid/hooks/jan"
 # events = ["run.ended", "needs.attention"]
+
+# Which model answers what. Rules are read in order and the first match wins;
+# anything no rule matches resolves exactly as it would have.
+# [[routing]]
+# match = "role:smol"          # role:<name>, agent:<name>, model:<pattern>, or *
+# use = "provider/small-fast-model"
 
 # Named variations on the settings above, chosen with `--profile <name>`.
 # What a profile does not mention is left exactly as it is above.
