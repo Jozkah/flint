@@ -454,6 +454,14 @@ fn preview(id: &str) -> String {
 
 /// 1-128 chars of `[A-Za-z0-9._-]`, not `.` or `..`. Checked before any id
 /// becomes part of a path.
+fn is_windows_reserved_name(id: &str) -> bool {
+    let base = id.split('.').next().unwrap_or(id).to_ascii_uppercase();
+    matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((base.starts_with("COM") || base.starts_with("LPT"))
+            && base.len() == 4
+            && matches!(base.as_bytes()[3], b'1'..=b'9'))
+}
+
 pub fn validate_id(id: &str) -> Result<(), RoomError> {
     let ok = !id.is_empty()
         && id.len() <= MAX_ID_LENGTH
@@ -461,7 +469,11 @@ pub fn validate_id(id: &str) -> Result<(), RoomError> {
         && id != ".."
         && id
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        // Windows strips a trailing dot and reserves device names (with any
+        // extension), so such ids would alias another path or fail to open.
+        && !id.ends_with('.')
+        && !is_windows_reserved_name(id);
     if ok {
         Ok(())
     } else {

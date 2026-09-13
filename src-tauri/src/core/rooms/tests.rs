@@ -179,6 +179,13 @@ fn id_rule_refuses_bad_ids_including_traversal() {
         "sp ace",
         "ünï",
         &"x".repeat(129),
+        "a.",
+        "...",
+        "CON",
+        "nul",
+        "aux.txt",
+        "com1",
+        "LPT9.log",
     ] {
         assert_eq!(
             validate_id(bad).unwrap_err().code,
@@ -186,7 +193,7 @@ fn id_rule_refuses_bad_ids_including_traversal() {
             "id {bad:?} should be refused"
         );
     }
-    for good in ["a", "room-1", "A.b_c-9", "...", &"x".repeat(128)] {
+    for good in ["a", "room-1", "A.b_c-9", ".a", "console", "com0", "com10", &"x".repeat(128)] {
         assert!(validate_id(good).is_ok(), "id {good:?} should be accepted");
     }
 
