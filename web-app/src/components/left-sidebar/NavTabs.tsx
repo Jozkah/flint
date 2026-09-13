@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Handshake, HomeIcon } from 'lucide-react'
+import { Handshake, MessageSquare } from 'lucide-react'
 import { route, isCoworkRoute } from '@/constants/routes'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -7,10 +7,14 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 type TabItem = {
   label: string
   to: string
-  icon: typeof HomeIcon
+  icon: typeof MessageSquare
   isActive: boolean
 }
 
+/**
+ * Chat and Cowork are different ways of working in the same workspace. The
+ * switch keeps them distinct: Home is ordinary chat, Cowork is agent work.
+ */
 export function NavTabs() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
@@ -23,26 +27,31 @@ export function NavTabs() {
     pathname.startsWith('/project')
 
   const tabs: TabItem[] = [
-    { label: t('common:home'), to: route.home, icon: HomeIcon, isActive: isHome },
+    { label: t('common:home'), to: route.home, icon: MessageSquare, isActive: isHome },
     { label: t('common:cowork'), to: route.cowork, icon: Handshake, isActive: isCowork },
   ]
 
   return (
-    <div className="mt-1 flex items-center gap-0.5 rounded-lg bg-sidebar-foreground/5 p-0.5">
-      {tabs.map((tab) => {
+    <div
+      role="group"
+      className="flex h-9 items-stretch overflow-hidden rounded-md border border-line-strong bg-card pointer-coarse:h-11"
+    >
+      {tabs.map((tab, i) => {
         const Icon = tab.icon
         return (
           <Link
             key={tab.to}
             to={tab.to}
+            aria-current={tab.isActive ? 'page' : undefined}
             className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors',
+              'flex flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium transition-colors outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+              i > 0 && 'border-l border-line-strong',
               tab.isActive
-                ? 'bg-sidebar text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-brand-tint text-foreground'
+                : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
             )}
           >
-            <Icon size={15} />
+            <Icon className="size-4" aria-hidden />
             <span>{tab.label}</span>
           </Link>
         )

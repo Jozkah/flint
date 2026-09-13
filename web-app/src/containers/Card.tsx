@@ -31,6 +31,10 @@ type CardItemProps = {
   anchor?: string
 }
 
+/**
+ * One setting: a label and explanation on the left, its control on the right.
+ * On narrow screens the control drops below the text instead of squeezing it.
+ */
 export function CardItem({
   title,
   description,
@@ -51,20 +55,20 @@ export function CardItem({
         data-setting-anchor={anchor}
         tabIndex={anchor ? -1 : undefined}
         className={cn(
-          'flex justify-between mt-2 first:mt-0 border-b border-border/40 pb-3 last:border-none last:pb-0 gap-8',
+          'flex flex-col gap-3 border-b border-border py-3.5 first:pt-0 last:border-none last:pb-0 sm:flex-row sm:justify-between sm:gap-8',
           descriptionOutside && 'border-0',
-          align === 'start' && 'items-start',
-          align === 'center' && 'items-center',
-          align === 'end' && 'items-end',
-          column && 'flex-col gap-y-0 items-start',
+          align === 'start' && 'sm:items-start',
+          align === 'center' && 'sm:items-center',
+          align === 'end' && 'sm:items-end',
+          column && 'sm:flex-col gap-y-3 sm:items-start',
           anchor && settingTargetClasses,
           className
         )}
       >
-        <div className="space-y-1.5">
+        <div className="min-w-0 space-y-1">
           <h1 className="font-medium text-foreground">{title}</h1>
           {description && (
-            <span className="text-muted-foreground leading-normal">
+            <span className="block text-muted-foreground leading-normal">
               {description}
             </span>
           )}
@@ -72,7 +76,7 @@ export function CardItem({
         {actions && (
           <div
             className={cn(
-              'shrink-0',
+              'min-w-0 shrink-0',
               classNameWrapperAction,
               column && 'w-full'
             )}
@@ -90,16 +94,17 @@ export function CardItem({
   )
 }
 
+/** A group of settings on a paper surface with a hairline border. */
 export function Card({ title, children, header }: CardProps) {
   return (
-    <div className="bg-card p-4 rounded-lg text-muted-foreground w-full">
+    <section className="w-full rounded-lg border border-border bg-card p-4 text-muted-foreground md:p-5">
       {title && (
-        <h1 className="text-foreground font-studio font-medium text-base mb-4">
+        <h1 className="mb-4 font-display text-xl font-normal text-foreground">
           {title}
         </h1>
       )}
       {header && header}
       {children}
-    </div>
+    </section>
   )
 }
