@@ -85,7 +85,7 @@ export function SliderControl({
             onValueChange={handleValueChange}
             className={`flex-1 **:[[role=slider]]:h-4 **:[[role=slider]]:w-4 ${
               isInWarnBand
-                ? '**:[[data-slot=slider-range]]:bg-amber-500'
+                ? '**:[[data-slot=slider-range]]:bg-warning'
                 : ''
             }`}
             aria-label={title}

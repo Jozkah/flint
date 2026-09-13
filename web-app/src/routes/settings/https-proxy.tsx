@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -68,22 +68,19 @@ function HTTPSProxyContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-var(--ctx-h))]">
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             {/* Proxy Configuration */}
             <Card
               header={
-                <div className="flex items-center justify-between">
-                  <h1 className="text-foreground font-studio font-medium text-base mb-2">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h1 className="font-display text-xl font-normal text-foreground">
                     {t('settings:httpsProxy.proxy')}
                   </h1>
                   <Switch
+                    aria-label={t('settings:httpsProxy.proxy')}
                     checked={proxyEnabled}
                     onCheckedChange={toggleProxy}
                   />
@@ -98,7 +95,7 @@ function HTTPSProxyContent() {
                   <div className="space-y-2">
                     <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
                     <Input
-                      className="w-full"
+                      className="w-full font-mono"
                       placeholder={t(
                         'settings:httpsProxy.proxyUrlPlaceholder'
                       )}
@@ -114,24 +111,31 @@ function HTTPSProxyContent() {
                 description={
                   <div className="space-y-2">
                     <p>{t('settings:httpsProxy.authenticationDesc')}</p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
                         placeholder={t('settings:httpsProxy.username')}
                         value={proxyUsername}
                         onChange={(e) => setProxyUsername(e.target.value)}
                       />
-                      <div className="relative shrink-0 w-1/2">
+                      <div className="relative w-full shrink-0 sm:w-1/2">
                         <Input
                           type={showPassword ? 'text' : 'password'}
                           placeholder={t('settings:httpsProxy.password')}
-                          className="pr-16"
+                          className="pr-12"
                           value={proxyPassword}
                           onChange={(e) => setProxyPassword(e.target.value)}
                         />
-                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
                           <button
+                            type="button"
+                            aria-label={
+                              showPassword
+                                ? t('settings:httpsProxy.hidePassword')
+                                : t('settings:httpsProxy.showPassword')
+                            }
+                            aria-pressed={showPassword}
                             onClick={() => setShowPassword(!showPassword)}
-                            className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
+                            className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-10"
                           >
                             {showPassword ? (
                               <EyeOff size={16} />
@@ -153,6 +157,7 @@ function HTTPSProxyContent() {
                   <div className="space-y-2">
                     <p>{t('settings:httpsProxy.noProxyDesc')}</p>
                     <Input
+                      className="font-mono"
                       placeholder={t(
                         'settings:httpsProxy.noProxyPlaceholder'
                       )}
@@ -176,7 +181,7 @@ function HTTPSProxyContent() {
             </Card>
             <Card
               header={
-                <h1 className="text-foreground font-studio font-medium text-base mb-2">
+                <h1 className="mb-4 font-display text-xl font-normal text-foreground">
                   {t('settings:httpsProxy.caBundle')}
                 </h1>
               }
@@ -189,7 +194,7 @@ function HTTPSProxyContent() {
                   <div className="space-y-2">
                     <p>{t('settings:httpsProxy.caBundleDesc')}</p>
                     <Input
-                      className="w-full"
+                      className="w-full font-mono"
                       data-testid="ca-bundle-path"
                       placeholder={t('settings:httpsProxy.caBundlePlaceholder')}
                       value={caBundlePath}

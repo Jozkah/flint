@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { IconSearch, IconX } from '@tabler/icons-react'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -126,7 +126,7 @@ export function SettingsSearch() {
   return (
     <div className="relative px-1.5 pb-2">
       <div className="relative">
-        <IconSearch
+        <Search
           size={14}
           className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -149,7 +149,7 @@ export function SettingsSearch() {
               : undefined
           }
           autoComplete="off"
-          className="h-8 pl-7 pr-7 text-sm"
+          className="h-9 pl-7 pr-7 text-base pointer-coarse:h-11 md:text-sm"
         />
         {query.length > 0 && (
           <button
@@ -161,7 +161,7 @@ export function SettingsSearch() {
             }}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
-            <IconX size={14} />
+            <X size={14} aria-hidden />
           </button>
         )}
       </div>
@@ -171,7 +171,7 @@ export function SettingsSearch() {
           id="settings-search-results"
           role="listbox"
           aria-label={t('common:settingsSearch.results')}
-          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border bg-main-view shadow-md"
+          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border border-border bg-popover shadow-overlay"
         >
           <p
             className="px-2 py-1 text-[11px] text-muted-foreground"
@@ -191,7 +191,7 @@ export function SettingsSearch() {
                 aria-label={section}
                 className="border-t first:border-t-0"
               >
-                <p className="sticky top-0 bg-main-view px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="sticky top-0 bg-popover px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {section}
                 </p>
                 {items.map((entry, j) => {

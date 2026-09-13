@@ -173,6 +173,8 @@
     "unifiedMemoryDesc": "The GPU shares one memory pool with the CPU — models draw from the same memory as the rest of the system."
   },
   "httpsProxy": {
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "proxy": "Proxy",
     "proxyUrl": "Proxy URL",
     "proxyUrlDesc": "The URL and port of your proxy server.",
