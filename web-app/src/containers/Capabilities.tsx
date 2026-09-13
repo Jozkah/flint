@@ -5,13 +5,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  IconEye,
-  IconTool,
-  IconAtom,
-  IconWorld,
-  IconCodeCircle2,
-  IconHeadphones,
-} from '@tabler/icons-react'
+  Eye,
+  Wrench,
+  Atom,
+  Globe,
+  Binary,
+  Headphones,
+} from 'lucide-react'
 import { Fragment, memo } from 'react'
 
 interface CapabilitiesProps {
@@ -35,17 +35,17 @@ const Capabilities = memo(function Capabilities({ capabilities }: CapabilitiesPr
         const isEmbedding = capability === 'embeddings'
 
         if (capability === 'vision') {
-          icon = <IconEye className="size-4" />
+          icon = <Eye className="size-4" />
         } else if (capability === 'audio') {
-          icon = <IconHeadphones className="size-3.5" />
+          icon = <Headphones className="size-3.5" />
         } else if (capability === 'tools') {
-          icon = <IconTool className="size-3.5" />
+          icon = <Wrench className="size-3.5" />
         } else if (capability === 'reasoning') {
-          icon = <IconAtom className="size-3.5" />
+          icon = <Atom className="size-3.5" />
         } else if (capability === 'embeddings' || isEmbedding) {
-          icon = <IconCodeCircle2 className="size-3.5" />
+          icon = <Binary className="size-3.5" />
         } else if (capability === 'web_search') {
-          icon = <IconWorld className="size-3.5" />
+          icon = <Globe className="size-3.5" />
         } else {
           icon = null
         }

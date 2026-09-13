@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { IconCopy, IconCopyCheck } from '@tabler/icons-react'
+import { Copy, CopyCheck } from 'lucide-react'
 import { useState } from 'react'
 
 export const CopyButton = ({ text }: { text: string }) => {
@@ -19,10 +19,10 @@ export const CopyButton = ({ text }: { text: string }) => {
     >
       {copied ? (
         <>
-          <IconCopyCheck size={16} className="text-primary" />
+          <CopyCheck size={16} className="text-primary" />
         </>
       ) : (
-        <IconCopy size={16} />
+        <Copy size={16} />
       )}
     </Button>
   )

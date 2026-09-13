@@ -3,24 +3,24 @@ import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useState, useEffect, useCallback } from 'react'
 import {
-  IconAdjustmentsHorizontal,
-  IconCircles,
-  IconChevronDown,
-  IconChevronRight,
-  IconCommand,
-  IconFeather,
-  IconPalette,
-  IconPlus,
-  IconTopologyStar3,
-  IconCpu,
-  IconWorld,
-  IconWorldSearch,
-  IconBrain,
-  IconFolderCode,
-  IconPaperclip,
-  IconPuzzle,
-  IconShieldCheck,
-} from '@tabler/icons-react'
+  SlidersHorizontal,
+  Network,
+  ChevronDown,
+  ChevronRight,
+  Command,
+  Feather,
+  Palette,
+  Plus,
+  Waypoints,
+  Cpu,
+  Globe,
+  Search,
+  Brain,
+  FolderCode,
+  Paperclip,
+  Puzzle,
+  ShieldCheck,
+} from 'lucide-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 
@@ -151,11 +151,14 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         match.params.providerName === provider.provider
     )
     return (
-      <div
+      <button
         key={provider.provider}
+        type="button"
+        aria-current={isRouteActive ? 'page' : undefined}
         className={cn(
-          'flex px-2 items-center gap-1.5 cursor-pointer hover:bg-secondary/60 py-1 w-full rounded-sm text-foreground',
-          isRouteActive && 'bg-secondary',
+          menuLinkClass,
+          'flex items-center gap-2.5 text-left',
+          isRouteActive && 'active',
           provider.provider === 'llama.cpp' &&
             stepSetupRemoteProvider &&
             'hidden'
@@ -171,10 +174,10 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         }
       >
         <ProvidersAvatar provider={provider} />
-        <div className="truncate flex-1">
-          <span>{getProviderTitle(provider.provider)}</span>
-        </div>
-      </div>
+        <span className="truncate flex-1">
+          {getProviderTitle(provider.provider)}
+        </span>
+      </button>
     )
   }
 
@@ -211,21 +214,21 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
     SettingsPageId,
     (props: { size?: number; className?: string }) => React.ReactNode
   > = {
-    general: IconAdjustmentsHorizontal,
+    general: SlidersHorizontal,
     // "Appearance" is implemented by the existing Interface settings route.
-    appearance: IconPalette,
-    assistants: IconFeather,
-    attachments: IconPaperclip,
-    'local-api-server': IconCircles,
-    'https-proxy': IconWorld,
-    'web-search': IconWorldSearch,
-    memory: IconBrain,
-    permissions: IconShieldCheck,
-    'agent-tools': IconFolderCode,
-    shortcuts: IconCommand,
-    hardware: IconCpu,
-    'mcp-servers': IconTopologyStar3,
-    extensions: IconPuzzle,
+    appearance: Palette,
+    assistants: Feather,
+    attachments: Paperclip,
+    'local-api-server': Network,
+    'https-proxy': Globe,
+    'web-search': Search,
+    memory: Brain,
+    permissions: ShieldCheck,
+    'agent-tools': FolderCode,
+    shortcuts: Command,
+    hardware: Cpu,
+    'mcp-servers': Waypoints,
+    extensions: Puzzle,
     'claude-code': ({ size, className }) => (
       <img
         src="/images/code-claude.svg"
@@ -301,9 +304,9 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
               className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 pointer-coarse:py-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
             >
               {advancedOpen ? (
-                <IconChevronDown size={14} />
+                <ChevronDown size={14} />
               ) : (
-                <IconChevronRight size={14} />
+                <ChevronRight size={14} />
               )}
               {t('navigation:advancedSettings')}
             </button>
@@ -347,7 +350,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
               </span>
               <AddProviderDialog onCreateProvider={createProvider}>
                 <Button variant="ghost" size="icon-xs">
-                  <IconPlus size={12} />
+                  <Plus size={12} />
                 </Button>
               </AddProviderDialog>
             </div>
@@ -378,6 +381,9 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
               {hiddenProviders.length > 0 && (
                 <>
                   <button
+                    type="button"
+                    aria-expanded={expandedProviders}
+                    aria-controls="settings-hidden-providers"
                     className="flex items-center justify-between px-2 py-1 w-full rounded-sm text-muted-foreground hover:bg-secondary/60"
                     onClick={() => setExpandedProviders(!expandedProviders)}
                   >
@@ -387,41 +393,47 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
                       })}
                     </span>
                     {expandedProviders ? (
-                      <IconChevronDown size={14} />
+                      <ChevronDown size={14} />
                     ) : (
-                      <IconChevronRight size={14} />
+                      <ChevronRight size={14} />
                     )}
                   </button>
-                  {expandedProviders &&
-                    hiddenProviders.map((provider) => {
-                      const isRouteActive = matches.some(
-                        (match) =>
-                          match.routeId ===
-                            '/settings/providers/$providerName' &&
-                          'providerName' in match.params &&
-                          match.params.providerName === provider.provider
-                      )
-                      return (
-                        <div
-                          key={provider.provider}
-                          className={cn(
-                            'flex px-2 items-center gap-1.5 cursor-pointer hover:bg-secondary/60 py-1 w-full rounded-sm text-muted-foreground',
-                            isRouteActive && 'bg-secondary'
-                          )}
-                          onClick={() =>
-                            navigate({
-                              to: route.settings.providers,
-                              params: { providerName: provider.provider },
-                            })
-                          }
-                        >
-                          <ProvidersAvatar provider={provider} />
-                          <div className="truncate flex-1">
-                            <span>{getProviderTitle(provider.provider)}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                  {expandedProviders && (
+                    <div id="settings-hidden-providers" className="contents">
+                      {hiddenProviders.map((provider) => {
+                        const isRouteActive = matches.some(
+                          (match) =>
+                            match.routeId ===
+                              '/settings/providers/$providerName' &&
+                            'providerName' in match.params &&
+                            match.params.providerName === provider.provider
+                        )
+                        return (
+                          <button
+                            key={provider.provider}
+                            type="button"
+                            aria-current={isRouteActive ? 'page' : undefined}
+                            className={cn(
+                              menuLinkClass,
+                              'flex items-center gap-2.5 text-left text-muted-foreground',
+                              isRouteActive && 'active'
+                            )}
+                            onClick={() =>
+                              navigate({
+                                to: route.settings.providers,
+                                params: { providerName: provider.provider },
+                              })
+                            }
+                          >
+                            <ProvidersAvatar provider={provider} />
+                            <span className="truncate flex-1">
+                              {getProviderTitle(provider.provider)}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </div>
