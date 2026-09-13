@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { IconPlus, IconTrash } from '@tabler/icons-react'
+import { Plus, Trash2 } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { EnvVar } from '@/hooks/useClaudeCodeModel'
 
@@ -112,12 +113,15 @@ export default function AddEditCustomCliDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm">Environment Variables</label>
-              <div
-                className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+              <button
+                type="button"
+                aria-label="Add environment variable"
+                title="Add environment variable"
+                className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={handleAddEnv}
               >
-                <IconPlus size={16} className="text-muted-foreground" />
-              </div>
+                <Plus className="size-4" aria-hidden />
+              </button>
             </div>
 
             {envVars.map((env, index) => (
@@ -126,29 +130,37 @@ export default function AddEditCustomCliDialog({
                   value={env.key}
                   onChange={(e) => handleEnvKeyChange(index, e.target.value)}
                   placeholder="Key"
-                  className="flex-1"
+                  className="min-w-0 flex-1 font-mono"
                 />
                 <Input
                   value={env.value}
                   onChange={(e) => handleEnvValueChange(index, e.target.value)}
                   placeholder="Value"
-                  className="flex-1"
+                  className="min-w-0 flex-1"
                 />
                 {envVars.length > 1 && (
-                  <div
-                    className="size-6 cursor-pointer flex items-center justify-center rounded hover:bg-secondary transition-all duration-200 ease-in-out"
+                  <button
+                    type="button"
+                    aria-label={`Remove environment variable ${index + 1}`}
+                    title="Remove"
+                    className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
                     onClick={() => handleRemoveEnv(index)}
                   >
-                    <IconTrash size={16} className="text-destructive" />
-                  </div>
+                    <Trash2 className="size-4" aria-hidden />
+                  </button>
                 )}
               </div>
             ))}
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => onOpenChange(false)}
+          >
             {t('common:cancel')}
           </Button>
           <Button

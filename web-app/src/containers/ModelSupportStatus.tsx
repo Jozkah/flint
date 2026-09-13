@@ -56,10 +56,10 @@ interface ModelSupportStatusProps {
 }
 
 const DOT_CLASS: Record<FitTier, string> = {
-  green: 'bg-green-500',
-  yellow: 'bg-yellow-500',
-  red: 'bg-red-500',
-  unknown: 'bg-secondary',
+  green: 'bg-success',
+  yellow: 'bg-warning',
+  red: 'bg-destructive',
+  unknown: 'bg-muted-foreground/50',
 }
 
 /** A measured result outranks the estimate for the colour of the dot. */
@@ -357,7 +357,7 @@ export const ModelSupportStatus = ({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex size-5 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex size-5 items-center justify-center rounded-full hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-8"
             aria-label={t('model-fit:triggerLabel', {
               status: dismissed ? estimate : `${headline}. ${estimate}`,
             })}
@@ -370,17 +370,25 @@ export const ModelSupportStatus = ({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-96 max-w-[90vw] max-h-[70vh] overflow-y-auto text-sm space-y-3"
+          className="w-96 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto overscroll-contain bg-card text-sm space-y-3"
         >
           <div>
-            <h3 className="font-medium">{t('model-fit:title')}</h3>
+            <h3 className="font-display text-lg font-normal leading-tight text-foreground">
+              {t('model-fit:title')}
+            </h3>
             <p className="text-muted-foreground text-xs mt-0.5">
               {t('model-fit:subtitle')}
             </p>
           </div>
 
-          <section aria-labelledby="model-fit-measured" className="space-y-1">
-            <h4 id="model-fit-measured" className="text-xs font-medium uppercase text-muted-foreground">
+          {/* Measured on this device and Estimate are two different kinds of
+              claim, so they are two visibly different blocks: a solid paper
+              card for what was observed, a dashed sunken one for arithmetic. */}
+          <section
+            aria-labelledby="model-fit-measured"
+            className="space-y-1 rounded-md border border-border bg-card p-2.5"
+          >
+            <h4 id="model-fit-measured" className="text-xs font-semibold uppercase tracking-wide text-ink-2">
               {t('model-fit:measuredHeading')}
             </h4>
             <p>{headline}</p>
@@ -413,8 +421,11 @@ export const ModelSupportStatus = ({
             </p>
           </section>
 
-          <section aria-labelledby="model-fit-estimate" className="space-y-1">
-            <h4 id="model-fit-estimate" className="text-xs font-medium uppercase text-muted-foreground">
+          <section
+            aria-labelledby="model-fit-estimate"
+            className="space-y-1 rounded-md border border-dashed border-line-strong bg-sunken p-2.5"
+          >
+            <h4 id="model-fit-estimate" className="text-xs font-semibold uppercase tracking-wide text-ink-2">
               {t('model-fit:estimateHeading')}
             </h4>
             <p>{estimate}</p>
@@ -426,11 +437,11 @@ export const ModelSupportStatus = ({
               })}
             </p>
             <Collapsible>
-              <CollapsibleTrigger className="text-xs underline underline-offset-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <CollapsibleTrigger className="text-xs text-brand-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-ring">
                 {t('model-fit:showReasons')}
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2 text-xs">
-                <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5">
+                <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 tabular-nums">
                   <dt>{t('model-fit:breakdown.weights')}</dt>
                   <dd className="text-right">{bytes(assessment.required.weights)}</dd>
                   <dt>
@@ -474,7 +485,7 @@ export const ModelSupportStatus = ({
             <div
               role="alertdialog"
               aria-labelledby="model-fit-confirm"
-              className="rounded-md border p-2 space-y-2"
+              className="rounded-md border border-warning/40 bg-warning-tint p-2 space-y-2"
             >
               <p id="model-fit-confirm">
                 {t('model-fit:test.confirmUnload', {
@@ -633,7 +644,7 @@ function MeasuredDetails({
         <p className="text-destructive break-words">{error}</p>
       )}
       {rows.length > 0 && (
-        <dl className="grid grid-cols-[1fr_auto] gap-x-3">
+        <dl className="grid grid-cols-[1fr_auto] gap-x-3 tabular-nums">
           {rows.map(([label, value]) => (
             <div key={label} className="contents">
               <dt>{label}</dt>

@@ -61,13 +61,16 @@ export function CompactionPolicySettings() {
   return (
     <Card
       header={
-        <h1 className="text-foreground font-studio font-medium text-base mb-2">
+        <h1 className="mb-4 font-display text-xl font-normal text-foreground">
           {t('settings:compaction.title')}
         </h1>
       }
     >
       {error && (
-        <p role="alert" className="text-destructive text-sm px-2">
+        <p
+          role="alert"
+          className="mb-3 rounded-md border border-destructive/40 bg-destructive-tint px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       )}
@@ -100,7 +103,7 @@ export function CompactionPolicySettings() {
             actions={
               <select
                 aria-label={t('settings:compaction.strategy')}
-                className="bg-background border rounded px-2 py-1 text-sm"
+                className="h-9 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                 value={policy.strategy}
                 onChange={(e) =>
                   void save({ strategy: e.currentTarget.value as CompactionPolicy['strategy'] })

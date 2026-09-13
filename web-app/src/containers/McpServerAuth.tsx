@@ -23,14 +23,14 @@ interface McpServerAuthProps {
 
 /** Badge tint per state: green means usable, amber needs attention, red is absent. */
 const TONE: Record<MCPAuthStatus['state'], string> = {
-  notApplicable: 'text-muted-foreground bg-secondary',
-  staticHeader: 'text-green-700 dark:text-green-500 bg-secondary',
-  authenticated: 'text-green-700 dark:text-green-500 bg-secondary',
-  expired: 'text-amber-700 dark:text-amber-500 bg-secondary',
-  staleResource: 'text-amber-700 dark:text-amber-500 bg-secondary',
-  scopeMismatch: 'text-amber-700 dark:text-amber-500 bg-secondary',
-  invalidScopes: 'text-red-700 dark:text-red-500 bg-secondary',
-  unauthenticated: 'text-red-700 dark:text-red-500 bg-secondary',
+  notApplicable: 'text-ink-2 bg-sunken',
+  staticHeader: 'text-success bg-success-tint',
+  authenticated: 'text-success bg-success-tint',
+  expired: 'text-warning bg-warning-tint',
+  staleResource: 'text-warning bg-warning-tint',
+  scopeMismatch: 'text-warning bg-warning-tint',
+  invalidScopes: 'text-destructive bg-destructive-tint',
+  unauthenticated: 'text-destructive bg-destructive-tint',
 }
 
 /**
@@ -96,7 +96,7 @@ export function McpServerAuth({
       <span className="text-muted-foreground">{t('mcp-servers:auth.label')}</span>
       <span
         className={cn(
-          'rounded-sm border px-2 py-0.5 text-xs',
+          'rounded-full px-2 py-0.5 text-xs font-medium',
           TONE[status.state]
         )}
       >
@@ -151,7 +151,7 @@ export function McpServerAuth({
           href={consentUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-blue-500 hover:underline"
+          className="text-xs text-brand-text underline-offset-4 hover:underline"
         >
           {t('mcp-servers:auth.openSignInPage')}
         </a>

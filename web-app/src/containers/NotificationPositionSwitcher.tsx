@@ -38,7 +38,7 @@ export function NotificationPositionSwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="w-full justify-between"
+          className="w-full min-w-40 justify-between pointer-coarse:h-11"
           title={t('settings:interface.notificationPosition')}
         >
           {t(positionLabelKey(notificationPosition))}
@@ -51,7 +51,7 @@ export function NotificationPositionSwitcher() {
             key={value}
             className={cn(
               'cursor-pointer my-0.5',
-              notificationPosition === value && 'bg-secondary-foreground/8'
+              notificationPosition === value && 'bg-brand-tint'
             )}
             onClick={() => setNotificationPosition(value)}
           >

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,6 @@ import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { IconSettings2 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { ApiKeyInput } from '@/containers/ApiKeyInput'
 import { useEffect, useMemo, useState } from 'react'
@@ -39,12 +38,13 @@ import {
   CollapsibleContent,
 } from '@/components/ui/collapsible'
 import {
-  IconChevronDown,
-  IconChevronUp,
-  IconExternalLink,
-  IconLoader2,
-} from '@tabler/icons-react'
-import { ChevronsUpDown } from 'lucide-react'
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  ExternalLink,
+  LoaderCircle,
+  Settings2,
+} from 'lucide-react'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.local_api_server as any)({
@@ -233,7 +233,7 @@ function LocalAPIServerContent() {
     if (isModelLoading || serverStatus === 'pending') {
       return (
         <>
-          <IconLoader2 size={14} className="animate-spin" />
+          <LoaderCircle className="animate-spin" aria-hidden />
           {isModelLoading
             ? t('settings:localApiServer.loadingModel')
             : t('settings:localApiServer.startingServer')}
@@ -257,35 +257,26 @@ function LocalAPIServerContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <HeaderPage>
-        <div
-          className={cn(
-            'flex items-center justify-between w-full mr-2 pr-3',
-            !IS_MACOS && 'pr-30'
-          )}
-        >
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
+      <SettingsPageHeader>
           <Popover>
             <PopoverTrigger asChild>
-              <Button size="sm" variant="outline" className="relative z-50">
-                <IconSettings2 size={16} />
+              <Button size="sm" variant="outline" className="pointer-coarse:h-11">
+                <Settings2 aria-hidden />
                 Configuration
               </Button>
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="w-[480px] max-h-[70vh] overflow-y-auto"
+              className="w-[min(100vw-1.5rem,480px)] max-h-[70vh] overflow-y-auto bg-card"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center justify-between border-b border-border pb-2">
                   <h2 className="font-semibold text-sm">
                     {t('settings:localApiServer.serverConfiguration')}
                   </h2>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.serverHost')}
@@ -298,7 +289,7 @@ function LocalAPIServerContent() {
                       <ServerHostSwitcher isServerRunning={isServerRunning} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.serverPort')}
@@ -309,7 +300,7 @@ function LocalAPIServerContent() {
                     </div>
                     <PortInput isServerRunning={isServerRunning} />
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.apiPrefix')}
@@ -345,7 +336,7 @@ function LocalAPIServerContent() {
                       <TrustedHostsInput isServerRunning={isServerRunning} />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.proxyTimeout')}
@@ -364,7 +355,7 @@ function LocalAPIServerContent() {
                   </h2>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         Execute tools on server
@@ -379,7 +370,7 @@ function LocalAPIServerContent() {
                       disabled={isServerRunning}
                     />
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.cors')}
@@ -394,7 +385,7 @@ function LocalAPIServerContent() {
                       disabled={isServerRunning}
                     />
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">
                         {t('settings:localApiServer.verboseLogs')}
@@ -413,18 +404,17 @@ function LocalAPIServerContent() {
               </div>
             </PopoverContent>
           </Popover>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-var(--ctx-h))]">
-        <div className="flex-1 flex flex-col min-h-0 pl-0">
-          <div className="flex-1 overflow-y-auto p-4 pt-0">
-            <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      </SettingsPageHeader>
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
               {/* General Settings */}
               <Card
                 header={
-                  <div className="mb-3 flex w-full items-center border-b pb-2">
-                    <div className="w-full space-y-2">
-                      <h1 className="text-base font-medium text-foreground font-studio">
+                  <div className="mb-4 flex w-full flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start">
+                    <div className="w-full min-w-0 space-y-1">
+                      <h1 className="font-display text-xl font-normal text-foreground">
                         {t('settings:localApiServer.title')}
                       </h1>
                       <p className="text-muted-foreground mb-2">
@@ -436,6 +426,7 @@ function LocalAPIServerContent() {
                         onClick={toggleAPIServer}
                         variant={isServerRunning ? 'destructive' : 'default'}
                         size="sm"
+                        className="pointer-coarse:h-11"
                         disabled={serverStatus === 'pending' || isModelLoading}
                       >
                         {getButtonContent()}
@@ -480,7 +471,7 @@ function LocalAPIServerContent() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-40 justify-between"
+                          className="w-full max-w-56 justify-between pointer-coarse:h-11 sm:w-40"
                         >
                           <span className="truncate">
                             {defaultModelLocalApiServer?.model ??
@@ -500,7 +491,7 @@ function LocalAPIServerContent() {
                               defaultModelLocalApiServer?.model === modelId &&
                                 defaultModelLocalApiServer?.provider ===
                                   provider &&
-                                'bg-secondary-foreground/8'
+                                'bg-brand-tint'
                             )}
                             onClick={() =>
                               setDefaultModelLocalApiServer({
@@ -509,7 +500,7 @@ function LocalAPIServerContent() {
                               })
                             }
                           >
-                            <span className="truncate">{modelId}</span>
+                            <span className="truncate font-mono text-xs">{modelId}</span>
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -562,22 +553,23 @@ function LocalAPIServerContent() {
               </Card>
             </div>
           </div>
-          <div className="p-4 shrink-0">
+          <div className="shrink-0 border-t border-border bg-background px-3 py-3 md:px-6">
+            <div className="mx-auto w-full max-w-4xl">
             <Card>
               <Collapsible defaultOpen={false}>
                 <div className="flex items-center justify-between">
-                  <CollapsibleTrigger className="flex items-center gap-2 hover:no-underline data-[state=open]:[&>svg.chevron-down]:hidden data-[state=closed]:[&>svg.chevron-up]:hidden">
-                    <IconChevronDown size={16} className="chevron-down" />
-                    <IconChevronUp size={16} className="chevron-up" />
+                  <CollapsibleTrigger className="flex min-h-11 items-center gap-2 rounded-sm hover:no-underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0 data-[state=open]:[&>svg.chevron-down]:hidden data-[state=closed]:[&>svg.chevron-up]:hidden">
+                    <ChevronDown size={16} className="chevron-down" aria-hidden />
+                    <ChevronUp size={16} className="chevron-up" aria-hidden />
                     <span className="font-medium text-sm">Server Log</span>
                   </CollapsibleTrigger>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleOpenLogs}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground pointer-coarse:h-11"
                   >
-                    <IconExternalLink size={14} className="mr-1" />
+                    <ExternalLink aria-hidden />
                     Open in New Window
                   </Button>
                 </div>
@@ -590,6 +582,7 @@ function LocalAPIServerContent() {
                 </CollapsibleContent>
               </Collapsible>
             </Card>
+            </div>
           </div>
         </div>
       </div>

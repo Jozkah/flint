@@ -39,7 +39,7 @@ export function ThemeSwitcher({
           <Label
             key={item.value}
             htmlFor={item.value}
-            className="cursor-pointer [&:has([data-state=checked])>div]:border-primary [&:has([data-state=checked])>div]:bg-primary/5"
+            className="cursor-pointer [&:has([data-state=checked])>div]:border-brand [&:has([data-state=checked])>div]:bg-brand-tint"
           >
             <Card className="w-full border transition-colors shadow-none">
               <CardContent className="flex flex-row items-center justify-start gap-4 p-4">
@@ -56,7 +56,7 @@ export function ThemeSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full justify-between" title={t('common:editTheme')}>
+        <Button variant="outline" size="sm" className="w-full min-w-40 justify-between pointer-coarse:h-11" title={t('common:editTheme')}>
           {themeOptions.find(
             (item: { value: string; label: string }) => item.value === activeTheme
           )?.label || t('common:auto')}
@@ -69,7 +69,7 @@ export function ThemeSwitcher({
             key={item.value}
             className={cn(
               'cursor-pointer my-0.5',
-              activeTheme === item.value && 'bg-secondary-foreground/8'
+              activeTheme === item.value && 'bg-brand-tint'
             )}
             onClick={() => setTheme(item.value as 'auto' | 'light' | 'dark')}
           >

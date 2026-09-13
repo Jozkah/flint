@@ -32,7 +32,7 @@ export function FontSizeSwitcher({
           <Label
             key={item.value}
             htmlFor={item.value}
-            className="cursor-pointer [&:has([data-state=checked])>div]:border-primary [&:has([data-state=checked])>div]:bg-primary/5"
+            className="cursor-pointer [&:has([data-state=checked])>div]:border-brand [&:has([data-state=checked])>div]:bg-brand-tint"
           >
             <Card className="w-full border transition-colors shadow-none">
               <CardContent className="flex flex-row items-center justify-start gap-4 p-4">
@@ -49,7 +49,7 @@ export function FontSizeSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full justify-between" title={t('common:adjustFontSize')}>
+        <Button variant="outline" size="sm" className="w-full min-w-40 justify-between pointer-coarse:h-11" title={t('common:adjustFontSize')}>
           {fontSizeOptions.find(
             (item: { value: string; label: string }) => item.value === fontSize
           )?.label || t('common:medium')}
@@ -62,7 +62,7 @@ export function FontSizeSwitcher({
             key={item.value}
             className={cn(
               'cursor-pointer my-0.5',
-              fontSize === item.value && 'bg-secondary-foreground/8'
+              fontSize === item.value && 'bg-brand-tint'
             )}
             onClick={() => setFontSize(item.value as FontSize)}
           >

@@ -63,10 +63,10 @@ export function ShortcutRebind({
 
   return (
     <div
-      className="flex flex-col items-end gap-1"
+      className="flex flex-col items-start gap-1 sm:items-end"
       data-testid={`rebind-${action}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {recording ? (
           <span
             className="text-xs text-muted-foreground"
@@ -80,6 +80,7 @@ export function ShortcutRebind({
         <Button
           size="sm"
           variant="ghost"
+          className="text-brand-text pointer-coarse:h-11"
           onClick={() => {
             setError(null)
             setRecording((r) => !r)
@@ -92,6 +93,7 @@ export function ShortcutRebind({
           <Button
             size="sm"
             variant="ghost"
+            className="pointer-coarse:h-11"
             onClick={() => useKeybindings.getState().reset(action)}
             data-testid="rebind-reset"
             title={PlatformShortcuts[action].key}

@@ -3,7 +3,7 @@ import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { IconPencil, IconPin, IconPinnedOff, IconTrash } from '@tabler/icons-react'
+import { Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   MEMORY_AUTOSAVE_ANCHOR,
   MEMORY_LIST_ANCHOR,
@@ -70,7 +71,7 @@ export const Route = createFileRoute(route.settings.memory as any)({
 const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
   {
     scope: 'chat',
-    label: 'This chat',
+    label: 'This conversation',
     blurb: 'Remembered only inside the conversation it was saved from.',
   },
   {
@@ -80,7 +81,7 @@ const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
   },
   {
     scope: 'user',
-    label: 'Across chats',
+    label: 'All conversations',
     blurb: 'Available everywhere. Keep this for things that are true generally.',
   },
 ]
@@ -111,7 +112,6 @@ function formatBytes(bytes: number): string {
 }
 
 function MemorySettings() {
-  const { t } = useTranslation()
   const [scope, setScope] = useState<MemoryScope>('user')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<MemoryView[]>([])
@@ -606,12 +606,10 @@ function MemorySettings() {
 
   return (
     <div className="flex flex-col h-full">
-      <HeaderPage>
-        <h1 className="font-medium">{t('common:settings')}</h1>
-      </HeaderPage>
-      <div className="flex h-full w-full">
-        <div className="p-4 w-full h-[calc(100%-32px)] overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 w-full">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             <Card title="Memory">
               <CardItem
                 title="Use saved memory in conversations"
@@ -643,19 +641,19 @@ function MemorySettings() {
                   />
                 }
               />
-              <div className="px-4 py-3 flex flex-col gap-2" data-testid="memory-recall">
-                <p className="text-sm font-medium">Use remembered facts in requests</p>
+              <div className="mt-3.5 flex flex-col gap-1 border-t border-border pt-3.5" data-testid="memory-recall">
+                <p className="font-medium text-foreground">Use remembered facts in requests</p>
                 <p className="text-xs text-muted-foreground">
                   Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.
                 </p>
                 {(
                   [
-                    ['session', 'This chat'],
+                    ['session', 'This conversation'],
                     ['project', 'This project'],
-                    ['user', 'Across chats'],
+                    ['user', 'All conversations'],
                   ] as Array<[keyof MemoryRecall, string]>
                 ).map(([key, label]) => (
-                  <label key={key} className="flex items-center justify-between gap-3 text-sm">
+                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 text-sm text-foreground sm:min-h-9">
                     <span>{label}</span>
                     <Switch
                       checked={recall[key]}
@@ -672,7 +670,7 @@ function MemorySettings() {
                 <div
                   role="alert"
                   data-testid="memory-storage-error"
-                  className="mx-4 mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+                  className="mt-3 rounded-md border border-destructive/40 bg-destructive-tint p-3 text-xs text-destructive"
                 >
                   {[settingsIssue, ...(summary?.issues ?? [])]
                     .filter(Boolean)
@@ -700,7 +698,7 @@ function MemorySettings() {
                   title="Memories Jan has offered"
                   description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
                 />
-                <div className="p-2">
+                <div className="mt-3">
                   <MemoryProposalList
                     proposals={proposalsPending}
                     location={proposalLocation}
@@ -722,16 +720,16 @@ function MemorySettings() {
                   title="Neither side is being used"
                   description="These remembered facts contradict each other, so Jan leaves both out of every request here until you keep one."
                 />
-                <ul className="p-2 flex flex-col gap-3" data-testid="memory-conflicts">
+                <ul className="mt-3 flex flex-col gap-3" data-testid="memory-conflicts">
                   {conflicts.map((conflict) => (
                     <li
                       key={`${conflict.left.id}|${conflict.right.id}`}
-                      className="rounded-md border border-border p-2"
+                      className="rounded-lg border border-border bg-card p-3"
                       data-testid="memory-conflict"
                       data-left-id={conflict.left.id}
                       data-right-id={conflict.right.id}
                     >
-                      <p className="text-xs text-muted-foreground mb-2">
+                      <p className="mb-2 text-xs font-medium text-ink-2">
                         About the {conflict.subject}
                       </p>
                       <div className="grid gap-2 sm:grid-cols-2">
@@ -741,17 +739,17 @@ function MemorySettings() {
                             [conflict.right, conflict.left],
                           ] satisfies Array<[MemoryView, MemoryView]>
                         ).map(([side, other]: [MemoryView, MemoryView]) => (
-                          <div key={side.id} className="flex flex-col gap-1 min-w-0">
-                            <p className="text-sm break-words">{side.content}</p>
+                          <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-md bg-sunken p-3">
+                            <p className="text-sm break-words text-foreground">{side.content}</p>
                             <p className="text-xs text-muted-foreground">
                               {scopeLabel(side.scope)}
                               {' · '}
-                              <span className="font-mono">{side.id}</span>
+                              <span className="font-mono break-all">{side.id}</span>
                             </p>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="self-start"
+                              className="self-start pointer-coarse:h-11"
                               disabled={busy}
                               data-testid="memory-conflict-keep"
                               data-keep-id={side.id}
@@ -775,31 +773,37 @@ function MemorySettings() {
                 title="What Jan remembers"
                 description="Search, edit, pin and forget what is remembered for this chat, this project, or across chats."
               />
-              <div className="p-2 flex flex-col gap-3">
+              <div className="mt-3 flex flex-col gap-3">
+                {/* Scopes as tabs: an accent underline marks the one shown. */}
                 <div
                   role="tablist"
                   aria-label="Memory scope"
-                  className="flex items-center gap-1"
+                  className="flex items-end gap-1 overflow-x-auto border-b border-border"
                 >
                   {TABS.map((tab) => (
-                    <Button
+                    <button
                       key={tab.scope}
+                      type="button"
                       role="tab"
                       aria-selected={tab.scope === scope}
-                      variant={tab.scope === scope ? 'default' : 'ghost'}
-                      size="sm"
+                      className={cn(
+                        '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pt-1.5 pb-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                        tab.scope === scope
+                          ? 'border-brand text-foreground'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      )}
                       onClick={() => {
                         setScope(tab.scope)
                         setOffset(0)
                       }}
                     >
                       {tab.label}
-                    </Button>
+                    </button>
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
                 {!recall[recallKey(scope)] && (
-                  <p className="text-xs text-amber-600" data-testid="memory-recall-off-note">
+                  <p className="text-xs text-warning" data-testid="memory-recall-off-note">
                     Recall is off for this scope: these are kept, but not sent.
                   </p>
                 )}
@@ -818,10 +822,11 @@ function MemorySettings() {
                     placeholder="Something Jan should remember"
                     onChange={(e) => setNewMemory(e.target.value)}
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
                       size="sm"
+                      className="pointer-coarse:h-11"
                       disabled={busy || !newMemory.trim() || location == null}
                       data-testid="memory-new-save"
                     >
@@ -831,7 +836,7 @@ function MemorySettings() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="ml-auto"
+                      className="pointer-coarse:h-11 sm:ml-auto"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-export"
                       onClick={() => void onExport()}
@@ -842,6 +847,7 @@ function MemorySettings() {
                       type="button"
                       size="sm"
                       variant="outline"
+                      className="pointer-coarse:h-11"
                       disabled={busy || location == null}
                       data-testid="memory-import"
                       onClick={() => void onImport()}
@@ -851,8 +857,8 @@ function MemorySettings() {
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
-                      className="text-destructive"
+                      variant="destructive"
+                      className="pointer-coarse:h-11"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-clear-scope"
                       onClick={() => setClearing(scope)}
@@ -865,7 +871,7 @@ function MemorySettings() {
                 {importReport && (
                   <div
                     key={importCount}
-                    className="rounded-md border border-border p-2 text-xs text-muted-foreground"
+                    className="rounded-md bg-sunken p-3 text-xs text-ink-2"
                     role="status"
                     data-testid="memory-import-report"
                     data-imported={importReport.imported.length}
@@ -895,7 +901,7 @@ function MemorySettings() {
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Conversation
                     <select
-                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Conversation whose memory to show"
                       data-testid="memory-session-picker"
                       value={sessionId ?? ''}
@@ -920,7 +926,7 @@ function MemorySettings() {
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Project folder
                     <select
-                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Project whose memory to show"
                       data-testid="memory-project-picker"
                       value={projectRoot ?? ''}
@@ -947,8 +953,8 @@ function MemorySettings() {
                 )}
 
                 {scope === 'project' && (
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="memory-project" className="text-sm">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                    <label htmlFor="memory-project" className="text-xs text-muted-foreground sm:text-sm">
                       Project
                     </label>
                     <select
@@ -961,7 +967,7 @@ function MemorySettings() {
                         if (e.target.value) setProjectRoot('')
                         setOffset(0)
                       }}
-                      className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                     >
                       <option value="">Choose a project</option>
                       {projects.map((project) => (
@@ -984,27 +990,27 @@ function MemorySettings() {
                 />
 
                 {unavailable ? (
-                  <p className="text-sm text-muted-foreground py-6 text-center">
+                  <p className="rounded-md border border-dashed border-line-strong py-6 text-center text-sm text-muted-foreground">
                     {unavailable}
                   </p>
                 ) : page.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-6 text-center">
+                  <p className="rounded-md border border-dashed border-line-strong py-6 text-center text-sm text-muted-foreground">
                     {query
                       ? 'Nothing here matches that search.'
                       : 'Nothing remembered here yet.'}
                   </p>
                 ) : (
-                  <ul className="flex flex-col divide-y divide-main-view-fg/5">
+                  <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
                     {page.map((memory) => (
                       <li
                         key={memory.id}
-                        className="py-2 flex items-start justify-between gap-3"
+                        className="flex items-start justify-between gap-3 px-3 py-3"
                         data-testid="memory-row"
                         data-memory-id={memory.id}
                         data-pinned={memory.pinned ? 'true' : 'false'}
                       >
                         <div className="min-w-0">
-                          <p className="text-sm break-words">{memory.preview}</p>
+                          <p className="text-sm break-words text-foreground">{memory.preview}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {memory.origin === 'explicit' ? 'You saved this' : 'Inferred'}
                             {memory.pinned && ' · pinned'}
@@ -1016,10 +1022,10 @@ function MemorySettings() {
                             {formatWhen(memory.lastUsedAt)}
                           </p>
                           <details className="mt-1 text-xs" data-testid="memory-provenance">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            <summary className="cursor-pointer rounded-sm text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:py-2">
                               Why Jan remembers this
                             </summary>
-                            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted-foreground">
+                            <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-sunken p-2 text-ink-2 sm:grid-cols-[auto_1fr]">
                               <dt>ID</dt>
                               <dd className="font-mono break-all">{memory.id}</dd>
                               <dt>Scope</dt>
@@ -1134,20 +1140,22 @@ function MemorySettings() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            className="text-muted-foreground pointer-coarse:size-11"
                             disabled={busy}
                             title={memory.pinned ? 'Unpin' : 'Pin'}
                             aria-label={memory.pinned ? 'Unpin memory' : 'Pin memory'}
                             onClick={() => void onTogglePin(memory)}
                           >
                             {memory.pinned ? (
-                              <IconPinnedOff size={16} />
+                              <PinOff aria-hidden />
                             ) : (
-                              <IconPin size={16} />
+                              <Pin aria-hidden />
                             )}
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            className="text-muted-foreground pointer-coarse:size-11"
                             disabled={busy}
                             title="Edit"
                             aria-label="Edit memory"
@@ -1156,17 +1164,18 @@ function MemorySettings() {
                               setDraft(memory.content)
                             }}
                           >
-                            <IconPencil size={16} />
+                            <Pencil aria-hidden />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            className="text-muted-foreground pointer-coarse:size-11"
                             disabled={busy}
                             title="Forget"
                             aria-label="Forget memory"
                             onClick={() => void onForget(memory)}
                           >
-                            <IconTrash size={16} className="text-destructive" />
+                            <Trash2 className="text-destructive" aria-hidden />
                           </Button>
                         </div>
                       </li>
@@ -1175,7 +1184,7 @@ function MemorySettings() {
                 )}
 
                 {total > PAGE_SIZE && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums text-muted-foreground">
                     <span>
                       Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of{' '}
                       {total}
@@ -1220,8 +1229,8 @@ function MemorySettings() {
             rows={6}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditing(null)}>
+          <DialogFooter className={STICKY_DIALOG_FOOTER}>
+            <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => setEditing(null)}>
               Cancel
             </Button>
             <Button
@@ -1245,8 +1254,8 @@ function MemorySettings() {
                 : null}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setClearing(null)}>
+          <DialogFooter className={STICKY_DIALOG_FOOTER}>
+            <Button variant="ghost" className="pointer-coarse:h-11" onClick={() => setClearing(null)}>
               Cancel
             </Button>
             <Button
