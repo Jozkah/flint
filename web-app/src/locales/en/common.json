@@ -180,7 +180,17 @@
       "navigation": "Go to",
       "settings": "Settings",
       "threads": "Conversation"
+    },
+    "group": {
+      "actions": "Actions",
+      "navigation": "Go to",
+      "settings": "Settings",
+      "threads": "Conversations"
     }
+  },
+  "searchGroup": {
+    "inProjects": "In projects",
+    "conversations": "Conversations"
   },
   "rail": {
     "label": "Cowork panels",
@@ -720,6 +730,13 @@
   "artifactsNoMatch": "No artifacts match.",
   "artifactsSearch": "Search artifacts",
   "artifactsShowMore": "Show {{count}} more",
+  "artifactsEmptyTitle": "Nothing in the library yet",
+  "artifactsOpenCowork": "Open Cowork",
+  "artifactGoToSession": "Go to session",
+  "artifactSession": "Session",
+  "artifactProject": "Project",
+  "artifactSandbox": "Session sandbox",
+  "artifactUpdated": "Updated",
   "workspace": {
     "readsFrom": "Reads from",
     "readOnly": "read-only",

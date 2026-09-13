@@ -3,6 +3,7 @@ import { Minus, Square, X } from 'lucide-react'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   useTitlebarLayout,
   type ButtonId,
@@ -67,6 +68,12 @@ export const WindowControls = () => {
         aria-label={labels[id]}
         variant="ghost"
         size="icon-sm"
+        className={cn(
+          'text-muted-foreground hover:text-foreground pointer-coarse:size-11',
+          // Close is the one caption button that reads as destructive.
+          id === 'close' &&
+            'hover:bg-destructive hover:text-destructive-foreground active:bg-destructive'
+        )}
       >
         {icons[id]}
       </Button>

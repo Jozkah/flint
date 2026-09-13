@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   systemUsage: { cpu: 42.5, used_memory: 16384, gpus: [] as any[] },
   updateSystemUsage: vi.fn(),
   getSystemUsage: vi.fn(),
+  sidebar: null as null | object,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -37,12 +38,14 @@ vi.mock('@/hooks/useServiceHub', () => ({
   }),
 }))
 
-vi.mock('@/components/ui/progress', () => ({
-  Progress: ({ value }: any) => <div data-testid="progress" data-value={value} />,
+vi.mock('@/components/ui/sidebar', () => ({
+  useOptionalSidebar: () => h.sidebar,
 }))
 
-vi.mock('@tabler/icons-react', () => ({
-  IconDeviceDesktopAnalytics: () => <span data-testid="icon" />,
+vi.mock('@/containers/HeaderPage', () => ({
+  default: ({ children }: any) => (
+    <div data-testid="context-bar">{children}</div>
+  ),
 }))
 
 vi.mock('@/lib/utils', () => ({
@@ -76,6 +79,7 @@ describe('SystemMonitor route', () => {
     }
     h.systemUsage = { cpu: 42.5, used_memory: 16384, gpus: [] }
     h.getSystemUsage.mockResolvedValue({ cpu: 10, used_memory: 1 })
+    h.sidebar = null
   })
 
   afterEach(() => {
@@ -89,6 +93,32 @@ describe('SystemMonitor route', () => {
     expect(screen.getByText('16')).toBeInTheDocument()
     expect(screen.getByText('x86_64')).toBeInTheDocument()
     expect(screen.getByText('42.50%')).toBeInTheDocument()
+  })
+
+  it('draws its own bar in the standalone window', () => {
+    renderComponent()
+    expect(screen.getByTestId('system-page-bar')).toHaveTextContent(
+      'system-monitor:title'
+    )
+    expect(screen.queryByTestId('context-bar')).not.toBeInTheDocument()
+  })
+
+  it('uses the shell context bar inside the shell', () => {
+    h.sidebar = {}
+    renderComponent()
+    expect(screen.getByTestId('context-bar')).toHaveTextContent(
+      'system-monitor:title'
+    )
+    expect(screen.queryByTestId('system-page-bar')).not.toBeInTheDocument()
+  })
+
+  it('exposes usage as meters with their values', () => {
+    renderComponent()
+    const meters = screen.getAllByRole('meter')
+    expect(meters.map((m) => m.getAttribute('aria-valuenow'))).toEqual([
+      '43',
+      '50',
+    ])
   })
 
   it('renders RAM info with used/available and percentage', () => {
