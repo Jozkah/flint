@@ -206,6 +206,7 @@ pub(crate) fn snapshot(
     thread_id: &str,
     changed: &[PathBuf],
 ) -> Result<String, String> {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     let idx = snapshot_index(repo, thread_id);
     if let Some(parent_dir) = idx.parent() {
         std::fs::create_dir_all(parent_dir)
@@ -304,6 +305,7 @@ pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
 /// it. `latest` (the newest snapshot) is used only to find files added since
 /// `target` so they can be removed. Files matching `.gitignore` are untouched.
 pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), String> {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     let idx = temp_index();
     let result = (|| {
         run(repo, Some(&idx), &["read-tree", target])?;
@@ -1111,6 +1113,36 @@ mod tests {
         cleanup_snapshot_index(thread_id);
         assert!(!snapshot_index(&a, thread_id).exists());
         assert!(!snapshot_index(&b, thread_id).exists());
+    }
+
+    /// R22: a checkpoint runs no filter program the repository's own config
+    /// names, and a repository using git-lfs's own filter commands keeps
+    /// checkpoints.
+    #[test]
+    fn a_checkpoint_runs_no_filter_program_the_repository_names() {
+        let Some(root) = init_repo() else { return };
+        let marker = root.join("filter-ran.txt");
+        let marker_sh = marker.to_string_lossy().replace('\\', "/");
+        std::fs::write(root.join(".gitattributes"), "*.txt filter=evil\n").unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.clean", &format!("sh -c 'echo ran > \"{marker_sh}\"; cat'")]).unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.smudge", &format!("sh -c 'echo ran > \"{marker_sh}\"; cat'")]).unwrap();
+        std::fs::write(root.join("a.txt"), "changed\n").unwrap();
+        let taken = snapshot(&root, None, "base", "r22-thread", &[PathBuf::from("a.txt")]);
+        assert!(!marker.exists(), "a checkpoint ran the repository's filter program");
+        assert!(taken.is_err(), "a repository naming a filter program was snapshotted: {taken:?}");
+        assert!(taken.unwrap_err().contains("filter.evil"), "the refusal does not name the setting");
+        cleanup_snapshot_index("r22-thread");
+
+        // git-lfs's own filter commands are not refused.
+        run(&root, None, &["config", "--local", "--unset", "filter.evil.clean"]).unwrap();
+        run(&root, None, &["config", "--local", "--unset", "filter.evil.smudge"]).unwrap();
+        std::fs::write(root.join(".gitattributes"), "*.bin filter=lfs\n").unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.clean", "git-lfs clean -- %f"]).unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.smudge", "git-lfs smudge -- %f"]).unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.process", "git-lfs filter-process"]).unwrap();
+        assert!(snapshot(&root, None, "base", "r22-lfs", &[PathBuf::from("a.txt")]).is_ok(), "a git-lfs repository lost its checkpoints");
+        cleanup_snapshot_index("r22-lfs");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -78,6 +78,13 @@ pub enum CaErrorKind {
     TooLarge,
     NoCertificates,
     Malformed,
+    /// Not an absolute path: it would name different files from different
+    /// working directories.
+    Relative,
+    /// Reached through a symbolic link or junction somewhere in the path.
+    Link,
+    /// The machine policy forbids custom certificate authorities.
+    ForbiddenByPolicy,
 }
 
 impl CaErrorKind {
@@ -88,6 +95,9 @@ impl CaErrorKind {
             CaErrorKind::TooLarge => "too_large",
             CaErrorKind::NoCertificates => "no_certificates",
             CaErrorKind::Malformed => "malformed",
+            CaErrorKind::Relative => "relative",
+            CaErrorKind::Link => "link",
+            CaErrorKind::ForbiddenByPolicy => "forbidden_by_policy",
         }
     }
 }
@@ -110,7 +120,12 @@ impl From<&CaError> for HarnessError {
         let kind = match error.kind {
             CaErrorKind::NotFound => ErrorKind::NotFound,
             CaErrorKind::Unreadable => ErrorKind::Io,
-            CaErrorKind::TooLarge | CaErrorKind::NoCertificates | CaErrorKind::Malformed => ErrorKind::InvalidInput,
+            CaErrorKind::TooLarge
+            | CaErrorKind::NoCertificates
+            | CaErrorKind::Malformed
+            | CaErrorKind::Relative
+            | CaErrorKind::Link => ErrorKind::InvalidInput,
+            CaErrorKind::ForbiddenByPolicy => ErrorKind::PermissionDenied,
         };
         HarnessError::new(kind, error.message.clone())
     }
@@ -145,13 +160,78 @@ fn refuse(kind: CaErrorKind, path: &Path, message: String) -> CaError {
 /// stacks the app uses; one that does not refuses the whole bundle, rather than
 /// trusting whatever parsed.
 pub fn load(path: &Path, source: Source) -> Result<Bundle, CaError> {
+    let (policy, _) = tauri_plugin_agent_tools::org_policy::load();
+    load_with_policy(path, source, policy.as_ref())
+}
+
+/// Whether the machine policy forbids custom CA bundles, and where it says so.
+pub fn forbidden_by(policy: Option<&tauri_plugin_agent_tools::org_policy::OrgPolicy>) -> Option<String> {
+    policy
+        .filter(|p| p.allow_ca_bundle == Some(false))
+        .map(|p| p.source.display().to_string())
+}
+
+/// Lexically normal form of an absolute path, for comparing it with what the
+/// filesystem resolves it to.
+fn normal_form(path: &Path) -> String {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    let text = out.to_string_lossy().trim_start_matches(r"\\?\").replace('/', "\\");
+    if cfg!(windows) { text.to_lowercase() } else { text }
+}
+
+/// [`load`], with the machine policy given.
+pub fn load_with_policy(
+    path: &Path,
+    source: Source,
+    policy: Option<&tauri_plugin_agent_tools::org_policy::OrgPolicy>,
+) -> Result<Bundle, CaError> {
     let shown = path.display().to_string();
+    if let Some(where_) = forbidden_by(policy) {
+        return Err(refuse(
+            CaErrorKind::ForbiddenByPolicy,
+            path,
+            format!("this machine's policy ({where_}) forbids custom certificate authority bundles, so {shown} is not trusted"),
+        ));
+    }
+    if !path.is_absolute() {
+        return Err(refuse(
+            CaErrorKind::Relative,
+            path,
+            format!("the CA bundle {shown} is not an absolute path; name the file by its full path"),
+        ));
+    }
     let metadata = std::fs::metadata(path).map_err(|e| {
         let kind = if e.kind() == std::io::ErrorKind::NotFound { CaErrorKind::NotFound } else { CaErrorKind::Unreadable };
         refuse(kind, path, format!("the CA bundle {shown} cannot be used: {e}"))
     })?;
     if !metadata.is_file() {
         return Err(refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} is not a file")));
+    }
+    // A link anywhere in the path -- the file itself, or a directory junction
+    // on the way to it -- makes the trusted file whatever the link points to
+    // today. The resolved path must be the path that was named.
+    let is_link = std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    let resolved = std::fs::canonicalize(path).map_err(|e| {
+        refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} cannot be resolved: {e}"))
+    })?;
+    if is_link || normal_form(&resolved) != normal_form(path) {
+        return Err(refuse(
+            CaErrorKind::Link,
+            path,
+            format!(
+                "the CA bundle {shown} is reached through a link or junction (it resolves to {}); name the file itself",
+                resolved.to_string_lossy().trim_start_matches(r"\\?\")
+            ),
+        ));
     }
     if metadata.len() > MAX_BUNDLE_BYTES {
         return Err(refuse(
@@ -290,6 +370,9 @@ pub fn fingerprint() -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     path.hash(&mut h);
     (source as u8).hash(&mut h);
+    // A policy change must rebuild cached clients too.
+    let (policy, _) = tauri_plugin_agent_tools::org_policy::load();
+    forbidden_by(policy.as_ref()).hash(&mut h);
     if let Ok(meta) = std::fs::metadata(&path) {
         meta.len().hash(&mut h);
         if let Ok(modified) = meta.modified() {
@@ -314,6 +397,12 @@ fn report_broken(error: &CaError) {
 pub fn with_bundle12(builder: reqwest::ClientBuilder, bundle: Option<&Result<Bundle, CaError>>) -> reqwest::ClientBuilder {
     match bundle {
         None => builder,
+        // Forbidden by the machine policy: not applied. Refusing it only
+        // narrows trust, so the platform's roots stay in force.
+        Some(Err(error)) if error.kind == CaErrorKind::ForbiddenByPolicy => {
+            report_broken(error);
+            builder
+        }
         Some(Ok(bundle)) => {
             let certs = reqwest::Certificate::from_pem_bundle(&bundle.pem).unwrap_or_default();
             certs.into_iter().fold(builder, |b, cert| b.add_root_certificate(cert))
@@ -329,6 +418,12 @@ pub fn with_bundle12(builder: reqwest::ClientBuilder, bundle: Option<&Result<Bun
 pub fn with_bundle13(builder: reqwest13::ClientBuilder, bundle: Option<&Result<Bundle, CaError>>) -> reqwest13::ClientBuilder {
     match bundle {
         None => builder,
+        // Forbidden by the machine policy: not applied. Refusing it only
+        // narrows trust, so the platform's roots stay in force.
+        Some(Err(error)) if error.kind == CaErrorKind::ForbiddenByPolicy => {
+            report_broken(error);
+            builder
+        }
         Some(Ok(bundle)) => {
             let certs = reqwest13::Certificate::from_pem_bundle(&bundle.pem).unwrap_or_default();
             builder.tls_certs_merge(certs)
@@ -427,6 +522,13 @@ pub fn status() -> serde_json::Value {
             "sha256": bundle.fingerprints,
             "trusts": "the platform's roots and these certificates",
         }),
+        Some(Err(error)) if error.kind == CaErrorKind::ForbiddenByPolicy => serde_json::json!({
+            "state": "forbidden",
+            "kind": error.kind.tag(),
+            "path": error.path.display().to_string(),
+            "message": error.message,
+            "trusts": "the platform's roots only: this machine's policy forbids custom certificate authorities",
+        }),
         Some(Err(error)) => serde_json::json!({
             "state": "broken",
             "kind": error.kind.tag(),
@@ -502,6 +604,56 @@ pub(crate) mod tests {
 
     fn runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap()
+    }
+
+    /// AH-190: a bundle is a real file named by its full path, and a machine
+    /// policy can forbid bundles altogether.
+    #[test]
+    fn a_relative_or_linked_bundle_is_refused_and_policy_can_forbid_them() {
+        let ca = make_ca();
+        let real = ca.path().join("ca.pem");
+        let none = None;
+        assert!(load_with_policy(&real, Source::Environment, none).is_ok());
+        let kind = |path: &Path| load_with_policy(path, Source::Environment, none).unwrap_err().kind;
+        assert_eq!(kind(Path::new("ca.pem")), CaErrorKind::Relative);
+        #[cfg(windows)]
+        {
+            let outer = tempfile::tempdir().unwrap();
+            let junction = outer.path().join("via-junction");
+            let made = std::process::Command::new("cmd")
+                .args(["/c", "mklink", "/J"])
+                .arg(&junction)
+                .arg(ca.path())
+                .output()
+                .unwrap();
+            assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+            let linked = junction.join("ca.pem");
+            assert!(linked.is_file());
+            let refused = load_with_policy(&linked, Source::Environment, none).unwrap_err();
+            assert_eq!(refused.kind, CaErrorKind::Link, "{}", refused.message);
+            assert_eq!(HarnessError::from(&refused).kind(), ErrorKind::InvalidInput);
+            let _ = std::process::Command::new("cmd").args(["/c", "rmdir"]).arg(&junction).output();
+            // A file symbolic link needs a privilege this account may not
+            // hold; when it can be made, it is refused too.
+            let file_link = outer.path().join("link.pem");
+            match std::os::windows::fs::symlink_file(&real, &file_link) {
+                Ok(()) => assert_eq!(kind(&file_link), CaErrorKind::Link),
+                Err(e) => println!("file symbolic link not created here ({e}); the junction case stands"),
+            }
+        }
+        let forbidding = tauri_plugin_agent_tools::org_policy::OrgPolicy {
+            source: PathBuf::from("C:/ProgramData/Jan/policy.toml"),
+            allow_ca_bundle: Some(false),
+            ..Default::default()
+        };
+        let refused = load_with_policy(&real, Source::CliConfig, Some(&forbidding)).unwrap_err();
+        assert_eq!(refused.kind, CaErrorKind::ForbiddenByPolicy);
+        assert_eq!(HarnessError::from(&refused).kind(), ErrorKind::PermissionDenied);
+        // Applying a forbidden bundle leaves the platform's roots in force
+        // rather than trusting nothing.
+        let _ = with_bundle12(reqwest::Client::builder(), Some(&Err(refused)));
+        let allowing = tauri_plugin_agent_tools::org_policy::OrgPolicy { allow_ca_bundle: Some(true), ..Default::default() };
+        assert!(load_with_policy(&real, Source::CliConfig, Some(&allowing)).is_ok());
     }
 
     #[test]

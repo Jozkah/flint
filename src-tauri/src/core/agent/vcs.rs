@@ -140,6 +140,46 @@ fn runs_a_program(key: &str, value: &str) -> bool {
         || key.starts_with("alias.") && value.trim_start().starts_with('!')
 }
 
+/// The filter commands git-lfs itself installs. A repository that uses
+/// git-lfs names these, and they are not a program the repository chose.
+fn is_git_lfs_filter(key: &str, value: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    key.starts_with("filter.lfs.")
+        && matches!(
+            value.as_str(),
+            "git-lfs clean -- %f" | "git-lfs smudge -- %f" | "git-lfs smudge --skip -- %f"
+                | "git-lfs filter-process" | "git-lfs filter-process --skip"
+        )
+}
+
+/// R22: for change checkpoints and isolated checkouts, which run filters on
+/// every file they stage or check out -- refuse a repository whose own config
+/// names a filter, diff or merge program other than git-lfs's own commands.
+pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["config", "--local", "--includes", "--list", "-z"])
+        .output()
+        .map_err(|e| format!("git would not run: {e}"))?;
+    let listed = String::from_utf8_lossy(&out.stdout);
+    for entry in listed.split('\0').filter(|e| !e.is_empty()) {
+        let (key, value) = entry.split_once('\n').unwrap_or((entry, ""));
+        let lower = key.to_ascii_lowercase();
+        let last = lower.rsplit('.').next().unwrap_or("");
+        let program = (lower.starts_with("filter.") && matches!(last, "clean" | "smudge" | "process"))
+            || (lower.starts_with("diff.") && matches!(last, "textconv" | "command"))
+            || (lower.starts_with("merge.") && last == "driver");
+        if program && !is_git_lfs_filter(key, value) {
+            return Err(format!(
+                "this repository's own git config sets `{key}`, which makes git run a program on the files it stages or checks out; Jan does not snapshot or check out this repository, so undo is not available for it. Remove that setting to restore it."
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Refuse a repository whose own config names a program for git to run.
 pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
     let out = Command::new("git")

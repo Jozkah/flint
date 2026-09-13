@@ -2505,17 +2505,19 @@
       "tests": [
         "src-tauri/src/core/agent/semantic.rs::a_credential_inside_a_file_is_scrubbed_before_it_is_sent",
         "src-tauri/src/core/agent/semantic.rs::a_file_is_cut_into_overlapping_ranges_and_secret_files_are_never_read",
+        "src-tauri/src/core/agent/semantic.rs::a_moved_file_keeps_its_vectors_and_exact_words_only_break_ties",
         "src-tauri/src/core/agent/semantic.rs::a_provider_without_embeddings_makes_the_search_unavailable",
         "src-tauri/src/core/agent/semantic.rs::an_unsupported_provider_receives_no_project_content",
         "src-tauri/src/core/agent/semantic.rs::code_is_found_by_meaning_and_only_changed_files_are_embedded_again",
         "src-tauri/src/core/agent/semantic.rs::only_a_model_the_user_named_is_used",
+        "src-tauri/src/core/agent/semantic.rs::ranges_start_at_the_files_own_definitions",
         "src-tauri/src/core/agent/semantic.rs::vectors_that_cannot_be_compared_or_a_cancelled_build_leave_the_index_as_it_was"
       ],
       "platformRequirements": [
         "an OpenAI-compatible /v1/embeddings endpoint with an embedding model"
       ],
-      "blockedReason": "No real embedding model is reachable: v100:8080 (llama.cpp) answers 501 because it was not started with --embeddings, and v100:8555 (vLLM) answers 404 for /v1/embeddings. Enabling one requires reconfiguring a server or downloading a model, both outside what this phase may do. The implementation is complete and exercised end to end against a local embedding fixture and the real servers' refusals.",
-      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code. 2026-09-13 (Phase 6): semantic_search in the agent loop over an embedding model the user names, with a probe before any project content (R17), secret files never read, credentials scrubbed, incremental per-model store written atomically, typed refusals and no lexical fallback. Evidence: failing CLI evidence first, 7 unit tests, real CLI exercise with a local embedding fixture plus real 8080/8555 refusals. Blocked on a real embedding model: neither v100:8080 nor v100:8555 serves embeddings."
+      "blockedReason": "No real embedding model is reachable (rechecked 2026-09-13T15:26:58Z): v100:8080 (llama.cpp) answers 501 because it was not started with --embeddings, and v100:8555 (vLLM) answers 404 for /v1/embeddings. Enabling one requires reconfiguring a server or downloading a model, both outside what this phase may do. The implementation is code-complete and exercised end to end against a local embedding fixture and the real servers' refusals.",
+      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code. 2026-09-13 (Phase 6): semantic_search in the agent loop over an embedding model the user names, with a probe before any project content (R17), secret files never read, credentials scrubbed, incremental per-model store written atomically, typed refusals and no lexical fallback. Evidence: failing CLI evidence first, 7 unit tests, real CLI exercise with a local embedding fixture plus real 8080/8555 refusals. Blocked on a real embedding model: neither v100:8080 nor v100:8555 serves embeddings. 2026-09-13 (Phase 6 completion): symbol-aware ranges, reuse of vectors for moved or renamed files by content hash, hybrid ranking (meaning first, exact words as a bounded tie-breaker) with provenance on every hit. Code-complete; still blocked only on a real embedding model."
     },
     {
       "id": "AH-072",
@@ -6914,6 +6916,7 @@
       ],
       "owner": "lane-10-provider-enterprise",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/org_policy.rs",
         "src-tauri/src/bin/jan.rs",
         "src-tauri/src/core/agent/genai_bridge.rs",
         "src-tauri/src/core/agent/global_config.rs",
@@ -6942,8 +6945,10 @@
       ],
       "tests": [
         "src-tauri/examples/cowork_smoke.rs::network-ca-bundle-in-the-desktop",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/org_policy.rs::a_machine_policy_can_forbid_custom_certificate_authorities",
         "src-tauri/src/core/agent/genai_bridge.rs::a_certificate_failure_is_not_retried_and_names_the_reason",
         "src-tauri/src/core/net/tls.rs::a_bundle_that_cannot_be_used_is_refused_by_kind",
+        "src-tauri/src/core/net/tls.rs::a_relative_or_linked_bundle_is_refused_and_policy_can_forbid_them",
         "src-tauri/src/core/net/tls.rs::a_run_cannot_grant_itself_trust_in_a_certificate_authority",
         "src-tauri/src/core/net/tls.rs::an_abandoned_handshake_leaves_no_connection_open",
         "src-tauri/src/core/net/tls.rs::the_desktop_setting_is_read_from_the_stored_proxy_settings",
@@ -6953,8 +6958,8 @@
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
       ],
-      "blockedReason": "Per-OS validation: implemented and validated end to end on Windows (SChannel) -- real CLI and desktop exercises, five TLS proofs on both HTTP stacks. macOS (Security.framework) and Linux (OpenSSL) validation needs those hosts, which this environment does not have.",
-      "auditNote": "2026-09-13 (Phase 6): custom CA bundles for outbound HTTPS, implemented on every platform and validated on Windows only. A PEM bundle named by JAN_CA_BUNDLE, the CLI's ca_bundle (jan cli net ca set/status/clear) or the desktop HTTPS proxy settings is added to the platform roots of every outbound client to configured endpoints on both reqwest stacks; verification stays on; nothing falls back to plain HTTP; a bundle that cannot be used is refused by kind and makes clients fail closed. A project file cannot name one and a run cannot write the user's config to do so without a WriteEscape prompt. Evidence: failing CLI evidence first; five TLS proofs on both stacks; real CLI and desktop exercises. R13 (certificate failures retried ten times and unnamed) and R12 (broken bin tests from AH-135) fixed with regression tests. Blocked on per-OS validation on macOS and Linux."
+      "blockedReason": "Per-OS validation: implemented and validated end to end on Windows (SChannel) -- real CLI and desktop exercises, five TLS proofs on both HTTP stacks, relative/link/policy refusals through the real CLI. macOS (Security.framework) and Linux (OpenSSL) validation needs those hosts, which this environment does not have. The implementation is code-complete.",
+      "auditNote": "2026-09-13 (Phase 6): custom CA bundles for outbound HTTPS, implemented on every platform and validated on Windows only. A PEM bundle named by JAN_CA_BUNDLE, the CLI's ca_bundle (jan cli net ca set/status/clear) or the desktop HTTPS proxy settings is added to the platform roots of every outbound client to configured endpoints on both reqwest stacks; verification stays on; nothing falls back to plain HTTP; a bundle that cannot be used is refused by kind and makes clients fail closed. A project file cannot name one and a run cannot write the user's config to do so without a WriteEscape prompt. Evidence: failing CLI evidence first; five TLS proofs on both stacks; real CLI and desktop exercises. R13 (certificate failures retried ten times and unnamed) and R12 (broken bin tests from AH-135) fixed with regression tests. Blocked on per-OS validation on macOS and Linux. 2026-09-13 (Phase 6 completion): bundles must be real files named by absolute paths (relative and link/junction paths refused by kind); a machine policy can forbid custom CA bundles (unreadable or malformed policies forbid them), forbidden bundles are not applied and status says so. Code-complete; still blocked only on macOS/Linux validation."
     },
     {
       "id": "AH-191",

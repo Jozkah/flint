@@ -52,6 +52,9 @@ pub const MAX_CHUNKS: usize = 5_000;
 pub const BATCH: usize = 32;
 pub const DEFAULT_RESULTS: usize = 8;
 pub const MAX_RESULTS: usize = 20;
+/// How much of a hit's score comes from the query's exact words appearing in
+/// the range. Meaning decides; exact words only break near-ties.
+pub const LEXICAL_WEIGHT: f32 = 0.15;
 pub const MODEL_ENV: &str = "JAN_EMBEDDINGS_MODEL";
 pub const URL_ENV: &str = "JAN_EMBEDDINGS_URL";
 pub const KEY_ENV: &str = "JAN_EMBEDDINGS_KEY";
@@ -289,6 +292,8 @@ pub struct Store {
 pub struct Update {
     pub embedded: usize,
     pub reused: usize,
+    /// Ranges reused for a file that moved or was renamed: same content, new path.
+    pub moved: usize,
     pub files: usize,
 }
 
@@ -343,6 +348,37 @@ pub fn chunks_of(text: &str) -> Vec<(usize, usize, String)> {
     out
 }
 
+/// Ranges cut at the file's own definitions: each function, type or constant
+/// the project index found starts a range, so a range is "this definition"
+/// rather than whichever 40 lines happened to fall together. A definition
+/// longer than a range is cut into overlapping ranges within itself; text
+/// before the first definition is a range of its own. With no definitions
+/// found this is [`chunks_of`].
+pub fn chunks_at_symbols(text: &str, symbol_lines: &[usize]) -> Vec<(usize, usize, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut starts: Vec<usize> = symbol_lines.iter().copied().filter(|l| *l >= 1 && *l <= lines.len()).collect();
+    starts.sort_unstable();
+    starts.dedup();
+    if starts.is_empty() {
+        return chunks_of(text);
+    }
+    if starts[0] > 1 {
+        starts.insert(0, 1);
+    }
+    let mut out = Vec::new();
+    for (i, start) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).map(|next| next - 1).unwrap_or(lines.len());
+        if end < *start {
+            continue;
+        }
+        let segment = lines[start - 1..end].join("\n");
+        for (s, e, body) in chunks_of(&segment) {
+            out.push((start + s - 1, start + e - 1, body));
+        }
+    }
+    out
+}
+
 fn normalized(mut v: Vec<f32>) -> Vec<f32> {
     let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
@@ -364,9 +400,13 @@ pub async fn refresh<E: Embed>(
     let (index, _) = crate::core::agent::index::refresh(data_folder, project, &stop).map_err(|e| HarnessError::from(&e))?;
     let previous = load(data_folder, project).filter(|s| s.model == embedder_id);
     let mut reusable: BTreeMap<(String, String), Vec<Chunk>> = BTreeMap::new();
+    // The same content under another path: a moved or renamed file keeps its
+    // vectors, re-labelled with where it is now.
+    let mut by_content: BTreeMap<String, Vec<Chunk>> = BTreeMap::new();
     if let Some(previous) = &previous {
         for chunk in &previous.chunks {
             reusable.entry((chunk.path.clone(), chunk.file_hash.clone())).or_default().push(chunk.clone());
+            by_content.entry(chunk.file_hash.clone()).or_default().push(chunk.clone());
         }
     }
     let mut kept: Vec<Chunk> = Vec::new();
@@ -383,8 +423,23 @@ pub async fn refresh<E: Embed>(
             kept.extend(chunks);
             continue;
         }
+        if let Some(chunks) = by_content.get(&entry.hash) {
+            // Only whole-file copies of what was embedded: the ranges of one
+            // earlier path, relabelled.
+            let first_path = chunks[0].path.clone();
+            let moved: Vec<Chunk> = chunks
+                .iter()
+                .filter(|c| c.path == first_path)
+                .map(|c| Chunk { path: path.clone(), ..c.clone() })
+                .collect();
+            update.reused += moved.len();
+            update.moved += moved.len();
+            kept.extend(moved);
+            continue;
+        }
         let Ok(text) = std::fs::read_to_string(project.join(path)) else { continue };
-        for (start, end, body) in chunks_of(&text) {
+        let symbol_lines: Vec<usize> = entry.symbols.iter().map(|s| s.line).collect();
+        for (start, end, body) in chunks_at_symbols(&text, &symbol_lines) {
             pending.push((path.clone(), entry.hash.clone(), start, end, scrub(&body)));
         }
     }
@@ -465,10 +520,39 @@ pub struct Hit {
     pub path: String,
     pub start: usize,
     pub end: usize,
+    /// What the ranking used: mostly `semantic`, with `lexical` as a bounded
+    /// tie-breaker.
     pub score: f32,
+    /// Cosine similarity between the query and the range, from the model.
+    pub semantic: f32,
+    /// The share of the query's words that appear in the range as written.
+    pub lexical: f32,
+    /// The content hash of the file the range was embedded from.
+    pub file_hash: String,
 }
 
-pub async fn search<E: Embed>(store: &Store, query: &str, limit: usize, embedder: &E) -> Result<Vec<Hit>, HarnessError> {
+/// The query's words worth matching exactly: lower-cased, three letters or more.
+fn query_words(query: &str) -> Vec<String> {
+    let mut words: Vec<String> = query
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|w| w.chars().count() >= 3)
+        .map(str::to_string)
+        .collect();
+    words.sort();
+    words.dedup();
+    words
+}
+
+fn lexical_share(words: &[String], text: &str) -> f32 {
+    if words.is_empty() {
+        return 0.0;
+    }
+    let text = text.to_lowercase();
+    words.iter().filter(|w| text.contains(w.as_str())).count() as f32 / words.len() as f32
+}
+
+pub async fn search<E: Embed>(project: &Path, store: &Store, query: &str, limit: usize, embedder: &E) -> Result<Vec<Hit>, HarnessError> {
     let query = query.trim();
     if query.is_empty() {
         return Err(refuse(ErrorKind::InvalidInput, "a semantic search needs a query"));
@@ -484,10 +568,33 @@ pub async fn search<E: Embed>(store: &Store, query: &str, limit: usize, embedder
             format!("the query's vector has {} dimensions and the index's have {}; the embedding model changed", q.len(), store.dim),
         ));
     }
+    let words = query_words(query);
+    let mut texts: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut hits: Vec<Hit> = store
         .chunks
         .iter()
-        .map(|c| Hit { path: c.path.clone(), start: c.start, end: c.end, score: c.vector.iter().zip(&q).map(|(a, b)| a * b).sum() })
+        .map(|c| {
+            let semantic: f32 = c.vector.iter().zip(&q).map(|(a, b)| a * b).sum();
+            let lines = texts.entry(c.path.clone()).or_insert_with(|| {
+                std::fs::read_to_string(project.join(&c.path))
+                    .map(|t| t.lines().map(str::to_string).collect())
+                    .unwrap_or_default()
+            });
+            let range = lines
+                .get(c.start.saturating_sub(1)..c.end.min(lines.len()))
+                .map(|l| l.join("\n"))
+                .unwrap_or_default();
+            let lexical = lexical_share(&words, &format!("{}\n{range}", c.path));
+            Hit {
+                path: c.path.clone(),
+                start: c.start,
+                end: c.end,
+                score: (1.0 - LEXICAL_WEIGHT) * semantic + LEXICAL_WEIGHT * lexical,
+                semantic,
+                lexical,
+                file_hash: c.file_hash.clone(),
+            }
+        })
         .collect();
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     hits.truncate(limit.clamp(1, MAX_RESULTS));
@@ -496,12 +603,13 @@ pub async fn search<E: Embed>(store: &Store, query: &str, limit: usize, embedder
 
 pub fn render(project: &Path, store: &Store, update: &Update, hits: &[Hit]) -> String {
     let mut out = format!(
-        "Semantic matches by meaning (embedding model {}; {} ranges from {} files, {} embedded now, {} reused){}:\n",
+        "Semantic matches by meaning (embedding model {}; ranked by meaning, with the query's exact words only breaking near-ties; {} ranges from {} files, {} embedded now, {} reused, {} of them moved){}:\n",
         store.model,
         store.chunks.len(),
         update.files,
         update.embedded,
         update.reused,
+        update.moved,
         if store.truncated { "; the index is cut, so not every file was searched" } else { "" }
     );
     if hits.is_empty() {
@@ -514,7 +622,17 @@ pub fn render(project: &Path, store: &Store, update: &Update, hits: &[Hit]) -> S
             .and_then(|text| text.lines().skip(hit.start - 1).find(|l| !l.trim().is_empty()).map(|l| scrub(l.trim())))
             .unwrap_or_default();
         let first: String = first.chars().take(160).collect();
-        out.push_str(&format!("- {}:{}-{} (similarity {:.2})\n  {}\n", hit.path, hit.start, hit.end, hit.score, first));
+        out.push_str(&format!(
+            "- {}:{}-{} (similarity {:.2}: meaning {:.2}, exact words {:.2}; file {})\n  {}\n",
+            hit.path,
+            hit.start,
+            hit.end,
+            hit.score,
+            hit.semantic,
+            hit.lexical,
+            &hit.file_hash[..hit.file_hash.len().min(12)],
+            first
+        ));
     }
     out.trim_end().to_string()
 }
@@ -621,6 +739,59 @@ mod tests {
         assert_eq!(resolve(&bad, None, &providers).unwrap_err().kind(), ErrorKind::InvalidInput);
     }
 
+    /// Ranges start at definitions, and a long definition is cut within itself.
+    #[test]
+    fn ranges_start_at_the_files_own_definitions() {
+        let mut text = String::from("import os\n\n");
+        text.push_str("def short():\n    return 1\n\n");
+        text.push_str("def long():\n");
+        for i in 0..60 {
+            text.push_str(&format!("    step_{i}()\n"));
+        }
+        let ranges: Vec<(usize, usize)> = chunks_at_symbols(&text, &[3, 6]).iter().map(|(s, e, _)| (*s, *e)).collect();
+        // A range ends at its last non-empty line, since `lines()` keeps no trailing blank.
+        assert!(ranges[0].0 == 1 && ranges[0].1 < 3, "the text before the first definition is its own range: {ranges:?}");
+        assert!(ranges[1].0 == 3 && ranges[1].1 <= 5, "a short definition is one range: {ranges:?}");
+        assert_eq!(ranges[2].0, 6, "the next definition starts its own range");
+        assert!(ranges[2..].iter().all(|(s, e)| *s >= 6 && *e <= 66), "a long definition is cut within itself: {ranges:?}");
+        assert_eq!(chunks_at_symbols("a\nb\n", &[]).len(), chunks_of("a\nb\n").len());
+        assert_eq!(chunks_at_symbols("a\nb\n", &[99]).len(), 1, "a definition line past the end is ignored");
+    }
+
+    #[tokio::test]
+    async fn a_moved_file_keeps_its_vectors_and_exact_words_only_break_ties() {
+        let (base, root, data) = project("moved");
+        let fake = Fake::new();
+        let (_, first) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        let sent_before = fake.sent.lock().unwrap().len();
+        std::fs::create_dir_all(root.join("http")).unwrap();
+        std::fs::rename(root.join("net/client.py"), root.join("http/client.py")).unwrap();
+        let (store, moved) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        assert_eq!(moved.embedded, 0, "a renamed file was embedded again: {moved:?}");
+        assert!(moved.moved >= 1, "{moved:?}");
+        assert_eq!(fake.sent.lock().unwrap().len(), sent_before, "the moved file's content was sent again");
+        assert!(store.chunks.iter().any(|c| c.path == "http/client.py") && !store.chunks.iter().any(|c| c.path == "net/client.py"));
+        assert!(first.embedded >= 3);
+
+        // Two ranges equally close in meaning: the one holding the query's
+        // exact word ranks first, and meaning still dominates the score.
+        std::fs::write(root.join("a_retry.py"), "def attempt_again():\n    pass\n").unwrap();
+        std::fs::write(root.join("b_retry.py"), "def attempt_again_backoff_helper():\n    pass\n").unwrap();
+        let (store, _) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
+        let hits = search(&root, &store, "backoff helper", 20, &fake).await.unwrap();
+        let helper = hits.iter().position(|h| h.path == "b_retry.py").unwrap();
+        let plain = hits.iter().position(|h| h.path == "a_retry.py").unwrap();
+        assert!(hits[helper].lexical > hits[plain].lexical);
+        assert!(helper < plain, "{hits:?}");
+        for h in &hits {
+            assert!((h.score - ((1.0 - LEXICAL_WEIGHT) * h.semantic + LEXICAL_WEIGHT * h.lexical)).abs() < 1e-4);
+            assert!(!h.file_hash.is_empty(), "a hit without provenance");
+        }
+        let rendered = render(&root, &store, &Update::default(), &hits);
+        assert!(rendered.contains("meaning") && rendered.contains("exact words") && rendered.contains("file "), "{rendered}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn a_file_is_cut_into_overlapping_ranges_and_secret_files_are_never_read() {
         let text: String = (1..=100).map(|i| format!("line {i}\n")).collect();
@@ -640,11 +811,11 @@ mod tests {
         let fake = Fake::new();
         let (store, update) = refresh(&data, &root, "emb/e", &fake, &|| false).await.unwrap();
         assert_eq!(update.embedded, 3, "{update:?}");
-        let hits = search(&store, "try again later", 3, &fake).await.unwrap();
+        let hits = search(&root, &store, "try again later", 3, &fake).await.unwrap();
         assert_eq!(hits[0].path, "net/client.py", "{hits:?}");
         let text = std::fs::read_to_string(root.join("net/client.py")).unwrap();
         assert!(!["try", "later"].iter().any(|w| text.contains(w)), "the match must not be lexical");
-        let hits = search(&store, "who may sign in with their credential", 1, &fake).await.unwrap();
+        let hits = search(&root, &store, "who may sign in with their credential", 1, &fake).await.unwrap();
         assert_eq!(hits[0].path, "auth/login.py");
         let rendered = render(&root, &store, &update, &hits);
         assert!(rendered.starts_with("Semantic matches by meaning (embedding model emb/e"), "{rendered}");
@@ -659,7 +830,7 @@ mod tests {
         assert_eq!((changed.embedded, changed.reused), (1, 2));
         let (_, other_model) = refresh(&data, &root, "emb/other", &fake, &|| false).await.unwrap();
         assert_eq!(other_model.embedded, 3, "another model's vectors were reused");
-        assert!(search(&store, "  ", 3, &fake).await.unwrap_err().kind() == ErrorKind::InvalidInput);
+        assert!(search(&root, &store, "  ", 3, &fake).await.unwrap_err().kind() == ErrorKind::InvalidInput);
         let _ = std::fs::remove_dir_all(&base);
     }
 

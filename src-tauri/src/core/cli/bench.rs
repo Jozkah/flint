@@ -534,6 +534,15 @@ checks = [{ kind = "result_contains", text = "42" }, { kind = "file_absent", pat
 "#;
 
     #[test]
+    fn the_committed_task_set_loads() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/bench/harness-smoke.toml");
+        let (set, digest) = load_tasks(&path).expect("the committed benchmark task set loads");
+        assert_eq!(set.name, "harness-smoke");
+        assert_eq!(set.tasks.len(), 3);
+        assert_eq!(digest.len(), 64);
+    }
+
+    #[test]
     fn a_task_set_is_checked_before_anything_runs() {
         let dir = tempfile::tempdir().unwrap();
         let (set, digest) = load_tasks(&write(dir.path(), "ok.toml", SET)).unwrap();

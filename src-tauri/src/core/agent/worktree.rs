@@ -454,6 +454,7 @@ pub fn ensure(
             .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
     }
     let path_str = path.to_string_lossy().to_string();
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     run(repo, &["worktree", "add", "-b", &branch, &path_str, &head])?;
 
     Ok(WorktreeRecord {

@@ -1927,7 +1927,7 @@ impl CompositeToolInvoker {
                 let http = semantic::HttpEmbedder { embedder: embedder.clone(), cancel: token.clone() };
                 let cancelled = move || token.as_ref().is_some_and(|t| t.is_stopped());
                 match semantic::refresh(&data, &root, &embedder.id, &http, &cancelled).await {
-                    Ok((store, update)) => match semantic::search(&store, &query, limit, &http).await {
+                    Ok((store, update)) => match semantic::search(&root, &store, &query, limit, &http).await {
                         Ok(hits) => semantic::render(&root, &store, &update, &hits),
                         Err(e) => failed(&e),
                     },

@@ -1363,10 +1363,17 @@ fn handle_net(cmd: NetCommands) {
             Ok(())
         }
         CaCommands::Set { path } => {
-            let absolute = std::path::Path::new(&path)
-                .canonicalize()
-                .map(|p| p.to_string_lossy().trim_start_matches(r"\\?\").to_string())
-                .unwrap_or(path.clone());
+            // Made absolute against the working directory, but not resolved:
+            // resolving would quietly trust whatever a link in the path points
+            // to, which `load` refuses by name.
+            let given = std::path::Path::new(&path);
+            let absolute = if given.is_absolute() {
+                path.clone()
+            } else {
+                std::env::current_dir()
+                    .map(|d| d.join(given).to_string_lossy().to_string())
+                    .unwrap_or(path.clone())
+            };
             match tls::load(std::path::Path::new(&absolute), tls::Source::CliConfig) {
                 Ok(bundle) => app_lib::core::agent::global_config::set_ca_bundle(Some(&absolute))
                     .map(|written| {

@@ -98,6 +98,10 @@ struct ToolsSection {
     /// Destinations nothing on this machine may reach.
     #[serde(default)]
     deny_domains: Vec<String>,
+    /// When set to `false`, no custom certificate authority bundle is trusted
+    /// on this machine (AH-190), whoever names one.
+    #[serde(default)]
+    allow_ca_bundle: Option<bool>,
 }
 
 /// What an administrator decided for this machine.
@@ -110,6 +114,7 @@ pub struct OrgPolicy {
     pub allow_network: Option<bool>,
     pub allow_domains: Vec<String>,
     pub deny_domains: Vec<String>,
+    pub allow_ca_bundle: Option<bool>,
 }
 
 /// How permissive a default is, so two can be compared. Higher is more
@@ -208,6 +213,7 @@ impl OrgPolicy {
             && self.allow_network.is_none()
             && self.allow_domains.is_empty()
             && self.deny_domains.is_empty()
+            && self.allow_ca_bundle.is_none()
     }
 }
 
@@ -293,6 +299,7 @@ pub fn load_from(
                     source: path,
                     max_default: Some(PermissionDefault::ReadOnly),
                     allow_network: Some(false),
+                    allow_ca_bundle: Some(false),
                     ..OrgPolicy::default()
                 }),
                 Some(OrgPolicyError::new(
@@ -315,6 +322,7 @@ pub fn load_from(
                     source: path,
                     max_default: Some(PermissionDefault::ReadOnly),
                     allow_network: Some(false),
+                    allow_ca_bundle: Some(false),
                     ..OrgPolicy::default()
                 }),
                 Some(OrgPolicyError::new(
@@ -334,6 +342,7 @@ pub fn load_from(
             allow_network: tools.allow_network,
             allow_domains: tools.allow_domains,
             deny_domains: tools.deny_domains,
+            allow_ca_bundle: tools.allow_ca_bundle,
         }),
         None,
     )
@@ -367,6 +376,24 @@ deny = ["bash(rm *)"]
 allow_network = false
 deny_domains = ["evil.example"]
 "#;
+
+    /// AH-190: an administrator can forbid custom CA bundles, and a policy
+    /// that cannot be read or understood forbids them too.
+    #[test]
+    fn a_machine_policy_can_forbid_custom_certificate_authorities() {
+        let d = dir("ca");
+        let forbid = write(&d, "forbid.toml", "[tools]\nallow_ca_bundle = false\n");
+        let (policy, error) = load_from(&forbid, None);
+        assert!(error.is_none());
+        let policy = policy.unwrap();
+        assert_eq!(policy.allow_ca_bundle, Some(false));
+        assert!(!policy.is_empty());
+        let silent = write(&d, "silent.toml", "[tools]\ndeny = [\"bash\"]\n");
+        assert_eq!(load_from(&silent, None).0.unwrap().allow_ca_bundle, None, "saying nothing forbids nothing");
+        let broken = write(&d, "broken.toml", "[tools\nallow_ca_bundle = ");
+        assert_eq!(load_from(&broken, None).0.unwrap().allow_ca_bundle, Some(false), "a malformed policy is read at its strictest");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn a_machine_with_no_policy_constrains_nothing() {
