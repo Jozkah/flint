@@ -207,8 +207,9 @@ Each call builds a fresh prompt for the speaker:
 
 - **Provider errors:** classified with `classifyFailure`. Transient and
   rate-limited errors get up to 2 retries with `decideRetry` backoff. Otherwise
-  the turn ends with an `error` message (status `failed`, code and cleaned
-  message), and the loop continues with the next speaker. This feeds the
+  the turn is stored as the speaker's `speech` message with `status: 'failed'`
+  and an `error { code, message }` (cleaned), and the loop continues with the
+  next speaker. This feeds the
   `repeated-errors` rule.
 - **Interrupted streams:**
   - Abort or stream error mid-reply saves the partial text as
@@ -294,10 +295,65 @@ Landed in `src-tauri/src/core/rooms/` (`store.rs` has no Tauri dependency;
   `toRoomError` accepts `{ code, message }` with a known code, then an Error
   message or string that starts with a known code (`code: message`), otherwise
   `unknown` with the original text.
-- **Not handled:** Windows aliases permitted by the id rule (`CON`, `nul`, or a
-  trailing `.` such as `a.`, which Windows maps onto `a`) are accepted and may
-  collide or fail with `io`. Narrowing the rule is a contract change.
+- **Windows aliases:** the id rule also refuses a trailing `.` and reserved
+  device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, with
+  any extension, case-insensitive), which Windows would map onto another path.
 - **Testing on Windows.** The library unit tests need
   `--no-default-features --features test-tauri`, because the default
   `common-controls-v6` feature aborts the lib test harness at load (see
   `build.rs`).
+
+## Verification
+
+### Automated (branch `feature/discussion-rooms`)
+
+| Check | Result |
+| --- | --- |
+| `cargo test -j 4 --lib --no-default-features --features test-tauri rooms` | 14 passed, 0 failed |
+| `npx vitest run src/lib/rooms src/containers/rooms src/routes/__tests__/rooms.test.tsx` | 17 files, 145 passed |
+| Full web vitest (before the E2E hook) | 467 files, 6273 passed, 3 skipped, 0 failed |
+| `tsc -b`, `scripts/local-only-guard.mjs` | exit 0 |
+
+### Real app against a real provider
+
+Harness: `src-tauri/examples/cowork_smoke.rs`, `ROOMS_LANE_SCENARIOS`, run with
+`COWORK_SMOKE_REAL_BASE_URL=<base> COWORK_SMOKE_ROOMS=1` in an isolated
+profile. The frontend is built with `VITE_JAN_E2E_HOOKS=1`, which exposes
+`window.__janRoomsE2E` (`lib/rooms/e2eHooks.ts`); without the flag the hook is
+absent from the bundle (unit-tested, and checked in a flagless build).
+
+Run on 2026-09-13 against an OpenAI-compatible vLLM endpoint. The model ids came
+from its `/models` endpoint and matched the app's own provider refresh. All
+five ids were served from the same weights, so this run exercises
+multi-participant behaviour, not behavioural differences between distinct
+models or providers.
+
+| Scenario | Result |
+| --- | --- |
+| discovery (harness `/models` = app refresh) | pass |
+| per-model capability probe through `streamParticipantReply` | pass, all 5 compatible |
+| round-robin, all 5 models, 2 rounds (order, seq, turn-starts, shared context, self-identification, live DOM text) | pass |
+| addressing in user-selected mode (`to`, `awaiting-user`, `selectNext`) | pass |
+| streaming (store and DOM text strictly increasing) | pass |
+| cancellation: pause, cancelTurn, stop (partial saved `interrupted`, no writes afterwards, resume) | pass |
+| permission isolation (model demands approvals/tool access/limits; nothing changed) | pass |
+| error handling: unserved model (2 failures, `repeated-errors`), absent model (`model-missing`), one available (`no-participants`) | pass |
+| moderator-selected, vote, final positions, synthesis with verbatim dissent | pass |
+| limits: `maxTurns`, `maxTotalTokens` | pass |
+| restart: running room becomes paused `interrupted-by-restart` | pass |
+
+Not covered by that run: tools-capable models and `read` tool access (no
+model reported the capability, and v1 rooms advertise no tools), the context
+summary/overflow path (the app used its 8,192 fallback and it was never
+exceeded; the server's reported `max_model_len` is not read by the app), cost
+limits (no pricing entered) and more than eight participants.
+
+## Current limitations
+
+- `toolAccess: 'read'` is accepted but runs without tools, with a system note.
+- The context window for OpenAI-compatible servers comes from JAN's existing
+  capability resolution; a server-reported `max_model_len` is not used.
+- The Rooms rail entry is pending in `docs/DISCUSSION_ROOMS_UI_HUNKS.md` (owned
+  by the shell restyle); the pages are reachable at `/rooms`.
+- No visual browser review of the rooms pages beyond the real-app harness DOM
+  checks.
