@@ -1,434 +1,491 @@
 # Beginner workflows: functional handoff for the design chat
 
-Branch: `feature/beginner-workflows` (based on `feat/windows-agent-completion` at
-`728f5cb0a`). Not pushed, not merged.
+Branch: `feature/beginner-workflows`, based on `feat/windows-agent-completion` at
+`728f5cb0a`. Not pushed, not merged.
 
-This document describes behaviour, state and contracts independently of the
-current layout, so the JAN Atelier redesign can re-skin these workflows without
-changing what they do. The visual redesign was deliberately not attempted: new
-UI uses the existing shadcn/Radix components and tokens.
+This document describes behaviour, state and backend contracts independently of
+the current layout, so the JAN Atelier redesign can re-skin these workflows
+without changing what they do. No visual redesign was attempted; new UI uses
+the existing shadcn/Radix components.
 
-The authoritative AH-001..AH-210 registry (`docs/agent-harness-features.json`)
-was not renumbered or re-scoped. No registry status was changed by this work;
-where a workflow touches a registry item it is noted below as evidence for a
-later registry update, not as a claim that the item is `verified`.
+Two passes are recorded here. The first built the workflows. The second (the
+"completion pass") closed functional gaps found in review: MCP approvals
+surviving deletion, project memory not reaching ordinary chat, no plugin
+management, weak verification semantics, and unverified checkpoint safety. It
+also ran the work in the real application.
 
 ---
 
-## 1. Initial findings and what was reused
+## 0. Status at a glance
+
+| Area | Implemented | Tested (how) | Still unverified |
+| --- | --- | --- | --- |
+| Onboarding and guide | Yes | Unit/component; web build in a browser (resume, 420 px and 560 px layouts, arrow keys); real-app guide scenario — see §8.3 | Screen reader |
+| Progressive disclosure (term hints, Advanced group) | Yes | Component; web build keyboard check | Screen reader |
+| Model fit and compatibility test | Yes | Deterministic accounting tests; runner and UI tests (mocked engine); real-app keyboard picker scenario — see §8.3 | A real model load on any hardware (no llama.cpp model in the test profile) |
+| Permissions and revocation | Yes | Store/page tests; real-app always-allow → revoke scenario — see §8.3 | Screen reader |
+| MCP permission lifecycle (identity) | Yes | 96 plugin-crate + 129 app-crate Rust tests; web store tests; real-app identity scenario — see §8.3 | Live server refusing after reconfiguration end-to-end |
+| Task results and verification semantics | Yes | Unit/component | Real Cowork run producing a summary |
+| Checkpoint safety | Yes | 21 Rust tests on disposable git repos (2 Unix-only skipped on Windows), 20 git tests | Unix-only paths; rollback-also-fails branch; missing git |
+| Project (collection) memory in chat | Yes | 180 Rust + 32 app-crate thread tests; web binding tests; real-app collection memory scenario — see §8.3 | Model-proposed project memories in chat (see gaps) |
+| Request attribution and context panel | Yes | Rust retention tests; web attribution and panel tests; real-app panel verification inside the memory scenario — see §8.3 | Anthropic-shaped payload in the real app |
+| Plugin management | Yes | 36 + 141 + 50 + 79 Rust tests; web dialog tests | Real git clone over network (not run by design) |
+| Plugin skills in Cowork | Yes | 30 plugin-crate + 20 app-crate Rust tests (parity); web tests | Managed-worktree mode (see gaps) |
+| Accessibility foundations | Partial | Keyboard/narrow checks in the web build; component tests | Screen reader pass, full keyboard audit |
+
+---
+
+## 1. Findings and what was reused
 
 | Area | Found | Reused / extended |
 | --- | --- | --- |
-| Onboarding | `SetupScreen` 3-page wizard (welcome, engine setup, finish) shown whenever no usable provider exists. In-memory state, no intents, no resume, no guide. Local-only fork: no model downloads. | Same wizard and gate; added intentions, processing explanation, persisted progress, a home guide card. |
-| Model fit | Two estimators (Rust `is_model_supported`, unused by UI; TS `estimateModelFit`, used for a colour dot). Conservative: ~2.13 GiB reserve subtracted from RAM *and* VRAM, any partial offload "yellow", iGPU memory added on top of RAM, KV = 10% of file per 4k tokens. Nothing blocked. No measured results. | `modelCompatibility.ts` rewritten in place (old exports kept); dot kept, now opens a details popover. |
-| Permissions | Rust gate + `useToolApproval` / `useToolApprovalRequests`. Prompt received tool name only; Cowork dropped call input; no revoke except MCP checkbox; audit log written but unreadable from UI; no pending count. | Same engine and stores; richer request description, scopes, revoke APIs, Permissions page, read-only audit command. |
-| Results / recovery | `CoworkRunSummary` (files only), `CoworkRunNotice`, `CoworkRewind`. Managed checkpoints after the first all held the same tree (capture used `changed: []`); restore could silently overwrite newer edits. | Same components; one derived `RunOutcome`; safety checkpoint before restore; Rust capture fixed. |
-| Connections | MCP settings page with boolean connected state, toast-only errors, form without field validation. Skills dialog without explanations. Plugin commands exist in Rust with no UI. | Same page/dialogs; validation, connection state model, explanations. No marketplace. |
-| Settings | Registry-driven menu, core/integrations groups, search. | Advanced group added in the menu only; registry and search untouched. |
-| Glossary | None. | New `TermHint`. |
+| Onboarding | 3-page setup wizard shown while no usable provider exists; in-memory state; no intentions, resume or guide. Local-only fork: no model downloads. | Same wizard and gate. |
+| Model fit | TS estimator subtracted ~2.1 GiB from RAM *and* VRAM, called partial offload "yellow", added iGPU memory on top of RAM, sized KV as 10% of file per 4k tokens. | `modelCompatibility.ts` rewritten in place. |
+| Permissions | Rust gate + renderer approval stores. Prompt got tool name only; no revoke; audit unreadable. MCP grants keyed by server **name** everywhere (backend trust, renderer, OAuth) and by bare tool name in the Cowork gate. | Same engine; identity added (§6). |
+| Results | Run summary listed files only; any command could look like a check. Managed checkpoints after the first held the same tree; restore could overwrite newer edits. | Same components; outcome derivation; guarded restore. |
+| Memory | `setMemoryBinding` had no callers: ordinary chat never used project memory; temporary chat still *read* user memory; Cowork dropped the memory block from its prompt. Chat request snapshots were captured in Rust but the reference was discarded. No snapshot retention. | Existing memory store, retrieval and snapshot pipeline. |
+| Plugins | Rust commands only (clone + delete), no UI, no enable/disable, string errors; Cowork loaded no plugin content. Cowork's skill tools also ignored the project and its whitelist (pre-existing bug). | Existing plugin/skill discovery, moved to one shared implementation. |
 
-## 2. Implemented improvements
+---
+
+## 2. Behaviour by workflow
 
 ### 2.1 First run and guide
-- Welcome page asks for one of three intentions: **ask a question**, **work with
-  documents**, **build or change a project**. Choosing is optional.
-- "Skip the guide" still runs engine setup; it only suppresses the home guide.
-- The final page explains local processing (stays on this computer, no
+- Welcome asks for an optional intention: ask a question, work with
+  documents, build or change a project. Arrow keys move and select within the
+  choice. "Skip the guide" still runs setup.
+- The finish page explains local processing (stays on this computer, no
   account) and remote processing (messages and included files are sent to the
-  provider, which may charge), with a link to provider settings. Local use never
-  requires credentials.
-- Finishing with a local model: project intention goes to Cowork with that model
-  selected; other intentions open a new chat with it.
-- Home guide card lists steps per intention. Observed steps: *choose a model*
-  (a usable provider exists) and *first task* (a conversation was created after
-  the guide started). User-confirmed steps: *add material* and *check what JAN
-  used*. The card can be hidden; the guide can be reopened from
-  Settings > General.
-- Returning users (guide not in progress) see a link to their most recent
-  conversation.
-- No demo content is created. The guide never creates threads, files or
-  activity.
+  provider, which may charge) and links to provider settings.
+- Setup page and guide state persist; relaunch resumes on the page it was
+  left on with a "welcome back" note. The setup column scrolls, so actions stay
+  reachable in short windows.
+- Home guide card: observed steps (a usable model exists; a conversation was
+  started after the guide began) and user-confirmed steps. Reopen from
+  Settings > General. Returning users get a link to their last conversation.
+- Nothing is fabricated: the guide never creates threads, files or activity.
 
 ### 2.2 Progressive disclosure
-- `TermHint` keeps a technical term visible and opens its plain-language
-  definition on click or keyboard (not hover-only). Terms: worktree, context,
-  MCP server, checkpoint, agent (`locales/en/glossary.json`).
-- Settings menu groups Local API server, HTTPS proxy, Hardware and Agent tools
-  under a collapsible **Advanced** group that auto-opens on those pages. Search
-  and routes are unchanged; grouping changes no behaviour.
+- Term hints (worktree, context, MCP server, checkpoint, agent) keep the term
+  on screen and open the definition on click or keyboard.
+- Settings groups Local API server, HTTPS proxy, Hardware and Agent tools under
+  an Advanced toggle that opens itself on those pages. Search and routes are
+  unchanged.
 
-### 2.3 Evidence-based model selection
-See section 4 for the contract. User-facing behaviour:
-- The fit indicator separates **Measured on this device** from **Estimate**.
-- Measured states: *Not tested on this device*, *Ran successfully with these
-  settings*, *Failed with these settings* (other settings may work),
-  *Unsupported by this runtime* (architecture refused; settings will not help),
-  *Tested before, but something changed* (lists what changed).
-- Estimate states: *Estimated to fit*, *Estimated to fit with part of the model
-  on the CPU* (slower), *May require adjusted settings* (under 10% headroom),
-  *Estimated not to fit — you can still try*, *Not enough information*.
-- "Show how this was estimated" lists model file, conversation memory for N
-  tokens, vision component, runtime overhead, need vs available, memory already
-  used by loaded models, every assumption, and a confidence level.
-- Actions: **Test on this device**, **Cancel test**, **Adjust settings** (opens
-  the existing model settings sheet), **Use for new chats** / stop, **Hide this
-  hint**.
-- Picker rows are keyboard-selectable, show *Worked here* and *Default* labels,
-  and provider sections state local vs remote processing.
-- Nothing is blocked or hidden by an estimate.
+### 2.3 Model selection
+- Fit details separate **Measured on this device** from **Estimate**, list the
+  memory breakdown, every assumption and a confidence level.
+- **Estimates are advisory and never block selection.** Concrete runtime
+  incompatibilities are reported as such: a test whose engine refuses the
+  architecture marks the model *Unsupported by this runtime* on its picker row
+  and in details. Selection remains possible so the engine's own error is what
+  the user sees, rather than a silent block.
+- Compatibility test (§3.2) records only reported metrics, is tied to its
+  conditions, runs one at a time, refuses to unload a model that is generating,
+  and reloads the models it unloaded once its own model is released.
+- Preferred default model wins over last-used; nothing ever switches to a
+  remote provider on its own.
 
-### 2.4 Permissions (lane report)
-- Approval prompts state the action in plain language, the category (file
-  change, command, network, external tool, read), affected resources,
-  consequences, only the scopes the backend genuinely supports (once / this
-  conversation / always), with broader scope marked, and collapsible technical
-  details. Focus starts on Deny. Esc denies.
-- Pending approvals are announced (polite live region) with a visible count when
-  more than one waits.
-- Refusals are classified from the backend's exact texts into denied,
-  cancelled, server not trusted, one-time ticket rejected, project policy,
-  network off, blocked domain, secret file, destructive git, unresolvable
-  argument, outside workspace, and Cowork access states, each with a next step.
-- New Settings > Permissions page: conversation grants, tools allowed
-  everywhere, allow-all MCP switch, trusted MCP servers (backend and local
-  reconciled), revoke buttons, last 50 audit decisions.
+### 2.4 Permissions
+- Prompts state action, category, resources, consequences, only the scopes the
+  backend supports (once / this conversation / always), broader scope marked,
+  collapsible technical details; focus starts on Deny.
+- Settings > Permissions lists conversation grants, tools allowed everywhere,
+  trusted MCP servers with their approval state, approvals invalidated with a
+  reason ("configuration changed", "approved before this version"), revoke
+  controls, and the last 50 audit decisions.
 
-### 2.5 Task results and recovery (lane report)
-- One `RunOutcome` drives the Cowork run summary for completed, failed,
-  cancelled and partial runs: what happened, where the result is, what was
-  checked (observed commands with exit codes), unverified claims from assistant
-  text (never counted as checks), unresolved items, and next actions that exist
-  only when a real handler exists.
-- Restore shows scope (tree, files), recovery boundaries, saves a safety
-  checkpoint first (aborts if that fails), and requires explicit confirmation
-  when files changed since the checkpoint were not written by JAN.
+### 2.5 Task results and verification semantics
+The run summary distinguishes, per shell command:
 
-### 2.6 Skills and connections (lane report)
-- MCP add/edit form validates name, command, URL, timeout, headers and env with
-  field-associated errors and focus on the first invalid field.
-- Per-server state: not installed, disabled, connecting, connected,
-  needs authorization, failed, not connected. "Connected" is shown only after
-  activation resolves and the server appears in the connected list; failures
-  revert the switch and show an inline error with a next step.
-- Rows explain what the server does, where it runs, whether it may contact
-  external services, required access (names only), where it applies and setup
-  requirements, plus its tool names when connected.
-- Turn off / clear authentication / delete are explained as different effects.
-- Skills dialog explains what a skill is, where it applies, that enabling grants
-  no new tool access, and installed vs enabled counts. Import success is shown
-  only after the import resolves.
+| Field | Values |
+| --- | --- |
+| attempted | false when the gate refused it |
+| completion | not started, still running, ran to completion, cancelled, timed out, interrupted |
+| exit | exit code when recorded |
+| outcome | passed / failed / not run / unknown — "passed" means the command reported success |
+| verification kind | test, build, lint, check-script, or none (ordinary command) |
+| limitations | judged only by exit status; chained command; truncated output; background job; filtered subset of a suite; no exit status |
 
-## 3. User journeys and state transitions
+Only verification commands count as checks; other commands are counted
+separately. A passing check carries the note that it does not prove the task is
+correct. Assistant statements about checks stay separate as unverified claims.
+
+### 2.6 Recovery
+Restore is guarded in the backend, not only in the UI (§6).
+
+### 2.7 Project (collection) memory in ordinary chat
+- UI "projects" are called **collections** and have no folder. A collection's
+  memory identity is `jan-project:<id>`, stored in the data folder. When a
+  folder exists (Cowork), folder identity wins.
+- Chats bind memory to their collection when created and rebind when moved or
+  when the collection is deleted; a request already running keeps what it
+  retrieved. Temporary chats are bound temporary at creation and read nothing.
+- Settings > Memory: collection picker and a "Use saved memory in
+  conversations" switch (off = nothing retrieved; saving still works).
+- Cowork binds the attached folder and now includes the memory block after
+  policy and project instructions.
+
+### 2.8 Request attribution and "What JAN is using"
+- Each assistant message stores an attribution record (ids and hashes only):
+  request id, snapshot id/hash/status, invocation id, memory ids (candidates,
+  injected, conflicts, dropped, project, disabled, temporary), advertised tools,
+  inline and searchable attachments, provider/model, send state, usage flag.
+- Send states: **assembled** (built, not sent) → **sent** (transport started,
+  snapshot taken before dialing) → **response started** (head arrived) or
+  **failed**.
+- Panel states per item: available, retrieved (matched, not chosen), chosen for
+  the last request, **verified in the last request** (id found in the sanitized
+  snapshot read back from disk), attached to its message, pending, not used,
+  not recorded. "Verified" is only claimed from the snapshot.
+- Adapter boundary is stated: providers and local engines may still transform
+  the request after JAN sends it (e.g. chat templates).
+- "Inspect the sanitized request (advanced)" opens the existing snapshot view.
+
+### 2.9 Plugins
+- **What a plugin is** (shown in the dialog): a package that adds skills, and
+  for the Jan CLI also slash commands and agent profiles, to one project. It is
+  not an MCP server (a running connection configured in Settings) and not a
+  single skill.
+- Cowork > Plugins: list (name, version, enabled, component counts, source),
+  details (source, path, install time, components, script files, `.mcp.json`
+  present but **not loaded**), enable/disable (reverts on failure), remove
+  (states exactly what is removed), install from a local folder or a git URL
+  (states the host contacted), cancel.
+- In Cowork, enabled plugin skills appear as `<plugin>:<skill>`, read-only,
+  subject to the project's skill whitelist; disabled or removed plugins are
+  hidden and unreadable. Desktop has no slash commands and loads agent profiles
+  only from Jan's saved folder, so those plugin components are CLI-only; the
+  dialog says so.
+
+---
+
+## 3. Journeys and state transitions
 
 ### 3.1 First run
 ```
-welcome ──start──▶ setup ──continue/skip──▶ finish ──start chat──▶ home (new chat)
-   │                                           └──project intention──▶ cowork
-   └──skip guide──▶ setup (guide status = skipped)
+welcome ──start──▶ setup ──continue/skip──▶ finish ──start chat──▶ new chat
+   │                                           └──project intention──▶ Cowork
+   └──skip guide──▶ setup (guide skipped)
 ```
-- `setupPage` persists `welcome | setup | finish`; relaunching resumes on that
-  page (engine setup re-runs; a "Welcome back" notice appears). Completing sets
-  it back to `welcome`.
-- Guide `status`: `not-started → in-progress` (start) `→ skipped` (skip/hide)
-  or `→ completed` (finish after all steps). Reopen from Settings restarts at
-  `in-progress` with the current conversation count as baseline.
+Guide status: not-started → in-progress → skipped | completed. Reopen restarts
+in-progress with the current conversation count as baseline.
 
-### 3.2 Model compatibility test
+### 3.2 Compatibility test
 ```
-idle ──test──▶ [plan]
-  plan needs unload of other models ─▶ confirm ──don't test──▶ idle
-                                         └──unload and test──▶ running
-  plan ok ─▶ running ──success/failure──▶ idle (result recorded)
-  running ──cancel──▶ idle (released) | idle ("could not unload" notice)
+idle ─test─▶ plan
+  another test running        ─▶ blocked (nothing changed)
+  must unload other models    ─▶ confirm ─don't─▶ idle
+                                         └unload and test─▶ busy check
+  a model to unload is generating ─▶ blocked (nothing changed)
+  load ─▶ short request ─▶ release test model ─▶ reload unloaded models ─▶ idle (result recorded)
+  cancel at any point ─▶ release ─▶ reload unloaded models ─▶ idle
 ```
-- Load cannot be interrupted; a cancel during load is honoured when loading
-  returns, by unloading what the test loaded.
-- Only models the test loaded are unloaded. An already-loaded model stays
-  loaded and is not reloaded.
-- Leaving the popover mid-test cancels it.
+If the test model cannot be released, other models are not reloaded and the
+notice says which still need loading.
 
-### 3.3 Evidence staleness
-A result applies only if settings (`ctx_len`, `ngl`, `cache_type_k`,
-`cache_type_v`, `flash_attn`, `n_cpu_moe`, `offload_mmproj`), device signature
-(OS, CPU, RAM, GPU names/memory/driver), app version (engine is bundled) and
-model file size all match. Concurrently loaded models are recorded but are not a
-staleness key. A newer result under the same conditions supersedes an older
-one, so *adjust settings → test again* replaces a failure.
+### 3.3 MCP server lifecycle
 
-### 3.4 Preferred model
-`preferredModel` wins over last-used when starting a new chat and when a model
-is auto-started for the local API server; if the preferred model no longer
-exists, last-used applies, then the first local model. Nothing ever switches a
-selection to a remote provider on its own.
+| Event | Backend trust | OAuth tokens | Renderer approvals |
+| --- | --- | --- | --- |
+| Turn off | kept | kept | kept |
+| Clear authorization | kept | cleared | kept |
+| Delete (form or JSON editor) | revoked, audited "deleted" | cleared | removed |
+| Rename | revoked under old name, audited "renamed" | cleared | removed; renewal needed |
+| Change command, args, URL, transport, cwd/confinement, env names or header names | stops matching; invalidated at next use, audited | kept | invalidated with reason |
+| Change env/header *values* only | unchanged (values are secrets, not identity) | kept | kept |
+| Re-add same name | nothing inherited | nothing inherited | nothing inherited |
 
-## 4. New or changed contracts
+### 3.4 Memory binding
+create → bind(collection, temporary) · move/delete collection → rebind (next
+request) · transport re-reads the thread before every retrieval.
 
-### Frontend libraries
-- `lib/modelCompatibility.ts`
-  - `assessModelFit(FitInput): FitAssessment` — `verdict` (`fits`,
-    `fits-partial-offload`, `tight`, `exceeds`, `unknown`), `memoryModel`
-    (`unified`, `discrete-gpu`, `integrated-gpu`, `cpu-only`, `unknown`),
-    `kvMethod`, `effectiveContext`, `required` breakdown, `budgets`,
-    `headroomBytes`, `assumptions[]`, `uncertainty`.
-  - `kvArchitectureFromGguf(metadata)`, `kvCacheBytesFromArchitecture(...)`,
-    `cacheTypeBytes`, `isIntegratedGpu`, `tierForVerdict`.
-  - `estimateModelFit` kept as a tier wrapper.
-  - Constants: system reserve 2 GiB (RAM only), 512 MiB per dedicated GPU,
-    unified reserve 2.5 GiB, Metal share 0.67 (≤36 GiB) / 0.75, runtime overhead
-    300 MiB + 2% of weights, tight threshold 10%.
-- `lib/modelEvidence.ts` — `ModelTestResult`, `TestConditions`, `TestMetrics`,
-  `settingsFromModel`, `deviceSignature`, `conditionDifferences`,
-  `evidenceFor → { state, latest, differences, otherSuccess }`.
-- `lib/modelCompatibilityTest.ts` — `planCompatibilityTest`,
-  `runCompatibilityTest(request, deps)` with injectable engine/session/fetch.
-  Request: `POST /v1/chat/completions` to the local engine session,
-  `max_tokens: 16`, `temperature: 0`, prompt "Reply with the single word:
-  ready". Success = HTTP 200 with at least one choice. Metrics recorded only when
-  reported (`timings.predicted_per_second`, `prompt_per_second`, `usage`).
-- `lib/onboarding.ts` — intents, `guideSteps`, `isStepDone`, `remainingSteps`,
-  `shouldShowGuide`, `destinationFor`.
-- Lane libraries: `permissionRequest.ts`, `permissionOutcome.ts`,
-  `permissionAudit.ts`, `coworkRunOutcome.ts`, `mcpServerProfile.ts`,
-  `mcpServerValidation.ts`, `mcpConnectionState.ts`.
+### 3.5 Request send states
+assembled → sent → response-started | failed; usage recorded on finish when an
+invocation exists.
 
-### Components
-- `ModelSupportStatus` gains `onAdjustSettings`; `ModelSetting` gains controlled
-  `open` / `onOpenChange`; new `ModelEvidenceBadges`, `TermHint`,
-  `GettingStartedCard`, `PermissionRequestDetails`,
-  `McpServerConnectionDetails`.
-- `ToolApprovalDialog` gains `request` and the `allow-thread` decision.
-- `CoworkRunSummary` accepts `outcome` and action handlers; `CoworkRewind`
-  requires `onSafetyCapture` and accepts `janAuthored`.
-- `AddEditMCPServer` accepts `existingNames`.
+### 3.6 Plugin
+install (staging → record → move; cancel cleans staging) → enabled ⇄ disabled
+→ remove (folder, disabled list, whitelist entries). Skill lists refresh after
+each operation; a running Cowork run keeps its tool definitions but reads skills
+from disk on each skill call.
 
-### Stores
-- `useModelEvidence` (new): `results`, `preferredModel`, `dismissedHints`.
-- `useOnboardingGuide` (new): `status`, `intent`, `threadCountAtStart`,
-  `confirmedSteps`, `setupPage`.
-- `useToolApproval`: `revokeToolForThread`, `revokeThread`,
-  `revokeToolEverywhere`, `revokeAllowAllMCPPermissions`, `revokeServerTrust`
-  (backend first; store unchanged on failure).
-- `useToolApprovalRequests`: optional request context, `refusals`,
-  `takeRefusal`, `usePendingApprovalCount`.
-- `useCoworkCheckpoints`: `captureSafety`, per-session `head`, `safety` flag.
+---
 
-### Backend
-- New Tauri command `plugin:agent-tools|permission_audit_recent
-  { dataFolder, limit? }` — newest first, limit clamped 1–200, re-redacted.
-- Checkpoint capture for managed worktrees snapshots the whole tree
-  (`read-tree` parent + `add -A` into a temp index, respecting `.gitignore`).
-- Restore plan returns `files` and `changedSinceLatest`.
+## 4. Backend contracts (new or changed)
 
-### Routes
-- `/settings/permissions` (registered in `routeTree.gen.ts`, routes constants,
-  settings search registry, menu icon).
+### MCP identity (`tauri-plugin-agent-tools::mcp_identity`, app `core::mcp`)
+- Fingerprint `sha256:<hex>` over transport, command, args, normalized URL
+  (scheme/host lower-case, default port and trailing slash dropped, query
+  parameter **names** only, user info masked), cwd, env **names**, header
+  **names**, import/confinement flags. Excludes server name and all values.
+- `mcp-trust.json` v2: `{schema_version: 2, trusted: [{name, fingerprint,
+  granted_at}], invalidated: [{name, reason, at, fingerprint?}]}`. A v1 file
+  trusts nothing; its names are listed as invalidated (`schema-v1`).
+- Commands: `mcp_trust_report`, `mcp_server_fingerprints`,
+  `mcp_forget_server(serverName, reason: deleted|renamed)`;
+  `mcp_trust_server` and `mcp_allow_once` take an optional expected fingerprint
+  and refuse on mismatch. Tickets are bound to server, tool and fingerprint.
+- Cowork gate grants are keyed by (server, tool).
+
+### Checkpoints (`core::agent::checkpoint`)
+- `agent_checkpoint_restore(checkpoint, latest, safety?, allowOverwrite?)`:
+  refuses unless the working tree matches `safety ?? latest` (ignored files and
+  nested repositories excluded), except listed paths; verifies the result;
+  rolls back to the holding checkpoint on mismatch or failure and reports what
+  still differs. Refuses the user's own checkout and roots below the repository
+  top level.
+
+### Memory (`tauri-plugin-agent-tools::memory`)
+- `MemoryLocation.janProjectId` (1–128 chars `[A-Za-z0-9._-]`), accepted only by
+  renderer memory commands; model tools never read it.
+- `memory_settings_update(location, memoryEnabled?)`; retrieval returns
+  `candidateIds`, `projectId`, `disabled`.
+
+### Retention (`tauri-plugin-agent-tools::retention`)
+- Startup compaction of `audit/prompts.jsonl` and `payload-usage.jsonl`:
+  30 days, 5000 entries, 64 MiB (strictest wins, newest kept), atomic rewrite.
+- Deleting a thread removes its snapshot and usage records.
+
+### Plugins (`core::agent::plugins`)
+- `agent_plugin_list`, `agent_plugin_details`, `agent_plugin_sources`,
+  `agent_plugin_install(project, source{kind: local|git|marketplace}, installId)`,
+  `agent_plugin_install_cancel(installId)`, `agent_plugin_set_enabled`,
+  `agent_plugin_remove`, `agent_plugin_search`; errors `{code, message}`.
+- Skill discovery rules (plugin skills, disabled list, whitelist matching,
+  project-over-plugin precedence) live once in the agent-tools crate; the app
+  crate calls them (parity test).
+
+### Permissions audit
+- `plugin:agent-tools|permission_audit_recent {dataFolder, limit?}`.
+
+### Frontend contracts (selected)
+- `RunOutcome.checks[]` gains `attempted`, `completion`, `limitations`;
+  `RunOutcome.commands[]` lists every shell command.
+- `runCompatibilityTest` outcomes: needs-confirmation, blocked
+  (model-busy | test-in-progress), cancelled, completed; the latter two report
+  `restored` / `notRestored`.
+- Stores: `useModelEvidence`, `useOnboardingGuide` (new); `useToolApproval`
+  v1 migration with fingerprint-bound server and MCP tool grants.
+
+---
 
 ## 5. Persistence
 
-| Data | Where | Key / file |
-| --- | --- | --- |
-| Model test results, preferred model, hidden hints | backendStorage (settings store; localStorage on web) | `model-evidence` (max 10 results per model) |
-| Guide status, intent, setup page, confirmed steps | backendStorage | `onboarding-guide` |
-| Thread/global tool grants, allow-all, local server list | backendStorage | `tool-approval` (existing) |
-| MCP server trust | backend file | `mcp-trust.json` (existing) |
-| One-time MCP tickets | backend memory, 300 s, single use | — |
-| Pending approvals, refusal reasons | memory only | — |
-| Permission audit | backend file | `<data>/audit/permissions.jsonl` (existing, now readable) |
-| Checkpoint chain, safety points, head | backendStorage | `cowork-checkpoints` (existing, extended) |
-| Last-used model | localStorage | `last-used-model` (existing) |
+| Data | Where |
+| --- | --- |
+| Model test results, preferred model, hidden hints | settings store `model-evidence` |
+| Guide progress | settings store `onboarding-guide` |
+| Renderer grants (fingerprint-bound), invalidated notices | settings store `tool-approval` (migrated) |
+| MCP trust | `<data>/mcp-trust.json` v2 |
+| Permission audit (incl. MCP trust events) | `<data>/audit/permissions.jsonl` — never pruned by deletion |
+| Collection memories | data-folder memory store, `jan-project:<id>` |
+| Memory switch | memory settings |
+| Request snapshots / usage | `<data>/audit/prompts.jsonl`, `payload-usage.jsonl` (retention above) |
+| Attribution | assistant message metadata |
+| Checkpoint chain, safety points, head | settings store `cowork-checkpoints` |
+| Plugin enabled state | `<project>/.jan/agent/agent.toml` `[plugins] disabled` |
+| Plugin install record | `<plugin>/.jan-install.json` |
 
-New backendStorage stores are registered in `lib/hydrateStores.ts`.
+---
 
 ## 6. Permission and recovery boundaries
 
-- The approval UI presents the existing engine's decisions; it does not add a
-  second authorization system. The Rust gate remains authoritative for built-in
-  tools; MCP trust remains keyed on the server, not the tool name.
-- "Always" for built-in tools without a server is enforced only by the renderer
-  store (pre-existing limitation, now stated in the prompt).
-- Revoking affects future requests only; a call already running is not
-  recalled.
-- Deleting an MCP server does not revoke its auto-approve entry or backend
-  trust; both are keyed by name, so a re-added server with the same name
-  inherits them. The delete confirmation says this; revoke in Permissions.
-- Restoring a checkpoint restores files in the managed worktree only. It does
-  not undo messages, remote pushes, published content, installed packages, or
-  commands already run. The user's own checkout is never restored (patch only).
-- A restore is preceded by a safety checkpoint and can itself be undone.
-- The model test may unload another model only after the user names it in a
-  confirmation; it never switches local processing to remote, never downloads,
-  and never changes the selected model.
+- One authorization system: the Rust gate remains authoritative for built-in
+  tools; MCP trust is enforced in the backend against the server's current
+  fingerprint. Renderer "always" for built-in tools without a server is still
+  enforced only by the renderer store (stated in the prompt).
+- Revoking affects future requests only.
+- Audit history is separate from active grants and survives deletion.
+- Restore affects only files `git add -A` sees under the managed root (tracked
+  and untracked-not-ignored), byte-exact. It does **not** restore ignored files,
+  nested repositories, branches/HEAD/index/stash, permissions beyond the
+  executable bit (Unix), timestamps, messages, or external effects (commands,
+  installs, network, pushes). The user's own checkout is never restored.
+- The compatibility test never downloads, never changes the selected model,
+  never switches to remote, and never unloads a generating model.
+- Collection memory is keyed by an id the renderer supplies (the collection
+  list lives in renderer storage and cannot be checked by Rust); model tools
+  cannot supply it.
+- Plugins execute no code on install or enable and grant no permissions;
+  plugin skill scripts run only through the gated shell tool.
 
-## 7. Verification
+---
 
-All automated checks below are **mock-backed unit/component tests** (vitest +
-jsdom). They prove state transitions, persistence shapes and UI contracts, not
-behaviour inside the real Tauri app, real hardware, real git or real MCP
-servers.
+## 7. Accessibility and narrow layouts
 
-- Typecheck: `node node_modules/typescript/bin/tsc -b` in `web-app` — exit 0
-  after all merges and the context panel. (`npx tsc -b` does not resolve in
-  worktrees.)
-- Full vitest run from the repository root (core, web-app, extensions): 483
-  files passed, 2 skipped, 2 failed. Both failures are environmental and also
-  occur without these changes in a fresh worktree:
-  `src/__tests__/tauriResources.test.ts` (Tauri resources are not prepared in
-  the worktree) and `src/services/core/__tests__/tauri.test.ts` (cannot resolve
-  `@janhq/assistant-extension` because extension `dist` builds are absent).
-  Both pass in the main checkout, where those artifacts exist.
-- Deterministic hardware accounting (`lib/__tests__/modelCompatibility.test.ts`,
-  40 tests): dedicated-VRAM reserve not double subtracted; partial offload is
-  runnable; integrated GPU memory counted once; unified pool with GPU budget
-  inside it and Metal share by RAM size; KV from GGUF metadata (Llama 3 8B
-  shape = exactly 1 GiB at 8k f16); quantized cache types; trained-context cap;
-  sliding-window uncertainty; GPU layers = 0; loaded models subtracted; tight
-  headroom; unknowns.
-- Evidence (`modelEvidence.test.ts`, 8), runner (`modelCompatibilityTest.test.ts`,
-  13): confirmation before unloading, cancel before/during load and request,
-  release failure reported, non-OK reply is a failure, only reported metrics.
-- `ModelSupportStatus.test.tsx` (6): measured vs estimate separation, test
-  records settings and releases, confirmation path loads nothing, failure then
-  adjusted settings becomes stale, default set/cleared.
-- `getModelToStart.test.ts` (+2): preferred model wins; falls back when gone.
-- Onboarding: `onboarding.test.ts` (7), `SetupScreen.test.tsx` (+5: intentions,
-  skip, processing explanation, resume, project to Cowork),
-  `GettingStartedCard.test.tsx` (5).
-- Settings menu (+1): advanced group keyboard toggle keeps pages reachable.
-- Lane suites: permissions 346 tests across 15 files; results 189 across 12;
-  connections 175 across 14 — all passing at merge time.
-- `node scripts/local-only-guard.mjs`: clean (the model test only calls the
-  local engine on localhost). `node scripts/agent-harness/validate-registry.mjs`:
-  OK, 210 features, counts unchanged.
-- Rust: `cargo check` passed in the permissions and results lanes; the new Rust
-  tests (audit recent, managed capture, undoable restore) **compiled but were
-  not run**.
+Checked in the running web build (Chromium, keyboard driven):
+- Setup at 420×760 and 420×560: no horizontal overflow; every action reachable.
+  **Defect found and fixed:** at 560 px height the intentions pushed Start and
+  Skip out of reach inside a non-scrolling column.
+- Tab order through intentions → Start → Skip is logical; arrow keys select
+  intentions. Resume after reload lands on the saved page.
+- Settings at 420 px: no overflow; Advanced toggle focusable with
+  `aria-expanded`. The existing settings shell leaves ~190 px for content at
+  that width (pre-existing layout; a redesign concern, not changed here).
+- Limitation of the browser tool: Enter/Space key activation could not be sent
+  (key events arrived without a key value), so activation is covered by native
+  button semantics and component tests rather than observed there. Computed
+  focus-ring styles could not be confirmed visually because screenshots were
+  unavailable in the hidden pane; the ring utilities are present in the CSS.
 
-### Verification checklist from the brief
+Implemented: labelled controls, dialog focus management (Radix), field
+errors associated with inputs, polite live regions for test progress and
+pending approvals, keyboard-selectable picker rows, non-hover term hints.
 
-| Requirement | Status |
+Not done: screen-reader pass (none available here), full keyboard audit of all
+agent surfaces.
+
+---
+
+## 8. Verification
+
+### 8.1 Unit and component (mock-backed)
+- `tsc -b` (web-app): exit 0 on the final branch.
+- **Full root vitest (core, web-app, extensions) on the final branch: 493 files
+  passed, 2 skipped, 0 failed**, including the local-only guard
+  (`src/__tests__/localOnly.test.ts`), which first flagged the plugin install
+  parameter name `install_id`; it was renamed `operation_id`.
+- `local-only-guard.mjs` clean; `validate-registry.mjs` 210 features, counts
+  unchanged. Lane-level counts: permissions 346, results
+  189, connections 175, memory/attribution 62 + 72, plugins 31, plugin skills 71,
+  MCP identity 84 + 310, checkpoint web 48.
+- The two tests that previously failed only in worktrees
+  (`tauriResources.test.ts`, `services/core/tauri.test.ts`) pass in the feature
+  worktree after building extension dists and preparing resources from the main
+  checkout's local binaries.
+
+### 8.2 Rust (executed)
+| Suite | Result |
 | --- | --- |
-| Beginner can start a conversation without advanced knowledge | Covered by SetupScreen/guide tests (mocked). Not run in the real app. |
-| Document can be attached and its usage inspected | Attach flow pre-existing; `WhatJanIsUsing` shows pending, inline-sent and indexed files with distinct claims (mocked sources, section 9). |
-| Project work produces understandable approval and discoverable result | Covered by permission prompt and RunOutcome tests (mocked). |
-| Compatible model selectable outside recommendations | Nothing is gated; picker unchanged in reach. Tested. |
-| Uncertain estimates do not block | Tested: no disabled state exists. |
-| Failed settings can be adjusted and retried | Tested (stale after settings change; retry supersedes). |
-| Preferred models remain selected | Tested in `getModelToStart`; picker initialisation covered by code path, not a component test. |
-| Local never silently becomes remote | No code path switches provider; fallback is first local model. Not a runtime test. |
-| Denial and revocation propagate | Store and page tests (mocked backend). |
-| Partial failures preserve unrelated work | Safety checkpoint and newer-edit confirmation tests (mocked invoke). |
-| Memory and context controls reflect scope | Memory items show conversation / project / all-conversations scope and "sent with the last message" only for injected ids; temporary chats say memory is off (mocked, section 9). |
-| Failed connection setup does not show success | Tested (mocked services). |
-| Existing advanced workflows remain accessible | Existing suites pass; nothing removed. |
+| `checkpoint::` (test-tauri) | 23 run: 21 passed, 2 skipped on Windows (symlink-as-link, executable bit) |
+| `git::` (cli) | 20 passed |
+| agent-tools `mcp_ gate::` | 96 passed |
+| app `mcp` (test-tauri) | 129 passed |
+| agent-tools `memory:: retention snapshot usage` | 180 passed |
+| app `threads::tests` | 32 passed |
+| app `plugins::` and related (cli) | 36 + 141 passed; test-tauri 50; combined cli filter 79 |
+| agent-tools `skill` | 30 passed; app `core::agent::skills` 20 (parity) |
+| agent-tools `bash_` | 32 passed, **5 failed — identical on base `728f5cb0a`** (sandbox helper exits 101 on this machine); environmental, not from this branch |
 
-**Untested (requires unavailable hardware, credentials or runtime):** a real
-model load/test on CPU, discrete GPU, integrated GPU or Apple Silicon; the
-Tauri IPC for the new audit command; real git restore and undo; real MCP servers
-and OAuth; screen reader and real keyboard behaviour in the webview; narrow
-window layouts.
+### 8.3 Real application (cowork-smoke harness)
+The harness builds the real app, seeds an isolated data folder, a scripted
+OpenAI-compatible mock provider and real stdio MCP fixture servers, and drives
+the WebView. These are integration tests against local fixtures — **not**
+real-provider, real-model or real-hardware validation.
 
-## 8. Remaining limitations and blockers
+Build: `cargo run --example cowork-smoke --features cowork-smoke -- --only <name>`
+with a production `web-app/dist` and the main checkout's local engine
+binaries. Each scenario was run on its own so one failure cannot cascade.
 
-- Model test measures a 16-token reply only; it proves nothing about long
-  context or concurrent workloads (stated in the UI).
-- The engine's eviction order is not observable, so the test names every model
-  that could be unloaded.
-- No download-size step: this fork has no model downloads; testing uses
-  installed files only.
-- Vision projector size is not included unless known.
-- Rust `is_model_supported` still uses the old assumptions and remains unused
-  by the UI.
-- Permission prompt "reason" is empty until callers pass task context.
-- Cowork refusal text still says "did not allow" for cancellations
-  (`coworkDispatch`).
-- Plugins have no UI (Rust commands only).
-- Claim detection in run outcomes is intentionally narrow; command
-  classification is pattern-based.
-- Managed checkpoint capture now scans the whole worktree (slower on large
-  trees).
-
-## 9. "What JAN is using"
-
-### Behaviour
-A conversation-level control opens a summary (currently a side sheet from the
-chat header) with six sections: **Model**, **Instructions**, **Attachments**,
-**Saved memory**, **Tools and connections**, **Exact request**. Each item shows
-a label, a usage state, a scope where meaningful, a one-line reason and, where
-supported, one action.
-
-Usage states, strongest claim last:
-
-| State | Meaning | Sources |
+| Scenario | Result | What it exercises in the real app |
 | --- | --- | --- |
-| `available` | Offered to the model, which decides whether to use it. | Enabled MCP/built-in tools. |
-| `available-on-search` | Indexed; only parts the model searches can be used. Which parts is not recorded. | Embedded attachments, vector index. |
-| `pending-next-message` | Attached, not yet sent. Removable. | Composer attachment store. |
-| `included-with-message` | Text placed into the message that attached it. | Inline file metadata in user messages. |
-| `included-every-request` | Sent as the system prompt / model for every message. | Assistant instructions, selected model. |
-| `included-last-request` | Chosen and sent with the last message from this window. | Transport `memoryUsed().injectedIds`. |
-| `not-offered` | Configured but withheld, with the reason. | Temporary chat memory, conflicting or over-budget memories, tools for a model without tool support, tools turned off. |
-| `not-recorded` | Not observable. | Memory before the first send in this window; the exact chat request. |
+| `mcp-web-search-is-approved-as-the-servers-tool` (existing, updated for the new prompt) | PASS | Approval prompt scope buttons; the tool runs on the offering server only after approval |
+| `beginner-model-picker-rows-are-keyboard-selectable` | PASS | Picker rows focus and select with Enter; selection restored |
+| `beginner-always-allow-then-revoke-asks-again` | PASS | "Always allow" writes fingerprint-bound backend trust; revoking in Settings > Permissions removes it; the next call asks again and a denied call never reaches the server |
+| `beginner-mcp-trust-follows-server-identity` | PASS | Changing a server's arguments changes its fingerprint and a one-time approval for the old definition is refused; deleting the server in Settings revokes trust; re-adding the same name inherits nothing |
+| `beginner-guide-card-persists-and-explains-terms` | PASS | Guide card from persisted state after reload; a confirmed step persists; term hint opens and closes with Escape; hiding persists |
+| `beginner-collection-memory-reaches-its-chats-only` | PASS | A memory saved for one collection is in that collection's chat request and verified by the context panel; absent from another collection's chat and from an ordinary chat |
 
-Scopes: this conversation, this project, all conversations (memory "user"),
-whole app (tool switches are global).
+Defects found by these runs were in the new scenarios' own selectors and
+request matching (CSS `capitalize` on server names, a title-generation request
+that quotes the user's question, quoting in a selector); each was diagnosed
+from the running app before being fixed. The first combined run also showed a
+cascade: a scenario that left another model selected made the shared
+"ensure a model is selected" helper fail, which is now fixed.
 
-Actions: remove a pending attachment; open Memory settings (edit, forget, pin,
-move scope already exist there); open MCP servers; open Assistant settings;
-open the provider's settings. The panel states that memory changes affect
-future messages only.
+Not exercised in the real app: the compatibility test (no llama.cpp model in
+the profile), checkpoint restore through the UI (covered by Rust tests on real
+git repositories), plugin install through the UI, and screen readers.
 
-### Contract
-`lib/contextSummary.ts` — `summarizeChatContext(ChatContextInput):
-ContextSection[]`; `ContextItem { key, label, labelIsKey?, detail?, state,
-reason?, scope?, action? }`. The component gathers inputs from
-`useThreads`, `useModelProvider`, `classifyModelLocation`,
-`useChatAttachments`, the VectorDB extension `listAttachments(threadId)`,
-`useChatSessions().sessions[id].transport.memoryUsed()`, `memoryRecordGet`
-(tries chat, project, user scopes because retrieval returns ids only),
-`useAppState.tools` and `useToolAvailable.disabledTools`. Loading happens when
-the panel opens or on Refresh.
+### 8.4 Checks from the brief
+| Requirement | Evidence |
+| --- | --- |
+| Beginner can start without advanced knowledge | Setup/guide tests; web-build walkthrough |
+| Document attached and usage inspected | Panel tests; attachment claims |
+| Project work → understandable approval and result | Permission and outcome tests |
+| Compatible model selectable outside recommendations; uncertain estimates don't block | Nothing gated; tests |
+| Failed settings adjusted and retried | Evidence staleness tests |
+| Preferred model stays selected | `getModelToStart` tests |
+| Local never silently becomes remote | No switching code path |
+| Denial and revocation propagate | Store/page tests; real-app revoke scenario (§8.3) |
+| Partial failures preserve unrelated work | Checkpoint Rust tests (rollback, newer edits) |
+| Memory controls reflect scope | Rust isolation tests; panel tests; real-app collection scenario (§8.3) |
+| Failed connection setup doesn't show success | MCP state tests |
+| Advanced workflows remain accessible | Existing suites; nothing removed |
 
-### Boundaries and gaps (verified in code)
-- Chat does not record a per-request payload snapshot or usage; only Cowork
-  does (`PromptSnapshotView`, `CoworkContextBreakdown`), so the chat panel says
-  "not recorded" instead of estimating.
-- The memory selection lives on the in-memory transport; after a reload it is
-  unknown until the next message.
-- `setMemoryBinding` has no callers in chat, so project-scope memory is not
-  retrieved for project conversations. The panel reports what was injected,
-  which therefore never includes project memory in chat.
-- Chat does not read project instruction files (JAN.md, CLAUDE.md, AGENTS.md);
-  Cowork does. The empty Instructions section says so.
-- RAG retrieval is a model tool call; which chunks were read is not recorded.
-- No managed-policy or locked instruction layer exists in this codebase, so no
-  read-only restriction is shown.
-- Cowork keeps its existing readiness card, context breakdown and sanitized
-  prompt snapshot; this panel was not added there.
+**Untested:** real model loads on any hardware; real providers and OAuth; real
+git clone of a plugin; Unix-only restore branches; screen readers.
 
-Tests (mock-backed): `contextSummary.test.ts` (7) and
-`WhatJanIsUsing.test.tsx` (5): inline vs indexed vs pending files, pending
-removal, memory resolved with scope, tools listed as available not used, local
-processing stated, exact request marked not recorded.
+---
 
-## 10. Accessibility notes for the redesign
+## 9. Registry reconciliation (210 authoritative IDs)
 
-Implemented in the new and touched workflows:
-- Model picker rows are focusable buttons (Enter/Space) with visible focus;
-  provider settings is a labelled button.
-- Fit details, term hints and the context panel open on click/keyboard, never
-  hover-only; popovers and sheets use Radix focus management.
-- Test progress and results use a polite live region; the unload confirmation
-  is an `alertdialog`.
-- Setup intentions and local model choice are `radiogroup`/`radio` with
-  `aria-checked`.
-- Settings Advanced group is a button with `aria-expanded`/`aria-controls`.
-- Approval prompts focus Deny first; restore dialog moves and restores focus;
-  MCP form errors use `aria-invalid`/`aria-describedby` and focus the first
-  invalid field (lane reports).
-- All new copy is in English locale namespaces (`model-fit`, `onboarding`,
-  `glossary`, `navigation`, `context`, `permissions`, `results`,
-  `connections`, plus `mcp-servers` additions) and tolerates long text by
-  wrapping.
+The authoritative registry is `docs/agent-harness-features.json` (210 entries).
+The earlier 200-entry reference is the same file at
+`7c48d71aa65e61543134a25e5ff677fd8ef80f31`:
 
-Not done: arrow-key roving focus inside radio groups, a formal screen-reader
-pass (AH-179) and full keyboard audit (AH-180), narrow-window layout checks.
+- **AH-001..AH-200 keep their meaning** (titles, categories, phases,
+  priorities, dependencies, acceptance criteria unchanged; only status, files,
+  tests and audit notes evolved).
+- **AH-201..AH-210 are the ten additions** (phase 9, P2, missing). Nothing was
+  renumbered, merged or removed, and this branch changed no statuses
+  (`validate-registry.mjs`: 210, counts unchanged).
+- No separate 200-entry design brief exists in the repository; treat its items
+  as AH-001..AH-200.
+
+| ID | Addition | Workflow it requires | Likely home |
+| --- | --- | --- | --- |
+| AH-201 | Conversation/session forking | Branch from a message or turn; show parent; no inherited grants | Message/turn action |
+| AH-202 | Message and file undo/redo | Undo a turn's Jan-authored changes; builds on the guarded restore here | Run result, turn action |
+| AH-203 | Portable import/export | Versioned file; import preview; nothing granted | Conversation menu, Settings > Data |
+| AH-204 | Unified @ references | Ranked composer menu limited to the attached folder | Composer |
+| AH-205 | Persistent aliases | Named references; broken alias names the path | Composer, project settings |
+| AH-206 | Local command palette | Shortcut overlay; confirmations; focus return | App overlay |
+| AH-207 | Custom keybindings | Conflict refusal; reset | Settings > Shortcuts |
+| AH-208 | Hidden utility agents | No own UI; label internal work in activity/audit | Activity views |
+| AH-209 | Project initialization assistant | Read-only survey → editable instructions proposal; pairs with the "build or change a project" intention | Cowork empty state |
+| AH-210 | PC-to-PC handoff bundle | Export/import with a report of what could not be restored | Settings > Data |
+
+Existing items this branch provides evidence for (statuses left unchanged
+because per-OS validation, cancellation criteria or documentation in the
+harness docs remain): AH-027/028 (restore), AH-041/049 (MCP identity, audit),
+AH-073/078/087 (attribution), AH-080–084 (memory), AH-130–132 (plugins),
+AH-179/180 (accessibility).
+
+---
+
+## 10. Remaining gaps
+
+- **Managed worktree + plugin skills:** in Cowork's managed-worktree mode the
+  skill layer reads `.jan/agent` from the worktree, which likely has none, so
+  the model may not see project or plugin skills that the selector lists.
+- **Model-proposed project memory in chat** saves under folder identity, not
+  the collection; collection memories reach chats through the UI path.
+- Temporary-chat and Cowork-session snapshots are removed only by retention,
+  not on clearing/deleting those sessions.
+- The Cowork MCP gate matches (server, tool) without the fingerprint;
+  permission request events do not yet carry the server name.
+- MCP deletion detection relies on the renderer calling `mcp_forget_server`.
+- Every renderer MCP call issues an allow-once ticket, so the audit log records
+  one issuance per call.
+- Rust `is_model_supported` still uses old assumptions (unused by the UI).
+- Plugin install progress is a stage label; marketplace browsing UI is absent by
+  design; repositories that ship `.jan/agent/skills` or plugins now expose
+  readable skill text in Cowork without an opt-in.
+- Only English strings were added; other locales fall back to English and still
+  carry obsolete keys.
+- Settings > Memory strings are literal English like the rest of that page.
+
+## 11. Implications for the redesign
+
+- Treat every state named in §2–§3 as a required visual state: blocked,
+  confirm-unload, restored/not-restored, invalidated approval with reason,
+  verified vs chosen vs retrieved, send states, plugin read-only skill.
+- "Measured" and "Estimate" must stay visually distinct; an estimate must never
+  look like a gate.
+- Recovery boundaries and "passing check ≠ correct task" text are functional
+  content, not decoration.
+- The settings shell is too narrow for content below ~640 px; the redesign
+  should address layout there.
+- Plugin, skill and MCP concepts need the relationship text wherever they meet.

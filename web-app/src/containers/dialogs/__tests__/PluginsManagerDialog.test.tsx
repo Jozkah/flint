@@ -272,7 +272,7 @@ describe('PluginsManagerDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'plugins:install.submit' }))
     })
     expect(installPlugin).toHaveBeenCalledTimes(1)
-    const [project, source, installId] = installPlugin.mock.calls[0]
+    const [project, source, operationId] = installPlugin.mock.calls[0]
     expect(project).toBe('/project')
     expect(source).toEqual({ kind: 'local', path: '/home/me/my-plugin' })
     expect(screen.getByText('plugins:install.copying')).toBeInTheDocument()
@@ -280,7 +280,7 @@ describe('PluginsManagerDialog', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'plugins:install.cancel' }))
     })
-    expect(cancelPluginInstall).toHaveBeenCalledWith(installId)
+    expect(cancelPluginInstall).toHaveBeenCalledWith(operationId)
     expect(screen.getByText('plugins:install.cancelling')).toBeInTheDocument()
 
     await act(async () => {

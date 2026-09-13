@@ -145,12 +145,12 @@ export const getPluginSources = (project: string) =>
 export const installPlugin = (
   project: string,
   source: InstallSource,
-  installId: string
-) => call<InstalledPlugin>('agent_plugin_install', { project, source, installId })
+  operationId: string
+) => call<InstalledPlugin>('agent_plugin_install', { project, source, operationId })
 
 /** Resolves false when no install with that id is running any more. */
-export const cancelPluginInstall = (installId: string) =>
-  call<boolean>('agent_plugin_install_cancel', { installId })
+export const cancelPluginInstall = (operationId: string) =>
+  call<boolean>('agent_plugin_install_cancel', { operationId })
 
 export const setPluginEnabled = (project: string, id: string, enabled: boolean) =>
   call<InstalledPlugin>('agent_plugin_set_enabled', { project, id, enabled })

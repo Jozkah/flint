@@ -202,24 +202,24 @@ pub async fn agent_plugin_sources(
 }
 
 /// Install a plugin from an explicit source (`local` folder copy, `git` clone,
-/// or configured `marketplace` name). `install_id` is chosen by the caller so
+/// or configured `marketplace` name). `operation_id` is chosen by the caller so
 /// `agent_plugin_install_cancel` can stop this install; a cancelled install
 /// leaves no files behind.
 #[tauri::command]
 pub async fn agent_plugin_install(
     project: String,
     source: plugins::InstallSource,
-    install_id: String,
+    operation_id: String,
 ) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
-    let guard = plugins::begin_install(&install_id)?;
+    let guard = plugins::begin_install(&operation_id)?;
     let root = std::path::PathBuf::from(&project);
     plugins::install_from_source(&root, source, guard.ctx()).await
 }
 
 /// Cancel a running install. `false` when no install of that id is running.
 #[tauri::command]
-pub fn agent_plugin_install_cancel(install_id: String) -> bool {
-    plugins::cancel_install(&install_id)
+pub fn agent_plugin_install_cancel(operation_id: String) -> bool {
+    plugins::cancel_install(&operation_id)
 }
 
 /// Enable or disable an installed plugin for this project

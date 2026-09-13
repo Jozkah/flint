@@ -45,7 +45,7 @@ type InstallState = {
   cancelling: boolean
 }
 
-const newInstallId = () =>
+const newOperationId = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -255,7 +255,7 @@ export default function PluginsManagerDialog({
     const source = buildSource()
     if (!source) return
     const state: InstallState = {
-      id: newInstallId(),
+      id: newOperationId(),
       kind: source.kind,
       host:
         source.kind === 'git'
