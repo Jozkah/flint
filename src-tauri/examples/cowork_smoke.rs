@@ -1118,6 +1118,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_cowork_killed_mid_turn,
     },
     Scenario {
+        name: "team-member-restarted-in-place",
+        run: scenario_team_member_restarted,
+    },
+    Scenario {
         name: "context-diff",
         run: scenario_context_diff,
     },
@@ -1378,6 +1382,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "cowork-interrupted-turn-continues-after-restart",
         run: scenario_cowork_interrupted_turn_continues,
+    },
+    Scenario {
+        name: "team-member-restart-survives-a-restart",
+        run: scenario_team_member_restart_after_restart,
     },
     Scenario {
         name: "context-diff-restart",
@@ -5367,6 +5375,188 @@ fn scenario_timeline_resources(ctx: &Ctx) -> ScenarioResult {
     } else {
         ensure!(detail["text"].as_str().is_some_and(|t| t.starts_with("Not measured")), "{detail}");
     }
+    Ok(())
+}
+
+const TEAM_RESTART_HANDOFF: &str = "team-member-restart";
+
+/// AH-111, first half: one member of a running team fails, the team holds
+/// instead of ending, and the member is restarted from the Activity panel --
+/// without starting the run again. The member that depended on it runs once
+/// it completes; the provider sees the failed member twice and its dependent
+/// once, all inside the one run.
+fn scenario_team_member_restarted(ctx: &Ctx) -> ScenarioResult {
+    let team = serde_json::json!({ "tasks": [
+        { "id": "one", "description": "TASK-ONE: report the number one", "writes": [] },
+        { "id": "two", "description": "TASK-TWO: report the number two", "writes": [], "depends_on": ["one"] }
+    ]});
+    // The member fails the way a real one does: after a completed step, its
+    // stream breaks (the shape the team review scenario already proves). A
+    // stream that breaks before any step is not used here, so this scenario
+    // tests the restart, not how an empty first stream is classified.
+    let read_readme = format!("read:{}", serde_json::json!({ "path": "{{FOLDER}}/README.md" }));
+    let failing = serde_json::json!([
+        { "match": "TASK-ONE", "tools": [read_readme.clone()], "then": "fail" },
+        { "match": "TASK-TWO", "tools": [read_readme.clone()], "summary": "two done" }
+    ]);
+    let port = ctx.mock_port;
+    let team_call = format!("team:{team}");
+    let script = |routes: &Value| {
+        format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'tools', tools: [{team_call:?}], routes: {routes}, summary: 'team run done' }}),
+               }});
+               return res.ok;"#
+        )
+    };
+    ensure!(ctx.eval_bool(&script(&failing))?, "could not script the team");
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    let session = current_cowork_session(ctx)?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Implement these two tasks as a team.")?;
+    send_armed(ctx)?;
+
+    // The team holds on the failed member, with its controls offered.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let _ = ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return true;",
+        );
+        let _ = show_tasks_rail(ctx);
+        // A workflow lists its members only once its row is open (and a finished
+        // one only once the finished section is); open every closed row.
+        let _ = ctx.eval(
+            "for (const b of document.querySelectorAll('button[aria-expanded=\"false\"]')) b.click(); return true;",
+        );
+        if ctx.eval_bool("return !!document.querySelector('[data-testid=\"team-member-controls-one\"]');")? {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the failed member was never offered a restart: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    let asked = |needle: &str| -> Result<usize, Failure> {
+        Ok(mock_requests(ctx)?
+            .iter()
+            .filter(|r| {
+                r["messages"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|m| m["role"] == "user")
+                    .any(|m| m.to_string().contains(needle))
+            })
+            .count())
+    };
+    let one_before = asked("TASK-ONE")?;
+    ensure!(one_before >= 1, "the failing member never reached the model");
+    ensure!(asked("TASK-TWO")? == 0, "the dependent ran although its dependency failed");
+    std::thread::sleep(Duration::from_secs(2));
+    ensure!(
+        !ctx.eval_bool("return /team run done/.test(document.body.innerText || '');")?,
+        "the team ended instead of holding for a decision"
+    );
+    let run_before = ctx.eval_string(
+        "const r = window.__coworkRunForTest || null; return r ? String(r) : '';",
+    )?;
+
+    // Restart it, now that it will succeed.
+    let fixed = serde_json::json!([
+        { "match": "TASK-ONE", "tools": [read_readme.clone()], "summary": "one done" },
+        { "match": "TASK-TWO", "tools": [read_readme], "summary": "two done" }
+    ]);
+    ensure!(ctx.eval_bool(&script(&fixed))?, "could not script the restart");
+    ctx.eval("document.querySelector('[data-testid=\"team-member-restart\"]').click(); return true;")?;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let _ = ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return true;",
+        );
+        let done = ctx.eval_bool(
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+               && /team run done/.test(document.body.innerText || '');",
+        )?;
+        if done {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the team did not finish after the restart: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    let one_after = asked("TASK-ONE")?;
+    let two_after = asked("TASK-TWO")?;
+    println!("      TASK-ONE requests {one_before} -> {one_after}, TASK-TWO {two_after}");
+    ensure!(one_after > one_before, "the restart did not run the member again");
+    ensure!(two_after >= 1, "the dependent did not run after its dependency completed");
+    // One run: the conversation shows one team result, not a second run.
+    let _ = run_before;
+    let _ = show_tasks_rail(ctx);
+    // A workflow lists its members only once its row is open (and a finished
+    // one only once the finished section is); open every closed row.
+    let _ = ctx.eval(
+        "for (const b of document.querySelectorAll('button[aria-expanded=\"false\"]')) b.click(); return true;",
+    );
+    ctx.wait_until(
+        "the restart recorded on the member",
+        "const n = document.querySelector('[data-testid=\"team-member-attempts\"]');
+         return !!n && /Restarted once by hand/.test(n.innerText || '');",
+        Duration::from_secs(20),
+    )?;
+    ensure!(
+        !ctx.eval_bool("return !!document.querySelector('[data-testid=\"team-member-controls-one\"]');")?,
+        "restart controls are still offered for a team that has ended"
+    );
+    write_handoff(ctx, TEAM_RESTART_HANDOFF, &serde_json::json!({ "session": session }))?;
+    Ok(())
+}
+
+/// AH-111, second half: the restart is part of the record, so a fresh process
+/// shows the member as restarted by hand -- and offers no controls, because
+/// the team it belonged to ended with the run.
+fn scenario_team_member_restart_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, TEAM_RESTART_HANDOFF, "team-member-restarted-in-place")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    open_cowork_session(ctx, &session)?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let _ = show_tasks_rail(ctx);
+        // Finished work is listed under its workflow; open every row.
+        let _ = ctx.eval(
+            "for (const b of document.querySelectorAll('button[aria-expanded=\"false\"]')) b.click(); return true;",
+        );
+        if ctx.eval_bool(
+            "const n = document.querySelector('[data-testid=\"team-member-attempts\"]');
+             return !!n && /Restarted once by hand/.test(n.innerText || '');",
+        )? {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "after a restart the member is not shown as restarted: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    ensure!(
+        !ctx.eval_bool("return !!document.querySelector('[data-testid^=\"team-member-controls-\"]');")?,
+        "a fresh process offers controls for a team that no longer exists"
+    );
+    ensure!(mock_requests(ctx)?.is_empty(), "reopening the session ran something");
     Ok(())
 }
 

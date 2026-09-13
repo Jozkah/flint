@@ -4074,14 +4074,20 @@
       "category": "orchestration",
       "phase": 5,
       "phaseName": "Agent orchestration",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-102"
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "web-app/src/lib/coworkTeam.ts"
+        "src-tauri/examples/cowork_smoke.rs",
+        "web-app/src/containers/CoworkTasksPanel.tsx",
+        "web-app/src/hooks/useTeamControls.ts",
+        "web-app/src/lib/coworkActivity.ts",
+        "web-app/src/lib/coworkTeam.ts",
+        "web-app/src/lib/coworkTeamControl.ts",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -4092,10 +4098,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/containers/__tests__/TeamMemberControls.test.tsx",
+        "web-app/src/lib/__tests__/coworkTeamControl.test.ts",
+        "web-app/src/lib/__tests__/coworkTeamRunControl.test.ts",
+        "web-app/src/routes/__tests__/cowork.route.test.tsx"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "MAX_TASK_RETRIES bounds automatic re-runs of a failed task; an agent cannot be restarted or replaced individually."
+      "auditNote": "MAX_TASK_RETRIES bounds automatic re-runs of a failed task; an agent cannot be restarted or replaced individually. Implemented 2026-09-13. A failed team member can be restarted or replaced (another subagent and/or corrected brief) from the Activity panel while its team is held for a decision; dependents blocked only by it run afterwards within the same run. The hold is bounded (five minutes) so an unattended run never blocks; the outcome says finished, window-elapsed or stopped. What a person did is recorded on the persisted member task and survives a restart. Evidence: unit 7+6+3, route 23, full web suite 6170 passed; real app teamrestart unit PASS both halves (TASK-ONE 2->4 requests, TASK-TWO 2) on attempt 5 -- attempts 1 and 4 were scenario defects, 2-3 void, all in the ledger. Review defect R9 (unbounded hold) fixed with regression test."
     },
     {
       "id": "AH-112",

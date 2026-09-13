@@ -200,6 +200,8 @@ import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
+import { TeamControl, awaitingDecision } from '@/lib/coworkTeamControl'
+import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
@@ -2917,16 +2919,51 @@ function CoworkPage() {
                   status: 'running',
                   startedAt: Date.now(),
                 })
+                // AH-111: a failed member can be restarted or replaced from the
+                // Tasks panel while the team runs; the control lives as long
+                // as the team does.
+                const teamControl = new TeamControl()
+                useTeamControls.getState().register(teamTaskId, teamControl)
                 try {
                   const outcome = await runTeam(tasks, {
                     // The turn's controller: stopping the run stops the team,
                     // and every child hangs off a signal chained to this one.
                     signal: controller.signal,
                     allowParallel,
+                    control: teamControl,
+                    onControl: (request, result) => {
+                      if (!result.ok || request.kind === 'finish') {
+                        if (!result.ok) toast.error(result.refusal.message)
+                        return
+                      }
+                      const childTask = taskIdFor(sid, runId, `${callId}:${request.taskId}`)
+                      const activity = useCoworkActivity.getState()
+                      const prior = activity.tasks[childTask]
+                      activity.patchTask(childTask, {
+                        status: 'running',
+                        endedAt: undefined,
+                        attempts: (prior?.attempts ?? 0) + 1,
+                        ...(request.kind === 'replace'
+                          ? {
+                              replacedWith: {
+                                agentName: request.with.subagentName,
+                                description: request.with.description,
+                              },
+                              ...(request.with.description
+                                ? { description: request.with.description }
+                                : {}),
+                            }
+                          : {}),
+                      })
+                    },
                     onState: (state: TeamState) =>
-                      useCoworkActivity
-                        .getState()
-                        .patchTask(teamTaskId, { detail: teamProgress(state) }),
+                      useCoworkActivity.getState().patchTask(teamTaskId, {
+                        detail:
+                          awaitingDecision(state) &&
+                          !Object.values(state).some((s) => s.status === 'running' || s.status === 'pending')
+                            ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
+                            : teamProgress(state),
+                      }),
                     runTask: async (one: TeamTask, signal: AbortSignal) => {
                       // One call id per task, so each child gets its own
                       // transcript lane and its own entry in the Tasks panel.
@@ -3042,7 +3079,7 @@ function CoworkPage() {
                   }
                   const where = describeDestinations(plan.byTask)
                   const rendered = [
-                    renderTeamReport(outcome.report),
+                    renderTeamReport(outcome.report) + (outcome.decision === 'window-elapsed' ? '\n\nThe failed tasks were not restarted: nobody decided within the time a team waits for a decision.' : ''),
                     where
                       ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                       : '',
@@ -3071,6 +3108,7 @@ function CoworkPage() {
                     isError: !outcome.report.allDone,
                   }
                 } finally {
+                  useTeamControls.getState().unregister(teamTaskId)
                   // The children are done, so their authority goes back. The
                   // worktrees stay: they hold the work the team was run for,
                   // and the report names where each one is.

@@ -215,6 +215,13 @@ vi.mock('@/lib/coworkTransport', () => ({
   },
 }))
 
+// AH-111: a team that ends with failures waits for a person to restart or
+// replace a member. Nobody is at the Tasks panel in these tests, so the wait
+// is made immediate; its own behaviour is tested in coworkTeamRunControl.
+vi.mock('@/lib/coworkTeamControl', async (orig) => ({
+  ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
+  DECISION_WINDOW_MS: 0,
+}))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
   return {

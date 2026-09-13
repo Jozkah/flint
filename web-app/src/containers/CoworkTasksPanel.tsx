@@ -1,3 +1,5 @@
+import type { TeamControl } from '@/lib/coworkTeamControl'
+import { useTeamControls } from '@/hooks/useTeamControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
@@ -362,8 +364,10 @@ function WorkflowSection({
   const isFocus = focusWorkflowId === workflow.id
 
   const titles = new Map(view.tasks.map((one) => [one.id, one.title]))
+  const byCall = new Map(view.tasks.map((one) => [one.callId, one.id]))
   const taskRow = (task: ActivityTask) => (
     <TaskItem
+      teamControl={teamControlFor(task, byCall)}
       key={task.id}
       task={task}
       parentTitle={task.parentTaskId ? titles.get(task.parentTaskId) : undefined}
@@ -574,7 +578,95 @@ function clockTime(ms: number): string {
   })
 }
 
+/** The live control of the team a failed member belongs to, if it has one. */
+export function teamControlFor(task: ActivityTask, byCall: Map<string, string>): TeamControl | undefined {
+  if (task.status !== 'error' || !task.parentTaskId) return undefined
+  const controls = useTeamControls.getState().controls
+  const parent = byCall.get(task.parentTaskId) ?? task.parentTaskId
+  const control = controls[parent] ?? controls[task.parentTaskId]
+  return control && !control.finished ? control : undefined
+}
+
+/** A team member's own id within its team: the part of its call id after the team's. */
+function memberIdOf(task: ActivityTask): string {
+  const at = task.callId.lastIndexOf(':')
+  return at >= 0 ? task.callId.slice(at + 1) : task.callId
+}
+
+export function TeamMemberControls({ task, control }: { task: ActivityTask; control: TeamControl }) {
+  const { t } = useTranslation()
+  const [replacing, setReplacing] = useState(false)
+  const [brief, setBrief] = useState(task.description ?? '')
+  const [agent, setAgent] = useState(task.agentName ?? '')
+  const memberId = memberIdOf(task)
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 pl-5 pb-2" data-testid={`team-member-controls-${memberId}`}>
+      <Button
+        variant="outline"
+        size="xs"
+        data-testid="team-member-restart"
+        onClick={() => control.request({ kind: 'restart', taskId: memberId })}
+      >
+        {t('common:tasks.restartMember')}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        data-testid="team-member-replace-open"
+        onClick={() => setReplacing((open) => !open)}
+      >
+        {t('common:tasks.replaceMember')}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        data-testid="team-finish"
+        onClick={() => control.request({ kind: 'finish' })}
+      >
+        {t('common:tasks.finishTeam')}
+      </Button>
+      {replacing && (
+        <form
+          className="flex w-full flex-col gap-1"
+          data-testid="team-member-replace-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            control.request({
+              kind: 'replace',
+              taskId: memberId,
+              with: {
+                ...(brief !== (task.description ?? '') ? { description: brief } : {}),
+                ...(agent !== (task.agentName ?? '') ? { subagentName: agent } : {}),
+              },
+            })
+            setReplacing(false)
+          }}
+        >
+          <textarea
+            aria-label={t('common:tasks.replaceBrief')}
+            data-testid="team-member-replace-brief"
+            className="min-h-12 rounded border bg-transparent px-2 py-1 text-[11px]"
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+          />
+          <input
+            aria-label={t('common:tasks.replaceAgent')}
+            data-testid="team-member-replace-agent"
+            className="rounded border bg-transparent px-2 py-1 text-[11px]"
+            value={agent}
+            onChange={(e) => setAgent(e.target.value)}
+          />
+          <Button type="submit" size="xs" variant="outline" data-testid="team-member-replace-submit">
+            {t('common:tasks.replaceSubmit')}
+          </Button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 function TaskItem({
+  teamControl,
   task,
   parentTitle,
   now,
@@ -585,6 +677,7 @@ function TaskItem({
   onCancel,
   containerRef,
 }: {
+  teamControl?: TeamControl
   task: ActivityTask
   /** The task that dispatched this one, when it was nested. */
   parentTitle?: string
@@ -733,6 +826,14 @@ function TaskItem({
         )}
       </div>
 
+      {teamControl && <TeamMemberControls task={task} control={teamControl} />}
+      {(task.attempts ?? 0) > 0 && (
+        <p className="pb-2 pl-5 text-[11px] text-main-view-fg/50" data-testid="team-member-attempts">
+          {task.replacedWith
+            ? t('common:tasks.replacedAttempts', { count: task.attempts })
+            : t('common:tasks.restartedAttempts', { count: task.attempts })}
+        </p>
+      )}
       {expanded && (
         <div className="border-t bg-background px-3 py-2 pl-5">
           <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-main-view-fg/50">

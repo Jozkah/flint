@@ -102,6 +102,13 @@ export type ActivityTask = {
   command?: string
   /** The backend job id, once a command has been backgrounded. */
   jobId?: string
+  /**
+   * How many times a person restarted or replaced this team member after it
+   * failed (AH-111). Absent for work that was never retried by hand.
+   */
+  attempts?: number
+  /** What the latest replacement changed, when it was one. */
+  replacedWith?: { agentName?: string; description?: string }
 
   // --- Outcome, recorded as it lands. ---
 
