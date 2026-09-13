@@ -56,29 +56,29 @@ Screenshots of the real app with demo content. Phone layouts are the same app in
 ### Chat
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-chat-conversation.png" alt="A conversation with a formatted table and code" width="100%">
-Replies render tables, lists and code, and everything stays on your computer.
+<sub>**Conversations.** Replies render tables, lists and code, and everything stays on your computer.</sub>
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-split-conversations.png" alt="Two independent conversations side by side" width="100%">
-**Split conversations.** Two chats side by side, each with its own model, draft and stream.
+<sub>**Split conversations.** Two chats side by side, each with its own model, draft and stream.</sub>
 
 ### Cowork: agents that work on your files
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-managed-worktree-review.png" alt="Reviewing an agent's changes from a managed worktree" width="100%">
-**Managed worktrees and review.** The agent works in an isolated copy of your project. You review each file and hunk, then apply what you want or reject it.
+<sub>**Managed worktrees and review.** The agent works in an isolated copy of your project. You review each file and hunk, then apply what you want or reject it.</sub>
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="A team of agents working in parallel with a live timeline" width="100%">
-**Parallel agents.** Explorer, security, reviewer and planner roles work at the same time, and the timeline shows each dispatch as it happens.
+<sub>**Parallel agents.** Explorer, security, reviewer and planner roles work at the same time, and the timeline shows each dispatch as it happens.</sub>
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-tool-call-timeline.png" alt="The execution timeline with tool call details" width="100%">
-**Tool call history.** Every call is recorded with its phases, approvals, duration, input and output, and the diff it produced.
+<sub>**Tool call history.** Every call is recorded with its phases, approvals, duration, input and output, and the diff it produced.</sub>
 
 ### Context and token usage
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What JAN is using panel" width="100%">
-**What JAN is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.
+<sub>**What JAN is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.</sub>
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-message-token-usage.png" alt="Token usage for one message" width="100%">
-**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.
+<sub>**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.</sub>
 
 ### Phone-sized windows
 
@@ -87,6 +87,7 @@ Replies render tables, lists and code, and everything stays on your computer.
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-split-switch.png" alt="Switching between split panes on a phone-sized window" width="240">
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-navigation.png" alt="The navigation sheet on a phone-sized window" width="240">
 </p>
+<sub>**Phone-sized windows.** A conversation, switching between split panes, and the navigation sheet.</sub>
 
 ## Features
 
@@ -114,7 +115,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 
 - **Split conversations:** two independent chats side by side, each with its own model, draft, attachments, queue, approvals and Stop.
 - **Temporary chats** that you can keep or discard, with a warning before you leave.
-- **Per-chat model and reasoning settings.**
+- Per-chat model and reasoning settings.
 - **Text and code attachments** also work with models that have no vision.
 - **What JAN is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
 - **Collection memory** follows a chat's collection; temporary chats use no memory.
@@ -213,10 +214,10 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 <details>
 <summary><strong>Models and providers</strong></summary>
 
-- **Rename and reorder models.**
+- Rename and reorder models.
 - **Evidence-based model fit:** "Measured on this device" is kept separate from "Estimate", estimates never block you, and a real compatibility test protects other loaded models.
 - **Preferred default model** and one model status vocabulary across the app.
-- **Provider fallback and routing rules.**
+- Provider fallback and routing rules.
 - **Fully local runs** with no network dependency.
 - **Custom request headers** with secret values, and **llmman** as a built-in local provider.
 - **Accurate provider status:** offline only after a real failure, LAN endpoints treated as local, and the actual failure reason shown.
@@ -266,7 +267,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 <details>
 <summary><strong>Privacy and local-only</strong></summary>
 
-- **No telemetry, analytics, update checks, model catalogue or downloader.**
+- No telemetry, analytics, update checks, model catalogue or downloader.
 - **No outside calls you did not set up:** extensions no longer fetch, vendor hosts are removed, and web search results are not sent to third parties.
 - **Automated local-only guards** over the source and the shipped app.
 - **Request log** of what the model was sent and where every request went.
@@ -302,7 +303,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 <summary><strong>Verification tooling</strong></summary>
 
 - **Machine-readable feature registry** with validation, rendering and architecture decision records.
-- **Benchmark harness, golden repositories and a prompt-injection and escalation corpus.**
+- Benchmark harness, golden repositories and a prompt-injection and escalation corpus.
 - **Real-app scenario harness** (`cowork-smoke`) that drives the actual desktop app with a local model fixture.
 
 </details>
