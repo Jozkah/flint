@@ -414,8 +414,9 @@ describe('a run belongs to the session that started it', () => {
     queue.enqueue('A', { id: 'a2', text: 'then test', createdAt: 2 })
     queue.enqueue('B', { id: 'b1', text: 'for B only', createdAt: 3 })
     let taken: any[] = []
-    act(() => {
-      taken = a.opts.deps.takeSteering()
+    // Async: mailbox messages among the taken input are claimed first.
+    await act(async () => {
+      taken = await a.opts.deps.takeSteering()
     })
     expect(taken.map((m: any) => m.parts[0].text)).toEqual(['use pnpm', 'then test'])
     expect(taken.every((m: any) => m.role === 'user')).toBe(true)
@@ -429,8 +430,8 @@ describe('a run belongs to the session that started it', () => {
     expect(JSON.stringify(useCoworkRun.getState().liveTurns.B ?? [])).not.toContain('use pnpm')
     // B's run gets B's input and nothing of A's.
     let takenB: any[] = []
-    act(() => {
-      takenB = b.opts.deps.takeSteering()
+    await act(async () => {
+      takenB = await b.opts.deps.takeSteering()
     })
     expect(takenB.map((m: any) => m.parts[0].text)).toEqual(['for B only'])
     // Each delivery is in its own session's execution record, and the record

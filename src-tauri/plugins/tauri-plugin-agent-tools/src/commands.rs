@@ -1271,6 +1271,18 @@ pub async fn mailbox_mark_read(
     Mailbox::open(Path::new(&data_folder)).mark_read(&session_id, &message_ids)
 }
 
+/// Claim envelopes at the moment they are delivered into the conversation:
+/// not-yet-read ids become `read` and are returned; ids already read (a tool
+/// consumed them) are left out and must not be delivered.
+#[tauri::command]
+pub async fn mailbox_claim(
+    data_folder: String,
+    session_id: String,
+    message_ids: Vec<String>,
+) -> Result<Vec<String>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).claim(&session_id, &message_ids)
+}
+
 /// The UI Reply action: `origin: "user"`, same limits as an agent's send.
 #[tauri::command]
 pub async fn mailbox_reply(

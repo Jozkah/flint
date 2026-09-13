@@ -47,7 +47,86 @@ type DeliveryMailbox = Pick<
   'takeForDelivery' | 'pending' | 'markRead'
 >
 
+type ClaimMailbox = Pick<SessionMailbox, 'claim'>
+
 type QueueState = { queues: Record<string, QueuedMessage[]> }
+
+/**
+ * Mail ids being claimed by a drain right now. The queue subscriber's own
+ * mark-read skips them: marking read first would make the claim see them as
+ * already consumed and drop them.
+ */
+const claiming = new Set<string>()
+
+/**
+ * Take messages out of a session's queue at a drain boundary and keep only
+ * what may reach the model.
+ *
+ * `take` removes the messages (e.g. `takeReady`, `dequeueReady`). Mailbox
+ * messages among them are claimed in the backend (`mailbox_claim`, which marks
+ * them read under the mailbox lock); one the backend reports as already read
+ * was consumed by the agent's own `read_messages` / `wait_for_reply` and is
+ * dropped, so the same reply never enters the conversation twice. Typed input
+ * passes through untouched. If the claim itself fails, the messages are
+ * delivered as before rather than lost.
+ */
+export async function takeClaimed(
+  sid: string,
+  take: () => QueuedMessage[],
+  mailbox: ClaimMailbox = sessionMailbox
+): Promise<QueuedMessage[]> {
+  const readyMail = queueOf(sid).flatMap((m) =>
+    !m.held && m.from ? [m.from.messageId] : []
+  )
+  for (const id of readyMail) claiming.add(id)
+  let taken: QueuedMessage[]
+  try {
+    taken = take()
+  } catch (e) {
+    for (const id of readyMail) claiming.delete(id)
+    throw e
+  }
+  const takenMail = new Set(
+    taken.flatMap((m) => (m.from ? [m.from.messageId] : []))
+  )
+  for (const id of readyMail) if (!takenMail.has(id)) claiming.delete(id)
+  if (takenMail.size === 0) return taken
+
+  let claimed: Set<string>
+  try {
+    claimed = new Set(await mailbox.claim(sid, [...takenMail]))
+  } catch (e) {
+    console.warn('[mailbox] claim failed; delivering anyway:', e)
+    claimed = takenMail
+  } finally {
+    for (const id of takenMail) claiming.delete(id)
+  }
+  return taken.filter((m) => !m.from || claimed.has(m.from.messageId))
+}
+
+/**
+ * The idle path's `dequeueReady`, claimed: the first ready message that may
+ * still be sent, skipping mailbox messages a tool already consumed.
+ */
+export async function dequeueClaimedReady(
+  sid: string,
+  mailbox: ClaimMailbox = sessionMailbox
+): Promise<QueuedMessage | undefined> {
+  for (;;) {
+    let dequeued = false
+    const [next] = await takeClaimed(
+      sid,
+      () => {
+        const m = useMessageQueue.getState().dequeueReady(sid)
+        dequeued = Boolean(m)
+        return m ? [m] : []
+      },
+      mailbox
+    )
+    if (next) return next
+    if (!dequeued) return undefined
+  }
+}
 
 /** The sender fields a transcript row carries, from a queued message's sender. */
 export function agentAttribution(from: QueuedMessageSender): AgentMessageAttribution {
@@ -172,7 +251,10 @@ export function createMailboxDelivery(
         const now = afterById.get(m.id)
         if (!now) {
           handed.add(m.from.messageId)
-          if (!m.held) drained.push(m.from.messageId)
+          // A claimed drain marks read itself (mailbox_claim).
+          if (!m.held && !claiming.has(m.from.messageId)) {
+            drained.push(m.from.messageId)
+          }
         } else if (m.held && !now.held) {
           released = true
         }
