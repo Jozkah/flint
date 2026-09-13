@@ -59,9 +59,40 @@
      `text-main-view-fg/60` call sites were written against actually resolve. */
   --color-main-view: var(--background);
   --color-main-view-fg: var(--foreground);
+  /* JAN Atelier: accent (derived per theme in lib/accent.ts), semantic states,
+     the graphite rail and the paper surfaces. */
+  --color-brand: var(--brand);
+  --color-brand-fill: var(--brand-fill);
+  --color-brand-fill-hover: var(--brand-fill-hover);
+  --color-brand-fill-pressed: var(--brand-fill-pressed);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-text: var(--brand-text);
+  --color-brand-rail: var(--brand-rail);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-destructive-tint: var(--destructive-tint);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-rail: var(--rail);
+  --color-rail-hover: var(--rail-hover);
+  --color-rail-active: var(--rail-active);
+  --color-rail-foreground: var(--rail-foreground);
+  --color-rail-muted: var(--rail-muted);
+  --color-paper: var(--card);
+  --color-sunken: var(--sunken);
+  --color-ink-2: var(--ink-2);
+  --color-line-strong: var(--line-strong);
+  --color-code: var(--code);
+  --color-scrim: var(--scrim);
   --animate-hue-rotate: hue-rotate 4s infinite;
-  --font-studio: "StudioFeixenSans";
-  --font-sans: "Inter", sans-serif;
+  --font-studio: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-display: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --shadow-overlay: var(--overlay-shadow);
 
   /* Font scale based on --font-size-base */
   --text-xs: calc(var(--font-size-base) * 0.75); /* ~12px */
@@ -95,73 +126,146 @@
   --text-4xl: calc(var(--font-size-base) * 2.25);
 }
 
+/* JAN Atelier tokens. Ivory ground, paper surfaces, graphite rail. Accent
+   values below are the Vermilion defaults; lib/accent.ts rewrites them inline
+   for the chosen accent and the effective theme. Semantic colours (success,
+   warning, destructive) are never derived from the accent. Hex values are kept
+   so lib/__tests__/accent.test.ts can check contrast against the same numbers. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.7003 0.1611 35.09);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: #194D24;
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.375rem;
+  --background: #F5F1EA;
+  --foreground: #1E1C19;
+  --card: #FBF9F5;
+  --card-foreground: #1E1C19;
+  --popover: #FBF9F5;
+  --popover-foreground: #1E1C19;
+  --primary: #C0412B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EAE4DA;
+  --secondary-foreground: #1E1C19;
+  --muted: #EAE4DA;
+  --muted-foreground: #6B645A;
+  --accent: #E7E0D5;
+  --accent-foreground: #1E1C19;
+  --destructive: #B3261E;
+  --destructive-foreground: #FFFFFF;
+  --destructive-tint: #F7E0DC;
+  --success: #2E7A4C;
+  --success-tint: #E1EEE5;
+  --warning: #9A620F;
+  --warning-tint: #F5EAD2;
+  --border: #E3DCD1;
+  --line-strong: #D1C8BA;
+  --input: #8C8377;
+  --ring: #C0412B;
+  --chart-1: #6E8F72;
+  --chart-2: #B3A48C;
+  --chart-3: #2F5D8A;
+  --chart-4: #D9C89E;
+  --chart-5: #C0412B;
+  --sidebar: #EFEAE2;
+  --sidebar-foreground: #1E1C19;
+  --sidebar-primary: #C0412B;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E5DED3;
+  --sidebar-accent-foreground: #1E1C19;
+  --sidebar-border: #E3DCD1;
+  --sidebar-ring: #C0412B;
+  --rail: #1D1E1D;
+  --rail-hover: #282927;
+  --rail-active: #333431;
+  --rail-foreground: #EEEAE3;
+  --rail-muted: #A7A299;
+  --sunken: #EAE4DA;
+  --ink-2: #4A453E;
+  --code: #EFEAE2;
+  --scrim: rgba(24, 18, 12, 0.36);
+  --overlay-shadow: 0 1px 2px rgba(40, 30, 20, 0.06), 0 12px 32px rgba(40, 30, 20, 0.12);
+  --brand: #C0412B;
+  --brand-fill: #C0412B;
+  --brand-fill-hover: #A93826;
+  --brand-fill-pressed: #93301F;
+  --brand-foreground: #FFFFFF;
+  --brand-text: #B23B26;
+  --brand-rail: #E0654D;
+  --brand-tint: #F2E3DC;
+  --brand-soft: #E8CBBF;
+  /* Shell geometry. Defaults, not limits: panels shrink before they clip. */
+  --rail-w: 80px;
+  --ctx-h: 52px;
+  --status-h: 28px;
+  --inspector-w: 360px;
 }
 
 .dark {
-  --background: oklch(0.18 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.7003 0.1611 35.09);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #194D24;
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #1A1917;
+  --foreground: #ECE7DF;
+  --card: #211F1C;
+  --card-foreground: #ECE7DF;
+  --popover: #211F1C;
+  --popover-foreground: #ECE7DF;
+  --primary: #E0654D;
+  --primary-foreground: #141210;
+  --secondary: #2A2824;
+  --secondary-foreground: #ECE7DF;
+  --muted: #2A2824;
+  --muted-foreground: #978F84;
+  --accent: #2C2A26;
+  --accent-foreground: #ECE7DF;
+  --destructive: #EF7B6F;
+  --destructive-foreground: #141210;
+  --destructive-tint: #40231F;
+  --success: #6DBB8A;
+  --success-tint: #1E3127;
+  --warning: #DFA84A;
+  --warning-tint: #3A2E18;
+  --border: #33302B;
+  --line-strong: #46423A;
+  --input: #77706A;
+  --ring: #E0654D;
+  --chart-1: #5E8563;
+  --chart-2: #8E806A;
+  --chart-3: #7FA8D1;
+  --chart-4: #B8A676;
+  --chart-5: #E0654D;
+  --sidebar: #1E1C1A;
+  --sidebar-foreground: #ECE7DF;
+  --sidebar-primary: #E0654D;
+  --sidebar-primary-foreground: #141210;
+  --sidebar-accent: #2A2824;
+  --sidebar-accent-foreground: #ECE7DF;
+  --sidebar-border: #33302B;
+  --sidebar-ring: #E0654D;
+  --rail: #121211;
+  --rail-hover: #1E1E1C;
+  --rail-active: #2A2A27;
+  --rail-foreground: #ECE7DF;
+  --rail-muted: #8F8A82;
+  --sunken: #2A2824;
+  --ink-2: #C8C1B6;
+  --code: #282622;
+  --scrim: rgba(0, 0, 0, 0.5);
+  --overlay-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px rgba(0, 0, 0, 0.45);
+  --brand: #E0654D;
+  --brand-fill: #E0654D;
+  --brand-fill-hover: #EB7B64;
+  --brand-fill-pressed: #F18E79;
+  --brand-foreground: #141210;
+  --brand-text: #E97A63;
+  --brand-rail: #E0654D;
+  --brand-tint: #3A2520;
+  --brand-soft: #56342B;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer base {
@@ -211,8 +315,25 @@
     height: 14px;
   }
 
+  /* Lucide outline icons at a consistent 1.5px stroke. */
   svg {
-    stroke-width: 2;
+    stroke-width: 1.5;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  .tabular-nums,
+  table {
+    font-variant-numeric: tabular-nums;
   }
 
   /* Scrollbar styles */

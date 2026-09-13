@@ -6,7 +6,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ThemeSwitcher } from '@/containers/ThemeSwitcher'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
-import { AccentColorPicker } from '@/containers/AccentColorPicker'
+import { AccentSettings } from '@/containers/AccentSettings'
 import { NotificationPositionSwitcher } from '@/containers/NotificationPositionSwitcher'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { Button } from '@/components/ui/button'
@@ -58,10 +58,12 @@ function InterfaceSettings() {
                 actions={<FontSizeSwitcher />}
               />
               <CardItem
-                title="Accent color"
-                description="Customize the accent color of the application."
-                className="flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-y-2"
-                actions={<AccentColorPicker />}
+                anchor="settings-appearance-accent"
+                title={t('settings:accent.title')}
+                description={t('settings:accent.description')}
+                column
+                className="flex-col items-start gap-y-3"
+                actions={<AccentSettings />}
               />
               <CardItem
                 anchor="settings-appearance-notification-position"
