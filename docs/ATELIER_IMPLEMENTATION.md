@@ -53,20 +53,20 @@ is only "restyled" when its behaviour and tests are unchanged.
 
 | Feature | Route / surface | Real state and contracts | Status |
 | --- | --- | --- | --- |
-| First run, resume | `routes/index.tsx` → `SetupScreen`, `GettingStartedCard` (beginner workflows) | `hasUsableProvider`, `useSetupChecklist`, `useOnboardingGuide` | shell only |
-| Chat, streaming, stop, retry, edit, attachments, errors | `routes/threads/$threadId.tsx`, `ChatInput`, `MessageItem` | `use-chat`, `custom-chat-transport`, `message-branching`, `useAttachments`, `stores/message-errors` | pending |
-| Split conversations | new | independent session, model, project, draft, tools, permissions, stream and scroll per pane | pending (new UI; no existing implementation) |
-| Cowork runs, plans, tools, output, review, checkpoints, steering | `routes/cowork.tsx`, `Cowork*` containers | `useCoworkSessions`, `useCoworkRun`, `useCoworkCheckpoints`, event log (`events/*.jsonl`) | pending |
-| Projects, sessions, instructions, files, knowledge | `routes/project/$projectId.tsx`, `NavProjects`, `ProjectFiles`, `/settings/assistant` | `useThreadManagement`, VectorDB extension | pending |
-| Agents, tasks, dependencies, worktrees | `CoworkTasksPanel`, `CoworkWorkflowCard`, `useCoworkWorktrees` | subagent registry, team children | pending |
-| Repository, symbols, diagnostics | `CoworkCodePanel` (backend `index.rs`, `lsp.rs`, `diagnostics.rs` have no UI yet) | agent-core tools | pending |
-| Changes, per-hunk review, git | `CoworkDiffPanel`, `CoworkProposalReview`, `DiffView` | `agent_git_*`, `agent_proposal_*` | pending |
-| Models, providers, compatibility, default | `/settings/providers/*`, `ModelSupportStatus`, `DropdownModelProvider` | `useModelProvider`, `useModelLoad`, `useModelEvidence` | pending |
-| Artifact library | `/artifacts` | `lib/coworkArtifacts`, `useCoworkSessions` | pending |
-| Skills, plugins, MCP, commands, hooks | `SkillsManagerDialog`, `PluginsManagerDialog`, `/settings/mcp-servers`, `CoworkCompatSection` | `useSkills`, MCP services, fingerprint trust | pending |
-| Permissions, grants, revocation, audit | inline approvals (`ai-elements/tool.tsx`), `/settings/permissions` | backend gate, `useToolApproval`, `permission_audit_recent` | pending |
-| Context attribution, memory | `WhatJanIsUsing`, `CoworkContextBreakdown`, `/settings/memory` | `memory_*` commands, prompt snapshots | pending |
-| Runs, activity, budgets, usage, system | `CoworkTimelinePanel`, `TokenUsageBreakdown`, `/system-monitor`, `/logs` | event log, `useHardware` | pending |
+| First run, resume | `routes/index.tsx` → `SetupScreen`, `GettingStartedCard` (beginner workflows) | `hasUsableProvider`, `useSetupChecklist`, `useOnboardingGuide` | restyled |
+| Chat, streaming, stop, retry, edit, attachments, errors | `routes/threads/$threadId.tsx` → `ThreadConversation`, `ChatInput`, `MessageItem` | `use-chat`, `custom-chat-transport`, `message-branching`, `useAttachments`, `stores/message-errors` | restyled; Stop is a secondary action |
+| Split conversations | `SplitConversation`, `useSplitConversation`, `useConversationPane` | per pane: thread, model, draft (`usePrompt` scoped), attachments, queue, approvals, stream, Stop, scroll. Shared by design: llama.cpp OOM/backend events and model-load progress (global backend events without a thread id), prompt history | new; side by side ≥1100px with a resizable divider, pane switch below |
+| Cowork runs, plans, tools, output, review, checkpoints, steering | `routes/cowork.tsx`, `Cowork*` containers | `useCoworkSessions`, `useCoworkRun`, `useCoworkCheckpoints`, event log (`events/*.jsonl`) | restyled; 360px output inspector, drawer below 1100px, Content / Output / Details below 768px |
+| Projects, sessions, instructions, files, knowledge | `routes/project/$projectId.tsx`, `NavProjects`, `ProjectFiles`, `/settings/assistant` | `useThreadManagement`, VectorDB extension | restyled |
+| Agents, tasks, dependencies, worktrees | `CoworkTasksPanel`, `CoworkWorkflowCard`, `useCoworkWorktrees` | subagent registry, team children | token sweep and quiet timelines; no new dependency-graph UI |
+| Repository, symbols, diagnostics | `CoworkCodePanel` (backend `index.rs`, `lsp.rs`, `diagnostics.rs` have no UI yet) | agent-core tools | token sweep; symbols/diagnostics remain agent tools without a dedicated UI |
+| Changes, per-hunk review, git | `CoworkDiffPanel`, `CoworkProposalReview`, `DiffView` | `agent_git_*`, `agent_proposal_*` | diffs use semantic tints and scroll inside their container; git split/rebase/PR remain agent tools |
+| Models, providers, compatibility, default | `/settings/providers/*`, `ModelSupportStatus`, `DropdownModelProvider` | `useModelProvider`, `useModelLoad`, `useModelEvidence`, `lib/modelStatus.ts` | restyled; one status vocabulary from `deriveModelStatus` |
+| Artifact library | `/artifacts` (rail Library) | `lib/coworkArtifacts`, `useCoworkSessions` | restyled; Go to session added |
+| Skills, plugins, MCP, commands, hooks | `SkillsManagerDialog`, `PluginsManagerDialog`, `/settings/mcp-servers`, `CoworkCompatSection` | `useSkills`, MCP services, fingerprint trust; skills layered project → store → user | restyled (MCP chips from `mcpConnectionState`) |
+| Permissions, grants, revocation, audit | inline approvals (`ai-elements/tool.tsx`), `CoworkChildApprovals`, `/settings/permissions` | backend gate, `useToolApproval`, `permission_audit_recent` | restyled; four grant groups, audit table |
+| Context attribution, memory | `WhatJanIsUsing`, `CoworkContextBreakdown`, `/settings/memory` | `memory_*` commands, prompt snapshots | restyled; memory scope tabs |
+| Runs, activity, budgets, usage, system | `CoworkTimelinePanel`, `TokenUsageBreakdown`, `/system-monitor`, `/logs` (rail System, `NavSystem`) | event log, `useHardware` | restyled; system meters and shared LogViewer |
 | Settings, accessibility, search, shortcuts | `/settings/*`, `SearchDialog`, `CommandPalette`, `/settings/shortcuts` | `SETTINGS_PAGES`, `useKeybindings` | settings navigation moved into the shell sidebar |
 | Accent | `/settings/interface` | `useInterfaceSettings.accent` | done |
 

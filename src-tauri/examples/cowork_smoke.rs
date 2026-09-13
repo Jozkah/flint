@@ -1034,6 +1034,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_model_round_trip,
     },
     Scenario {
+        name: "atelier-explore",
+        run: scenario_atelier_explore,
+    },
+    Scenario {
         name: "composer-controls-do-not-overlap",
         run: scenario_composer_layout,
     },
@@ -9145,6 +9149,32 @@ fn scenario_utility_agent_title(ctx: &Ctx) -> ScenarioResult {
 ///
 /// Everything downstream of a run -- the activity timeline, tool rows,
 /// cancellation -- depends on this working, so it is asserted on its own.
+/// A configured app, left open for manual or scripted exploration.
+///
+/// Scripts the model fixture to plain replies, opens a chat with the smoke
+/// model selected, and then holds for `COWORK_SMOKE_HOLD_SECS` (default 0) so
+/// a person, or a browser automation tool attached through
+/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>` with
+/// `COWORK_SMOKE_THROTTLE=1`, can walk the redesigned surfaces against real
+/// app state and the local model fixture. Asserts only that the app reached a
+/// usable chat.
+fn scenario_atelier_explore(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the chat composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    println!(
+        "      model fixture on http://127.0.0.1:{}/v1; app ready for exploration",
+        ctx.mock_port
+    );
+    ctx.hold_for_capture("atelier exploration");
+    Ok(())
+}
+
 fn scenario_model_round_trip(ctx: &Ctx) -> ScenarioResult {
     ctx.script_model("plain", &[])?;
     ctx.goto("/")?;
