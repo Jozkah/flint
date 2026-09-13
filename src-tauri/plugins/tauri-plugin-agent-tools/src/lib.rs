@@ -97,7 +97,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::project_list_dir,
             commands::project_read_file,
             commands::bash_jobs_list,
-            commands::bash_job_kill
+            commands::bash_job_kill,
+            commands::permission_audit_recent
         ])
         .build()
 }

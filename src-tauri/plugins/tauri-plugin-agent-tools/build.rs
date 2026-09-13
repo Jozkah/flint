@@ -55,6 +55,7 @@ const COMMANDS: &[&str] = &[
     "project_read_file",
     "bash_jobs_list",
     "bash_job_kill",
+    "permission_audit_recent",
 ];
 
 fn main() {

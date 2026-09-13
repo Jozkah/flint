@@ -364,6 +364,46 @@ pub fn query(data_folder: &Path, query: &Query) -> Vec<PermissionRecord> {
         .collect()
 }
 
+/// Upper bound on [`recent`], whatever the caller asks for.
+pub const RECENT_MAX: usize = 200;
+
+/// The last `limit` records, newest first, for the permissions page.
+///
+/// Streams the log and keeps only a window of `limit` lines, so a long history
+/// costs a pass over the file rather than all of it in memory. `limit` is
+/// clamped to `1..=RECENT_MAX`. Resource and reason are redacted again on the
+/// way out: redaction rules only ever get stricter, and a record written by an
+/// older build should not show what a newer one would have removed.
+pub fn recent(data_folder: &Path, limit: usize) -> Vec<PermissionRecord> {
+    let limit = limit.clamp(1, RECENT_MAX);
+    let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
+        return Vec::new();
+    };
+    let mut window: std::collections::VecDeque<PermissionRecord> =
+        std::collections::VecDeque::with_capacity(limit);
+    for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<PermissionRecord>(&line) else {
+            continue;
+        };
+        if window.len() == limit {
+            window.pop_front();
+        }
+        window.push_back(record);
+    }
+    window
+        .into_iter()
+        .rev()
+        .map(|mut r| {
+            r.resource = redact(&r.resource);
+            r.reason = redact(&r.reason);
+            r
+        })
+        .collect()
+}
+
 /// The matching records as a JSON array, for the audit export AH-200 needs.
 pub fn export_json(data_folder: &Path, q: &Query) -> String {
     serde_json::to_string_pretty(&query(data_folder, q)).unwrap_or_else(|_| "[]".to_string())
@@ -549,6 +589,34 @@ mod tests {
         let exported = export_json(&dir, &Query::default());
         assert!(exported.starts_with('['));
         assert_eq!(exported.matches("\"session\"").count(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recent_is_newest_first_bounded_and_redacted() {
+        let dir = temp_dir("recent");
+        for i in 0..5 {
+            append(&dir, &record(&format!("s{i}"), Outcome::Allow));
+        }
+        // A line written before a redaction rule existed.
+        let path = log_path(&dir);
+        let mut body = std::fs::read_to_string(&path).unwrap();
+        let mut old = record("old", Outcome::Deny);
+        old.resource = "PGPASSWORD=hunter2 psql".to_string();
+        body.push_str(&serde_json::to_string(&old).unwrap());
+        body.push('\n');
+        std::fs::write(&path, body).unwrap();
+
+        let got = recent(&dir, 3);
+        assert_eq!(got.len(), 3);
+        assert_eq!(got[0].session, "old", "newest first");
+        assert_eq!(got[1].session, "s4");
+        assert_eq!(got[2].session, "s3");
+        assert!(!got[0].resource.contains("hunter2"), "{}", got[0].resource);
+
+        // Clamped at both ends.
+        assert_eq!(recent(&dir, 0).len(), 1);
+        assert_eq!(recent(&dir, usize::MAX).len(), 6);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
