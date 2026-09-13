@@ -2215,3 +2215,44 @@ first -- the same numbers `jan cli agent spend` reports, because it is the same
 ledger. A run stopped by a ceiling ends with a typed `budget_exhausted` naming
 which ceiling and what it stands at, and marked never-retry: the window has to
 pass.
+
+
+## Telling somebody a run ended, or wants them (AH-185, AH-184)
+
+A headless run that has been going ten minutes and now wants an approval is
+invisible: whoever started it has moved on. `[notify]` in `agent.toml` says who
+to tell.
+
+```toml
+[notify]
+command = ["notify-send", "Jan"]              # a local command (AH-185)
+webhook = "https://example.invalid/hooks/jan" # an endpoint (AH-184)
+events = ["run.ended", "needs.attention"]     # default: both
+```
+
+The command is an **argument vector, never a shell string**: the program is
+exactly what was named, and the notification arrives as one more argument
+rather than being spliced into a command line where a quote would change what
+runs. The webhook is POSTed as JSON.
+
+What is sent is deliberately small -- which session, what happened, when, and a
+one-line summary:
+
+```json
+{"kind":"run.ended","session":"0fd56d9c-…","at":"2026-09-13T04:58:29Z",
+ "summary":"the run ended: completed"}
+```
+
+What is **not** sent: the prompt, the model's answer, tool output, file
+contents, credentials. Everything else is in the transcript, which stays where
+it is. "Tell me when it finishes" does not ask for the contents of the run, and
+an endpoint is a place data does not come back from. The `run` field is absent
+rather than filled with a stand-in where the surface does not know the run id:
+a session id in a field labelled `run` is a wrong answer.
+
+A configuration that cannot work is refused at startup -- a scheme that is not
+http or https, an empty argument, a moment nobody defined -- rather than
+discovered when a run ends and nobody is told. Delivery itself never decides
+the run: a command that fails, or an endpoint that is not there, is logged and
+dropped, because a run that has finished has finished, and failing it because
+nobody could be told would turn a courtesy into a new way to lose work.

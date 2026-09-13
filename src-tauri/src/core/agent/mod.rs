@@ -24,6 +24,7 @@ pub mod global_config;
 pub mod goal;
 pub mod interaction;
 pub mod r#loop;
+pub mod notify;
 pub mod plan;
 pub mod plugin_commands;
 pub mod plugins;

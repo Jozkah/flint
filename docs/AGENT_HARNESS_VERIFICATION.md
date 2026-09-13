@@ -2194,3 +2194,38 @@ remembers, reached only when the ledger says so, and refused with a typed
 `budget_exhausted`; a spend ceiling counting what has a declared price, naming
 the models nobody priced, and not treating their use as free; and the tightest
 ceiling being the one reported first and named in the refusal.
+
+
+### Run notifications and webhooks (AH-185, AH-184)
+
+Six tests plus a real run with both a local command and a local endpoint
+configured:
+
+```
+=== a run that ends
+rc=0
+what the command was handed:
+  {"kind":"run.ended","session":"0fd56d9c-…","at":"2026-09-13T04:58:29Z",
+   "summary":"the run ended: completed"}
+what the endpoint received:
+  (the same object)
+does either carry the prompt or the answer?
+  no
+
+=== a [notify] section that cannot work
+rc=64  Error [invalid_input]: [notify].webhook must be an http or https URL;
+       "ftp://example.invalid/hook" is not one
+
+=== an endpoint that is not there
+rc=0 (the run is not failed by a notification nobody could receive)
+       notify: the webhook could not be delivered: error sending request for
+       url (http://127.0.0.1:9/hook)
+```
+
+Covered by test: a project that declares nothing being told nothing and costing
+nothing; a scheme that is not http/https, an empty command argument and an
+unknown moment each refused at startup with a typed `invalid_input`; the
+default being both moments and a declared list narrowing it; a notification
+carrying no content of the run; a command that cannot be started reported and
+nothing more; and the declared command actually running with the notification
+as one argument, while a moment nobody asked about delivers nothing.

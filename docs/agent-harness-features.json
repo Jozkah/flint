@@ -6429,13 +6429,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-183"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/notify.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Run lifecycle events can be delivered to a configured endpoint.",
@@ -6445,10 +6449,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/notify.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). [notify].webhook POSTs the same notification as JSON to a declared http/https endpoint, with a 5-second deadline. An endpoint is a place data does not come back from, so the payload carries no content of the run at all. Declared in [notify] in agent.toml and checked at startup rather than when a run ends and nobody is told: a scheme that is not http/https, an empty command argument or an unknown moment is refused with a typed invalid_input. What is sent is deliberately small -- kind, session, time, and a one-line summary -- and never the prompt, the answer, tool output or credentials; the run id is omitted rather than filled with a stand-in where the surface does not know it. Delivery never decides the run: a failure is logged and dropped, because a run that has finished has finished. Fired on run end and when a run stops for an approval. Proven by a real run with both a command and an endpoint configured, plus a refused configuration and an endpoint that was not there."
     },
     {
       "id": "AH-185",
@@ -6456,13 +6462,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/notify.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A run that needs attention or has finished notifies the user.",
@@ -6471,10 +6481,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/notify.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). [notify].command runs a local program when a run ends or stops to wait for a person -- an argument vector, never a shell string, so the program is exactly what was named and the notification arrives as one more argument rather than spliced into a command line. A 5-second deadline; a command that will not start, fails or hangs is reported and stopped. Declared in [notify] in agent.toml and checked at startup rather than when a run ends and nobody is told: a scheme that is not http/https, an empty command argument or an unknown moment is refused with a typed invalid_input. What is sent is deliberately small -- kind, session, time, and a one-line summary -- and never the prompt, the answer, tool output or credentials; the run id is omitted rather than filled with a stand-in where the surface does not know it. Delivery never decides the run: a failure is logged and dropped, because a run that has finished has finished. Fired on run end and when a run stops for an approval. Proven by a real run with both a command and an endpoint configured, plus a refused configuration and an endpoint that was not there."
     },
     {
       "id": "AH-186",

@@ -25,6 +25,10 @@ pub(crate) struct AgentToml {
     pub skills: SkillsSection,
     #[serde(default)]
     pub plugins: PluginsSection,
+    /// `[notify]` -- who to tell when a run ends or wants a person (AH-185,
+    /// AH-184).
+    #[serde(default)]
+    pub notify: crate::core::agent::notify::NotifySection,
 }
 
 /// `[plugins]` — plugin installs and marketplace. Installed plugins live in
@@ -231,6 +235,14 @@ allow_write = []
 enabled = []
 # always | relevance
 inject = "always"
+
+# Who to tell when a run ends, or stops to wait for you. Nothing is sent but
+# which run, what happened and when -- never the prompt, the answer or any tool
+# output.
+# [notify]
+# command = ["notify-send", "Jan"]      # argument vector; no shell
+# webhook = "https://example.invalid/hooks/jan"
+# events = ["run.ended", "needs.attention"]
 "#;
 
 /// Path to `<project_root>/.jan/agent/agent.toml`.

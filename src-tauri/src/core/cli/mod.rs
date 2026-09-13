@@ -1227,9 +1227,21 @@ async fn run_agent_loop(
     // with the same words the TUI uses.
     let pressure_window = limits.context_window;
     let pressure_reserve = limits.reserve_tokens;
+    // AH-185/AH-184: who to tell, checked before the run rather than when it
+    // ends and nobody is told. A project that declares nothing costs nothing.
+    let notify = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
+        .ok()
+        .map(|cfg| cfg.notify)
+        .unwrap_or_default();
+    let notify = crate::core::agent::notify::check(&notify)?;
+    let notify_root = std::path::PathBuf::from(project);
+    let notify_session = args.session_id.clone().unwrap_or_default();
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
+    let notify_for_prompts = notify.clone();
+    let prompt_root = notify_root.clone();
+    let prompt_session = notify_session.clone();
     let printer = tokio::spawn(async move {
         // The last conversation the loop published, kept for the save below.
         let mut conversation: Option<Vec<serde_json::Value>> = None;
@@ -1269,6 +1281,31 @@ async fn run_agent_loop(
             if let StreamEvent::MessagesUpdated { messages } = &ev {
                 conversation = Some(messages.clone());
             }
+            // A run that has stopped to wait for a person is the moment
+            // worth interrupting somebody for: nothing else happens until
+            // they answer.
+            if let (Some(notify), StreamEvent::PermissionRequest { tool_name, .. }) =
+                (notify_for_prompts.as_ref(), &ev)
+            {
+                let note = crate::core::agent::notify::Notification::new(
+                    crate::core::agent::notify::Moment::NeedsAttention,
+                    &prompt_session,
+                    None,
+                    format!("waiting for approval of a {tool_name} call"),
+                );
+                for outcome in crate::core::agent::notify::deliver(
+                    notify,
+                    &note,
+                    &prompt_root,
+                    crate::core::agent::notify::Moment::NeedsAttention,
+                )
+                .await
+                {
+                    if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
+                        log::warn!("notify: {why}");
+                    }
+                }
+            }
             if format.is_json() {
                 resolve_permission_silently(ev, &permission_requests).await;
             } else {
@@ -1281,6 +1318,33 @@ async fn run_agent_loop(
     let result = run_orchestration_streamed(&tx, &body, &args).await;
     drop(tx);
     let (report, conversation) = printer.await.unwrap_or_default();
+
+    // AH-185/AH-184: the run is over, whoever started it has moved on, and
+    // this says so. How it ended, and nothing of what it did.
+    if let Some(notify) = notify.as_ref() {
+        let summary = match result.as_ref() {
+            Ok(_) => "the run ended: completed".to_string(),
+            Err(e) => format!("the run ended: {} ({})", e.kind().tag(), e.stage().tag()),
+        };
+        let note = crate::core::agent::notify::Notification::new(
+            crate::core::agent::notify::Moment::RunEnded,
+            &notify_session,
+            None,
+            summary,
+        );
+        for outcome in crate::core::agent::notify::deliver(
+            notify,
+            &note,
+            &notify_root,
+            crate::core::agent::notify::Moment::RunEnded,
+        )
+        .await
+        {
+            if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
+                log::warn!("notify: {why}");
+            }
+        }
+    }
 
     // Write the turn back so the session stays continuable with --resume.
     let PersistTarget {
