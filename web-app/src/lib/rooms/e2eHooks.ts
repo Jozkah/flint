@@ -20,14 +20,17 @@ export async function installRoomsE2EHooks(
   target: HookTarget
 ): Promise<boolean> {
   if (flag !== '1') return false
-  const [controller, store, participantModel, availability, context, providers] = await Promise.all([
-    import('./controller'),
-    import('./store'),
-    import('./participantModel'),
-    import('./availability'),
-    import('./context'),
-    import('@/hooks/useModelProvider'),
-  ])
+  const [controller, store, participantModel, availability, context, providers, limits, types] =
+    await Promise.all([
+      import('./controller'),
+      import('./store'),
+      import('./participantModel'),
+      import('./availability'),
+      import('./context'),
+      import('@/hooks/useModelProvider'),
+      import('./limits'),
+      import('./types'),
+    ])
   target.__janRoomsE2E = {
     roomController: controller.roomController,
     createRoom: controller.createRoom,
@@ -43,6 +46,9 @@ export async function installRoomsE2EHooks(
     modelSupportsTools: availability.modelSupportsTools,
     buildSystemPrompt: context.buildSystemPrompt,
     useModelProvider: providers.useModelProvider,
+    // Read-only constants, so the harness checks the engine's own ceilings.
+    HARD_CALL_CEILING: limits.HARD_CALL_CEILING,
+    ROOM_LIMIT_CEILINGS: types.ROOM_LIMIT_CEILINGS,
   }
   return true
 }
