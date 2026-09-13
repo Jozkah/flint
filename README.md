@@ -5,26 +5,28 @@
 <p align="center">
   <strong>English</strong> ·
   <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a>
+  <a href="README.ja.md">日本語</a><br/>
+  <sub>The translations are upstream Jan's text and do not describe this fork's changes.</sub>
 </p>
 
 <p align="center">
-  <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/janhq/jan"/>
-  <img alt="Github Last Commit" src="https://img.shields.io/github/last-commit/janhq/jan"/>
-  <img alt="Github Contributors" src="https://img.shields.io/github/contributors/janhq/jan"/>
-  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/janhq/jan"/>
-  <img alt="Discord" src="https://img.shields.io/discord/1107178041848909847?label=discord"/>
+  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/Jozkah/jan"/>
+  <img alt="Github Last Commit" src="https://img.shields.io/github/last-commit/Jozkah/jan"/>
+  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/Jozkah/jan"/>
 </p>
 
 <p align="center">
-  <a href="https://jan.ai/docs/desktop">Getting Started</a>
-  - <a href="https://discord.gg/Exe46xPMbK">Community</a>
-  - <a href="https://jan.ai/changelog">Changelog</a>
-  - <a href="https://github.com/janhq/jan/issues">Bug reports</a>
+  <a href="#build-from-source">Build from source</a>
+  - <a href="#this-build-is-local-only">What was removed</a>
+  - <a href="https://github.com/Jozkah/jan/issues">Bug reports</a>
+  - <a href="https://github.com/janhq/jan">Upstream project</a>
 </p>
 
-Jan is bringing the best of open-source AI in an easy-to-use product. Download and run LLMs with **full control** and **privacy**.
+Jan is bringing the best of open-source AI in an easy-to-use product. Run LLMs with **full control** and **privacy**.
+
+This repository is a fork of [janhq/jan](https://github.com/janhq/jan) with the
+network-reaching services stripped out and a desktop coding workspace added on
+top. It ships no binaries of its own — you build it from source.
 
 ## This build is local-only
 
@@ -36,20 +38,28 @@ It does not phone home, and it will not fetch anything you did not ask it for.
 - **Telemetry and analytics.** No PostHog, no product analytics, no consent
   prompt, no analytics settings, and no `POSTHOG_KEY` / `POSTHOG_HOST` build
   variables. Nothing counts what you do.
-- **Update checking.** No updater plugin and no update endpoint. The app never
-  asks whether a newer version exists — update it the way you installed it.
-- **Vendor services.** No `jan.ai` URLs, no documentation, release, repository,
-  community or issue-tracker links, and no vendor identification headers on
-  outbound provider requests.
+- **Update checking.** The desktop app ships no updater plugin and configures no
+  update endpoint (`plugins.updater` is absent from `src-tauri/tauri.conf.json`),
+  so it never asks whether a newer version exists — update it the way you
+  installed it.
+- **Vendor services.** No `jan.ai` URLs in the app's own code, no documentation,
+  release, repository, community or issue-tracker links, and no vendor
+  identification headers on outbound provider requests.
+
+> **One exception, in the headless CLI.** `src-tauri/src/core/cli/updater.rs`
+> still checks for updates through an analytics proxy on `jan.ai`, sending an
+> anonymous install id kept in `~/.jan/cli_telemetry.json`. It only runs in
+> binaries built by the nightly CI templates, which embed
+> `JAN_CLI_UPDATE_CHANNEL`; a local `cargo build --features cli` is a no-op, and
+> `JAN_CLI_NO_UPDATE_CHECK` opts out either way. The desktop app is unaffected.
 
 **You bring your own models.** Point the app at models already on your
 machine: add a local GGUF through **Settings → Model Providers → llama.cpp →
 Import**, or an MLX model through the MLX provider.
 
 > **In progress.** The built-in model catalogue and downloader have not been
-> removed yet. Until they are, the Hub can still fetch model listings and
-> download weights when you use it. Tracked on the
-> `wip/local-only-model-downloads` branch.
+> removed yet. Until they are, the Hub can still fetch model listings from
+> HuggingFace and download weights when you use it.
 
 **What can still reach the network, only if you set it up.** Nothing below is
 configured out of the box, and nothing happens until you enter a credential:
@@ -64,69 +74,18 @@ Leave them alone and the app makes no outbound request at all — not at
 startup, not while you use it.
 
 Guards live in `web-app/src/__tests__/localOnly.test.ts`: the suite fails if an
-analytics SDK, an update check, or a `jan.ai` URL is reintroduced.
+analytics SDK, an update check, or a `jan.ai` URL is reintroduced. It scans the
+web app's sources and `src-tauri/tauri.conf.json` — the Rust core is not covered,
+which is why the CLI update check above survives it.
 
 
 ## Installation
 
-<p align="center">
-  <table>
-    <tr>
-      <!-- Microsoft Store Badge -->
-      <td align="center" valign="middle">
-        <a href="https://apps.microsoft.com/detail/xpdcnfn5cpzlqb">
-          <img height="60"
-            width="200"
-               alt="Get it from Microsoft Store"
-               src="https://get.microsoft.com/images/en-us%20dark.svg"/>
-        </a>
-      </td>
-      <!-- Spacer -->
-      <td width="20"></td>
-      <!-- Flathub Official Badge -->
-      <td align="center" valign="middle">
-        <a href="https://flathub.org/apps/ai.jan.Jan">
-          <img height="60"
-            width="200"
-               alt="Get it on Flathub"
-               src="https://flathub.org/assets/badges/flathub-badge-en.svg"/>
-        </a>
-      </td>
-    </tr>
-  </table>
-</p>
+There are no prebuilt binaries for this fork. The Microsoft Store, Flathub and
+`app.jan.ai` downloads all ship **upstream Jan**, which still has telemetry and
+update checking in it — installing one of those does not get you this build.
 
-The easiest way to get started is by downloading one of the following versions for your respective operating system:
-
-<table>
-  <tr>
-    <td><b>Platform</b></td>
-    <td><b>Download</b></td>
-  </tr>
-  <tr>
-    <td><b>Windows</b></td>
-    <td><a href='https://app.jan.ai/download/latest/win-x64'>jan.exe</a></td>
-  </tr>
-  <tr>
-    <td><b>macOS</b></td>
-    <td><a href='https://app.jan.ai/download/latest/mac-universal'>jan.dmg</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (deb)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-deb'>jan.deb</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (AppImage)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-appimage'>jan.AppImage</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (Arm64)</b></td>
-    <td><a href='https://github.com/janhq/jan/issues/4543#issuecomment-4142429792'>How-to</a></td>
-  </tr>
-</table>
-
-
-Download from [jan.ai](https://jan.ai/) or [GitHub Releases](https://github.com/janhq/jan/releases).
+To run this fork, [build it from source](#build-from-source).
 
 ## Features
 
@@ -182,7 +141,7 @@ For those who enjoy the scenic route:
 ### Run with Make
 
 ```bash
-git clone https://github.com/janhq/jan
+git clone https://github.com/Jozkah/jan
 cd jan
 make dev
 ```
@@ -231,15 +190,20 @@ make dev JAN_ENGINE_VARIANT=cuda13
 - **Windows**: 10+ with GPU support for NVIDIA/AMD/Intel Arc
 - **Linux**: Most distributions work, GPU acceleration available
 
-For detailed compatibility, check our [installation guides](https://jan.ai/docs/desktop/mac).
+For detailed compatibility, see the [upstream installation
+guides](https://jan.ai/docs/desktop/mac) — they describe upstream Jan, but the
+hardware requirements are the same.
 
 ## Troubleshooting
 
 If things go sideways:
 
-1. Check our [troubleshooting docs](https://jan.ai/docs/desktop/troubleshooting)
-2. Copy your error logs and system specs
-3. Ask for help in our [Discord](https://discord.gg/FTk2MvZwJH) `#🆘|jan-help` channel
+1. Copy your error logs and system specs
+2. Open an issue on [this fork](https://github.com/Jozkah/jan/issues)
+
+Upstream's [troubleshooting docs](https://jan.ai/docs/desktop/troubleshooting)
+still apply to anything this fork did not change. Upstream's Discord and issue
+tracker do not support this fork — do not report fork bugs there.
 
 
 ## Contributing
@@ -248,17 +212,9 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full spiel
 
 ## Links
 
-- [Documentation](https://jan.ai/docs) - The manual you should read
-- [API Reference](https://jan.ai/api-reference) - For the technically inclined
-- [Changelog](https://jan.ai/changelog) - What we broke and fixed
-- [Discord](https://discord.gg/FTk2MvZwJH) - Where the community lives
-
-## Contact
-
-- **Bugs**: [GitHub Issues](https://github.com/janhq/jan/issues)
-- **Business**: hello@jan.ai
-- **Jobs**: hr@jan.ai
-- **General Discussion**: [Discord](https://discord.gg/FTk2MvZwJH)
+- [This fork's issues](https://github.com/Jozkah/jan/issues) - Bugs in this build
+- [janhq/jan](https://github.com/janhq/jan) - The upstream project
+- [Upstream documentation](https://jan.ai/docs) - Applies to anything unchanged here
 
 ## License
 
