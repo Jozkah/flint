@@ -35,6 +35,7 @@ pub mod reminder;
 pub mod diagnostics;
 pub mod fixtures;
 pub mod impact;
+pub mod health;
 pub mod index;
 pub mod licenses;
 pub mod vcs;

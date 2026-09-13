@@ -2390,3 +2390,48 @@ including the deprecated array form and scoped packages; a project with no
 allowed set enforcing nothing; "new" only being a question once a scan was
 recorded, with a version bump counting as new; and a project with nothing to
 read reporting that it read nothing.
+
+
+### Repository health scan (AH-072)
+
+Six tests plus real scans of a real crate, before and after breaking it:
+
+```
+=== what would run
+  build   cargo check --all-targets --manifest-path …\Cargo.toml   (Cargo.toml)
+  test    cargo test --no-run …
+  lint    cargo clippy --all-targets …
+
+=== a crate in working order (build and test only)
+  build   passed  (203 ms)      test  passed  (203 ms)            rc=0
+
+=== the same crate, broken
+rc=70
+  build   FAILED  (104 ms)  cargo check --all-targets …
+      error[E0277]: cannot add `&str` to `u8`
+       --> src\lib.rs:2:7
+      2 |     a + "two"
+
+=== a project that declares nothing
+this project declares no checks
+  dependencies 0 dependenc(ies), 0 declaring no licence, 0 at more than one version
+
+=== this repository's own checks, as a plan
+  build/test/lint  cargo …          (src-tauri\Cargo.toml)
+  build/test/lint  yarn run …       (package.json scripts.* (yarn.lock))
+
+=== and its dependency health
+  dependencies 807 dependenc(ies), 1 declaring no licence, 76 at more than
+  one version
+      base64: 0.21.7, 0.22.1, 0.23.1
+```
+
+Covered by test: a project that declares nothing having no checks; the checks
+being the scripts a package.json actually has, run through the runner its
+lockfile names, with a script it does not have not becoming a check; a crate
+checked with cargo and its test check building rather than running the suite; a
+failing check quoting what the command printed and an unstartable one reported
+as not run; dependency health counting what is installed, naming what declares
+no licence and what is present at more than one version; and a `--only`
+selection running only what was selected, with an unknown check refused by
+name.

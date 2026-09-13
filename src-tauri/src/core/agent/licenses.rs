@@ -84,6 +84,19 @@ pub struct Report {
     pub compared: bool,
 }
 
+/// An absolute path without Windows' verbatim prefix.
+///
+/// `canonicalize` returns one, and it is correct but unreadable: a command a
+/// person is meant to read should show the path they would type.
+fn plain_absolute(path: &Path) -> PathBuf {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let text = canonical.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(plain) => PathBuf::from(plain),
+        None => canonical.clone(),
+    }
+}
+
 fn failed(kind: ErrorKind, message: impl Into<String>) -> HarnessError {
     HarnessError::new(kind, message).at(Stage::Startup)
 }
@@ -204,10 +217,14 @@ fn read_tree(program: &str, args: &[&str], project_root: &Path) -> Result<String
 
 /// Every crate `cargo metadata` reports, with the licence each declares.
 fn cargo_dependencies(project_root: &Path) -> Result<Vec<Dependency>, HarnessError> {
+    // Absolute: the command runs with its working directory set to the
+    // project, so a relative manifest path would be resolved a second time
+    // against the directory it already names.
     let manifest = ["Cargo.toml", "src-tauri/Cargo.toml"]
         .iter()
         .map(|p| project_root.join(p))
-        .find(|p| p.is_file());
+        .find(|p| p.is_file())
+        .map(|p| plain_absolute(&p));
     let Some(manifest) = manifest else {
         return Ok(Vec::new());
     };

@@ -381,6 +381,21 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Run the project's own build, test and lint checks once and report (AH-072)
+    Health {
+        /// Project root to scan.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Only these checks: build, test, lint, dependencies.
+        #[arg(long, value_name = "CHECK", num_args = 1..)]
+        only: Vec<String>,
+        /// List what would run, and run nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print the scan as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Check dependencies against the licences the project allows (AH-158)
     Licenses {
         /// Project root to scan.
@@ -1240,6 +1255,59 @@ async fn handle_agent(cmd: AgentCommands) {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
                 }
             })
+        }
+        AgentCommands::Health {
+            project,
+            only,
+            dry_run,
+            json,
+        } => {
+            use app_lib::core::agent::health;
+            let root = std::path::PathBuf::from(&project);
+            let selected: std::result::Result<Vec<health::Kind>, String> =
+                only.iter().map(|o| health::Kind::parse(o)).collect();
+            selected
+                .map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                        e,
+                    )
+                })
+                .and_then(|selected| {
+                    if dry_run {
+                        let planned: Vec<health::Check> = health::checks(&root)
+                            .into_iter()
+                            .filter(|c| selected.is_empty() || selected.contains(&c.kind))
+                            .collect();
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&planned).unwrap_or_default()
+                            );
+                        } else {
+                            print!("{}", health::render_plan(&planned));
+                        }
+                        return Ok(());
+                    }
+                    let report = health::scan(&root, &selected)?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                    } else {
+                        print!("{}", health::render(&report));
+                    }
+                    // A scan that found something broken says so in its exit
+                    // code: this is the thing somebody runs before starting
+                    // work, and "it printed a failure and exited 0" is how a
+                    // broken tree gets worked in anyway.
+                    if health::healthy(&report) {
+                        Ok(())
+                    } else {
+                        Err(HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
+                            "at least one of this project's own checks did not pass",
+                        ))
+                    }
+                })
         }
         AgentCommands::Licenses {
             project,

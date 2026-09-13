@@ -2446,3 +2446,44 @@ dependencies were not in it, which is the question somebody has when a lockfile
 changes. Before there is a record, the scan says so rather than calling
 everything new. A disallowed dependency exits `policy_violation`, so this is
 usable as a gate.
+
+
+## Is this project in working order? (AH-072)
+
+Before changing a repository it is worth knowing what was already broken. An
+agent that starts in a tree whose tests were failing before it arrived will
+spend the run fixing somebody else's problem -- or conclude its own change
+caused it.
+
+```
+jan cli agent health [--project .] [--only build test lint dependencies]
+                     [--dry-run] [--json]
+```
+
+**Only commands the project declares.** A `Cargo.toml` means `cargo check`,
+`cargo test --no-run` and `cargo clippy`; a `package.json` means the scripts it
+actually has, run through the runner its lockfile names -- `npm run` in a yarn
+project can resolve a different tree than the one that was installed. A project
+that declares nothing has no checks, and is told so rather than having a
+command invented for it. `--dry-run` prints exactly what would run, with the
+file that says so.
+
+`cargo test --no-run` builds the tests rather than running them: a health scan
+asks whether the project is in working order, and running an unknown
+repository's whole suite is a much longer thing than was asked for.
+
+**Bounded, drained, and quoted.** Each check has a deadline, and one that runs
+past it is reported as having run past it -- not as a failure it never
+reported, and never left running. Both pipes are drained while it runs, because
+a compiler is perfectly capable of filling a pipe and stopping. What failed is
+quoted from what the command printed, because a paraphrase of a compiler error
+is a second thing to verify.
+
+**Dependency health is what can be known offline**: how many dependencies there
+are, which declare no licence (shared with AH-158's reader, so the two never
+disagree), and which are present at more than one version. Anything needing a
+registry is not claimed.
+
+A scan that found something broken exits non-zero: this is what somebody runs
+before starting work, and "it printed a failure and exited 0" is how a broken
+tree gets worked in anyway.

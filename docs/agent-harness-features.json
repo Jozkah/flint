@@ -2469,14 +2469,18 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-069",
         "AH-070"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/health.rs",
+        "src-tauri/src/core/agent/licenses.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A one-shot scan reports build, test, lint and dependency health for the project.",
@@ -2485,10 +2489,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/health.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `jan cli agent health [--only ...] [--dry-run] [--json]` runs the project's own checks: cargo check / cargo test --no-run / cargo clippy for a crate, and the package.json scripts that actually exist, through the runner the lockfile names (npm run in a yarn project can resolve a different tree than the one installed). Nothing is invented -- a project that declares no checks is told it has none -- and --dry-run shows exactly what would run with the file that says so. `cargo test --no-run` builds the tests rather than running an unknown repository's whole suite. Each check is bounded, its pipes drained while it runs (a compiler can fill a pipe and stop), a timeout reported as a timeout rather than a failure it never reported, and a failure quoted from what the command printed rather than paraphrased. Dependency health is what can be known offline: totals, undeclared licences (the same reader AH-158 uses) and packages present at more than one version. A scan that found something broken exits non-zero. Proven on a real crate before and after breaking it, on a project that declares nothing, and on this repository (807 dependencies, 76 duplicated)."
     },
     {
       "id": "AH-073",
