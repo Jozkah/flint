@@ -1474,5 +1474,11 @@
     "showDetails": "Details",
     "showOutput": "Output",
     "back": "Back"
+  },
+  "systemNav": {
+    "label": "Diagnostics",
+    "monitor": "System monitor",
+    "appLogs": "App logs",
+    "serverLogs": "Local API server logs"
   }
 }

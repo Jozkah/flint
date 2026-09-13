@@ -3,6 +3,7 @@ import { NavCowork } from './NavCowork'
 import { NavMain } from './NavMain'
 import { NavProjects } from './NavProjects'
 import { NavTabs } from './NavTabs'
+import { NavSystem } from './NavSystem'
 
 import {
   Sidebar,
@@ -68,6 +69,10 @@ export function LeftSidebar() {
       {settingsNav ? (
         <SidebarContent className="px-2 pb-3">
           <SettingsMenu variant="sidebar" />
+        </SidebarContent>
+      ) : area === 'system' ? (
+        <SidebarContent className="px-2 pb-3">
+          <NavSystem />
         </SidebarContent>
       ) : (
         <>

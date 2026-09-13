@@ -254,7 +254,9 @@ export function CoworkInspectorFrame({
               <ArrowLeft className="size-4" aria-hidden />
             </Button>
           ) : null}
-          <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+          {/* Tabs scroll sideways when the panel is narrow; the bar itself
+              stays hidden so it does not draw a track under the labels. */}
+          <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tabs}
           </div>
         </div>
