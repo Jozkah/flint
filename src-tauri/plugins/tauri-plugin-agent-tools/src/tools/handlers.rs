@@ -969,6 +969,17 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
     out.trim_end().to_string()
 }
 
+/// What a skill declares it depends on and this run cannot supply (AH-123,
+/// AH-124): a skill that is not installed, one installed at a version the
+/// requirement rules out, or a tool nothing here provides.
+///
+/// Resolution is the caller's, not the skills module's: a dependency may live
+/// in the project's store or in the user's, and only here is that known.
+fn skill_requirements_unmet(ctx: &ToolContext<'_>, name: &str, parsed: &skills::ParsedSkill) -> Vec<String> {
+    let lookup = |wanted: &str| skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, wanted).ok();
+    skills::unmet_requirements(name, parsed, &lookup, ctx.available_tools)
+}
+
 /// `skill_list` tool: catalog of `name — description` lines for ENABLED skills
 /// only (disabled skills must stay invisible to the model). Empty if none.
 fn skill_list(ctx: &ToolContext<'_>) -> String {
@@ -983,13 +994,29 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
             }
             _ => true,
         })
+        // AH-124: and neither is a skill whose dependencies are not here. The
+        // catalogue is an offer; one that cannot be taken up is worse than no
+        // entry at all.
+        .filter(|meta| {
+            match skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, &meta.name) {
+                Ok(raw) => skill_requirements_unmet(ctx, &meta.name, &skills::parse(&raw)).is_empty(),
+                Err(_) => true,
+            }
+        })
         .collect::<Vec<_>>()
         .iter()
         .map(|m| {
+            // AH-123: a declared version is part of a skill's identity, so it
+            // is shown where the skill is named. A skill that declares none is
+            // listed as it always was, rather than as some invented version.
+            let name = match &m.version {
+                Some(version) => format!("{} (v{version})", m.name),
+                None => m.name.clone(),
+            };
             if m.description.is_empty() {
-                m.name.clone()
+                name
             } else {
-                format!("{} — {}", m.name, m.description)
+                format!("{name} — {}", m.description)
             }
         })
         .collect::<Vec<_>>()
@@ -1028,6 +1055,17 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 blocked.join(", ")
             );
         }
+    }
+    // AH-124: a skill whose dependencies are absent is not loaded. Failing
+    // here, naming what is missing, is worth more than instructions that refer
+    // to a skill the model will be told does not exist three turns from now.
+    let unmet = skill_requirements_unmet(ctx, name, &parsed);
+    if !unmet.is_empty() {
+        return format!(
+            "ERROR [invalid_input]: the skill '{name}' cannot be loaded here: {}. Its \
+             instructions are not loaded; install what it needs, or do the work without it.",
+            unmet.join("; ")
+        );
     }
     parsed.body
 }
@@ -5785,6 +5823,107 @@ on_failure = \"warn\"
         let hidden = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &narrow).await.0;
         assert!(hidden.starts_with("ERROR"), "{hidden}");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// AH-124: a skill whose dependency is not installed is refused by name,
+    /// with what is missing in the refusal, and is not offered in the
+    /// catalogue either -- an entry that always ends in a refusal is worse
+    /// than no entry.
+    #[tokio::test]
+    async fn a_skill_whose_dependency_is_absent_is_refused_and_not_listed() {
+        let root = unique_root();
+        let skills = root.join(".jan/agent/skills");
+        std::fs::create_dir_all(skills.join("release")).unwrap();
+        std::fs::write(
+            skills.join("release/SKILL.md"),
+            "---\nname: release\ndescription: Cut a release\nrequires:\n  - deploy >=2.0\n---\n\ncut it",
+        )
+        .unwrap();
+
+        let refused = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert!(refused.starts_with("ERROR [invalid_input]"), "{refused}");
+        assert!(refused.contains("'deploy'"), "{refused}");
+        assert!(refused.contains("not installed"), "{refused}");
+        assert!(!refused.contains("cut it"), "the body was handed over anyway: {refused}");
+
+        let listed = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
+        assert!(!listed.contains("release"), "unexpected list: {listed}");
+
+        // Installed, at a version the requirement allows: loaded, and listed
+        // with the version it declares.
+        std::fs::create_dir_all(skills.join("deploy")).unwrap();
+        std::fs::write(
+            skills.join("deploy/SKILL.md"),
+            "---\nname: deploy\ndescription: Ship it\nversion: 2.1.0\n---\n\nship it",
+        )
+        .unwrap();
+        let body = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert_eq!(body, "cut it");
+        let listed = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
+        assert!(listed.contains("deploy (v2.1.0)"), "unexpected list: {listed}");
+        assert!(listed.contains("release"), "unexpected list: {listed}");
+
+        // Downgraded below the bound: refused again, saying what is installed.
+        std::fs::write(
+            skills.join("deploy/SKILL.md"),
+            "---\nname: deploy\ndescription: Ship it\nversion: 1.0.0\n---\n\nship it",
+        )
+        .unwrap();
+        let refused = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert!(refused.contains("is 1.0.0"), "{refused}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-124: a skill that names a tool this run does not have is withheld,
+    /// and the same skill is loaded where the tool exists.
+    #[tokio::test]
+    async fn a_skill_naming_a_tool_this_run_lacks_is_withheld() {
+        let root = unique_root();
+        let skills = root.join(".jan/agent/skills");
+        std::fs::create_dir_all(skills.join("shipping")).unwrap();
+        std::fs::write(
+            skills.join("shipping/SKILL.md"),
+            "---\nname: shipping\ndescription: Ship\nallowed-tools:\n  - deploy_tool\n---\n\nrun it",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let none: Vec<String> = vec!["read".to_string()];
+        let without = ToolContext::new(&root, &store, &[]).with_available_tools(&none);
+        let refused = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "shipping"}),
+            &without,
+        )
+        .await
+        .0;
+        assert!(refused.contains("deploy_tool"), "{refused}");
+
+        let have = vec!["read".to_string(), "deploy_tool".to_string()];
+        let with = ToolContext::new(&root, &store, &[]).with_available_tools(&have);
+        let body = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "shipping"}),
+            &with,
+        )
+        .await
+        .0;
+        assert_eq!(body, "run it");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

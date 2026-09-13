@@ -110,6 +110,14 @@ pub struct ToolContext<'a> {
     /// grants a tool.
     pub permissions: Option<&'a crate::permissions::ToolPermissions>,
     pub subject: Option<&'a crate::subject::Subject>,
+    /// Every tool this run could call, built-in and MCP alike (AH-124).
+    ///
+    /// Carried so a skill that declares a tool nothing here provides is
+    /// withheld, rather than handing over instructions whose first step names
+    /// something that does not exist. `None` means the surface did not say,
+    /// and the check is skipped: an unrecognised name is not evidence of
+    /// absence when nobody supplied the list.
+    pub available_tools: Option<&'a [String]>,
     /// A temporary chat neither reads nor records memory.
     ///
     /// Carried rather than inferred from a missing session id: an unsaved chat
@@ -221,6 +229,7 @@ impl<'a> ToolContext<'a> {
             data_folder: None,
             permissions: None,
             subject: None,
+            available_tools: None,
             temporary: false,
             sandbox: true,
             on_output: None,
@@ -257,6 +266,13 @@ impl<'a> ToolContext<'a> {
     ) -> Self {
         self.permissions = Some(permissions);
         self.subject = Some(subject);
+        self
+    }
+
+    /// Say which tools this run actually has, so a skill naming one nothing
+    /// provides is withheld rather than loaded (AH-124).
+    pub fn with_available_tools(mut self, tools: &'a [String]) -> Self {
+        self.available_tools = Some(tools);
         self
     }
 

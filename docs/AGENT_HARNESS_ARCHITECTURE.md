@@ -2019,3 +2019,56 @@ What travels, and what deliberately does not:
 
 The conversation is read at the moment of dispatch, from the turn loop that is
 dispatching, so what the child receives is what the parent had when it asked.
+
+
+## What a skill calls itself, and what it needs (AH-123, AH-124)
+
+A skill could say what it did and which tools it needed, but not what version
+of itself it was, and not that it only made sense alongside another skill. So
+two skills could disagree about which "deploy" they meant, and a skill whose
+first instruction was "follow the formatting skill" was handed over in a
+project where no such skill existed.
+
+Frontmatter now takes two more keys:
+
+```yaml
+---
+name: release
+version: 2.1.0
+requires:
+  - deploy >=2.0
+  - formatting
+allowed-tools: [bash]
+---
+```
+
+**Version (AH-123).** Three numbers, and the parts nobody wrote are zero, so
+`2`, `2.1` and `2.1.0` are the same version. A pre-release or build suffix is
+kept as written but never ordered -- ordering a suffix nobody defined is how a
+constraint comes to be judged wrongly. Anything that is not a version
+(`latest`, `1.x`, `1.2.3.4`) is refused rather than guessed at, and a skill that
+declares nothing declares nothing: that is not version zero, and no constraint
+is satisfied by it. What a skill declares travels with its name, in the
+system-prompt catalogue and in `skill_list`, as `deploy (v2.1.0)`.
+
+**Dependencies (AH-124).** `requires:` names skills, each optionally bounded:
+`deploy >=2.0`, `deploy<1.0`, `deploy 2.0.0` (an exact version, the way a
+lockfile writes one), or a bare name meaning only that it be installed at all.
+Loading **fails closed**:
+
+* A skill that is not installed, or installed at a version the bound rules out,
+  or installed declaring no version where a bound needs one, is named in the
+  refusal along with what was found.
+* A bound this build cannot read is *unmet*, never quietly widened to "any
+  version at all".
+* Requirements are followed through -- a dependency's own dependency counts --
+  and two skills that require each other end the check rather than looping.
+* A skill whose `allowed-tools` names a tool this run does not have at all is
+  withheld too. This is the absence case; AH-040 already covers a tool that
+  exists and is denied. Where the surface does not say what tools it has, the
+  check is skipped rather than guessing that an unfamiliar name is absent.
+
+The refusal reaches both surfaces: `skill_read` returns a typed
+`invalid_input` naming what is missing, `skill_list` does not advertise a skill
+that could not be loaded, and `/skill:<name>` refuses by name instead of
+handing over instructions that cannot be followed.

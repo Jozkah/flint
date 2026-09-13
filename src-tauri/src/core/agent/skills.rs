@@ -92,6 +92,10 @@ pub struct SkillMeta {
     pub user_invocable: bool,
     /// Offered to the model (system-prompt catalog, `skill_list`/`skill_read`).
     pub model_invocable: bool,
+    /// The version the skill declares (AH-123), as written. `None` is "said
+    /// nothing", which no constraint can be satisfied by.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// Frontmatter fields we recognize; everything else is ignored.
@@ -118,6 +122,11 @@ pub(crate) struct ParsedSkill {
     pub body: String,
     pub user_invocable: bool,
     pub model_invocable: bool,
+    /// AH-123, read by the plugin's parser so the two surfaces can never
+    /// disagree about what a skill calls itself.
+    pub version: Option<String>,
+    /// AH-124, read by the same parser, for the same reason.
+    pub requires: Vec<tauri_plugin_agent_tools::skills::SkillRequirement>,
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from a markdown body.
@@ -155,6 +164,10 @@ pub(crate) fn split_frontmatter(content: &str) -> (Option<String>, String) {
 }
 
 pub(crate) fn parse(content: &str) -> ParsedSkill {
+    // Version and dependencies come from the plugin's parser rather than being
+    // read twice here: two readers of one frontmatter is two answers waiting to
+    // differ, and the answer decides whether a skill loads at all.
+    let declared = tauri_plugin_agent_tools::skills::parse(content);
     let (yaml, body) = split_frontmatter(content);
     let Some(yaml) = yaml else {
         return ParsedSkill {
@@ -162,6 +175,8 @@ pub(crate) fn parse(content: &str) -> ParsedSkill {
             body,
             user_invocable: true,
             model_invocable: true,
+            version: declared.version,
+            requires: declared.requires,
         };
     };
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -170,7 +185,36 @@ pub(crate) fn parse(content: &str) -> ParsedSkill {
         body,
         user_invocable: fm.user_invocable.unwrap_or(true),
         model_invocable: !fm.disable_model_invocation.unwrap_or(false),
+        version: declared.version,
+        requires: declared.requires,
     }
+}
+
+/// What a skill declares and this project cannot supply (AH-123, AH-124).
+///
+/// The tool half is left to the surfaces that know their own toolset: here the
+/// question is only whether the skills a skill depends on are installed, and at
+/// a version its requirement allows.
+pub(crate) fn unmet_requirements(
+    root: &Path,
+    name: &str,
+    requires: &[tauri_plugin_agent_tools::skills::SkillRequirement],
+) -> Vec<String> {
+    let declared = tauri_plugin_agent_tools::skills::ParsedSkill {
+        description: None,
+        body: String::new(),
+        user_invocable: true,
+        model_invocable: true,
+        needs: Vec::new(),
+        version: None,
+        requires: requires.to_vec(),
+    };
+    let lookup = |wanted: &str| {
+        resolve_readable(root, wanted)
+            .ok()
+            .and_then(|entry| std::fs::read_to_string(&entry.file).ok())
+    };
+    tauri_plugin_agent_tools::skills::unmet_requirements(name, &declared, &lookup, None)
 }
 
 /// First non-empty, non-heading line of `body`, capped at 120 chars. Fallback
@@ -489,6 +533,7 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         plugin: entry.plugin.clone(),
         user_invocable: parsed.user_invocable,
         model_invocable: parsed.model_invocable,
+        version: parsed.version.clone(),
     }
 }
 /// Whether a name refers to the built-in Jan skill (aliased `jan`), which is
@@ -510,6 +555,7 @@ fn default_jan_skill_meta() -> SkillMeta {
         plugin: None,
         user_invocable: true,
         model_invocable: true,
+        version: parsed.version.clone(),
     }
 }
 
@@ -686,11 +732,13 @@ pub(crate) fn build_invocation_message(
     let user_skills = user_catalog(root, &enabled);
     let meta =
         find_user_skill(&user_skills, name).ok_or_else(|| format!("skill '{name}' not found"))?;
+    let mut declared: Vec<tauri_plugin_agent_tools::skills::SkillRequirement> = Vec::new();
     let body = match resolve_readable(root, name) {
         Ok(entry) => {
-            let body =
-                parse(&std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?)
-                    .body;
+            let parsed =
+                parse(&std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?);
+            declared = parsed.requires.clone();
+            let body = parsed.body;
             // Folder skills (and single-skill plugins) may bundle files next to
             // their SKILL.md; announce that directory so relative paths resolve.
             let dir_note = entry.is_folder.then(|| {
@@ -707,6 +755,15 @@ pub(crate) fn build_invocation_message(
         Err(_) if is_default_jan_skill(name) => (parse(DEFAULT_JAN_SKILL).body, None),
         Err(e) => return Err(e),
     };
+    // AH-124: a skill that depends on skills this project does not have is
+    // refused by name, rather than invoked so its first instruction can fail.
+    let unmet = unmet_requirements(root, name, &declared);
+    if !unmet.is_empty() {
+        return Err(format!(
+            "skill '{name}' cannot be used here: {}",
+            unmet.join("; ")
+        ));
+    }
     let args = args.trim();
     let mut msg = format!("{}\n\n{}", invocation_wrapper(name, "skill"), body.0);
     if let Some(note) = body.1 {
@@ -951,6 +1008,51 @@ mod tests {
         // User invocation refuses model-only skills.
         assert!(build_invocation_message(&root, "model_only", "").is_err());
         assert!(build_invocation_message(&root, "user_only", "").is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-124: a human invoking a skill whose dependency is missing is told
+    /// so by name, rather than handed instructions whose first step refers to
+    /// a skill that is not there. Installing the dependency at an allowed
+    /// version makes the same invocation work.
+    #[test]
+    fn a_skill_whose_dependency_is_missing_is_not_invoked() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_skills_requires_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
+        ));
+        let skills = skills_dir(&root);
+        std::fs::create_dir_all(skills.join("release")).unwrap();
+        std::fs::write(
+            skills.join("release").join("SKILL.md"),
+            "---\ndescription: Cut a release\nrequires:\n  - deploy >=2.0\n---\n\nCut it.\n",
+        )
+        .unwrap();
+
+        let refused = build_invocation_message(&root, "release", "").unwrap_err();
+        assert!(refused.contains("'deploy'"), "{refused}");
+        assert!(refused.contains("not installed"), "{refused}");
+
+        std::fs::create_dir_all(skills.join("deploy")).unwrap();
+        std::fs::write(
+            skills.join("deploy").join("SKILL.md"),
+            "---\ndescription: Ship it\nversion: 1.0.0\n---\n\nShip it.\n",
+        )
+        .unwrap();
+        let too_old = build_invocation_message(&root, "release", "").unwrap_err();
+        assert!(too_old.contains("is 1.0.0"), "{too_old}");
+
+        std::fs::write(
+            skills.join("deploy").join("SKILL.md"),
+            "---\ndescription: Ship it\nversion: 2.0.0\n---\n\nShip it.\n",
+        )
+        .unwrap();
+        let (msg, _) = build_invocation_message(&root, "release", "").expect("now satisfied");
+        assert!(msg.contains("Cut it."), "{msg}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

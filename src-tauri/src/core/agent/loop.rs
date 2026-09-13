@@ -779,6 +779,24 @@ impl ToolInvoker for McpToolInvoker {
     }
 }
 
+/// Every tool a run could call: the built-ins, plus each tool the connected
+/// MCP servers advertise, narrowed by the run's allowlist when it has one
+/// (AH-124).
+///
+/// Built from what is actually wired up rather than from a written-down list,
+/// so a tool added to the toolset never has to be remembered here twice.
+fn available_tool_names(
+    mcp: &McpToolInvoker,
+    allowed: Option<&std::collections::HashSet<String>>,
+) -> Vec<String> {
+    tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
+        .iter()
+        .map(|t| t.name.to_string())
+        .chain(mcp.tool_to_server.keys().cloned())
+        .filter(|name| allowed.is_none_or(|set| set.contains(name)))
+        .collect()
+}
+
 /// Context the invoker needs to dispatch subagents. `None` when subagents are
 /// disabled for this run (a child run, or the proxy path), in which case a
 /// subagent tool call returns an error instead of spawning a nested run.
@@ -802,6 +820,11 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// Every tool this run could actually call: the built-ins plus whatever
+    /// the connected MCP servers offer, narrowed by the allowlist (AH-124).
+    /// Resolved once per run so a skill that names a tool nothing here
+    /// provides can be withheld instead of loaded.
+    available_tools: Vec<String>,
     /// The run's tool allowlist (`allowed_tools`), enforced when a call is
     /// made, not only when tools are advertised. A child run's model can still
     /// emit a call to a tool it was never offered; without this, a role's
@@ -1174,6 +1197,9 @@ impl CompositeToolInvoker {
         // AH-040: what this run may do, so a skill that declares the tools it
         // needs is withheld where those tools are denied.
         .with_permissions(&self.permissions, &self.subject)
+        // AH-124: and what this run has at all, so a skill that names a tool
+        // nothing provides is withheld rather than loaded.
+        .with_available_tools(&self.available_tools)
     }
 
     /// The same context, plus who this run is for the mailbox (AH-103).
@@ -3582,7 +3608,9 @@ async fn orchestrate_inner(
         if settings.sandbox {
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
+        let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
         let tools = CompositeToolInvoker {
+            available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
@@ -6833,6 +6861,10 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
+                .iter()
+                .map(|t| t.name.to_string())
+                .collect(),
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: None,
             record_to: None,

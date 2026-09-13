@@ -2014,3 +2014,43 @@ dispatch not travelling; the parent's system prompt left behind; the fork being
 a copy, so a child's edit changes nothing the parent holds; and `fork_context`
 being an explicit boolean, with the default and any non-boolean both meaning a
 clean brief.
+
+
+### Skill versions and dependencies (AH-123, AH-124)
+
+Thirteen tests plus a real headless run against the mock provider, doing the
+same `skill_read` four times as the dependency changed underneath it:
+
+```
+=== the dependency is not installed
+  ERROR [invalid_input]: the skill 'release' cannot be loaded here: 'release'
+  requires the skill 'deploy', which is not installed. ...
+
+=== catalogue, with the dependency absent
+  jan — Use when onboarding users to Jan Agent ...          (no 'release' line)
+
+=== the dependency is installed, older than the requirement
+  ERROR [invalid_input]: ... 'release' requires 'deploy' >= 2.0.0, and the
+  installed one is 1.0.0. ...
+
+=== the dependency is installed at an allowed version
+  Tag the commit and push it.
+
+=== catalogue, with the dependency satisfied
+  deploy (v2.1.0) — Ship it
+  release — Cut a release
+```
+
+Covered by test: every version form read (`1`, `1.2`, `1.2.3`, `v1.4`,
+`1.2.3-beta.1`) and every non-version refused (`latest`, `1.x`, `-1`,
+`1.2.3.4`, `1..2`, empty); a YAML-number `version: 1.2` surviving as `1.2`
+rather than arriving as nothing; each requirement form parsed (`name`,
+`name >=2.1`, `name<1.0`, `name 2.0.0`) and a bound with no skill refused; a
+dependency met, absent, too old, and version-less against a bound; an
+unreadable bound failing closed; requirements followed through a chain and a
+mutual pair not looping; a tool nothing provides making a skill unloadable
+while an unsaid toolset is not treated as evidence of absence; the catalogue
+carrying a declared version and omitting none where none was declared; the
+`skill_read`/`skill_list` pair refusing and un-advertising together; and
+`/skill:<name>` refused by name, then working once the dependency is installed
+at an allowed version.

@@ -94,10 +94,16 @@ pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
     let list = entries
         .iter()
         .map(|m| {
+            // AH-123: a skill that declares a version is named with it, so a
+            // request for "deploy 2.x" can be matched against what is here.
+            let name = match &m.version {
+                Some(version) => format!("{} (v{version})", m.name),
+                None => m.name.clone(),
+            };
             if m.description.is_empty() {
-                format!("## Skill: {}", m.name)
+                format!("## Skill: {name}")
             } else {
-                format!("## Skill: {}\n\n{}", m.name, m.description)
+                format!("## Skill: {name}\n\n{}", m.description)
             }
         })
         .collect::<Vec<_>>()
