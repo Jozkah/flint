@@ -23,20 +23,20 @@ export function DependencyAdvice({
   )
 
   return (
-    <div className="space-y-3" data-testid="dependency-advice">
+    <div className="min-w-0 space-y-3" data-testid="dependency-advice">
       {recommendations.length > 0 ? (
         <>
-          <p className="text-sm text-main-view-fg/60">
+          <p className="text-sm text-ink-2">
             {t('common:missingDependenciesDialog.installLabel')}
           </p>
           <ul className="space-y-2">
             {recommendations.map((rec) => (
               <li
                 key={rec.label}
-                className="rounded-lg border border-main-view-fg/10 bg-main-view-fg/2 p-3 space-y-1"
+                className="space-y-1 rounded-md border border-border bg-sunken p-3"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-main-view-fg">
+                  <span className="text-sm font-medium text-foreground">
                     {rec.label}
                   </span>
                   {rec.url && (
@@ -44,14 +44,14 @@ export function DependencyAdvice({
                       href={rec.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-brand-text hover:underline pointer-coarse:min-h-11"
                     >
                       {t('common:missingDependenciesDialog.download')}
                       <ExternalLink className="size-3" />
                     </a>
                   )}
                 </div>
-                <p className="text-xs text-main-view-fg/60 leading-relaxed">
+                <p className="text-xs leading-relaxed text-muted-foreground">
                   {rec.description}
                 </p>
               </li>
@@ -60,14 +60,14 @@ export function DependencyAdvice({
 
           {uncovered.length > 0 && (
             <div className="space-y-1">
-              <p className="text-xs text-main-view-fg/50">
+              <p className="text-xs text-muted-foreground">
                 {t('common:missingDependenciesDialog.additionalLibraries')}
               </p>
               <ul className="space-y-1">
                 {uncovered.map((lib) => (
                   <li
                     key={lib}
-                    className="text-xs font-mono text-main-view-fg/70 bg-main-view-fg/5 px-2 py-1 rounded border border-main-view-fg/5 break-all"
+                    className="break-all rounded-sm border border-border bg-sunken px-2 py-1 font-mono text-xs text-ink-2"
                   >
                     {lib}
                   </li>
@@ -79,14 +79,14 @@ export function DependencyAdvice({
       ) : (
         // No known group -- fall back to the raw list.
         <div className="space-y-1">
-          <p className="text-sm text-main-view-fg/60">
+          <p className="text-sm text-ink-2">
             {t('common:missingDependenciesDialog.missingLibraries')}
           </p>
-          <ul className="max-h-[180px] overflow-y-auto space-y-1">
+          <ul className="max-h-[180px] space-y-1 overflow-y-auto">
             {missingLibraries.map((lib) => (
               <li
                 key={lib}
-                className="text-sm font-mono text-main-view-fg/80 bg-main-view-fg/10 px-2 py-1 rounded border border-main-view-fg/5 break-all"
+                className="break-all rounded-sm border border-border bg-sunken px-2 py-1 font-mono text-sm text-foreground"
               >
                 {lib}
               </li>
@@ -99,8 +99,9 @@ export function DependencyAdvice({
         <div>
           <button
             type="button"
+            aria-expanded={showRawLibs}
             onClick={() => setShowRawLibs((v) => !v)}
-            className="flex items-center gap-1 text-xs text-main-view-fg/40 hover:text-main-view-fg/60 transition-colors"
+            className="flex items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors hover:text-foreground pointer-coarse:min-h-11"
           >
             {showRawLibs ? (
               <ChevronUp className="size-3" />
@@ -112,11 +113,11 @@ export function DependencyAdvice({
             })}
           </button>
           {showRawLibs && (
-            <ul className="mt-2 max-h-[120px] overflow-y-auto space-y-1">
+            <ul className="mt-2 max-h-[120px] space-y-1 overflow-y-auto">
               {missingLibraries.map((lib) => (
                 <li
                   key={lib}
-                  className="text-xs font-mono text-main-view-fg/50 bg-main-view-fg/5 px-2 py-0.5 rounded break-all"
+                  className="break-all rounded-sm bg-sunken px-2 py-0.5 font-mono text-xs text-muted-foreground"
                 >
                   {lib}
                 </li>

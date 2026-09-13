@@ -48,15 +48,15 @@ export default function MissingDependenciesDialog() {
     >
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 mt-0.5">
-              <AlertTriangle className="size-4 text-destructive" />
-            </div>
-            <div>
+          <div className="flex items-start gap-3 text-left">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive-tint text-destructive">
+              <AlertTriangle className="size-4" />
+            </span>
+            <div className="min-w-0">
               <DialogTitle>
                 {t('common:missingDependenciesDialog.title')}
               </DialogTitle>
-              <DialogDescription className="mt-1 text-main-view-fg/70">
+              <DialogDescription className="mt-1 text-ink-2">
                 {t('common:missingDependenciesDialog.description', {
                   backend: displayName,
                 })}
@@ -70,12 +70,11 @@ export default function MissingDependenciesDialog() {
           missingLibraries={allRawLibs}
         />
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter>
           <Button
-            variant="link"
             onClick={() => setPayload(undefined)}
             autoFocus
-            className="flex-1 text-right sm:flex-none border border-main-view-fg/20 !px-2"
+            className="pointer-coarse:h-11"
           >
             {t('common:dismiss')}
           </Button>

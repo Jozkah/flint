@@ -84,13 +84,13 @@ export default function LlamacppBusyOnExitDialog() {
     <Dialog open={busyModels !== null} onOpenChange={(o) => !o && handleCancel()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0">
-              <AlertTriangle className="size-4 text-destructive" />
-            </div>
-            <div>
+          <div className="flex items-start gap-3 text-left">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-warning-tint text-warning">
+              <AlertTriangle className="size-4" />
+            </span>
+            <div className="min-w-0">
               <DialogTitle>{t('common:llamacppBusyOnExit.title')}</DialogTitle>
-              <DialogDescription className="mt-1 text-main-view-fg/70">
+              <DialogDescription className="mt-1 text-ink-2">
                 {t('common:llamacppBusyOnExit.description')}
               </DialogDescription>
             </div>
@@ -98,8 +98,8 @@ export default function LlamacppBusyOnExitDialog() {
         </DialogHeader>
 
         {busyModels && busyModels.length > 0 && (
-          <div className="bg-main-view-fg/2 p-2 border border-main-view-fg/5 rounded-lg text-sm text-main-view-fg/70 max-h-[150px] overflow-y-auto">
-            <ul className="list-disc pl-5 space-y-1 break-all">
+          <div className="max-h-[150px] min-w-0 overflow-y-auto rounded-md border border-border bg-sunken p-3">
+            <ul className="space-y-1 break-all font-mono text-xs text-ink-2">
               {busyModels.map((id) => (
                 <li key={id}>{id}</li>
               ))}
@@ -107,21 +107,21 @@ export default function LlamacppBusyOnExitDialog() {
           </div>
         )}
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter>
           <Button
-            variant="link"
+            variant="outline"
             onClick={handleCancel}
             disabled={forcing}
-            className="flex-1 text-right sm:flex-none"
+            className="pointer-coarse:h-11"
           >
             {t('common:cancel')}
           </Button>
           <Button
-            variant="link"
+            variant="destructive"
             onClick={() => void handleForceQuit()}
             disabled={forcing}
             autoFocus
-            className="flex-1 text-right sm:flex-none border border-destructive/30 text-destructive !px-2"
+            className="pointer-coarse:h-11"
           >
             {forcing
               ? t('common:llamacppBusyOnExit.forcing')
