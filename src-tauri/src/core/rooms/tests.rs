@@ -334,6 +334,36 @@ fn structure_and_size_limits() {
 }
 
 #[test]
+fn append_accepts_large_utf8_lines_up_to_the_limit() {
+    let (_dir, store) = new_store();
+    store.save(room("r1"), 1).unwrap();
+
+    // A synthesis-sized record: full-length non-ASCII text plus a large second
+    // field, about 200 KB of UTF-8 in total.
+    let mut big = message_json("r1", "m1", &"中".repeat(MAX_TEXT_LENGTH));
+    big["message"]["error"] = json!({ "code": "x", "message": "é".repeat(70_000) });
+    let line = serde_json::to_vec(&big).unwrap();
+    assert!(line.len() > 195 * 1024 && line.len() < MAX_JOURNAL_LINE_BYTES);
+    store.append("r1", parse_record(big).unwrap()).unwrap();
+
+    // One byte over the limit is refused.
+    let mut over = message_json("r1", "m2", "short");
+    let base = serde_json::to_vec(&over).unwrap().len();
+    let filler = MAX_JOURNAL_LINE_BYTES + 1 - base - r#","error":{"code":"x","message":""}"#.len();
+    over["message"]["error"] = json!({ "code": "x", "message": "e".repeat(filler) });
+    let record = parse_record(over).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&record).unwrap().len(),
+        MAX_JOURNAL_LINE_BYTES + 1
+    );
+    assert_eq!(
+        store.append("r1", record).unwrap_err().code,
+        RoomErrorCode::TooLarge
+    );
+    assert_eq!(store.get("r1").unwrap().journal.len(), 1);
+}
+
+#[test]
 fn append_is_idempotent_by_message_id() {
     let (_dir, store) = new_store();
     store.save(room("r1"), 1).unwrap();

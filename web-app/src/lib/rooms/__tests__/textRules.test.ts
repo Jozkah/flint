@@ -3,7 +3,13 @@ import { isRepetitive, jaccard, recentSpeech, shingles, similarity } from '../re
 import { addressLabel, parseAddress } from '../addressing'
 import { extractJsonObject, parseDirective } from '../moderator'
 import { parseVote, tallyVotes } from '../votes'
-import { composeSynthesisText, computeDissent } from '../synthesis'
+import {
+  DISSENT_TRUNCATION_MARKER,
+  MAX_DISSENT_POSITION_CHARS,
+  capPosition,
+  composeSynthesisText,
+  computeDissent,
+} from '../synthesis'
 import { makeRoom, participant } from './helpers'
 import { ROOM_SCHEMA_VERSION, type RoomMessage } from '../types'
 
@@ -119,6 +125,29 @@ describe('votes', () => {
       msg({ kind: 'vote', author: { kind: 'participant', participantId: pid, name: pid }, vote: { callId, choice, proposal: 'Ship it' } })
     const t = tallyVotes([call, vote('a', 'disagree'), vote('a', 'agree'), vote('b', 'disagree'), vote('c', 'abstain'), vote('d', 'agree', 'other')], 'call-1')
     expect(t).toMatchObject({ agree: 1, disagree: 1, abstain: 1, total: 3, proposal: 'Ship it' })
+  })
+})
+
+describe('synthesis dissent caps', () => {
+  it('caps a long dissenting position once, with a marker, and keeps the text within the limit', () => {
+    const long = `DISAGREE\n${'x'.repeat(10_000)}`
+    const messages = [
+      msg({ kind: 'final-position', author: { kind: 'participant', participantId: 'b', name: 'Bob' }, text: long }),
+    ]
+    const [d] = computeDissent(messages)
+    expect(d.position.length).toBe(MAX_DISSENT_POSITION_CHARS)
+    expect(d.position.endsWith(DISSENT_TRUNCATION_MARKER)).toBe(true)
+    expect(long.startsWith(d.position.slice(0, -DISSENT_TRUNCATION_MARKER.length))).toBe(true)
+    expect(capPosition('short')).toBe('short')
+    const text = composeSynthesisText('y'.repeat(30_000), [d])
+    expect(text.length).toBeLessThanOrEqual(20_000)
+    expect(text).toContain('Dissenting positions (recorded verbatim)')
+  })
+
+  it('does not split a surrogate pair when capping', () => {
+    const capped = capPosition('😀'.repeat(5_000))
+    const body = capped.slice(0, -DISSENT_TRUNCATION_MARKER.length)
+    expect(body.length % 2).toBe(0)
   })
 })
 

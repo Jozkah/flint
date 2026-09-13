@@ -59,6 +59,30 @@ const CODES: RoomErrorCode[] = [
   'unknown',
 ]
 
+/**
+ * A failed room read or write, as thrown by the engine. Carries the backend's
+ * `RoomErrorCode`, so it is never mistaken for a model-provider error: it is
+ * not retried, not counted as a participant failure, and reported with its
+ * own code.
+ */
+export class RoomPersistenceError extends Error {
+  readonly code: RoomErrorCode
+  constructor(error: RoomError) {
+    super(error.message)
+    this.name = 'RoomPersistenceError'
+    this.code = error.code
+  }
+}
+
+export function isRoomPersistenceError(e: unknown): e is RoomPersistenceError {
+  return e instanceof RoomPersistenceError
+}
+
+/** Wrap anything a persistence call threw. */
+export function toRoomPersistenceError(e: unknown): RoomPersistenceError {
+  return e instanceof RoomPersistenceError ? e : new RoomPersistenceError(normaliseRoomError(e))
+}
+
 /** Normalise anything thrown by persistence into a `RoomError`. */
 export function normaliseRoomError(e: unknown): RoomError {
   if (e && typeof e === 'object') {
