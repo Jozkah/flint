@@ -11,6 +11,9 @@ pub mod filesystem;
 pub mod mcp;
 pub mod net;
 pub mod openai_schema;
+// Discussion room files; the commands are desktop-only like filesystem.
+#[cfg(not(feature = "cli"))]
+pub mod rooms;
 pub mod secret_values;
 pub mod server;
 // Desktop-only app setup (tray, theme, window wiring); pulls in Tauri GUI types

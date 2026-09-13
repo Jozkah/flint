@@ -252,3 +252,52 @@ Each call builds a fresh prompt for the speaker:
 - Shared rooms across devices, and exporting rooms.
 - Pricing tables (cost uses user-entered prices only).
 - Session-messaging integration: rooms are separate from Cowork sessions.
+
+## Implementation notes: persistence
+
+Landed in `src-tauri/src/core/rooms/` (`store.rs` has no Tauri dependency;
+`commands.rs` runs each call on the blocking pool) and
+`web-app/src/services/rooms.ts`. Decisions the contract left open:
+
+- **Arguments are parsed in the store.** `room_save` and `room_append` take
+  untyped JSON and deserialise it themselves, so a malformed payload or an
+  unknown enum value rejects as `{ code: "invalid_room" }` rather than Tauri's
+  plain-string argument error.
+- **Unknown fields are dropped.** Rooms and records are re-serialised from the
+  typed structs, so a field that is not in `types.ts` does not survive a save
+  or append. Add new fields to both sides.
+- **Id rule scope.** The id rule applies to the room id (the path segment), and
+  also to participant ids (unique within a room), message ids and turn ids;
+  violations inside a room or record are `invalid_room`. `nextSpeakerId`,
+  `spokenThisRound` and vote `callId` are not checked.
+- **Text length** is counted in UTF-16 code units, matching JS `string.length`.
+  Byte-size limits (`room.json`, journal line) are measured on compact JSON.
+  Text over the limit is `too_large`; too many participants is `invalid_room`.
+- **`room_save`** refuses with `stale_revision` when no file exists and `rev` is
+  not 0. A stored `room.json` that cannot be read refuses the save with
+  `invalid_room`; only `room_delete` recovers it. `createdAt` is kept as sent.
+- **`room_append`** requires `room.json` to exist (`not_found` otherwise) and
+  checks that `message.roomId` matches `roomId`. Any caller `seq` is replaced.
+  Turn-start records are also idempotent, by `turnId`, so a retried turn-start
+  cannot make restart recovery see two interrupted turns. Appending does not
+  touch `room.json`, so `rooms_list` order reflects saves only.
+- **Journal reading.** A terminated line that does not parse is skipped and
+  kept on disk. An unterminated trailing line that does not parse is dropped,
+  and the next append truncates it. An unterminated trailing line that does
+  parse is kept, and the next append adds the missing newline first.
+- **`rooms_list`** skips directories whose name fails the id rule, whose
+  `room.json` is missing or unreadable, or whose stored `id` differs from the
+  directory name (`room_get` reports the last as `invalid_room`). Ties on
+  `updatedAt` order by id. `participantCount` counts non-removed participants;
+  `turns` is `usage.turns`.
+- **Error normalisation (TS).** Wrappers reject with a plain `RoomError` object.
+  `toRoomError` accepts `{ code, message }` with a known code, then an Error
+  message or string that starts with a known code (`code: message`), otherwise
+  `unknown` with the original text.
+- **Not handled:** Windows aliases permitted by the id rule (`CON`, `nul`, or a
+  trailing `.` such as `a.`, which Windows maps onto `a`) are accepted and may
+  collide or fail with `io`. Narrowing the rule is a contract change.
+- **Testing on Windows.** The library unit tests need
+  `--no-default-features --features test-tauri`, because the default
+  `common-controls-v6` feature aborts the lib test harness at load (see
+  `build.rs`).
