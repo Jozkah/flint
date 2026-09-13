@@ -133,3 +133,94 @@ Event: `agent-mailbox-updated { sessionId, messageId }` emitted after each appen
   the session's last run was itself a wake-up (tracked in the renderer), and
   reply depth and rate limits apply in the backend regardless.
 - Same-project discovery and messaging are enforced in Rust.
+
+## Implementation notes: backend
+
+Module: `src-tauri/plugins/tauri-plugin-agent-tools/src/mailbox.rs` (Tauri-free),
+commands in `commands.rs`, tests in `mailbox/tests.rs`.
+
+### Storage
+
+- `<data>/mailbox/sessions.json` (registry), `inbox/<id>.jsonl`,
+  `inbox/<id>.state.json` as specified, plus **`outbox/<id>.jsonl`**: one
+  `{ id, to, at }` line per message a session sent. Rate and pair limits are
+  computed from it (so they survive restart without scanning every inbox), and
+  `wait_for_reply` uses it to find the original target. The outbox line is
+  appended before the inbox line, under the same lock, so a failed inbox write
+  still counts against the limits (fails closed).
+- One process-wide, poison-tolerant mutex guards every mailbox write. JSON
+  files are replaced through a temp file and rename. A torn trailing JSONL line
+  is dropped on read, and the next append starts on a fresh line.
+- Session and message ids must be 1-128 chars of `[A-Za-z0-9._-]` and not
+  `.`/`..`; anything else is refused before it can become a path.
+- The project is `memory::identity::project_id_read_only(folder)`: same rule as
+  memory, but it never writes `.jan/agent/project-id` into the folder.
+- Process epoch: `"<start-ms hex>-<pid hex>"`, fixed for the process lifetime.
+
+### Behaviour details the table above leaves open
+
+- `mailbox_session_register` on a deleted id is refused with `session_deleted`
+  (deletion is final). `mailbox_session_remove` of an unknown id writes a
+  tombstone, so later mail to it is `session_deleted`, not `unknown_session`.
+- `mailbox_session_status { running: false, runId }` is ignored when `runId`
+  names a run other than the recorded one (a late end cannot idle a newer run).
+  `mailbox_session_heartbeat` refreshes only a `running` record whose `runId`
+  matches (or has none); otherwise it is a successful no-op.
+- An unregistered caller is `no_project` (it has no project).
+- A reply must also be addressed to the parent's sender: `reply_to` naming a
+  message from session X while `session_id` is Y is `unknown_reply_target`.
+- `wait_for_reply` checks for a reply before checking the target, so a reply
+  that landed just before the target went away is still returned. The returned
+  reply is marked `read` (the agent consumed it). Idle targets are waited on.
+- Delivered-to status for a send: `running`, `idle` or `unavailable`.
+
+### Additional error codes
+
+| Code | When |
+| --- | --- |
+| `invalid_session_id` | a session id fails the id rule (register/status/take/pending/mark) |
+| `unknown_message` | `wait_for_reply` on an id the caller did not send |
+| `invalid_timeout` | `timeout_seconds` outside 1..=120 or not an integer |
+| `cancelled` | the call's cancellation token stopped during `wait_for_reply` |
+| `invalid_arguments` | a tool call missing required string arguments |
+| `not_available` | a mailbox tool called without a session-scoped mailbox (thread scope, CLI, subagent child) |
+| `io` | the mailbox could not be read or written |
+
+Commands reject with `MailboxError` serialized as `{ code, message }`.
+
+### Tool results (strings returned to the model)
+
+- Errors: `ERROR: {"error":{"code":"…","message":"…"}}` (so `isError` is set).
+- `list_sessions`: `{ untrusted: true, notice, sessions: [{ id, display_name, status }] }`.
+- `send_message`: `{ message_id, delivered_to_status, note? }` (`note` when the
+  target is not running).
+- `read_messages`: `{ untrusted: true, notice, messages: [{ untrusted: true,
+  message_id, from: { session_id, display_name }, text, created_at, reply_to,
+  depth, origin }] }`.
+- `wait_for_reply`: `{ outcome: "reply", untrusted: true, notice, message }`,
+  `{ outcome: "timeout", note }` or `{ outcome: "target_unavailable", note }`.
+
+### Advertising, gate, dispatch
+
+- **Renderer contract change:** `advertised_tool_schemas` takes a new optional
+  `scope: "thread" | "session"` (default `thread`). The four mailbox tools are
+  included only for `session`; they are dropped silently otherwise (not listed
+  in `omitted`). Cowork must pass `scope: 'session'`; the guest-js binding
+  `advertisedToolSchemas(projectRoot, reported)` needs a third argument.
+- Gate: `tools::is_mailbox_tool` is consulted next to `is_workspace_tool`, after
+  the agent.toml deny check, so they never prompt but a deny still wins.
+- Readiness: they require `fs.read` like the other store tools.
+- `execute_tool` / `execute_tool_streaming` with `scope: "session"` now bind the
+  context to the session (`in_session(sessionId)`, which also scopes
+  `memory_propose` to it), set the mailbox root to `dataFolder`, and register a
+  cancellation token under `Scope(session, "", callId)`. Thread scope binds none
+  of these, so a mailbox tool called by name there returns `not_available`.
+- The Rust agent loop (CLI and every subagent child) never advertises the
+  mailbox tools, and its tool context has no mailbox root.
+
+### Event
+
+`agent-mailbox-updated { sessionId, messageId }` is emitted by a process-wide
+hook (`mailbox::set_emitter`) installed in the plugin's `setup`, after every
+successful append, whether it came from a command or a tool handler. Emitted
+with the recipient's `sessionId`. No hook is installed in tests or the CLI.

@@ -418,6 +418,11 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
         | "skill_list" | "skill_read" => vec![capability::FS_READ],
+        // The mailbox is files under the data folder; nothing beyond a usable
+        // local disk is needed. Scope (session only) is decided separately.
+        "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
+            vec![capability::FS_READ]
+        }
         // The web tools reach the network, which is a per-run policy decision
         // rather than an environment fact, and is enforced by the gate. Nothing
         // about the environment withholds them.

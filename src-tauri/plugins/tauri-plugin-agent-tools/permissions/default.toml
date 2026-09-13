@@ -55,4 +55,15 @@ permissions = [
     # Read-only view of the permission decision log for Settings > Permissions.
     # Bounded, and redacted before it is returned.
     "allow-permission-audit-recent",
+    # Cross-session messaging (docs/SESSION_MESSAGING.md). The backend enforces
+    # same-project, rate and reply limits; none of these touch permissions.
+    "allow-mailbox-session-register",
+    "allow-mailbox-session-status",
+    "allow-mailbox-session-heartbeat",
+    "allow-mailbox-session-remove",
+    "allow-mailbox-take-for-delivery",
+    "allow-mailbox-pending",
+    "allow-mailbox-mark-read",
+    "allow-mailbox-reply",
+    "allow-mailbox-list-sessions",
 ]

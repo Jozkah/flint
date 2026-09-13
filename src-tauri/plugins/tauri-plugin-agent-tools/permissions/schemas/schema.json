@@ -427,6 +427,114 @@
           "markdownDescription": "Denies the execute_tool_streaming command without any pre-configured scope."
         },
         {
+          "description": "Enables the mailbox_list_sessions command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-list-sessions",
+          "markdownDescription": "Enables the mailbox_list_sessions command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_list_sessions command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-list-sessions",
+          "markdownDescription": "Denies the mailbox_list_sessions command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_mark_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-mark-read",
+          "markdownDescription": "Enables the mailbox_mark_read command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_mark_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-mark-read",
+          "markdownDescription": "Denies the mailbox_mark_read command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_pending command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-pending",
+          "markdownDescription": "Enables the mailbox_pending command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_pending command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-pending",
+          "markdownDescription": "Denies the mailbox_pending command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_reply command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-reply",
+          "markdownDescription": "Enables the mailbox_reply command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_reply command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-reply",
+          "markdownDescription": "Denies the mailbox_reply command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_session_heartbeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-session-heartbeat",
+          "markdownDescription": "Enables the mailbox_session_heartbeat command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_session_heartbeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-session-heartbeat",
+          "markdownDescription": "Denies the mailbox_session_heartbeat command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_session_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-session-register",
+          "markdownDescription": "Enables the mailbox_session_register command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_session_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-session-register",
+          "markdownDescription": "Denies the mailbox_session_register command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_session_remove command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-session-remove",
+          "markdownDescription": "Enables the mailbox_session_remove command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_session_remove command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-session-remove",
+          "markdownDescription": "Denies the mailbox_session_remove command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_session_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-session-status",
+          "markdownDescription": "Enables the mailbox_session_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_session_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-session-status",
+          "markdownDescription": "Denies the mailbox_session_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the mailbox_take_for_delivery command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mailbox-take-for-delivery",
+          "markdownDescription": "Enables the mailbox_take_for_delivery command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mailbox_take_for_delivery command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mailbox-take-for-delivery",
+          "markdownDescription": "Denies the mailbox_take_for_delivery command without any pre-configured scope."
+        },
+        {
           "description": "Enables the memory_delete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-memory-delete",
@@ -883,10 +991,10 @@
           "markdownDescription": "Denies the workspace_path command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`",
+          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`"
+          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`"
         }
       ]
     }

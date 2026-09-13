@@ -449,8 +449,13 @@ pub struct OmittedTool {
 pub async fn advertised_tool_schemas(
     project_root: Option<String>,
     reported: Option<Vec<readiness::ComponentReport>>,
+    // Which surface is asking. The session-messaging tools are offered only to
+    // `session` (Cowork); omitted, as every pre-existing caller does, it is
+    // `thread`, which never sees them.
+    scope: Option<WorkspaceScope>,
 ) -> Result<AdvertisedTools, AgentToolsError> {
     let report = environment_readiness(project_root, reported).await?;
+    let session_scope = matches!(scope.unwrap_or_default(), WorkspaceScope::Session);
     let mut schemas = Vec::new();
     let mut omitted = Vec::new();
     for value in schema::builtin_tool_schemas() {
@@ -461,6 +466,11 @@ pub async fn advertised_tool_schemas(
         else {
             continue;
         };
+        // Not an environment shortfall, so not reported as omitted: a chat
+        // thread simply is not a messaging participant.
+        if !crate::tools::advertised_in_scope(name, session_scope) {
+            continue;
+        }
         match readiness::tool_availability(&report, name) {
             readiness::ToolAvailability::Available => schemas.push(value.clone()),
             readiness::ToolAvailability::Unavailable {
@@ -625,10 +635,8 @@ async fn execute_tool_inner(
     // the sandbox root and treats a missing one as an escape, so every tool call
     // would be refused if the thread's first tool call arrived before any UI
     // surface had ensured it.
-    let root = scope
-        .unwrap_or_default()
-        .ensure(Path::new(&data_folder), &thread_id)
-        .await?;
+    let scope = scope.unwrap_or_default();
+    let root = scope.ensure(Path::new(&data_folder), &thread_id).await?;
     let scratch = workspace::ensure_scratch_dir(&thread_id).await?;
     let store = resolve_store(&data_folder, project.as_deref());
     // Plural from the outset so attaching a second folder later is not another
@@ -821,6 +829,25 @@ async fn execute_tool_inner(
     if let Some(sink) = sink {
         ctx = ctx.with_output_sink(sink);
     }
+    // A Cowork session is a conversation with a stable id and a messaging
+    // identity; bind both so `memory_propose` attributes to it and the mailbox
+    // tools know who is calling. A chat thread gets neither, so the mailbox
+    // tools refuse there even if called by name.
+    // A token under the session's scope, so a session-wide stop reaches a
+    // `wait_for_reply` that would otherwise sit out its timeout.
+    let session_token = matches!(scope, WorkspaceScope::Session).then(|| {
+        crate::lifecycle::register(crate::lifecycle::Token::new(crate::lifecycle::Scope::new(
+            thread_id.clone(),
+            "",
+            call_id.clone().unwrap_or_default(),
+        )))
+    });
+    if let Some(registered) = session_token.as_ref() {
+        ctx = ctx
+            .in_session(Some(&thread_id), false)
+            .with_mailbox(Path::new(&data_folder))
+            .with_cancel(registered.token().clone());
+    }
     let (content, diff, _images) = handlers::execute_builtin_with_diff(tool, &args, &ctx).await;
     let is_error =
         content.starts_with("ERROR") || (name == "bash" && handlers::bash_result_failed(&content));
@@ -871,6 +898,104 @@ fn output_sink(
             stopped.store(true, Ordering::Relaxed);
         }
     })
+}
+
+// ---------------------------------------------------------------------------
+// Session messaging (docs/SESSION_MESSAGING.md)
+// ---------------------------------------------------------------------------
+
+use crate::mailbox::{
+    MailEnvelope, Mailbox, MailboxError, SendReceipt, SessionRecord, SessionSummary,
+};
+
+/// Upsert a Cowork session in the mailbox registry. The project is recomputed
+/// from `folder`, read-only; no folder means the session cannot message.
+#[tauri::command]
+pub async fn mailbox_session_register(
+    data_folder: String,
+    session_id: String,
+    display_name: String,
+    folder: Option<String>,
+) -> Result<SessionRecord, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).register(&session_id, &display_name, folder.as_deref())
+}
+
+/// A run started (`running: true`) or ended.
+#[tauri::command]
+pub async fn mailbox_session_status(
+    data_folder: String,
+    session_id: String,
+    running: bool,
+    run_id: Option<String>,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).set_status(&session_id, running, run_id.as_deref())
+}
+
+/// Keep a running session's status fresh.
+#[tauri::command]
+pub async fn mailbox_session_heartbeat(
+    data_folder: String,
+    session_id: String,
+    run_id: String,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).heartbeat(&session_id, &run_id)
+}
+
+/// Mark a session deleted; mail to it is refused from then on.
+#[tauri::command]
+pub async fn mailbox_session_remove(
+    data_folder: String,
+    session_id: String,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).remove(&session_id)
+}
+
+/// Queued envelopes become `delivered` and are returned oldest first.
+#[tauri::command]
+pub async fn mailbox_take_for_delivery(
+    data_folder: String,
+    session_id: String,
+) -> Result<Vec<MailEnvelope>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).take_for_delivery(&session_id)
+}
+
+/// Queued and delivered (unread) envelopes, without changing their state.
+#[tauri::command]
+pub async fn mailbox_pending(
+    data_folder: String,
+    session_id: String,
+) -> Result<Vec<MailEnvelope>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).pending(&session_id)
+}
+
+/// Mark envelopes read. Returns how many changed.
+#[tauri::command]
+pub async fn mailbox_mark_read(
+    data_folder: String,
+    session_id: String,
+    message_ids: Vec<String>,
+) -> Result<usize, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).mark_read(&session_id, &message_ids)
+}
+
+/// The UI Reply action: `origin: "user"`, same limits as an agent's send.
+#[tauri::command]
+pub async fn mailbox_reply(
+    data_folder: String,
+    from_session_id: String,
+    reply_to: String,
+    text: String,
+) -> Result<SendReceipt, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).reply(&from_session_id, &reply_to, &text)
+}
+
+/// The sessions `session_id` may message, as the `list_sessions` tool sees them.
+#[tauri::command]
+pub async fn mailbox_list_sessions(
+    data_folder: String,
+    session_id: String,
+) -> Result<Vec<SessionSummary>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).list_sessions(&session_id)
 }
 
 /// Write one audit record per resource this call touches.
