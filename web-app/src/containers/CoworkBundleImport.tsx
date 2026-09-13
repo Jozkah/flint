@@ -45,7 +45,7 @@ function ImportRow({
   const pending = view.state === 'pending'
   return (
     <li
-      className="rounded border border-border p-2 text-xs"
+      className="rounded-md border border-border p-2 text-xs"
       data-testid="bundle-import-row"
       data-id={view.id}
       data-state={view.state}

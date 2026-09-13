@@ -264,7 +264,7 @@ function ReplaySection({
           {replays.map((r) => (
             <li
               key={r.id}
-              className="rounded border border-border p-2"
+              className="rounded-md border border-border p-2"
               data-testid="prompt-replay"
               data-state={r.state}
               data-matched={r.matched === null ? '' : String(r.matched)}
@@ -369,7 +369,7 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
     <span
       className={
         text === '[redacted]'
-          ? 'rounded bg-sunken px-1 font-mono text-muted-foreground'
+          ? 'rounded-md bg-sunken px-1 font-mono text-muted-foreground'
           : 'break-words whitespace-pre-wrap'
       }
     >
@@ -438,7 +438,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       }}
     >
       <summary
-        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm"
+        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm"
         aria-controls={panelId}
         data-testid="prompt-snapshot-toggle"
       >
@@ -541,7 +541,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
             {/* Wide content scrolls inside its own box rather than pushing the
                 conversation sideways. */}
-            <div className="max-h-80 overflow-auto rounded border border-border bg-sunken/60 p-2">
+            <div className="max-h-80 overflow-auto rounded-md border border-border bg-sunken/60 p-2">
               {view === 'json' ? (
                 <pre
                   className="whitespace-pre-wrap break-words font-mono text-[11px]"

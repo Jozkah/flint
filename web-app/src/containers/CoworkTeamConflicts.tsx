@@ -103,7 +103,7 @@ function ConflictRow({
       <label className="ml-5 flex flex-col gap-1 text-[11px] text-ink-2">
         What {id} may change (comma-separated)
         <input
-          className="rounded border border-border bg-transparent px-2 py-1 font-mono text-xs"
+          className="rounded-md border border-border bg-transparent px-2 py-1 font-mono text-xs"
           value={scopes[id] ?? ''}
           onChange={(e) => onScope(id, e.target.value)}
           data-testid="team-conflict-scope"
@@ -114,7 +114,7 @@ function ConflictRow({
 
   return (
     <li
-      className="rounded border border-border p-2"
+      className="rounded-md border border-border p-2"
       data-testid="team-conflict"
       data-tasks={conflict.tasks.join(',')}
     >

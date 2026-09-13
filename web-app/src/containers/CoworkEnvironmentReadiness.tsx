@@ -240,7 +240,7 @@ export function CoworkEnvironmentReadiness({
           >
             <RefreshCw
               size={12}
-              className={cn(busy === 'all' && 'animate-spin')}
+              className={cn(busy === 'all' && 'motion-safe:animate-spin')}
             />
             Retry all
           </Button>
@@ -283,7 +283,7 @@ export function CoworkEnvironmentReadiness({
                   size={13}
                   className={cn(
                     STATE_CLASS[report.state],
-                    report.state === 'checking' && 'animate-spin'
+                    report.state === 'checking' && 'motion-safe:animate-spin'
                   )}
                   aria-hidden
                 />
@@ -339,7 +339,7 @@ export function CoworkEnvironmentReadiness({
                         <RefreshCw
                           size={11}
                           className={cn(
-                            busy === report.component && 'animate-spin'
+                            busy === report.component && 'motion-safe:animate-spin'
                           )}
                         />
                         Retry

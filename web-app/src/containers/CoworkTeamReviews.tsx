@@ -70,7 +70,7 @@ function ChildRow({
 
   return (
     <li
-      className="rounded border border-border p-2"
+      className="rounded-md border border-border p-2"
       data-testid="team-child"
       data-task={view.taskId}
       data-state={view.state}
@@ -82,10 +82,10 @@ function ChildRow({
         <span
           className={
             view.state === 'completed'
-              ? 'rounded bg-success-tint px-1 text-success'
+              ? 'rounded-md bg-success-tint px-1 text-success'
               : view.state === 'running'
-                ? 'rounded bg-sunken px-1'
-                : 'rounded bg-destructive/10 px-1 text-destructive'
+                ? 'rounded-md bg-sunken px-1'
+                : 'rounded-md bg-destructive/10 px-1 text-destructive'
           }
           data-testid="team-child-state"
         >
@@ -93,7 +93,7 @@ function ChildRow({
         </span>
         {proposal ? (
           <span
-            className="rounded bg-sunken px-1 text-ink-2"
+            className="rounded-md bg-sunken px-1 text-ink-2"
             data-testid="team-child-proposal"
           >
             {proposal.state === 'pending'

@@ -65,7 +65,7 @@ export function CoworkCompatSection({
       className="text-xs"
     >
       <details className="flex flex-col gap-2">
-      <summary className="cursor-pointer list-none font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
+      <summary className="cursor-pointer list-none font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
         {t('common:claudeCompat.title')}
       </summary>
       <header className="mt-2 flex items-start justify-between gap-3">

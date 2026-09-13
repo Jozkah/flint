@@ -48,7 +48,7 @@ export function CoworkWorkflowCard({
   return (
     <div
       data-testid="workflow-card"
-      className="my-2 rounded-md border bg-sunken/60 text-xs"
+      className="my-2 rounded-lg border border-border bg-card text-xs"
     >
       <div className="flex items-start gap-2 px-3 py-2">
         <span className="pt-0.5">
@@ -83,8 +83,8 @@ export function CoworkWorkflowCard({
             >
               <span
                 className={cn(
-                  'block h-full rounded-full transition-[width]',
-                  progress.error > 0 ? 'bg-destructive' : 'bg-primary'
+                  'block h-full rounded-full motion-safe:transition-[width]',
+                  progress.error > 0 ? 'bg-destructive' : 'bg-brand'
                 )}
                 style={{ width: `${Math.round(progress.fraction * 100)}%` }}
               />
@@ -94,7 +94,7 @@ export function CoworkWorkflowCard({
         <Button
           variant="ghost"
           size="xs"
-          className="shrink-0"
+          className="shrink-0 text-brand-text pointer-coarse:h-11"
           onClick={() => onOpenPanel(workflow.id)}
         >
           {t('common:tasks.openPanel')}
@@ -108,13 +108,15 @@ export function CoworkWorkflowCard({
           {t('common:tasks.noOutput')}
         </p>
       ) : (
-        <ul className="border-t">
+        // A quiet timeline: one hairline down the status column, each step a
+        // row on it, so the order reads without boxes around every task.
+        <ul className="relative border-t border-border py-1 before:absolute before:inset-y-2 before:left-[1.1rem] before:w-px before:bg-border">
           {tasks.map((task) => (
-            <li key={task.id}>
+            <li key={task.id} className="relative">
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
               >
                 <StatusIcon status={task.status} />
                 {task.kind === 'shell' ? (
@@ -148,13 +150,14 @@ export function CoworkWorkflowCard({
 
 function StatusIcon({ status }: { status: ActivityStatus }) {
   const { t } = useTranslation()
-  const common = 'size-3 shrink-0'
+  // A card background behind each icon, so the timeline rule stops at it.
+  const common = 'relative size-3 shrink-0 rounded-full bg-card'
   switch (status) {
     case 'running':
       return (
         <Loader2
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(common, 'animate-spin text-brand-text')}
+          className={cn(common, 'motion-safe:animate-spin text-ink-2')}
         />
       )
     case 'queued':
@@ -189,7 +192,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
       return (
         <CircleCheck
           aria-label={t('common:tasks.statusDone')}
-          className={cn(common, 'text-muted-foreground')}
+          className={cn(common, 'text-success')}
         />
       )
   }

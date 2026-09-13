@@ -186,7 +186,7 @@ export function CoworkStopMenu({
           data-testid="stop-current"
           onKeyDown={(e) => onItemKeyDown(e, 0)}
           onClick={() => void run('current')}
-          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-sunken outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         >
           <span className="text-[13px] leading-5">
             {t('common:stopMenu.current')}
@@ -207,7 +207,7 @@ export function CoworkStopMenu({
             data-testid="stop-all"
             onKeyDown={(e) => onItemKeyDown(e, 1)}
             onClick={() => setConfirming(true)}
-            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
           >
             <span className="text-[13px] leading-5">
               {t('common:stopMenu.all')}

@@ -49,7 +49,7 @@ export function CoworkTasksChip({
           className={cn('shrink-0', open && 'text-brand-text')}
         >
           {inFlight > 0 ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin" />
+            <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" />
           ) : (
             <Activity className="size-3.5 shrink-0" />
           )}

@@ -11,8 +11,8 @@ function StatusDot({ status }: { status: TodoStatus }) {
   const base = 'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full'
   if (status === 'completed') {
     return (
-      <span className={cn(base, 'bg-primary text-primary-foreground')}>
-        <Check size={11} strokeWidth={3} />
+      <span className={cn(base, 'bg-success-tint text-success')}>
+        <Check size={11} strokeWidth={3} aria-hidden />
       </span>
     )
   }
@@ -26,7 +26,7 @@ function StatusDot({ status }: { status: TodoStatus }) {
   if (status === 'in_progress') {
     return (
       <span className={cn(base, 'text-brand-text')}>
-        <Loader2 size={13} className="animate-spin" />
+        <Loader2 size={13} className="motion-safe:animate-spin" aria-hidden />
       </span>
     )
   }
@@ -80,7 +80,7 @@ export function CoworkTodoPanel({
           // a glance without parsing the list.
           <div className="h-0.5 shrink-0 bg-sunken">
             <div
-              className="h-full bg-primary transition-[width] duration-300"
+              className="h-full bg-brand motion-safe:transition-[width] motion-safe:duration-300"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -102,7 +102,7 @@ export function CoworkTodoPanel({
                     <button
                       type="button"
                       onClick={() => togglePhase(phase.name)}
-                      className="group mb-1 flex w-full items-center gap-1 text-left"
+                      className="group mb-1 flex w-full items-center gap-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
                     >
                       <ChevronDown
                         size={11}

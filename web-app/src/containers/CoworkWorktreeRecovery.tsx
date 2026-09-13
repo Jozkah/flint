@@ -116,7 +116,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
         <div
           role="alertdialog"
           aria-label={t('common:worktreeRecovery.confirmTitle')}
-          className="mt-2 rounded border border-destructive/40 p-2"
+          className="mt-2 rounded-md border border-destructive/40 p-2"
         >
           <p className="text-destructive">
             {confirming.pending.length > 0

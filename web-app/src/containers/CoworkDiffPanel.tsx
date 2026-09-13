@@ -204,7 +204,7 @@ function FileRow({
         <button
           type="button"
           onClick={onOpen}
-          className="absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
+          className="absolute right-2 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
         >
           {openLabel}
         </button>
@@ -384,7 +384,7 @@ export function CoworkDiffPanel({
               >
                 <RefreshCw
                   size={14}
-                  className={cn(git.loading && 'animate-spin')}
+                  className={cn(git.loading && 'motion-safe:animate-spin')}
                 />
               </button>
             </div>

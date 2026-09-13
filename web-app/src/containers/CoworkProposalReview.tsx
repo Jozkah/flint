@@ -65,7 +65,7 @@ function FileFlags({
   if (flags.length === 0) return null
   return (
     <div
-      className="mt-1 rounded border border-warning/40 bg-warning-tint p-1.5 text-xs"
+      className="mt-1 rounded-md border border-warning/40 bg-warning-tint p-1.5 text-xs"
       data-testid="proposal-flags"
     >
       {flags.map((flag, i) => (
@@ -114,7 +114,7 @@ function HunkPreview({
   ]
   const shown = lines.slice(0, PREVIEW_LINES)
   return (
-    <pre className="mt-1 overflow-x-auto rounded bg-sunken/60 p-1 font-mono text-[11px] leading-4">
+    <pre className="mt-1 overflow-x-auto rounded-md bg-sunken/60 p-1 font-mono text-[11px] leading-4">
       {shown.map((l, i) => (
         <div
           key={i}
@@ -155,7 +155,7 @@ function FileReview({
   const fileConflict = conflicts.find((c) => c.hunk === '')
   return (
     <li
-      className="rounded border border-border p-2"
+      className="rounded-md border border-border p-2"
       data-testid="proposal-file"
       data-path={file.path}
     >

@@ -67,7 +67,7 @@ export function CoworkContextBreakdown({
       className="group rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
     >
-      <summary className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
+      <summary className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
         {t('common:readiness.contextBreakdown')}
       </summary>
       <div className="mt-1">

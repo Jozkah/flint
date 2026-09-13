@@ -16,7 +16,7 @@ function CheckSquare({ checked }: { checked: boolean }) {
         // `mt-[3px]` puts the box on the cap height of the first line of the
         // label rather than the line box, so it reads as aligned with the text
         // whether the label wraps or not.
-        'mt-[3px] flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
+        'mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors',
         checked
           ? 'border-primary bg-primary text-primary-foreground'
           : 'border-line-strong'
@@ -164,7 +164,7 @@ export function CoworkAskCard({
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
                 disabled={index === 0}
                 aria-label={t('common:askPrev')}
-                className="rounded p-0.5 hover:text-foreground disabled:opacity-30"
+                className="rounded-md p-0.5 hover:text-foreground disabled:opacity-30"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -178,7 +178,7 @@ export function CoworkAskCard({
                 }
                 disabled={isLast}
                 aria-label={t('common:askNext')}
-                className="rounded p-0.5 hover:text-foreground disabled:opacity-30"
+                className="rounded-md p-0.5 hover:text-foreground disabled:opacity-30"
               >
                 <ChevronRight size={14} />
               </button>
@@ -188,7 +188,7 @@ export function CoworkAskCard({
             type="button"
             onClick={decline}
             aria-label={t('common:close')}
-            className="rounded p-0.5 hover:text-foreground"
+            className="rounded-md p-0.5 hover:text-foreground"
           >
             <X size={14} />
           </button>
@@ -212,7 +212,7 @@ export function CoworkAskCard({
                 className={cn(
                   'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left',
                   'hover:bg-sunken focus-visible:outline-none',
-                  'focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                   checked && 'bg-sunken'
                 )}
               >

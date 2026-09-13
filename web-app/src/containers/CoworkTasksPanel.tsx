@@ -444,7 +444,7 @@ function WorkflowSection({
           onClick={onCancelWorkflow}
         >
           {stopping ? (
-            <Loader2 size={11} className="shrink-0 animate-spin" />
+            <Loader2 size={11} className="shrink-0 motion-safe:animate-spin" />
           ) : (
             <Square size={11} className="shrink-0" />
           )}
@@ -517,7 +517,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <Loader2
           size={13}
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(shared, 'animate-spin text-brand-text')}
+          className={cn(shared, 'motion-safe:animate-spin text-brand-text')}
           data-testid="task-status-running"
         />
       )
@@ -645,14 +645,14 @@ export function TeamMemberControls({ task, control }: { task: ActivityTask; cont
           <textarea
             aria-label={t('common:tasks.replaceBrief')}
             data-testid="team-member-replace-brief"
-            className="min-h-12 rounded border bg-transparent px-2 py-1 text-[11px]"
+            className="min-h-12 rounded-md border bg-transparent px-2 py-1 text-[11px]"
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
           />
           <input
             aria-label={t('common:tasks.replaceAgent')}
             data-testid="team-member-replace-agent"
-            className="rounded border bg-transparent px-2 py-1 text-[11px]"
+            className="rounded-md border bg-transparent px-2 py-1 text-[11px]"
             value={agent}
             onChange={(e) => setAgent(e.target.value)}
           />
@@ -818,7 +818,7 @@ function TaskItem({
             onClick={onCancel}
           >
             {cancelling ? (
-              <Loader2 size={11} className="shrink-0 animate-spin" />
+              <Loader2 size={11} className="shrink-0 motion-safe:animate-spin" />
             ) : (
               <Square size={11} className="shrink-0" />
             )}
