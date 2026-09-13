@@ -90,36 +90,229 @@ Replies render tables, lists and code, and everything stays on your computer.
 
 ## Features
 
-### The workspace
-- One layout everywhere: a rail for **Workspace, Library, Models, Tools, Search, System and Settings**, a resizable sidebar for the current area, a context bar for the current page, and a status bar that shows loaded models, runs in progress, waiting approvals and the local API server.
-- Works at any window size: below 1024px the navigation moves into a sheet, dialogs become bottom sheets on phones, and touch targets are at least 44px.
-- Light, dark and system themes, with an accent colour you choose: Vermilion, Ink, Moss or any hex value. Text and focus colours are adjusted for contrast in both themes; success, warning and error colours never change.
+Everything below is implemented in this fork, on top of upstream Jan. Each agent capability maps to an item in the [agent harness feature registry](docs/AGENT_HARNESS_FEATURE_REGISTRY.md) (208 of its 211 items are implemented). Open a section to see the full list.
 
-### Chat
-- Streaming replies with Stop, Retry, message editing and deletion, attachments, temporary chats, and per-chat model and reasoning settings.
-- **Split conversations**: two conversations side by side, each with its own model, draft, attachments, approvals and stream.
-- **Projects** group conversations with shared instructions and files.
-- **What JAN is using** shows what applies to a conversation and distinguishes what is available, selected, and actually sent.
+<details>
+<summary><strong>Workspace and design</strong></summary>
 
-### Cowork
-- Agent runs in a session sandbox or a managed worktree, with Autonomous, Ask-before-changes and review modes.
-- Output panel with **Preview, Code, Changes, Activity and Timeline**; per-hunk review of proposals; checkpoints with safe restore (a safety checkpoint is taken first).
-- Plain-language approvals and run summaries; steering a running agent; sub-agents and background jobs with a full execution record.
+- **JAN Atelier design:** ivory and graphite themes in light and dark, IBM Plex Sans and Mono with Newsreader (bundled, never fetched), and Lucide icons throughout.
+- **Accent colour:** choose Vermilion, Ink, Moss or any hex value. Colours are derived per theme and checked for contrast, invalid hex is refused, there is a reset, and older accent settings migrate. Success, warning and error colours never change.
+- **One layout for every screen:** a rail for Workspace, Library, Models, Tools, Search, System and Settings; a resizable sidebar; a context bar for the current page; and a status bar showing loaded models, runs, waiting approvals and the Local API server.
+- **Any window size:** below 1024px navigation moves into a sheet; on phones dialogs become bottom sheets, touch targets are at least 44px, and the layout follows the on-screen keyboard.
+- **System area:** system monitor, app logs and Local API server logs in one log viewer.
+- **Library** of artifacts from your sessions, with "Go to session".
+- **Settings search** across every settings page, grouped by section.
+- **Command palette and custom shortcuts:** rebind any shortcut, conflicts are refused, and defaults can be restored.
+- **First-run guide:** asks what you want to do, explains local and cloud processing, can be skipped or reopened, and finishes without downloading anything.
+- **Plain-language help** for terms like worktree, context, MCP server, checkpoint and agent; advanced settings are grouped separately.
+- **Accessibility:** agent screens have screen-reader roles, labels and announcements, work fully from the keyboard, and keep focus rings visible.
 
-### Models
-- Local llama.cpp models (and MLX on Apple silicon), plus cloud providers with your own keys.
-- Evidence-based compatibility: a real on-device test, measured results kept per settings, and honest estimates that never block you.
-- A preferred default model, model settings in an inspector, and a status for every model.
+</details>
 
-### Tools, memory and permissions
-- MCP servers with validated setup, clear connection states and trust bound to each server's configuration.
-- Skills and plugins, including project skills.
-- Memory scoped to a conversation, a project or all conversations, with proposals you approve and conflicts you settle.
-- A Permissions page listing every standing grant with a Revoke button, plus an audit of recent decisions.
+<details>
+<summary><strong>Chat</strong></summary>
 
-### For developers
-- OpenAI-compatible local API server (default port 1337).
-- `jan` command-line agent and TUI built from the same core.
+- **Split conversations:** two independent chats side by side, each with its own model, draft, attachments, queue, approvals and Stop.
+- **Temporary chats** that you can keep or discard, with a warning before you leave.
+- **Per-chat model and reasoning settings.**
+- **Text and code attachments** also work with models that have no vision.
+- **What JAN is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
+- **Collection memory** follows a chat's collection; temporary chats use no memory.
+- **Sensible default model:** your preferred default, then the last model used, then the first local model. Jan never switches to a cloud provider on its own.
+- **Safer editing:** deleting a message keeps later replies, "Delete all" cannot be triggered by Enter, and interrupted writes cannot leave a damaged thread.
+
+</details>
+
+<details>
+<summary><strong>Cowork: modes, scope and planning</strong></summary>
+
+- **Run modes:** Auto, Ask before changes, and Review (a repository starts in Review).
+- **Plan mode:** read-only exploration; leaving it requires approving the plan.
+- **Write scope** is granted separately from how freely Jan acts, and shell commands are held to the same folders.
+- **Readiness check** of each part of the setup before tools are allowed.
+- **Describe this project:** a read-only survey of a new folder that proposes a JAN.md.
+- **Todo list** that survives restarts, and a **shared task board** where tasks start only when their dependencies are done.
+- **One @ menu** for files, folders, skills, agents and saved aliases, including line ranges.
+- **Steering:** redirect, answer or interrupt a run while it works.
+
+</details>
+
+<details>
+<summary><strong>Cowork: worktrees, changes and review</strong></summary>
+
+- **Managed Git worktrees** per session and per agent, on Windows too, with lifecycle management, recovery and safe cleanup that never loses unmerged work.
+- **Diff before approval** for every write; Stop withdraws a pending prompt so a late "yes" runs nothing.
+- **Per-hunk review:** apply only the hunks you choose; applying over changed content fails loudly and merge conflicts are shown.
+- **Risky changes flagged:** dependency, lock file and migration changes need an explicit acknowledgement.
+- **Secret scan** blocks diffs that contain credentials, and new dependencies are checked against allowed licences.
+- **Changes panel** with the working tree, line-numbered diffs and a count of Jan's own changes.
+- **Change attribution:** every change records which agent and run made it.
+- **Format on edit** with the project's own formatter.
+- **Worktree bundles:** export a reviewable patch bundle and import it through the same review.
+- **Checkpoints and rewind:** restoring first takes a safety checkpoint, refuses to overwrite newer edits and verifies the result. Undo and redo a turn's file changes.
+- **Read-only code workspace:** file explorer, code viewer, open files from the transcript, by drag and drop or with Ctrl/Cmd+O.
+
+</details>
+
+<details>
+<summary><strong>Cowork: agents, teams and background work</strong></summary>
+
+- **Agent profiles** from project, user and plugin folders, each with its own model and tools and never more authority than its parent.
+- **Six built-in roles:** explorer, planner, implementer, reviewer, tester and security, each with an enforced tool list.
+- **Parallel sub-agents** that can start from a copy of the conversation, run in the background, message each other, and be listed, cancelled, restarted or replaced one by one.
+- **Teams:** a team row with its members underneath, isolated checkouts for isolated tasks, and review of overlapping work.
+- **Consensus gates** that require agreement from several independent reviewers, with limits on how deep and wide agents can spawn.
+- **Background shell jobs** you can watch and stop individually, with an honest record of how each ended.
+- **Helper agents** for titles and compaction run without tools and are logged.
+
+</details>
+
+<details>
+<summary><strong>Cowork: timeline, run record and limits</strong></summary>
+
+- **Live tool timeline** with each call's phases, approvals, duration, input, output and resulting diff.
+- **One event log per session** for both Chat and Cowork, with typed errors.
+- **Process tree** of what a run started, and CPU and memory per run.
+- **Honest run summaries:** what was attempted, what finished and what passed; only real test, build and lint commands count as checks.
+- **Replay** a finished run step by step or from its record, **export** its events or a full audit record, and **search** past transcripts.
+- **Limits:** token budget, step limit, wall-clock deadline, per-tool and per-run timeouts.
+- **Stopping that works:** cancelling reaches sub-agents and kills started processes; one Stop asks how far to stop; an emergency kill switch stops everything.
+- **Recovery:** retries with backoff for retryable errors, stuck-loop and repeated-call detection, and runs that resume after a restart with their tool calls intact.
+- **Notifications** when a run finishes or needs you, and **webhooks**.
+- **Sessions:** fork a session without copying its permissions, export and import a session, or hand one to another computer.
+
+</details>
+
+<details>
+<summary><strong>Coding intelligence and Git</strong></summary>
+
+- **Repository index** built once and kept current across edits and branch changes.
+- **Language servers:** symbol search, find references, go to definition, call hierarchy, and compiler diagnostics fed back after edits.
+- **Change impact:** import graph, tests that cover a file, what a change can affect, and automatic test selection.
+- **Project detection** of framework, build system and test runner, plus a health scan.
+- **Test triage:** failures grouped by cause and flaky tests told apart from regressions.
+- **Git workflows:** commit messages, commit splitting, branch management, pull requests and description sync, working through review comments, merge conflict, rebase and cherry-pick help, and diverged-remote detection.
+
+</details>
+
+<details>
+<summary><strong>Context and memory</strong></summary>
+
+- **Exact context accounting:** token counts from the request actually sent, split by system prompt, tools, project context, skills and messages.
+- **Visible compaction** with one setting everywhere, warnings before the window fills and room reserved for each turn.
+- **What the model received:** the saved request for each turn, context replay and a diff between two turns.
+- **Context window size** learned from the server rather than guessed.
+- **Memory scopes:** project, session and user memory with the source of every line, a stated precedence and conflict detection.
+- **Memory settings:** scope tabs, a collection picker, conflict resolution, export and import, and forgetting that also reaches saved requests.
+- **Memory proposals** that you review before saving; sensitive content is refused.
+- **Instruction files:** JAN.md, CLAUDE.md and AGENTS.md, nearest file wins.
+- **Retention limits** for saved requests, removed together with their thread.
+
+</details>
+
+<details>
+<summary><strong>Models and providers</strong></summary>
+
+- **Rename and reorder models.**
+- **Evidence-based model fit:** "Measured on this device" is kept separate from "Estimate", estimates never block you, and a real compatibility test protects other loaded models.
+- **Preferred default model** and one model status vocabulary across the app.
+- **Provider fallback and routing rules.**
+- **Fully local runs** with no network dependency.
+- **Custom request headers** with secret values, and **llmman** as a built-in local provider.
+- **Accurate provider status:** offline only after a real failure, LAN endpoints treated as local, and the actual failure reason shown.
+- **Proxy settings** with authentication and no-proxy rules.
+
+</details>
+
+<details>
+<summary><strong>Tools, MCP, skills and plugins</strong></summary>
+
+- **MCP servers:** tools, resources and prompts, protocol health checks, per-server logs, restart without restarting Jan, cancellation, pagination and per-server size limits.
+- **MCP sign-in (OAuth)** with tokens in the OS keychain, refreshed automatically, and requested scopes shown and enforced.
+- **Trust bound to a server's configuration:** changing, renaming or deleting a server invalidates its approvals with a stated reason.
+- **Validated MCP setup** with clear connection states and a per-server auto-approve switch.
+- **Sandboxed servers:** imported and local servers are confined to the session's permissions.
+- **Skills** from project and user folders with versions, requirements and enforced tool scopes.
+- **Plugins:** a manifest format, install and remove without running plugin code, a marketplace index, and a Cowork plugin manager to enable, disable, install and remove.
+- **Lifecycle hooks** that run sandboxed with timeouts and a declared failure policy.
+- **Imports:** OpenCode and Qwen agent definitions, Claude Code project settings (opt-in), and portable bundles of agents, skills, commands and policy.
+
+</details>
+
+<details>
+<summary><strong>Permissions and safety</strong></summary>
+
+- **Permission rules** by capability, path, command (compound commands are split first), agent, skill and MCP server; deny wins and the most specific rule applies.
+- **Network controls:** one switch for all tools and domain allow and deny lists.
+- **Secrets:** protected secret files, redaction in logs and transcripts, and credentials in the OS keychain.
+- **Destructive Git commands** gated separately.
+- **Plain-language approval prompts** that say what will happen, which files are involved and what denying does, offer only real scopes, and focus Deny first.
+- **Allow once is never saved,** and an approval covers only the exact command or file shown.
+- **Permissions page:** every standing grant with Revoke, trusted MCP servers, invalidated approvals with reasons and the latest audit decisions.
+- **Policy files:** import and export a permission policy, and a machine policy a project cannot loosen.
+
+</details>
+
+<details>
+<summary><strong>Usage and cost</strong></summary>
+
+- **Token usage per message and per session:** input, cached input, cache writes, output and total, marked "Not reported" when a provider does not report a figure.
+- **Token and cost dashboard** per run and period, priced where you set prices.
+- **Usage quotas and spend budgets** across runs.
+- **Correct generation speed** for providers that stream without a start event.
+
+</details>
+
+<details>
+<summary><strong>Privacy and local-only</strong></summary>
+
+- **No telemetry, analytics, update checks, model catalogue or downloader.**
+- **No outside calls you did not set up:** extensions no longer fetch, vendor hosts are removed, and web search results are not sent to third parties.
+- **Automated local-only guards** over the source and the shipped app.
+- **Request log** of what the model was sent and where every request went.
+- **Local API server:** a working CORS switch, and caller origins are not forwarded.
+- **Diagnostic bundle** that is redacted, previewed and never uploaded.
+
+</details>
+
+<details>
+<summary><strong>The <code>jan</code> command line</strong></summary>
+
+- **Headless agent runs:** text or JSON output, a live event stream, output density, profiles, plan and ask modes, sandbox control, and resume or continue after an interruption.
+- **`jan cli agent serve`:** a JSON-lines API to start runs, stream events, answer approvals and cancel.
+- **Agent tools from the terminal:** process tree, test triage, health scan, licence check, transcript search, quotas and spend, compaction, bundles, agent imports, policy import and export, repository index, run state, agent mail, Git helpers, change impact and context inspection.
+- **Background jobs** that outlive the process (`jan cli job`).
+- **MCP from the terminal:** prompts, logs and OAuth sign-in management.
+- **Benchmarks** (`jan cli bench`) and **bug reports** (`jan bug-report`, `/bug` in the TUI) with a local log file.
+- **Slash commands** with arguments from built-ins, skills and plugins (command line only).
+
+</details>
+
+<details>
+<summary><strong>Platforms</strong></summary>
+
+- **OS sandbox for shell commands:** bubblewrap on Linux, Seatbelt on macOS and AppContainer on Windows.
+- **Windows:** working builds and sidecars, managed worktrees, the tool timeline and native window controls, with the window position restored.
+- **macOS:** window controls kept clear of the header, and the whole header drags the window.
+- **Custom data folder** honoured everywhere, with a safe fallback if it disappears.
+
+</details>
+
+<details>
+<summary><strong>Verification tooling</strong></summary>
+
+- **Machine-readable feature registry** with validation, rendering and architecture decision records.
+- **Benchmark harness, golden repositories and a prompt-injection and escalation corpus.**
+- **Real-app scenario harness** (`cowork-smoke`) that drives the actual desktop app with a local model fixture.
+
+</details>
+
+### Not finished yet
+
+- Semantic code search is built but has not been verified against a real embedding model.
+- Custom CA certificates are verified on Windows only.
+- The desktop app has no slash commands or marketplace browsing; those are available from the command line or as agent tools only.
+- A full screen-reader pass has not been done.
 
 ## Build from source
 
