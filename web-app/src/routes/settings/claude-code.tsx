@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -12,11 +11,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import AddEditCustomCliDialog from '@/containers/dialogs/AddEditCustomCliDialog'
 import { cn } from '@/lib/utils'
-import { useState, useMemo, useRef, useEffect } from 'react'
-import { useDownloadStore } from '@/hooks/useDownloadStore'
-import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import type { CatalogModel } from '@/services/models/types'
-import { JAN_CODE_HF_REPO } from '@/constants/models'
+import { useState, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { getModelToStart } from '@/utils/getModelToStart'
 import { invoke } from '@tauri-apps/api/core'
@@ -25,10 +20,10 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover'
-import { IconChevronDown, IconPlus, IconX } from '@tabler/icons-react'
+import { ChevronDown, Plus, X } from 'lucide-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
-import { formatBytes, getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.claude_code as any)({
@@ -217,21 +212,14 @@ function ClaudeCodeIntegration() {
   }
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             <Card
               header={
-                <div className="mb-3 flex w-full items-center gap-3">
+                <div className="mb-4 flex w-full items-center gap-3">
                   <svg
                     width="20"
                     height="20"
@@ -250,7 +238,7 @@ function ClaudeCodeIntegration() {
                     <path d="M27 54H36V72H27V54Z" fill="#D77757" />
                     <path d="M81 54H90V72H81V54Z" fill="#D77757" />
                   </svg>
-                  <h1 className="text-foreground font-studio font-medium text-base">
+                  <h1 className="font-display text-xl font-normal text-foreground">
                     Claude Code integration
                   </h1>
                 </div>
@@ -294,29 +282,23 @@ function ClaudeCodeIntegration() {
                     placeholder="Select Small Model"
                   />
                 }
-                descriptionOutside={
-                  <JanCodeRecommendation
-                    selectedModel={helperModels.small}
-                    onSelect={(modelId: string) =>
-                      setHelperModel('small', modelId)
-                    }
-                  />
-                }
               />
 
-              <div className="flex mt-2 justify-between gap-2 border-t pt-4">
+              <div className="mt-4 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="pointer-coarse:h-11"
                   onClick={() => setIsCustomCliDialogOpen(true)}
                 >
-                  <IconPlus className="text-muted-foreground" size={14} />
+                  <Plus className="text-muted-foreground" aria-hidden />
                   Environment Variables
                 </Button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   <Button
                     size="sm"
                     variant="outline"
+                    className="pointer-coarse:h-11"
                     onClick={async () => {
                       clearModels()
                       try {
@@ -331,6 +313,7 @@ function ClaudeCodeIntegration() {
                   </Button>
                   <Button
                     size="sm"
+                    className="pointer-coarse:h-11"
                     onClick={handleLaunchClaudeCode}
                     disabled={isModelLoading}
                   >
@@ -340,9 +323,12 @@ function ClaudeCodeIntegration() {
               </div>
 
               {(helperModels.customCli || helperModels.envVars.length > 0) && (
-                <div className="mt-3 text-sm text-muted-foreground">
+                <div className="mt-3 space-y-1 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
                   {helperModels.customCli && (
-                    <div>Command: {helperModels.customCli}</div>
+                    <div className="break-all">
+                      Command:{' '}
+                      <span className="font-mono">{helperModels.customCli}</span>
+                    </div>
                   )}
                   {helperModels.envVars.length > 0 && (
                     <div className="break-all">
@@ -453,7 +439,11 @@ function HelperModelSelector({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="max-w-[280px]">
+        <Button
+          variant="outline"
+          size="sm"
+          className="max-w-[min(100%,280px)] pointer-coarse:h-11"
+        >
           <span className="flex items-center gap-2 truncate leading-normal">
             {selectedModel && currentModel ? (
               <>
@@ -461,8 +451,8 @@ function HelperModelSelector({
                   className={cn(
                     'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
                     currentModel.isLocal
-                      ? 'bg-emerald-500/10 text-emerald-600'
-                      : 'bg-blue-500/10 text-blue-600'
+                      ? 'bg-success-tint text-success'
+                      : 'bg-sunken text-ink-2'
                   )}
                 >
                   {currentModel.isLocal ? 'Local' : 'Remote'}
@@ -473,27 +463,27 @@ function HelperModelSelector({
               placeholder
             )}
           </span>
-          <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </Button>
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[280px] p-0 bg-background/95 border"
+        className="w-[min(100vw-2rem,280px)] border border-border bg-popover p-0"
         align="end"
         sideOffset={8}
       >
         <div className="flex flex-col size-full">
-          <div className="relative p-2 border-b">
+          <div className="relative border-b border-border p-2">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder="Search models..."
-              className="text-sm font-normal outline-0 w-full"
+              className="w-full bg-transparent pr-8 text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
               <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <IconX
+                <X
                   size={16}
                   className="text-muted-foreground cursor-pointer"
                   onClick={() => setSearchValue('')}
@@ -518,7 +508,7 @@ function HelperModelSelector({
                   return (
                     <div
                       key={providerKey}
-                      className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 first:mt-1 py-1"
+                      className="mx-1.5 my-1.5 rounded-md bg-sunken/50 py-1 first:mt-1"
                     >
                       <div className="flex items-center gap-1.5 px-2 py-1">
                         <ProvidersAvatar provider={providerInfo} />
@@ -537,10 +527,10 @@ function HelperModelSelector({
                             title={model.id}
                             onClick={() => handleSelect(model)}
                             className={cn(
-                              'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                              'hover:bg-secondary/40',
+                              'mx-1 mb-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors pointer-coarse:min-h-11',
+                              'hover:bg-card',
                               isSelected &&
-                                'bg-secondary/60 hover:bg-secondary/60'
+                                'bg-brand-tint shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand-tint'
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -572,146 +562,3 @@ function HelperModelSelector({
   )
 }
 
-function JanCodeRecommendation({
-  selectedModel,
-  onSelect,
-}: {
-  selectedModel: string | null
-  onSelect: (modelId: string) => void
-}) {
-  const serviceHub = useServiceHub()
-  const { downloads, localDownloadingModels, addLocalDownloadingModel } =
-    useDownloadStore()
-  const { getProviderByName } = useModelProvider()
-  const huggingfaceToken = useGeneralSetting((state) => state.huggingfaceToken)
-  const [janCodeCatalog, setJanCodeCatalog] = useState<CatalogModel | null>(
-    null
-  )
-
-  useEffect(() => {
-    serviceHub
-      .models()
-      .fetchHuggingFaceRepo(JAN_CODE_HF_REPO, huggingfaceToken)
-      .then((repo) => {
-        if (repo)
-          setJanCodeCatalog(
-            serviceHub.models().convertHfRepoToCatalogModel(repo)
-          )
-      })
-      .catch(() => {})
-  }, [serviceHub, huggingfaceToken])
-
-  const defaultVariant = useMemo(() => {
-    if (!janCodeCatalog) return null
-    return (
-      janCodeCatalog.quants?.find((q) =>
-        q.model_id.toLowerCase().includes('q4_k_m')
-      ) ??
-      janCodeCatalog.quants?.[0] ??
-      null
-    )
-  }, [janCodeCatalog])
-
-  const llamaProvider = getProviderByName('llamacpp')
-
-  const isDownloaded = useMemo(() => {
-    if (!defaultVariant) return false
-    return !!llamaProvider?.models.some(
-      (m: { id: string }) => m.id === defaultVariant.model_id
-    )
-  }, [defaultVariant, llamaProvider])
-
-  const isDownloading = useMemo(() => {
-    if (!defaultVariant) return false
-    return (
-      localDownloadingModels.has(defaultVariant.model_id) ||
-      defaultVariant.model_id in downloads
-    )
-  }, [defaultVariant, localDownloadingModels, downloads])
-
-  const downloadProgress = useMemo(() => {
-    if (!defaultVariant) return { current: 0, total: 0 }
-    const d = downloads[defaultVariant.model_id]
-    return { current: d?.current ?? 0, total: d?.total ?? 0 }
-  }, [defaultVariant, downloads])
-
-  const handleDownload = () => {
-    if (!defaultVariant) return
-    addLocalDownloadingModel(defaultVariant.model_id)
-    serviceHub
-      .models()
-      .pullModelWithMetadata(
-        defaultVariant.model_id,
-        defaultVariant.path,
-        undefined,
-        huggingfaceToken,
-        true
-      )
-  }
-
-  if (selectedModel === defaultVariant?.model_id) return null
-
-  return (
-    <div className="p-2.5 rounded-lg min-h-[54px] border border-primary/20 bg-primary/5 flex items-center justify-between gap-3">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs font-medium text-foreground">
-          Use Jan-Code for a quick start
-        </span>
-      </div>
-      <div className="shrink-0">
-        {isDownloaded ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onSelect(defaultVariant!.model_id)}
-          >
-            Apply
-          </Button>
-        ) : isDownloading ? (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <svg
-              className="size-3 animate-spin"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            <span>
-              {formatBytes(downloadProgress.current, {
-                hideUnit: true,
-                minUnit: 'GB',
-              })}{' '}
-              /{' '}
-              {formatBytes(downloadProgress.total, {
-                hideUnit: true,
-                minUnit: 'GB',
-              })}
-              GB
-            </span>
-          </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleDownload}
-            disabled={!defaultVariant}
-          >
-            Setup
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-}

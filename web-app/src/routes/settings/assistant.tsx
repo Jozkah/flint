@@ -4,14 +4,13 @@ import { useState } from 'react'
 
 import { useAssistant } from '@/hooks/useAssistant'
 
-import HeaderPage from '@/containers/HeaderPage'
-import { IconCirclePlus, IconPencil, IconTrash } from '@tabler/icons-react'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import AddEditAssistant from '@/containers/dialogs/AddEditAssistant'
 import { DeleteAssistantDialog } from '@/containers/dialogs'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { cn } from '@/lib/utils'
 import { Card, CardItem } from '@/containers/Card'
 import {
@@ -70,30 +69,23 @@ function AssistantContent() {
   const defaultAssistant = sortedAssistants.find((a) => a.id === defaultAssistantId)
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className={cn("flex items-center justify-between w-full mr-2 pr-3", !IS_MACOS && "pr-30")}>
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-          <Button
-            onClick={() => {
-              setEditingKey(null)
-              setOpen(true)
-            }}
-            size="sm"
-            variant="outline"
-            className="relative z-50"
-          >
-            <IconCirclePlus size={16} />
-            {t('assistants:addAssistant')}
-          </Button>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <div className="flex size-full">
-          <SettingsMenu />
-          <div className="flex flex-col gap-4 p-4 pt-4 w-full overflow-y-auto">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader>
+        <Button
+          onClick={() => {
+            setEditingKey(null)
+            setOpen(true)
+          }}
+          size="sm"
+          className="pointer-coarse:h-11"
+        >
+          <Plus aria-hidden />
+          {t('assistants:addAssistant')}
+        </Button>
+      </SettingsPageHeader>
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="flex size-full min-w-0">
+          <div className="flex w-full min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6 [&>*]:mx-auto [&>*]:max-w-4xl">
             {/* Default Assistant */}
             <Card>
               <CardItem
@@ -103,7 +95,7 @@ function AssistantContent() {
                 actions={
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="justify-between">
+                      <Button variant="outline" size="sm" className="max-w-full justify-between pointer-coarse:h-11">
                         <span className={cn('truncate')}>
                           {defaultAssistant?.name ?? t('assistants:lastUsed')}
                         </span>
@@ -115,7 +107,7 @@ function AssistantContent() {
                         key="none"
                         className={cn(
                           'cursor-pointer my-0.5',
-                          !defaultAssistantId && 'bg-secondary-foreground/8'
+                          !defaultAssistantId && 'bg-brand-tint'
                         )}
                         onClick={() => setDefaultAssistant('')}
                       >
@@ -127,7 +119,7 @@ function AssistantContent() {
                           key={a.id}
                           className={cn(
                             'cursor-pointer my-0.5',
-                            defaultAssistantId === a.id && 'bg-secondary-foreground/8'
+                            defaultAssistantId === a.id && 'bg-brand-tint'
                           )}
                           onClick={() => setDefaultAssistant(a.id)}
                         >
@@ -138,13 +130,13 @@ function AssistantContent() {
                   </DropdownMenu>
                 }
               />
-              <h1 className="text-foreground font-studio font-medium text-sm mt-4 mb-4">{t('assistants:allAssistants')}</h1>
+              <h1 className="mt-5 mb-3 font-display text-lg font-normal text-foreground">{t('assistants:allAssistants')}</h1>
               {sortedAssistants.map((assistant) => (
                 <div
-                  className="group flex items-center gap-3 px-3 py-3 rounded-lg my-1 bg-secondary/20 hover:bg-secondary dark:hover:bg-secondary/20 transition-colors"
+                  className="group my-1.5 flex min-h-11 items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 transition-colors hover:bg-sunken"
                   key={assistant.id}
                 >
-                  <div className="size-9 shrink-0 flex items-center justify-center bg-secondary dark:bg-secondary/40 rounded-lg">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
                     {assistant?.avatar && (
                       <AvatarEmoji
                         avatar={assistant?.avatar}
@@ -155,17 +147,17 @@ function AssistantContent() {
                   </div>
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-studio font-medium truncate">
+                      <span className="truncate text-sm font-medium text-foreground">
                         {assistant.name}
                       </span>
                       {defaultAssistantId === assistant.id && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full text-muted-foreground bg-foreground/10 leading-none shrink-0">
+                        <span className="shrink-0 rounded-full bg-brand-tint px-1.5 py-0.5 text-[10px] font-medium leading-none text-brand-text">
                           {t('assistants:isDefault')}
                         </span>
                       )}
                     </div>
                     {assistant.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-1 pr-12 mt-0.5">
+                      <p className="mt-0.5 line-clamp-1 pr-2 text-xs text-muted-foreground">
                         {assistant.description}
                       </p>
                     )}
@@ -173,22 +165,26 @@ function AssistantContent() {
                   <div className="flex items-center shrink-0">
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon-sm"
+                      className="pointer-coarse:size-11"
+                      aria-label={`${t('assistants:editAssistant')}: ${assistant.name}`}
                       title={t('assistants:editAssistant')}
                       onClick={() => {
                         setEditingKey(assistant.id)
                         setOpen(true)
                       }}
                     >
-                      <IconPencil className="text-muted-foreground size-4" />
+                      <Pencil className="text-muted-foreground" aria-hidden />
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon-sm"
+                      className="pointer-coarse:size-11"
+                      aria-label={`${t('assistants:deleteAssistant')}: ${assistant.name}`}
                       title={t('assistants:deleteAssistant')}
                       onClick={() => handleDelete(assistant.id)}
                     >
-                      <IconTrash className="text-destructive size-4" />
+                      <Trash2 className="text-destructive" aria-hidden />
                     </Button>
                   </div>
                 </div>

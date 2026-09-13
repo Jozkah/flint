@@ -861,10 +861,46 @@ fn test_is_process_alive_for_almost_certainly_dead_pid() {
     assert!(!is_process_alive(i32::MAX as u32));
 }
 
+/// A mock app whose app-data directory -- where MCP lock files live -- is its
+/// own. The lock-file tests used to share the stock mock identifier's folder,
+/// and `cleanup_own_locks` removes every lock this process owns there: run
+/// alongside it, `keeps_live_lock` lost the lock it had just created. The
+/// directory is removed when the guard drops.
+fn lock_test_app() -> (tauri::App<tauri::test::MockRuntime>, LockDirGuard) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+    context.config_mut().identifier = format!(
+        "jan.test.mcp-lock.{}.{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    );
+    let app = tauri::test::mock_builder()
+        .build(context)
+        .expect("mock app");
+    let dir = app.handle().path().app_data_dir().expect("app data dir");
+    (app, LockDirGuard(dir))
+}
+
+struct LockDirGuard(PathBuf);
+
+impl Drop for LockDirGuard {
+    fn drop(&mut self) {
+        // Only ever the per-test identifier's folder created above.
+        if self
+            .0
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with("jan.test.mcp-lock."))
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 #[test]
 fn test_create_read_delete_lock_file_round_trip() {
     use super::lockfile::{create_lock_file, delete_lock_file, read_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     // Use an unusual port to avoid colliding with other tests
     let port: u16 = 53_111;
     // Ensure clean slate
@@ -887,7 +923,7 @@ fn test_create_read_delete_lock_file_round_trip() {
 #[test]
 fn test_read_lock_file_returns_none_for_missing_port() {
     use super::lockfile::{delete_lock_file, read_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_112;
     // Make sure it does not exist
     let _ = delete_lock_file(app.handle(), port);
@@ -897,7 +933,7 @@ fn test_read_lock_file_returns_none_for_missing_port() {
 #[test]
 fn test_delete_lock_file_is_idempotent_when_missing() {
     use super::lockfile::delete_lock_file;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_113;
     // Calling delete on a non-existent file should still return Ok(())
     assert!(delete_lock_file(app.handle(), port).is_ok());
@@ -907,7 +943,7 @@ fn test_delete_lock_file_is_idempotent_when_missing() {
 #[tokio::test]
 async fn test_check_and_cleanup_stale_lock_no_lock_returns_false() {
     use super::lockfile::{check_and_cleanup_stale_lock, delete_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_114;
     let _ = delete_lock_file(app.handle(), port);
     let cleaned = check_and_cleanup_stale_lock(app.handle(), port)
@@ -921,7 +957,7 @@ async fn test_check_and_cleanup_stale_lock_keeps_live_lock() {
     use super::lockfile::{
         check_and_cleanup_stale_lock, create_lock_file, delete_lock_file, read_lock_file,
     };
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_115;
     let _ = delete_lock_file(app.handle(), port);
     create_lock_file(app.handle(), port, "live", std::process::id()).unwrap();
@@ -939,7 +975,7 @@ async fn test_check_and_cleanup_stale_lock_keeps_live_lock() {
 async fn test_check_and_cleanup_stale_lock_removes_dead_pid_lock() {
     use super::lockfile::{check_and_cleanup_stale_lock, read_lock_file, McpLockFile};
     use tauri::Manager;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_116;
     // Use the SAME directory the lockfile module uses
     let app_data_dir = app.handle().path().app_data_dir().expect("app data dir");
@@ -975,7 +1011,7 @@ fn test_cleanup_own_locks_removes_only_current_pid_locks() {
         cleanup_own_locks, create_lock_file, delete_lock_file, read_lock_file, McpLockFile,
     };
     use tauri::Manager;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let own_port: u16 = 53_117;
     let other_port: u16 = 53_118;
     let _ = delete_lock_file(app.handle(), own_port);
@@ -1057,7 +1093,7 @@ async fn terminate_browser_mcp_reaps_process_group() {
 /// rather than inherited. The policy itself is the plugin's, and tested there.
 #[cfg(test)]
 mod mcp_confinement_tests {
-    use super::super::helpers::confined_mcp_command;
+    use super::super::launch::confined_mcp_command;
     use super::super::models::{McpConfinement, McpServerConfig};
     use std::path::PathBuf;
     use tokio::process::Command;
@@ -1187,6 +1223,38 @@ mod mcp_confinement_tests {
         if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
             return;
         }
+        // Not runnable from a test binary on Windows, and not because the
+        // product is wrong. The AppContainer backend cannot be expressed as an
+        // argv prefix -- it is a token attribute on the spawn -- so `jail::wrap`
+        // re-execs `current_exe()` with helper arguments and lets that process
+        // perform the confined spawn. Inside a unit-test harness
+        // `current_exe()` is the harness, which implements no such helper, so
+        // the wrapped command produces no output and *both* assertions below
+        // become vacuous. The behaviour is covered where a real host binary
+        // exists: the cowork-smoke harness, which runs the actual application.
+        if cfg!(windows) {
+            // Still assert the shape, so a backend silently degrading to
+            // "no confinement" on Windows is caught here rather than shipping.
+            let probe = Command::new("cmd.exe");
+            let mut p = params(&[("API_TOKEN", "approved-value")]);
+            p.confinement = Some(McpConfinement {
+                workspace: std::env::temp_dir(),
+                repository: None,
+                writable_repository: None,
+                jan_data: None,
+                allowed_env: vec!["API_TOKEN".to_string()],
+            });
+            let confinement = p.confinement.clone().expect("set above");
+            let wrapped = confined_mcp_command(probe, &p, &confinement)
+                .expect("a confined command must be constructible");
+            let program = wrapped.as_std().get_program().to_string_lossy().into_owned();
+            assert_ne!(
+                program.to_lowercase(),
+                "cmd.exe",
+                "the command was handed back unconfined instead of wrapped"
+            );
+            return;
+        }
         std::env::set_var("JAN_MCP_LEAK_MARKER", "must-not-escape");
 
         let workspace = std::env::temp_dir()
@@ -1195,10 +1263,22 @@ mod mcp_confinement_tests {
             .join(format!("jan-mcp-env-{}", std::process::id()));
         std::fs::create_dir_all(&workspace).expect("workspace");
 
-        let mut inner = Command::new("/bin/sh");
-        inner
-            .arg("-c")
-            .arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+        // The shell, and the way it spells a variable, differ by platform.
+        // Hard-coding `/bin/sh` meant this produced no output at all on
+        // Windows: the approved-variable assertion failed for the missing
+        // shell, and -- worse -- the leak assertion passed vacuously, because
+        // empty output contains no marker either. A confinement test that
+        // cannot fail is not a confinement test.
+        let mut inner = if cfg!(windows) {
+            let mut c = Command::new("cmd.exe");
+            c.arg("/c")
+                .arg("echo [%JAN_MCP_LEAK_MARKER%][%API_TOKEN%]");
+            c
+        } else {
+            let mut c = Command::new("/bin/sh");
+            c.arg("-c").arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+            c
+        };
 
         let mut p = params(&[("API_TOKEN", "approved-value")]);
         p.confinement = Some(McpConfinement {
@@ -1317,6 +1397,165 @@ mod mcp_confinement_tests {
 /// lists its tools and calls one. The fixture is a small script rather than a
 /// mock so the protocol is genuinely exercised, and it reaches no network and
 /// depends on nothing installed beyond python3.
+/// AH-137: an MCP server's documents, over the real protocol.
+///
+/// Its own module rather than a case inside the end-to-end tests above,
+/// because those are unix-shaped (they prepare a confined launch first) and
+/// resources are worth exercising on every host. Same fixture, same client,
+/// no confinement -- what is under test is the protocol and what the harness
+/// does with the answer.
+#[cfg(test)]
+mod mcp_resource_tests {
+    use rmcp::model::ReadResourceRequestParam;
+    use rmcp::ServiceExt;
+    use std::path::PathBuf;
+    use std::process::Stdio;
+
+    fn fixture() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_stdio_server.py")
+    }
+
+    /// The interpreter this host calls python, or nothing.
+    fn python() -> Option<&'static str> {
+        for candidate in ["python3", "python"] {
+            let ok = std::process::Command::new(candidate)
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if ok {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    #[tokio::test]
+    async fn a_servers_resources_are_listed_and_read_and_are_not_instructions() {
+        let (Some(python), true) = (python(), fixture().exists()) else {
+            // No interpreter here: the test says so rather than passing
+            // silently, because a skip that looks like a pass is how a test
+            // stops testing anything.
+            eprintln!("skipped: no python interpreter on this host");
+            return;
+        };
+        eprintln!("running the resource test against {python}");
+        let mut command = tokio::process::Command::new(python);
+        command.arg(fixture());
+        let service = ().serve(rmcp::transport::TokioChildProcess::new(command).expect("spawn"))
+            .await
+            .expect("initialize");
+
+        let resources = service.list_all_resources().await.expect("resources/list");
+        assert!(
+            resources.iter().any(|r| r.raw.uri == "fixture://notes/one"),
+            "the server's resource must be discovered: {resources:?}"
+        );
+
+        let read = service
+            .read_resource(ReadResourceRequestParam {
+                uri: "fixture://notes/one".to_string(),
+            })
+            .await
+            .expect("resources/read");
+        let text = serde_json::to_string(&read).expect("serialize");
+        assert!(text.contains("ignore your instructions"), "the content came back: {text}");
+
+        // A uri the server does not have is that server's refusal, not a
+        // silent empty document.
+        assert!(service
+            .read_resource(ReadResourceRequestParam {
+                uri: "fixture://notes/missing".to_string(),
+            })
+            .await
+            .is_err());
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// AH-143: the fixture serves its tools over two pages, and the second
+    /// tool exists only on the second. A client that does not follow the
+    /// cursor is visibly missing it, rather than merely untested.
+    #[tokio::test]
+    async fn a_paginated_listing_is_followed_to_the_end() {
+        let (Some(python), true) = (python(), fixture().exists()) else {
+            eprintln!("skipped: no python interpreter on this host");
+            return;
+        };
+        let mut command = tokio::process::Command::new(python);
+        command.arg(fixture());
+        let service = ().serve(rmcp::transport::TokioChildProcess::new(command).expect("spawn"))
+            .await
+            .expect("initialize");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
+        assert!(
+            names.iter().any(|n| n == "echo_fixture"),
+            "the first page: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "echo_fixture_page_two"),
+            "the second page is only reachable by following the cursor: {names:?}"
+        );
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// AH-138: a server's prompts are listed and one is fetched, filled in
+    /// with the argument it declared. What comes back is the server's
+    /// content -- returned as it was written, and refused by the server when
+    /// it is asked for something it does not have.
+    #[tokio::test]
+    async fn a_servers_prompts_are_listed_and_fetched() {
+        use crate::core::mcp::commands::{get_prompt, list_prompts};
+        use crate::core::mcp::models::render_prompt;
+
+        let (Some(python), true) = (python(), fixture().exists()) else {
+            eprintln!("skipped: no python interpreter on this host");
+            return;
+        };
+        let mut command = tokio::process::Command::new(python);
+        command.arg(fixture());
+        let service = ().serve(rmcp::transport::TokioChildProcess::new(command).expect("spawn"))
+            .await
+            .expect("initialize");
+
+        let prompts = list_prompts(&service).await.expect("prompts/list");
+        let greet = prompts
+            .iter()
+            .find(|p| p.name == "greet")
+            .expect("the fixture's prompt");
+        assert_eq!(
+            greet
+                .arguments
+                .as_ref()
+                .map(|a| a.iter().map(|arg| arg.name.clone()).collect::<Vec<_>>()),
+            Some(vec!["name".to_string()]),
+            "its declared argument travels with it"
+        );
+
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("name".to_string(), serde_json::json!("the fixture"));
+        let filled = get_prompt(&service, "greet", arguments)
+            .await
+            .expect("prompts/get");
+        let rendered = render_prompt(&filled);
+        assert!(rendered.contains("Say hello to the fixture."), "{rendered}");
+        // The role is kept: a server's message is labelled as what it is.
+        assert!(rendered.contains("[user]"), "{rendered}");
+
+        // A prompt the server does not have is the server's refusal, not an
+        // empty prompt.
+        let missing = get_prompt(&service, "nowhere", serde_json::Map::new()).await;
+        assert!(missing.is_err(), "{missing:?}");
+
+        service.cancel().await.expect("shutdown");
+    }
+}
+
 #[cfg(all(test, unix))]
 mod mcp_end_to_end_tests {
     use super::super::launch::ConfinedMcpLaunch;
@@ -1462,14 +1701,25 @@ mod mcp_http_integration_tests {
     }
 
     impl Fixture {
+        /// Starts the fixture, or fails the test. It used to return `None` --
+        /// and every caller returned early and passed -- whenever
+        /// `/usr/bin/python3` was absent, so on Windows none of these tests
+        /// ever exercised the transport.
         fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
             let script =
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_http_server.py");
-            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
-                return None;
-            }
+            assert!(script.exists(), "missing fixture {}", script.display());
+            let python = ["python3", "python"]
+                .into_iter()
+                .find(|p| {
+                    std::process::Command::new(p)
+                        .arg("--version")
+                        .output()
+                        .is_ok_and(|o| o.status.success())
+                })
+                .expect("python is required for the HTTP MCP fixture");
 
-            let mut command = std::process::Command::new("/usr/bin/python3");
+            let mut command = std::process::Command::new(python);
             command.arg(&script).arg(mode);
             if let Some(path) = barrier {
                 command.arg(path);
@@ -1517,9 +1767,7 @@ mod mcp_http_integration_tests {
 
     #[tokio::test]
     async fn a_remote_server_handshakes_lists_and_calls() {
-        let Some(fixture) = Fixture::start("ok", None) else {
-            return;
-        };
+        let fixture = Fixture::start("ok", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let info = service.peer_info().expect("the server identified itself");
@@ -1575,9 +1823,7 @@ mod mcp_http_integration_tests {
     /// not a server to start publishing tools from.
     #[tokio::test]
     async fn a_malformed_initialize_is_a_failed_handshake() {
-        let Some(fixture) = Fixture::start("malformed-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-init", None).expect("the HTTP MCP fixture started");
 
         assert!(
             connect(&fixture).await.is_err(),
@@ -1589,9 +1835,7 @@ mod mcp_http_integration_tests {
     /// caller open indefinitely.
     #[tokio::test]
     async fn an_unanswered_initialize_does_not_hang_forever() {
-        let Some(fixture) = Fixture::start("hang-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("hang-init", None).expect("the HTTP MCP fixture started");
 
         let outcome =
             tokio::time::timeout(std::time::Duration::from_secs(3), connect(&fixture)).await;
@@ -1608,9 +1852,7 @@ mod mcp_http_integration_tests {
     /// tools to publish, and the failure has to surface.
     #[tokio::test]
     async fn a_tool_listing_failure_yields_no_tools() {
-        let Some(fixture) = Fixture::start("tools-list-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tools-list-error", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         assert!(
@@ -1623,9 +1865,7 @@ mod mcp_http_integration_tests {
 
     #[tokio::test]
     async fn a_failing_tool_call_is_reported() {
-        let Some(fixture) = Fixture::start("tool-call-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tool-call-error", None).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let outcome = service
@@ -1656,9 +1896,7 @@ mod mcp_http_integration_tests {
         ));
         let _ = std::fs::remove_file(&barrier);
 
-        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
-            return;
-        };
+        let fixture = Fixture::start("slow-call", Some(&barrier)).expect("the HTTP MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         let call = tokio::spawn({
@@ -1689,9 +1927,7 @@ mod mcp_http_integration_tests {
     /// the URL it reports is a loopback address.
     #[tokio::test]
     async fn failures_carry_no_secret_and_no_public_endpoint() {
-        let Some(fixture) = Fixture::start("malformed-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-init", None).expect("the HTTP MCP fixture started");
 
         let message = match connect(&fixture).await {
             Err(message) => message,
@@ -1727,13 +1963,23 @@ mod mcp_sse_integration_tests {
     }
 
     impl Fixture {
+        /// Starts the fixture, or fails the test: like the HTTP fixture, this
+        /// used to return `None` -- and every caller passed having run nothing
+        /// -- wherever `/usr/bin/python3` was absent.
         fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
             let script =
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_sse_server.py");
-            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
-                return None;
-            }
-            let mut command = std::process::Command::new("/usr/bin/python3");
+            assert!(script.exists(), "missing fixture {}", script.display());
+            let python = ["python3", "python"]
+                .into_iter()
+                .find(|p| {
+                    std::process::Command::new(p)
+                        .arg("--version")
+                        .output()
+                        .is_ok_and(|o| o.status.success())
+                })
+                .expect("python is required for the SSE MCP fixture");
+            let mut command = std::process::Command::new(python);
             command.arg(&script).arg(mode);
             if let Some(path) = barrier {
                 command.arg(path);
@@ -1781,9 +2027,7 @@ mod mcp_sse_integration_tests {
     /// The whole lifecycle: stream, endpoint, initialize, list, call, shutdown.
     #[tokio::test]
     async fn an_sse_server_handshakes_lists_and_calls() {
-        let Some(fixture) = Fixture::start("ok", None) else {
-            return;
-        };
+        let fixture = Fixture::start("ok", None).expect("the SSE MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize over SSE");
         let info = service.peer_info().expect("the server identified itself");
@@ -1811,9 +2055,7 @@ mod mcp_sse_integration_tests {
     /// The stream drops before the handshake completes. There is no service.
     #[tokio::test]
     async fn a_stream_that_closes_during_initialize_yields_no_service() {
-        let Some(fixture) = Fixture::start("close-during-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("close-during-init", None).expect("the SSE MCP fixture started");
 
         let outcome =
             tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await;
@@ -1828,9 +2070,7 @@ mod mcp_sse_integration_tests {
     /// reporting success.
     #[tokio::test]
     async fn a_malformed_event_does_not_produce_a_working_service() {
-        let Some(fixture) = Fixture::start("malformed-event", None) else {
-            return;
-        };
+        let fixture = Fixture::start("malformed-event", None).expect("the SSE MCP fixture started");
 
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             let service = connect(&fixture).await?;
@@ -1852,9 +2092,7 @@ mod mcp_sse_integration_tests {
 
     #[tokio::test]
     async fn a_tool_listing_failure_is_reported_over_sse() {
-        let Some(fixture) = Fixture::start("tools-list-error", None) else {
-            return;
-        };
+        let fixture = Fixture::start("tools-list-error", None).expect("the SSE MCP fixture started");
 
         let service = connect(&fixture).await.expect("initialize");
         assert!(
@@ -1871,9 +2109,7 @@ mod mcp_sse_integration_tests {
         let barrier = std::env::temp_dir().join(format!("jan-sse-barrier-{}", std::process::id()));
         let _ = std::fs::remove_file(&barrier);
 
-        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
-            return;
-        };
+        let fixture = Fixture::start("slow-call", Some(&barrier)).expect("the SSE MCP fixture started");
 
         let service = std::sync::Arc::new(connect(&fixture).await.expect("initialize"));
         let held = service.clone();
@@ -1898,9 +2134,7 @@ mod mcp_sse_integration_tests {
     /// Nothing in a failure carries a secret, and the endpoint is loopback.
     #[tokio::test]
     async fn sse_failures_carry_no_secret_and_no_public_endpoint() {
-        let Some(fixture) = Fixture::start("close-during-init", None) else {
-            return;
-        };
+        let fixture = Fixture::start("close-during-init", None).expect("the SSE MCP fixture started");
 
         let message =
             match tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await
@@ -2058,5 +2292,334 @@ mod registration_decision_tests {
         });
 
         assert_eq!(definition_identity(&before), definition_identity(&after));
+    }
+
+    /// The registration identity and the trust fingerprint are one definition:
+    /// two configs that are "the same running server" must also be "the same
+    /// approved server", and vice versa.
+    #[test]
+    fn registration_identity_and_trust_fingerprint_agree() {
+        use tauri_plugin_agent_tools::mcp_identity::fingerprint;
+        let a = json!({ "command": "node", "args": ["s.js"], "headers": { "Authorization": "one" } });
+        let b = json!({ "type": "stdio", "command": "node", "args": ["s.js"], "headers": { "authorization": "two" }, "active": true });
+        let c = json!({ "command": "node", "args": ["evil.js"] });
+        assert_eq!(definition_identity(&a), definition_identity(&b));
+        assert_eq!(fingerprint(&a), fingerprint(&b));
+        assert_ne!(definition_identity(&a), definition_identity(&c));
+        assert_ne!(fingerprint(&a), fingerprint(&c));
+    }
+}
+
+/// Which definition the trust gate fingerprints for a server name.
+#[cfg(test)]
+mod trust_fingerprint_source_tests {
+    use super::super::commands::server_fingerprint_from;
+    use serde_json::{json, Map, Value};
+    use std::collections::HashMap;
+    use tauri_plugin_agent_tools::mcp_identity::fingerprint;
+
+    fn saved(entries: &[(&str, Value)]) -> Map<String, Value> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    /// A call reaches the program that is running, so its definition is the
+    /// one an approval must match, even when the saved file was edited since.
+    #[test]
+    fn the_running_definition_wins_over_the_saved_one() {
+        let running = json!({ "command": "node", "args": ["old.js"] });
+        let edited = json!({ "command": "node", "args": ["new.js"] });
+        let active = HashMap::from([("notes".to_string(), running.clone())]);
+        let file = saved(&[("notes", edited.clone())]);
+        assert_eq!(
+            server_fingerprint_from(&active, &file, "notes"),
+            Some(fingerprint(&running))
+        );
+        assert_eq!(
+            server_fingerprint_from(&HashMap::new(), &file, "notes"),
+            Some(fingerprint(&edited))
+        );
+    }
+
+    /// A deleted server has no identity, so no grant or ticket can match it.
+    #[test]
+    fn an_unconfigured_server_has_no_fingerprint() {
+        assert_eq!(
+            server_fingerprint_from(&HashMap::new(), &Map::new(), "gone"),
+            None
+        );
+    }
+
+    /// Changing the endpoint or the executable changes what the gate compares;
+    /// rotating a secret does not.
+    #[test]
+    fn endpoint_and_executable_changes_are_visible_to_the_gate() {
+        let base = json!({ "type": "http", "url": "https://mcp.example.com/v1", "headers": { "Authorization": "a" } });
+        let rotated = json!({ "type": "http", "url": "https://mcp.example.com/v1", "headers": { "Authorization": "b" } });
+        let moved = json!({ "type": "http", "url": "https://mcp.attacker.test/v1", "headers": { "Authorization": "a" } });
+        let fp = |v: &Value| server_fingerprint_from(&HashMap::new(), &saved(&[("s", v.clone())]), "s");
+        assert_eq!(fp(&base), fp(&rotated));
+        assert_ne!(fp(&base), fp(&moved));
+
+        let exe = json!({ "command": "npx", "args": ["notes"] });
+        let swapped = json!({ "command": "/tmp/evil", "args": ["notes"] });
+        assert_ne!(fp(&exe), fp(&swapped));
+    }
+}
+
+/// AH-139: the liveness probe, through the real rmcp client, against an
+/// in-process JSON-RPC peer that answers, errors, stays silent or hangs up.
+#[cfg(test)]
+mod liveness_tests {
+    use super::super::helpers::{probe_liveness, Liveness};
+    use rmcp::ServiceExt;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    #[derive(Clone, Copy)]
+    enum Ping {
+        Answer,
+        Error,
+        Ignore,
+        IgnoreEverything,
+        HangUp,
+    }
+
+    /// A client connected to a peer that handles `initialize` and then treats
+    /// `ping` (and `tools/list`) as `mode` says. Returns the client and the
+    /// methods the peer saw.
+    async fn connect(
+        mode: Ping,
+    ) -> (
+        rmcp::service::RunningService<rmcp::RoleClient, ()>,
+        Arc<StdMutex<Vec<String>>>,
+    ) {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            let (r, mut w) = tokio::io::split(server_io);
+            let mut lines = BufReader::new(r).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let msg: serde_json::Value = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let method = msg["method"].as_str().unwrap_or("").to_string();
+                log.lock().unwrap().push(method.clone());
+                let Some(id) = msg.get("id").cloned() else { continue };
+                let reply = match (method.as_str(), mode) {
+                    ("initialize", _) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": {
+                        "protocolVersion": "2024-11-05", "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "liveness-peer", "version": "1" } } }),
+                    ("ping", Ping::Answer) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+                    ("ping", Ping::Error) => serde_json::json!({ "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32601, "message": "Method not found" } }),
+                    ("ping", Ping::HangUp) => return,
+                    ("ping", Ping::Ignore | Ping::IgnoreEverything) => continue,
+                    ("tools/list", Ping::IgnoreEverything) => continue,
+                    ("tools/list", _) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": [] } }),
+                    _ => continue,
+                };
+                let mut out = reply.to_string();
+                out.push('\n');
+                if w.write_all(out.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let (r, w) = tokio::io::split(client_io);
+        let client = ().serve((r, w)).await.expect("initialize");
+        (client, seen)
+    }
+
+    const QUICK: Duration = Duration::from_millis(400);
+
+    #[tokio::test]
+    async fn a_server_that_answers_ping_is_alive_and_is_not_asked_for_its_tools() {
+        let (client, seen) = connect(Ping::Answer).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Alive);
+        let seen = seen.lock().unwrap().clone();
+        assert!(seen.contains(&"ping".to_string()), "{seen:?}");
+        assert!(!seen.contains(&"tools/list".to_string()), "the probe listed tools: {seen:?}");
+    }
+
+    #[tokio::test]
+    async fn an_error_reply_to_ping_is_still_a_live_server() {
+        let (client, _) = connect(Ping::Error).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Alive);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_ping_but_lists_tools_is_alive_and_said_so() {
+        let (client, seen) = connect(Ping::Ignore).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::AliveWithoutPing);
+        assert!(seen.lock().unwrap().contains(&"tools/list".to_string()));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_answers_nothing_is_unresponsive() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        assert!(matches!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Unresponsive(_)));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_hung_up_is_gone_or_unresponsive_never_alive() {
+        let (client, _) = connect(Ping::HangUp).await;
+        let first = probe_liveness(&client, QUICK, QUICK).await;
+        assert!(!first.is_alive(), "{first:?}");
+        // Once the transport has noticed, the answer is that it is gone.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let later = probe_liveness(&client, QUICK, QUICK).await;
+        assert!(!later.is_alive(), "{later:?}");
+    }
+}
+
+/// The manager's own bookkeeping, driven through a real Tauri app handle.
+///
+/// `start_mcp_server` is more than a connection: it records the active config,
+/// marks the name as starting, decides whether a duplicate is a no-op or a
+/// conflict, and installs a health monitor. Those are the parts a transport
+/// test cannot reach, and the parts that go wrong when a name is started twice
+/// or replaced mid-flight.
+#[cfg(test)]
+mod manager_bookkeeping_tests {
+    use super::super::helpers::start_mcp_server;
+    use crate::core::state::AppState;
+    use serde_json::json;
+    use tauri::test::mock_app;
+    use tauri::Manager;
+
+    /// An app with the state the manager reads, and its shared server map.
+    fn app_with_state() -> (
+        tauri::App<tauri::test::MockRuntime>,
+        crate::core::state::SharedMcpServers,
+    ) {
+        let app = mock_app();
+        let state = AppState::default();
+        let servers = state.mcp_servers.clone();
+        app.manage(state);
+        (app, servers)
+    }
+
+    /// A definition that cannot connect: the point is the bookkeeping around
+    /// the attempt, not a live server.
+    fn unreachable(command: &str) -> serde_json::Value {
+        json!({ "type": "stdio", "command": command, "args": [] })
+    }
+
+    #[tokio::test]
+    async fn a_start_records_the_config_it_was_given() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let _ = start_mcp_server(
+            handle.clone(),
+            servers,
+            "recorder".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        // Recorded for restart even though the start itself failed: the user
+        // asked for this server, and that is what the record is.
+        let state = handle.state::<AppState>();
+        let active = state.mcp_active_servers.lock().await;
+        assert!(active.contains_key("recorder"));
+    }
+
+    /// The in-flight marker exists to stop a second `serve()` racing the first.
+    /// It has to be cleared however the attempt ends, or the name is wedged.
+    #[tokio::test]
+    async fn a_failed_start_does_not_wedge_the_name() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let _ = start_mcp_server(
+            handle.clone(),
+            servers,
+            "wedged".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        let state = handle.state::<AppState>();
+        let starting = state.mcp_starting.lock().await;
+        assert!(
+            !starting.contains("wedged"),
+            "the in-flight marker must be cleared even when the start fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_start_leaves_no_server_and_no_monitor() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let result = start_mcp_server(
+            handle.clone(),
+            servers.clone(),
+            "absent".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        assert!(result.is_err(), "an unreachable command cannot start");
+        assert!(servers.lock().await.get("absent").is_none());
+        let state = handle.state::<AppState>();
+        let monitors = state.mcp_monitoring_tasks.lock().await;
+        assert!(
+            !monitors.contains_key("absent"),
+            "a failed start must not leave a monitor reconnecting it"
+        );
+    }
+
+    /// Every start takes a number, and the number moves. That is what lets a
+    /// completion tell whether it is still the current instance.
+    #[tokio::test]
+    async fn each_start_takes_a_new_number() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        for _ in 0..2 {
+            let _ = start_mcp_server(
+                handle.clone(),
+                servers.clone(),
+                "numbered".to_string(),
+                unreachable("definitely-not-a-real-binary"),
+            )
+            .await;
+        }
+
+        let state = handle.state::<AppState>();
+        let generations = state.mcp_generation.lock().await;
+        assert_eq!(
+            generations.get("numbered").copied(),
+            Some(2),
+            "two starts must be two instances"
+        );
+    }
+
+    /// A different definition under a name already running is refused rather
+    /// than skipped — the failure that let an edited server keep serving the
+    /// old program.
+    #[tokio::test]
+    async fn a_conflicting_definition_is_refused_by_the_manager() {
+        use crate::core::mcp::models::{registration_decision, RegistrationDecision};
+
+        let running = unreachable("node");
+        let edited = unreachable("python3");
+
+        assert!(matches!(
+            registration_decision(true, Some(&running), &edited),
+            RegistrationDecision::Conflict { .. }
+        ));
+        assert_eq!(
+            registration_decision(true, Some(&running), &running),
+            RegistrationDecision::AlreadyRunning
+        );
     }
 }

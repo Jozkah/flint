@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
-import { walkRepositoryMap } from '@/lib/coworkRepoMap'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
@@ -20,10 +19,21 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   bashJobsList,
+  finishRunResources,
   projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import {
+  CoworkInspectorFrame,
+  CoworkInspectorProvider,
+  CoworkSidePanel,
+  type InspectorLayout,
+} from '@/containers/CoworkSidePanel'
+import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
@@ -38,7 +48,12 @@ import {
   recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
-import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
+import {
+  collectedJobId,
+  commandOf,
+  countToolCalls,
+  finishedJobPatch,
+} from '@/lib/coworkTasks'
 import {
   INTERRUPTED_BY_RUN_END,
   findTaskByJob,
@@ -59,10 +74,31 @@ import {
 import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { useMessageQueue } from '@/stores/message-queue-store'
+import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
+import { useModelCapabilities } from '@/hooks/useModelCapabilities'
+import {
+  ContextOverflowError,
+  isContextOverflow,
+  planTurn,
+} from '@/lib/coworkBudget'
+import { restoreDeadline, startDeadline } from '@/lib/runDeadline'
+import { accountedTotal } from '@/lib/coworkReadiness'
+import {
+  formatChangeSummary,
+  janAuthoredChanges,
+} from '@/lib/coworkChangeSummary'
+import {
+  loadToolActivity,
+  recordLifecycle,
+  recordToolActivity,
+  type ToolActivityItem,
+} from '@/lib/toolActivity'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
@@ -104,7 +140,25 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
+import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import type { AskRecord } from '@/types/coworkSession'
+import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
+import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
+import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
+import { recordPayloadUsage } from '@/lib/payloadUsage'
+import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
+import { usageEventPayload } from '@/lib/executionTimeline'
+import { TurnUsageDetails } from '@/components/TurnUsageDetails'
+import { recordMemoryUses } from '@/lib/memoryUses'
+import type { TurnMemory } from '@/types/coworkSession'
+import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
+import {
+  NO_SESSION,
+  useCoworkView,
+  type CoworkRail,
+} from '@/hooks/useCoworkView'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import {
   deriveFromSubagent,
@@ -122,6 +176,7 @@ import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
+import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
 import {
   codeRefToken,
@@ -146,10 +201,22 @@ import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
+import { janAuthoredPaths } from '@/lib/coworkOrigins'
+import {
+  deriveRunOutcome,
+  shouldShowRunOutcome,
+} from '@/lib/coworkRunOutcome'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
-import { CoworkAskCard } from '@/containers/CoworkAskCard'
+import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
+import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
+import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
+import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
+import { TeamControl, awaitingDecision } from '@/lib/coworkTeamControl'
+import { useTeamControls } from '@/hooks/useTeamControls'
+import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -174,6 +241,7 @@ import {
   NATIVE_INSTRUCTION_FILE,
   bindingKey,
   classifyInstruction,
+  isMissingFileError,
   parseSkillRequests,
   resolveSkills,
   unresolvedSkills,
@@ -189,20 +257,39 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
+import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
+import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
 import {
+  applyDecision,
+  conflictKey,
   parseTeamRequest,
   refuseGraph,
+  refuseUnresolved,
   renderTeamReport,
   runTeam,
+  scopeConflicts,
   teamProgress,
   TEAM_DEFAULT_PROMPT,
   type TeamState,
   type TeamTask,
 } from '@/lib/coworkTeam'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
+import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
+import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
+import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
+import { CoworkEventExport } from '@/containers/CoworkEventExport'
+import { recordEvents } from '@/lib/eventLog'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import {
+  beginTeamChild,
+  settleTeamChild,
+  useTeamChildrenVersion,
+  type ParallelOverride,
+} from '@/lib/teamChildren'
 import {
   describeDestinations,
   planDestinations,
@@ -211,6 +298,10 @@ import {
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
+import {
+  planReviewDecision,
+  renderPlanReviewResult,
+} from '@/lib/coworkPlanReview'
 import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
@@ -224,11 +315,12 @@ import {
   isAbortLike,
   answerAsk,
   runTurn,
+  untilStopped,
   type RunOutcome,
   type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
-import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import {
   listSubagents,
   type SubagentDefinition,
@@ -236,10 +328,15 @@ import {
 import {
   parseSubagentRequest,
   resolveSubagent,
+  subagentActorId,
   parentToolNames,
   runSubagent,
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
+import { errorText } from '@/lib/errorText'
+import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
+import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
+import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -252,40 +349,44 @@ export const Route = createFileRoute(route.cowork as any)({
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
 /**
- * The model's configured context size, when it has one.
+ * The window a request has to fit inside, when it is known.
  *
- * Configured, not live: llama.cpp's `--fit` can pick a runtime `n_ctx` far from
- * this, and that is only knowable once the model is loaded. The measurement
- * layer labels it as an estimate for exactly that reason, so what is wanted
- * here is the honest configured number or nothing at all.
+ * Resolved by `useModelCapabilities` (AH-195) rather than read from one
+ * settings field: an OpenAI-compatible server reports its window under any of
+ * several names, and reading only Jan's own `ctx_len` left every such endpoint
+ * permanently "not known". When a local runtime has answered this is its
+ * effective `n_ctx`, which `--fit` may have set well below the model's
+ * training size -- the smaller number is the real limit.
  */
 const configuredContextTokens = (
-  model:
-    | {
-        settings?: Record<string, { controller_props?: { value?: unknown } }>
-      }
-    | null
-    | undefined
-): number | null => {
-  const value = model?.settings?.ctx_len?.controller_props?.value
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value
-  }
-  // Some providers store it as a string from a number input.
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed) && parsed > 0) return parsed
-  }
-  return null
-}
+  caps: { contextTokens: number | null } | null | undefined
+): number | null => caps?.contextTokens ?? null
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Stable empty lane, so a session with no run does not re-render per write. */
+const NO_LIVE_TURNS: CoworkTurn[] = []
+
+/** Below 768px Cowork shows one of these at a time. */
+type CoworkPhoneView = 'content' | 'output' | 'details'
+const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
+
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const { selectedModel, selectedProvider } = useModelProvider()
+  // Resolved once for the route: the readiness card, the context measurement
+  // and the run all have to be talking about the same window.
+  // The snapshot of the dispatch now in flight, so its reply's usage can be
+  // recorded against the payload it actually counted.
+  // By session: the sink reports which session a dispatch was for, and a
+  // snapshot from one session's run must not be stamped on another's reply.
+  const lastSnapshotRef = useRef<Record<string, PromptSnapshotRef>>({})
+  const modelCapabilities = useModelCapabilities(
+    selectedModel as never,
+    selectedProvider as never
+  )
 
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
@@ -324,18 +425,36 @@ function CoworkPage() {
     setConfirmDirectEdit(false)
   }, [session?.id, folder])
 
-  const [running, setRunning] = useState(false)
-
-  const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
-  const liveTurnsRef = useRef<CoworkTurn[]>([])
-  const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
-    null
+  // Everything about a run is the viewed session's, read from the run store by
+  // session id (janhq/jan#8905). This page used to hold one run for itself:
+  // a run in one session showed as running in every other, Stop aborted
+  // whichever run had started last, and a result arriving after a switch was
+  // drawn under the session in view.
+  const viewedId = session?.id ?? null
+  const running = useCoworkRun((s) => !!(viewedId && s.runs[viewedId]))
+  const liveTurns = useCoworkRun(
+    (s) => (viewedId ? s.liveTurns[viewedId] : undefined) ?? NO_LIVE_TURNS
   )
-  const [runError, setRunError] = useState<string | undefined>(undefined)
+  const runEnding = useCoworkRun((s) =>
+    viewedId ? s.outcomes[viewedId] : undefined
+  )
+  const stoppedBy: RunOutcome['stoppedBy'] | null = runEnding?.stoppedBy ?? null
+  const runError = runEnding?.errorText
   const [gitBranch, setGitBranch] = useState<string | null>(null)
+  /**
+   * The attached folder's detected tooling (AH-068 / AH-069 / AH-070), keyed
+   * by the folder it was read for so a slow read for the previous folder is
+   * never shown for the next. `loaded` is null while the read is in flight.
+   */
+  const [tooling, setTooling] = useState<{
+    folder: string
+    loaded: LoadedTooling | null
+  } | null>(null)
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
+  // Bumped when Jan itself writes the folder's JAN.md, so it is read again.
+  const [instructionsVersion, setInstructionsVersion] = useState(0)
   const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>(
     []
   )
@@ -376,33 +495,6 @@ function CoworkPage() {
    * describe a payload the run did not build.
    */
   const [runContext, setRunContext] = useState<ContextAccounting | null>(null)
-  /**
-   * Why the last run had no repository map, when it had none for a reason.
-   *
-   * Null covers both "there is one" and "there was nothing to map"; a string
-   * here is a failure the user can act on, and it is shown rather than
-   * swallowed. The run itself is never blocked by it.
-   */
-  const [repositoryMapNotice, setRepositoryMapNotice] = useState<string | null>(
-    null
-  )
-
-  /**
-   * Walk the tree a run is about to read, for its system prompt.
-   *
-   * A route-level wrapper only: the data folder is the app's to know, and the
-   * walk, the render and every cap belong to `coworkRepoMap`.
-   */
-  const buildRunRepositoryMap = useCallback(
-    async (root: string | null) => {
-      const dataFolder = await serviceHub
-        .app()
-        .getJanDataFolder()
-        .catch(() => null)
-      return await walkRepositoryMap(dataFolder, root)
-    },
-    [serviceHub]
-  )
 
   const access = accessOf(session ?? {})
   // Asked of the backend rather than assumed here: whether a folder can be
@@ -428,10 +520,12 @@ function CoworkPage() {
   const effective = effectiveAccess({
     persisted: access,
     capability: {
-      // Both write modes rest on the same confinement: an authorized writable
-      // root the tool gate holds to. A worktree needs Git as well, which the
-      // lifecycle reports by refusing to produce one.
-      managedWorktree: capabilityState.known && capabilityState.directEdit,
+      // Both write modes rest on an authorized writable root the tool gate
+      // holds to, but not on the same confinement: on Windows the sandbox can
+      // hold a run to a Jan-owned worktree and not to the user's folder. A
+      // worktree needs Git as well, which the lifecycle reports by refusing
+      // to produce one.
+      managedWorktree: capabilityState.known && capabilityState.managedWorktree,
       directEdit: capabilityState.known && capabilityState.directEdit,
     },
     capabilityKnown: capabilityState.known,
@@ -499,6 +593,21 @@ function CoworkPage() {
    * reported as one rather than quietly losing.
    */
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
+  // What `@` can name besides files (AH-204): this folder's skills and the
+  // saved agents, offered in the composer's one ranked list.
+  const referenceSources = useMemo(
+    () => ({
+      skills: availableSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      })),
+      agents: subagentDefs.map((agent) => ({
+        name: agent.name,
+        description: agent.description,
+      })),
+    }),
+    [availableSkills, subagentDefs]
+  )
 
   const {
     manifest: compat,
@@ -572,6 +681,12 @@ function CoworkPage() {
       // From the run's own snapshot when there is one, so the card and the
       // summary cannot disagree about whether anything is attributable.
       evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
+      // Only the read for this folder: a late answer for another is ignored.
+      tooling: folder
+        ? tooling?.folder === folder && tooling.loaded
+          ? tooling.loaded.readiness
+          : { state: 'loading' }
+        : undefined,
       // From the run's own payload once there is one. Before that the
       // categories that depend on it stay unknown rather than zero: a run that
       // has not been built has not sent nothing, it has sent nothing *yet*.
@@ -581,7 +696,7 @@ function CoworkPage() {
           systemPrompt: null,
           toolSchemas: null,
           messages: null,
-          configuredContextTokens: configuredContextTokens(selectedModel),
+          configuredContextTokens: configuredContextTokens(modelCapabilities),
         }),
     }
   }, [
@@ -594,19 +709,36 @@ function CoworkPage() {
     worktree,
     compat,
     runOrigins?.context.baseline,
+    tooling,
     advertisedToolCount,
     runContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
     selectedModel,
+    modelCapabilities,
   ])
 
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
   // session changed underneath a read that was already in flight.
   /** The last run's resolved skills, so a retake does not lose them. */
-  const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
+  /**
+   * A few words for the session-details trigger: the repository and branch,
+   * which is what someone glances at to confirm they are in the right place.
+   * The rest lives inside the dialog.
+   */
+  const sessionDetailsSummary = useMemo(() => {
+    const repo = readiness.folder?.split('/').filter(Boolean).pop()
+    if (!repo) return ''
+    return readiness.branch ? `${repo} · ${readiness.branch}` : repo
+  }, [readiness.folder, readiness.branch])
+
+  // A retake re-uses the skills of the turn it takes again -- that session's
+  // turn, not whichever session ran last.
+  const runSkillsRef = useRef<Record<string, ReturnType<typeof resolveSkills>>>(
+    {}
+  )
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
   const workspacePath = useSessionWorkspacePath(session?.id)
@@ -651,16 +783,29 @@ function CoworkPage() {
 
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
-  const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
+  const liveUsage: Usage | null = useCoworkRun(
+    (s) => (viewedId ? s.usage[viewedId] : undefined) ?? null
+  )
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
-  const [rail, setRail] = useState<
-    | { kind: 'preview'; path?: string }
-    | { kind: 'diff' }
-    | { kind: 'code' }
-    | { kind: 'tasks' }
-    | null
-  >(null)
+  // Held in a store rather than in this component: stepping into Settings
+  // unmounts the route, and coming back must return to the session as it was
+  // -- same rail, same place in the transcript -- not to a reset view.
+  const railBySession = useCoworkView((s) => s.railBySession)
+  const sessionIdForView = session?.id
+  const rail = railBySession[sessionIdForView ?? NO_SESSION] ?? null
+  // A rail opened before the first message belongs to the session that message
+  // starts.
+  useEffect(() => {
+    if (sessionIdForView) {
+      useCoworkView.getState().adoptPreSession(sessionIdForView)
+    }
+  }, [sessionIdForView])
+  const setRail = useCallback(
+    (next: CoworkRail) =>
+      useCoworkView.getState().setRail(sessionIdForView, next),
+    [sessionIdForView]
+  )
   // The last artifact previewed this session, so re-opening Preview from the
   // rail toolbar returns to it instead of an empty pane.
   const [lastPreviewPath, setLastPreviewPath] = useState<string | undefined>(
@@ -810,15 +955,15 @@ function CoworkPage() {
   const selectRail = useCallback(
     (mode: RailMode) => {
       if (mode === 'code') ensureCurrentSession()
-      setRail((current) => {
-        const kind =
-          mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
-        if (current?.kind === kind) return null
-        if (kind === 'preview') return { kind, path: lastPreviewPath }
-        return { kind }
-      })
+      const kind =
+        mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
+      if (rail?.kind === kind) {
+        setRail(null)
+        return
+      }
+      setRail(kind === 'preview' ? { kind, path: lastPreviewPath } : { kind })
     },
-    [lastPreviewPath]
+    [lastPreviewPath, rail?.kind, setRail, ensureCurrentSession]
   )
   /** The toolbar's semantic mode for the currently open rail, or null. */
   const activeRail: RailMode | null =
@@ -828,10 +973,6 @@ function CoworkPage() {
         ? 'activity'
         : (rail?.kind ?? null)
 
-  const [ask, setAsk] = useState<{
-    requestId: string
-    request: ReturnType<typeof parseAskRequest>
-  } | null>(null)
 
   const {
     containerRef: reasoningContainerRef,
@@ -860,6 +1001,23 @@ function CoworkPage() {
     invoke<string | null>('agent_git_branch', { project: folder })
       .then(setGitBranch)
       .catch(() => setGitBranch(null))
+  }, [folder])
+
+  // Read once per attached folder. A failure is a typed state, never a throw,
+  // and never stops the folder from being used.
+  useEffect(() => {
+    if (!folder) {
+      setTooling(null)
+      return
+    }
+    let alive = true
+    setTooling({ folder, loaded: null })
+    void loadProjectTooling(folder).then((loaded) => {
+      if (alive) setTooling({ folder, loaded })
+    })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Every instruction file at the attached root, in one pass.
@@ -903,7 +1061,7 @@ function CoworkPage() {
         } catch (e) {
           const message = messageOf(e)
           // Absent is the ordinary case and is not a failure.
-          return /not found|no such file|ENOENT/i.test(message)
+          return isMissingFileError(message)
             ? { name, role }
             : { name, role, error: message }
         }
@@ -934,7 +1092,7 @@ function CoworkPage() {
     return () => {
       alive = false
     }
-  }, [folder, serviceHub])
+  }, [folder, serviceHub, instructionsVersion])
 
   // Selected-code references staged by “Add to chat”: the visible prompt gets
   // the concise `@path:start-end` token, and the refs wait here until submit,
@@ -1000,31 +1158,133 @@ function CoworkPage() {
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
   // the conversation disappears the moment a follow-up run starts.
+  /**
+   * The canonical record of this session's tool calls. AH-050/AH-172.
+   *
+   * Reloaded when the session changes and when a run ends: during a run the
+   * live turns already carry the same states, and re-reading the log on every
+   * event would be a file read per tool call for no gain.
+   */
+  const [toolActivity, setToolActivity] = useState<ToolActivityItem[]>([])
+  useEffect(() => {
+    if (!session?.id) {
+      setToolActivity([])
+      return
+    }
+    let current = true
+    loadToolActivity(session.id).then((items) => {
+      if (current) setToolActivity(items)
+    })
+    return () => {
+      current = false
+    }
+  }, [session?.id, running])
+
   const displayedTurns = useMemo(
     () =>
-      running
-        ? [...(session?.turns ?? []), ...liveTurns]
-        : (session?.turns ?? []),
-    [running, liveTurns, session?.turns]
+      reconcileToolActivity(
+        running
+          ? [...(session?.turns ?? []), ...liveTurns]
+          : (session?.turns ?? []),
+        toolActivity
+      ),
+    [running, liveTurns, session?.turns, toolActivity]
   )
+
+  /**
+   * The last run's outcome, derived once from the evidence every other
+   * surface reads: the ledger, the tool record and the run's stop reason.
+   * Subscribed to the checkpoint chain so a new point, or a restore, is
+   * reflected without waiting for an unrelated render.
+   */
+  const checkpointChain = useCoworkCheckpoints((s) =>
+    session?.id ? s.bySession[session.id] : undefined
+  )
+  const runOutcome = useMemo(
+    () =>
+      deriveRunOutcome({
+        running,
+        stoppedBy,
+        errorText: runError,
+        turns: displayedTurns,
+        summary: runOrigins?.summary ?? null,
+        destination: runOrigins?.context.destination ?? null,
+        tree:
+          runOrigins?.context.tree ?? runOrigins?.context.binding.folder ?? null,
+        sessionId: session?.id ?? null,
+        runId: session?.id ?? null,
+        finishedAt: runOrigins?.at ?? null,
+        checkpoints: checkpointChain ?? [],
+        handlers: {
+          // Opening a file resolves against the attached folder or the
+          // sandbox; a managed worktree's files are reviewed in Changes.
+          openResult:
+            runOrigins?.context.destination === 'repository' ||
+            runOrigins?.context.destination === 'sandbox',
+          reviewChanges: true,
+          continue: true,
+          retry: true,
+        },
+      }),
+    [
+      running,
+      stoppedBy,
+      runError,
+      displayedTurns,
+      runOrigins,
+      session?.id,
+      checkpointChain,
+    ]
+  )
+  // A presentation filter: the turns themselves are untouched, so turning the
+  // option off puts the activity straight back without a reload.
+  const hideCompletedToolsSetting = useCoworkDisplay((s) => s.hideCompletedTools)
+  // A temporary look at what is hidden. Not persisted, and reset whenever the
+  // setting itself changes, so it never silently overrides the preference.
+  const [revealHiddenTools, setRevealHiddenTools] = useState(false)
+  useEffect(() => setRevealHiddenTools(false), [hideCompletedToolsSetting])
+  const hideCompletedTools = hideCompletedToolsSetting && !revealHiddenTools
   const uiMessages = useMemo(
-    () => coworkTurnsToUIMessages(displayedTurns, session?.id ?? 'cowork'),
-    [displayedTurns, session?.id]
+    () =>
+      coworkTurnsToUIMessages(displayedTurns, session?.id ?? 'cowork', {
+        hideCompletedTools,
+      }),
+    [displayedTurns, session?.id, hideCompletedTools]
   )
+
+  // Every dispatch this session made, in order. The Nth belongs to the Nth
+  // assistant message, which is how a snapshot stays with its own invocation
+  // rather than being shown as a "latest" beside an older reply.
+  const sessionSnapshots = useCoworkRun((s) =>
+    session?.id ? s.promptSnapshots[session.id] : undefined
+  )
+  const snapshotByMessageId = useMemo(() => {
+    const byId = new Map<string, { id: string; hash: string; redactions: number }>()
+    if (!sessionSnapshots?.length) return byId
+    const assistantIds = uiMessages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.id)
+    assistantIds.forEach((id, i) => {
+      const ref = sessionSnapshots[i]
+      if (ref) byId.set(id, ref)
+    })
+    return byId
+  }, [sessionSnapshots, uiMessages])
 
   const usage = liveUsage ?? session?.lastUsage ?? null
   const tokenSource = useMemo(
     () => ({
       threadId: session?.id,
-      usage: usage
-        ? {
-            inputTokens: usage.prompt_tokens,
-            outputTokens: usage.completion_tokens,
-            totalTokens: usage.total_tokens,
-          }
-        : undefined,
+      // Cache counts included: the counter's popover shows them for Cowork
+      // exactly as it does for Chat.
+      usage: fromCoworkUsage(usage),
+      // This session's requests only, from its own turns: how many reused the
+      // cache, kept apart from how many tokens were cached.
+      session: summarizeUsage(
+        (session?.turns ?? []).map((turn) => fromCoworkUsage(turn.usage))
+      ),
     }),
-    [session?.id, usage]
+    [session?.id, session?.turns, usage]
   )
 
   // Live runs write into the run store; a committed session carries its own.
@@ -1188,26 +1448,34 @@ function CoworkPage() {
         : t('common:coworkAccess.unsupportedPlatform')
       : t('common:coworkAccess.capabilityLoading'),
   }
-  const changeCounts = useMemo(() => {
-    const sandboxAdds = fileDiffs.reduce((s, f) => s + f.additions, 0)
-    const sandboxDels = fileDiffs.reduce((s, f) => s + f.deletions, 0)
-    const gitFiles = git.status?.files.length ?? 0
-    return {
-      fileCount: fileDiffs.length + gitFiles,
-      additions: sandboxAdds + (git.status?.additions ?? 0),
-      deletions: sandboxDels + (git.status?.deletions ?? 0),
-    }
-  }, [fileDiffs, git.status])
+  /**
+   * What this session changed, and only that.
+   *
+   * The counts used to include the attached repository's whole dirty working
+   * tree, so a branch someone left half-finished was reported as Jan having
+   * written forty files. That is a false claim about authorship, not a
+   * generous count.
+   */
+  const changeCounts = useMemo(
+    () => janAuthoredChanges(fileDiffs, git.status),
+    [fileDiffs, git.status]
+  )
 
   // Background shell jobs, polled here rather than inside the Activity panel:
   // the chip derives its counts from the same list, and polling only while the
   // panel was open let the two disagree — a collected job still spinning in the
   // chip while the panel showed it finished.
+  // Scoped to the session on screen: the backend lists only that
+  // conversation's jobs, and the list is dropped the moment the session
+  // changes, so one session's jobs can never settle -- or block -- another's.
   const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  const liveJobsSession = session?.id
   useEffect(() => {
+    setLiveJobs([])
+    if (!liveJobsSession) return
     let alive = true
     const poll = () => {
-      void bashJobsList()
+      void bashJobsList(liveJobsSession)
         .then((jobs) => {
           if (alive) setLiveJobs(jobs)
         })
@@ -1222,7 +1490,7 @@ function CoworkPage() {
       alive = false
       clearInterval(id)
     }
-  }, [])
+  }, [liveJobsSession])
 
   /**
    * What is holding this session's authority in place, if anything.
@@ -1272,16 +1540,20 @@ function CoworkPage() {
   // The backend is the authority on whether a backgrounded shell is still
   // running: the agent may not collect a job for many turns, and until it does
   // nothing else would ever settle that row.
+  // It also says how the command ended -- exit code, signal, or a stop request
+  // -- so an uncollected failure reads as a failure, not a success.
   useEffect(() => {
+    if (!liveJobsSession) return
     const state = useCoworkActivity.getState()
     for (const job of liveJobs) {
       if (!job.finished) continue
-      const task = findTaskByJob(state, job.jobId)
+      const task = findTaskByJob(state, job.jobId, liveJobsSession)
       if (task && task.status === 'running') {
-        state.patchTask(task.id, { status: 'done', endedAt: Date.now() })
+        const patch = finishedJobPatch(job)
+        state.patchTask(task.id, { ...patch, endedAt: patch.endedAt ?? Date.now() })
       }
     }
-  }, [liveJobs])
+  }, [liveJobs, liveJobsSession])
 
   // Advances the cards' elapsed labels. Only while work is live: an idle
   // conversation must not re-render every second.
@@ -1324,6 +1596,31 @@ function CoworkPage() {
     ) => {
       const patch = patchForOutcome(result, Date.now())
       if (patch) useCoworkActivity.getState().patchTask(task.id, patch)
+      // Into the execution record too, in sequence with the calls around it:
+      // a stop is something the run did, and a stop that failed is one the
+      // audit has to show as having failed.
+      if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+        void recordLifecycle(
+          {
+            session: task.sessionId,
+            run: task.workflowId,
+            source: 'cowork',
+            parent: task.callId,
+          },
+          {
+            id: `stop:${task.callId}:${Date.now()}`,
+            lifecycle: task.kind === 'shell' ? 'background-job' : 'subagent',
+            phase: result.outcome === 'cancelled' ? 'cancelled' : 'failed',
+            summary:
+              task.kind === 'shell'
+                ? `Stopped ${task.jobId ?? 'a command'}`
+                : `Stopped ${task.title}`,
+            detail: result.error ?? '',
+            jobId: task.jobId,
+            taskId: task.kind === 'agent' ? task.callId : undefined,
+          }
+        )
+      }
       return patch != null
     },
     []
@@ -1369,10 +1666,6 @@ function CoworkPage() {
     [running, displayedTurns]
   )
 
-  const pushLive = useCallback((turns: CoworkTurn[]) => {
-    liveTurnsRef.current = [...liveTurnsRef.current, ...turns]
-    setLiveTurns(liveTurnsRef.current)
-  }, [])
 
   /**
    * Drive one request. `text` is null for a resume — a retry after a failure
@@ -1380,10 +1673,34 @@ function CoworkPage() {
    * would leave the model reading it twice.
    */
   const runRequest = async (text: string | null) => {
-    if (running) return
     const sid = ensureCurrentSession()
+    // This session's run only: another session running is no reason to wait.
+    if (useCoworkRun.getState().runs[sid]) return
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
+    /**
+     * The model this run is sent with: the session's own choice, or -- for a
+     * session that has not made one -- the picker's, recorded on the session
+     * so its next run uses the same one (janhq/jan#8905). Shadows the
+     * picker's values for the rest of this function on purpose: nothing in a
+     * run should read the global selection after this point.
+     */
+    const modelState = useModelProvider.getState()
+    const runChoice =
+      current?.model ??
+      (modelState.selectedModel
+        ? {
+            provider: modelState.selectedProvider,
+            id: modelState.selectedModel.id,
+          }
+        : null)
+    const selectedProvider = runChoice?.provider ?? ''
+    const selectedModel = runChoice
+      ? (modelState.providers
+          .find((p) => p.provider === runChoice.provider && p.active !== false)
+          ?.models.find((m) => m.id === runChoice.id) ?? null)
+      : null
+    if (runChoice && !current?.model) store.setModel(sid, runChoice)
     /**
      * Skills asked for by *this* turn, frozen for the whole run.
      *
@@ -1409,9 +1726,9 @@ function CoworkPage() {
     const skillNames = runRegistry.available.map((skill) => skill.name)
     const runSkills =
       text == null
-        ? runSkillsRef.current
+        ? (runSkillsRef.current[sid] ?? [])
         : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
-    runSkillsRef.current = runSkills
+    runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
       toast.error(t('common:selectModel'))
@@ -1450,13 +1767,112 @@ function CoworkPage() {
       }
     }
 
-    setStoppedBy(null)
-    setRunError(undefined)
-    setLiveUsage(null)
-    liveTurnsRef.current = text ? [{ role: 'user', content: text }] : []
-    setLiveTurns(liveTurnsRef.current)
-    useCoworkRun.getState().resetSubagents(sid)
-    setRunning(true)
+    // Claimed before the first await (janhq/jan#8905): the run id, its
+    // cancellation handle and the session's running state all exist from
+    // here, so Stop reaches a run that is still preparing and a second request
+    // in this session waits, while other sessions are untouched. Starting the
+    // run also clears this session's last outcome, usage and subagent lanes.
+    const runId = crypto.randomUUID()
+    const controller = new AbortController()
+    const handle = beginRun(sid, runId, controller)
+    useCoworkRun.getState().startRun(sid, runId)
+    // AH-005: the run's first canonical event, recorded where the run is
+    // claimed so a run stopped during preparation still has a start and an
+    // end. The title is the user's own words, so it is content: a
+    // metadata-only export leaves it out.
+    recordEvents([
+      {
+        id: `run:${runId}:started`,
+        session: sid,
+        run: runId,
+        kind: 'run.started',
+        payload: { model: selectedModel.id, title: text },
+      },
+    ])
+    const recordRunEnded = (ending: RunEnding | null) =>
+      // AH-174: what the run's commands used, taken as it ends. A backend
+      // that cannot say is an end without figures, never an end not recorded.
+      void finishRunResources(runId)
+        .catch(() => null)
+        .then((resources) =>
+          recordEvents([
+            {
+              id: `run:${runId}:ended`,
+              session: sid,
+              run: runId,
+              kind: 'run.ended',
+              payload: {
+                stoppedBy: ending?.stoppedBy ?? 'unknown',
+                detail: ending?.errorText ?? '',
+                ...(resources ? { resources } : {}),
+              },
+            },
+          ])
+        )
+    // This run's live lane. Every write names the run, so once the run is
+    // stopped, replaced or its session deleted, a late write is refused
+    // rather than drawn under whatever session is in view.
+    let runTurns: CoworkTurn[] = text ? [{ role: 'user', content: text }] : []
+    // AH-026: the live lane is also kept with the session while the run goes,
+    // so a run the app is killed under comes back as an interrupted turn.
+    const runStartedAt = Date.now()
+    const runBaseCount = current?.messages?.length ?? 0
+    let lastCheckpointAt: number | undefined
+    const saveInFlight = (step = false) => {
+      const at = Date.now()
+      if (!checkpointDue(lastCheckpointAt, at, step)) return
+      lastCheckpointAt = at
+      // Only while this run still owns the session's live lane.
+      if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
+      useCoworkSessions
+        .getState()
+        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, runTurns, at))
+    }
+    const publish = () => {
+      useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
+      saveInFlight()
+    }
+    const pushLive = (
+      turns: CoworkTurn[],
+      snapshot: PromptSnapshotRef | undefined = lastSnapshotRef.current[sid]
+    ) => {
+      // AH-078. Bind each assistant row to the dispatch that produced it,
+      // here, because here is where the row first exists: at dispatch the
+      // lane holds the user turn and nothing else, so a reference written
+      // then has nothing to land on. The snapshot is this session's latest,
+      // so a continuation, a retry and a compaction each carry their own --
+      // unless the caller names the step's own (see `stepSnapshot`).
+      const stamped = turns.map((turn) =>
+        turn.role === 'assistant' && !turn.promptSnapshot && snapshot
+          ? { ...turn, promptSnapshot: snapshot }
+          : turn
+      )
+      runTurns = [...runTurns, ...stamped]
+      publish()
+      // AH-083: the memories this row's request carried now know the turn and
+      // the exact snapshot they went out in. Here for the same reason as the
+      // stamp above: this is where the row, its memory and its snapshot meet.
+      // Named by this run's session, never the one in view.
+      for (const turn of stamped) {
+        if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
+        void recordMemoryUses({
+          sessionId: sid,
+          projectRoot: runAuthority.folder ?? undefined,
+          memory: turn.memory,
+          turnId: turn.promptSnapshot?.id
+            ? `turn-${turn.promptSnapshot.id}`
+            : undefined,
+          snapshotId: turn.promptSnapshot?.id,
+        })
+      }
+    }
+    const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
+      const next = apply(runTurns)
+      if (next === runTurns) return
+      runTurns = next
+      publish()
+    }
+    publish()
     /**
      * The authority this run holds, taken once and kept for its lifetime.
      *
@@ -1475,11 +1891,65 @@ function CoworkPage() {
       authority: runAuthority,
     })
 
+    /**
+     * Until the turn's own try/finally takes the run over (below), its
+     * preparation owns it: Stop ends it here, and so does a probe that fails.
+     * Neither did -- the session stayed running for as long as a probe took,
+     * or for good once one threw. janhq/jan#8905.
+     */
+    const abandon = (ending: RunEnding) => {
+      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
+        (id) => id !== sid
+      )
+      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
+      endRun(sid, runId)
+      runWorkDone()
+      for (const resolve of handle.pendingAsks.values()) resolve(null)
+      handle.pendingAsks.clear()
+      // What the user asked is kept, as it is when a turn stops later on.
+      const prior = current?.messages ?? []
+      useCoworkSessions.getState().commitTurns(
+        sid,
+        runTurns,
+        text
+          ? [
+              ...prior,
+              {
+                id: `${sid}-user-${prior.length}`,
+                role: 'user',
+                parts: [{ type: 'text', text }],
+              } as any,
+            ]
+          : prior,
+        useCoworkRun.getState().subagents[sid] ?? [],
+        undefined
+      )
+      useCoworkRun.getState().finishRun(sid, runId, ending)
+      recordRunEnded(ending)
+      // Input typed for a run that never ran is held for the user, never
+      // dropped and never sent on its own. janhq/jan#8864.
+      useMessageQueue.getState().holdQueue(sid)
+    }
+    const STOPPED = Symbol('stopped')
+    /** A preparation step, given up the moment Stop is pressed. */
+    const prepared = async <T,>(work: Promise<T>): Promise<T | typeof STOPPED> => {
+      try {
+        return await untilStopped(work, controller.signal)
+      } catch (e) {
+        abandon(
+          isAbortLike(e, controller.signal)
+            ? { stoppedBy: 'aborted' }
+            : { stoppedBy: 'error', errorText: errorText(e) }
+        )
+        return STOPPED
+      }
+    }
+
     // Local models load before the first token, but only on a cold start. Probe
     // the engine so the load card shows on a real load, not on every warm run.
     if (selectedProvider === 'llamacpp') {
       try {
-        const loaded = await getLoadedModels()
+        const loaded = await untilStopped(getLoadedModels(), controller.signal)
         if (!loaded.includes(selectedModel.id)) {
           useAppState.getState().updateModelLoadProgress(undefined)
           useAppState.getState().updateLoadingModel(true)
@@ -1487,6 +1957,7 @@ function CoworkPage() {
       } catch {
         // Probe failed; skip the card rather than flash it every run.
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
     }
 
     /**
@@ -1519,7 +1990,10 @@ function CoworkPage() {
       let captured: GitBaseline
       try {
         captured = baselineFromStatus(
-          await loadGitStatus(carried.readRoot, 'all'),
+          await untilStopped(
+            loadGitStatus(carried.readRoot, 'all'),
+            controller.signal
+          ),
           baselineBinding
         )
       } catch {
@@ -1527,6 +2001,7 @@ function CoworkPage() {
         // before-state, nothing found later can be dated at all.
         captured = unavailableBaseline(baselineBinding)
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
       runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
@@ -1622,7 +2097,7 @@ function CoworkPage() {
 
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
-    await getSandboxStatus()
+    if ((await prepared(getSandboxStatus())) === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -1681,7 +2156,9 @@ function CoworkPage() {
      * what that screen already says rather than a second story about the same
      * platform.
      */
-    const canIsolate = capabilityState.known && capabilityState.directEdit
+    const canIsolate =
+      capabilityState.known && capabilityState.managedWorktree
+    const canEditDirectly = capabilityState.known && capabilityState.directEdit
     /**
      * The second gate's inputs, frozen with the first.
      *
@@ -1694,30 +2171,27 @@ function CoworkPage() {
      */
     const runCapability = {
       managedWorktree: canIsolate,
-      directEdit: canIsolate,
+      directEdit: canEditDirectly,
     }
     const runConsent = liveGrant
       ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
       : undefined
     const runWorktreePath = worktree?.path ?? null
-    /**
-     * The repository map for the tree this run reads, walked now.
-     *
-     * Built at run start rather than when a folder is attached, for the same
-     * reason `runReadRoot` is: a managed run reads its worktree, not the
-     * checkout, and a map of the wrong tree is worse than none. Walked fresh
-     * each run so it describes the repository as it stands, then frozen — a
-     * file created mid-run reaches the model through the tools, not through a
-     * map that moved underneath the prompt prefix.
-     *
-     * A failure is reported, never guessed around: the run goes ahead with no
-     * map and the readiness card says the category is zero, because a run that
-     * refuses to start over an orientation aid would be worse than one that
-     * says it did without.
-     */
-    const runRepositoryMap = await buildRunRepositoryMap(runReadRoot)
-    setRepositoryMapNotice(runRepositoryMap.error ?? null)
+    // The same facts the readiness card shows when the run reads the folder
+    // on screen; read afresh for any other root (a managed worktree). Given up
+    // on Stop like the rest of preparation, and never a reason not to run.
+    let runTooling: string | null = null
+    if (runReadRoot) {
+      const cached =
+        tooling?.folder === runReadRoot ? tooling.loaded : null
+      const loaded = cached ?? (await prepared(loadProjectTooling(runReadRoot)))
+      if (loaded === STOPPED) return
+      runTooling = loaded.prompt
+    }
     const transport = new CoworkChatTransport(sid, {
+      // Captured now: every step of this run uses it, whatever the picker
+      // says by then (janhq/jan#8905).
+      model: { provider: selectedProvider, id: selectedModel.id },
       planMode: isReadOnly(runMode),
       subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
@@ -1735,22 +2209,39 @@ function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
-      repositoryMap: runRepositoryMap.text,
+      projectTooling: runTooling,
       openingInspection: inspecting,
     })
-    await transport.refreshTools()
+    // Project memory is keyed by the attached folder's own identity file, not
+    // by the tree this run reads: a managed worktree is the same project, and
+    // a session with no folder has no project memory at all. Never temporary.
+    transport.setMemoryBinding({
+      projectRoot: current?.folder ?? undefined,
+      temporary: false,
+    })
+    if ((await prepared(transport.refreshTools())) === STOPPED) return
     // Now the count is a fact rather than a guess, so the readiness card can
     // stop saying the tool set has not been built.
     const advertised = Object.keys(transport.advertisedTools)
-    setAdvertisedToolCount(advertised.length)
-    setAdvertisedToolNames(advertised)
+    // Describes the session in view only: a background run must not rewrite
+    // the readiness card of the session the user is looking at.
+    if (sid === sessionIdRef.current) {
+      setAdvertisedToolCount(advertised.length)
+      setAdvertisedToolNames(advertised)
+    }
 
-    const controller = new AbortController()
-    abortRef.current = controller
-    // One run, one workflow id. Registering the run is what makes stopping it —
-    // as a whole, or one dispatched child at a time — actually reach anything.
-    const runId = crypto.randomUUID()
-    beginRun(sid, runId, controller)
+    // Missing-path reads this run has seen, shared by the run and its
+    // children and dropped with it (janhq/jan#8906).
+    const runReadFailures = new Map<string, number>()
+    /**
+     * The snapshot of the request whose response the runner just read, taken
+     * before that step's tool calls run. The session's latest snapshot is not
+     * that once a call dispatches a subagent: the child sends requests through
+     * the same model, under the same session. One request, one invocation id,
+     * shared by its snapshot, its usage, its memory uses and the execution
+     * events of the calls it asked for.
+     */
+    let stepSnapshot: PromptSnapshotRef | undefined
     const run: RunContext = {
       sessionId: sid,
       runId,
@@ -1764,10 +2255,10 @@ function CoworkPage() {
 
     const sink: StreamSink = {
       onText: (delta) => {
-        const last = liveTurnsRef.current[liveTurnsRef.current.length - 1]
+        const last = runTurns[runTurns.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
-          setLiveTurns([...liveTurnsRef.current])
+          publish()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
         }
@@ -1778,12 +2269,10 @@ function CoworkPage() {
         ]),
       onToolArgsDelta: () => {},
       onToolCall: (call) => {
-        const row = liveTurnsRef.current.find(
-          (turn) => turn.callId === call.toolCallId
-        )
+        const row = runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
-          setLiveTurns([...liveTurnsRef.current])
+          publish()
         }
         // A shell command is background work the moment it starts, and its
         // arguments are the only place the command line exists.
@@ -1794,6 +2283,15 @@ function CoworkPage() {
             command,
             anchorMessageId: anchorMessageId(),
           })
+          recordEvents([
+            {
+              id: `job:${call.toolCallId}:started`,
+              session: run.sessionId,
+              run: run.runId,
+              kind: 'job.started',
+              payload: { tool: 'bash', command },
+            },
+          ])
         }
       },
     }
@@ -1809,7 +2307,7 @@ function CoworkPage() {
         [
           ...(useCoworkSessions.getState().sessions.find((s) => s.id === sid)
             ?.turns ?? []),
-          ...liveTurnsRef.current,
+          ...runTurns,
         ],
         sid
       )
@@ -1864,6 +2362,15 @@ function CoworkPage() {
       // moment the agent name, description and model are known
       // together, and the record has to exist for the queue position
       // that arrives next to land on something.
+      recordEvents([
+        {
+          id: `agent:${run.runId}:${callId}:dispatched`,
+          session: run.sessionId,
+          run: run.runId,
+          kind: 'agent.dispatched',
+          payload: { agent: resolved.name, model: selectedModel.id, description: req.description },
+        },
+      ])
       recordAgentDispatch(run, {
         callId,
         agentName: resolved.name,
@@ -1916,6 +2423,18 @@ function CoworkPage() {
         const child = await runSubagent({
           resolved,
           description: req.description,
+          // The same identity the child's dispatched calls carry, for the
+          // calls the runner refuses without dispatching.
+          activity: () => ({
+            session: sid,
+            run: runId,
+            agent: resolved.name,
+            // AH-110: what a change it makes is attributed to. A role Jan
+            // ships is a role; anything else is an agent by that name.
+            agentId: subagentActorId(resolved),
+            parentAgent: 'agent',
+            project: workspacePath ?? '',
+          }),
           // The parent's instance: a second one would mean a second
           // llama-server load for the same model.
           model: transport.model,
@@ -1930,25 +2449,32 @@ function CoworkPage() {
             folderAccess: promptFolderAccess(origins),
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
-            // Only when the child reads the same tree. An isolated task gets
-            // a checkout of its own, and handing it the parent's map would
-            // describe a different directory with the same confidence.
-            repositoryMap:
-              childFolder === runReadRoot ? runRepositoryMap.text : null,
           },
           signal: childAbort.signal,
           sessionTokens: 0,
           // A child never gets `todo`/`ask`/`task`, so these refuse
           // rather than execute: a model can still emit a call to a
           // tool that was never advertised.
-          dispatch: (call) =>
+          dispatch: (call, toolSignal) =>
             dispatchCoworkTool(call, {
+              // Recorded under the parent's run and this child's own name, so
+              // the timeline shows which agent did a thing without splitting
+              // the run it belongs to.
+              activity: {
+                session: sid,
+                run: runId,
+                agent: resolved.name,
+                agentId: subagentActorId(resolved),
+                parentAgent: 'agent',
+                project: workspacePath ?? '',
+              },
               // The owner the grant was issued to, not the run's session: an
               // isolated child's authority is its own, and the backend refuses a
               // grant presented under any other id.
               sessionId: childOwner,
               readOnlyFolder: childFolder,
               mode: runMode,
+              readFailures: runReadFailures,
               writeGrant: childGrant,
               // A child in its own checkout is a managed-worktree run of its
               // own, consented to under its own owner id. Inheriting the
@@ -1973,11 +2499,23 @@ function CoworkPage() {
                 (current?.folder ?? null),
               webSearch,
               // A subagent's mutations are the session's mutations, so
-              // they go through the same prompt rather than around it.
-              onApprove: (callId, toolName) =>
+              // they go through the same prompt rather than around it --
+              // shown on its own, because the child's calls are not parts of
+              // any message on screen.
+              onApprove: (callId, toolName, input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel:
+                      (destination ? destination.path : current?.folder) ??
+                      undefined,
+                    preview,
+                    origin: destination
+                      ? `${resolved.name} (its own checkout)`
+                      : resolved.name,
+                    signal,
+                  }),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
                   sessionId: sid,
@@ -2001,9 +2539,21 @@ function CoworkPage() {
                 output: 'A subagent cannot dispatch subagents.',
                 isError: true,
               }),
-            }),
+            }, toolSignal),
           events: {
             onQueued: (waiting) => {
+              // The dispatching call's item says it is waiting for a slot,
+              // in sequence with everything else the run did.
+              void recordToolActivity({
+                call: callId,
+                tool: 'task',
+                session: sid,
+                run: runId,
+                agent: 'main',
+                source: 'cowork',
+                phase: 'queued',
+                detail: `waiting for a slot (position ${waiting})`,
+              })
               useCoworkRun
                 .getState()
                 .queueSubagent(sid, callId, resolved.name, waiting)
@@ -2071,26 +2621,36 @@ function CoworkPage() {
         ]
       : [...baseMessages]
 
-    // Measured from what the transport *dispatched*, not from `messages`.
-    //
-    // These are not the same payload. `sendMessages` trims the window, and
-    // auto-compacts it when that is configured, after the caller has handed
-    // its messages over -- so measuring here, before the send, reported a
-    // conversation the model never received on exactly the long runs where the
-    // number matters most. The transport now records what went out and calls
-    // back with the accounting for it, once per step.
-    transport.setContextWindow(configuredContextTokens(selectedModel))
-    // A new run must not show the previous one's payload while it waits for
-    // its own first step: a stale number looks exactly like a fresh one.
-    transport.forgetDispatch()
-    setRunContext(transport.measureContext())
-    transport.onDispatch = (accounting) => {
-      // The run that owns this transport is the only one allowed to move the
-      // card. A callback that outlived its run would write a later run's
-      // payload onto an earlier run's session.
-      if (sessionIdRef.current !== sid) return
-      setRunContext(accounting)
-    }
+    // Measured here rather than at tool-refresh time because this is where the
+    // payload exists: `messages` is what the request carries, and the transport
+    // adds the system prompt and the advertised tools to it. Measuring earlier
+    // would report a conversation one turn short of the one being sent.
+    const measured = transport.measureContext(
+      messages,
+      configuredContextTokens(modelCapabilities)
+    )
+    if (sid === sessionIdRef.current) setRunContext(measured)
+
+    /**
+     * Check the window before dispatching, not after the server complains.
+     * AH-088.
+     *
+     * A request that fills the window leaves the model nowhere to answer, and
+     * some providers respond to that by silently dropping the front of the
+     * conversation -- so the run continues, having quietly forgotten what it
+     * was asked. Refusing here keeps the failure visible and the transcript
+     * intact. An unknown window is never a refusal: it is a limit Jan could
+     * not discover, not a limit that was exceeded.
+     */
+    const accounted = accountedTotal(measured)
+    const plan = planTurn({
+      projected: accounted.tokens,
+      window: measured.budget.known === false ? null : measured.budget.tokens,
+    })
+    const overflow =
+      plan.status === 'over' && accounted.complete
+        ? new ContextOverflowError(plan)
+        : null
 
     // Recorded before the turn runs, so a crash mid-inspection is resumed as an
     // inspection rather than as work nobody authorised.
@@ -2101,12 +2661,46 @@ function CoworkPage() {
       })
     }
 
+    /**
+     * The run's wall-clock budget, persisted so a restart cannot reset it.
+     * AH-018/AH-019.
+     */
+    const stored = current?.runBudget
+    const resuming = stored?.runId === runId
+    const runDeadline =
+      (resuming
+        ? restoreDeadline(
+            { at: stored.deadlineAt, budgetMs: stored.deadlineBudgetMs },
+            Date.now()
+          )
+        : null) ?? startDeadline(Date.now())
+    useCoworkSessions.getState().setRunBudget(sid, {
+      runId,
+      steps: resuming ? stored.steps : 0,
+      maxSteps: MAX_AGENT_STEPS,
+      deadlineAt: runDeadline.at,
+      deadlineBudgetMs: runDeadline.budgetMs,
+    })
+
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
+      // Raised here rather than returned earlier so the turn is torn down the
+      // way every other ending is: the user's own message is committed, the
+      // run is closed and nothing is left running.
+      if (overflow) throw overflow
       outcome = await runTurn({
         messages,
         signal: controller.signal,
+        /**
+         * When this run must be over. AH-019.
+         *
+         * Restored rather than restarted when a run was already under way:
+         * the wall clock kept running while the app was closed, and handing a
+         * resumed run a fresh half hour would make the deadline mean nothing.
+         */
+        deadline: runDeadline,
+        now: Date.now,
         // Starts at zero each request, matching Rust: `SessionBudget` is built
         // inside `run_orchestration_streamed`, so the allowance is per request.
         // The previous turn's `total_tokens` is a context size, not a spend, and
@@ -2121,11 +2715,18 @@ function CoworkPage() {
               trigger: 'submit-message',
               messageId: undefined,
             } as any),
-          dispatch: (call) =>
+          dispatch: (call, toolSignal) =>
             dispatchCoworkTool(call, {
+              activity: {
+                session: sid,
+                run: runId,
+                agent: 'main',
+                invocation: stepSnapshot?.invocation,
+              },
               sessionId: sid,
               readOnlyFolder: runReadRoot,
               mode: runMode,
+              readFailures: runReadFailures,
               writeGrant: runGrant,
               // The same frozen answers the first gate used, so the two cannot
               // disagree about what this run may change.
@@ -2148,10 +2749,15 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName) =>
+              onApprove: (callId, toolName, input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel: current?.folder ?? undefined,
+                    preview,
+                    signal,
+                  }),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>
@@ -2190,7 +2796,19 @@ function CoworkPage() {
                     resolve({ output: `ERROR: ${parsed}`, isError: true })
                     return
                   }
-                  setAsk({ requestId: callId, request: parsed })
+                  // In the transcript, at the point the run asked -- not in a
+                  // slot above the composer. It stays there once answered.
+                  const askRecord = {
+                    requestId: callId,
+                    request: parsed,
+                    sessionId: sid,
+                    callId,
+                    at: new Date().toISOString(),
+                    state: 'pending' as const,
+                  }
+                  // Into this run's own lane, whichever session is in view:
+                  // that lane is what renders for this session.
+                  mutateLive((turns) => attachAskToTurns(turns, askRecord))
                   // The opening turn ends on a named question. Recording the
                   // wait is what makes a session reopened at this point restore
                   // an unanswered proposal rather than resume into work.
@@ -2204,8 +2822,13 @@ function CoworkPage() {
                       proposal: proposal.question,
                     })
                   }
-                  askResolvers.current.set(callId, (answers) => {
-                    setAsk(null)
+                  // Held by this run's handle: answered only through this
+                  // session, and settled by stopping this session alone.
+                  handle.pendingAsks.set(callId, (answers) => {
+                    const state = answers ? 'answered' : 'cancelled'
+                    mutateLive((turns) =>
+                      settleAskInTurns(turns, callId, state, answers ?? undefined)
+                    )
                     // An answered proposal is no longer outstanding. Declining
                     // is recorded as a decision, not as work to pick up later.
                     if (proposal && current?.folder) {
@@ -2215,7 +2838,18 @@ function CoworkPage() {
                         proposal: proposal.question,
                       })
                     }
-                    resolve(renderAskResult(answers))
+                    // A plan review changes the session's mode, from the next
+                    // message: this run's tools are frozen. Only ever towards
+                    // Ask, where each change still waits for the user.
+                    const review = planReviewDecision(parsed, answers)
+                    if (review === 'execute' || review === 'exit') {
+                      useCoworkSessions.getState().setMode(sid, 'ask')
+                    }
+                    resolve(
+                      review === 'none'
+                        ? renderAskResult(answers)
+                        : renderPlanReviewResult(review, answers)
+                    )
                   })
                 }),
               onTask: async (callId, input) => {
@@ -2226,15 +2860,77 @@ function CoworkPage() {
                 return dispatchChild(callId, req)
               },
               onTeam: async (callId, input) => {
-                const tasks = parseTeamRequest(input)
-                if (typeof tasks === 'string') {
-                  return { output: `ERROR: ${tasks}`, isError: true }
+                const parsed = parseTeamRequest(input)
+                if (typeof parsed === 'string') {
+                  return { output: `ERROR: ${parsed}`, isError: true }
                 }
+                let tasks: TeamTask[] = parsed
                 // Refused here rather than inside `runTeam`, so a graph that
                 // cannot run never causes a worktree to be created for it.
                 const badGraph = refuseGraph(tasks)
                 if (badGraph) {
                   return { output: `ERROR: ${badGraph}`, isError: true }
+                }
+                // AH-109: tasks whose declared changes overlap go to the
+                // person before anything is provisioned or dispatched. Each
+                // answer is applied and the graph is looked at again, so a
+                // revised scope that still overlaps is asked about too.
+                const allowParallel = new Set<string>()
+                const overrides: ParallelOverride[] = []
+                const decided: string[] = []
+                for (let round = 0; ; round += 1) {
+                  const open = scopeConflicts(tasks).filter(
+                    (c) => !allowParallel.has(conflictKey(c))
+                  )
+                  if (open.length === 0) break
+                  if (round >= 6) {
+                    return {
+                      output: `ERROR: ${refuseUnresolved(tasks, allowParallel)}`,
+                      isError: true,
+                    }
+                  }
+                  const answer = await useTeamConflictRequests
+                    .getState()
+                    .request(sid, callId, tasks, open, controller.signal)
+                  if (answer.kind === 'cancel') {
+                    return {
+                      output:
+                        'ERROR: the user chose not to run these tasks, because ' +
+                        `they would change the same paths: ${open
+                          .map((c) => `${c.tasks.join(' and ')} on ${c.overlaps.map((o) => o.paths[0]).join(', ')}`)
+                          .join('; ')}. Nothing ran.`,
+                      isError: true,
+                    }
+                  }
+                  for (const c of open) {
+                    const d = answer.decisions[conflictKey(c)]
+                    if (!d) continue
+                    const where = c.overlaps.map((o) => o.paths[0]).join(', ')
+                    if (d.kind === 'parallel') {
+                      allowParallel.add(conflictKey(c))
+                      overrides.push({
+                        tasks: [...c.tasks],
+                        paths: c.overlaps.map((o) => o.paths[0]),
+                        decidedAt: new Date().toISOString(),
+                      })
+                      decided.push(
+                        `${c.tasks.join(' and ')} ran side by side at the user's decision despite both changing ${where}`
+                      )
+                    } else if (d.kind === 'serialize') {
+                      decided.push(
+                        `${d.then} ran after ${d.first}, at the user's decision, because both change ${where}`
+                      )
+                    } else {
+                      decided.push(
+                        `the user limited ${d.task} to: ${d.writes.join(', ') || 'nothing'}`
+                      )
+                    }
+                    tasks = applyDecision(tasks, d)
+                  }
+                  const revised = refuseGraph(tasks)
+                  if (revised) {
+                    return { output: `ERROR: ${revised}`, isError: true }
+                  }
                 }
                 // Every isolated task gets its checkout before any child
                 // starts. A team that could only isolate some of its tasks is
@@ -2284,15 +2980,51 @@ function CoworkPage() {
                   status: 'running',
                   startedAt: Date.now(),
                 })
+                // AH-111: a failed member can be restarted or replaced from the
+                // Tasks panel while the team runs; the control lives as long
+                // as the team does.
+                const teamControl = new TeamControl()
+                useTeamControls.getState().register(teamTaskId, teamControl)
                 try {
                   const outcome = await runTeam(tasks, {
                     // The turn's controller: stopping the run stops the team,
                     // and every child hangs off a signal chained to this one.
                     signal: controller.signal,
+                    allowParallel,
+                    control: teamControl,
+                    onControl: (request, result) => {
+                      if (!result.ok || request.kind === 'finish') {
+                        if (!result.ok) toast.error(result.refusal.message)
+                        return
+                      }
+                      const childTask = taskIdFor(sid, runId, `${callId}:${request.taskId}`)
+                      const activity = useCoworkActivity.getState()
+                      const prior = activity.tasks[childTask]
+                      activity.patchTask(childTask, {
+                        status: 'running',
+                        endedAt: undefined,
+                        attempts: (prior?.attempts ?? 0) + 1,
+                        ...(request.kind === 'replace'
+                          ? {
+                              replacedWith: {
+                                agentName: request.with.subagentName,
+                                description: request.with.description,
+                              },
+                              ...(request.with.description
+                                ? { description: request.with.description }
+                                : {}),
+                            }
+                          : {}),
+                      })
+                    },
                     onState: (state: TeamState) =>
-                      useCoworkActivity
-                        .getState()
-                        .patchTask(teamTaskId, { detail: teamProgress(state) }),
+                      useCoworkActivity.getState().patchTask(teamTaskId, {
+                        detail:
+                          awaitingDecision(state) &&
+                          !Object.values(state).some((s) => s.status === 'running' || s.status === 'pending')
+                            ? `${teamProgress(state)} · waiting for a decision on the failed tasks`
+                            : teamProgress(state),
+                      }),
                     runTask: async (one: TeamTask, signal: AbortSignal) => {
                       // One call id per task, so each child gets its own
                       // transcript lane and its own entry in the Tasks panel.
@@ -2307,34 +3039,91 @@ function CoworkPage() {
                           .patchTask(taskIdFor(sid, runId, childId), {
                             detail: `own checkout: ${destination.path}`,
                           })
-                      }
-                      const result = await dispatchChild(
-                        childId,
-                        {
-                          subagent_name: one.subagentName ?? 'worker',
+                        // AH-109: recorded before it runs, so its worktree is
+                        // listed for review whatever becomes of the run -- and
+                        // an isolated child that cannot be recorded does not
+                        // run, rather than leaving work nobody is shown.
+                        const began = await beginTeamChild({
+                          parentSession: sid,
+                          taskId: one.id,
+                          run: runId,
+                          call: callId,
                           description: one.description,
-                          // A task that names no saved agent still has to be
-                          // runnable: without a prompt it resolves to nothing
-                          // and is refused as unknown, which would make the
-                          // ordinary case the one that cannot run. A named
-                          // agent ignores this, as `resolveSubagent` prefers
-                          // the saved definition.
-                          system_prompt: TEAM_DEFAULT_PROMPT,
-                        },
-                        signal,
-                        teamTaskId,
-                        destination
-                      )
-                      return {
-                        taskId: one.id,
-                        ok: !result.isError,
-                        output: result.output,
-                        producedBy: childId,
-                        // Not authority-bearing, and the one thing that stops a
-                        // completed task reading as "changed your folder".
-                        ...(destination
-                          ? { destination: destination.path }
-                          : {}),
+                          agent: one.subagentName ?? 'worker',
+                          project: current?.folder ?? '',
+                          declaredWrites: one.writes,
+                          overrides: overrides.filter((o) =>
+                            o.tasks.includes(one.id)
+                          ),
+                        })
+                        useTeamChildrenVersion.getState().bump()
+                        if (!began.ok) {
+                          return {
+                            taskId: one.id,
+                            ok: false,
+                            output: `its checkout could not be recorded for review, so it did not run: ${began.reason}`,
+                            producedBy: childId,
+                          }
+                        }
+                      }
+                      // How the child ended, for its review record: a Stop
+                      // from the panel or the run is a cancellation, never a
+                      // failure and never a success.
+                      const childTask = taskIdFor(sid, runId, childId)
+                      const endedAs = (isError: boolean) =>
+                        signal.aborted ||
+                        useCoworkActivity.getState().tasks[childTask]
+                          ?.status === 'cancelled'
+                          ? ('cancelled' as const)
+                          : isError
+                            ? ('failed' as const)
+                            : ('completed' as const)
+                      let status: 'completed' | 'failed' | 'cancelled' =
+                        'failed'
+                      let detail = ''
+                      try {
+                        const result = await dispatchChild(
+                          childId,
+                          {
+                            subagent_name: one.subagentName ?? 'worker',
+                            description: one.description,
+                            // A task that names no saved agent still has to be
+                            // runnable: without a prompt it resolves to nothing
+                            // and is refused as unknown, which would make the
+                            // ordinary case the one that cannot run. A named
+                            // agent ignores this, as `resolveSubagent` prefers
+                            // the saved definition.
+                            system_prompt: TEAM_DEFAULT_PROMPT,
+                          },
+                          signal,
+                          teamTaskId,
+                          destination
+                        )
+                        status = endedAs(result.isError === true)
+                        detail = result.output.slice(0, 500)
+                        return {
+                          taskId: one.id,
+                          ok: status === 'completed',
+                          output: result.output,
+                          producedBy: childId,
+                          // Not authority-bearing, and the one thing that stops a
+                          // completed task reading as "changed your folder".
+                          ...(destination
+                            ? { destination: destination.path }
+                            : {}),
+                        }
+                      } catch (error) {
+                        status = endedAs(true)
+                        detail =
+                          error instanceof Error ? error.message : String(error)
+                        throw error
+                      } finally {
+                        if (destination) {
+                          await settleTeamChild(sid, one.id, status, detail).catch(
+                            () => {}
+                          )
+                          useTeamChildrenVersion.getState().bump()
+                        }
                       }
                     },
                   })
@@ -2350,9 +3139,17 @@ function CoworkPage() {
                     }
                   }
                   const where = describeDestinations(plan.byTask)
-                  const rendered = where
-                    ? `${renderTeamReport(outcome.report)}\n\n${where}`
-                    : renderTeamReport(outcome.report)
+                  const rendered = [
+                    renderTeamReport(outcome.report) + (outcome.decision === 'window-elapsed' ? '\n\nThe failed tasks were not restarted: nobody decided within the time a team waits for a decision.' : ''),
+                    where
+                      ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
+                      : '',
+                    decided.length
+                      ? `Decided by the user before the team ran:\n${decided.map((d) => `- ${d}`).join('\n')}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')
                   useCoworkActivity.getState().patchTask(teamTaskId, {
                     // The team's own row settles on what actually happened, so a
                     // partial run cannot read as a finished one at a glance.
@@ -2372,24 +3169,87 @@ function CoworkPage() {
                     isError: !outcome.report.allDone,
                   }
                 } finally {
+                  useTeamControls.getState().unregister(teamTaskId)
                   // The children are done, so their authority goes back. The
                   // worktrees stay: they hold the work the team was run for,
                   // and the report names where each one is.
                   await plan.release()
                 }
               },
-            }),
+            }, toolSignal),
           sink,
-          onStep: ({ result, turns, outcomes }) => {
-            if (result.usage) setLiveUsage(result.usage)
+          onStep: ({ step, result, turns, outcomes }) => {
+            if (result.usage)
+              useCoworkRun.getState().setUsage(sid, result.usage)
+            saveInFlight(true)
+            // Persisted as it goes, not at the end: a run killed mid-flight
+            // must not come back with its steps unspent. AH-018.
+            useCoworkSessions.getState().setRunBudget(sid, {
+              runId,
+              steps: step,
+              maxSteps: MAX_AGENT_STEPS,
+              deadlineAt: runDeadline.at,
+              deadlineBudgetMs: runDeadline.budgetMs,
+            })
+            /**
+             * Bind the provider's own count to the payload it counted.
+             * AH-073.
+             *
+             * The snapshot the transport just took carries the invocation, so
+             * the exact number and the exact bytes name the same model call.
+             * Without that the count is "the last request", which is a
+             * different thing on every step of a long turn.
+             */
+            // AH-172: the request's own events in the canonical log, bound
+            // to its invocation -- its usage (counts only) and what the
+            // response was made of (sizes only; the words stay in the
+            // transcript). One id per invocation, so a retried record is one.
+            const stepInvocation = (stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
+            if (stepInvocation) {
+              const stepUsage = fromCoworkUsage(result.usage)
+              recordEvents([
+                ...(stepUsage
+                  ? [
+                      {
+                        id: `usage:${stepInvocation}`,
+                        session: sid,
+                        run: runId,
+                        invocation: stepInvocation,
+                        kind: 'usage.reported' as const,
+                        payload: usageEventPayload(stepUsage),
+                      },
+                    ]
+                  : []),
+                {
+                  id: `message:${stepInvocation}`,
+                  session: sid,
+                  run: runId,
+                  invocation: stepInvocation,
+                  kind: 'message.completed' as const,
+                  payload: {
+                    textChars: result.text.length,
+                    toolCalls: result.toolCalls.length,
+                  },
+                },
+              ])
+            }
+            if (result.usage) {
+              void recordPayloadUsage({
+                session: sid,
+                run: runId,
+                snapshot: stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
+                model: selectedModel?.id,
+                usage: result.usage,
+              })
+            }
             // Replace the optimistic running rows with the settled ones so the
             // transcript shows results, not spinners.
-            liveTurnsRef.current = liveTurnsRef.current.filter(
+            runTurns = runTurns.filter(
               (turn) =>
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
-            pushLive(turns)
+            pushLive(turns, stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
             // no-op rather than a duplicate.
@@ -2407,14 +3267,66 @@ function CoworkPage() {
               // A collecting call settles the command it collects, which is a
               // different row; a plain call settles its own.
               const collecting = collectedJobId(turn.args)
-              if (collecting) recordJobCollected(collecting, outcome)
+              if (collecting) recordJobCollected(sid, collecting, outcome)
               else recordShellOutcome(run, callId, outcome)
+              recordEvents([
+                {
+                  id: `job:${collecting ?? callId}:ended:${callId}`,
+                  session: sid,
+                  run: runId,
+                  kind: 'job.ended',
+                  payload: { tool: 'bash', status: outcome.isError ? 'failed' : 'succeeded' },
+                },
+              ])
             }
           },
+          onResponse: () => {
+            stepSnapshot = lastSnapshotRef.current[sid]
+          },
+          activity: () => ({
+            session: sid,
+            run: runId,
+            agent: 'main',
+            invocation: stepSnapshot?.invocation,
+          }),
           nextMessageId: (() => {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
+          // janhq/jan#8864. What was typed into this session's composer while
+          // the run worked, taken at the runner's safe boundaries. Only this
+          // session's queue: input typed in another session never reaches
+          // this run, whichever session is in view. Shown in the transcript
+          // where it entered the conversation, marked as steering.
+          takeSteering: () => {
+            const taken = useMessageQueue.getState().takeReady(sid)
+            if (taken.length === 0) return []
+            // Into this run's execution record, in sequence with its calls:
+            // steering changes what the model works from. The words stay in
+            // the transcript; the record says only that input was delivered.
+            for (const m of taken) {
+              void recordLifecycle(
+                { session: sid, run: runId, source: 'cowork' },
+                {
+                  id: `steer:${runId}:${m.id}`,
+                  lifecycle: 'steering',
+                  phase: 'succeeded',
+                  summary: 'Input delivered to the running agent',
+                }
+              )
+            }
+            pushLive(
+              taken.map((m) => ({ role: 'user' as const, content: m.text, steered: true }))
+            )
+            return taken.map(
+              (m) =>
+                ({
+                  id: `${sid}-steer-${m.id}`,
+                  role: 'user',
+                  parts: [{ type: 'text', text: m.text }],
+                }) as any
+            )
+          },
         },
       })
     } catch (e) {
@@ -2423,13 +3335,26 @@ function CoworkPage() {
       // and rendering it as one claimed the agent had run something.
       thrown = isAbortLike(e, controller.signal)
         ? { stoppedBy: 'aborted' }
-        : {
-            stoppedBy: 'error',
-            errorText: e instanceof Error ? e.message : String(e),
-          }
+        : isContextOverflow(e)
+          ? // Not an error in the loop: the request was measured, found not to
+            // fit, and never sent. It offers the same way out as running out
+            // of tokens mid-turn, because it is the same problem.
+            { stoppedBy: 'tokens', errorText: e.message }
+          : {
+              stoppedBy: 'error',
+              errorText: e instanceof Error ? e.message : String(e),
+            }
     } finally {
-      useAppState.getState().updateLoadingModel(false)
+      // The load card is shared by every Cowork run: only the last one to
+      // finish takes it down, so this run ending does not hide another's load.
+      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
+        (id) => id !== sid
+      )
+      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      // The run is over, so its budget is not outstanding any more. Left
+      // behind, it would tell the next run it was resuming this one.
+      useCoworkSessions.getState().setRunBudget(sid, null)
       // Nothing can still be running once the turn is over: the streams are
       // closed and the dispatch loop has stopped awaiting them. Settle before
       // closing the workflow, so its status is derived from settled children.
@@ -2443,7 +3368,7 @@ function CoworkPage() {
         .getState()
         .commitTurns(
           sid,
-          liveTurnsRef.current,
+          runTurns,
           outcome?.messages ?? messages,
           useCoworkRun.getState().subagents[sid] ?? [],
           outcome?.usage ?? undefined
@@ -2455,7 +3380,7 @@ function CoworkPage() {
       const settledAt = Date.now()
       const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
       const fileEvents = [
-        ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
+        ...deriveFromTurns(runTurns, originOfPath, settledAt),
         ...subagentRuns.flatMap((run) =>
           deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
         ),
@@ -2464,15 +3389,28 @@ function CoworkPage() {
       // The run's own account of what changed, generated from evidence rather
       // than written by the model that did the changing.
       void recordOrigins({ sessionId: sid, origins, events: fileEvents })
-      liveTurnsRef.current = []
-      setLiveTurns([])
-      setRunning(false)
       runWorkDone()
-      abortRef.current = null
-      askResolvers.current.clear()
-      setAsk(null)
-      setStoppedBy(thrown?.stoppedBy ?? outcome?.stoppedBy ?? null)
-      setRunError(thrown?.errorText ?? outcome?.errorText)
+      // Unanswered questions end with the run that asked them.
+      for (const resolve of handle.pendingAsks.values()) resolve(null)
+      handle.pendingAsks.clear()
+      const stop = thrown?.stoppedBy ?? outcome?.stoppedBy ?? null
+      // Refused if this run no longer owns the session -- stopped and
+      // replaced, or the session deleted -- so a late ending lands nowhere.
+      const ending: RunEnding | null = stop
+        ? {
+            stoppedBy: stop,
+            errorText: thrown?.errorText ?? outcome?.errorText,
+          }
+        : null
+      useCoworkRun.getState().finishRun(sid, runId, ending)
+      recordRunEnded(ending)
+      // A finished run lets what was typed after its last boundary go as the
+      // next request, from the effect watching the session in view. Any other
+      // ending -- a failure, Stop, a cap -- holds it for the user to send or
+      // discard: it was typed for a run that did not see it, and neither
+      // dropping it silently nor sending it on its own is right.
+      // janhq/jan#8864.
+      if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
     }
   }
 
@@ -2494,27 +3432,138 @@ function CoworkPage() {
     void runRequestRef.current(null)
   }, [running, session?.id])
 
-  const abortRef = useRef<AbortController | null>(null)
-  const askResolvers = useRef(
-    new Map<string, (answers: AskAnswer[] | null) => void>()
-  )
-
+  // Stop reaches the viewed session's run and nothing else: its model stream,
+  // its tool loop, its subagents and its open questions (janhq/jan#8905). It
+  // used to abort whichever run had started last, in any session.
   const handleStop = useCallback(() => {
-    abortRef.current?.abort('cancelled')
     if (session?.id) abortRun(session.id)
-    for (const resolve of askResolvers.current.values()) resolve(null)
-    askResolvers.current.clear()
   }, [session?.id])
 
+  // Answered through the session that asked; another session's questions are
+  // not reachable from here.
   const respondAsk = useCallback(
     (requestId: string, answers: AskAnswer[] | null) => {
-      const resolve = askResolvers.current.get(requestId)
-      askResolvers.current.delete(requestId)
-      if (resolve) resolve(answers)
-      else if (session?.id) answerAsk(session.id, requestId, answers)
+      if (session?.id) answerAsk(session.id, requestId, answers)
     },
     [session?.id]
   )
+
+  /**
+   * Queued messages belong to the session they were typed in. When the session
+   * in view is idle and has one waiting it goes -- after its own run finishes,
+   * or when the user returns to a session whose run finished while they were
+   * elsewhere. Never dispatched into another session.
+   */
+  /**
+   * Pending input survives a restart (janhq/jan#8864). Every change to a Cowork
+   * session's queue is mirrored into the persisted session, and what the
+   * session recorded comes back held -- for the user to send or discard, never
+   * sent on its own. Restoring skips what is already queued, so this is
+   * harmless while the app is running.
+   */
+  useEffect(
+    () =>
+      useMessageQueue.subscribe((state, prev) => {
+        const store = useCoworkSessions.getState()
+        for (const s of store.sessions) {
+          const now = state.queues[s.id] ?? []
+          if (now !== (prev.queues[s.id] ?? [])) store.setPendingInput(s.id, now)
+        }
+      }),
+    []
+  )
+  const sessionsWithPending = useCoworkSessions((s) =>
+    s.sessions
+      .filter((x) => (x.pendingInput?.length ?? 0) > 0)
+      .map((x) => x.id)
+      .join(',')
+  )
+  useEffect(() => {
+    for (const s of useCoworkSessions.getState().sessions) {
+      if (s.pendingInput?.length) {
+        useMessageQueue.getState().restoreHeld(s.id, s.pendingInput)
+      }
+    }
+  }, [sessionsWithPending])
+
+  useEffect(() => {
+    if (running || !session?.id) return
+    // Held input waits for the user; only what is ready goes.
+    const next = useMessageQueue.getState().dequeueReady(session.id)
+    if (next) void runRequestRef.current(next.text)
+  }, [running, session?.id])
+
+  /**
+   * Where the transcript was scrolled to, kept across a trip to Settings.
+   *
+   * The scroll node is the one `StickToBottom` owns inside the `role="log"`
+   * container; it is found rather than held by ref because that element is the
+   * library's, not this route's.
+   */
+  const scrollNode = useCallback((): HTMLElement | null => {
+    const log = document.querySelector('[role="log"]')
+    if (!log) return null
+    return (
+      (log.querySelector(':scope > *') as HTMLElement | null) ??
+      (log as HTMLElement)
+    )
+  }, [])
+
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid) return
+    const remembered = useCoworkView.getState().scrollBySession[sid]
+    if (remembered != null) {
+      // After paint: the transcript has to exist before it can be scrolled.
+      requestAnimationFrame(() => {
+        const node = scrollNode()
+        if (node) node.scrollTop = remembered
+      })
+    }
+    return () => {
+      const node = scrollNode()
+      if (node) {
+        useCoworkView.getState().rememberScroll(sid, node.scrollTop)
+      }
+    }
+  }, [session?.id, scrollNode])
+
+  // Snapshots are taken in the transport, which has nowhere to return them to
+  // -- the AI SDK owns the call. It hands them here instead, and they land on
+  // the turn whose reply that request produced.
+  useEffect(() => {
+    return addSnapshotSink((sessionId, ref) => {
+      // Kept for the step that follows: the accounting for a dispatch is only
+      // known once its reply lands, and by then the sink has moved on.
+      lastSnapshotRef.current[sessionId] = ref
+      // AH-032: the record links this request to the exact payload it sent,
+      // the same way the agent loop does, so a finished run can be replayed
+      // from the record rather than from a reconstruction of it. Recorded
+      // under the run that is dispatching, never the session in view.
+      const running = useCoworkRun.getState().runs[sessionId]?.runId
+      if (running) {
+        void recordEvents([
+          {
+            id: `dispatch:${ref.invocation || ref.id}`,
+            session: sessionId,
+            run: running,
+            invocation: ref.invocation ?? '',
+            kind: 'message.completed',
+            payload: {
+              phase: 'dispatched',
+              snapshotId: ref.id,
+              hash: ref.hash,
+              redactions: ref.redactions,
+            },
+          },
+        ])
+      }
+      // Beside the turns, not on them: the run rebuilds its live turn array as
+      // steps complete, so a reference written onto a turn at dispatch time is
+      // gone before it can render.
+      useCoworkRun.getState().recordPromptSnapshot(sessionId, ref)
+    })
+  }, [])
 
   // A run outlives this component, so unmounting must not stop it.
   useEffect(() => () => useCoworkRun.getState().clearPendingPreview(), [])
@@ -2571,16 +3620,278 @@ function CoworkPage() {
     if (previous != null && previous !== session?.id) setRail(null)
   }, [session?.id])
 
+  // Layout. Wide windows dock the output panel beside the conversation; below
+  // 1100px it becomes a drawer over the conversation's right edge; below 768px
+  // Cowork shows one view at a time -- the conversation, the output, or the
+  // session details -- chosen from the context bar. The conversation stays
+  // mounted while hidden, so the composer keeps its draft, and its scroll
+  // position is put back on return.
+  const narrow = useMediaQuery('(max-width: 1099px)')
+  const phone = useMediaQuery('(max-width: 767px)')
+  const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
+  const view: CoworkPhoneView = phone ? phoneView : 'content'
+  const transcriptScroll = useRef<number | null>(null)
+  const showView = useCallback(
+    (next: CoworkPhoneView) => {
+      if (phoneView === 'content' && next !== 'content') {
+        const node = scrollNode()
+        transcriptScroll.current = node ? node.scrollTop : null
+      }
+      setPhoneView(next)
+    },
+    [phoneView, scrollNode]
+  )
+  useEffect(() => {
+    if (view !== 'content' || transcriptScroll.current == null) return
+    const top = transcriptScroll.current
+    transcriptScroll.current = null
+    requestAnimationFrame(() => {
+      const node = scrollNode()
+      if (node) node.scrollTop = top
+    })
+  }, [view, scrollNode])
+
+  // On a phone, an explicit request to see output also shows the output view.
+  // Automatic opens (an artifact finishing) change the tab but not the view.
+  const revealOutput = useCallback(() => {
+    if (phone) showView('output')
+  }, [phone, showView])
+  const openRail = useCallback(
+    (next: CoworkRail) => {
+      setRail(next)
+      revealOutput()
+    },
+    [setRail, revealOutput]
+  )
+  const closeRail = useCallback(() => {
+    setRail(null)
+    if (phone) showView('content')
+  }, [setRail, phone, showView])
+  const selectRailInView = useCallback(
+    (next: RailMode) => {
+      selectRail(next)
+      revealOutput()
+    },
+    [selectRail, revealOutput]
+  )
+  // Code and Timeline describe a session, so neither renders without one.
+  const panelShown =
+    rail != null &&
+    (rail.kind === 'preview' ||
+      rail.kind === 'diff' ||
+      rail.kind === 'tasks' ||
+      Boolean(session?.id))
+  const inspectorLayout: InspectorLayout = phone
+    ? 'full'
+    : narrow
+      ? 'drawer'
+      : 'docked'
+  const inspectorVisible = phone ? view === 'output' : panelShown
+  // One set of rail buttons on the page at a time: in the panel header while
+  // the output panel is on screen, in the composer row otherwise. The smoke
+  // harness finds them by exact name and reads `aria-pressed`.
+  const railToolbar = (presentation: 'toolbar' | 'tabs') => (
+    <CoworkRailToolbar
+      presentation={presentation}
+      active={activeRail}
+      onSelect={selectRailInView}
+      changeCount={changeCounts.fileCount}
+      additions={changeCounts.additions}
+      deletions={changeCounts.deletions}
+      changeSummary={formatChangeSummary(changeCounts)}
+      activity={taskCounts}
+    />
+  )
+
+  // The session's own model (janhq/jan#8905): keyed by session so switching
+  // re-reads it, and a choice is written to the session in view only.
+  const modelSelector = (
+    <DropdownModelProvider
+      key={session?.id ?? 'none'}
+      model={session?.model}
+      useLastUsedModel={!session?.model}
+      onModelChange={(model) =>
+        useCoworkSessions.getState().setModel(ensureCurrentSession(), {
+          provider: model.provider,
+          id: model.id,
+        })
+      }
+    />
+  )
+
+  // Mode, access and workspace: in the context bar on wide screens, in the
+  // composer row on phones where the bar holds the view switch.
+  const sessionControls = (
+    <>
+      <CoworkWorkspacePill
+        folder={folder}
+        workspacePath={workspacePath}
+        gitBranch={gitBranch}
+        onAttach={() => void attachFolder()}
+        onDetach={detachFolder}
+      />
+      <CoworkModeSelector
+        mode={mode}
+        onChange={(next) => {
+          if (session?.id)
+            useCoworkSessions.getState().setMode(session.id, next)
+        }}
+      />
+      <CoworkAccessSelector
+        effective={effective}
+        capability={capabilityState}
+        hasFolder={Boolean(folder)}
+        // Authority must not move under work already running. A background
+        // shell job outlives its run and can still write, so it holds
+        // authority in place just as a live turn does.
+        busyReason={blockingKind}
+        onRequestDirectEdit={() => setConfirmDirectEdit(true)}
+        onRequestWorktree={() => void authorizeManagedWorktree()}
+        onReviewOnly={() => void returnToReviewOnly()}
+      />
+    </>
+  )
+
+  // Everything about the session that is reference material rather than
+  // conversation: behind a dialog on wide screens, a view of its own on phones.
+  const detailsBody = (
+    <>
+      <CoworkReadinessCard manifest={readiness} />
+      {/* AH-177: this session's canonical events, written to a file. */}
+      <CoworkEventExport
+        sessionId={session?.id}
+        pickFolder={async () => {
+          const picked = await serviceHub.dialog().open({ directory: true })
+          return typeof picked === 'string' ? picked : null
+        }}
+      />
+      {/* Collapsed, and inside session details rather than above the
+          composer: someone whose session works should never read it. */}
+      <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
+      {runContext && <CoworkContextBreakdown context={runContext} />}
+      <CoworkCompatSection
+        manifest={compat}
+        hasFolder={Boolean(folder)}
+        onToggle={(on) =>
+          folder && useClaudeCompat.getState().setEnabled(folder, on)
+        }
+        // Drives Jan's own MCP subsystem, against the definition as it
+        // stands on disk: consent is permission to run *this* server,
+        // not whatever the file says later.
+        onMcpConsent={(server, allowed) => {
+          const probe = mcpProbes.find((one) => one.name === server)
+          if (probe) void setMcpConsent(probe, allowed)
+        }}
+      />
+      <ClaudeSkillRootsSettings
+        roots={skillRoots}
+        onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
+        janData={janDataFolder}
+        onRescan={rescanCompat}
+        pickFolder={async () => {
+          const picked = await serviceHub.dialog().open({ directory: true })
+          return typeof picked === 'string' ? picked : null
+        }}
+        // The backend is the only thing that can tell a directory from a
+        // file, or from a path that has since gone.
+        confirmDirectory={async (path) => {
+          const dataFolder = janDataFolder
+          if (!dataFolder) return false
+          try {
+            await projectListDir(dataFolder, path, '.')
+            return true
+          } catch {
+            return false
+          }
+        }}
+      />
+    </>
+  )
+
   return (
-    <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
+    <div className="flex flex-col h-full min-h-0 bg-background">
       <HeaderPage>
-        <div className="flex items-center justify-between w-full pr-2">
-          <DropdownModelProvider useLastUsedModel />
-        </div>
+        {/* The same row component the chat page uses, so the selector and the
+            control beside it match in size, spacing and order. */}
+        <PageHeaderRow>
+          {!phone && session?.title ? (
+            <h1
+              className="hidden min-w-0 max-w-[18rem] shrink truncate font-display text-lg leading-tight text-foreground lg:block"
+              title={session.title}
+              data-testid="cowork-session-title"
+            >
+              {session.title}
+            </h1>
+          ) : null}
+          {!phone && modelSelector}
+          {!phone && (
+            <div className="flex min-w-0 items-center gap-1">
+              {sessionControls}
+            </div>
+          )}
+          {phone && (
+            // One view at a time on a phone, chosen here rather than by
+            // swiping, so every view is reachable from the keyboard too.
+            <div
+              role="group"
+              aria-label={t('common:coworkLayout.views')}
+              className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-line-strong bg-card pointer-coarse:h-11"
+            >
+              {PHONE_VIEWS.map((option, index) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={view === option}
+                  data-testid={`cowork-view-${option}`}
+                  onClick={() => showView(option)}
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                    index > 0 && 'border-l border-line-strong',
+                    view === option
+                      ? 'bg-brand-tint text-foreground'
+                      : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
+                  )}
+                >
+                  <span className="truncate">
+                    {t(`common:coworkLayout.${option}`)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* The composer's stop control is out of sight in the other phone
+              views, so a running session can still be stopped from here. */}
+          {phone && running && view !== 'content' ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="shrink-0 pointer-coarse:h-11"
+              onClick={handleStop}
+              data-testid="cowork-header-stop"
+            >
+              {t('common:stop')}
+            </Button>
+          ) : null}
+          {!phone && (
+            <div className="ml-auto flex shrink-0 items-center">
+              {/* Closed until asked for. */}
+              <CoworkSessionDetails summary={sessionDetailsSummary}>
+                {detailsBody}
+              </CoworkSessionDetails>
+            </div>
+          )}
+        </PageHeaderRow>
       </HeaderPage>
 
-      <div className="flex flex-1 h-full overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col h-full overflow-hidden">
+      <CoworkInspectorProvider layout={inspectorLayout}>
+      <div className="relative flex min-h-0 flex-1 h-full overflow-hidden">
+        <div
+          className={cn(
+            'flex min-w-0 flex-1 flex-col h-full overflow-hidden',
+            view !== 'content' && 'hidden'
+          )}
+          data-testid="cowork-content-view"
+        >
           <div className="flex-1 relative">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
@@ -2607,6 +3918,10 @@ function CoworkPage() {
                           onReasoningScrollToBottom={
                             forceScrollReasoningToBottom
                           }
+                          // The tool calls are the work here, not scaffolding
+                          // behind an answer: they stay in the conversation
+                          // unless the display option hides the finished ones.
+                          keepToolActivity
                         />
                         {/* One card per workflow, at the message its first
                         dispatch landed under. Same store as the panel, so it
@@ -2621,8 +3936,88 @@ function CoworkPage() {
                             <CoworkWorkflowCard
                               view={view}
                               now={activityNow}
-                              onOpenTask={showTaskInPanel}
-                              onOpenPanel={showWorkflowInPanel}
+                              onOpenTask={(task) => {
+                                showTaskInPanel(task)
+                                revealOutput()
+                              }}
+                              onOpenPanel={(workflowId) => {
+                                showWorkflowInPanel(workflowId)
+                                revealOutput()
+                              }}
+                            />
+                          ) : null
+                        })()}
+                        {/* Completed tool activity the display option is
+                        filtering out. The turns are still in the session; this
+                        says how many and offers to look. */}
+                        {(() => {
+                          const part = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((p) => p.type === 'data-hidden-tools')
+                          const data = part?.data as
+                            | { count: number }
+                            | undefined
+                          return data ? (
+                            <CoworkHiddenTools
+                              count={data.count}
+                              onReveal={() => setRevealHiddenTools(true)}
+                            />
+                          ) : null
+                        })()}
+                        {/* Questions the run asked here, in the order they
+                        were asked. A pending one is the card; an answered,
+                        skipped or stale one collapses to what happened, and
+                        stays in the transcript. */}
+                        {(message.parts as { type: string; data?: unknown }[])
+                          .filter((p) => p.type === 'data-ask')
+                          .map((p) => {
+                            const record = p.data as AskRecord
+                            return (
+                              <CoworkAskEntry
+                                key={record.requestId}
+                                record={record}
+                                running={running}
+                                onRespond={respondAsk}
+                              />
+                            )
+                          })}
+                        {/* What the model received, at the message it
+                        produced. Collapsed, and it fetches nothing until
+                        someone opens it. */}
+                        {(() => {
+                          // AH-078. The message's own part first: it was
+                          // stamped onto the assistant row when that row was
+                          // created, so it names the dispatch that produced
+                          // this reply -- including a continuation, a retry or
+                          // a compaction, which position cannot distinguish.
+                          //
+                          // The positional map stays as the fallback for turns
+                          // already on disk, written before rows carried one.
+                          const own = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((part) => part.type === 'data-prompt-snapshot')
+                            ?.data as { id: string } | undefined
+                          const ref = own ?? snapshotByMessageId.get(message.id)
+                          return ref ? (
+                            <PromptSnapshotView
+                              snapshotId={ref.id}
+                              sessionId={session?.id}
+                            />
+                          ) : null
+                        })()}
+                        {/* This turn's own token breakdown and the memory ids
+                        its request carried (AH-211, AH-083). */}
+                        {(() => {
+                          const data = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((part) => part.type === 'data-turn-usage')
+                            ?.data as
+                            | { usage?: Usage; memory?: TurnMemory }
+                            | undefined
+                          return data ? (
+                            <TurnUsageDetails
+                              usage={fromCoworkUsage(data.usage)}
+                              memory={data.memory}
                             />
                           ) : null
                         })()}
@@ -2634,12 +4029,18 @@ function CoworkPage() {
                             key={artifact.path}
                             artifact={artifact}
                             root={workspacePath}
-                            onPreview={showPreview}
+                            onPreview={(path) => {
+                              showPreview(path)
+                              revealOutput()
+                            }}
                           />
                         ))}
                       </Fragment>
                     ))}
                   </CodeOpenProvider>
+                  {/* AH-109: overlapping team tasks, before either runs. */}
+                  <CoworkTeamConflicts sessionId={session?.id} />
+                  <CoworkChildApprovals sessionId={session?.id} />
                   {running && (
                     // Row wrapper as in the chat route: the transcript is a
                     // column flex, which stretches the indicator's own
@@ -2651,13 +4052,47 @@ function CoworkPage() {
                       />
                     </div>
                   )}
-                  {!running && runOrigins?.summary && (
-                    // After the transcript, never inside it: the model's own
-                    // account of the run and Jan's record of it must not read
-                    // as one voice.
-                    <CoworkRunSummary
-                      summary={runOrigins.summary}
-                      shaping={runContext?.shaping}
+                  {!running &&
+                    (runEnding || runOrigins?.summary) &&
+                    // Only when the run has something of its own to report:
+                    // a write, a check, a loose end, or an ending that was
+                    // not a clean finish. A working tree that was already
+                    // dirty is not the run's work, and reporting it here left
+                    // a permanent panel over the composer listing the user's
+                    // own edits. The stop reason itself stays in the notice
+                    // below; this shows what was kept.
+                    shouldShowRunOutcome(runOutcome) && (
+                      <CoworkRunSummary
+                        outcome={runOutcome}
+                        canOpenPath={shouldOpenInCode}
+                        onOpenPath={
+                          runOutcome.resultLocation.destination ===
+                            'repository' && treeRoot
+                            ? (path) => openToolPath(`${treeRoot}/${path}`)
+                            : runOutcome.resultLocation.destination ===
+                                'sandbox'
+                              ? openToolPath
+                              : undefined
+                        }
+                        onReviewChanges={() => openRail({ kind: 'diff' })}
+                        onRestore={() => openRail({ kind: 'diff' })}
+                        onRetry={() => void runRequest(null)}
+                        onContinue={() =>
+                          document
+                            .querySelector<HTMLTextAreaElement>(
+                              '[data-testid="chat-input"]'
+                            )
+                            ?.focus()
+                        }
+                      />
+                    )}
+                  {/* The session's changed files, one step from review. */}
+                  {!running && (
+                    <CoworkReviewReady
+                      fileCount={changeCounts.fileCount}
+                      additions={changeCounts.additions}
+                      deletions={changeCounts.deletions}
+                      onReview={() => openRail({ kind: 'diff' })}
                     />
                   )}
                   {stoppedBy === 'steps' && (
@@ -2670,9 +4105,28 @@ function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkInterruptedTurn
+                      sessionId={session.id}
+                      running={running}
+                      onContinue={() => void runRequestRef.current(null)}
+                    />
+                  ) : null}
+                  {session?.id ? (
+                    <CoworkHeldInput sessionId={session.id} running={running} />
+                  ) : null}
                   {stoppedBy === 'error' && (
                     <CoworkRunNotice
                       kind="error"
+                      message={runError}
+                      onRetry={() => void runRequest(null)}
+                    />
+                  )}
+                  {(stoppedBy === 'deadline' ||
+                    stoppedBy === 'timeout' ||
+                    stoppedBy === 'loop') && (
+                    <CoworkRunNotice
+                      kind={stoppedBy}
                       message={runError}
                       onRetry={() => void runRequest(null)}
                     />
@@ -2702,25 +4156,15 @@ function CoworkPage() {
 
           <div className="pb-4 shrink-0">
             <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
-              {ask && typeof ask.request !== 'string' && (
-                <div className="px-1 pb-2">
-                  <CoworkAskCard
-                    requestId={ask.requestId}
-                    request={ask.request}
-                    onRespond={respondAsk}
-                  />
-                </div>
-              )}
-              {/* Before the first run of a repository-bound session: the
-                  moment where knowing which repository, which mode and which
-                  instructions are in play actually changes what someone
-                  types. It disappears once the session has run. */}
+              {/* Work a crashed or closed run left behind. Shown where the
+                  session is about to start, because that is the moment someone
+                  would otherwise start a second one beside it. Everything else
+                  that used to sit here -- readiness, compatibility, skill
+                  folders, context accounting -- moved behind the session
+                  details control in the header, so the composer sits directly
+                  beneath the conversation. */}
               {folder && (session?.turns.length ?? 0) === 0 && (
                 <div className="px-1 pb-2">
-                  <CoworkReadinessCard manifest={readiness} />
-                  {/* Work a crashed or closed run left behind. Shown where the
-                      session is about to start, because that is the moment
-                      someone would otherwise start a second one beside it. */}
                   <CoworkWorktreeRecovery
                     orphans={orphanWorktrees(foundWorktrees, worktree)}
                     onAdopt={(record) => {
@@ -2753,109 +4197,59 @@ function CoworkPage() {
                       )
                     }}
                   />
-                  <CoworkCompatSection
-                    manifest={compat}
-                    hasFolder={Boolean(folder)}
-                    onToggle={(on) =>
-                      folder &&
-                      useClaudeCompat.getState().setEnabled(folder, on)
-                    }
-                    // Drives Jan's own MCP subsystem, against the definition
-                    // as it stands on disk: consent is permission to run
-                    // *this* server, not whatever the file says later.
-                    onMcpConsent={(server, allowed) => {
-                      const probe = mcpProbes.find((one) => one.name === server)
-                      if (probe) void setMcpConsent(probe, allowed)
-                    }}
-                  />
-                  <ClaudeSkillRootsSettings
-                    roots={skillRoots}
-                    onChange={(next) =>
-                      useClaudeCompat.getState().setSkillRoots(next)
-                    }
-                    janData={janDataFolder}
-                    onRescan={rescanCompat}
-                    pickFolder={async () => {
-                      const picked = await serviceHub
-                        .dialog()
-                        .open({ directory: true })
-                      return typeof picked === 'string' ? picked : null
-                    }}
-                    // The backend is the only thing that can tell a directory
-                    // from a file, or from a path that has since gone.
-                    confirmDirectory={async (path) => {
-                      const dataFolder = janDataFolder
-                      if (!dataFolder) return false
-                      try {
-                        await projectListDir(dataFolder, path, '.')
-                        return true
-                      } catch {
-                        return false
-                      }
-                    }}
-                  />
                 </div>
               )}
-              {/* After the run exists, not before: the breakdown's whole value
-                  is saying what this run's payload actually held, and before a
-                  run is built most of it is honestly unknown. Shown above the
-                  composer so it is answering "what did it get" at the moment
-                  someone is deciding what to say next. */}
-              {runContext && (
-                <div className="px-1 pb-2">
-                  <CoworkContextBreakdown
-                    context={runContext}
-                    repositoryMapNotice={repositoryMapNotice}
-                  />
-                </div>
-              )}
+              {/* AH-210: what a handed-off session could not bring with it. */}
+              <CoworkHandoffNotice
+                handoff={session?.handoff}
+                folder={folder}
+                onDismiss={() =>
+                  session &&
+                  useCoworkSessions.getState().dismissHandoff(session.id)
+                }
+              />
+              {/* AH-209: a folder with no JAN.md is offered a starting one,
+                  proposed from a survey and written only when accepted. */}
+              <CoworkProjectInit
+                folder={treeRoot ?? null}
+                // Offered only when JAN.md is known to be absent; one that
+                // could not be read is still there, and is not overwritten.
+                hasInstructions={
+                  !instructionFiles.some(
+                    (file) =>
+                      file.role === 'native' && file.state.kind === 'missing'
+                  )
+                }
+                onAccepted={() => setInstructionsVersion((v) => v + 1)}
+              />
               <ChatInput
                 showSpeedToken={false}
                 initialMessage={true}
                 scopeKey={session?.id}
                 ownsToolSet={false}
+                // `@` names files in the folder the run works in, nothing else.
+                referenceRoot={treeRoot}
+                referenceSources={referenceSources}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}
+                // One stop control for this surface, in the composer's own
+                // action slot: it asks how far to stop rather than sitting
+                // beside a second, destructive button.
+                stopControl={
+                  <CoworkStopMenu
+                    running={running}
+                    sessionId={session?.id}
+                    runId={session?.id}
+                    onStopCurrent={handleStop}
+                  />
+                }
                 tokenSource={tokenSource}
                 surfaceControls={
                   <>
-                    <CoworkModeSelector
-                      mode={mode}
-                      onChange={(next) => {
-                        if (session?.id)
-                          useCoworkSessions.getState().setMode(session.id, next)
-                      }}
-                    />
-                    <CoworkAccessSelector
-                      effective={effective}
-                      capability={capabilityState}
-                      hasFolder={Boolean(folder)}
-                      // Authority must not move under work already running.
-                      // A background shell job outlives its run and can still
-                      // write, so it holds authority in place just as a live
-                      // turn does.
-                      busyReason={blockingKind}
-                      onRequestDirectEdit={() => setConfirmDirectEdit(true)}
-                      onRequestWorktree={() => void authorizeManagedWorktree()}
-                      onReviewOnly={() => void returnToReviewOnly()}
-                    />
-                    <CoworkWorkspacePill
-                      folder={folder}
-                      workspacePath={workspacePath}
-                      gitBranch={gitBranch}
-                      onAttach={() => void attachFolder()}
-                      onDetach={detachFolder}
-                    />
+                    {phone && sessionControls}
                     <CoworkSandboxChip />
-                    <CoworkRailToolbar
-                      active={activeRail}
-                      onSelect={selectRail}
-                      changeCount={changeCounts.fileCount}
-                      additions={changeCounts.additions}
-                      deletions={changeCounts.deletions}
-                      activity={taskCounts}
-                    />
+                    {!inspectorVisible && railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
@@ -2866,11 +4260,38 @@ function CoworkPage() {
           </div>
         </div>
 
+        {view === 'details' && (
+          <div
+            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3"
+            data-testid="cowork-details-view"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start pointer-coarse:h-11"
+              onClick={() => showView('content')}
+            >
+              <ArrowLeft className="size-4" aria-hidden />
+              {t('common:coworkLayout.back')}
+            </Button>
+            {modelSelector}
+            <CoworkSessionDetails inline summary={sessionDetailsSummary}>
+              {detailsBody}
+            </CoworkSessionDetails>
+          </div>
+        )}
+
+        {inspectorVisible && (
+          <CoworkInspectorFrame
+            tabs={railToolbar('tabs')}
+            onBack={() => showView('content')}
+            onDismiss={closeRail}
+          >
         {rail?.kind === 'preview' && (
           <CoworkPreviewPanel
             root={workspacePath}
             path={rail.path}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'diff' && (
@@ -2878,9 +4299,51 @@ function CoworkPage() {
             // Going back to how things were belongs where what changed is
             // shown: the two questions are asked in the same breath.
             header={
+              <>
+              {/* An isolated run's work reaches the folder only through a
+                  reviewed proposal, so the review sits with the changes. */}
+              {worktree && session?.id ? (
+                <CoworkProposalReview
+                  worktree={worktree}
+                  session={session.id}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-109: each isolated team child's worktree, for review. */}
+              {folder && session?.id ? (
+                <CoworkTeamReviews
+                  project={folder}
+                  session={session.id}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
+              {folder && session?.id ? (
+                <CoworkBundleImport
+                  destination={folder}
+                  session={session.id}
+                  pickFolder={async () => {
+                    const picked = await serviceHub
+                      .dialog()
+                      .open({ directory: true })
+                    return typeof picked === 'string' ? picked : null
+                  }}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-202: each turn's own file changes, undone or redone
+                  from the turn that made them. */}
+              {session?.id ? (
+                <CoworkTurnUndo
+                  sessionId={session.id}
+                  writeGrant={liveGrant?.grantId}
+                  refreshKey={running}
+                  onChanged={() => git.refresh()}
+                />
+              ) : null}
               <CoworkRewind
                 points={
-                  session?.id
+                  session?.id && checkpointChain
                     ? useCoworkCheckpoints
                         .getState()
                         .usable(session.id, treeRoot)
@@ -2889,6 +4352,26 @@ function CoworkPage() {
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
                 }
+                // Newer edits Jan made itself are not someone else's work, so
+                // only the rest need an explicit acknowledgement.
+                janAuthored={
+                  runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
+                }
+                onSafetyCapture={async (label) => {
+                  if (!session?.id || !treeRoot)
+                    return { ok: false, reason: 'no working tree' }
+                  const saved = await useCoworkCheckpoints
+                    .getState()
+                    .captureSafety({
+                      sessionId: session.id,
+                      root: treeRoot,
+                      label,
+                      access: effective.access,
+                    })
+                  return saved.ok
+                    ? { ok: true, point: saved.entry }
+                    : saved
+                }}
                 onRestore={async (sha) => {
                   const done = await useCoworkCheckpoints
                     .getState()
@@ -2900,6 +4383,7 @@ function CoworkPage() {
                   return done
                 }}
               />
+              </>
             }
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
@@ -2908,7 +4392,7 @@ function CoworkPage() {
             folder={treeRoot}
             git={git}
             origins={runOrigins?.entries}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'tasks' && (
@@ -2929,7 +4413,14 @@ function CoworkPage() {
                 useCoworkActivity.getState().clearFinished(session.id)
               }
             }}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
+          />
+        )}
+        {rail?.kind === 'timeline' && session?.id && (
+          <CoworkTimelinePanel
+            sessionId={session.id}
+            running={running}
+            onClose={closeRail}
           />
         )}
         {rail?.kind === 'code' && session?.id && (
@@ -2948,10 +4439,23 @@ function CoworkPage() {
             }
             onAddToChat={addCodeToChat}
             onAttach={() => void attachFolder()}
-            onClose={() => setRail(null)}
+            onClose={closeRail}
           />
         )}
+        {phone && !panelShown && (
+          <CoworkSidePanel
+            title={t('common:coworkLayout.output')}
+            onClose={() => showView('content')}
+          >
+            <p className="p-4 text-sm text-muted-foreground">
+              {t('common:rail.chooseView')}
+            </p>
+          </CoworkSidePanel>
+        )}
+          </CoworkInspectorFrame>
+        )}
       </div>
+      </CoworkInspectorProvider>
       {/* Mounted outside the panels so it survives a rail change while the
           authorization is in flight. */}
       <DirectEditConfirmDialog

@@ -1,19 +1,34 @@
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
+/**
+ * Below this width the shell's rail and contextual sidebar move into the
+ * navigation sheet: a phone in landscape or a tablet in portrait has too
+ * little room for 80px + 256px of persistent navigation. Matches Tailwind `lg`.
+ */
+export const NARROW_SHELL_BREAKPOINT = 1024
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+function useBelow(breakpoint: number) {
+  const [below, setBelow] = React.useState<boolean | undefined>(undefined)
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`)
     const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+      setBelow(window.innerWidth < breakpoint)
     }
     mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    setBelow(window.innerWidth < breakpoint)
     return () => mql.removeEventListener("change", onChange)
-  }, [])
+  }, [breakpoint])
 
-  return !!isMobile
+  return !!below
+}
+
+export function useIsMobile() {
+  return useBelow(MOBILE_BREAKPOINT)
+}
+
+/** True while the shell uses the navigation sheet instead of rail + sidebar. */
+export function useIsNarrowShell() {
+  return useBelow(NARROW_SHELL_BREAKPOINT)
 }

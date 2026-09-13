@@ -490,7 +490,7 @@ describe('RenderMarkdown', () => {
   })
 
   describe('web citation markers', () => {
-    it('renders a [[cite:URL]] marker as a favicon link to the source', () => {
+    it('renders a [[cite:URL]] marker as a link badged with the site initial', () => {
       const { container } = render(
         <RenderMarkdown
           content={'Paris is the capital of France.[[cite:https://en.wikipedia.org/wiki/Paris]]'}
@@ -501,7 +501,11 @@ describe('RenderMarkdown', () => {
         'a[href="https://en.wikipedia.org/wiki/Paris"]'
       )
       expect(link).toBeTruthy()
-      expect(link?.querySelector('img')).toBeTruthy()
+      // The badge is drawn locally from the hostname. Rendering an <img> here
+      // would fetch a favicon from a third party and disclose to it which
+      // sources the user is reading, so there must be no image at all.
+      expect(link?.querySelector('img')).toBeNull()
+      expect(link?.textContent?.trim()).toBe('E')
       // The raw marker text must not leak into the rendered output.
       expect(container.textContent).not.toContain('[[cite:')
     })
@@ -517,7 +521,8 @@ describe('RenderMarkdown', () => {
         'a[href="https://example.com/article/foo-bar"]'
       )
       expect(link).toBeTruthy()
-      expect(link?.querySelector('img')).toBeTruthy()
+      expect(link?.querySelector('img')).toBeNull()
+      expect(link?.textContent?.trim()).toBe('E')
       expect(container.textContent).not.toContain('[[cite:')
     })
 

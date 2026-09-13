@@ -8,8 +8,6 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
-import { useNavigate } from '@tanstack/react-router'
-import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
@@ -19,10 +17,16 @@ import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import {
+  fillSecretHeaderValues,
+  loadSecretHeaderValues,
+} from '@/lib/providerHeaderSecrets'
 
-type ProviderCustomHeader = {
+type RegisteredCustomHeader = {
   header: string
   value: string
+  /** The backend redacts this value from everything it logs. */
+  secret: boolean
 }
 
 type RegisterProviderRequest = {
@@ -30,7 +34,7 @@ type RegisterProviderRequest = {
   api_key?: string
   api_keys?: string[]
   base_url?: string
-  custom_headers: ProviderCustomHeader[]
+  custom_headers: RegisteredCustomHeader[]
   models: string[]
 }
 
@@ -52,6 +56,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
     custom_headers: (provider.custom_header || []).map((h) => ({
       header: h.header,
       value: h.value,
+      secret: !!h.secret,
     })),
     models: provider.models.map(e => e.id)
   }
@@ -111,6 +116,23 @@ async function applyKeyringKeys(): Promise<void> {
       })
     }
   }
+}
+
+// Secret custom header values are not persisted either (stripProviderSecrets
+// blanks them); read them back from the credential store the same way.
+// janhq/jan#8208.
+async function applySecretHeaderValues(): Promise<void> {
+  const store = useModelProvider.getState()
+  await Promise.all(
+    store.providers.map(async (provider) => {
+      const rows = provider.custom_header ?? []
+      if (!rows.some((h) => h.secret)) return
+      const values = await loadSecretHeaderValues(provider.provider)
+      store.updateProvider(provider.provider, {
+        custom_header: fillSecretHeaderValues(rows, values),
+      })
+    })
+  )
 }
 
 // Track which providers have been registered so we can unregister stale ones
@@ -186,7 +208,6 @@ export function DataProvider() {
   // The thread fetch re-runs on extension re-registration; the sandbox sweep
   // should not.
   const sweptWorkspaces = useRef(false)
-  const navigate = useNavigate()
   const serviceHub = useServiceHub()
 
   // Local API Server hooks
@@ -214,6 +235,7 @@ export function DataProvider() {
       setProviders(fetched)
       // Seed keyring keys into the merged store (predefined + engine + custom).
       await applyKeyringKeys()
+      await applySecretHeaderValues()
       // Register active remote providers with the backend, keys now in place.
       useModelProvider.getState().providers.forEach((provider) => {
         if (provider.active) {
@@ -452,26 +474,14 @@ export function DataProvider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
 
+  /**
+   * Deep links used to open a model's page in the Hub so it could be
+   * downloaded. With no Hub and no downloader there is nothing to open, so a
+   * link is noted and otherwise ignored rather than silently navigating.
+   */
   const handleDeepLink = (urls: string[] | null) => {
-    if (!urls) return
-    console.log('Received deeplink:', urls)
-    const deeplink = urls[0]
-    if (deeplink) {
-      const url = new URL(deeplink)
-      const params = url.pathname.split('/').filter((str) => str.length > 0)
-
-      if (params.length < 3) return undefined
-      // const action = params[0]
-      // const provider = params[1]
-      const resource = params.slice(1).join('/')
-      // return { action, provider, resource }
-      navigate({
-        to: route.hub.model,
-        search: {
-          repo: resource,
-        },
-      })
-    }
+    if (!urls?.length) return
+    console.log('Ignoring deeplink; this build has no model hub:', urls)
   }
 
   return null

@@ -143,9 +143,35 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 /// caching and leaks CLI metadata to the model. Handles both observed shapes:
 ///   inline:  "x-anthropic-billing-header: cc_version=…;\n<prompt>"
 ///   wrapped: "x-anthropic-billing-header:\n   cc_version=…;\n<prompt>"
+/// Whether an inbound header is copied onto the request sent upstream.
+///
+/// - `Host` and `Authorization` are set for the upstream, not inherited.
+/// - `Content-Length` and `Transfer-Encoding` go stale when the body is
+///   re-buffered or rewritten; reqwest derives them again.
+/// - `Origin` and `Referer` describe the page that called Jan's local API, not
+///   Jan. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
+///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
+///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
+pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
+    name != hyper::header::HOST
+        && name != hyper::header::AUTHORIZATION
+        && name != hyper::header::CONTENT_LENGTH
+        && name != hyper::header::TRANSFER_ENCODING
+        && name != hyper::header::ORIGIN
+        && name != hyper::header::REFERER
+}
+
 pub(crate) fn strip_anthropic_billing_header(text: &str) -> &str {
     const KEY: &str = "x-anthropic-billing-header:";
-    if text.len() < KEY.len() || !text[..KEY.len()].eq_ignore_ascii_case(KEY) {
+    // `get`, not `[..]`: the length is in bytes, and a prompt that starts with
+    // multi-byte text puts that byte in the middle of a character. Indexing
+    // there panicked the request handler, and the local API server closed the
+    // connection without a response for any system prompt whose alignment
+    // happened to land that way (janhq/jan#8358).
+    if !text
+        .get(..KEY.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(KEY))
+    {
         return text;
     }
     let first_nl = match text.find('\n') {
@@ -563,6 +589,23 @@ pub struct ProxyConfig {
     pub host: String,
     pub port: u16,
     pub enable_server_tool_execution: bool,
+    /// The Settings "CORS" switch. Off, no response grants a page on another
+    /// origin access, the preflight included (janhq/jan#8836).
+    pub cors_enabled: bool,
+}
+
+/// Remove every `Access-Control-*` header from a response, including any a
+/// backend sent, so a browser page on another origin is refused.
+pub(crate) fn strip_cors_headers<B>(response: &mut Response<B>) {
+    let names: Vec<_> = response
+        .headers()
+        .keys()
+        .filter(|name| name.as_str().starts_with("access-control-"))
+        .cloned()
+        .collect();
+    for name in names {
+        response.headers_mut().remove(&name);
+    }
 }
 
 /// Determines the final destination path based on the original request path
@@ -1016,7 +1059,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }
@@ -1537,7 +1580,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }
@@ -2019,11 +2062,7 @@ async fn proxy_request(
         // Body is re-buffered/rewritten, so a stale inbound Content-Length would
         // mismatch the bytes we send and stall the upstream; reqwest re-derives it.
         for (name, value) in headers.iter() {
-            if name != hyper::header::HOST
-                && name != hyper::header::AUTHORIZATION
-                && name != hyper::header::CONTENT_LENGTH
-                && name != hyper::header::TRANSFER_ENCODING
-            {
+            if forwards_to_upstream(name) {
                 outbound_req = outbound_req.header(name, value);
             }
         }
@@ -2102,7 +2141,7 @@ async fn proxy_request(
                     log::info!("Fallback to chat completions: {chat_url}");
 
                     // Create a fresh client for the fallback to avoid connection pool issues
-                    let fallback_client = Client::builder()
+                    let fallback_client = crate::core::net::tls::apply12(Client::builder())
                         .build()
                         .expect("Failed to create fallback client");
 
@@ -2395,6 +2434,7 @@ pub async fn start_server(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
     enable_server_tool_execution: bool,
+    cors_enabled: bool,
 ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     start_server_internal(
         server_handle,
@@ -2412,6 +2452,7 @@ pub async fn start_server(
         mcp_settings,
         jan_data_folder,
         enable_server_tool_execution,
+        cors_enabled,
     )
     .await
 }
@@ -2433,6 +2474,7 @@ async fn start_server_internal(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
     enable_server_tool_execution: bool,
+    cors_enabled: bool,
 ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     let mut handle_guard = server_handle.lock().await;
     if handle_guard.is_some() {
@@ -2459,13 +2501,16 @@ async fn start_server_internal(
         host: host.clone(),
         port,
         enable_server_tool_execution,
+        cors_enabled,
     };
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(proxy_timeout))
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::core::net::tls::apply12(
+        Client::builder()
+            .timeout(std::time::Duration::from_secs(proxy_timeout))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(std::time::Duration::from_secs(30)),
+    )
+    .build()?;
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -2511,7 +2556,8 @@ async fn start_server_internal(
             let jan_data_folder = jan_data_folder.clone();
 
             let svc = service_fn(move |req| {
-                proxy_request(
+                let cors_enabled = config.cors_enabled;
+                let response = proxy_request(
                     req,
                     client.clone(),
                     config.clone(),
@@ -2522,7 +2568,16 @@ async fn start_server_internal(
                     mcp_servers.clone(),
                     mcp_settings.clone(),
                     jan_data_folder.clone(),
-                )
+                );
+                // One choke point for the CORS switch rather than a check at
+                // each of the many places a response is built.
+                async move {
+                    let mut response = response.await?;
+                    if !cors_enabled {
+                        strip_cors_headers(&mut response);
+                    }
+                    Ok::<_, hyper::Error>(response)
+                }
             });
 
             tokio::spawn(async move {

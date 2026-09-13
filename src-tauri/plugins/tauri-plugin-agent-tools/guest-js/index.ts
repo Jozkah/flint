@@ -3,7 +3,6 @@ import {
   BashJobStatus,
   ProjectFile,
   ProjectListing,
-  ProjectMap,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
@@ -16,14 +15,22 @@ export {
   ProjectEntry,
   ProjectFile,
   ProjectListing,
-  ProjectMap,
-  ProjectMapEntry,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
   ToolSchema,
   WorkspaceScope,
 } from './types'
+export type { RunResources, ToolResources } from './types'
+import type { RunResources } from './types'
+
+/**
+ * What the commands a run started used, taken as the run ends (AH-174).
+ * `null` for a run that started none. Forgotten on the backend once taken.
+ */
+export async function finishRunResources(run: string): Promise<RunResources | null> {
+  return await invoke('plugin:agent-tools|tool_resources_finish_run', { run })
+}
 
 /**
  * Every call takes the Jan data folder, because the plugin derives its
@@ -104,6 +111,16 @@ export async function sessionWorkspacePath(
  */
 export async function directEditCapability(): Promise<boolean> {
   return await invoke('plugin:agent-tools|direct_edit_capability')
+}
+
+/**
+ * Can this platform confine a run to a worktree Jan owns?
+ *
+ * True wherever direct editing is, and also on Windows, where the sandbox can
+ * hold a run to a Jan-managed worktree but not to the user's own folder.
+ */
+export async function managedWorktreeCapability(): Promise<boolean> {
+  return await invoke('plugin:agent-tools|managed_worktree_capability')
 }
 
 /**
@@ -259,6 +276,590 @@ export async function memoryDelete(
   })
 }
 
+/* ------------------------------------------------------------------ *
+ * Canonical memory records
+ *
+ * Separate from the `memory*` functions above, which are the flat
+ * `<name>.md` notes. These are the records behind Settings > Memory: they
+ * carry scope, provenance, status and identity, and every one of them is
+ * validated in the backend. The renderer never reads or writes the store
+ * itself.
+ * ------------------------------------------------------------------ */
+
+/** User-facing scope names. `user` is spelled "across chats" in the UI. */
+export type MemoryScope = 'chat' | 'project' | 'user'
+
+/** Where the caller is. The backend derives what it may see from this; it is a
+ * request, never a claim. */
+export type MemoryLocation = {
+  dataFolder: string
+  /** The open project's root, when one is open. */
+  projectRoot?: string
+  /** The active chat. */
+  sessionId?: string
+  /**
+   * The Jan workspace project (sidebar project) the chat belongs to, when it
+   * has no folder. The backend namespaces it (`jan-project:<id>`) and uses a
+   * folder's identity instead whenever `projectRoot` is set. Only renderer
+   * memory commands accept it; model-facing tools cannot supply it.
+   */
+  janProjectId?: string
+}
+
+export type MemoryView = {
+  id: string
+  content: string
+  scope: MemoryScope
+  creator: string
+  origin: string
+  status: 'active' | 'superseded' | 'conflicted' | 'expired' | 'deleted'
+  pinned: boolean
+  redacted: boolean
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number | null
+  useCount: number
+  expiresAt: number | null
+  category: string | null
+  projectId: string | null
+  sessionId: string | null
+  sourceSessionId: string | null
+  sourceMessageId: string | null
+  sourceDeleted: boolean
+  supersedes: string | null
+  /** 1 when created, +1 per edit; null for a record saved before versions. */
+  version?: number | null
+  contentHash?: string
+  /** 'user-authored' | 'agent-authored' | 'imported' | 'extracted' | 'system' */
+  sourceType?: string
+  sourceRunId?: string | null
+  sourceProjectId?: string | null
+  /** Earlier versions, as hashes and times only. */
+  history?: { version: number; content_hash: string; replaced_at: number }[]
+  /** The most recent dispatches that carried it, newest last. */
+  uses?: {
+    session_id: string
+    turn_id?: string
+    snapshot_id?: string
+    reason?: string
+    at: number
+  }[]
+  /** Set for an imported memory: the export it arrived in and its origin
+   * there (AH-083). Absent for anything written on this machine. */
+  importedFrom?: MemoryImportedFrom | null
+  /** A single-line preview, already truncated by the backend so a redaction
+   * marker is never cut in half. */
+  preview: string
+}
+
+export type MemoryPage = {
+  items: MemoryView[]
+  /** Total matching before paging, so a list can say "20 of 340". */
+  total: number
+  offset: number
+}
+
+export type MemoryConflict = {
+  left: string
+  right: string
+  subject: string
+}
+
+export type MemoryProposal = {
+  content: string
+  scope: MemoryScope
+  /** Hand this back to `memoryRecordCommit`, so what is stored is what was
+   * shown. */
+  contentHash: string
+  duplicates: string[]
+  conflicts: MemoryConflict[]
+  redacted: boolean
+}
+
+export type MemoryStorageSummary = {
+  sessionCount: number
+  projectCount: number
+  userCount: number
+  deletedCount: number
+  conflictedCount: number
+  bytes: number
+  /** Stores that could not be read in full, in words for the UI. */
+  issues: string[]
+}
+
+/** Which scopes are recalled into requests. Stored records are kept either way. */
+export type MemoryRecall = {
+  session: boolean
+  project: boolean
+  user: boolean
+}
+
+export type MemorySettings = {
+  automaticallySave: boolean
+  recall: MemoryRecall
+  /** Whether remembered facts are added to requests at all. Defaults to on. */
+  memoryEnabled: boolean
+  schemaVersion: number
+  /** Set when the settings file exists but could not be read; recall is then
+   * off until the settings are saved again. */
+  issue?: string | null
+}
+
+/**
+ * The memories one dispatch may use, and which records they were.
+ *
+ * `block` is already delimited and goes into the system prompt verbatim. The
+ * ids and hashes are what a prompt snapshot records, so a later reader can tell
+ * not just which memory the model saw but which *version* of it.
+ */
+export type MemoryRetrieved = {
+  block: string | null
+  injectedIds: string[]
+  injectedHashes: string[]
+  /** Both sides of every conflict. Withheld from the prompt, never injected. */
+  conflictIds: string[]
+  /** Applicable records the budget had no room for. */
+  droppedIds: string[]
+  charsUsed: number
+  /** Usable records whose scope matched, before conflicts, dedupe and budget. */
+  candidateIds: string[]
+  /** The project identity the retrieval was scoped to, if any. */
+  projectId: string | null
+  /** Memory is switched off in settings; nothing was read. */
+  disabled: boolean
+  /** Storage or settings that could not be read, in words for the UI. */
+  storageIssues?: string[]
+  /** Scopes whose recall the user switched off ("chat", "project", "user"). */
+  recallOff?: string[]
+  /** Why each injected memory was chosen, in injection order. `rank` is its
+   * precedence position, not a relevance score. */
+  recall?: MemoryRecallReason[]
+  /** Withheld because JAN.md, a compatibility file or a skill says otherwise
+   * (AH-084): both values, both sources, and the winner. */
+  overridden?: MemoryOverride[]
+  /** Refused because they claim authority memory cannot have. */
+  refused?: { memoryId: string; reason: string }[]
+  /** The precedence chain, as the prompt states it. */
+  precedence?: string
+}
+
+export type InstructionSource =
+  | 'system'
+  | 'current-request'
+  | 'workspace'
+  | 'jan-md'
+  | 'compat'
+  | 'skill'
+  | 'user-memory'
+  | 'project-memory'
+  | 'session-memory'
+  | 'transcript'
+
+/** Instruction text above memory, handed to retrieval so a memory that
+ * contradicts it is withheld. Used only to withhold, never to allow. */
+export type MemoryInstruction = {
+  source: 'jan-md' | 'compat' | 'skill'
+  name: string
+  text: string
+}
+
+export type MemoryOverride = {
+  memoryId: string
+  memorySource: InstructionSource
+  memorySays: string
+  subject: string
+  winner: InstructionSource
+  winnerName: string
+  winnerSays: string
+}
+
+export type MemoryRecallReason = {
+  id: string
+  scope: string
+  rank: number
+  reason: string
+}
+
+/**
+ * Record that one dispatch carried these memories: the turn it produced and,
+ * when one was taken, its prompt snapshot. Returns how many were recorded;
+ * records this place may not see, or already forgotten, are left alone.
+ */
+export async function memoryRecordUses(
+  location: MemoryLocation,
+  used: { id: string; reason?: string }[],
+  where: { turnId?: string; snapshotId?: string }
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_record_uses', {
+    location,
+    used,
+    turnId: where.turnId,
+    snapshotId: where.snapshotId,
+  })
+}
+
+/**
+ * Select the memories for one dispatch.
+ *
+ * The desktop drives its own tool loop, so it reaches the same selection the
+ * CLI agent calls in process. One function decides for both: a memory the CLI
+ * would inject and the desktop would not is a disagreement nobody would find.
+ *
+ * A temporary chat is answered before any store is opened -- it neither reads
+ * nor records.
+ */
+export async function memoryRetrieve(
+  location: MemoryLocation,
+  options?: {
+    temporary?: boolean
+    budgetChars?: number
+    instructions?: MemoryInstruction[]
+  }
+): Promise<MemoryRetrieved> {
+  return await invoke('plugin:agent-tools|memory_retrieve', {
+    location,
+    temporary: options?.temporary,
+    budgetChars: options?.budgetChars,
+    instructions: options?.instructions,
+  })
+}
+
+/** Two remembered records that cannot both be followed, both in full. */
+export type MemoryConflictPair = {
+  /** What they disagree about, e.g. "package manager". */
+  subject: string
+  left: MemoryView
+  right: MemoryView
+}
+
+/**
+ * The conflicts a dispatch from `location` would withhold.
+ *
+ * Retrieval withholds both sides of a conflict; this is how the user finds out
+ * and settles it. Same records and applicability as `memoryRetrieve`.
+ */
+export async function memoryConflicts(
+  location: MemoryLocation,
+  options?: { temporary?: boolean }
+): Promise<MemoryConflictPair[]> {
+  return await invoke('plugin:agent-tools|memory_conflicts', {
+    location,
+    temporary: options?.temporary,
+  })
+}
+
+/**
+ * A memory an agent proposed that nobody has answered yet.
+ *
+ * `explanation` is the sentence to show. There is deliberately no generic
+ * "needs approval": the gate knows why it is asking, and the card is the only
+ * place that knowledge is worth anything.
+ */
+export type PendingProposal = {
+  id: string
+  content: string
+  scope: MemoryScope
+  /** Stable code, for keying behaviour. */
+  reason:
+    | 'automatic-saving-disabled'
+    | 'conflicts-with-existing'
+    | 'would-promote-project-fact-globally'
+  explanation: string
+  /**
+   * Whether approving is offered at all. A conflict is a question about which
+   * of two memories is right, not something to wave through, so the backend
+   * refuses to approve one even if asked.
+   */
+  approvable: boolean
+  sourceSessionId: string | null
+  sourceMessageId: string | null
+  createdAt: number
+}
+
+/** Proposals awaiting an answer, newest first. */
+export async function memoryProposalsList(
+  location: MemoryLocation
+): Promise<PendingProposal[]> {
+  return await invoke('plugin:agent-tools|memory_proposals_list', { location })
+}
+
+/**
+ * Answer a proposal.
+ *
+ * The card is not the decision. Approving re-runs the refusals against the
+ * content as stored, so a card that sat on screen while something changed
+ * cannot wave it through; rejecting removes it rather than leaving a question
+ * that gets asked again. Returns the saved memory, or `null` when rejected.
+ */
+export async function memoryProposalResolve(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  approve: boolean
+): Promise<MemoryView | null> {
+  return await invoke('plugin:agent-tools|memory_proposal_resolve', {
+    location,
+    scope,
+    id,
+    approve,
+  })
+}
+
+/** One page of memories in a scope. Rejects a scope the caller has no standing
+ * in, rather than returning an empty list. */
+export async function memoryRecordsList(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  options?: { query?: string; offset?: number; limit?: number }
+): Promise<MemoryPage> {
+  return await invoke('plugin:agent-tools|memory_records_list', {
+    location,
+    scope,
+    query: options?.query,
+    offset: options?.offset,
+    limit: options?.limit,
+  })
+}
+
+export async function memoryRecordGet(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_get', {
+    location,
+    scope,
+    id,
+  })
+}
+
+/** Replace a memory's content. `expectedHash` is what the caller was looking
+ * at; a mismatch is refused rather than overwriting a newer value. */
+export async function memoryRecordEdit(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  content: string,
+  expectedHash?: string
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_edit', {
+    location,
+    scope,
+    id,
+    content,
+    expectedHash,
+  })
+}
+
+/** Build a reviewable proposal. Writes nothing. */
+export async function memoryRecordPropose(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  content: string,
+  source?: { sessionId?: string; messageId?: string }
+): Promise<MemoryProposal> {
+  return await invoke('plugin:agent-tools|memory_record_propose', {
+    location,
+    scope,
+    content,
+    sourceSessionId: source?.sessionId,
+    sourceMessageId: source?.messageId,
+  })
+}
+
+/** Store a proposal the user reviewed. The refusals run again here. */
+export async function memoryRecordCommit(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  content: string,
+  expectedHash: string,
+  source?: { sessionId?: string; messageId?: string; runId?: string }
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_commit', {
+    location,
+    scope,
+    content,
+    expectedHash,
+    sourceSessionId: source?.sessionId,
+    sourceMessageId: source?.messageId,
+    sourceRunId: source?.runId,
+  })
+}
+
+/** Forget a memory. Recoverable with `memoryRecordRestore`. */
+export async function memoryRecordForget(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string
+): Promise<boolean> {
+  return await invoke('plugin:agent-tools|memory_record_forget', {
+    location,
+    scope,
+    id,
+  })
+}
+
+/**
+ * Undo a forget, restoring the same record rather than a copy of its text.
+ *
+ * Forgetting removes the text from disk, so the caller hands back the text it
+ * showed; it must be exactly what was forgotten.
+ */
+export async function memoryRecordRestore(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  content: string
+): Promise<boolean> {
+  return await invoke('plugin:agent-tools|memory_record_restore', {
+    location,
+    scope,
+    id,
+    content,
+  })
+}
+
+/** Where an imported memory came from, as its export described it. */
+export type MemoryImportedFrom = {
+  export_id: string
+  exported_at: number
+  exported_scope: string
+  original_id: string
+  original_source_type: string
+  original_created_at: number
+  original_version?: number
+  original_session_id?: string
+  original_run_id?: string
+  original_project_id?: string
+}
+
+export type MemoryExportReport = { exportId: string; path: string; count: number }
+
+export type MemoryImportSkipped = { index: number; originalId: string; reason: string }
+
+export type MemoryImportReport = {
+  exportId: string
+  /** Ids of the records created. */
+  imported: string[]
+  /** Already remembered in this scope; nothing written. */
+  duplicates: MemoryImportSkipped[]
+  /** Altered after export, a credential, an instruction, or expired. */
+  refused: MemoryImportSkipped[]
+}
+
+/** Write one scope's active memories, with provenance, to `path`. */
+export async function memoryExport(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  path: string
+): Promise<MemoryExportReport> {
+  return await invoke('plugin:agent-tools|memory_export', { location, scope, path })
+}
+
+/** Import a memory export into `scope`; every record is checked and marked imported. */
+export async function memoryImport(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  path: string
+): Promise<MemoryImportReport> {
+  return await invoke('plugin:agent-tools|memory_import', { location, scope, path })
+}
+
+/** Forget every memory in one scope that `location` may see. Returns how many. */
+export async function memoryScopeClear(
+  location: MemoryLocation,
+  scope: MemoryScope
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_scope_clear', { location, scope })
+}
+
+export async function memoryRecordPin(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  pinned: boolean
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_pin', {
+    location,
+    scope,
+    id,
+    pinned,
+  })
+}
+
+export async function memoryRecordSetExpiration(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  expiresAt: number | null
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_set_expiration', {
+    location,
+    scope,
+    id,
+    expiresAt,
+  })
+}
+
+/** Move a memory between scopes. Promoting to `user` drops the project and
+ * chat it came from, so project knowledge cannot arrive globally still
+ * carrying its project. */
+export async function memoryRecordMoveScope(
+  location: MemoryLocation,
+  fromScope: MemoryScope,
+  id: string,
+  toScope: MemoryScope
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_move_scope', {
+    location,
+    fromScope,
+    id,
+    toScope,
+  })
+}
+
+export async function memoryStorageSummary(
+  location: MemoryLocation
+): Promise<MemoryStorageSummary> {
+  return await invoke('plugin:agent-tools|memory_storage_summary', { location })
+}
+
+export async function memorySettingsGet(
+  location: MemoryLocation
+): Promise<MemorySettings> {
+  return await invoke('plugin:agent-tools|memory_settings_get', { location })
+}
+
+/**
+ * Change memory settings. A boolean is the automatic-save switch (the original
+ * form); an object changes only the fields it names.
+ */
+export async function memorySettingsUpdate(
+  location: MemoryLocation,
+  change: boolean | { automaticallySave?: boolean; recall?: MemoryRecall }
+): Promise<MemorySettings> {
+  const patch = typeof change === 'boolean' ? { automaticallySave: change } : change
+  return await invoke('plugin:agent-tools|memory_settings_update', {
+    location,
+    automaticallySave: patch.automaticallySave,
+    recall: patch.recall,
+  })
+}
+
+/**
+ * Turn memory in requests on or off. Leaves `automaticallySave` as it is:
+ * the backend changes only the switch that was named.
+ */
+export async function memorySettingsSetEnabled(
+  location: MemoryLocation,
+  memoryEnabled: boolean
+): Promise<MemorySettings> {
+  return await invoke('plugin:agent-tools|memory_settings_update', {
+    location,
+    memoryEnabled,
+  })
+}
+
 /**
  * Function schemas for every built-in tool. Callers pick which subset to
  * advertise; the schemas are never re-typed in TypeScript.
@@ -285,24 +886,6 @@ export async function projectListDir(
 }
 
 /**
- * Walk the attached project into one bounded repository map.
- *
- * Same root validation and the same read-only browsing filters as
- * `projectListDir` — the map cannot name anything the code panel would refuse
- * to show — but walked whole in one call rather than a level at a time, so the
- * result can be rendered into a run's system prompt.
- */
-export async function projectMap(
-  dataFolder: string,
-  root: string
-): Promise<ProjectMap> {
-  return await invoke('plugin:agent-tools|project_map', {
-    dataFolder,
-    root,
-  })
-}
-
-/**
  * Read one project file verbatim for the code viewer. Oversized and binary
  * files come back flagged with empty content; sensitive files (`.env`, keys)
  * are refused unless `allowSensitive` marks an explicit user override.
@@ -322,13 +905,15 @@ export async function projectReadFile(
 }
 
 /**
- * Shell commands still running in the background, newest first.
+ * The background shell commands one conversation started, newest first.
  *
  * Read-only: polling this never takes the output the agent collects with
  * `bash {"job_id": ...}`, so a UI can show live jobs without racing the run.
+ * `session` is the conversation the tool calls ran under; another
+ * conversation's jobs are never listed.
  */
-export async function bashJobsList(): Promise<BashJobStatus[]> {
-  return await invoke('plugin:agent-tools|bash_jobs_list')
+export async function bashJobsList(session: string): Promise<BashJobStatus[]> {
+  return await invoke('plugin:agent-tools|bash_jobs_list', { session })
 }
 
 /** Why a kill request ended the way it did. Mirrors `BashJobKillOutcome`. */
@@ -357,10 +942,14 @@ export type BashJobKill = {
  * The job entry survives, so the agent's own collection still returns whatever
  * the command printed before it died. The outcome is reported rather than
  * assumed: a UI must not claim to have stopped something that had already
- * finished, or that it could not signal.
+ * finished, or that it could not signal. Confined to `session`: another
+ * conversation's job reports `unknown`, the same as no job at all.
  */
-export async function bashJobKill(jobId: string): Promise<BashJobKill> {
-  return await invoke('plugin:agent-tools|bash_job_kill', { jobId })
+export async function bashJobKill(
+  jobId: string,
+  session: string
+): Promise<BashJobKill> {
+  return await invoke('plugin:agent-tools|bash_job_kill', { jobId, session })
 }
 
 /** Which OS sandbox, if any, can confine a shell on this machine. */
@@ -368,6 +957,140 @@ export type SandboxStatus = {
   /** `bubblewrap`, `seatbelt`, `appcontainer`, or `none`. */
   backend: string
   enforces: boolean
+}
+
+/** One independently-probed part of a session's environment. */
+export type ReadinessComponent =
+  | 'model'
+  | 'context'
+  | 'filesystem'
+  | 'shell'
+  | 'sandbox'
+  | 'mcp'
+  | 'workspace'
+  | 'local-runtime'
+
+/**
+ * How a component is doing.
+ *
+ * `checking` is not a failure and `degraded` is not `unavailable`: a shell that
+ * can only run `cmd` still runs shell-neutral commands, and treating the two
+ * the same would withhold work that would have succeeded.
+ */
+export type ReadinessState =
+  | 'checking'
+  | 'ready'
+  | 'degraded'
+  | 'unavailable'
+  | 'blocked'
+
+/**
+ * A stable machine-readable cause. Chosen to survive rewording of the message
+ * beside it, because tests and UI guidance key off these.
+ */
+export type ReadinessReason =
+  | 'ok'
+  | 'not-probed'
+  | 'workspace-missing'
+  | 'workspace-unattached'
+  | 'filesystem-unreadable'
+  | 'filesystem-read-only'
+  | 'shell-missing'
+  | 'shell-runtime-incompatible'
+  | 'shell-probe-failed'
+  | 'shell-non-posix-only'
+  | 'sandbox-unavailable'
+  | 'sandbox-disabled'
+  | 'model-unselected'
+  | 'model-unreachable'
+  | 'context-unknown'
+  | 'mcp-none-configured'
+  | 'mcp-unreachable'
+  | 'local-runtime-absent'
+  | 'local-runtime-stopped'
+
+export type ComponentReport = {
+  component: ReadinessComponent
+  state: ReadinessState
+  reason: ReadinessReason
+  /** One actionable sentence. Never a value, a path, a command or a secret. */
+  message: string
+  /** Unix milliseconds; null when the component has not been probed. */
+  checkedAtMs: number | null
+  retryable: boolean
+  /** What this component grants right now. Empty when it is not usable. */
+  capabilities: string[]
+  /** Extra lines for a copied diagnostic, under the same redaction rules. */
+  details: string[]
+}
+
+export type EnvironmentReadiness = {
+  components: ComponentReport[]
+  generatedAtMs: number
+}
+
+/** A tool held back, and which component is responsible. */
+export type OmittedTool = {
+  name: string
+  component: ReadinessComponent
+  reason: ReadinessReason
+  message: string
+}
+
+export type AdvertisedTools = {
+  schemas: ToolSchema[]
+  omitted: OmittedTool[]
+}
+
+/**
+ * What this session can do right now, component by component.
+ *
+ * `reported` carries the components only the renderer's stores can answer for
+ * -- whether a provider replied, what context window was resolved, which MCP
+ * servers connected. Rust decides what those facts mean and refuses any claim
+ * about a component it probes itself, so a caller cannot assert that a shell
+ * works.
+ */
+export async function environmentReadiness(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<EnvironmentReadiness> {
+  return await invoke('plugin:agent-tools|environment_readiness', {
+    projectRoot,
+    reported,
+  })
+}
+
+/**
+ * Re-probe one component, or every backend-owned component when `component` is
+ * omitted. One at a time by default, so the timestamps beside the untouched
+ * rows keep telling the truth about when they were last checked.
+ */
+export async function environmentReadinessRetry(
+  projectRoot?: string,
+  component?: ReadinessComponent,
+  reported?: ComponentReport[]
+): Promise<EnvironmentReadiness> {
+  return await invoke('plugin:agent-tools|environment_readiness_retry', {
+    projectRoot,
+    component,
+    reported,
+  })
+}
+
+/**
+ * The tools this environment can actually run, and the ones it cannot with the
+ * reason. Prefer this to `toolSchemas` when building what a model is offered:
+ * a tool the model calls and cannot use costs a turn and reads as a defect.
+ */
+export async function advertisedToolSchemas(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<AdvertisedTools> {
+  return await invoke('plugin:agent-tools|advertised_tool_schemas', {
+    projectRoot,
+    reported,
+  })
 }
 
 /**
@@ -415,7 +1138,11 @@ export async function executeTool(
   readOnlyProject?: string,
   writeGrant?: string,
   scope?: WorkspaceScope,
-  callId?: string
+  callId?: string,
+  /** The run this call belongs to; journals its file changes for undo. */
+  undoRun?: string,
+  /** Who is making this call (AH-110); journaled with every file it changes. */
+  actor?: ChangeActorInput
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
@@ -429,6 +1156,148 @@ export async function executeTool(
     writeGrant,
     scope,
     callId,
+    undoRun,
+    actor,
+  })
+}
+
+/** One turn's file changes that can be undone or redone. AH-202. */
+/** Who made a change (AH-110). `id` is the identity, `label` is for reading. */
+export type ChangeActorKind = 'primary' | 'named' | 'role'
+
+export type ChangeActor = {
+  /** `agent`, `agent:<name>` or `role:<name>`. Never a display name alone. */
+  id: string
+  kind: ChangeActorKind
+  label: string
+  /** The agent that dispatched this one, for a nested subagent. */
+  parent?: string
+  invocation?: string
+  task?: string
+}
+
+/** What a caller claims about who is making a tool call. Validated in Rust. */
+export type ChangeActorInput = {
+  id: string
+  label?: string
+  parent?: string
+  invocation?: string
+  task?: string
+}
+
+export type UndoTurnSummary = {
+  run: string
+  at: string
+  state: 'applied' | 'undone'
+  paths: string[]
+  /** Every distinct agent whose change this turn holds, first change first. */
+  actors?: ChangeActor[]
+  /** One entry per file: which agent left which file. */
+  changes?: { path: string; actor?: ChangeActor }[]
+}
+
+export async function undoJournal(
+  dataFolder: string,
+  sessionId: string
+): Promise<UndoTurnSummary[]> {
+  return await invoke('plugin:agent-tools|undo_journal', {
+    dataFolder,
+    sessionId,
+  })
+}
+
+/**
+ * Undo the file changes one turn made: all of them or none. Refused, naming
+ * the paths, when any file changed since -- by the user or a later turn.
+ */
+export async function undoTurn(
+  dataFolder: string,
+  sessionId: string,
+  run: string,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<{ run: string; state: 'applied' | 'undone'; files: number }> {
+  return await invoke('plugin:agent-tools|undo_turn', {
+    dataFolder,
+    sessionId,
+    run,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
+  })
+}
+
+/**
+ * The diff a `write` or `edit` call would make, for its approval prompt
+ * (AH-146). `null` for other tools, for a change that changes nothing, and for
+ * a path outside where the call could write. Nothing is written.
+ */
+export async function previewChange(
+  dataFolder: string,
+  sessionId: string,
+  name: string,
+  args: Record<string, unknown>,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<string | null> {
+  return await invoke('plugin:agent-tools|preview_change', {
+    dataFolder,
+    sessionId,
+    name,
+    args,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
+  })
+}
+
+/** What a survey of the attached folder found, and did not read. AH-209. */
+export type ProjectSurvey = {
+  draft: string
+  read: string[]
+  notRead: string[]
+  filesSeen: number
+  hasInstructions: boolean
+}
+
+/**
+ * Survey the attached folder for a starting `JAN.md`. Reads only inside it,
+ * runs nothing, and writes nothing.
+ */
+export async function projectSurvey(
+  dataFolder: string,
+  root: string
+): Promise<ProjectSurvey> {
+  return await invoke('plugin:agent-tools|project_survey', { dataFolder, root })
+}
+
+/**
+ * Write the accepted text as the folder's `JAN.md`. Refused, writing nothing,
+ * when one exists and `overwrite` is not set, or when `JAN.md` is a link.
+ */
+export async function projectInitAccept(
+  dataFolder: string,
+  root: string,
+  content: string,
+  overwrite = false
+): Promise<string> {
+  return await invoke('plugin:agent-tools|project_init_accept', {
+    dataFolder,
+    root,
+    content,
+    overwrite,
+  })
+}
+
+/** Redo the file changes of a turn that was undone: all of them or none. */
+export async function redoTurn(
+  dataFolder: string,
+  sessionId: string,
+  run: string,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<{ run: string; state: 'applied' | 'undone'; files: number }> {
+  return await invoke('plugin:agent-tools|redo_turn', {
+    dataFolder,
+    sessionId,
+    run,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
   })
 }
 
@@ -453,9 +1322,11 @@ export async function executeToolStreaming(
     writeGrant?: string
     scope?: WorkspaceScope
     callId?: string
+    undoRun?: string
   }
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
+    undoRun: options?.undoRun,
     dataFolder,
     threadId,
     name,
@@ -469,4 +1340,17 @@ export async function executeToolStreaming(
     scope: options?.scope,
     callId: options?.callId,
   })
+}
+
+/**
+ * Strip credentials out of text before it is persisted.
+ *
+ * One implementation, in Rust, shared with the audit log, the activity record
+ * and the prompt snapshot. A second copy of the matching rules in TypeScript
+ * would drift the first time either side was extended, and a redactor that is
+ * subtly weaker than the one it is named after is worse than none: it reads as
+ * a guarantee.
+ */
+export async function secretsRedact(text: string): Promise<string> {
+  return await invoke('plugin:agent-tools|secrets_redact', { text })
 }

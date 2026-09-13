@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -89,6 +89,103 @@ describe('no update checking', () => {
   })
 })
 
+/**
+ * The repository outside the web app: Rust, extensions and packaging. Scanned
+ * as text so a reintroduced host or downloader is caught wherever it lands.
+ */
+function repoFiles(dir: string, found: string[] = []): string[] {
+  const skip = new Set([
+    'node_modules',
+    'target',
+    'dist',
+    'dist-js',
+    '.git',
+    'build',
+  ])
+  for (const entry of readdirSync(dir)) {
+    if (skip.has(entry)) continue
+    const path = join(dir, entry)
+    if (statSync(path).isDirectory()) {
+      repoFiles(path, found)
+    } else if (/\.(rs|ts|tsx|json|toml|ya?ml)$/.test(entry)) {
+      found.push(path)
+    }
+  }
+  return found
+}
+
+const RUST = sourceFilesUnder(resolve(REPO, 'src-tauri/src'))
+const EXTENSIONS = repoFiles(resolve(REPO, 'extensions'))
+
+function sourceFilesUnder(dir: string): string[] {
+  return repoFiles(dir)
+}
+
+/** Repo-relative paths of files matching, excluding this guard itself. */
+function repoMatches(files: string[], pattern: RegExp): string[] {
+  return files
+    .filter((path) => pattern.test(read(path)))
+    .map((path) => relative(REPO, path))
+    .filter((rel) => !rel.endsWith('localOnly.test.ts'))
+}
+
+describe('the Rust core reaches no vendor service', () => {
+  it('has no updater module left', () => {
+    expect(existsSync(resolve(REPO, 'src-tauri/src/core/updater'))).toBe(false)
+    expect(existsSync(resolve(REPO, 'src-tauri/src/core/cli/updater.rs'))).toBe(
+      false
+    )
+  })
+
+  it('collects no usage identity', () => {
+    expect(
+      existsSync(resolve(REPO, 'src-tauri/src/core/cli/telemetry.rs'))
+    ).toBe(false)
+    expect(repoMatches(RUST, /install_id|nonce_seed/i)).toEqual([])
+  })
+
+  it('names no vendor host', () => {
+    expect(repoMatches(RUST, /https?:\/\/[a-z0-9.-]*jan\.ai/i)).toEqual([])
+  })
+
+  it('routes downloads through no mirror', () => {
+    expect(repoMatches(RUST, /convert_to_mirror_url|MIRROR_DOMAINS/)).toEqual([])
+  })
+
+  it('ships no updater plugin or capability', () => {
+    const cargo = read(resolve(REPO, 'src-tauri/Cargo.toml'))
+    expect(cargo).not.toMatch(/tauri-plugin-updater/)
+    const caps = read(resolve(REPO, 'src-tauri/capabilities/default.json'))
+    expect(caps).not.toMatch(/updater/)
+  })
+})
+
+describe('the extensions fetch no models', () => {
+  it('has no download extension', () => {
+    // Its source, not its build output: a stale `dist/` from an earlier build
+    // is not a dependency, and leaving one lying about must not fail this.
+    expect(
+      existsSync(resolve(REPO, 'extensions/download-extension/package.json'))
+    ).toBe(false)
+    expect(
+      existsSync(resolve(REPO, 'extensions/download-extension/src'))
+    ).toBe(false)
+    expect(repoMatches(EXTENSIONS, /@janhq\/download-extension/)).toEqual([])
+  })
+
+  it('leaves the web app with no reference to one either', () => {
+    expect(filesMatching(/@janhq\/download-extension/)).toEqual([])
+  })
+})
+
+describe('packaging pulls from no vendor catalogue', () => {
+  it('builds the Flatpak from a local artifact', () => {
+    const manifest = read(resolve(REPO, 'flatpak/ai.jan.Jan.yml'))
+    expect(manifest).not.toMatch(/catalog\.jan\.ai/)
+    expect(manifest).not.toMatch(/https?:\/\/[a-z0-9.-]*jan\.ai/i)
+  })
+})
+
 describe('no vendor services', () => {
   it('references no jan.ai host', () => {
     // The bundle identifier `jan.ai.app` names the data directory and is not a
@@ -98,5 +195,237 @@ describe('no vendor services', () => {
 
   it('sends no vendor referer header', () => {
     expect(filesMatching(/HTTP-Referer/i)).toEqual([])
+  })
+})
+
+/**
+ * The rest of the repository: the shared core, the build scripts, and the
+ * Vite and Tauri configuration.
+ *
+ * The web app and the Rust core are covered above. These are the other places
+ * a fetch or an injected script can live, and the ones a reviewer is least
+ * likely to look at.
+ */
+const CORE = repoFiles(resolve(REPO, 'core/src'))
+const SCRIPTS = existsSync(resolve(REPO, 'scripts'))
+  ? repoFiles(resolve(REPO, 'scripts'))
+  : []
+const CONFIGS = [
+  'web-app/vite.config.ts',
+  'web-app/index.html',
+  'src-tauri/tauri.conf.json',
+]
+  .map((rel) => resolve(REPO, rel))
+  .filter((path) => existsSync(path))
+
+const EVERYWHERE = [...FILES, ...RUST, ...EXTENSIONS, ...CORE, ...SCRIPTS, ...CONFIGS]
+
+describe('nothing anywhere reports usage', () => {
+  it('injects no analytics script', () => {
+    expect(
+      repoMatches(EVERYWHERE, /googletagmanager|gtag\(|GA_MEASUREMENT_ID/)
+    ).toEqual([])
+  })
+
+  it('carries no usage identity', () => {
+    // Not `distinct_ids`: a thread-locking test uses that word for locks and
+    // has nothing to do with identity.
+    expect(repoMatches(EVERYWHERE, /distinct_id(?!s)/)).toEqual([])
+  })
+
+  it('exposes no analytics service', () => {
+    expect(existsSync(resolve(SRC, 'services/analytic'))).toBe(false)
+  })
+})
+
+describe('nothing anywhere fetches a decoration', () => {
+  /**
+   * Favicons used to come from Google, which meant every domain a search
+   * returned was reported to a third party this app otherwise never talks to.
+   * An icon is not worth telling someone else what you are reading.
+   */
+  it('fetches no favicons from a third party', () => {
+    expect(
+      repoMatches(EVERYWHERE, /s2\/favicons|favicon.*\?domain=|icons\.duckduckgo/)
+    ).toEqual([])
+  })
+})
+
+describe('nothing anywhere checks for updates', () => {
+  it('registers no updater plugin', () => {
+    expect(repoMatches(EVERYWHERE, /tauri_plugin_updater|plugin-updater/)).toEqual(
+      []
+    )
+  })
+
+  it('keeps no updater service in the web app', () => {
+    expect(existsSync(resolve(SRC, 'services/updater'))).toBe(false)
+  })
+})
+
+describe('nothing anywhere fetches a model catalogue', () => {
+  it('names no catalogue URL', () => {
+    expect(
+      repoMatches(EVERYWHERE, /MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL|model-catalog/)
+    ).toEqual([])
+  })
+
+  /**
+   * Browsing a model host is discovery by another name.
+   *
+   * Deliberately aimed at *catalogue and search* endpoints, not at the word
+   * "huggingface". One thing legitimately remains and is documented as a
+   * network path: the Hugging Face entry in the provider list, which is an API
+   * provider the user configures with their own token like any other. The
+   * llama.cpp embedding model used to be the second exception -- it is not any
+   * more; see the weights test below.
+   */
+  it('browses no model catalogue', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /huggingface\.co\/api\/models|hf\.co\/api\/models|model_catalog|model-catalog/
+      )
+    ).toEqual([])
+  })
+
+  /**
+   * No weights URL anywhere.
+   *
+   * The llama.cpp extension used to hold a `resolve/main/...gguf` link to
+   * huggingface.co and fetch it during provisioning -- and again on the first
+   * RAG call if that had failed -- so a fresh launch reached the internet
+   * without the user asking for anything. A URL that names a weights file is
+   * the shape of that defect regardless of which host serves it, so the check
+   * is on the shape, and swapping huggingface.co for another cloud would not
+   * pass it.
+   */
+  it('carries no model-weights download URL', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /https?:\/\/[^\s'"`]*\/resolve\/[^\s'"`]*\.(gguf|safetensors|bin)/i
+      )
+    ).toEqual([])
+  })
+
+  /**
+   * Nothing downloads a model on Jan's own initiative.
+   *
+   * The bootstrap was a startup task with a persisted "done" flag that retried
+   * on the next launch whenever it failed, which is exactly the hidden
+   * background retry the local-only rule forbids.
+   */
+  it('has no startup embedder bootstrap', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        // Code-shaped only: a call, a declaration, or the persisted key as a
+        // string. Prose explaining why the bootstrap was removed is not the
+        // bootstrap.
+        /bootstrapDefaultEmbedder\s*[(:=]|['"`]llamacpp-embedder-bootstrapped['"`]|FALLBACK_EMBEDDING_MODEL_URL\s*[=,)]/
+      )
+    ).toEqual([])
+  })
+})
+
+/**
+ * The guards above read source. This one reads what is actually shipped.
+ *
+ * That distinction is not academic: `web-app/vite.config.ts` aliases
+ * `@janhq/llamacpp-extension` to `extensions/llamacpp-extension/dist/index.js`,
+ * a build output that `yarn build:web` does not rebuild. So a packaged app
+ * carried a startup embedder bootstrap -- fetching
+ * `huggingface.co/.../resolve/main/all-MiniLM-L6-v2-ggml-model-f16.gguf` on
+ * launch -- for weeks after that code was deleted from source, and every
+ * source-level guard passed while it did. It only stopped because the download
+ * extension it called was gone, so it threw instead of downloading.
+ *
+ * Skipped when the artifacts have not been built, so a fresh clone does not
+ * fail on something it was never asked to produce. CI and any packaging run
+ * build them first, which is when this matters.
+ */
+describe('the shipped bundle carries no model-download code', () => {
+  /** Built JS: the extension bundles plus the web app's own output. */
+  function builtArtifacts(): string[] {
+    const roots = [
+      resolve(REPO, 'web-app/dist/assets'),
+      ...readdirSafe(resolve(REPO, 'extensions')).map((name) =>
+        resolve(REPO, 'extensions', name, 'dist')
+      ),
+    ]
+    const found: string[] = []
+    for (const root of roots) {
+      for (const entry of readdirSafe(root)) {
+        if (entry.endsWith('.js')) found.push(join(root, entry))
+      }
+    }
+    return found
+  }
+
+  function readdirSafe(dir: string): string[] {
+    try {
+      return existsSync(dir) ? readdirSync(dir) : []
+    } catch {
+      return []
+    }
+  }
+
+  const BUILT = builtArtifacts()
+
+  it.skipIf(BUILT.length === 0)('has no startup embedder bootstrap', () => {
+    expect(
+      repoMatches(BUILT, /bootstrapDefaultEmbedder|llamacpp-embedder-bootstrapped/)
+    ).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('carries no model-weights URL', () => {
+    // The weights, not the host: the Hugging Face provider legitimately links
+    // to its own model browser and token settings, and neither downloads
+    // anything.
+    expect(
+      repoMatches(
+        BUILT,
+        /https?:\/\/[^\s'"`]*\/resolve\/[^\s'"`]*\.(gguf|safetensors|bin)/i
+      )
+    ).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('names no model catalogue host', () => {
+    expect(repoMatches(BUILT, /catalog\.jan\.ai|cdn\.jan\.ai/)).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('registers no updater and reports no usage', () => {
+    expect(
+      repoMatches(BUILT, /plugin-updater|tauri_plugin_updater|googletagmanager|gtag\(/)
+    ).toEqual([])
+  })
+})
+
+describe('no model-download surface remains', () => {
+  it('has no hub route', () => {
+    expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
+  })
+
+  it('has no download controls', () => {
+    for (const name of [
+      'containers/DownloadButton.tsx',
+      'containers/ModelDownloadAction.tsx',
+      'containers/MlxModelDownloadAction.tsx',
+      'hooks/useDownloadStore.ts',
+      'hooks/useDownloadEvents.ts',
+      'providers/DownloadEventListener.tsx',
+    ]) {
+      expect(existsSync(resolve(SRC, name))).toBe(false)
+    }
+  })
+
+  it('leaves nothing importing them', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /useDownloadStore|useDownloadEvents|DownloadEventListener|ModelDownloadAction/
+      )
+    ).toEqual([])
   })
 })

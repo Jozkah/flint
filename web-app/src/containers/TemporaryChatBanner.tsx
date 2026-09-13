@@ -1,4 +1,4 @@
-import { IconClock } from '@tabler/icons-react'
+import { Clock } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { isEmptyTemporaryChat } from '@/lib/temporaryChat'
@@ -29,8 +29,8 @@ export function TemporaryChatBanner({ threadId }: { threadId: string }) {
   const hasSomethingToKeep = !isEmptyTemporaryChat(messages)
 
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <IconClock size={14} className="shrink-0" />
+    <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-sunken px-2 py-1 text-xs text-ink-2">
+      <Clock className="size-3.5 shrink-0" aria-hidden />
       <span className="truncate">{t('chat:temporaryChatBanner')}</span>
       {hasSomethingToKeep && (
         <Button

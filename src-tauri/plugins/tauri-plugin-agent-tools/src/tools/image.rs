@@ -26,7 +26,11 @@ pub fn mime_from_signature(bytes: &[u8]) -> Option<&'static str> {
 
 /// The MIME type for a known image file extension, or `None`.
 pub fn mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     match ext.as_str() {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
@@ -49,7 +53,10 @@ mod tests {
 
     #[test]
     fn signature_recognizes_each_supported_format() {
-        assert_eq!(mime_from_signature(b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
+        assert_eq!(
+            mime_from_signature(b"\x89PNG\r\n\x1a\nrest"),
+            Some("image/png")
+        );
         assert_eq!(mime_from_signature(b"\xff\xd8\xffrest"), Some("image/jpeg"));
         assert_eq!(mime_from_signature(b"GIF89a rest"), Some("image/gif"));
         assert_eq!(mime_from_signature(b"GIF87a rest"), Some("image/gif"));
@@ -68,10 +75,22 @@ mod tests {
 
     #[test]
     fn extension_is_case_insensitive_and_unknown_is_none() {
-        assert_eq!(mime_from_extension(std::path::Path::new("a.PNG")), Some("image/png"));
-        assert_eq!(mime_from_extension(std::path::Path::new("a.jpeg")), Some("image/jpeg"));
-        assert_eq!(mime_from_extension(std::path::Path::new("a.jpg")), Some("image/jpeg"));
-        assert_eq!(mime_from_extension(std::path::Path::new("a.webp")), Some("image/webp"));
+        assert_eq!(
+            mime_from_extension(std::path::Path::new("a.PNG")),
+            Some("image/png")
+        );
+        assert_eq!(
+            mime_from_extension(std::path::Path::new("a.jpeg")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            mime_from_extension(std::path::Path::new("a.jpg")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            mime_from_extension(std::path::Path::new("a.webp")),
+            Some("image/webp")
+        );
         assert_eq!(mime_from_extension(std::path::Path::new("a.pdf")), None);
         assert_eq!(mime_from_extension(std::path::Path::new("noext")), None);
     }

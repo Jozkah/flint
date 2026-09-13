@@ -8,6 +8,8 @@ import type {
   MCPService,
   MCPConfig,
   MCPAuthStatus,
+  MCPForgetReason,
+  MCPTrustReport,
   ServerSummary,
   ToolCallWithCancellationResult,
 } from './types'
@@ -39,8 +41,70 @@ export class DefaultMCPService implements MCPService {
     return []
   }
 
+  async getServerLog(serverName: string, lines?: number): Promise<string[]> {
+    void serverName
+    void lines
+    return []
+  }
+
   async getConnectedServers(): Promise<string[]> {
     return []
+  }
+
+  /**
+   * Trust lives in the backend, so a build with no backend has none to report.
+   * Refusing here rather than pretending: a web build that answered "trusted"
+   * would be claiming an enforcement that does not exist.
+   */
+  async trustedServers(): Promise<string[]> {
+    return []
+  }
+
+  // The parameters are declared because the desktop subclass overrides these,
+  // and a base signature taking fewer arguments is not one an override
+  // satisfies. They are named in the message rather than discarded, so a
+  // failure says which server it was about.
+  async trustReport(): Promise<MCPTrustReport> {
+    return { trusted: [], invalidated: [] }
+  }
+
+  /** No backend, so no identity: nothing can be approved against it. */
+  async serverFingerprints(): Promise<Record<string, string>> {
+    return {}
+  }
+
+  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+    void fingerprint
+    throw new Error(
+      `cannot trust MCP server '${serverName}': that needs the desktop backend`
+    )
+  }
+
+  async revokeServer(serverName: string): Promise<void> {
+    throw new Error(
+      `cannot revoke MCP server '${serverName}': that needs the desktop backend`
+    )
+  }
+
+  async forgetServer(
+    serverName: string,
+    reason: MCPForgetReason
+  ): Promise<void> {
+    throw new Error(
+      `cannot forget MCP server '${serverName}' (${reason}): that needs the desktop backend`
+    )
+  }
+
+  async allowOnceForServer(
+    serverName: string,
+    toolName: string,
+    fingerprint?: string
+  ): Promise<string> {
+    void fingerprint
+    throw new Error(
+      `cannot authorize '${toolName}' on MCP server '${serverName}': ` +
+        'that needs the desktop backend'
+    )
   }
 
   async callTool(args: {
@@ -103,6 +167,10 @@ export class DefaultMCPService implements MCPService {
       hasCredentials: false,
       renewable: false,
       expiresAt: null,
+      declaredScopes: [],
+      requestedScopes: [],
+      grantedScopes: [],
+      detail: null,
     }
   }
 

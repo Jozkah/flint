@@ -14,6 +14,8 @@ type ProxyConfigState = {
   verifyPeerSSL: boolean
   verifyHostSSL: boolean
   noProxy: string
+  /** A PEM bundle of extra certificate authorities to trust (AH-190). */
+  caBundlePath: string
   // Function to set the proxy configuration
   setProxyEnabled: (proxyEnabled: boolean) => void
   setProxyUrl: (proxyUrl: string) => void
@@ -25,6 +27,7 @@ type ProxyConfigState = {
   setVerifyPeerSSL: (verifyPeerSSL: boolean) => void
   setVerifyHostSSL: (verifyHostSSL: boolean) => void
   setNoProxy: (noProxy: string) => void
+  setCaBundlePath: (caBundlePath: string) => void
 }
 
 export const useProxyConfig = create<ProxyConfigState>()(
@@ -40,6 +43,7 @@ export const useProxyConfig = create<ProxyConfigState>()(
       verifyPeerSSL: true,
       verifyHostSSL: true,
       noProxy: '',
+      caBundlePath: '',
       setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
       setProxyUrl: (proxyUrl) => set({ proxyUrl }),
       setProxyUsername: (proxyUsername) => set({ proxyUsername }),
@@ -51,6 +55,7 @@ export const useProxyConfig = create<ProxyConfigState>()(
       setVerifyPeerSSL: (verifyPeerSSL) => set({ verifyPeerSSL }),
       setVerifyHostSSL: (verifyHostSSL) => set({ verifyHostSSL }),
       setNoProxy: (noProxy) => set({ noProxy }),
+      setCaBundlePath: (caBundlePath) => set({ caBundlePath }),
     }),
     {
       name: localStorageKey.settingProxyConfig,

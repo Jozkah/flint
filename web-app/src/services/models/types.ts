@@ -109,14 +109,6 @@ export type PreflightReason =
 export interface ModelsService {
   getModel(modelId: string): Promise<modelInfo | undefined>
   fetchModels(): Promise<modelInfo[]>
-  fetchModelCatalog(): Promise<ModelCatalog>
-  fetchLatestJanModel(): Promise<CatalogModel | null>
-  fetchHuggingFaceRepo(
-    repoId: string,
-    hfToken?: string
-  ): Promise<HuggingFaceRepo | null>
-  convertHfRepoToCatalogModel(repo: HuggingFaceRepo): CatalogModel
-  updateModel(modelId: string, model: Partial<CoreModel>): Promise<void>
   pullModel(
     id: string,
     modelPath: string,
@@ -128,17 +120,7 @@ export interface ModelsService {
     specDraftPath?: string,
     specDraftKind?: SpecDraftKind
   ): Promise<void>
-  pullModelWithMetadata(
-    id: string,
-    modelPath: string,
-    mmprojPath?: string,
-    hfToken?: string,
-    skipVerification?: boolean,
-    specDraftPath?: string,
-    specDraftKind?: SpecDraftKind
-  ): Promise<void>
-  abortDownload(id: string): Promise<void>
-  pauseDownload(id: string): Promise<void>
+  updateModel(modelId: string, model: Partial<CoreModel>): Promise<void>
   deleteModel(id: string, provider?: string): Promise<void>
   getActiveModels(provider?: string): Promise<string[]>
   stopModel(model: string, provider?: string): Promise<UnloadResult | undefined>

@@ -39,6 +39,7 @@ archive/
 autoqa/trajectories
 autoqa/recordings
 autoqa/__pycache__
+__pycache__/
 
 # Astro / Starlight specific
 website/dist/
@@ -70,6 +71,8 @@ src-tauri/resources/
 
 ## test
 test-data
+# Per-run scratch directories the Rust thread-store tests leave behind.
+test-data-*
 llm-docs
 .claude/agents
 .claude
@@ -82,3 +85,5 @@ JAN.md
 # Vendored llama.cpp: a shallow clone of the pinned tag, fetched by
 # `make engine-source`. Never committed -- the pin lives in build.rs.
 src-tauri/plugins/tauri-plugin-llamacpp/vendor/
+target-windows-final/
+.upstream-cache/

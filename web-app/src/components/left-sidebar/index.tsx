@@ -3,6 +3,7 @@ import { NavCowork } from './NavCowork'
 import { NavMain } from './NavMain'
 import { NavProjects } from './NavProjects'
 import { NavTabs } from './NavTabs'
+import { NavSystem } from './NavSystem'
 
 import {
   Sidebar,
@@ -10,49 +11,86 @@ import {
   SidebarTrigger,
   SidebarHeader,
   SidebarRail,
+  useSidebar,
 } from '@/components/ui/sidebar'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
 import { detectMacOverlay, resolveSidebarTitlebar } from '@/lib/titlebar'
 import { useMemo } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { isCoworkRoute } from '@/constants/routes'
+import { areaForPath, isSettingsArea } from '@/lib/shellNavigation'
+import { AppRail } from '@/components/shell/AppRail'
+import SettingsMenu from '@/containers/SettingsMenu'
 
+/**
+ * The contextual sidebar (256px, resizable 220-300px). Its contents follow the
+ * current rail area: the workspace navigation (chats, projects or Cowork
+ * sessions) for Workspace and Library, and the settings navigation for Models,
+ * Tools and Settings. On phones it is the second column of the navigation
+ * sheet, beside the rail.
+ */
 export function LeftSidebar() {
+  const { t } = useTranslation()
   const { pathname } = useLocation()
+  const { setOpenMobile } = useSidebar()
+  const area = areaForPath(pathname)
   const isCowork = isCoworkRoute(pathname)
-  // Right-align the header when native controls own the top-left (macOS, or a Linux
-  // DE placing buttons left); "Jan" moves into the right cluster except on macOS.
+  const settingsNav = isSettingsArea(area)
+  // Right-align the header when native controls own the top-left (macOS, or a
+  // Linux DE placing buttons left).
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
   const macOverlay = useMemo(() => detectMacOverlay(), [])
-  const { reserveLeft, showWordmarkLeft, showWordmarkRight } =
-    resolveSidebarTitlebar(macOverlay, leftButtons)
+  const { reserveLeft } = resolveSidebarTitlebar(macOverlay, leftButtons)
+
   return (
-    <div className='relative z-50'>
-      <Sidebar variant="floating" collapsible="offcanvas">
-        <SidebarHeader className="flex px-1">
-          <div className={cn("flex items-center w-full justify-between", reserveLeft && "justify-end")}>
-            {showWordmarkLeft && <span className="ml-2 font-medium font-studio">Jan</span>}
-            <div className="flex items-center">
-              {showWordmarkRight && (
-                <span className="mr-2 font-medium font-studio">Jan</span>
-              )}
-              <SidebarTrigger className="text-muted-foreground rounded-full hover:bg-sidebar-foreground/8! -mt-0.5 relative z-50 ml-0.5" />
-            </div>
-          </div>
-          <NavTabs />
-          {isCowork ? <NavCowork /> : <NavMain />}
-        </SidebarHeader>
-        <SidebarContent className="mask-b-from-95% mask-t-from-98%">
-          {!isCowork && (
-            <>
-              <NavProjects />
-              <NavChats />
-            </>
+    <Sidebar
+      variant="sidebar"
+      collapsible="offcanvas"
+      mobileLabel={t('common:appRail.label')}
+      mobileLeading={
+        <AppRail className="h-full" onNavigate={() => setOpenMobile(false)} />
+      }
+    >
+      <SidebarHeader className="h-[72px] shrink-0 justify-center gap-0 px-4 py-0">
+        <div
+          className={cn(
+            'flex w-full items-center justify-between gap-2',
+            reserveLeft && 'pl-16'
           )}
+        >
+          <span className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-ink-2">
+            {t(`common:appRail.${area}`)}
+          </span>
+          <SidebarTrigger className="text-muted-foreground hover:bg-sunken pointer-coarse:size-11" />
+        </div>
+      </SidebarHeader>
+      {settingsNav ? (
+        <SidebarContent className="px-2 pb-3">
+          <SettingsMenu variant="sidebar" />
         </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
-    </div>
+      ) : area === 'system' ? (
+        <SidebarContent className="px-2 pb-3">
+          <NavSystem />
+        </SidebarContent>
+      ) : (
+        <>
+          <div className="flex flex-col gap-1 px-2 pb-2">
+            <NavTabs />
+            {isCowork ? <NavCowork /> : <NavMain />}
+          </div>
+          <SidebarContent className="px-2 pb-3">
+            {!isCowork && (
+              <>
+                <NavProjects />
+                <NavChats />
+              </>
+            )}
+          </SidebarContent>
+        </>
+      )}
+      <SidebarRail />
+    </Sidebar>
   )
 }

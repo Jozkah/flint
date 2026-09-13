@@ -14,7 +14,6 @@ import {
   estimated,
   measured,
   resolveSkills,
-  UNKNOWN_SHAPING,
   type ReadinessManifest,
 } from '@/lib/coworkReadiness'
 
@@ -39,13 +38,87 @@ const manifest = (
       tools: measured(null),
     },
     budget: measured(null),
-    shaping: UNKNOWN_SHAPING,
   },
   ...over,
 })
 
 const card = () =>
   screen.getByRole('region', { name: 'common:readiness.title' })
+
+describe('project tooling (AH-068 / AH-069 / AH-070)', () => {
+  it('lists each detected fact with its source and certainty', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          tooling: {
+            state: 'ready',
+            facts: [
+              {
+                kind: 'test-runner',
+                value: 'Vitest',
+                confidence: 'high',
+                source: 'web/package.json',
+                scope: 'web',
+                reason: 'scripts.test runs it',
+                command: 'pnpm test',
+                testKind: 'unit',
+              },
+              {
+                kind: 'package-manager',
+                value: 'npm',
+                confidence: 'low',
+                source: 'package-lock.json',
+                scope: '',
+                reason: 'one of several conflicting lockfiles',
+                command: null,
+              },
+            ],
+            conflicts: ['the project root has lockfiles for yarn and npm'],
+            skipped: [],
+            truncated: null,
+          },
+        })}
+      />
+    )
+    const facts = screen.getAllByTestId('readiness-tooling-fact')
+    expect(facts).toHaveLength(2)
+    expect(facts[0]).toHaveTextContent('Vitest')
+    expect(facts[0]).toHaveTextContent('pnpm test')
+    expect(facts[0]).toHaveAttribute('title', expect.stringContaining('web/package.json'))
+    expect(facts[1]).toHaveAttribute('data-confidence', 'low')
+    expect(card()).toHaveTextContent('the project root has lockfiles for yarn and npm')
+  })
+
+  it('says why detection failed without blocking the rest of the card', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          tooling: { state: 'failed', error: { kind: 'unreadable', message: 'denied' } },
+        })}
+      />
+    )
+    expect(screen.getByTestId('readiness-tooling')).toHaveTextContent(
+      'common:readiness.tooling.failed#unreadable'
+    )
+    expect(card()).toHaveTextContent('main')
+  })
+
+  it('says so when nothing was recognised, and shows nothing without a folder', () => {
+    const { unmount } = render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          tooling: { state: 'ready', facts: [], conflicts: [], skipped: [], truncated: null },
+        })}
+      />
+    )
+    expect(screen.getByTestId('readiness-tooling')).toHaveTextContent(
+      'common:readiness.tooling.none'
+    )
+    unmount()
+    render(<CoworkReadinessCard manifest={manifest({ folder: null })} />)
+    expect(screen.queryByTestId('readiness-tooling')).toBeNull()
+  })
+})
 
 describe('what the card states about the run', () => {
   it('names which checkout a managed destination means', () => {
@@ -257,7 +330,6 @@ describe('what the card states about context', () => {
               tools: measured(50),
             },
             budget: measured(8000),
-            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -281,7 +353,6 @@ describe('what the card states about context', () => {
               tools: measured(50),
             },
             budget: measured(8000),
-            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -304,7 +375,6 @@ describe('what the card states about context', () => {
               tools: measured(null),
             },
             budget: measured(null),
-            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -313,35 +383,5 @@ describe('what the card states about context', () => {
     // Missing and approximate are different failures; the card owes the reader
     // both rather than collapsing them into one hedge.
     expect(card()).toHaveTextContent('common:readiness.tokensEstimatedPartial')
-  })
-
-  it('says when its total describes a payload the manager cut down', () => {
-    // The card's own rule, applied to a third admission: a total measured from
-    // a trimmed payload, presented bare, reads as an exact count of the whole
-    // conversation on screen.
-    render(
-      <CoworkReadinessCard
-        manifest={manifest({
-          context: {
-            ...manifest().context,
-            shaping: {
-              kind: 'trimmed',
-              removed: 4,
-              retained: 8,
-              removedTokens: { known: 'estimated', tokens: 900, method: 't' },
-              reason: null,
-            },
-          },
-        })}
-      />
-    )
-
-    expect(screen.getByText(/readiness.shaping.trimmed/)).toBeInTheDocument()
-  })
-
-  it('adds nothing when the whole payload went out', () => {
-    render(<CoworkReadinessCard manifest={manifest()} />)
-
-    expect(screen.queryByText(/readiness.shaping\./)).toBeNull()
   })
 })

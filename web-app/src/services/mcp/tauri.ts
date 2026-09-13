@@ -6,7 +6,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { MCPTool } from '@/types/completion'
 import { DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import type { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
-import type { MCPAuthStatus, MCPConfig, ServerSummary } from './types'
+import type {
+  MCPAuthStatus,
+  MCPConfig,
+  MCPForgetReason,
+  MCPTrustReport,
+  ServerSummary,
+} from './types'
 import { DefaultMCPService } from './default'
 
 export class TauriMCPService extends DefaultMCPService {
@@ -75,6 +81,10 @@ export class TauriMCPService extends DefaultMCPService {
     return invoke('get_server_summaries')
   }
 
+  async getServerLog(serverName: string, lines?: number): Promise<string[]> {
+    return invoke('get_mcp_server_log', { name: serverName, lines })
+  }
+
   async getConnectedServers(): Promise<string[]> {
     return window.core?.api?.getConnectedServers()
   }
@@ -84,8 +94,44 @@ export class TauriMCPService extends DefaultMCPService {
     serverName?: string
     arguments: object
     maxOutputChars?: number
+    approvalTicket?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
     return window.core?.api?.callTool(args)
+  }
+
+  async trustedServers(): Promise<string[]> {
+    return invoke('mcp_trusted_servers')
+  }
+
+  async trustReport(): Promise<MCPTrustReport> {
+    return invoke('mcp_trust_report')
+  }
+
+  async serverFingerprints(): Promise<Record<string, string>> {
+    return invoke('mcp_server_fingerprints')
+  }
+
+  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+    await invoke('mcp_trust_server', { serverName, fingerprint })
+  }
+
+  async revokeServer(serverName: string): Promise<void> {
+    await invoke('mcp_revoke_server', { serverName })
+  }
+
+  async forgetServer(
+    serverName: string,
+    reason: MCPForgetReason
+  ): Promise<void> {
+    await invoke('mcp_forget_server', { serverName, reason })
+  }
+
+  async allowOnceForServer(
+    serverName: string,
+    toolName: string,
+    fingerprint?: string
+  ): Promise<string> {
+    return invoke('mcp_allow_once', { serverName, toolName, fingerprint })
   }
 
   callToolWithCancellation(args: {

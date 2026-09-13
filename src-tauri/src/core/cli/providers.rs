@@ -306,8 +306,7 @@ pub async fn fetch_missing_models(
         return Ok(false);
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(Duration::from_secs(15)))
         .build()
         .map_err(|e| e.to_string())?;
     // Probe providers concurrently so a batch of dead upstreams cannot stall
@@ -667,6 +666,40 @@ fn set_key(cfg: &mut ProviderConfig, api_key: &str) {
     cfg.api_keys = vec![api_key.to_string()];
 }
 
+/// Every configured model, for `jan cli models list`.
+///
+/// Models the CLI cannot reach are listed too, marked `reachable: false`,
+/// rather than dropped. A desktop user whose models all run on the local
+/// llama.cpp engine has no `base_url` for them -- the engine runs inside the
+/// app -- and filtering on reachability printed `[]` while the app showed a
+/// full model list, with nothing to say why (janhq/jan#8412).
+pub fn model_listing(
+    configs: &HashMap<String, ProviderConfig>,
+    provider: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let mut output: Vec<serde_json::Value> = configs
+        .values()
+        .filter(|c| provider.is_none_or(|p| c.provider == p))
+        .flat_map(|c| {
+            let reachable = is_cli_reachable(c);
+            c.models.iter().map(move |m| {
+                serde_json::json!({
+                    "id": m,
+                    "provider": c.provider,
+                    "base_url": c.base_url,
+                    "api_type": c.api_type,
+                    "has_api_key": has_credential(c),
+                    "reachable": reachable,
+                })
+            })
+        })
+        .collect();
+    output.sort_by(|a, b| {
+        (a["provider"].as_str(), a["id"].as_str()).cmp(&(b["provider"].as_str(), b["id"].as_str()))
+    });
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -926,6 +959,42 @@ mod tests {
         assert!(!is_loopback_url("https://localhost.evil.com/v1"));
         assert!(!is_loopback_url("https://api.tokamak.sh/v1"));
         assert!(!is_loopback_url(""));
+    }
+
+    // janhq/jan#8412: models on the desktop's local engine have no base_url,
+    // and the listing used to drop them silently, printing `[]`.
+    #[test]
+    fn model_listing_keeps_local_engine_models_and_marks_them_unreachable() {
+        let mut configs = HashMap::new();
+        configs.insert(
+            "llamacpp".to_string(),
+            ProviderConfig {
+                provider: "llamacpp".into(),
+                base_url: None,
+                models: vec!["qwen3-8b".into()],
+                ..Default::default()
+            },
+        );
+        configs.insert(
+            "jan".to_string(),
+            ProviderConfig {
+                provider: "jan".into(),
+                base_url: Some("http://localhost:1337/v1".into()),
+                models: vec!["qwen3-8b".into()],
+                ..Default::default()
+            },
+        );
+
+        let all = model_listing(&configs, None);
+        assert_eq!(all.len(), 2);
+        let engine = all.iter().find(|m| m["provider"] == "llamacpp").unwrap();
+        assert_eq!(engine["reachable"], false);
+        let server = all.iter().find(|m| m["provider"] == "jan").unwrap();
+        assert_eq!(server["reachable"], true);
+
+        let only = model_listing(&configs, Some("jan"));
+        assert_eq!(only.len(), 1);
+        assert_eq!(only[0]["provider"], "jan");
     }
 
     /// Tokamak leads the `/model` picker; everything else keeps its alphabetical
@@ -1336,9 +1405,7 @@ mod tests {
     /// duration of `f`. `JAN_DATA_FOLDER` is process-wide, so tests touching it
     /// must not run concurrently.
     fn with_temp_secrets<T>(f: impl FnOnce() -> T) -> T {
-        let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::var("JAN_DATA_FOLDER").ok();
         std::env::set_var("JAN_DATA_FOLDER", dir.path());

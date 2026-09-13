@@ -108,6 +108,17 @@ struct GlobalConfigToml {
     /// one cell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     wave: Option<String>,
+    /// A PEM bundle of extra certificate authorities to trust for outbound
+    /// HTTPS (AH-190). Set with `jan cli net ca set`, which checks it first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ca_bundle: Option<String>,
+    /// The forge API pull requests are opened through (AH-162). A user
+    /// setting only: a project cannot redirect where a forge token is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forge_api: Option<String>,
+    /// The embedding model semantic code search uses, `provider/model` (AH-071).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    embeddings_model: Option<String>,
     #[serde(default)]
     providers: HashMap<String, GlobalProviderEntry>,
 }
@@ -162,8 +173,11 @@ pub(crate) struct ProviderUpdate {
 }
 
 /// `~/.jan`, the user-wide config directory.
+///
+/// Resolved through [`jan_home_dir`], not `dirs::home_dir()` directly, so the
+/// `JAN_HOME` override applies and a test can never be handed the real one.
 pub(crate) fn global_jan_dir() -> Result<PathBuf, String> {
-    dirs::home_dir()
+    crate::core::app::commands::jan_home_dir()
         .map(|home| home.join(".jan"))
         .ok_or_else(|| "could not resolve the user's home directory".to_string())
 }
@@ -230,6 +244,32 @@ pub(crate) fn default_model() -> Result<Option<String>, String> {
 pub(crate) fn smol_model() -> Result<Option<String>, String> {
     let config = load_raw()?;
     Ok(config.smol_model.filter(|m| !m.trim().is_empty()))
+}
+
+/// The CA bundle named in `~/.jan/config.toml` (AH-190), if any.
+pub fn ca_bundle() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.ca_bundle.filter(|p| !p.trim().is_empty()))
+}
+
+/// The embedding model named in `~/.jan/config.toml` (`embeddings_model`).
+pub fn embeddings_model() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.embeddings_model.filter(|m| !m.trim().is_empty()))
+}
+
+/// The forge API named in `~/.jan/config.toml` (`forge_api`), if any.
+pub fn forge_api() -> Result<Option<String>, String> {
+    let config = load_raw()?;
+    Ok(config.forge_api.filter(|p| !p.trim().is_empty()))
+}
+
+/// Name, or with `None` forget, the CA bundle in `~/.jan/config.toml`.
+/// Returns the path of the file written.
+pub fn set_ca_bundle(path: Option<&str>) -> Result<PathBuf, String> {
+    let mut config = load_raw()?;
+    config.ca_bundle = path.map(str::to_string);
+    write_raw(&config)
 }
 
 /// Whether the TUI should track the mouse (`mouse` in `~/.jan/config.toml`),
@@ -610,28 +650,82 @@ pub(crate) fn ensure_global_config() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Redirect `HOME` to a scratch dir for the duration of `f`. Every test that
-/// touches `~/.jan` must go through this one helper: `HOME` is process-wide, so
-/// a second lock elsewhere would let those tests race each other.
+/// Redirect Jan's home root to a scratch dir for the duration of `f`. Every
+/// test that touches `~/.jan` must go through this one helper: the environment
+/// is process-wide, so a second lock elsewhere would let those tests race each
+/// other.
+///
+/// This sets `JAN_HOME`, not `HOME`. `HOME` does not redirect anything on
+/// Windows -- `dirs::home_dir()` asks the shell for the profile folder and
+/// never looks at the environment -- so the previous version of this helper
+/// was a no-op there, and the tests it was supposed to isolate read and wrote
+/// the developer's real `~/.jan`. One of them writes deliberately invalid TOML,
+/// and that is exactly what landed in a real `config.toml`.
+///
+/// On unix `HOME` is set alongside it, because subprocesses (git, in
+/// particular) resolve their own config through it and should see the same
+/// scratch tree. On Windows it is deliberately left alone: nothing Jan reads
+/// consults it, but Git for Windows prefers it over `USERPROFILE`, so
+/// redirecting it took the developer's `user.name` and `user.email` away from
+/// every test that shells out to `git` -- a dozen plugin and checkpoint tests
+/// failed with "Author identity unknown" for no reason of their own.
 #[cfg(test)]
 pub(crate) fn with_temp_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // The environment lock every `JAN_HOME` and `JAN_DATA_FOLDER` mutator
+    // takes. It used to be a lock of its own, because the shared one was not
+    // reentrant and tests holding it through a `TempSecrets` call this -- but
+    // those tests also set `JAN_HOME`, so the two locks let each side replace
+    // the other's home mid-test. The shared lock is reentrant now.
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let home = std::env::temp_dir().join(format!("jan_global_cfg_test_{n}"));
+    let home = std::env::temp_dir().join(format!(
+        "jan_global_cfg_test_{}_{n}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&home).unwrap();
-    let prev = std::env::var_os("HOME");
+
+    let prev_jan_home = std::env::var_os(crate::core::app::commands::JAN_HOME_ENV);
+    std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, &home);
+    #[cfg(unix)]
+    let prev_home = std::env::var_os("HOME");
+    #[cfg(unix)]
     std::env::set_var("HOME", &home);
+
+    // Fail closed. If the redirect ever stops working the way it stopped
+    // working on Windows, the next line is a failed assertion rather than a
+    // silent write into somebody's profile.
+    let resolved = global_jan_dir().expect("resolve ~/.jan under the override");
+    assert!(
+        resolved.starts_with(&home),
+        "test config root {} escaped the scratch home {}",
+        resolved.display(),
+        home.display()
+    );
+    if let Some(real) = dirs::home_dir() {
+        assert_ne!(
+            resolved,
+            real.join(".jan"),
+            "test config root resolved to the real user profile"
+        );
+    }
+
     let result = f(&home);
-    match prev {
+
+    match prev_jan_home {
+        Some(p) => std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, p),
+        None => std::env::remove_var(crate::core::app::commands::JAN_HOME_ENV),
+    }
+    #[cfg(unix)]
+    match prev_home {
         Some(p) => std::env::set_var("HOME", p),
         None => std::env::remove_var("HOME"),
     }
+    // Only ever the scratch tree this call created, never a resolved profile.
+    debug_assert!(home.starts_with(std::env::temp_dir()));
     let _ = std::fs::remove_dir_all(&home);
     result
 }
@@ -639,6 +733,84 @@ pub(crate) fn with_temp_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The regression that motivated `JAN_HOME`.
+    ///
+    /// On Windows `dirs::home_dir()` resolves the profile through the shell,
+    /// not the environment, so redirecting `HOME` isolated nothing and the
+    /// suite wrote into the developer's real `~/.jan`. This asserts the
+    /// property directly rather than the mechanism: whatever the platform, the
+    /// config root a test sees is inside its scratch tree and is not the real
+    /// one.
+    #[test]
+    fn the_scratch_home_is_not_the_real_profile() {
+        let real = dirs::home_dir().map(|h| h.join(".jan"));
+        with_temp_home(|home| {
+            let resolved = global_jan_dir().expect("resolve");
+            assert!(
+                resolved.starts_with(home),
+                "{} is not inside {}",
+                resolved.display(),
+                home.display()
+            );
+            if let Some(real) = real.as_ref() {
+                assert_ne!(&resolved, real, "resolved to the real profile");
+            }
+        });
+    }
+
+    /// `HOME` alone must not be able to move the config root, or the old bug
+    /// comes back the moment someone re-introduces a `HOME`-only helper.
+    #[test]
+    fn home_alone_does_not_redirect_the_config_root() {
+        with_temp_home(|home| {
+            let under_override = global_jan_dir().expect("resolve");
+            let decoy = std::env::temp_dir().join("jan-home-decoy-should-not-be-used");
+            let prev = std::env::var_os("HOME");
+            std::env::set_var("HOME", &decoy);
+            let after = global_jan_dir().expect("resolve");
+            match prev {
+                Some(p) => std::env::set_var("HOME", p),
+                None => std::env::remove_var("HOME"),
+            }
+            assert_eq!(
+                under_override, after,
+                "HOME moved the config root out from under JAN_HOME"
+            );
+            assert!(after.starts_with(home));
+        });
+    }
+
+    /// Two tests running at once must not share a config root, or one test's
+    /// writes become another's fixtures.
+    #[test]
+    fn each_scratch_home_is_its_own() {
+        let first = with_temp_home(|home| home.to_path_buf());
+        let second = with_temp_home(|home| home.to_path_buf());
+        assert_ne!(first, second);
+    }
+
+    /// Without an override, a test build resolves to a scratch directory rather
+    /// than falling through to the real home. Fail closed, not open.
+    #[test]
+    fn an_unset_override_still_never_reaches_the_real_home() {
+        use crate::core::app::commands::{jan_home_dir, JAN_HOME_ENV};
+        let _env = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let prev = std::env::var_os(JAN_HOME_ENV);
+        std::env::remove_var(JAN_HOME_ENV);
+        let resolved = jan_home_dir().expect("a test build always resolves somewhere");
+        if let Some(p) = prev {
+            std::env::set_var(JAN_HOME_ENV, p);
+        }
+        assert!(
+            resolved.starts_with(std::env::temp_dir()),
+            "{} is not a scratch directory",
+            resolved.display()
+        );
+        if let Some(real) = dirs::home_dir() {
+            assert_ne!(resolved, real, "fell through to the real home");
+        }
+    }
 
     #[test]
     fn missing_file_yields_empty_map() {

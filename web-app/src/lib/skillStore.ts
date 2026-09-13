@@ -4,11 +4,22 @@ import {
   skillRead,
   skillWrite,
   skillDelete,
-  type SkillMeta,
+  type SkillMeta as ApiSkillMeta,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
-export type { SkillMeta }
+/**
+ * A listed skill. `plugin` is set when the skill ships in an enabled plugin
+ * installed in the project (`<folder>/.jan/agent/plugins/<plugin>`); its `name`
+ * is then `<plugin>:<skill>`. Such a skill is read-only here: the backend
+ * refuses writes and deletes addressed to it, because edits belong in the
+ * plugin's own source.
+ */
+export type SkillMeta = ApiSkillMeta & { plugin?: string }
+
+/** Whether a listed skill comes from a plugin, and so cannot be edited here. */
+export const isPluginSkill = (skill: Pick<SkillMeta, 'plugin'>): boolean =>
+  typeof skill.plugin === 'string' && skill.plugin.length > 0
 
 /**
  * Skill CRUD, for both roots a skill can live under.

@@ -99,12 +99,255 @@ describe('consumeStep', () => {
     expect(sink.onToolStart).toHaveBeenCalledWith('c1', 'read')
   })
 
+  /// janhq/jan#8905, found by the real-app two-session Stop scenario. The run
+  /// read the model stream without watching its signal, so Stop only ended a
+  /// run whose transport closed the stream in response. The desktop transport
+  /// does not always: a provider still streaming kept the session running
+  /// after Stop, however long it was waited on.
+  it('ends a run on Stop even when the stream itself never ends', async () => {
+    const controller = new AbortController()
+    let sent = 0
+    const endless = (): ReadableStream<UIMessageChunk> =>
+      new ReadableStream({
+        start(c) {
+          c.enqueue({ type: 'text-delta', id: 't', delta: 'thinking ' } as UIMessageChunk)
+          // Never closed, never errored: only the run's own signal can end it.
+        },
+      })
+    const d = {
+      ...deps([]),
+      sendStep: vi.fn(async () => {
+        sent += 1
+        return endless()
+      }),
+    }
+    d.sink.onText.mockImplementation(() => controller.abort('cancelled'))
+    const out = await Promise.race([
+      runTurn({
+        messages: [user('go')],
+        signal: controller.signal,
+        deps: d,
+      } as never),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2000)),
+    ])
+    expect(out).not.toBe('hung')
+    expect((out as { stoppedBy: string }).stoppedBy).toBe('aborted')
+    expect(sent).toBe(1)
+  })
+
+  /// The same, one step earlier, found by the same scenario: the request was
+  /// still waiting for its response to start -- a busy server, a queue -- and
+  /// the transport only gave up on it 40 s after Stop.
+  it('ends a run on Stop while the request has not started streaming', async () => {
+    const controller = new AbortController()
+    const cancelled = vi.fn()
+    let answer: (s: ReadableStream<UIMessageChunk>) => void = () => {}
+    const d = {
+      ...deps([]),
+      sendStep: vi.fn(
+        () =>
+          new Promise<ReadableStream<UIMessageChunk>>((resolve) => {
+            answer = resolve
+          })
+      ),
+    }
+    const run = runTurn({
+      messages: [user('go')],
+      signal: controller.signal,
+      deps: d,
+    } as never)
+    await Promise.resolve()
+    controller.abort('cancelled')
+    const out = await Promise.race([
+      run,
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2000)),
+    ])
+    expect(out).not.toBe('hung')
+    expect((out as { stoppedBy: string }).stoppedBy).toBe('aborted')
+    // A stream that turns up after Stop is released, not left streaming.
+    answer(new ReadableStream({ cancel: cancelled }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cancelled).toHaveBeenCalled()
+  })
+
   it('surfaces an error chunk without throwing', async () => {
     const r = await consumeStep(
       streamOf([{ type: 'error', errorText: 'boom' } as UIMessageChunk]),
       noopSink()
     )
     expect(r.errorText).toBe('boom')
+  })
+})
+
+describe('steering a running turn (janhq/jan#8864)', () => {
+  const userText = (m: UIMessage) =>
+    (m.parts as { type: string; text?: string }[])
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+
+  it('delivers input after every tool result of the step and before the next model call, in order', async () => {
+    const pending: UIMessage[][] = [
+      [],
+      [
+        { id: 's1', role: 'user', parts: [{ type: 'text', text: 'use pnpm' }] } as UIMessage,
+        { id: 's2', role: 'user', parts: [{ type: 'text', text: 'then test' }] } as UIMessage,
+      ],
+    ]
+    const d = {
+      ...deps([toolStep('read'), textStep('done')]),
+      takeSteering: vi.fn(() => pending.shift() ?? []),
+    }
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    // The second model call is the first to see it: after the tool round.
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    const roles = second.map((m) => m.role)
+    expect(roles).toEqual(['user', 'assistant', 'user', 'user'])
+    expect(userText(second[2])).toBe('use pnpm')
+    expect(userText(second[3])).toBe('then test')
+    const first = (d.sendStep.mock.calls[0] as unknown as [UIMessage[]])[0]
+    expect(first).toHaveLength(1)
+  })
+
+  it('continues the same run when input arrives with the final answer', async () => {
+    let offered = 0
+    const d = {
+      ...deps([textStep('first answer'), textStep('revised answer')]),
+      takeSteering: vi.fn(() => {
+        offered += 1
+        // Nothing at the first boundary; the correction arrives while the
+        // first answer is being written.
+        return offered === 2
+          ? [{ id: 's1', role: 'user', parts: [{ type: 'text', text: 'correction' }] } as UIMessage]
+          : []
+      }),
+    }
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(second.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(userText(second[2])).toBe('correction')
+    expect(out.stoppedBy).toBe('done')
+    // Never dressed up as the model's own words.
+    expect(out.messages.filter((m) => m.role === 'assistant').map(userText)).toEqual([
+      'first answer',
+      'revised answer',
+    ])
+  })
+
+  it('takes nothing after a stop', async () => {
+    const controller = new AbortController()
+    const takeSteering = vi.fn(() => [])
+    const d = { ...deps([toolStep('read')]), takeSteering }
+    d.dispatch.mockImplementation(async () => {
+      controller.abort('cancelled')
+      return { output: 'ok' }
+    })
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: controller.signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('aborted')
+    // Offered once, before the first call; never after the stop.
+    expect(takeSteering).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('an invalid tool call', () => {
+  /// The regression. A call to a tool the model was not offered came back as
+  /// `tool-input-error` and was ignored, so the step had no tool calls and the
+  /// loop treated it as a finished answer. Nothing ran, nothing was recorded,
+  /// and the model was never told.
+  it('is kept as a failed call, not dropped', async () => {
+    const r = await consumeStep(
+      streamOf([
+        { type: 'tool-input-start', toolCallId: 'c9', toolName: 'ls' } as UIMessageChunk,
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'ls',
+          input: { path: '.' },
+          errorText: "Model tried to call unavailable tool 'ls'.",
+        } as unknown as UIMessageChunk,
+      ]),
+      noopSink()
+    )
+    expect(r.toolCalls).toHaveLength(1)
+    expect(r.toolCalls[0].invalid).toContain('unavailable tool')
+  })
+
+  it('is never dispatched, and the model is told why', async () => {
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'ls',
+          input: { path: '.' },
+          errorText: "Model tried to call unavailable tool 'ls'.",
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    expect(d.dispatch).not.toHaveBeenCalled()
+    // The run went on to another step instead of ending on the bad call.
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+    const told = JSON.stringify(out.messages)
+    expect(told).toContain('was not run')
+  })
+
+  /// Arguments that are not JSON arrive as the raw text. Kept as the call's
+  /// input, that string went into the history, and every later request in the
+  /// session replayed a tool call whose input is not an object.
+  it('replays with an object input when the arguments were not JSON', async () => {
+    const { convertToModelMessages } = await import('ai')
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'read',
+          input: '{"path":',
+          errorText: 'Invalid input for tool read: JSON parsing failed',
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('read with broken arguments')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    const modelMessages = await convertToModelMessages(out.messages)
+    const calls = modelMessages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .filter((p: any) => p.type === 'tool-call') as any[]
+    expect(calls).toHaveLength(1)
+    expect(typeof calls[0].input).toBe('object')
+    expect(calls[0].input).not.toBeNull()
+    // The model is still told what it sent, so it can correct itself.
+    expect(JSON.stringify(out.messages)).toContain('{\\"path\\":')
   })
 })
 
@@ -242,6 +485,29 @@ describe('runTurn', () => {
     const parts = (secondCall.at(-1) as { parts: any[] }).parts
     expect(parts[0].state).toBe('output-available')
     expect(parts[0].output).toBe('ok')
+  })
+
+  // One request, one invocation: the caller binds a step's tool calls to the
+  // request that asked for them, which it can only do before they run (a
+  // call that dispatches a subagent sends requests of its own).
+  it('reports each response before any of its tool calls run', async () => {
+    const order: string[] = []
+    const d = {
+      ...deps(
+        [toolStep('read'), textStep('done')],
+        vi.fn(async (): Promise<ToolOutcome> => {
+          order.push('dispatch')
+          return { output: 'ok' }
+        })
+      ),
+      onResponse: vi.fn(() => order.push('response')),
+    }
+    await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(order).toEqual(['response', 'dispatch', 'response'])
   })
 })
 
@@ -428,5 +694,133 @@ describe('cancelling one child without stopping the run', () => {
     expect(isRunning('s-five')).toBe(true)
     endRun('s-five', 'r2')
     expect(isRunning('s-five')).toBe(false)
+  })
+})
+
+/**
+ * The run-level guards, exercised through the loop that enforces them rather
+ * than through their own helpers -- a guard that is correct in isolation and
+ * unwired is worth nothing. AH-018/AH-019/AH-021/AH-024/AH-025/AH-029/AH-030.
+ */
+describe('run guards', () => {
+  const at = Date.parse('2026-09-08T10:00:00Z')
+
+  it('stops before starting a step it has no time for', async () => {
+    const d = deps([toolStep('read'), textStep('done')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      deadline: { at, budgetMs: 60_000 },
+      now: () => at + 1,
+    })
+    expect(out.stoppedBy).toBe('deadline')
+    // Not one more model call spent discovering the deadline had passed.
+    expect(d.sendStep).not.toHaveBeenCalled()
+  })
+
+  it('runs normally while there is time left', async () => {
+    const d = deps([textStep('done')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      deadline: { at: at + 60_000, budgetMs: 60_000 },
+      now: () => at,
+    })
+    expect(out.stoppedBy).toBe('done')
+  })
+
+  it('retries a transient failure and carries on', async () => {
+    const d = deps([textStep('done')])
+    let calls = 0
+    d.sendStep = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        const failure = new Error('service unavailable') as Error & {
+          status: number
+        }
+        failure.status = 503
+        throw failure
+      }
+      return streamOf(textStep('done'))
+    })
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(out.stoppedBy).toBe('done')
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry a rejection a second attempt would only repeat', async () => {
+    const d = deps([textStep('done')])
+    let calls = 0
+    d.sendStep = vi.fn(async () => {
+      calls += 1
+      const failure = new Error('unauthorized') as Error & { status: number }
+      failure.status = 401
+      throw failure
+    })
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(out.stoppedBy).toBe('error')
+    expect(calls).toBe(1)
+  })
+
+  it('stops a run going in circles, and says so to the model', async () => {
+    // The same call, over and over, with the model never answering.
+    const d = deps([toolStep('read')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      maxSteps: 50,
+    })
+    expect(out.stoppedBy).toBe('loop')
+    expect(out.errorText).toContain('not making progress')
+    // Stopped well before the step cap, which is the point of the guard.
+    expect(out.steps).toBeLessThan(50)
+  })
+
+  it('does not call a stop by the user a timeout', async () => {
+    const controller = new AbortController()
+    const d = deps([textStep('done')])
+    d.sendStep = vi.fn(async () => {
+      controller.abort()
+      throw new Error('aborted')
+    })
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: controller.signal,
+    })
+    expect(out.stoppedBy).toBe('aborted')
+  })
+
+  it('reports a stream that never finished as a timeout, not an error', async () => {
+    const d = deps([textStep('done')])
+    d.sendStep = vi.fn(
+      (_messages: UIMessage[], signal: AbortSignal) =>
+        new Promise<ReadableStream<UIMessageChunk>>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('timed out')), {
+            once: true,
+          })
+        })
+    ) as never
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      operationTimeoutMs: 5,
+    })
+    expect(out.stoppedBy).toBe('timeout')
   })
 })

@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import type { HardwareData } from '@/hooks/useHardware'
 import {
+  assessModelFit,
   DEFAULT_CTX_LENGTH,
+  DISCRETE_VRAM_RESERVE_BYTES,
   estimateKvCacheBytes,
   estimateModelFit,
   isAppleSilicon,
+  kvArchitectureFromGguf,
+  kvCacheBytesFromArchitecture,
   parseFileSize,
+  SYSTEM_RESERVE_BYTES,
+  UNIFIED_SYSTEM_RESERVE_BYTES,
 } from '../modelCompatibility'
 
 const GB = 1024 ** 3
@@ -183,5 +189,224 @@ describe('estimateModelFit', () => {
     const hw = appleSilicon(16)
     expect(estimateModelFit(9 * GB, 2048, hw)).toBe('green')
     expect(estimateModelFit(9 * GB, 32768, hw)).not.toBe('green')
+  })
+})
+
+const integratedGpu = (ramGib: number, sharedGib: number): HardwareData =>
+  baseHardware({
+    os_type: 'windows',
+    total_memory: ramGib * 1024,
+    gpus: [
+      {
+        name: 'Intel Iris Xe',
+        total_memory: sharedGib * 1024,
+        vendor: 'intel',
+        uuid: 'igpu',
+        driver_version: '',
+        nvidia_info: { index: 0, compute_capability: '' },
+        vulkan_info: {
+          index: 0,
+          device_id: 0,
+          device_type: 'IntegratedGpu',
+          api_version: '',
+        },
+      },
+    ],
+  })
+
+// Llama 3 8B's attention shape: 32 layers, 8 KV heads, 128-dim heads.
+const llama3Arch = {
+  layers: 32,
+  kvHeads: 8,
+  keyLength: 128,
+  valueLength: 128,
+  trainedContext: 8192,
+}
+
+describe('assessModelFit (deterministic hardware accounting)', () => {
+  it('does not subtract the system reserve from dedicated VRAM', () => {
+    // 5.5 GiB at 4k needs ~6.5 GiB. The old heuristic left 5.9 GiB of an 8 GiB
+    // card and called it a spill; a 512 MiB driver reserve leaves 7.5 GiB.
+    const result = assessModelFit({
+      weightsBytes: 5.5 * GB,
+      ctxLength: 4096,
+      hardware: withDiscreteGpu(32, 8),
+    })
+    expect(result.memoryModel).toBe('discrete-gpu')
+    expect(result.budgets.gpu).toBe(8 * GB - DISCRETE_VRAM_RESERVE_BYTES)
+    expect(result.verdict).toBe('fits')
+  })
+
+  it('treats a model that spills into RAM as runnable with partial offload', () => {
+    const result = assessModelFit({
+      weightsBytes: 12 * GB,
+      ctxLength: 4096,
+      hardware: withDiscreteGpu(32, 8),
+    })
+    expect(result.verdict).toBe('fits-partial-offload')
+    expect(estimateModelFit(12 * GB, 4096, withDiscreteGpu(32, 8))).toBe('yellow')
+  })
+
+  it('does not double count integrated GPU memory, which is system RAM', () => {
+    const hw = integratedGpu(16, 8)
+    const result = assessModelFit({ weightsBytes: 13 * GB, ctxLength: 4096, hardware: hw })
+    expect(result.memoryModel).toBe('integrated-gpu')
+    expect(result.budgets.dedicatedVram).toBe(0)
+    expect(result.budgets.total).toBe(16 * GB - SYSTEM_RESERVE_BYTES)
+    expect(result.budgets.gpu).toBe(result.budgets.total)
+    expect(result.verdict).toBe('exceeds')
+    expect(result.assumptions).toContain('integrated-gpu-shares-ram')
+  })
+
+  it('keeps unified memory as one pool with the GPU budget inside it', () => {
+    const result = assessModelFit({
+      weightsBytes: 4 * GB,
+      ctxLength: 4096,
+      hardware: appleSilicon(16),
+    })
+    expect(result.memoryModel).toBe('unified')
+    expect(result.budgets.total).toBe(16 * GB - UNIFIED_SYSTEM_RESERVE_BYTES)
+    expect(result.budgets.gpu).toBeLessThanOrEqual(result.budgets.total)
+    expect(result.budgets.dedicatedVram).toBe(0)
+  })
+
+  it('uses the larger Metal share on large unified-memory machines', () => {
+    const small = assessModelFit({ weightsBytes: GB, ctxLength: 4096, hardware: appleSilicon(16) })
+    const large = assessModelFit({ weightsBytes: GB, ctxLength: 4096, hardware: appleSilicon(64) })
+    expect(small.budgets.gpu).toBeCloseTo(16 * GB * 0.67)
+    expect(large.budgets.gpu).toBeCloseTo(64 * GB * 0.75)
+  })
+
+  it('sizes the KV cache from GGUF metadata when it is available', () => {
+    const result = assessModelFit({
+      weightsBytes: 4.7 * GB,
+      ctxLength: 8192,
+      hardware: withDiscreteGpu(32, 12),
+      architecture: llama3Arch,
+    })
+    // 32 layers * 8 heads * (128 + 128) * 2 bytes * 8192 tokens = 1 GiB.
+    expect(result.required.kvCache).toBe(GB)
+    expect(result.kvMethod).toBe('gguf-metadata')
+    expect(result.uncertainty).toBe('low')
+  })
+
+  it('shrinks the KV cache for quantized cache types', () => {
+    const f16 = kvCacheBytesFromArchitecture(llama3Arch, 8192)
+    const q8 = kvCacheBytesFromArchitecture(llama3Arch, 8192, 'q8_0', 'q8_0')
+    expect(q8.bytes).toBeCloseTo(f16.bytes * (34 / 32 / 2))
+  })
+
+  it('caps the context at what the model was trained on', () => {
+    const result = assessModelFit({
+      weightsBytes: 4.7 * GB,
+      ctxLength: 131072,
+      hardware: withDiscreteGpu(32, 12),
+      architecture: llama3Arch,
+    })
+    expect(result.effectiveContext).toBe(8192)
+    expect(result.assumptions).toContain('context-capped-to-trained')
+  })
+
+  it('flags the sliding-window estimate as uncertain', () => {
+    const result = assessModelFit({
+      weightsBytes: 4 * GB,
+      ctxLength: 32768,
+      hardware: withDiscreteGpu(64, 24),
+      architecture: { ...llama3Arch, trainedContext: 131072, slidingWindow: 4096 },
+    })
+    expect(result.assumptions).toContain('kv-sliding-window-midpoint')
+    expect(result.uncertainty).not.toBe('low')
+  })
+
+  it('marks the heuristic KV estimate as medium uncertainty', () => {
+    const result = assessModelFit({
+      weightsBytes: 4 * GB,
+      ctxLength: 4096,
+      hardware: withDiscreteGpu(32, 16),
+    })
+    expect(result.kvMethod).toBe('file-size-heuristic')
+    expect(result.uncertainty).toBe('medium')
+  })
+
+  it('removes the GPU budget when GPU layers are set to 0', () => {
+    const result = assessModelFit({
+      weightsBytes: 4 * GB,
+      ctxLength: 4096,
+      hardware: withDiscreteGpu(32, 16),
+      gpuLayers: 0,
+    })
+    expect(result.budgets.gpu).toBe(0)
+    expect(result.budgets.total).toBe(32 * GB - SYSTEM_RESERVE_BYTES)
+    expect(result.verdict).toBe('fits')
+    expect(result.assumptions).toContain('cpu-only-by-setting')
+  })
+
+  it('subtracts models that stay loaded alongside', () => {
+    const alone = assessModelFit({ weightsBytes: 8 * GB, ctxLength: 4096, hardware: baseHardware() })
+    const shared = assessModelFit({
+      weightsBytes: 8 * GB,
+      ctxLength: 4096,
+      hardware: baseHardware(),
+      otherLoadedBytes: 6 * GB,
+    })
+    expect(alone.verdict).toBe('fits')
+    expect(shared.budgets.total).toBe(alone.budgets.total - 6 * GB)
+    expect(shared.verdict).toBe('exceeds')
+  })
+
+  it('calls a fit with under 10% headroom tight rather than comfortable', () => {
+    // CPU only, 16 GiB: budget 14 GiB. 11.5 GiB + 1.15 KV + 0.52 overhead ≈ 13.2.
+    const result = assessModelFit({ weightsBytes: 11.5 * GB, ctxLength: 4096, hardware: baseHardware() })
+    expect(result.verdict).toBe('tight')
+    expect(result.uncertainty).toBe('high')
+  })
+
+  it('reports unknown without a size or hardware probe', () => {
+    expect(assessModelFit({ weightsBytes: null, ctxLength: 4096, hardware: baseHardware() }).verdict).toBe('unknown')
+    expect(
+      assessModelFit({ weightsBytes: GB, ctxLength: 4096, hardware: baseHardware({ total_memory: 0 }) }).verdict
+    ).toBe('unknown')
+  })
+
+  it('includes the vision projector when its size is known', () => {
+    const result = assessModelFit({
+      weightsBytes: 4 * GB,
+      ctxLength: 4096,
+      hardware: baseHardware({ total_memory: 32 * 1024 }),
+      mmprojBytes: 600 * 1024 * 1024,
+    })
+    expect(result.required.mmproj).toBe(600 * 1024 * 1024)
+  })
+})
+
+describe('kvArchitectureFromGguf', () => {
+  it('reads the attention shape from GGUF keys', () => {
+    expect(
+      kvArchitectureFromGguf({
+        'general.architecture': 'llama',
+        'llama.block_count': '32',
+        'llama.attention.head_count': '32',
+        'llama.attention.head_count_kv': '8',
+        'llama.attention.key_length': '128',
+        'llama.attention.value_length': '128',
+        'llama.context_length': '8192',
+      })
+    ).toEqual(llama3Arch)
+  })
+
+  it('derives head size from the embedding length when key length is missing', () => {
+    const arch = kvArchitectureFromGguf({
+      'general.architecture': 'qwen2',
+      'qwen2.block_count': '28',
+      'qwen2.attention.head_count': '28',
+      'qwen2.attention.head_count_kv': '4',
+      'qwen2.embedding_length': '3584',
+    })
+    expect(arch).toMatchObject({ layers: 28, kvHeads: 4, keyLength: 128, valueLength: 128 })
+  })
+
+  it('returns null when the metadata cannot size a cache', () => {
+    expect(kvArchitectureFromGguf(undefined)).toBeNull()
+    expect(kvArchitectureFromGguf({ 'general.architecture': 'llama' })).toBeNull()
   })
 })

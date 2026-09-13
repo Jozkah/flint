@@ -36,14 +36,14 @@ function statusColor(status: GitFileEntry['status']): string {
   switch (status) {
     case 'added':
     case 'untracked':
-      return 'text-green-600'
+      return 'text-success'
     case 'deleted':
-      return 'text-red-600'
+      return 'text-destructive'
     case 'renamed':
     case 'copied':
-      return 'text-blue-500'
+      return 'text-ink-2'
     default:
-      return 'text-main-view-fg/60'
+      return 'text-muted-foreground'
   }
 }
 
@@ -86,7 +86,7 @@ function LazyGitDiff({
 
   if (state.status === 'loading') {
     return (
-      <p className="px-3 py-2 text-xs text-main-view-fg/50">
+      <p className="px-3 py-2 text-xs text-muted-foreground">
         {t('common:changes.loadingDiff')}
       </p>
     )
@@ -101,14 +101,14 @@ function LazyGitDiff({
   const { diff } = state
   if (diff.binary) {
     return (
-      <p className="px-3 py-2 text-xs text-main-view-fg/50">
+      <p className="px-3 py-2 text-xs text-muted-foreground">
         {t('common:changes.binary')}
       </p>
     )
   }
   if (!diff.diff.trim()) {
     return (
-      <p className="px-3 py-2 text-xs text-main-view-fg/50">
+      <p className="px-3 py-2 text-xs text-muted-foreground">
         {t('common:changes.noDiff')}
       </p>
     )
@@ -162,7 +162,7 @@ function FileRow({
         <ChevronDown
           size={14}
           className={cn(
-            'shrink-0 text-main-view-fg/50 transition-transform',
+            'shrink-0 text-muted-foreground transition-transform',
             !isExpanded && '-rotate-90'
           )}
         />
@@ -180,23 +180,23 @@ function FileRow({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-xs font-medium">{path}</span>
           {subtitle ? (
-            <span className="truncate text-[10px] text-main-view-fg/50">
+            <span className="truncate text-[10px] text-muted-foreground">
               {subtitle}
             </span>
           ) : null}
         </span>
         {note ? (
-          <span className="shrink-0 text-xs text-main-view-fg/60">{note}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{note}</span>
         ) : null}
         {indicator ? (
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-main-view-fg/60">
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {indicator}
           </span>
         ) : null}
-        <span className="shrink-0 font-mono text-xs text-green-600">
+        <span className="shrink-0 font-mono text-xs text-success">
           +{additions}
         </span>
-        <span className="shrink-0 font-mono text-xs text-red-600">
+        <span className="shrink-0 font-mono text-xs text-destructive">
           -{deletions}
         </span>
       </button>
@@ -204,7 +204,7 @@ function FileRow({
         <button
           type="button"
           onClick={onOpen}
-          className="absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[10px] text-main-view-fg/60 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
+          className="absolute right-2 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
         >
           {openLabel}
         </button>
@@ -312,9 +312,10 @@ export function CoworkDiffPanel({
 
   return (
     <CoworkSidePanel
+      data-testid="cowork-diff-panel"
       title={title}
       summary={
-        <span className="shrink-0 font-mono text-xs text-main-view-fg/60">
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">
           +{additions} -{deletions}
         </span>
       }
@@ -326,7 +327,7 @@ export function CoworkDiffPanel({
           <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
             {git.status?.branch ? (
               <span
-                className="inline-flex min-w-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] text-main-view-fg/70"
+                className="inline-flex min-w-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
                 title={git.status.branch}
               >
                 <GitBranch size={10} className="shrink-0" />
@@ -334,7 +335,7 @@ export function CoworkDiffPanel({
               </span>
             ) : null}
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-main-view-fg/80 hover:bg-muted">
+              <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-ink-2 hover:bg-muted">
                 {t(`common:changes.scope.${git.scope}`)}
                 <ChevronDown size={12} className="shrink-0" />
               </DropdownMenuTrigger>
@@ -366,7 +367,7 @@ export function CoworkDiffPanel({
                     ? t('common:changes.collapseAll')
                     : t('common:changes.expandAll')
                 }
-                className="text-main-view-fg/60 hover:text-main-view-fg disabled:opacity-40"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
                 {allExpanded ? (
                   <ChevronsDownUp size={15} />
@@ -379,11 +380,11 @@ export function CoworkDiffPanel({
                 onClick={git.refresh}
                 aria-label={t('common:changes.refresh')}
                 title={t('common:changes.refresh')}
-                className="text-main-view-fg/60 hover:text-main-view-fg"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <RefreshCw
                   size={14}
-                  className={cn(git.loading && 'animate-spin')}
+                  className={cn(git.loading && 'motion-safe:animate-spin')}
                 />
               </button>
             </div>
@@ -395,7 +396,7 @@ export function CoworkDiffPanel({
           {showProject ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-main-view px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-main-view-fg/50">
+                <h3 className="sticky top-0 z-[1] bg-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {t('common:changes.projectWorkingTree')}
                 </h3>
               ) : null}
@@ -404,13 +405,13 @@ export function CoworkDiffPanel({
                   {t('common:changes.loadError')}
                 </p>
               ) : !git.status ? (
-                <p className="px-4 py-6 text-center text-sm text-main-view-fg/50">
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {git.loading
                     ? t('common:changes.loadingStatus')
                     : t('common:changes.noRepo')}
                 </p>
               ) : gitFiles.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-main-view-fg/50">
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {t('common:changes.cleanWorkingTree')}
                 </p>
               ) : (
@@ -484,7 +485,7 @@ export function CoworkDiffPanel({
           {showSandbox ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-main-view px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-main-view-fg/50">
+                <h3 className="sticky top-0 z-[1] bg-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {t('common:changes.sandboxOutput')}
                 </h3>
               ) : null}
@@ -530,7 +531,7 @@ export function CoworkDiffPanel({
 
           {/* Nothing anywhere. */}
           {!showProject && !showSandbox ? (
-            <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {t('common:changes.empty')}
             </p>
           ) : null}

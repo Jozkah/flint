@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import SettingsMenu from '../SettingsMenu'
@@ -105,6 +105,15 @@ describe('SettingsMenu', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:keyboardShortcuts')).toBeInTheDocument()
     expect(screen.getByText('common:assistants')).toBeInTheDocument()
+  })
+
+  it('groups advanced pages behind a keyboard-operable toggle without removing them', () => {
+    render(<SettingsMenu />)
+    const toggle = screen.getByRole('button', { name: 'navigation:advancedSettings' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('common:local_api_server')).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
   })
 
@@ -188,7 +197,7 @@ describe('SettingsMenu', () => {
     // Providers are expanded by default, click directly on a provider
     const openaiProvider = screen
       .getByTestId('provider-avatar-openai')
-      .closest('div[class*="cursor-pointer"]')
+      .closest('button[class*="cursor-pointer"]')
     await user.click(openaiProvider!)
 
     expect(mockNavigate).toHaveBeenCalled()
@@ -209,7 +218,7 @@ describe('SettingsMenu', () => {
     expect(screen.getByTestId('provider-avatar-openai')).toBeInTheDocument()
 
     // llama.cpp should have 'hidden' class during setup_remote_provider step
-    const llamaCpp = screen.getByTestId('provider-avatar-llama.cpp').closest('div[class*="cursor-pointer"]')
+    const llamaCpp = screen.getByTestId('provider-avatar-llama.cpp').closest('button[class*="cursor-pointer"]')
     expect(llamaCpp?.className).toContain('hidden')
   })
 

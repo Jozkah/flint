@@ -8,7 +8,7 @@ import { EngineManager, SettingComponentProps } from '@janhq/core'
 import { ModelCapabilities } from '@/types/models'
 import { modelSettings } from '@/lib/predefined'
 import { ExtensionManager } from '@/lib/extension'
-import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { providerFetch as fetchTauri } from '@/lib/providerFetch'
 import { invoke } from '@tauri-apps/api/core'
 import { DefaultProvidersService } from './default'
 import { getModelCapabilities } from '@/lib/models'
@@ -16,11 +16,19 @@ import {
   API_KEY_FALLBACKS_SETTING_KEY,
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
-import { ensureAnthropicHeaders } from '@/lib/remoteModelCatalog'
+import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
+import {
+  EndpointError,
+  describeEndpointFailure,
+  isEndpointError,
+  parseModelList,
+} from '@/lib/endpointDiagnostics'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
-    // Tauri implementation uses Tauri's fetch to avoid CORS issues
+    // The canonical provider transport: no CORS, and one endpoint-resolution
+    // rule shared with chat completions, embeddings and connection tests.
     return fetchTauri as typeof fetch
   }
 
@@ -175,11 +183,9 @@ export class TauriProvidersService extends DefaultProvidersService {
           headers['Authorization'] = `Bearer ${key}`
         }
 
-        if (provider.custom_header) {
-          provider.custom_header.forEach((header) => {
-            headers[header.header] = header.value
-          })
-        }
+        // After the key: reserved names are never applied, so a custom header
+        // cannot replace it. janhq/jan#8208.
+        applyCustomHeaders(headers, provider)
 
         ensureAnthropicHeaders(provider, headers)
 
@@ -199,49 +205,32 @@ export class TauriProvidersService extends DefaultProvidersService {
         }
 
         if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error(
-              `Authentication failed: API key is required or invalid for ${provider.provider}`
-            )
-          }
-          if (response.status === 403) {
-            throw new Error(
-              `Access forbidden: Check your API key permissions for ${provider.provider}`
-            )
-          }
-          if (response.status === 404) {
-            throw new Error(
-              `Models endpoint not found for ${provider.provider}. Check the base URL configuration.`
-            )
-          }
-          throw new Error(
-            `Failed to fetch models from ${provider.provider}: ${response.status} ${response.statusText}`
+          // One message that names the provider, the endpoint, the status and
+          // whoever answered. "Access forbidden: check your API key" was
+          // actively misleading for a local server fronted by a proxy, where
+          // the key was never the problem.
+          throw new EndpointError(
+            describeEndpointFailure({
+              provider: provider.provider,
+              url: `${provider.base_url}/models`,
+              method: 'GET',
+              status: response.status,
+              statusText: response.statusText,
+              server: response.headers?.get?.('server') ?? null,
+            })
           )
         }
 
         const data = await response.json()
 
-        if (data.data && Array.isArray(data.data)) {
-          return data.data
-            .map((model: { id: string }) => model.id)
-            .filter(Boolean)
+        // One parser for every shape. llama.cpp answers with a non-standard
+        // `models` array whose entries carry `name`/`model` but no `id`, which
+        // the previous branch turned into a list of `undefined`.
+        const ids = parseModelList(Array.isArray(data) ? { data } : data)
+        if (ids.length === 0) {
+          console.warn('Provider listed no models at /models:', data)
         }
-        if (Array.isArray(data)) {
-          return data
-            .filter(Boolean)
-            .map((model) =>
-              typeof model === 'object' && 'id' in model ? model.id : model
-            )
-        }
-        if (data.models && Array.isArray(data.models)) {
-          return data.models
-            .map((model: string | { id: string }) =>
-              typeof model === 'string' ? model : model.id
-            )
-            .filter(Boolean)
-        }
-        console.warn('Unexpected response format from provider API:', data)
-        return []
+        return ids
       }
 
       throw new Error(
@@ -249,6 +238,10 @@ export class TauriProvidersService extends DefaultProvidersService {
       )
     } catch (error) {
       console.error('Error fetching models from provider:', error)
+
+      // Already explained: the endpoint, the status and who answered. Wrapping
+      // it would bury the only sentence that says what happened.
+      if (isEndpointError(error)) throw error
 
       // Preserve structured error messages thrown above
       const structuredErrorPrefixes = [
@@ -267,16 +260,23 @@ export class TauriProvidersService extends DefaultProvidersService {
         throw new Error(error.message)
       }
 
-      // Provide helpful error message for any connection errors
-      if (error instanceof Error && error.message.includes('fetch')) {
-        throw new Error(
-          `Cannot connect to ${provider.provider} at ${provider.base_url}. Please check that the service is running and accessible.`
-        )
-      }
-
-      // Generic fallback
-      throw new Error(
-        `Unexpected error while fetching models from ${provider.provider}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      /**
+       * Nothing answered.
+       *
+       * The transport already says what it tried and what it resolved to,
+       * which is the whole diagnosis for a short hostname pointing at the
+       * wrong machine. Both branches below used to bury that sentence: one
+       * threw it away for a generic "Cannot connect", the other wrapped it in
+       * "Unexpected error while fetching models from X", which reads as a
+       * fault in Jan rather than an endpoint that is not listening.
+       */
+      throw new EndpointError(
+        describeEndpointFailure({
+          provider: provider.provider,
+          url: `${provider.base_url}/models`,
+          method: 'GET',
+          cause: error,
+        })
       )
     }
   }

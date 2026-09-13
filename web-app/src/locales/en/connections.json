@@ -1,0 +1,18 @@
+{
+  "skills": {
+    "whatIs": "A skill is a set of written instructions, optionally with scripts or files alongside, that the agent can read and follow.",
+    "whereApplies": "The skills listed here belong to this project folder (.jan/agent/skills). Turning a skill off hides it from the agent and from / commands in this project only.",
+    "toolAccess": "Enabling a skill grants no new tool access. The agent reads skills through the built-in skill tools (list, read, write), which are always allowed without asking. A script a skill includes runs only if the agent calls the command tool, which follows its own permission rules.",
+    "stateHelp": "Installed: the skill exists in this project. Enabled: the agent is offered it for work in this project.",
+    "summary": "{{enabled}} of {{installed}} installed skills enabled",
+    "state": {
+      "enabled": "Enabled",
+      "disabled": "Off"
+    },
+    "importFailed": "Could not import {{name}}: {{error}}",
+    "loadHubFailed": "Could not load the skill hub: {{error}}",
+    "deleteSkill": "Delete skill {{name}}",
+    "fromPlugin": "From plugin {{plugin}}",
+    "pluginReadOnly": "This skill comes from the plugin {{plugin}} and is read-only here. To change it, edit the plugin's source and reinstall the plugin, or turn the plugin off in Plugins."
+  }
+}

@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useSkills, effectiveEnabled, storedEnabled } from '@/hooks/useSkills'
 import { cn } from '@/lib/utils'
+import { isPluginSkill } from '@/lib/skillStore'
 
 /**
  * Top-of-input control showing which skills will be advertised to the agent this
@@ -56,7 +57,13 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1">
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-          {t('common:skillsInContext')}
+          <div>{t('common:skillsInContext')}</div>
+          <div>
+            {t('connections:skills.summary', {
+              enabled: effective.size,
+              installed: allNames.length,
+            })}
+          </div>
         </div>
         <div className="max-h-64 overflow-y-auto">
           {skills.map((s) => (
@@ -66,6 +73,11 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
             >
               <div className="flex-1 min-w-0">
                 <div className="truncate text-sm font-medium">{s.name}</div>
+                {isPluginSkill(s) && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {t('connections:skills.fromPlugin', { plugin: s.plugin })}
+                  </div>
+                )}
                 {s.description && (
                   <div className="truncate text-xs text-muted-foreground">
                     {s.description}
@@ -75,10 +87,16 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
               <Switch
                 checked={effective.has(s.name)}
                 onCheckedChange={() => toggle(s.name)}
+                aria-label={s.name}
               />
             </label>
           ))}
         </div>
+        {/* Enabling here only changes what the agent is offered; it grants no
+            tool access (skill tools are always-allowed workspace tools). */}
+        <p className="border-t px-2 py-1.5 text-xs text-muted-foreground">
+          {t('connections:skills.toolAccess')}
+        </p>
       </PopoverContent>
     </Popover>
   )

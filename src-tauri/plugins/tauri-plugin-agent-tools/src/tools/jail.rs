@@ -28,18 +28,19 @@
 //! Windows has no argv to wrap -- see [`super::appcontainer`], which re-execs this
 //! binary because the confinement is a `CreateProcessW` token attribute.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use super::appcontainer;
-use super::proc::ShellConfig;
+use super::proc::{self, OriginRoots, ProbeOutcome, ShellConfig, ShellReport};
 
 /// `sandbox-exec` is only trusted at its absolute system path: resolving it via
 /// `PATH` would let anything that can prepend to `PATH` defeat the sandbox.
 #[cfg(target_os = "macos")]
 const SEATBELT: &str = "/usr/bin/sandbox-exec";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     Seatbelt,
     Bubblewrap,
@@ -215,6 +216,44 @@ pub fn supports_write_roots(backend: Backend) -> bool {
     }
 }
 
+/// Can this backend confine a shell to a folder *Jan owns*?
+///
+/// A narrower question than [`supports_write_roots`], and AppContainer can
+/// answer yes to it. Granting a write ACE on the user's own repository is what
+/// this backend refuses to do; granting one on a managed worktree under Jan's
+/// data folder is the same thing it already does for the thread workspace.
+/// That is what makes Managed worktree mode possible on Windows while editing
+/// the user's own folder directly stays unavailable there.
+pub fn supports_owned_write_roots(backend: Backend) -> bool {
+    match backend {
+        Backend::Seatbelt | Backend::Bubblewrap | Backend::AppContainer => true,
+        Backend::None => false,
+    }
+}
+
+/// Whether the shell can be held to exactly `roots` on `backend`.
+///
+/// `owned` is the directory Jan's managed worktrees live under. On
+/// AppContainer every root must be inside it; anywhere else the answer is the
+/// general [`supports_write_roots`].
+pub fn can_confine_write_roots(backend: Backend, roots: &[PathBuf], owned: Option<&Path>) -> bool {
+    if supports_write_roots(backend) {
+        return true;
+    }
+    if backend != Backend::AppContainer {
+        return false;
+    }
+    let Some(owned) = owned.and_then(|o| o.canonicalize().ok()) else {
+        return false;
+    };
+    !roots.is_empty()
+        && roots.iter().all(|root| {
+            root.canonicalize()
+                .map(|r| r.starts_with(&owned) && r != owned)
+                .unwrap_or(false)
+        })
+}
+
 pub fn backend() -> Backend {
     static BACKEND: OnceLock<Backend> = OnceLock::new();
     *BACKEND.get_or_init(detect)
@@ -282,12 +321,18 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
             args: bwrap_args(policy, cfg),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         Backend::Seatbelt => Some(ShellConfig {
             program: PathBuf::from(seatbelt_program()),
             args: seatbelt_args(policy, cfg),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         // AppContainer is a token attribute on the spawn rather than an argv
         // prefix, and `tokio::process::Command` cannot set one, so the wrapper is
@@ -295,16 +340,20 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // the running binary cannot be located there is no wrapper to run, and
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
-            program: std::env::current_exe().ok()?,
+            program: helper_exe()?,
             args: appcontainer::helper_args(
                 &policy.workspace,
                 policy.scratch_root.as_deref(),
+                &policy.write_roots,
                 policy.allow_network,
                 &cfg.program,
                 &cfg.args,
             ),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         Backend::None => None,
     }
@@ -651,6 +700,17 @@ const DENIAL_MARKERS: &[&str] = &[
     "temporary failure in name resolution",
     "could not resolve host",
     "name or service not known",
+    // Windows phrasings. Every marker above is a Unix one, so an AppContainer
+    // that correctly refused a socket produced a raw Win32 message the model
+    // was left to interpret on its own -- the exact unexplained failure this
+    // list exists to prevent. WSAEACCES is what a lowbox token gets when it
+    // opens a socket without `internetClient`; the others are how a blocked
+    // name lookup and a refused file open read on Windows.
+    "forbidden by its access permissions",
+    "no such host is known",
+    "attempt was made to access a socket",
+    "the requested operation requires elevation",
+    "access to the path",
 ];
 
 /// True when `output` looks like the sandbox blocked something, so the model can
@@ -707,6 +767,468 @@ pub fn denial_hint(policy: &Policy) -> String {
     )
 }
 
+/// The program that performs the confined spawn.
+///
+/// Normally this binary, re-exec'd with a helper argv -- the app and the CLI
+/// both call [`appcontainer::run_helper_if_requested`] first thing in `main`,
+/// so a re-exec lands in the helper. `JAN_SANDBOX_HELPER_EXE` overrides it for
+/// an embedder whose `main` is not ours; a test binary is the case that forced
+/// the knob to exist, because libtest owns `main` there and rejects the helper
+/// argv before any of this crate runs.
+fn helper_exe() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("JAN_SANDBOX_HELPER_EXE") {
+        let path = PathBuf::from(explicit);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    #[cfg(test)]
+    if let Some(path) = test_helper_exe() {
+        return Some(path);
+    }
+    std::env::current_exe().ok()
+}
+
+/// The `jan-sandbox-helper` binary cargo builds alongside a test run.
+///
+/// A unit test cannot read `CARGO_BIN_EXE_*` (only integration tests can), so
+/// the path is derived from the test executable's own: cargo puts unit-test
+/// binaries in `target/<profile>/deps/` and bins in `target/<profile>/`.
+/// Returns `None` when it is not there, so a missing helper is a normal
+/// sandbox-unavailable result rather than a panic.
+#[cfg(test)]
+fn test_helper_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let deps = exe.parent()?;
+    let name = format!("jan-sandbox-helper{}", std::env::consts::EXE_SUFFIX);
+    for dir in [deps, deps.parent()?] {
+        let candidate = dir.join(&name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Shell probing and selection
+// ---------------------------------------------------------------------------
+
+/// How long a probe is given before it is treated as a failure. Generous for
+/// what it runs -- `exit 0` -- and bounded so a wedged shell cannot hold up the
+/// first command of a session.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Probe results for this process, keyed by backend and shell path.
+///
+/// Cached because the answer is a property of the machine, not of the command,
+/// and the probe costs a process launch. Invalidated wholesale by
+/// [`invalidate_probe_cache`] whenever something that could change the answer
+/// changes -- a settings edit, a different sandbox mode, a new `JAN_AGENT_SHELL`.
+fn probe_cache() -> &'static Mutex<HashMap<(Backend, PathBuf), ProbeOutcome>> {
+    static CACHE: OnceLock<Mutex<HashMap<(Backend, PathBuf), ProbeOutcome>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Forget every cached probe. Call after anything that could change whether a
+/// shell starts: the sandbox setting, the shell setting, the environment.
+pub fn invalidate_probe_cache() {
+    if let Ok(mut cache) = probe_cache().lock() {
+        cache.clear();
+    }
+}
+
+/// Start `cfg` under `policy` and run a harmless command, to find out whether
+/// it can run at all here.
+///
+/// This is the only thing that establishes a shell is usable. Everything else
+/// -- the path exists, the file is executable, the ACLs look right -- is
+/// necessary and not sufficient: Git Bash on Windows satisfies all of them and
+/// still cannot start inside an AppContainer, because the MSYS2 runtime it is
+/// built on needs the global object namespace that the container withholds.
+/// The only way to know is to try it.
+pub fn probe(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
+    if !cfg.program.is_file() && proc::which(&cfg.program.to_string_lossy()).is_none() {
+        return ProbeOutcome::Missing;
+    }
+    let key = (backend(), cfg.program.clone());
+    if let Ok(cache) = probe_cache().lock() {
+        if let Some(hit) = cache.get(&key) {
+            return hit.clone();
+        }
+    }
+    let (outcome, verdict) = probe_uncached(cfg, policy);
+    // Only a verdict about the shell is kept. A failure that belongs to this
+    // one attempt -- a timeout while the machine was busy, a workspace or
+    // scratch the caller's session no longer has -- used to be cached with the
+    // rest, keyed by nothing but the shell's path. One slow first launch then
+    // made every shell "unavailable" for the life of the process, in every
+    // session, until something happened to invalidate the cache.
+    if verdict == Verdict::Definitive {
+        if let Ok(mut cache) = probe_cache().lock() {
+            cache.insert(key, outcome.clone());
+        }
+    }
+    outcome
+}
+
+/// Wait for `child` for at most `timeout`; past it, kill its whole tree and
+/// report `None`.
+///
+/// `wait_with_output` has no timeout, so the wait happens on a thread. The
+/// child moves into that thread, which is how the kill used to be lost: the
+/// timeout path returned without it, and every probe that hung -- a sandboxed
+/// shell that never starts -- left its helper and that shell running for the
+/// life of the app, one more each time a probe was retried.
+fn wait_or_kill(
+    mut child: std::process::Child,
+    timeout: std::time::Duration,
+) -> Option<std::io::Result<std::process::Output>> {
+    use std::io::Read;
+    // The pipes are drained on their own threads so a chatty child cannot
+    // fill one and stall; the child itself stays here, where it can be killed.
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Some(Ok(std::process::Output {
+                    status,
+                    stdout: stdout.join().unwrap_or_default(),
+                    stderr: stderr.join().unwrap_or_default(),
+                }))
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25))
+            }
+            Ok(None) => {
+                // The whole tree: the helper and the shell it started. Once
+                // this was `taskkill /T`, which blocked for a minute on some
+                // hosts -- and a blocked probe blocked the readiness check
+                // every run waits on. `kill_tree` now walks the tree itself.
+                // Then the process directly, in case the tree walk could not
+                // open it. The drain threads end when the pipes close.
+                let _ = super::proc::kill_tree(child.id());
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Err(e) => return Some(Err(e)),
+        }
+    }
+}
+
+/// Whether a probe result says something about the shell, or only about the
+/// attempt that produced it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    /// True of the shell on this machine: worth keeping.
+    Definitive,
+    /// True of this attempt only: the next call probes again.
+    Transient,
+}
+
+/// A policy the probe cannot be run under at all, because a directory it names
+/// is missing. Says nothing about the shell.
+fn missing_policy_directory(policy: &Policy) -> Option<String> {
+    if !policy.workspace.is_dir() {
+        return Some(format!(
+            "workspace does not exist: {}",
+            policy.workspace.display()
+        ));
+    }
+    if let Some(scratch) = &policy.scratch_root {
+        if !scratch.is_dir() {
+            return Some(format!("scratch does not exist: {}", scratch.display()));
+        }
+    }
+    None
+}
+
+fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> (ProbeOutcome, Verdict) {
+    if let Some(reason) = missing_policy_directory(policy) {
+        return (ProbeOutcome::Unusable { reason }, Verdict::Transient);
+    }
+    let Some(wrapped) = wrap(cfg, policy) else {
+        return (ProbeOutcome::NoSandbox, Verdict::Definitive);
+    };
+    let mut command = std::process::Command::new(&wrapped.program);
+    command.args(&wrapped.args);
+    if !wrapped.via_stdin {
+        command.arg(proc::PROBE_COMMAND);
+    }
+    // The same curated environment a real command gets, so the probe tests what
+    // will actually happen rather than a friendlier version of it.
+    command.env_clear();
+    for name in proc::SANDBOX_ENV_ALLOW {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command
+        .current_dir(&policy.workspace)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!("the shell could not be started: {e}"),
+                },
+                Verdict::Transient,
+            )
+        }
+    };
+
+    let output = match wait_or_kill(child, PROBE_TIMEOUT) {
+        Some(Ok(output)) => output,
+        Some(Err(e)) => {
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!("the shell could not be waited for: {e}"),
+                },
+                Verdict::Transient,
+            );
+        }
+        None => {
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!(
+                        "the shell did not finish `{}` within {} seconds",
+                        proc::PROBE_COMMAND,
+                        PROBE_TIMEOUT.as_secs()
+                    ),
+                },
+                Verdict::Transient,
+            )
+        }
+    };
+
+    if output.status.success() {
+        return (ProbeOutcome::Usable, Verdict::Definitive);
+    }
+    // The helper's own diagnostic is the most specific thing available, so it is
+    // passed through rather than replaced by a summary of it.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr
+        .lines()
+        .find(|line| line.starts_with("ERROR: ") && !line.contains("[stage="))
+        .map(|line| line.trim_start_matches("ERROR: ").to_string())
+        .unwrap_or_else(|| {
+            format!(
+                "the shell exited {} without running `{}`",
+                output
+                    .status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "abnormally".to_string()),
+                proc::PROBE_COMMAND
+            )
+        });
+    (
+        ProbeOutcome::Unusable { reason: detail },
+        Verdict::Definitive,
+    )
+}
+
+/// Every shell this host has, with where it came from and whether it starts
+/// under `policy`. What a readiness view renders and what a redacted
+/// diagnostics copy contains.
+///
+/// Probing stops after the first usable shell: the ones below it in preference
+/// order are reported as untried rather than launched, because the point of the
+/// list is to pick one, not to inventory the machine.
+pub fn shell_reports(policy: &Policy) -> Vec<ShellReport> {
+    let roots = OriginRoots::from_host();
+    let configured = std::env::var_os("JAN_AGENT_SHELL").map(PathBuf::from);
+    let mut out = Vec::new();
+    let mut settled = false;
+    for cfg in proc::candidates() {
+        let origin = proc::classify_origin(
+            &cfg.program,
+            configured.as_deref() == Some(cfg.program.as_path()),
+            &roots,
+        );
+        let outcome = if settled {
+            ProbeOutcome::Unusable {
+                reason: "not tried: an earlier shell in preference order works".to_string(),
+            }
+        } else {
+            let outcome = probe(&cfg, policy);
+            settled = outcome.usable();
+            outcome
+        };
+        out.push(ShellReport {
+            cfg,
+            origin,
+            outcome,
+        });
+    }
+    out
+}
+
+/// The shell a sandboxed run will use, and what was rejected on the way to it.
+#[derive(Debug, Clone)]
+pub struct SelectedShell {
+    /// The chosen shell, with its origin and its probe result.
+    pub report: ShellReport,
+    /// Ready to spawn: [`wrap`] already applied.
+    pub wrapped: ShellConfig,
+    /// Why no POSIX shell is being used, when the chosen one is not POSIX.
+    ///
+    /// Carried so a refusal can name the real reason -- "Git Bash cannot start
+    /// inside an AppContainer" -- rather than saying bash is missing on a
+    /// machine where it is plainly installed.
+    pub posix_rejected: Option<String>,
+}
+
+/// Pick the shell a sandboxed run should use: the first candidate that actually
+/// starts under `policy`.
+///
+/// `Err` carries what every candidate reported, because at that point the user
+/// needs the list rather than a verdict. Nothing in it is inferred -- each line
+/// is what that shell's own probe said.
+pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
+    let reports = shell_reports(policy);
+    if let Some(usable) = reports.iter().find(|r| r.outcome.usable()) {
+        let Some(wrapped) = wrap(&usable.cfg, policy) else {
+            return Err(
+                "no OS sandbox backend is available on this system, so no shell can be                  confined here"
+                    .to_string(),
+            );
+        };
+        let posix_rejected = if usable.cfg.flavor == proc::ShellFlavor::Posix {
+            None
+        } else {
+            reports
+                .iter()
+                .find(|r| r.cfg.flavor == proc::ShellFlavor::Posix)
+                .map(|r| match &r.outcome {
+                    ProbeOutcome::Unusable { reason } => format!(
+                        "{} could not start in the sandbox: {reason}",
+                        r.cfg.program.display()
+                    ),
+                    ProbeOutcome::Missing => format!(
+                        "{} is not installed on this machine",
+                        r.cfg.program.display()
+                    ),
+                    ProbeOutcome::NoSandbox => {
+                        "no OS sandbox backend is available on this system".to_string()
+                    }
+                    ProbeOutcome::Usable => "it is usable".to_string(),
+                })
+                .or_else(|| Some("no POSIX shell is installed on this machine".to_string()))
+        };
+        return Ok(SelectedShell {
+            report: usable.clone(),
+            wrapped,
+            posix_rejected,
+        });
+    }
+    let mut message = String::from("no shell on this machine could be started in the sandbox:");
+    for report in &reports {
+        message.push_str(&format!(
+            "
+  - {} ({}, {}): {}",
+            report.cfg.program.display(),
+            report.cfg.description,
+            report.origin.as_str(),
+            match &report.outcome {
+                ProbeOutcome::Missing => "not installed".to_string(),
+                ProbeOutcome::NoSandbox =>
+                    "no OS sandbox backend is available on this system".to_string(),
+                ProbeOutcome::Unusable { reason } => reason.clone(),
+                ProbeOutcome::Usable => "usable".to_string(),
+            }
+        ));
+    }
+    Err(message)
+}
+
+#[cfg(test)]
+mod probe_cache_tests {
+    use super::*;
+
+    fn existing_program() -> ShellConfig {
+        ShellConfig {
+            program: std::env::current_exe().expect("test binary path"),
+            args: Vec::new(),
+            via_stdin: false,
+            description: "probe-cache-test",
+            flavor: proc::ShellFlavor::Posix,
+        }
+    }
+
+    fn unique_missing(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jan-probe-cache-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    fn cached(cfg: &ShellConfig) -> bool {
+        probe_cache()
+            .lock()
+            .map(|c| c.contains_key(&(backend(), cfg.program.clone())))
+            .unwrap_or(false)
+    }
+
+    // A probe run under a session whose scratch is gone says nothing about the
+    // shell. It used to be cached under the shell's path, so every later
+    // session in the process was told no shell could start.
+    #[test]
+    fn a_missing_scratch_is_reported_but_never_cached() {
+        let cfg = existing_program();
+        // An owned workspace that exists, so the scratch is the only thing
+        // missing -- never the shared host temp root itself.
+        let workspace = unique_missing("workspace-owned");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let scratch = unique_missing("scratch");
+        let policy = Policy::new(&workspace, false).with_scratch_root(&scratch);
+
+        let outcome = probe(&cfg, &policy);
+
+        match outcome {
+            ProbeOutcome::Unusable { reason } => {
+                assert!(reason.contains("scratch does not exist"), "{reason}")
+            }
+            other => panic!("expected an unusable outcome, got {other:?}"),
+        }
+        assert!(!cached(&cfg), "a per-attempt failure must not be cached");
+        assert!(!scratch.exists(), "the probe must not create the scratch");
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
+    #[test]
+    fn a_missing_workspace_is_transient_too() {
+        let cfg = existing_program();
+        let workspace = unique_missing("workspace");
+        let policy = Policy::new(&workspace, false);
+
+        let (outcome, verdict) = probe_uncached(&cfg, &policy);
+
+        assert_eq!(verdict, Verdict::Transient);
+        assert!(matches!(outcome, ProbeOutcome::Unusable { .. }));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,6 +1239,7 @@ mod tests {
             args: vec!["-c".to_string()],
             via_stdin: false,
             description: "bash",
+            flavor: proc::ShellFlavor::Posix,
         }
     }
 
@@ -1242,6 +1765,147 @@ mod tests {
     /// AppContainer grants writes only through an ACE on the thread workspace,
     /// so it cannot yet authorize a repository; reporting it supported would
     /// promise a confinement Windows is not applying.
+    /// The regression: a probe that outlived its timeout was reported unusable
+    /// and left running. Now the process is gone by the time the wait returns.
+    #[test]
+    fn a_probe_that_hangs_is_killed_not_leaked() {
+        use std::time::Duration;
+        #[cfg(windows)]
+        let child = std::process::Command::new("ping")
+            .args(["-n", "60", "127.0.0.1"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let started = std::time::Instant::now();
+        assert!(wait_or_kill(child, Duration::from_millis(500)).is_none());
+        // Bounded: on the host this was found on, `taskkill` itself took a
+        // minute and then failed, which is what the kill used to go through.
+        assert!(started.elapsed() < Duration::from_secs(5), "the wait did not give up");
+        assert!(!process_alive(pid), "the timed-out probe is still running");
+    }
+
+    /// A timed-out probe takes the shell it started with it. `cmd` stands in
+    /// for the sandbox helper and `ping` for its shell: killing only the
+    /// helper used to leave the shell running for the life of the app.
+    #[cfg(windows)]
+    #[test]
+    fn a_probe_that_hangs_takes_the_shell_it_started_with_it() {
+        use std::time::Duration;
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let child = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >nul"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        let created = super::super::proc::creation_time(root);
+        unsafe { CloseHandle(root) };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let shells = loop {
+            let found = super::super::proc::descendants_of(pid, created);
+            if !found.is_empty() || std::time::Instant::now() > deadline {
+                break found;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert!(!shells.is_empty(), "the stand-in helper never started its shell");
+
+        assert!(wait_or_kill(child, Duration::from_millis(500)).is_none());
+        std::thread::sleep(Duration::from_millis(200));
+        for shell in shells {
+            assert!(!process_alive(shell), "the probe's shell {shell} outlived it");
+        }
+    }
+
+    /// Whether `pid` is a running process, asked of the OS directly rather
+    /// than through `taskkill`, which is what hung.
+    #[cfg(windows)]
+    fn process_alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code: u32 = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn process_alive(pid: u32) -> bool {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+            || std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .status()
+                .is_ok_and(|s| s.success())
+    }
+
+    #[test]
+    fn a_probe_that_finishes_is_waited_for() {
+        use std::time::Duration;
+        #[cfg(windows)]
+        let child = std::process::Command::new("cmd")
+            .args(["/C", "echo ok"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let child = std::process::Command::new("sh")
+            .args(["-c", "echo ok"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let out = wait_or_kill(child, Duration::from_secs(10)).expect("finished").unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("ok"));
+    }
+
+    /// AppContainer confines a run to a Jan-owned worktree and nothing else:
+    /// every root inside the owned folder, the owned folder itself refused, a
+    /// root outside it refused, and no owned folder at all refused.
+    #[test]
+    fn appcontainer_confines_only_jan_owned_roots() {
+        let base = std::env::temp_dir().join(format!("jan_owned_roots_{}", std::process::id()));
+        let owned = base.join("worktrees");
+        let inside = owned.join("repo").join("s1");
+        let outside = base.join("user-repo");
+        for d in [&inside, &outside] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let ac = Backend::AppContainer;
+        assert!(can_confine_write_roots(ac, &[inside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[outside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[owned.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[inside.clone()], None));
+        assert!(!can_confine_write_roots(ac, &[inside.join("..").join("..").join("..").join("user-repo")], Some(&owned)));
+        // The general backends hold any root; no backend holds nothing.
+        assert!(can_confine_write_roots(Backend::Seatbelt, &[outside.clone()], None));
+        assert!(!can_confine_write_roots(Backend::None, &[inside], Some(&owned)));
+        assert!(supports_owned_write_roots(ac));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn only_backends_that_can_confine_a_repository_support_direct_editing() {
         assert!(supports_write_roots(Backend::Seatbelt));

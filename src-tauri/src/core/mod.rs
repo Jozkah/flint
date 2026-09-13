@@ -9,7 +9,9 @@ pub mod downloads;
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
 pub mod mcp;
+pub mod net;
 pub mod openai_schema;
+pub mod secret_values;
 pub mod server;
 // Desktop-only app setup (tray, theme, window wiring); pulls in Tauri GUI types
 // (Wry/AppHandle) the headless `jan` CLI build does not link.
@@ -19,10 +21,4 @@ pub mod state;
 #[cfg(not(feature = "cli"))]
 pub mod system;
 pub mod threads;
-
-// `custom_updater`/`hmac_client` (the HMAC-signed request-signing bits) are
-// also used by the headless CLI's usage ping (`cli::telemetry`); only
-// `commands`/`session` are Tauri-specific and stay desktop-only, see
-// `updater::mod`.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub mod updater;
+pub mod window_state;

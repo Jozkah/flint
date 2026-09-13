@@ -23,6 +23,18 @@ describe('coworkTurnsToUIMessages', () => {
     ])
   })
 
+  /// janhq/jan#8864. A message handed to a run mid-way is marked, so the
+  /// transcript can say it steered that run rather than started one.
+  it('marks a steered user turn, and only that one', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'start' },
+      { role: 'assistant', content: 'working' },
+      { role: 'user', content: 'use pnpm', steered: true },
+    ]) as any[]
+    expect(messages[0].metadata).toBeUndefined()
+    expect(messages[2].metadata).toEqual({ steered: true })
+  })
+
   it('maps a tool turn onto a tool-<name> part carrying its input', () => {
     const part = toolPart([
       {
@@ -165,5 +177,79 @@ describe('assistantAnchorId', () => {
     const turns = [assistant('resumed')]
     expect(assistantAnchorId(turns, 's')).toBe('s-asst-0')
     expect(messageIds(turns)).toContain('s-asst-0')
+  })
+})
+
+describe('prompt snapshots ride the assistant message they produced', () => {
+  const partsOfTurns = (turns: CoworkTurn[]) =>
+    coworkTurnsToUIMessages(turns).flatMap((m: any) => m.parts)
+
+  it('emits a snapshot part on the assistant message', () => {
+    // AH-078: the viewer must sit with the invocation it belongs to.
+    const parts = partsOfTurns([
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: 'hello',
+        promptSnapshot: { id: 'snap-7', hash: 'fnv1a64:abc', redactions: 1 },
+      },
+    ])
+    const snap: any = parts.find((p: any) => p.type === 'data-prompt-snapshot')
+    expect(snap).toBeTruthy()
+    expect(snap.data.id).toBe('snap-7')
+    expect(snap.data.hash).toBe('fnv1a64:abc')
+    expect(snap.data.redactions).toBe(1)
+  })
+
+  it('keeps each snapshot with its own turn rather than a shared latest', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'one' },
+      {
+        role: 'assistant',
+        content: 'first',
+        promptSnapshot: { id: 'snap-1', hash: 'h1', redactions: 0 },
+      },
+      { role: 'user', content: 'two' },
+      {
+        role: 'assistant',
+        content: 'second',
+        promptSnapshot: { id: 'snap-2', hash: 'h2', redactions: 0 },
+      },
+    ])
+    const ids = messages
+      .flatMap((m: any) => m.parts)
+      .filter((p: any) => p.type === 'data-prompt-snapshot')
+      .map((p: any) => p.data.id)
+    expect(ids).toEqual(['snap-1', 'snap-2'])
+  })
+
+  it('emits nothing when a turn has no snapshot', () => {
+    const parts = partsOfTurns([{ role: 'assistant', content: 'plain' }])
+    expect(parts.find((p: any) => p.type === 'data-prompt-snapshot')).toBeUndefined()
+  })
+})
+
+describe('per-turn usage on the transcript', () => {
+  it('carries a turn’s usage and memory ids as a display-only part', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'go' },
+      {
+        role: 'assistant',
+        content: 'done',
+        usage: { prompt_tokens: 900, completion_tokens: 4, total_tokens: 904, cached_prompt_tokens: 850 },
+        memory: { injectedIds: ['mem-1'], conflictIds: [] },
+      } as CoworkTurn,
+    ])
+    const part = partsOf(messages, 1).find((p: any) => p.type === 'data-turn-usage')
+    expect(part?.data.usage.cached_prompt_tokens).toBe(850)
+    expect(part?.data.memory.injectedIds).toEqual(['mem-1'])
+  })
+
+  it('adds nothing for a turn saved before per-turn usage existed', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'done' },
+    ])
+    expect(partsOf(messages, 1).some((p: any) => p.type === 'data-turn-usage')).toBe(false)
   })
 })

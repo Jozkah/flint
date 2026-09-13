@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, Plugin } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -7,46 +7,8 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import packageJson from './package.json'
 const host = process.env.TAURI_DEV_HOST
 
-// Plugin to inject GA scripts in HTML
-function injectGoogleAnalytics(gaMeasurementId?: string): Plugin {
-  return {
-    name: 'inject-google-analytics',
-    transformIndexHtml(html) {
-      // Only inject GA scripts if GA_MEASUREMENT_ID is set
-      if (!gaMeasurementId) {
-        // Remove placeholder if no GA ID
-        return html.replace(/\s*<!-- INJECT_GOOGLE_ANALYTICS -->\n?/g, '')
-      }
-
-      const gaScripts = `<!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){ dataLayer.push(arguments); }
-      gtag('consent','default',{
-        ad_storage:'denied',
-        analytics_storage:'denied',
-        ad_user_data:'denied',
-        ad_personalization:'denied',
-        wait_for_update:500
-      });
-      gtag('js', new Date());
-      gtag('config', '${gaMeasurementId}', {
-        debug_mode: (location.hostname === 'localhost'),
-        send_page_view: false
-      });
-    </script>`
-
-      return html.replace('<!-- INJECT_GOOGLE_ANALYTICS -->', gaScripts)
-    },
-  }
-}
-
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
-  const env = loadEnv(mode, process.cwd(), '')
-
+export default defineConfig(() => {
   return {
     plugins: [
       TanStackRouterVite({
@@ -59,14 +21,12 @@ export default defineConfig(({ mode }) => {
       nodePolyfills({
         include: ['path'],
       }),
-      injectGoogleAnalytics(env.GA_MEASUREMENT_ID),
     ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@janhq/assistant-extension': path.resolve(__dirname, '../extensions/assistant-extension/dist/index.js'),
         '@janhq/conversational-extension': path.resolve(__dirname, '../extensions/conversational-extension/dist/index.js'),
-        '@janhq/download-extension': path.resolve(__dirname, '../extensions/download-extension/dist/index.js'),
         '@janhq/llamacpp-extension': path.resolve(__dirname, '../extensions/llamacpp-extension/dist/index.js'),
         '@janhq/mlx-extension': path.resolve(__dirname, '../extensions/mlx-extension/dist/index.js'),
         '@janhq/rag-extension': path.resolve(__dirname, '../extensions/rag-extension/dist/index.js'),
@@ -81,7 +41,6 @@ export default defineConfig(({ mode }) => {
       exclude: [
         '@janhq/assistant-extension',
         '@janhq/conversational-extension',
-        '@janhq/download-extension',
         '@janhq/llamacpp-extension',
         '@janhq/mlx-extension',
         '@janhq/rag-extension',
@@ -111,19 +70,6 @@ export default defineConfig(({ mode }) => {
 
       VERSION: JSON.stringify(packageJson.version),
 
-      GA_MEASUREMENT_ID: JSON.stringify(env.GA_MEASUREMENT_ID),
-      MODEL_CATALOG_URL: JSON.stringify(
-        'https://raw.githubusercontent.com/janhq/model-catalog/main/model_catalog_v2.json'
-      ),
-      LATEST_JAN_MODEL_URL: JSON.stringify(
-        'https://raw.githubusercontent.com/janhq/model-catalog/main/latest_jan_model.json'
-      ),
-      AUTO_UPDATER_DISABLED: JSON.stringify(
-        env.AUTO_UPDATER_DISABLED === 'true'
-      ),
-      UPDATE_CHECK_INTERVAL_MS: JSON.stringify(
-        Number(env.UPDATE_CHECK_INTERVAL_MS) || 60 * 60 * 1000
-      ),
     },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

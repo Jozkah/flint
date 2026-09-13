@@ -6,6 +6,7 @@ import {
   type CompatComponent,
   type CompatibilityManifest,
 } from '@/lib/claudeCompat'
+import { errorText } from '@/lib/errorText'
 
 /**
  * What Jan found in this folder's Claude configuration, and what it did about
@@ -55,17 +56,24 @@ export function CoworkCompatSection({
     .map((one) => one.name)
 
   return (
+    // Still its own labelled region -- a <details> is not a landmark -- with
+    // the body collapsed by default, because this is configuration and it was
+    // sitting open in the conversation column under every message.
     <section
       aria-label={t('common:claudeCompat.title')}
       data-testid="cowork-compat"
-      className="flex flex-col gap-2 text-xs"
+      className="text-xs"
     >
-      <header className="flex items-start justify-between gap-3">
+      <details className="flex flex-col gap-2">
+      <summary className="cursor-pointer list-none font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
+        {t('common:claudeCompat.title')}
+      </summary>
+      <header className="mt-2 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h3 className="font-medium text-main-view-fg">
+          <h3 className="sr-only">
             {t('common:claudeCompat.title')}
           </h3>
-          <p className="text-main-view-fg/60">
+          <p className="text-muted-foreground">
             {t('common:claudeCompat.subtitle')}
           </p>
         </div>
@@ -79,20 +87,20 @@ export function CoworkCompatSection({
 
       {/* Said next to the switch, where the decision is made: someone turning
           this on is entitled to know it is not also a permission change. */}
-      <p className="text-main-view-fg/60">
+      <p className="text-muted-foreground">
         {hasFolder
           ? t('common:claudeCompat.grantsNothing')
           : t('common:claudeCompat.needsFolder')}
       </p>
 
       {byType.length === 0 ? (
-        <p className="text-main-view-fg/70">
+        <p className="text-ink-2">
           {t('common:claudeCompat.nothingFound')}
         </p>
       ) : (
         <div className="flex flex-col gap-2">
           {instructionNames.length > 0 ? (
-            <p className="text-main-view-fg/70">
+            <p className="text-ink-2">
               {t('common:claudeCompat.precedence')}:{' '}
               {instructionOrder(instructionNames).join(' › ')}
             </p>
@@ -100,7 +108,7 @@ export function CoworkCompatSection({
 
           {byType.map((group) => (
             <div key={group.type} className="flex flex-col gap-1">
-              <span className="text-main-view-fg/70">
+              <span className="text-ink-2">
                 {t(`common:claudeCompat.type.${group.type}`)}
               </span>
               <ul className="flex flex-col gap-1">
@@ -110,15 +118,19 @@ export function CoworkCompatSection({
                     className="flex items-start justify-between gap-2"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-main-view-fg/90">
+                      <span className="block truncate font-mono text-foreground">
                         {item.name}
                       </span>
-                      <span className="block text-main-view-fg/60">
+                      <span className="block text-muted-foreground">
                         {t(`common:claudeCompat.state.${item.state}`)}
-                        {item.reason ? ` · ${item.reason}` : ''}
+                        {/* Through the formatter at the point of display:
+                            `reason` is typed as a string but arrives from a
+                            rejected command, and an object here is what put
+                            "[object Object]" on screen. */}
+                        {item.reason ? ` · ${errorText(item.reason)}` : ''}
                       </span>
                       {item.type === 'mcp' ? (
-                        <span className="block text-main-view-fg/60">
+                        <span className="block text-muted-foreground">
                           {item.dependencies && item.dependencies.length > 0
                             ? `${t('common:claudeCompat.mcpEnv')}: ${item.dependencies.join(', ')}`
                             : t('common:claudeCompat.mcpNoEnv')}
@@ -151,6 +163,7 @@ export function CoworkCompatSection({
           ))}
         </div>
       )}
+      </details>
     </section>
   )
 }

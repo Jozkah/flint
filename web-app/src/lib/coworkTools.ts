@@ -9,6 +9,7 @@
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
+import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -136,9 +137,12 @@ function teamTool(subagentNames: string[]): Tool {
       'declare. Use it when the work splits into parts that can go at once, ' +
       'or where one part must finish before another starts. Each task is run ' +
       'by a child that cannot see this conversation, so describe it in full. ' +
-      'Declare in `writes` the files a task will change: two tasks that would ' +
-      'change the same file with nothing ordering them are refused before ' +
-      'anything runs. Set `isolate` on a task that should work in a checkout ' +
+      'Declare in `writes` the files or folders a task will change, and in ' +
+      '`deletes` and `renames` what it removes or moves: when two tasks with ' +
+      'nothing ordering them would change the same paths, the user is shown ' +
+      'the overlap before anything runs and decides whether to order them, ' +
+      'narrow a scope, or run them side by side. Paths only read go in ' +
+      '`reads` and never conflict. Set `isolate` on a task that should work in a checkout ' +
       'of its own, when its changes must not reach the attached folder or its ' +
       'siblings.' +
       known,
@@ -168,7 +172,30 @@ function teamTool(subagentNames: string[]): Tool {
               writes: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Files this task expects to change.',
+                description:
+                  'Files or folders this task expects to change, relative to the project.',
+              },
+              reads: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Paths this task only reads. Never a conflict.',
+              },
+              deletes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Files or folders this task expects to delete.',
+              },
+              renames: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    from: { type: 'string' },
+                    to: { type: 'string' },
+                  },
+                  required: ['from', 'to'],
+                },
+                description: 'Moves this task expects to make.',
               },
               retries: {
                 type: 'number',
@@ -231,6 +258,17 @@ export type CoworkToolOptions = {
    * this is a Settings-level capability rather than a per-session choice.
    */
   webSearch: boolean
+  /**
+   * The folder this session is attached to, so readiness is probed for the
+   * project the tools will actually work in rather than for nothing.
+   */
+  projectRoot?: string
+  /**
+   * The components only the renderer's stores can answer for -- provider
+   * reachability, the resolved context window, MCP connection state. Rust
+   * decides what they mean; see `environmentReadiness`.
+   */
+  reported?: ComponentReport[]
 }
 
 /**
@@ -249,7 +287,26 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
+    // Readiness is part of the signature because it changes the advertised
+    // tools: a shell that starts after a retry must produce a different tool
+    // set on the next message, and a signature that ignored it would keep
+    // serving the old one for the life of the run.
+    readinessSignature(opts.reported),
   ].join('|')
+}
+
+/**
+ * The part of readiness that can change which tools are advertised.
+ *
+ * State and reason only -- not timestamps, which change on every probe and
+ * would re-prefill a 20-turn agent run for no reason at all.
+ */
+function readinessSignature(reported: ComponentReport[] | undefined): string {
+  if (!reported?.length) return 'noready'
+  return reported
+    .map((r) => `${r.component}:${r.state}`)
+    .sort()
+    .join(',')
 }
 
 /** Filter a name list down to what this mode may call. */
@@ -267,7 +324,7 @@ export function allowedToolNames(
 export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
-  const schemas = await getAgentToolSchemas()
+  const schemas = await getAgentToolSchemas(opts.projectRoot, opts.reported)
   const tools: Record<string, Tool> = {}
 
   for (const s of schemas) {

@@ -76,6 +76,28 @@ fn test_validate_proxy_config() {
     assert!(validate_proxy_config(&config).is_err());
 }
 
+// janhq/jan#8565: the download client's bypass check read only the in-app list,
+// so a host exempted through NO_PROXY still went through the proxy. The one
+// production caller is this helper, so the environment has to reach it.
+#[test]
+fn download_proxy_bypass_honours_the_no_proxy_environment() {
+    // Through an explicit environment: setting NO_PROXY for the process would
+    // change what every concurrently running test's HTTP client does.
+    let env = jan_utils::network::no_proxy_from(|name| {
+        (name == "no_proxy").then(|| " models.internal.example, ,".to_string())
+    });
+    assert_eq!(env, vec!["models.internal.example".to_string()]);
+    let bypassed = jan_utils::network::should_bypass_proxy_with_env(
+        "https://models.internal.example/x.gguf",
+        &[],
+        &env,
+    );
+    let proxied =
+        jan_utils::network::should_bypass_proxy_with_env("https://huggingface.co/x.gguf", &[], &env);
+    assert!(bypassed, "a host listed in NO_PROXY must skip the proxy");
+    assert!(!proxied, "a host not listed must still use the proxy");
+}
+
 #[test]
 fn test_should_bypass_proxy() {
     let no_proxy = vec![
@@ -384,51 +406,6 @@ fn test_download_item_deserialization() {
 
     assert_eq!(item.url, "https://example.com/file.zip");
     assert_eq!(item.save_path, "downloads/file.zip");
-}
-
-// ===== convert_to_mirror_url =====
-
-#[test]
-fn test_convert_to_mirror_url_huggingface() {
-    let url = "https://huggingface.co/some/repo/resolve/main/model.gguf";
-    let mirror = convert_to_mirror_url(url).expect("should produce a mirror url");
-    assert!(mirror.starts_with("https://apps") && mirror.contains(".jan.ai/"));
-    assert!(mirror.ends_with("huggingface.co/some/repo/resolve/main/model.gguf"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_huggingface_subdomain() {
-    // Subdomains of mirror domains should also be mirrored
-    let url = "https://cdn.huggingface.co/file.bin";
-    let mirror = convert_to_mirror_url(url).expect("subdomain should mirror");
-    assert!(mirror.ends_with("cdn.huggingface.co/file.bin"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_http_scheme() {
-    let url = "http://huggingface.co/file";
-    let mirror = convert_to_mirror_url(url).expect("http should be stripped too");
-    assert!(mirror.ends_with("huggingface.co/file"));
-    assert!(!mirror.contains("http://huggingface.co"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_non_mirror_domain() {
-    assert!(convert_to_mirror_url("https://example.com/file.bin").is_none());
-    assert!(convert_to_mirror_url("https://github.com/x/y").is_none());
-}
-
-#[test]
-fn test_convert_to_mirror_url_invalid_url() {
-    assert!(convert_to_mirror_url("not a url").is_none());
-    assert!(convert_to_mirror_url("").is_none());
-}
-
-#[test]
-fn test_convert_to_mirror_url_not_substring_match() {
-    // A domain that merely contains "huggingface.co" as substring (not as suffix) must NOT match
-    let url = "https://huggingface.co.evil.com/file";
-    assert!(convert_to_mirror_url(url).is_none());
 }
 
 // ===== err_to_string =====

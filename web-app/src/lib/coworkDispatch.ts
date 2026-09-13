@@ -1,4 +1,4 @@
-import { executeAgentTool } from '@/lib/agentTools'
+import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
@@ -6,7 +6,12 @@ import {
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
-import { type CoworkMode } from '@/lib/coworkMode'
+import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import {
+  isMissingPathError,
+  missingReadGuidance,
+  planReviewRequest,
+} from '@/lib/coworkPlanReview'
 import {
   BACKEND_ACCESS_CAPABILITY,
   decideMutation,
@@ -15,10 +20,24 @@ import {
   type EditConsent,
 } from '@/lib/coworkAccess'
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
+import {
+  recordToolActivity,
+  resourceOf,
+  withToolActivity,
+  actorFor,
+  type ToolActivityContext,
+} from '@/lib/toolActivity'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 
 export type DispatchContext = {
   sessionId: string
+  /**
+   * Identity the call's lifecycle events are recorded under. AH-050.
+   *
+   * Optional so a caller that has no run to name still records something
+   * useful rather than nothing: without it the events carry the session alone.
+   */
+  activity?: Partial<ToolActivityContext>
   readOnlyFolder: string | null
   /** What this session is allowed to do. */
   mode: CoworkMode
@@ -39,7 +58,11 @@ export type DispatchContext = {
   onApprove?: (
     toolCallId: string,
     toolName: string,
-    input: unknown
+    input: unknown,
+    /** The diff the call would make, when it changes a file. AH-146. */
+    preview?: string,
+    /** The run's signal: stopping the run withdraws the prompt. */
+    signal?: AbortSignal
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -121,6 +144,13 @@ export type DispatchContext = {
    * authority, and there is nothing here that could raise it.
    */
   trackSubagent?: () => () => void
+  /**
+   * Paths a `read` in this run found missing, and how often. janhq/jan#8906.
+   *
+   * One map per run, so the history never outlives the request it describes.
+   * Absent, a missing read is still explained but never escalated.
+   */
+  readFailures?: Map<string, number>
 }
 
 /**
@@ -233,12 +263,62 @@ function deniedByUser(toolName: string): ToolOutcome {
 }
 
 /**
- * Route one tool call. Always resolves: a rejection here would abort the run,
- * where the model can usually recover from being told what went wrong.
+ * Route one tool call, recording its whole life on the way. AH-050.
+ *
+ * Every tool call in the app arrives here -- the main agent's, a subagent's, a
+ * background task's, an MCP server's -- so wrapping this one function is what
+ * makes the record complete, and is why no tool has a path around it.
  */
 export async function dispatchCoworkTool(
   call: PendingToolCall,
-  ctx: DispatchContext
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  return withToolActivity(
+    call,
+    { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
+    signal,
+    () => routeCoworkTool(call, ctx, signal)
+  )
+}
+
+/** Resolves `false` as soon as `signal` aborts, whatever `answer` does. */
+function unlessStopped(
+  answer: Promise<boolean>,
+  signal?: AbortSignal
+): Promise<boolean> {
+  if (!signal) return answer
+  if (signal.aborted) return Promise.resolve(false)
+  return new Promise<boolean>((resolve, reject) => {
+    const stop = () => resolve(false)
+    signal.addEventListener('abort', stop, { once: true })
+    answer.then(
+      (value) => {
+        signal.removeEventListener('abort', stop)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', stop)
+        reject(error)
+      }
+    )
+  })
+}
+
+/** Why a run's signal aborted, in words for the record. */
+function stopReason(signal: AbortSignal): string {
+  const reason = signal.reason
+  return typeof reason === 'string' && reason ? reason : 'cancelled'
+}
+
+/**
+ * Route one tool call. Always resolves: a rejection here would abort the run,
+ * where the model can usually recover from being told what went wrong.
+ */
+async function routeCoworkTool(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
 
@@ -285,17 +365,77 @@ export async function dispatchCoworkTool(
     }
 
     if (decision.needsApproval) {
+      // Recorded separately from the outcome: "the user was asked" and "the
+      // user said no" are different facts, and a refused call that was never
+      // put to anyone is a bug worth being able to see.
+      const permission = {
+        call: call.toolCallId,
+        tool: toolName,
+        session: ctx.sessionId,
+        run: ctx.activity?.run ?? '',
+        invocation: ctx.activity?.invocation ?? '',
+        agent: ctx.activity?.agent ?? '',
+        resource: resourceOf(call.input),
+      }
+      await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+
       // No handler means nothing can present the request. Refusing is the
       // only honest outcome: running it would make "Ask before changes" false.
-      if (!ctx.onApprove) return deniedByUser(toolName)
+      if (!ctx.onApprove) {
+        await recordToolActivity({
+          ...permission,
+          phase: 'refused',
+          detail: 'nothing could present the request',
+        })
+        return deniedByUser(toolName)
+      }
     // A throw here — an aborted run, a closed prompt — is a refusal, not a
     // reason to reject: this function always resolves.
       let allowed = false
       try {
-        allowed = await ctx.onApprove(call.toolCallId, toolName, call.input)
+        // The change itself, so what is approved is the diff that will land
+        // rather than a path and a blob of arguments (AH-146). Computed by the
+        // backend where this call would write; absent, the prompt still asks.
+        const preview =
+          toolName === 'write' || toolName === 'edit'
+            ? await previewAgentChange(toolName, call.input, ctx.sessionId, {
+                scope: 'session',
+                writeGrant: ctx.writeGrant,
+              })
+            : undefined
+        allowed = await unlessStopped(
+          ctx.onApprove(
+            call.toolCallId,
+            toolName,
+            call.input,
+            preview,
+            signal
+          ),
+          signal
+        )
       } catch {
         allowed = false
       }
+      // Stopped while asking, or answered only after the stop: nobody's yes
+      // or no. The prompt has been withdrawn, and the call never runs -- an
+      // approval that arrives late must not act for a run that is over.
+      if (signal?.aborted) {
+        await recordToolActivity({
+          ...permission,
+          phase: 'cancelled',
+          detail: `approval withdrawn: ${stopReason(signal)}`,
+        })
+        return {
+          output:
+            `\`${toolName}\` was not run: the run was stopped while it was ` +
+            'waiting for approval, and nothing was changed.',
+          isError: true,
+        }
+      }
+      await recordToolActivity({
+        ...permission,
+        phase: allowed ? 'allowed' : 'refused',
+      })
       if (!allowed) return deniedByUser(toolName)
     }
   }
@@ -377,6 +517,22 @@ export async function dispatchCoworkTool(
       }
     }
 
+    // Review mode, a `read` of a path this run already found missing: the
+    // model is trying to create a file with the one tool that cannot. Asking
+    // the filesystem again cannot end that loop; asking the user can.
+    const readPath =
+      toolName === 'read' && isReadOnly(ctx.mode) ? pathFromInput(call.input) : null
+    const priorMisses = readPath ? (ctx.readFailures?.get(readPath) ?? 0) : 0
+    if (readPath && priorMisses > 0) {
+      const review = await ctx.onAsk(call.toolCallId, planReviewRequest(readPath))
+      return {
+        output:
+          `\`${readPath}\` does not exist; it was not read again. ` +
+          review.output,
+        isError: true,
+      }
+    }
+
     // Held for the length of the call, and released on every way out of it —
     // output, refusal or throw.
     const shellDone = toolName === 'bash' ? ctx.trackShell?.() : undefined
@@ -389,17 +545,37 @@ export async function dispatchCoworkTool(
         readOnlyProject: ctx.readOnlyFolder,
         scope: 'session',
         writeGrant: ctx.writeGrant,
+        // The run the change belongs to, so it can be undone from it (AH-202).
+        undoRun: ctx.activity?.run,
+        // And the call, so what its command uses is kept against both (AH-174).
+        callId: call.toolCallId,
+        // And who is making it, so every change it journals names its agent
+        // (AH-110) -- the primary agent, a named subagent, or a role.
+        actor: actorFor(ctx.activity),
       })
     } finally {
       shellDone?.()
     }
-    if (result.error) return { output: result.error, isError: true }
+    if (result.error) {
+      if (readPath && isMissingPathError(result.error)) {
+        ctx.readFailures?.set(readPath, priorMisses + 1)
+        return {
+          output: result.error + missingReadGuidance(readPath),
+          isError: true,
+          resources: result.resources,
+        }
+      }
+      return { output: result.error, isError: true, resources: result.resources }
+    }
+    // A path that reads now is not missing any more.
+    if (readPath) ctx.readFailures?.delete(readPath)
     return {
       output:
         typeof result.content === 'string'
           ? result.content
           : JSON.stringify(result.content ?? ''),
       diff: result.diff,
+      resources: result.resources,
     }
   } catch (e) {
     return {

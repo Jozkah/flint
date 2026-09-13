@@ -299,6 +299,7 @@ pub fn factory_reset<R: Runtime>(
         if !keep_models_and_configs {
             let default_config = AppConfiguration {
                 data_folder: default_data_folder_path(app_handle.clone()),
+                unavailable_data_folder: None,
             };
             let _ = update_app_configuration(app_handle.clone(), default_config);
         }
@@ -664,17 +665,47 @@ fn jan_cli_install_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// The bundled CLI binary, and the path this app installs it to.
+///
+/// On Windows the CLI is not copied anywhere: its bundled location is put on
+/// PATH, so the target is the bundled file itself.
+pub fn cli_install_target<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<(PathBuf, PathBuf), String> {
+    let bin_name = if cfg!(windows) { "jan.exe" } else { "jan" };
+    // `resource_dir()` hands back a verbatim `\\?\C:\...` path on Windows. That
+    // is fine to open a file with and wrong to persist: written into the user's
+    // PATH it produced an entry most shells and tools will not resolve, and it
+    // is not a spelling anyone recognises when they look at their own PATH.
+    let resource_bin_dir = crate::core::app::commands::strip_verbatim_prefix(
+        app_handle
+            .path()
+            .resource_dir()
+            .map_err(|e| e.to_string())?,
+    )
+    .join("resources/bin");
+    let bundled = resource_bin_dir.join(bin_name);
+    #[cfg(windows)]
+    let target = bundled.clone();
+    #[cfg(unix)]
+    let target = jan_cli_install_dir()?.join(bin_name);
+    Ok((bundled, target))
+}
+
 /// Core install logic — synchronous, no Tauri command overhead.
+///
+/// Replaces whatever is at the target. That is right for the settings button,
+/// where the user asked for it, and wrong for the automatic on-launch install,
+/// which goes through `cli_provenance::decide_auto` first (janhq/jan#8812).
 pub fn install_jan_cli_sync<R: Runtime>(
     app_handle: &AppHandle<R>,
 ) -> Result<CliInstallStatus, String> {
-    let bin_name = if cfg!(windows) { "jan.exe" } else { "jan" };
-    let resource_bin_dir = app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e| e.to_string())?
-        .join("resources/bin");
-    let bundled = resource_bin_dir.join(bin_name);
+    let (bundled, _target) = cli_install_target(app_handle)?;
+    #[cfg(windows)]
+    let resource_bin_dir = bundled
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "bundled CLI has no parent directory".to_string())?;
 
     if !bundled.exists() {
         return Err("Jan CLI binary not bundled with this version of Jan.".to_string());
@@ -701,6 +732,11 @@ pub fn install_jan_cli_sync<R: Runtime>(
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
+        // So a later automatic install can tell this copy from a standalone
+        // one at the same path, and leave the standalone one alone.
+        if let Err(e) = super::cli_provenance::record_ours(&dest) {
+            log::warn!("could not record CLI provenance at {}: {e}", dest.display());
+        }
 
         Ok(CliInstallStatus {
             installed: true,
@@ -907,8 +943,12 @@ fn add_to_path_windows(install_dir: &PathBuf) -> Result<(), String> {
         .split(';')
         .filter(|p| !p.is_empty())
         .filter(|p| {
+            // An entry that still holds a CLI is somebody's install -- the
+            // standalone installer defaults to exactly this directory -- not
+            // debris from an old desktop layout (janhq/jan#8812).
             if let Some(ref old) = old_jan_dir {
                 !p.eq_ignore_ascii_case(old)
+                    || super::cli_provenance::path_entry_holds_cli(std::path::Path::new(p))
             } else {
                 true
             }

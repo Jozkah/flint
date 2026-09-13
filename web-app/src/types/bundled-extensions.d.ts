@@ -11,10 +11,6 @@ declare module '@janhq/assistant-extension' {
   const ext: BundledExtensionCtor
   export default ext
 }
-declare module '@janhq/download-extension' {
-  const ext: BundledExtensionCtor
-  export default ext
-}
 declare module '@janhq/llamacpp-extension' {
   const ext: BundledExtensionCtor
   export default ext

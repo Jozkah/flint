@@ -12,6 +12,73 @@ use super::models::AppConfiguration;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
+/// The environment variable that redirects Jan's *home* root, the directory
+/// `~/.jan` hangs off. The portable counterpart to `JAN_DATA_FOLDER`, which
+/// already redirects the data folder.
+pub const JAN_HOME_ENV: &str = "JAN_HOME";
+
+/// The root Jan resolves `~/.jan` against.
+///
+/// `HOME` is not an isolation mechanism on Windows. `dirs::home_dir()` calls
+/// `SHGetKnownFolderPath(FOLDERID_Profile)`, which reads neither `HOME` nor
+/// `USERPROFILE`, so a test that redirected `HOME` and expected a scratch tree
+/// silently read and wrote the real `C:\Users\<you>\.jan` instead -- which is
+/// how a test fixture came to overwrite a developer's own `config.toml`.
+///
+/// So the override is explicit and platform-independent, and under `cfg!(test)`
+/// there is no way to reach the real home at all: an unset `JAN_HOME` resolves
+/// to a per-process, per-thread temp directory rather than falling through.
+/// Tests fail closed, and they get a root each, so parallel tests cannot see
+/// one another's writes.
+pub fn jan_home_dir() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os(JAN_HOME_ENV) {
+        if !explicit.is_empty() {
+            return Some(PathBuf::from(explicit));
+        }
+    }
+
+    if cfg!(test) {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-test-home-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        return Some(dir);
+    }
+
+    dirs::home_dir()
+}
+
+/// Drop the `\\?\` extended-length prefix Windows canonicalisation adds.
+///
+/// `Path::canonicalize` returns a verbatim path on Windows -- the same
+/// directory comes back as `\\?\C:\Users\...` rather than `C:\Users\...`.
+/// That form is correct for the filesystem APIs and wrong for everything else:
+/// compared against a path Jan built itself it is unequal, and written
+/// somewhere a human or another program reads it -- the user's `PATH`, a
+/// stored record -- it is a path most tools will not accept.
+///
+/// So canonicalise for correctness, then come back to the ordinary spelling
+/// before the result is stored, compared, or shown. Non-verbatim paths, and
+/// every path on other platforms, pass through untouched. UNC verbatim paths
+/// (`\\?\UNC\server\share`) are deliberately left alone: rewriting those needs
+/// more than removing a prefix.
+pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        // `\\?\C:\...` -> `C:\...`, only for a real drive-letter path.
+        Some(rest)
+            if rest.len() >= 2
+                && rest.as_bytes()[0].is_ascii_alphabetic()
+                && rest.as_bytes()[1] == b':' =>
+        {
+            PathBuf::from(rest.to_string())
+        }
+        _ => path,
+    }
+}
+
 /// Canonical Jan app support directory (`%APPDATA%/Jan` on Windows).
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
@@ -120,16 +187,17 @@ pub fn resolve_config_file_path() -> PathBuf {
 }
 
 /// Run `f` with `JAN_DATA_FOLDER` pointed at a fresh temp directory, restoring
-/// the previous value afterwards. Serialized on `SECRET_STORE_TEST_LOCK`, the
+/// the previous value afterwards. Serialized on `TEST_ENV_LOCK`, the
 /// one lock every `JAN_DATA_FOLDER` mutator takes: the env is process-wide and
 /// Rust runs tests on threads, so a private lock here would exclude only the
 /// other callers of this helper while the secret-store tests redirected the
 /// folder (and dropped its temp dir) underneath a run already in progress.
-#[cfg(all(test, feature = "cli"))]
+#[cfg(test)]
 pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
-    let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+    // Secrets follow the data folder only in the encrypted file; the OS
+    // keyring is per user, and a test must never write the developer's.
+    crate::core::server::provider_secrets::force_file_secrets();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let prev = std::env::var_os("JAN_DATA_FOLDER");
@@ -145,26 +213,59 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
 /// Resolve the Jan data folder path without an AppHandle (for CLI use).
 /// Reads AppConfiguration from the config file; falls back to the default location.
 pub fn resolve_jan_data_folder() -> PathBuf {
-    // Explicit override wins on every platform. `dirs::data_dir()` reads
-    // XDG_DATA_HOME only on Linux, so tests/headless consumers need a portable
-    // way to redirect the data folder without relying on OS-specific env.
+    // Explicit override wins on every platform, tests included. `dirs::data_dir()`
+    // reads XDG_DATA_HOME only on Linux, so tests/headless consumers need a
+    // portable way to redirect the data folder without relying on OS-specific env.
+    //
+    // This is checked *before* the `cfg!(test)` fallback below, and that order
+    // matters. With the fallback first, a test that set `JAN_DATA_FOLDER` got a
+    // per-thread scratch directory instead of the one it asked for -- and since
+    // the secret store writes through `spawn_blocking`, the store ran on a pool
+    // thread and the load ran on the test thread, giving each a different folder
+    // and turning "read back what I just wrote" into `None`.
     if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
         if !folder.is_empty() {
             return PathBuf::from(folder);
         }
     }
 
+    // Never the developer's real Jan folder under `cargo test`. This function
+    // is reached from the agent dispatcher (the cancellation audit record), and
+    // without this a test run would append to the data of whoever ran it --
+    // the same mistake `get_jan_data_folder_path` already guards against. Tests
+    // that want a shared folder across threads set the override above; this is
+    // only the fail-closed default for those that set nothing.
+    if cfg!(test) {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-test-data-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        return dir;
+    }
+
     let config_file = resolve_config_file_path();
+    let default = default_cli_data_folder();
 
     if config_file.exists() {
         if let Ok(content) = fs::read_to_string(&config_file) {
             if let Ok(config) = serde_json::from_str::<AppConfiguration>(&content) {
-                return PathBuf::from(config.data_folder);
+                let (folder, _) = choose_data_folder(
+                    config.data_folder,
+                    default.to_string_lossy().into_owned(),
+                    &UNAVAILABLE_DATA_FOLDER,
+                );
+                return PathBuf::from(folder);
             }
         }
     }
 
-    // Default: data_dir/Jan/data  (mirrors default_data_folder_path)
+    default
+}
+
+/// Default: data_dir/Jan/data  (mirrors default_data_folder_path)
+fn default_cli_data_folder() -> PathBuf {
     let app_name = std::env::var("APP_NAME").unwrap_or_else(|_| "Jan".to_string());
     if let Some(data_dir) = dirs::data_dir() {
         return data_dir.join(&app_name).join("data");
@@ -175,6 +276,48 @@ pub fn resolve_jan_data_folder() -> PathBuf {
     PathBuf::from(home).join(&app_name).join("data")
 }
 
+/// A saved data folder found unusable in this process. It stays passed over
+/// for the rest of the run, so a drive that comes back mid-session does not
+/// switch the folder under work already written to the default one.
+static UNAVAILABLE_DATA_FOLDER: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Whether a saved data folder can be used as it stands (janhq/jan#8855).
+///
+/// One on a drive that is not connected, or renamed away with the user's
+/// profile, cannot: starting against it showed an empty Jan, or -- where the
+/// parent still existed -- created a fresh, empty folder in its place. A
+/// relative folder is anchored at the working directory later, so it is not
+/// judged here.
+fn data_folder_is_usable(folder: &Path) -> bool {
+    folder.is_relative() || (folder.is_dir() && fs::read_dir(folder).is_ok())
+}
+
+/// The folder to run against: the saved one when it is usable, the default
+/// otherwise, with the saved one returned second when it was passed over.
+///
+/// The saved setting is never rewritten here. Writing the default back would
+/// make the move permanent, and the user's data would stay behind on the
+/// drive once it returned; left alone, the next start finds it again.
+fn choose_data_folder(
+    saved: String,
+    default: String,
+    memo: &std::sync::Mutex<Option<String>>,
+) -> (String, Option<String>) {
+    let mut memo = memo.lock().unwrap_or_else(|e| e.into_inner());
+    let passed_over = memo.as_deref() == Some(saved.as_str());
+    if !passed_over && data_folder_is_usable(Path::new(&saved)) {
+        return (saved, None);
+    }
+    if !passed_over {
+        log::warn!(
+            "The configured data folder {saved} is missing or unreadable; using the default \
+             data folder {default} for this run. The setting is unchanged."
+        );
+        *memo = Some(saved.clone());
+    }
+    (default, Some(saved))
+}
+
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
 pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> AppConfiguration {
@@ -182,6 +325,19 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
 
     if std::env::var("CI").unwrap_or_default() == "e2e" {
         return app_default_configuration;
+    }
+
+    // The same explicit override `resolve_jan_data_folder` honours. Without it
+    // the two disagreed: settings resolved to the redirected folder while
+    // everything reached through this one -- the extensions' own storage, and
+    // so the user's configured providers -- resolved to the real folder. A
+    // harness run then loaded the developer's real provider list and tried to
+    // connect to their machines.
+    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+        if !folder.is_empty() {
+            app_default_configuration.data_folder = folder;
+            return app_default_configuration;
+        }
     }
 
     let app_path = app_data_dir_with_fallback(&app_handle);
@@ -211,7 +367,16 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
     match fs::read_to_string(&configuration_file) {
         Ok(content) => {
             match serde_json::from_str::<AppConfiguration>(&content) {
-                Ok(app_configurations) => app_configurations,
+                Ok(mut app_configurations) => {
+                    let (folder, unavailable) = choose_data_folder(
+                        app_configurations.data_folder,
+                        default_data_folder,
+                        &UNAVAILABLE_DATA_FOLDER,
+                    );
+                    app_configurations.data_folder = folder;
+                    app_configurations.unavailable_data_folder = unavailable;
+                    app_configurations
+                }
                 Err(err) => {
                     log::error!("Failed to parse app config, returning default config instead. Error: {err}");
                     // Use the proper default data folder path, not the relative "./data"
@@ -275,7 +440,26 @@ pub fn get_jan_data_folder_path<R: Runtime>(app_handle: tauri::AppHandle<R>) -> 
     }
 
     let app_configurations = get_app_configurations(app_handle);
-    PathBuf::from(app_configurations.data_folder)
+    absolute_data_folder(
+        PathBuf::from(app_configurations.data_folder),
+        std::env::current_dir().ok(),
+    )
+}
+
+/// The data folder as an absolute path.
+///
+/// A relative one -- the `./data` default `CI=e2e` serves -- was resolved by
+/// each consumer against its own base. Most used the working directory, but
+/// the settings store resolves a relative path against the OS app-data
+/// directory, so an isolated harness run read and wrote `store.json` under the
+/// installed app's own `%APPDATA%\jan.ai.app\data`, inherited its
+/// `mcp_version`, and skipped the startup migrations it was meant to test.
+#[cfg(not(feature = "cli"))]
+fn absolute_data_folder(folder: PathBuf, cwd: Option<PathBuf>) -> PathBuf {
+    match cwd {
+        Some(cwd) if folder.is_relative() => cwd.join(folder),
+        _ => folder,
+    }
 }
 
 #[cfg(not(feature = "cli"))]
@@ -377,6 +561,107 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    fn fresh_memo() -> std::sync::Mutex<Option<String>> {
+        std::sync::Mutex::new(None)
+    }
+
+    #[test]
+    fn a_usable_saved_data_folder_is_kept() {
+        let dir = tempdir().unwrap();
+        let saved = dir.path().to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()),
+            (saved, None)
+        );
+    }
+
+    /// janhq/jan#8855: a saved folder that no longer exists -- a disconnected
+    /// drive, a renamed profile -- falls back to the default and is reported.
+    #[test]
+    fn a_missing_saved_data_folder_falls_back_to_the_default() {
+        let dir = tempdir().unwrap();
+        let saved = dir.path().join("gone").to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()),
+            ("default".to_string(), Some(saved))
+        );
+    }
+
+    #[test]
+    fn a_file_where_the_data_folder_should_be_is_not_usable() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("data");
+        fs::write(&file, b"not a folder").unwrap();
+        let saved = file.to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()).1,
+            Some(saved)
+        );
+    }
+
+    /// Once passed over, the saved folder stays passed over for the run: a
+    /// drive reconnected mid-session must not move the app's folder under it.
+    #[test]
+    fn a_passed_over_data_folder_stays_passed_over_for_the_run() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("later");
+        let saved = path.to_string_lossy().into_owned();
+        let memo = fresh_memo();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &memo).0,
+            "default"
+        );
+        fs::create_dir_all(&path).unwrap();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &memo),
+            ("default".to_string(), Some(saved))
+        );
+        // A fresh run finds it again.
+        assert_eq!(
+            choose_data_folder(
+                path.to_string_lossy().into_owned(),
+                "default".into(),
+                &fresh_memo()
+            )
+            .1,
+            None
+        );
+    }
+
+    /// A relative folder is anchored at the working directory later; it is
+    /// not judged against whatever directory the check happens to run in.
+    #[test]
+    fn a_relative_saved_data_folder_is_left_to_be_anchored() {
+        assert_eq!(
+            choose_data_folder("./data".into(), "default".into(), &fresh_memo()),
+            ("./data".to_string(), None)
+        );
+    }
+
+    /// A relative data folder is anchored at the working directory once, so
+    /// no consumer can resolve it against a base of its own (the settings
+    /// store used the OS app-data directory).
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn a_relative_data_folder_is_anchored_at_the_working_directory() {
+        let cwd = PathBuf::from(if cfg!(windows) { r"C:\run" } else { "/run" });
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())),
+            cwd.join("./data")
+        );
+        assert!(absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())).is_absolute());
+        let absolute = cwd.join("elsewhere");
+        assert_eq!(
+            absolute_data_folder(absolute.clone(), Some(PathBuf::from("/ignored"))),
+            absolute
+        );
+        // No working directory to anchor at: left as given rather than guessed.
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("data"), None),
+            PathBuf::from("data")
+        );
+    }
 
     #[test]
     fn migration_recovers_legacy_then_removes_stale_copy() {

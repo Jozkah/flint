@@ -73,7 +73,9 @@ export async function cancelTask(
   if (!task.jobId) return { taskId: task.id, outcome: 'unreachable' }
 
   try {
-    const killed = await deps.killJob(task.jobId)
+    // Scoped to the session the job ran under: the backend refuses (as
+    // "unknown") a job another conversation started.
+    const killed = await deps.killJob(task.jobId, sessionId)
     switch (killed.outcome) {
       case 'killed':
         return { taskId: task.id, outcome: 'cancelled' }
@@ -111,13 +113,25 @@ export async function cancelTask(
  * `notRunning` and `unreachable` leave the row alone: the work is still going,
  * or is about to settle on its own, and marking it cancelled would be a claim
  * the app cannot back up.
+ *
+ * A failed attempt is written onto the row as well as told: the work is still
+ * running, and a toast that disappears would leave nothing saying the stop
+ * did not happen.
  */
 export function patchForOutcome(
   result: CancelResult,
   now: number
 ): Partial<ActivityTask> | null {
+  if (result.outcome === 'failed') {
+    return { cancelError: result.error || 'the stop request failed' }
+  }
   if (result.outcome !== 'cancelled') return null
-  return { status: 'cancelled', endedAt: now, detail: CANCELLED_BY_USER }
+  return {
+    status: 'cancelled',
+    endedAt: now,
+    detail: CANCELLED_BY_USER,
+    cancelError: undefined,
+  }
 }
 
 /**

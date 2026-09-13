@@ -30,8 +30,13 @@ import {
   Box,
   SlidersHorizontal,
   Copy,
+  Download,
   FileClock,
+  GitFork,
+  Share2,
+  Upload,
   MoreHorizontal,
+  Puzzle,
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
@@ -39,17 +44,37 @@ import {
   MessageCircleIcon,
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
-import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import {
+  SearchIcon,
+  type SearchIconHandle,
+} from '@/components/animated-icon/search'
+import { ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutHint } from '@/containers/ShortcutHint'
+import { useSearchDialog } from '@/hooks/useSearchDialog'
+import {
+  useCoworkSessions,
+  type CoworkSession,
+} from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
-import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { memo, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
+import { loadToolActivity } from '@/lib/toolActivity'
+import { buildBundle, exportBundle, openBundle } from '@/lib/sessionBundle'
+import {
+  describeRestoreItem,
+  exportHandoff,
+  restoreReport,
+  type HandoffBundle,
+} from '@/lib/sessionHandoff'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { isProviderUsable } from '@/lib/providerReadiness'
+import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 
 type CoworkNavItem = {
   title: string
@@ -81,6 +106,7 @@ const SessionItem = memo(function SessionItem({
   // before last.
   const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
+  const running = useCoworkRun((s) => !!s.runs[session.id])
 
   /**
    * Open this row's own menu from right-click or the keyboard — the same
@@ -103,8 +129,21 @@ const SessionItem = memo(function SessionItem({
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
+        data-testid="cowork-session-item"
+        data-session-id={session.id}
+        data-current={isCurrent ? 'true' : 'false'}
       >
         <span className="truncate">{session.title}</span>
+        {running && (
+          // A session running in the background shows here, without the
+          // session in view being treated as busy (janhq/jan#8905).
+          <span
+            role="status"
+            aria-label={t('common:tasks.running', { count: 1 })}
+            data-testid={`cowork-session-running-${session.id}`}
+            className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-primary"
+          />
+        )}
       </SidebarMenuButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
@@ -126,6 +165,25 @@ const SessionItem = memo(function SessionItem({
             <span>{t('common:fileActivity.menuItem')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {/* AH-201. Copies the conversation and none of the access: the fork
+              asks for its own folder and its own confirmation, so forking can
+              never multiply authority that was granted once. */}
+          <DropdownMenuItem
+            data-testid="fork-session"
+            onSelect={() => {
+              const forked = useCoworkSessions
+                .getState()
+                .forkSession(session.id)
+              if (!forked) {
+                toast.error(t('common:forkRefused'))
+                return
+              }
+              toast.success(t('common:forkedSession'))
+            }}
+          >
+            <GitFork />
+            <span>{t('common:forkSession')}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               void navigator.clipboard?.writeText(session.id)
@@ -134,6 +192,73 @@ const SessionItem = memo(function SessionItem({
           >
             <Copy />
             <span>{t('common:copyConversationId')}</span>
+          </DropdownMenuItem>
+          {/* AH-203. The backend drops folder, access and consent and redacts
+              credentials before writing; the path comes from a dialog the
+              backend opens, never from here. */}
+          <DropdownMenuItem
+            data-testid="export-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const out = await exportBundle(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                })
+              )
+              if (out.ok) {
+                toast.success(
+                  t('common:sessionExported', { count: out.redactions })
+                )
+              } else if (!out.cancelled) {
+                toast.error(
+                  t('common:sessionExportFailed', { reason: out.message })
+                )
+              }
+            }}
+          >
+            <Download />
+            <span>{t('common:exportSession')}</span>
+          </DropdownMenuItem>
+          {/* AH-210. The same export, plus which folder (by name, branch and
+              commit) and which model, so another computer can continue it.
+              Paths from this machine are replaced before anything is
+              written; the folder's path is never written. */}
+          <DropdownMenuItem
+            data-testid="handoff-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const models = useModelProvider.getState()
+              const out = await exportHandoff(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                }),
+                models.selectedModel
+                  ? {
+                      provider: models.selectedProvider,
+                      id: models.selectedModel.id,
+                    }
+                  : null,
+                session.folder
+              )
+              if (out.ok) {
+                toast.success(
+                  `Handoff saved. ${out.redactions} credential(s) were left out, and the folder is named rather than located.`
+                )
+              } else if (!out.cancelled) {
+                toast.error(`The handoff could not be saved: ${out.message}`)
+              }
+            }}
+          >
+            <Share2 />
+            <span>Hand off to another computer…</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -180,6 +305,7 @@ export function NavCowork() {
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
   const [pendingDelete, setPendingDelete] = useState<{
     id: string
@@ -188,6 +314,7 @@ export function NavCowork() {
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSessionIconRef = useRef<MessageCircleIconHandle>(null)
+  const searchIconRef = useRef<SearchIconHandle>(null)
   const newSession = () => {
     // Idempotent: on a blank session this returns the same one, so a second
     // press cannot leave a trail of empty sessions behind. An unsent draft
@@ -195,7 +322,7 @@ export function NavCowork() {
     const store = useCoworkSessions.getState()
     const id = store.startSession({
       running: Boolean(
-        store.currentId && useCoworkRun.getState().liveTurns[store.currentId]?.length
+        store.currentId && useCoworkRun.getState().runs[store.currentId]
       ),
       hasDraft: usePrompt.getState().prompt.trim().length > 0,
     })
@@ -221,24 +348,69 @@ export function NavCowork() {
       icon: SlidersHorizontal,
       onClick: () => setSkillsOpen(true),
     },
+    {
+      title: t('common:importSession'),
+      icon: Upload,
+      onClick: () => void importFromFile(),
+    },
+    {
+      title: t('plugins:navLabel'),
+      icon: Puzzle,
+      onClick: () => setPluginsOpen(true),
+    },
   ]
+
+  // AH-203. Read and validated by the backend; created here under a new id.
+  const importFromFile = async () => {
+    const opened = await openBundle()
+    if (!opened.ok) {
+      if (!opened.cancelled) {
+        toast.error(t('common:sessionImportFailed', { reason: opened.message }))
+      }
+      return
+    }
+    // A handoff (AH-210) says what it needs to continue; what this computer
+    // cannot give it is worked out now and kept on the session.
+    const info = (opened.bundle as HandoffBundle).handoff
+    const handoff = info
+      ? {
+          info,
+          unrestored: restoreReport(
+            info,
+            useModelProvider.getState().providers.map((provider) => ({
+              provider: provider.provider,
+              models: provider.models.map((model) => ({ id: model.id })),
+              usable: isProviderUsable(provider),
+            }))
+          ),
+        }
+      : undefined
+    const result = useCoworkSessions
+      .getState()
+      .importSession(opened.bundle, handoff)
+    if (result.ok && handoff?.unrestored.length) {
+      toast.info(handoff.unrestored.map(describeRestoreItem).join(' '))
+    }
+    if (!result.ok) {
+      toast.error(
+        result.refusal.reason === 'already-imported'
+          ? t('common:sessionAlreadyImported')
+          : t('common:sessionImportFailed', { reason: result.refusal.message })
+      )
+      if (result.refusal.reason === 'already-imported') {
+        selectSession(result.refusal.sessionId)
+      }
+      return
+    }
+    toast.success(t('common:sessionImported'))
+    goCowork()
+  }
 
   const confirmDelete = () => {
     if (pendingDelete) {
-      useCoworkSessions.getState().deleteSession(pendingDelete.id)
-      // The activity record is keyed by session; leaving it behind would keep
-      // a deleted session's workflows in the store forever.
-      useCoworkActivity.getState().dropSession(pendingDelete.id)
-      // The file record is keyed by session too; leaving it behind would keep
-      // a deleted session's paths in storage indefinitely.
-      useFileActivity.getState().forget(pendingDelete.id)
-      // Teardown, not completion: the session is gone, so nothing is left to
-      // hold its authority in place. Its work items would otherwise keep a
-      // deleted session marked busy for the life of the app session.
-      useCoworkActiveWork.getState().clearSession(pendingDelete.id)
-      // The origin ledger is keyed by session too, and describes a run whose
-      // transcript is about to be gone.
-      useCoworkOrigins.getState().forget(pendingDelete.id)
+      // Stops the session's run -- only that one -- and drops everything held
+      // for it (janhq/jan#8905).
+      deleteCoworkSession(pendingDelete.id)
     }
     setPendingDelete(null)
   }
@@ -246,6 +418,26 @@ export function NavCowork() {
   return (
     <>
       <SidebarMenu>
+        {/* Cowork replaces `NavMain` in the sidebar, so it has to carry the
+            same entries NavMain does; without this, Search and Settings were
+            simply absent on this tab. Same dialog, same route -- opened
+            through the shared store, not a second implementation. */}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => useSearchDialog.getState().setOpen(true)}
+            data-testid="cowork-search"
+            onMouseEnter={() => searchIconRef.current?.startAnimation()}
+            onMouseLeave={() => searchIconRef.current?.stopAnimation()}
+          >
+            <SearchIcon
+              ref={searchIconRef}
+              className="text-foreground/70"
+              size={16}
+            />
+            <span>{t('common:search')}</span>
+            <ShortcutHint action={ShortcutAction.SEARCH} />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={newSession}
@@ -292,6 +484,7 @@ export function NavCowork() {
       )}
 
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
+      <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />
 
       <Dialog
         open={pendingDelete !== null}

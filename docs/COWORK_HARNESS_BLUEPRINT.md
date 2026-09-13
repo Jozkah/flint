@@ -22,133 +22,13 @@ production code is changed by this document.**
 | Phase | State |
 |---|---|
 | 1 — managed worktree enforcement | **Built and in force.** `core/agent/worktree.rs` — create, validate, name, use, list, recover, discard; the run reads and writes the worktree, checked for staleness before it starts. |
-| 2 — context measurement | **Built.** Measured from the payload the run *dispatched*, after trimming and compaction; per-category breakdown, with what the context manager removed reported beside it. The repository-map category is no longer a permanent zero — see below. |
+| 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. |
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
 | 4 — compatibility ingestion | **Built.** Instructions, skills, agents and MCP; imported agents are dispatchable, stdio servers run through the shell's own confinement. |
 | 5 — coordinated agent teams | **Built and wired.** `lib/coworkTeam.ts` + a `team` tool dispatching through the real subagent runner; an isolated task gets a worktree and a grant of its own. |
 | 6 — checkpoints and rewind | **Built and wired.** `core/agent/checkpoint.rs` behind Tauri commands, a persisted chain per session, and a rewind surface in Changes. |
 | 7 — parity UX review | **Smoke harness extended** and now runs off macOS. |
 | 8 — verification and platform evidence | Local verification green (section 6); GitHub runners still unallocated (6.3). |
-
-### After the merge: the repository map
-
-Phase 2 shipped the context *accounting*, and its own headline finding was that
-`repositoryMap` measured zero for every run — reported honestly, and left that
-way, because Cowork built no map. That is now built.
-
-- `project_browse::build_map` walks an attached project breadth-first under
-  three declared caps (entries, depth, credential-looking names). It goes
-  through the same `read_level` the code panel's `list_dir` uses, which is the
-  design decision worth keeping: containment, the never-listed directories and
-  the `.gitignore` chain have one implementation, so a map can never name a
-  path the panel would refuse to open.
-- `lib/coworkRepoMap.ts` renders that walk into the prompt block, in reading
-  order, trimmed to a byte budget from the deepest entries inward. Every
-  omission — each cap, plus the byte trim — is a line of the block.
-- The map is walked from the run's **read root**, not the attached folder, so a
-  managed run maps its worktree. This is the same defect shape as the three
-  above; it was designed out rather than found later.
-- The block the prompt embeds and the block the accounting measures are the
-  same string, and its bytes are subtracted from `instructions` rather than
-  counted twice — so `instructions + repositoryMap` still sums to the prompt.
-- A failed walk does not fail the run: the run goes ahead with no map and the
-  context breakdown says why, because a silent zero reads the same as an empty
-  repository.
-
-Verified at `dcf6ddf`: 7 new Rust tests in `project_browse` (ordering,
-credential omission, gitignore and never-listed directories, the depth cap, the
-entry cap, symlink escape, determinism), 13 in `coworkRepoMap`, 2 in
-`coworkContext` for the double-count, 4 in `coworkPrompt`, and 3 route-level
-tests asserting what crossed the boundary: which root was walked, that a
-managed run walks its worktree, and that a refused walk still runs and still
-reports.
-
-### After the merge: a fresh checkout can run the checks
-
-The smoke script used to fail its first two checks on a clone, and not on an
-assertion. `generate_context!()` validates every `bundle.resources` path, every
-`externalBin`, the icons and `frontendDist` *before* compiling anything, and all
-of those are gitignored build outputs — so the first thing anyone saw was
-
-```
-error: failed to run custom build command for `Jan v0.8.4`
-resource path `resources/bin/jan` doesn't exist
-```
-
-with no indication of the remedy, which is `scripts/stub-tauri-resources.sh`,
-findable only by reading the Makefile.
-
-**Correction.** An earlier version of this document said the fix was
-`yarn download:bin` *plus* the stub script. That was wrong: the stub script
-already covers `uv` and `bun` under the host triple, so it is sufficient on its
-own, and the download is only needed for a real application build. The
-corrected wording is what `scripts/check-tauri-resources.mjs` now prints.
-
-- The smoke script **prepares before it checks**: it runs the stub script
-  itself (idempotent, guarded, never clobbering a real local build — the same
-  one the coverage and rust-check workflows use) as a visible first step.
-- It then **verifies against the bundle config** rather than trusting the stub
-  script's exit code. `scripts/check-tauri-resources.mjs` reads the same
-  `tauri.<os>.conf.json` the build script reads and expands its globs and its
-  `externalBin` triple suffix, so a resource added to the config is checked
-  without anyone remembering to add it here. On failure it names each missing
-  path and prints the exact command that creates it.
-- `yarn check:resources`, `yarn prepare:resources` and `make stub-resources`
-  are three routes to that one implementation.
-- `web-app/src/__tests__/tauriResources.test.ts` holds the guards: that the
-  checker passes on a prepared tree, that on an empty one it fails and prints
-  both the missing path and the remedy verbatim, that the smoke script runs it
-  *before* its first `cargo` invocation, and that the named commands still
-  point at it.
-
-### After the merge: what the run actually sent
-
-The repository map closed the "always zero" category. This closes the one
-underneath it, which was worse: the accounting was measured from the messages
-the route *assembled*, and `CustomChatTransport.sendMessages` trims the window
--- and auto-compacts it, where that is configured -- **after** the caller has
-handed its messages over. The only trace was a `console.debug`. So on a long
-run the readiness card described a payload larger than the one the model
-received, on exactly the runs where the number matters.
-
-- `CustomChatTransport` gained one seam, `onPayloadShaped`, called immediately
-  before dispatch with the system prompt, the assembled messages, the
-  dispatched messages, and what was done to them. The base class keeps nothing:
-  chat has no surface that reports on the payload.
-- `CoworkChatTransport` records that dispatch -- prompt, tool set, repository
-  map and messages, all frozen together -- and `measureContext()` now reads
-  **only** from it. Before a dispatch every payload-dependent category is
-  `{known:false}`, not zero: a run that has not sent anything has not sent
-  nothing.
-- Freezing the map alongside the prompt was not incidental. The map's bytes are
-  subtracted from `instructions` to avoid double-counting, and a config edited
-  mid-run would otherwise have that subtraction use a *different* map from the
-  one inside the prompt that went out. The transport test that changes the
-  config after a dispatch is what found it.
-- **A failed compaction no longer loses the turn.** `compactMessages`
-  summarises with the model, so it can fail for every reason a generation can,
-  and it was awaited with no `catch`. It now falls back to trimming, and the
-  failure is reported as its own shaping state with its reason -- because a run
-  that silently stopped compacting has a window shorter than the one configured.
-- `ContextShaping` carries counts and a reason, never message text. A dropped
-  message holds whatever the conversation held, and this record is rendered.
-- The same record reaches the context breakdown (a row present in every state,
-  `unchanged` included -- a row that only appeared on trouble would leave a
-  reader unable to tell "nothing was dropped" from "nobody checked") and the
-  completion summary (only when something really was removed, or a compaction
-  failed), and the readiness card's own total -- which had been presenting a
-  figure measured from a trimmed payload as an exact count of the conversation
-  on screen. That card already separated "at least" (a category that could not
-  be measured) from "~" (a number derived rather than counted); a shaped
-  payload is the third admission of the same kind, and it now says so.
-
-Verified at this branch's head: the transport suite drives the seam directly,
-including a **mutation test** that computes what measuring the pre-trim payload
-would report and asserts the measurement is not that number; a reconciliation
-test asserting the five categories sum to the dispatched bytes within rounding;
-and route-level tests for the window carried, the per-run reset, a retried step
-replacing the previous measurement, a stopped run keeping its last record, and
-a managed-worktree run.
 
 ### What changed after the first pass
 
@@ -714,7 +594,7 @@ Measured in this container:
 | ESLint, Prettier | **Green** on every file this work touches |
 | `cargo test --lib` (app + plugin) | **Green** after installing GTK/WebKit headers |
 | `cargo fmt` | **Green** on every file this work touches; pre-existing drift elsewhere is left alone |
-| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks plus a preparation step (macOS-only steps skip). No longer needs anything set up by hand: see below. |
+| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks (macOS-only steps skip) |
 | Route integration harness | **Green** — 22 checks through the real route |
 | `cargo clippy --all-targets` (app + plugin) | **Green** |
 | macOS native / WebView smoke | Impossible here (Linux container) |

@@ -1,8 +1,5 @@
 import type { Tool, UIMessage } from 'ai'
-import {
-  CustomChatTransport,
-  type PayloadShapingKind,
-} from '@/lib/custom-chat-transport'
+import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
@@ -11,14 +8,17 @@ import {
   type CoworkToolOptions,
 } from '@/lib/coworkTools'
 import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
-import { measureContextPack, shapingFor } from '@/lib/coworkContext'
-import {
-  UNKNOWN_SHAPING,
-  type ContextAccounting,
-  type ContextShaping,
-} from '@/lib/coworkReadiness'
+import { measureContextPack } from '@/lib/coworkContext'
+import type { ContextAccounting } from '@/lib/coworkReadiness'
+import { useModelProvider } from '@/hooks/useModelProvider'
 
 export type CoworkRunConfig = CoworkToolOptions & {
+  /**
+   * The model this run is sent with, captured from its session when the run
+   * started (janhq/jan#8905). Every step of the run uses it, whatever the
+   * global picker says by then; absent, the global selection is used.
+   */
+  model?: { provider: string; id: string }
   workspacePath: string | null
   readOnlyFolder: string | null
   /**
@@ -39,6 +39,8 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * a run is going applies to the next one.
    */
   compatInstructions?: readonly { name: string; content: string }[]
+  /** The backend's project tooling block, frozen with the run. */
+  projectTooling?: string | null
   /**
    * The opening turn reads and proposes rather than acting.
    *
@@ -46,14 +48,6 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * everything else here.
    */
   openingInspection?: boolean
-  /**
-   * The repository map block for the tree this run reads, already rendered.
-   *
-   * Frozen with the run like everything else here, and measured as its own
-   * context category from these same characters — so the number the readiness
-   * card shows is the number the prompt spends.
-   */
-  repositoryMap?: string | null
 }
 
 /**
@@ -65,6 +59,23 @@ export type CoworkRunConfig = CoworkToolOptions & {
  * parent.
  */
 export class CoworkChatTransport extends CustomChatTransport {
+  /** The route records uses where the turn meets its snapshot (AH-083). */
+  protected override recordsMemoryUsesOnFinish = false
+
+  /**
+   * JAN.md and the approved compatibility files: the instruction text above
+   * memory in this run (AH-084). Exactly what the prompt carries, so a memory
+   * is withheld only for disagreeing with something the model is told.
+   */
+  protected override memoryInstructions() {
+    const out: { source: 'jan-md' | 'compat' | 'skill'; name: string; text: string }[] = []
+    const jan = this.config.projectInstructions?.trim()
+    if (jan) out.push({ source: 'jan-md', name: 'JAN.md', text: jan })
+    for (const one of this.config.compatInstructions ?? []) {
+      if (one.content.trim()) out.push({ source: 'compat', name: one.name, text: one.content })
+    }
+    return out
+  }
   private config: CoworkRunConfig
   /**
    * The advertised tool set, frozen for a run's lifetime.
@@ -78,40 +89,31 @@ export class CoworkChatTransport extends CustomChatTransport {
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
   private builtSig = ''
-  /**
-   * The last payload this transport actually dispatched.
-   *
-   * The accounting is measured from here and from nowhere else. It used to be
-   * measured from the messages the route had just assembled, which is the
-   * payload *before* `sendMessages` trims or auto-compacts it — so on a long
-   * run the card described a conversation larger than the one the model
-   * received. Counts and text sizes only: the messages are held just long
-   * enough to measure and are not exposed.
-   */
-  private dispatched: {
-    system: string
-    /**
-     * The map block that was inside `system` at dispatch time.
-     *
-     * Frozen alongside the prompt rather than read from the live config: the
-     * map's bytes are subtracted from `instructions` to avoid double-counting,
-     * and subtracting a *different* map from the prompt that was sent gives a
-     * wrong answer — badly wrong when the new map is the larger of the two.
-     */
-    repositoryMap: string | null
-    conversationTokensFrom: readonly UIMessage[]
-    tools: Record<string, Tool>
-    shaping: ContextShaping
-  } | null = null
-  /** Notified whenever a dispatch is recorded, so a run's card can follow it
-   * step by step rather than only at the end. */
-  onDispatch: ((accounting: ContextAccounting) => void) | null = null
-  /** The window to measure against, set by the run that owns this transport. */
-  private contextWindow: number | null = null
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
     this.config = config
+  }
+
+  /**
+   * The run's own model, not the global selection.
+   *
+   * The parent read the global picker on every step, so choosing a model in
+   * another session -- or in this one mid-run -- changed the model of a run
+   * already under way. A model its provider no longer offers is reported as
+   * none rather than silently replaced by whatever is selected.
+   */
+  protected override getModelSelection() {
+    const chosen = this.config.model
+    if (!chosen) return super.getModelSelection()
+    const provider = useModelProvider.getState().getProviderByName(chosen.provider)
+    return {
+      selectedProvider: chosen.provider,
+      selectedModel:
+        (provider?.active === false
+          ? undefined
+          : provider?.models.find((model) => model.id === chosen.id)) ?? null,
+    }
   }
 
   /** Applied at the next run: changing it mid-run would invalidate the prefix. */
@@ -119,32 +121,10 @@ export class CoworkChatTransport extends CustomChatTransport {
     this.config = config
   }
 
-  /**
-   * The model window the accounting is reported against.
-   *
-   * Set by the run rather than read here, because it comes from the selected
-   * model's settings and this class has no business reaching for those.
-   */
-  setContextWindow(tokens: number | null) {
-    this.contextWindow = tokens ?? null
-  }
-
-  /**
-   * Forget the last dispatch.
-   *
-   * Called at a run boundary. Without it a new run would show the previous
-   * run's payload until its own first step came back — a stale number that
-   * looks exactly like a fresh one.
-   */
-  forgetDispatch() {
-    this.dispatched = null
-  }
-
   /** Drop the freeze so the next run re-reads the config. */
   unfreezeTools() {
     this.frozenTools = null
   }
-
 
   /**
    * The set actually advertised this run, for narrowing a subagent's tools.
@@ -163,10 +143,30 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   /**
+   * Project memory follows the folder attached to the run.
+   *
+   * Not `workspacePath`: that is this session's own sandbox, and keying
+   * project memory to it would make every "project" memory belong to one
+   * session. With no folder attached there is no project, and only chat and
+   * across-chat memories apply.
+   */
+  protected override syncMemoryBinding(): void {
+    this.setMemoryBinding({
+      projectRoot: this.config.readOnlyFolder ?? undefined,
+      temporary: false,
+    })
+  }
+
+  /**
    * Cowork's own prompt replaces the chat one wholesale — the agent-tools and
    * web-search blurbs are written for a chat that occasionally reaches for a
    * tool, not for a run whose whole purpose is tool use. The attached-files
    * instruction is kept: a pasted document is otherwise never explained.
+   *
+   * Remembered facts go after the policy and project instructions, never
+   * above them: the block labels itself as facts rather than instructions,
+   * and its position says the same thing -- nothing remembered outranks the
+   * run's rules or JAN.md.
    */
   protected override buildSystemPrompt(messages: UIMessage[]): string {
     const base = buildCoworkSystemPrompt({
@@ -176,15 +176,26 @@ export class CoworkChatTransport extends CustomChatTransport {
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,
-      repositoryMap: this.config.repositoryMap,
+      projectTooling: this.config.projectTooling,
       planMode: this.config.planMode,
       openingInspection: this.config.openingInspection,
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
     })
-    const files = this.buildFilesSystemInstruction(messages)
-    return files.trim().length > 0 ? `${base}\n\n${files}` : base
+    // Remembered facts come after everything that states policy -- the run's
+    // own rules, `JAN.md`, the compatibility instructions -- and the block
+    // labels itself as data rather than instructions. Omitting it, as this
+    // override used to, meant Cowork retrieved memory on every turn and then
+    // never sent any of it.
+    return [
+      base,
+      this.memorySelection?.block ? this.memorySelection.precedence : undefined,
+      this.memorySelection?.block,
+      this.buildFilesSystemInstruction(messages),
+    ]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join('\n\n')
   }
 
   /**
@@ -198,70 +209,15 @@ export class CoworkChatTransport extends CustomChatTransport {
    * built from, and cannot describe a run that is not happening.
    */
   measureContext(
+    messages: UIMessage[],
     configuredContextTokens?: number | null
   ): ContextAccounting {
-    const window = configuredContextTokens ?? this.contextWindow
-    const sent = this.dispatched
-    if (!sent) {
-      // Nothing has gone out. Every category that depends on the payload is
-      // genuinely unknown, and an unknown must not be shown as a zero.
-      return measureContextPack({
-        systemPrompt: null,
-        toolSchemas: null,
-        messages: null,
-        configuredContextTokens: window,
-      })
-    }
     return measureContextPack({
-      // The system prompt the request carried, not one rebuilt now: rebuilding
-      // it would measure the configuration as it stands rather than as it was
-      // dispatched, and those differ the moment anything is edited mid-run.
-      systemPrompt: sent.system,
-      toolSchemas: sent.tools,
-      messages: sent.conversationTokensFrom,
-      // The map that was in that prompt, so its tokens are counted under
-      // `repositoryMap` and subtracted from `instructions` rather than counted
-      // twice — and so a config edited since the dispatch cannot make the
-      // subtraction wrong.
-      repositoryMap: sent.repositoryMap,
-      configuredContextTokens: window,
-      shaping: sent.shaping,
+      systemPrompt: this.buildSystemPrompt(messages),
+      toolSchemas: this.advertisedTools,
+      messages,
+      configuredContextTokens,
     })
-  }
-
-  /**
-   * Record what actually went out, and tell the run about it.
-   *
-   * The whole point of the override: `before` is what the caller assembled and
-   * `after` is what the provider received, and until this existed only the
-   * first of the two was ever measured.
-   */
-  protected override onPayloadShaped(dispatched: {
-    system: string | undefined
-    before: UIMessage[]
-    after: UIMessage[]
-    kind: PayloadShapingKind
-    reason: string | null
-  }): void {
-    this.dispatched = {
-      // A request with no system prompt sent an empty one, not an unknown one.
-      system: dispatched.system ?? '',
-      repositoryMap: this.config.repositoryMap ?? null,
-      conversationTokensFrom: dispatched.after,
-      tools: this.advertisedTools,
-      shaping: shapingFor({
-        kind: dispatched.kind,
-        before: dispatched.before,
-        after: dispatched.after,
-        reason: dispatched.reason,
-      }),
-    }
-    this.onDispatch?.(this.measureContext())
-  }
-
-  /** What the context manager did to the last payload. Unknown before any. */
-  get lastShaping(): ContextShaping {
-    return this.dispatched?.shaping ?? UNKNOWN_SHAPING
   }
 
   /**

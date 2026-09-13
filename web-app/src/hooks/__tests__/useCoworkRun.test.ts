@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useCoworkRun } from '../useCoworkRun'
+import { useCoworkRun, applyInnerToTurns } from '../useCoworkRun'
 
 // Covers only the llamacpp-attribution slice (llamacppRuns/pendingLlamacppError)
 // added for Cowork's model-load/OOM feedback parity with regular chat — see
@@ -137,5 +137,148 @@ describe('useCoworkRun - subagent lanes', () => {
     const runs = useCoworkRun.getState().subagents.s3
     expect(runs.find((r) => r.runId === 'a')?.turns[0].content).toBe('from a')
     expect(runs.find((r) => r.runId === 'b')?.turns).toEqual([])
+  })
+})
+
+describe('useCoworkRun - prompt snapshots (AH-078)', () => {
+  it('opens the assistant turn the snapshot produced', () => {
+    const turns = applyInnerToTurns([{ role: 'user', content: 'hi' }], {
+      type: 'prompt_snapshot',
+      id: 'snap-1',
+      hash: 'h1',
+      redactions: 2,
+    })
+    const last = turns[turns.length - 1]
+    expect(last.role).toBe('assistant')
+    expect(last.promptSnapshot).toEqual({
+      id: 'snap-1',
+      hash: 'h1',
+      redactions: 2,
+    })
+  })
+
+  it('streams the reply into that same turn', () => {
+    let turns = applyInnerToTurns([], {
+      type: 'prompt_snapshot',
+      id: 'snap-1',
+      hash: 'h1',
+      redactions: 0,
+    })
+    turns = applyInnerToTurns(turns, { type: 'token', text: 'hello' })
+    // One turn, carrying both the snapshot and the text it produced.
+    expect(turns).toHaveLength(1)
+    expect(turns[0].content).toBe('hello')
+    expect(turns[0].promptSnapshot?.id).toBe('snap-1')
+  })
+
+  it('gives a second invocation its own turn and its own snapshot', () => {
+    let turns = applyInnerToTurns([], {
+      type: 'prompt_snapshot',
+      id: 'snap-1',
+      hash: 'h1',
+      redactions: 0,
+    })
+    turns = applyInnerToTurns(turns, { type: 'token', text: 'first' })
+    turns = applyInnerToTurns(turns, {
+      type: 'prompt_snapshot',
+      id: 'snap-2',
+      hash: 'h2',
+      redactions: 0,
+    })
+    turns = applyInnerToTurns(turns, { type: 'token', text: 'second' })
+
+    // A "latest snapshot" model would show snap-2 against both turns.
+    const snaps = turns
+      .filter((t) => t.promptSnapshot)
+      .map((t) => t.promptSnapshot!.id)
+    expect(snaps).toEqual(['snap-1', 'snap-2'])
+    expect(turns[0].content).toBe('first')
+    expect(turns[1].content).toBe('second')
+  })
+})
+
+describe('questions in the transcript', () => {
+  const record = (over = {}) => ({
+    requestId: 'call-1',
+    sessionId: 's1',
+    callId: 'call-1',
+    at: '2026-09-08T10:00:00Z',
+    state: 'pending' as const,
+    request: {
+      questions: [{ id: 'scope', question: 'Which scope?', options: [{ label: 'Small' }] }],
+    },
+    ...over,
+  })
+
+  beforeEach(() => {
+    useCoworkRun.setState({ liveTurns: {} })
+  })
+
+  it('attaches a question to the assistant turn that was speaking', () => {
+    useCoworkRun.setState({
+      liveTurns: {
+        s1: [
+          { role: 'user', content: 'go' },
+          { role: 'assistant', content: 'thinking' },
+          { role: 'tool', content: '', callId: 'call-1', name: 'ask' },
+        ],
+      },
+    })
+    useCoworkRun.getState().attachAsk('s1', record())
+    const turns = useCoworkRun.getState().liveTurns.s1
+    // The assistant turn, not the tool turn that is the call itself.
+    expect(turns[1].asks?.[0].requestId).toBe('call-1')
+    expect(turns[2].asks).toBeUndefined()
+  })
+
+  it('opens a turn when the run asked before saying anything', () => {
+    useCoworkRun.getState().attachAsk('s1', record())
+    const turns = useCoworkRun.getState().liveTurns.s1
+    expect(turns).toHaveLength(1)
+    expect(turns[0].role).toBe('assistant')
+    expect(turns[0].asks).toHaveLength(1)
+  })
+
+  it('does not attach the same question twice', () => {
+    useCoworkRun.getState().attachAsk('s1', record())
+    useCoworkRun.getState().attachAsk('s1', record())
+    expect(useCoworkRun.getState().liveTurns.s1[0].asks).toHaveLength(1)
+  })
+
+  it('records the answer in place, without moving the question', () => {
+    useCoworkRun.setState({
+      liveTurns: { s1: [{ role: 'assistant', content: 'a' }] },
+    })
+    useCoworkRun.getState().attachAsk('s1', record())
+    useCoworkRun.getState().attachAsk('s1', record({ requestId: 'call-2', callId: 'call-2' }))
+    useCoworkRun.getState().settleAsk('s1', 'call-1', 'answered', [
+      { id: 'scope', selected: ['Small'] },
+    ])
+    const asks = useCoworkRun.getState().liveTurns.s1[0].asks!
+    expect(asks.map((a) => a.requestId)).toEqual(['call-1', 'call-2'])
+    expect(asks[0].state).toBe('answered')
+    expect(asks[0].answers).toEqual([{ id: 'scope', selected: ['Small'] }])
+    // The other question is untouched.
+    expect(asks[1].state).toBe('pending')
+  })
+
+  it('records a cancellation as a state, not as a removal', () => {
+    useCoworkRun.getState().attachAsk('s1', record())
+    useCoworkRun.getState().settleAsk('s1', 'call-1', 'cancelled')
+    expect(useCoworkRun.getState().liveTurns.s1[0].asks?.[0].state).toBe('cancelled')
+  })
+
+  it('keeps two runs questions apart by session', () => {
+    useCoworkRun.getState().attachAsk('s1', record())
+    useCoworkRun.getState().attachAsk('s2', record({ sessionId: 's2', requestId: 'call-9' }))
+    useCoworkRun.getState().settleAsk('s1', 'call-1', 'answered', [])
+    expect(useCoworkRun.getState().liveTurns.s2[0].asks?.[0].state).toBe('pending')
+  })
+
+  it('survives being committed onto the session by finalizeRun', () => {
+    useCoworkRun.getState().attachAsk('s1', record())
+    useCoworkRun.getState().settleAsk('s1', 'call-1', 'answered', [])
+    const { turns } = useCoworkRun.getState().finalizeRun('s1')
+    expect(turns[0].asks?.[0].state).toBe('answered')
   })
 })

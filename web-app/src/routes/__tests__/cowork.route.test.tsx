@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 
 /**
  * The Cowork route, driven end to end.
@@ -33,25 +34,12 @@ const h = vi.hoisted(() => ({
   /** Tauri commands, by name. Tests install answers per case. */
   invoke: vi.fn(),
   directEditCapability: vi.fn(async () => true),
+  managedWorktreeCapability: vi.fn(async () => true),
   directEditAuthorize: vi.fn(async () => 'grant-1'),
   directEditRevoke: vi.fn(async () => true),
   directEditRevokeSession: vi.fn(async () => true),
   projectListDir: vi.fn(async () => []),
   projectReadFile: vi.fn(async () => ''),
-  projectMap: vi.fn(async () => ({
-    entries: [
-      { relPath: 'src', isDir: true, depth: 1 },
-      { relPath: 'src/index.ts', isDir: false, depth: 2 },
-    ],
-    truncated: false,
-    depthLimited: false,
-    sensitiveOmitted: 0,
-    unreadableDirs: 0,
-    files: 1,
-    dirs: 1,
-  })),
-  /** Every transport the route built, so a run's frozen config can be read. */
-  transports: [] as any[],
   bashJobsList: vi.fn(async () => []),
   executeAgentTool: vi.fn(async () => ({ content: 'ok' })),
   loadGitStatus: vi.fn(async () => ({
@@ -70,6 +58,8 @@ const h = vi.hoisted(() => ({
     mcp: [],
     inert: [],
   })),
+  /** Every transport the route built, newest last. */
+  transports: [] as any[],
   /** The last run's dispatcher, captured from `runTurn`. */
   deps: null as any,
   runTurn: vi.fn(),
@@ -102,12 +92,12 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }))
 vi.mock('@janhq/tauri-plugin-agent-tools-api', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   directEditCapability: h.directEditCapability,
+  managedWorktreeCapability: h.managedWorktreeCapability,
   directEditAuthorize: h.directEditAuthorize,
   directEditRevoke: h.directEditRevoke,
   directEditRevokeSession: h.directEditRevokeSession,
   projectListDir: h.projectListDir,
   projectReadFile: h.projectReadFile,
-  projectMap: h.projectMap,
   bashJobsList: h.bashJobsList,
 }))
 
@@ -155,16 +145,24 @@ vi.mock('@/hooks/useServiceHub', () => {
   return { useServiceHub: () => hub, getServiceHub: () => hub }
 })
 
-vi.mock('@/hooks/useModelProvider', () => ({
-  useModelProvider: () => ({
-    selectedModel: {
-      id: 'local/qwen',
-      capabilities: ['tools'],
-      settings: { ctx_len: { controller_props: { value: 8192 } } },
-    },
+vi.mock('@/hooks/useModelProvider', () => {
+  const selectedModel = {
+    id: 'local/qwen',
+    capabilities: ['tools'],
+    settings: { ctx_len: { controller_props: { value: 8192 } } },
+  }
+  const state = {
+    selectedModel,
     selectedProvider: 'llamacpp',
-  }),
-}))
+    // A run resolves its model from the providers (janhq/jan#8905), not
+    // from the bare selection.
+    providers: [{ provider: 'llamacpp', active: true, models: [selectedModel] }],
+    selectModelProvider: () => {},
+  }
+  const useModelProvider: any = () => state
+  useModelProvider.getState = () => state
+  return { useModelProvider }
+})
 
 /** The model, replaced. Everything between the composer and the gate is real. */
 vi.mock('@/lib/coworkTransport', () => ({
@@ -190,17 +188,11 @@ vi.mock('@/lib/coworkTransport', () => ({
       this.config = config
     }
     unfreezeTools() {}
+    memoryBinding: { projectRoot?: string; temporary?: boolean } | undefined
+    setMemoryBinding(binding: { projectRoot?: string; temporary?: boolean }) {
+      this.memoryBinding = binding
+    }
     async refreshTools() {}
-    /** Set by the run; recorded so a test can assert the window it carried. */
-    contextWindow: number | null = null
-    setContextWindow(tokens: number | null) {
-      this.contextWindow = tokens
-    }
-    forgotDispatch = 0
-    forgetDispatch() {
-      this.forgotDispatch += 1
-    }
-    onDispatch: ((accounting: any) => void) | null = null
     measureContext() {
       return {
         categories: {
@@ -211,13 +203,6 @@ vi.mock('@/lib/coworkTransport', () => ({
           tools: { known: 'estimated', tokens: 300, method: 'test' },
         },
         budget: { known: 'estimated', tokens: 8192, method: 'test' },
-        shaping: {
-          kind: 'unknown',
-          removed: 0,
-          retained: 0,
-          removedTokens: { known: false },
-          reason: null,
-        },
       }
     }
     async sendMessages() {
@@ -230,6 +215,13 @@ vi.mock('@/lib/coworkTransport', () => ({
   },
 }))
 
+// AH-111: a team that ends with failures waits for a person to restart or
+// replace a member. Nobody is at the Tasks panel in these tests, so the wait
+// is made immediate; its own behaviour is tested in coworkTeamRunControl.
+vi.mock('@/lib/coworkTeamControl', async (orig) => ({
+  ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
+  DECISION_WINDOW_MS: 0,
+}))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
   return {
@@ -263,7 +255,13 @@ vi.mock('@/containers/ChatInput', () => ({
     </div>
   ),
 }))
-vi.mock('@/containers/HeaderPage', () => ({ default: () => <header /> }))
+// Renders its children: the session-details control lives in the header, and
+// a mock that swallowed them would hide the surface these tests assert on.
+vi.mock('@/containers/HeaderPage', () => ({
+  default: ({ children }: { children?: React.ReactNode }) => (
+    <header>{children}</header>
+  ),
+}))
 vi.mock('@/containers/DropdownModelProvider', () => ({
   default: () => <div />,
 }))
@@ -396,7 +394,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   installInvoke()
   h.deps = null
+  useTeamConflictRequests.setState({ bySession: {} })
   h.directEditCapability.mockResolvedValue(true)
+  h.managedWorktreeCapability.mockResolvedValue(true)
   h.directEditAuthorize.mockResolvedValue('grant-1')
   h.pickFolder.mockResolvedValue('/repo')
   h.dataFolder.mockResolvedValue('/data')
@@ -409,7 +409,6 @@ beforeEach(() => {
     inert: [],
   })
   h.executeAgentTool.mockResolvedValue({ content: 'ok' })
-  h.transports.length = 0
   h.text = 'do the thing'
   useDirectEditGrants.setState({
     capability: { known: false, reason: 'loading' },
@@ -426,6 +425,120 @@ beforeEach(() => {
 
 afterEach(() => {
   useCoworkSessions.setState({ sessions: [], currentId: null })
+})
+
+/**
+ * The window width the route sees, through the same `matchMedia` its media
+ * queries read. Only `max-width` queries are answered, which is all it asks.
+ */
+function setViewport(width: number) {
+  ;(window.matchMedia as any).mockImplementation((query: string) => {
+    const max = /max-width:\s*(\d+)px/.exec(query)?.[1]
+    return {
+      matches: max !== undefined && width <= Number(max),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }
+  })
+}
+
+/** The `hidden` utility itself, not a class that merely contains the word. */
+const isHidden = (el: HTMLElement) => el.classList.contains('hidden')
+
+describe('the layout at each width', () => {
+  afterEach(() => setViewport(4000))
+
+  it('docks the output panel on a wide window, with one set of rail tabs', async () => {
+    setViewport(1440)
+    await renderRoute()
+    // Closed: the rail buttons are in the composer row.
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'docked')
+    // Open: the same buttons, once, in the panel header, still pressed.
+    const code = screen.getAllByRole('button', { name: 'common:rail.code' })
+    expect(code).toHaveLength(1)
+    expect(inspector.contains(code[0])).toBe(true)
+    expect(code[0]).toHaveAttribute('aria-pressed', 'true')
+
+    // Pressing the open tab again closes it, as the toolbar always did.
+    await userEvent.click(code[0])
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+  })
+
+  it('puts the panel in a drawer below 1100px that its scrim closes', async () => {
+    setViewport(900)
+    await renderRoute()
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'drawer')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:rail.closeOverlay' })
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+    expect(
+      screen.getByRole('button', { name: 'common:rail.code' })
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows one view at a time on a phone, keeping the composer mounted', async () => {
+    setViewport(390)
+    await renderRoute()
+    const switcher = await screen.findByRole('group', {
+      name: 'common:coworkLayout.views',
+    })
+    expect(switcher).toBeInTheDocument()
+    expect(screen.getByTestId('cowork-view-content')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    // The details control is a view here, not a dialog in the bar.
+    expect(screen.queryByTestId('session-details-trigger')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-output'))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'full')
+    expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(true)
+    // Hidden, not unmounted: the draft lives in the composer.
+    expect(screen.getByTestId('composer')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+
+    // Choosing a tab keeps the output view and marks the tab.
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'common:rail.code' })
+      ).toHaveAttribute('aria-pressed', 'true')
+    )
+    expect(screen.getByTestId('cowork-view-output')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:coworkLayout.back' })
+    )
+    await waitFor(() =>
+      expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(false)
+    )
+    expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-details'))
+    expect(await screen.findByTestId('cowork-details-view')).toBeInTheDocument()
+    expect(screen.getByTestId('session-details-body')).toBeInTheDocument()
+  })
 })
 
 /**
@@ -452,25 +565,6 @@ const call = (name: string, input: unknown, id = 'c1') => ({
   toolCallId: id,
   toolName: name,
   input,
-})
-
-/** An accounting for a payload the context manager cut down. */
-const trimmedAccounting = (kind = 'trimmed') => ({
-  categories: {
-    instructions: { known: 'estimated', tokens: 120, method: 'test' },
-    skills: { known: true, tokens: 0 },
-    repositoryMap: { known: true, tokens: 0 },
-    conversation: { known: 'estimated', tokens: 40, method: 'test' },
-    tools: { known: 'estimated', tokens: 300, method: 'test' },
-  },
-  budget: { known: 'estimated', tokens: 8192, method: 'test' },
-  shaping: {
-    kind,
-    removed: kind === 'unchanged' ? 0 : 3,
-    retained: 5,
-    removedTokens: { known: 'estimated', tokens: 900, method: 'test' },
-    reason: null,
-  },
 })
 
 /** Open the access menu and choose one mode. */
@@ -562,131 +656,13 @@ describe('what a run carries, decided by the route', () => {
         writeGrant: 'grant-1',
       })
     )
-  })
-
-  it('maps the tree it reads, and hands the block to the model', async () => {
-    // The repository-map category existed on the readiness card from the start
-    // and measured zero for every run, because no map was ever built. The
-    // assertion that matters is not that a map exists but that the block the
-    // run *dispatched* came from the tree the run reads.
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await runOneTurn()
-
-    expect(h.projectMap).toHaveBeenCalledWith('/data', FOLDER)
-    const config = h.transports.at(-1).config
-    expect(config.repositoryMap).toContain('# Repository map')
-    expect(config.repositoryMap).toContain('src/')
-    expect(config.repositoryMap).toContain('index.ts')
-  })
-
-  it('maps the worktree, not the checkout, in managed mode', async () => {
-    // Same defect shape as the read root and the origin ledger: a surface that
-    // describes the attached folder while the run works somewhere else.
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await chooseAccess('managed-worktree')
-    await waitFor(() => expect(h.directEditAuthorize).toHaveBeenCalled())
-    await runOneTurn()
-
-    expect(h.projectMap).toHaveBeenLastCalledWith('/data', WORKTREE)
-  })
-
-  it('runs without a map, and says why, when the walk is refused', async () => {
-    // Orientation is an aid. Refusing to start a run because one could not be
-    // built would trade a real capability for a cosmetic one — but going ahead
-    // silently would leave a zero on the card that reads like an empty folder.
-    seedSession({ turns: PRIOR_TURNS })
-    h.projectMap.mockRejectedValueOnce(new Error('folder vanished'))
-    await renderRoute()
-    const deps = await runOneTurn()
-
-    expect(h.transports.at(-1).config.repositoryMap).toBeNull()
-    // The run still happened and still carries its authority.
-    await deps.dispatch(call('read', { path: 'src/index.ts' }))
-    expect(h.executeAgentTool).toHaveBeenCalled()
-    expect(
-      await screen.findByText(/readiness.repositoryMapFailed/)
-    ).toBeInTheDocument()
-  })
-
-  it('reports the payload the transport dispatched, not the one assembled', async () => {
-    // The route used to measure `messages` before handing them over, and
-    // `sendMessages` then trimmed or auto-compacted them on the way out. The
-    // wiring being asserted is the callback: what the transport says it sent
-    // is what the breakdown shows.
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await runOneTurn()
-
-    const transport = h.transports.at(-1)
-    // The window the run measures against, carried from the selected model.
-    expect(transport.contextWindow).toBe(8192)
-    // And the previous run's payload dropped before this one starts.
-    expect(transport.forgotDispatch).toBe(1)
-
-    await act(async () => {
-      transport.onDispatch?.(trimmedAccounting())
+    // Memory follows the project, not the tree this run reads: a managed
+    // worktree is the same project, so it must recall the attached folder's
+    // memory rather than start a project of its own.
+    expect(h.transports.at(-1)?.memoryBinding).toEqual({
+      projectRoot: FOLDER,
+      temporary: false,
     })
-
-    expect(
-      await screen.findByLabelText('common:readiness.contextBreakdown')
-    ).toHaveTextContent('common:readiness.shaping.trimmed')
-  })
-
-  it('keeps reporting the last dispatch after the run is stopped', async () => {
-    // A cancelled run still sent what it sent. Blanking the accounting on stop
-    // would lose the one record of what the model was actually given.
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await runOneTurn()
-    await act(async () => {
-      h.transports.at(-1).onDispatch?.(trimmedAccounting())
-    })
-
-    await userEvent.click(screen.getByTestId('stop'))
-
-    expect(
-      await screen.findByLabelText('common:readiness.contextBreakdown')
-    ).toHaveTextContent('common:readiness.shaping.trimmed')
-  })
-
-  it('follows the payload in a managed run too', async () => {
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await chooseAccess('managed-worktree')
-    await waitFor(() => expect(h.directEditAuthorize).toHaveBeenCalled())
-    await runOneTurn()
-
-    await act(async () => {
-      h.transports.at(-1).onDispatch?.(trimmedAccounting('compacted'))
-    })
-
-    expect(
-      await screen.findByLabelText('common:readiness.contextBreakdown')
-    ).toHaveTextContent('common:readiness.shaping.compacted')
-  })
-
-  it('lets the latest step replace the previous one, retries included', async () => {
-    // A run dispatches once per step, and a retried step dispatches again. The
-    // card reports the payload of the step that actually went out last.
-    seedSession({ turns: PRIOR_TURNS })
-    await renderRoute()
-    await runOneTurn()
-    const transport = h.transports.at(-1)
-
-    await act(async () => {
-      transport.onDispatch?.(trimmedAccounting())
-    })
-    await act(async () => {
-      transport.onDispatch?.(trimmedAccounting('unchanged'))
-    })
-
-    const panel = await screen.findByLabelText(
-      'common:readiness.contextBreakdown'
-    )
-    expect(panel).toHaveTextContent('common:readiness.shaping.unchanged')
-    expect(panel).not.toHaveTextContent('common:readiness.shaping.trimmed')
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {
@@ -707,6 +683,7 @@ describe('what a run carries, decided by the route', () => {
 
   it('keeps a session in review when the platform cannot confine writes', async () => {
     h.directEditCapability.mockResolvedValue(false)
+    h.managedWorktreeCapability.mockResolvedValue(false)
     seedSession({ turns: PRIOR_TURNS })
     await renderRoute()
 
@@ -883,25 +860,59 @@ describe('a team, dispatched by the route', () => {
     )
   })
 
-  it('refuses a graph that could not finish, before anything is provisioned', async () => {
+  it('asks about overlapping tasks before anything is provisioned, and runs nothing when declined', async () => {
     await renderRoute()
     const deps = await runOneTurn()
 
-    const result = await deps.dispatch(
+    const pending = deps.dispatch(
       call('team', {
         tasks: [
-          { id: 'a', description: 'do a', writes: ['src/x.ts'] },
-          { id: 'b', description: 'do b', writes: ['src/x.ts'] },
+          { id: 'a', description: 'do a', writes: ['src/x.ts'], isolate: true },
+          { id: 'b', description: 'do b', writes: ['SRC\\x.ts'], isolate: true },
         ],
       })
     )
 
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain('same files')
+    // AH-109: the overlap goes to the person, named by both tasks and the
+    // path, while nothing has been provisioned or dispatched.
+    await waitFor(() =>
+      expect(
+        Object.values(useTeamConflictRequests.getState().bySession)
+      ).toHaveLength(1)
+    )
+    const request = Object.values(useTeamConflictRequests.getState().bySession)[0]
+    expect(request.conflicts[0].tasks).toEqual(['a', 'b'])
+    expect(await screen.findByTestId('team-conflicts')).toBeInTheDocument()
     expect(h.invoke).not.toHaveBeenCalledWith(
       'agent_worktree_ensure',
       expect.anything()
     )
+
+    act(() =>
+      useTeamConflictRequests
+        .getState()
+        .answer(request.sessionId, { kind: 'cancel' })
+    )
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('chose not to run')
+    expect(h.invoke).not.toHaveBeenCalledWith(
+      'agent_worktree_ensure',
+      expect.anything()
+    )
+  })
+
+  it('still refuses a graph that could not finish, without asking anyone', async () => {
+    await renderRoute()
+    const deps = await runOneTurn()
+    const result = await deps.dispatch(
+      call('team', {
+        tasks: [{ id: 'a', description: 'do a', dependsOn: [], depends_on: ['ghost'] }],
+      })
+    )
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('ghost')
+    expect(useTeamConflictRequests.getState().bySession).toEqual({})
   })
 
   it('shows the team as one unit of work with its children under it', async () => {
@@ -922,6 +933,16 @@ describe('a team, dispatched by the route', () => {
   })
 })
 
+/**
+ * Readiness, compatibility, skill folders and context accounting live behind
+ * the session-details control now -- they are reference material, not part of
+ * the conversation -- so a test that asserts on them has to open it first.
+ */
+async function openSessionDetails() {
+  fireEvent.click(await screen.findByTestId('session-details-trigger'))
+  return await screen.findByTestId('session-details-body')
+}
+
 describe('what the route says about the run', () => {
   it('names the worktree, its branch and what it cannot see', async () => {
     installInvoke({
@@ -933,6 +954,7 @@ describe('what the route says about the run', () => {
     await renderRoute()
     await chooseAccess('managed-worktree')
 
+    await openSessionDetails()
     const card = await screen.findByRole('region', {
       name: 'common:readiness.title',
     })
@@ -1131,14 +1153,17 @@ describe('a repository that brings its own configuration', () => {
       skillRoots: [],
     } as any)
     await renderRoute()
+    await openSessionDetails()
 
+    // The saved definition keeps the name; the imported one is reported as a
+    // duplicate rather than quietly losing. Waited for as one condition: the
+    // saved list and the repository scan arrive independently, and asserting
+    // the second as soon as the first had rendered raced them.
     await waitFor(() => {
       const section = screen.getByTestId('cowork-compat')
       expect(section).toHaveTextContent('reviewer')
+      expect(section).toHaveTextContent('duplicate')
     })
-    // The saved definition keeps the name; the imported one is reported as a
-    // duplicate rather than quietly losing.
-    expect(screen.getByTestId('cowork-compat')).toHaveTextContent('duplicate')
   })
 
   it('reports a local MCP server it cannot confine rather than running it', async () => {
@@ -1164,6 +1189,7 @@ describe('a repository that brings its own configuration', () => {
       skillRoots: [],
     } as any)
     await renderRoute()
+    await openSessionDetails()
 
     const section = await screen.findByTestId('cowork-compat')
     expect(section).toHaveTextContent('deployer')

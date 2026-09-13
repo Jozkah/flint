@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { executeAgentTool } = vi.hoisted(() => ({ executeAgentTool: vi.fn() }))
-vi.mock('@/lib/agentTools', () => ({ executeAgentTool }))
+const { previewAgentChange } = vi.hoisted(() => ({
+  previewAgentChange: vi.fn(async (): Promise<string | undefined> => undefined),
+}))
+vi.mock('@/lib/agentTools', () => ({ executeAgentTool, previewAgentChange }))
 
 const { executeWebTool } = vi.hoisted(() => ({ executeWebTool: vi.fn() }))
 vi.mock('@/lib/webSearchTool', () => ({
@@ -46,7 +49,52 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: null,
       scope: 'session',
       writeGrant: undefined,
+      // AH-174: the call's id, so what its command uses is kept against it.
+      callId: 'c1',
     })
+  })
+
+  // AH-110: the backend journals a change under the agent that made it, so
+  // the identity has to travel with the call, not be guessed afterwards.
+  it('tells the backend which agent is making the call', async () => {
+    await dispatchCoworkTool(call('write', { path: 'a', content: 'x' }), ctx({
+      activity: { session: 's1', run: 'run-1', invocation: 'inv-1', agent: 'main' },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'a', content: 'x' },
+      's1',
+      expect.objectContaining({
+        undoRun: 'run-1',
+        actor: { id: 'agent', label: undefined, parent: undefined, invocation: 'inv-1', task: undefined },
+      })
+    )
+
+    await dispatchCoworkTool(call('write', { path: 'b', content: 'y' }), ctx({
+      activity: {
+        session: 's1',
+        run: 'run-1',
+        invocation: 'inv-2',
+        agent: 'reviewer',
+        agentId: 'role:reviewer',
+        parentAgent: 'agent',
+        parent: 'task-9',
+      },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'b', content: 'y' },
+      's1',
+      expect.objectContaining({
+        actor: {
+          id: 'role:reviewer',
+          label: 'reviewer',
+          parent: 'agent',
+          invocation: 'inv-2',
+          task: 'task-9',
+        },
+      })
+    )
   })
 
   it('routes the client-only tools to their handlers', async () => {
@@ -79,9 +127,51 @@ describe('dispatchCoworkTool', () => {
       call('write', { path: 'a' }),
       ctx({ mode: 'ask', onApprove })
     )
-    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' })
+    // No preview (the mock returns none) and no run signal in this call.
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a' },
+      undefined,
+      undefined
+    )
     expect(out.isError).toBeUndefined()
     expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  // AH-146: the prompt carries the change, computed by the backend where the
+  // call would land -- the session's own workspace and grant.
+  it('puts the change a write would make in front of the person asked', async () => {
+    previewAgentChange.mockResolvedValueOnce('@@ created file @@\n+    1 | hi')
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('write', { path: 'a', content: 'hi' }),
+      ctx({ mode: 'ask', onApprove, writeGrant: 'g1' })
+    )
+    expect(previewAgentChange).toHaveBeenCalledWith(
+      'write',
+      { path: 'a', content: 'hi' },
+      's1',
+      { scope: 'session', writeGrant: 'g1' }
+    )
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a', content: 'hi' },
+      '@@ created file @@\n+    1 | hi',
+      undefined
+    )
+  })
+
+  it('still asks, without a diff, when no preview can be made', async () => {
+    previewAgentChange.mockRejectedValueOnce(new Error('backend gone'))
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('edit', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
   it('does not run a mutation the user refused', async () => {
@@ -142,6 +232,7 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: '/repo',
       scope: 'session',
       writeGrant: undefined,
+      callId: 'c1',
     })
   })
 
@@ -600,5 +691,138 @@ describe('instructions that govern a subtree', () => {
 
     expect(result.output).toContain('rank below')
     expect(result.output).toContain('JAN.md')
+  })
+})
+
+// janhq/jan#8906: asked to create a file while planning, the model read the
+// missing file, announced it would create it, and read it again -- thirty
+// times. Before the fix every one of those reads ran and returned the bare
+// error, and nothing ever asked the user.
+describe('missing reads in review mode', () => {
+  const missing = { error: 'ERROR: No such file or directory (os error 2)' }
+
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+  })
+
+  it('keeps the real error and says why read cannot create the file', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const c = ctx({ mode: 'review', readFailures: new Map() })
+    const out = await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+    expect(out.isError).toBe(true)
+    expect(out.output.startsWith(missing.error)).toBe(true)
+    expect(out.output).toMatch(/cannot\s+create `index.html`/)
+    expect(c.onAsk).not.toHaveBeenCalled()
+  })
+
+  it('asks for plan review instead of reading the same missing path again', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const onAsk = vi.fn(async () => ({ output: 'The user wants to keep planning.' }))
+    const c = ctx({ mode: 'review', readFailures: new Map(), onAsk })
+    await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+    const second = await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+
+    expect(executeAgentTool).toHaveBeenCalledTimes(1)
+    expect(onAsk).toHaveBeenCalledTimes(1)
+    const [, request] = onAsk.mock.calls[0] as unknown as [string, { questions: { id: string }[] }]
+    expect(request.questions[0].id).toBe('plan_review')
+    expect(second.isError).toBe(true)
+    expect(second.output).toContain('`index.html` does not exist')
+    expect(second.output).toContain('keep planning')
+  })
+
+  it('never escalates a different path, and a path that reads is not a miss', async () => {
+    const c = ctx({ mode: 'review', readFailures: new Map() })
+    executeAgentTool.mockResolvedValueOnce({ content: 'present' })
+    await dispatchCoworkTool(call('read', { path: 'a.html' }), c)
+    executeAgentTool.mockResolvedValueOnce({ content: 'present' })
+    await dispatchCoworkTool(call('read', { path: 'a.html' }), c)
+    executeAgentTool.mockResolvedValueOnce(missing)
+    await dispatchCoworkTool(call('read', { path: 'b.html' }), c)
+    executeAgentTool.mockResolvedValueOnce(missing)
+    await dispatchCoworkTool(call('read', { path: 'c.html' }), c)
+    expect(c.onAsk).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalledTimes(4)
+  })
+
+  // The history belongs to one run: a new run gets a new map, and a run
+  // with none (a caller that cannot hold one) explains but never escalates.
+  it('keeps no history across runs or without a map', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    await dispatchCoworkTool(
+      call('read', { path: 'x' }),
+      ctx({ mode: 'review', readFailures: new Map() })
+    )
+    const next = ctx({ mode: 'review', readFailures: new Map() })
+    await dispatchCoworkTool(call('read', { path: 'x' }), next)
+    expect(next.onAsk).not.toHaveBeenCalled()
+
+    const none = ctx({ mode: 'review' })
+    await dispatchCoworkTool(call('read', { path: 'x' }), none)
+    await dispatchCoworkTool(call('read', { path: 'x' }), none)
+    expect(none.onAsk).not.toHaveBeenCalled()
+  })
+
+  it('changes nothing outside review mode, or for other errors', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const auto = ctx({ mode: 'auto', readFailures: new Map() })
+    for (let i = 0; i < 3; i++) {
+      const out = await dispatchCoworkTool(call('read', { path: 'x' }), auto)
+      expect(out.output).toBe(missing.error)
+    }
+    expect(auto.onAsk).not.toHaveBeenCalled()
+
+    executeAgentTool.mockResolvedValue({ error: 'ERROR: permission denied (os error 13)' })
+    const review = ctx({ mode: 'review', readFailures: new Map() })
+    await dispatchCoworkTool(call('read', { path: 'y' }), review)
+    const out = await dispatchCoworkTool(call('read', { path: 'y' }), review)
+    expect(out.output).toBe('ERROR: permission denied (os error 13)')
+    expect(review.onAsk).not.toHaveBeenCalled()
+  })
+})
+
+describe('an approval prompt whose run is stopped', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('hands the prompt the run signal, and stops waiting the moment the run stops', async () => {
+    const run = new AbortController()
+    let seen: AbortSignal | undefined
+    // A prompt nobody answers: only the stop can end the wait.
+    const onApprove = vi.fn(
+      (_c: string, _t: string, _i: unknown, _p?: string, signal?: AbortSignal) => {
+        seen = signal
+        return new Promise<boolean>(() => {})
+      }
+    )
+    const pending = dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    await vi.waitFor(() => expect(onApprove).toHaveBeenCalled())
+    expect(seen).toBe(run.signal)
+    run.abort('cancelled')
+    const out = await pending
+    expect(out.isError).toBe(true)
+    expect(out.output).toMatch(/stopped/)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('never runs a call whose approval arrives after the run stopped', async () => {
+    const run = new AbortController()
+    const onApprove = vi.fn(async () => {
+      run.abort('cancelled')
+      return true
+    })
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })

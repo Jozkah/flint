@@ -99,3 +99,94 @@ export function budgetExceeded(
   if (state.sessionTokens >= MAX_SESSION_TOKENS) return 'tokens'
   return null
 }
+
+/**
+ * Room kept for the model's own reply. AH-088.
+ *
+ * A request that exactly fills the window is not a request that fits: the
+ * model still has to answer inside it. Providers differ in how they fail when
+ * it does not -- some truncate the conversation silently, which is the worst
+ * of them -- so the headroom is reserved here, before dispatch, rather than
+ * discovered afterwards.
+ */
+export const REPLY_RESERVE_FRACTION = 0.15
+export const MIN_REPLY_RESERVE = 512
+export const MAX_REPLY_RESERVE = 8192
+
+export function replyReserveFor(window: number): number {
+  return Math.min(
+    MAX_REPLY_RESERVE,
+    Math.max(MIN_REPLY_RESERVE, Math.floor(window * REPLY_RESERVE_FRACTION))
+  )
+}
+
+export type TurnPlanStatus = 'unknown' | 'fits' | 'tight' | 'over'
+
+export type TurnPlan = {
+  status: TurnPlanStatus
+  /** The window in force, when it is known. */
+  window: number | null
+  /** What the request is expected to carry. */
+  projected: number
+  /** Tokens held back for the reply. */
+  reserve: number
+  /** How far past the window the request would be. Zero unless `over`. */
+  overBy: number
+}
+
+/**
+ * Decide whether this turn can be dispatched as it stands.
+ *
+ * An unknown window is reported as unknown and never as a refusal: refusing to
+ * send because Jan could not discover a limit would make an unreadable server
+ * unusable, which is worse than the request the server itself would reject.
+ */
+export function planTurn(input: {
+  projected: number
+  window: number | null | undefined
+}): TurnPlan {
+  const { projected } = input
+  const window = input.window ?? null
+  if (window == null || window <= 0) {
+    return { status: 'unknown', window: null, projected, reserve: 0, overBy: 0 }
+  }
+
+  const reserve = replyReserveFor(window)
+  const ceiling = window - reserve
+  if (projected > ceiling) {
+    return {
+      status: 'over',
+      window,
+      projected,
+      reserve,
+      // What has to go for the request to fit, reply space included.
+      overBy: projected - ceiling,
+    }
+  }
+  // Close enough that the next tool result is likely to push it over, which is
+  // worth saying while there is still room to act on it.
+  const tight = projected > ceiling - reserve
+  return {
+    status: tight ? 'tight' : 'fits',
+    window,
+    projected,
+    reserve,
+    overBy: 0,
+  }
+}
+
+/** Raised instead of dispatching a request that cannot fit. */
+export class ContextOverflowError extends Error {
+  readonly plan: TurnPlan
+  constructor(plan: TurnPlan) {
+    super(
+      `the request needs about ${plan.projected.toLocaleString()} tokens and the window is ${(plan.window ?? 0).toLocaleString()}, with ${plan.reserve.toLocaleString()} kept for the reply`
+    )
+    this.name = 'ContextOverflowError'
+    this.plan = plan
+  }
+}
+
+export function isContextOverflow(error: unknown): error is ContextOverflowError {
+  return error instanceof ContextOverflowError
+}

@@ -88,26 +88,33 @@ pub fn is_process_alive(pid: u32) -> bool {
         kill(nix_pid, None).is_ok()
     }
 
+    // Asked of the kernel directly. This used to run `tasklist` and search its
+    // output for the pid's digits: a busy machine where `tasklist` failed or
+    // timed out reported a live process as dead -- and the caller then deleted
+    // that live server's lock -- while pid 12 was "found" in a line for 1234.
     #[cfg(windows)]
     {
-        use std::process::Command;
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
 
-        #[cfg(windows)]
-        use std::os::windows::process::CommandExt;
-
-        let mut cmd = Command::new("tasklist");
-        cmd.args(&["/FI", &format!("PID eq {}", pid), "/NH"]);
-
-        #[cfg(windows)]
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-        let output = cmd.output();
-
-        if let Ok(output) = output {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            output_str.contains(&pid.to_string())
-        } else {
-            false
+        // SAFETY: plain Win32 calls on a handle this function owns and closes.
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                // A process we may not query still exists; anything else
+                // (ERROR_INVALID_PARAMETER) means there is no such pid.
+                return GetLastError() == ERROR_ACCESS_DENIED;
+            }
+            let mut code: u32 = 0;
+            let queried = GetExitCodeProcess(handle, &mut code) != 0;
+            CloseHandle(handle);
+            // An exited process keeps its handle until the last one closes;
+            // only STILL_ACTIVE means it is running.
+            !queried || code == STILL_ACTIVE as u32
         }
     }
 

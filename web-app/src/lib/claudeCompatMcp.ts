@@ -4,6 +4,7 @@ import {
   type McpConfinementRequest,
   type McpProbe,
 } from '@/lib/claudeCompat'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Bringing an imported MCP server up, and taking it down again.
@@ -61,6 +62,13 @@ export type McpRuntimeRecord = {
  * runs makes it a different program, and a consent carried across that change
  * would be permission the user never gave. Environment *names* are part of the
  * fingerprint; values never reach this module at all.
+ *
+ * Scope: this only detects that a repository's `.mcp.json` entry changed under
+ * an import consent, before Jan has built a server config from it. It is not
+ * the identity tool approvals are bound to. Tool trust (the backend gate and
+ * the renderer approval store) uses the backend's `mcp_identity` fingerprint of
+ * the config Jan actually runs, fetched through `serverFingerprints()`, and
+ * nothing that grants a tool call compares this value.
  */
 export function fingerprintMcp(probe: McpProbe): string {
   return JSON.stringify([
@@ -124,7 +132,7 @@ export async function startImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: e instanceof Error ? e.message : String(e),
+      reason: errorText(e),
       tools: [],
       fingerprint,
     }
@@ -158,7 +166,7 @@ export async function startImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: e instanceof Error ? e.message : String(e),
+      reason: errorText(e),
       tools: [],
       fingerprint,
     }
@@ -193,7 +201,7 @@ export async function stopImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: `could not stop: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `could not stop: ${errorText(e)}`,
       tools: [],
       fingerprint,
     }

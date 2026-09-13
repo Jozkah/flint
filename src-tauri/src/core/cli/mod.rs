@@ -6,19 +6,24 @@ pub mod auth;
 pub mod brand;
 pub mod browser;
 pub mod device_auth;
+pub mod doctor;
+pub mod file_log;
+pub mod inflight;
 pub mod journal;
+pub mod json_api;
+pub mod bench;
 pub mod login;
 pub mod mcp;
 mod model_capabilities;
 mod path_refs;
 pub mod providers;
 pub mod run_report;
+pub mod secrets;
 mod secret_input;
-pub mod telemetry;
 pub mod terminal_setup;
 pub mod tokamak;
 mod tui;
-pub mod updater;
+pub mod version;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -467,7 +472,8 @@ fn default_thread_title(history: &[serde_json::Value]) -> String {
 
 use crate::core::agent::events::StreamEvent;
 use crate::core::agent::project::{
-    ensure_project, load_agent_config, permissions_from, set_model_in_agent_toml,
+    ensure_project, load_agent_config, load_agent_config_with_profile, permissions_from,
+    set_model_in_agent_toml,
 };
 use crate::core::agent::r#loop::{
     run_orchestration_streamed, OrchestrationArgs, PermissionRegistry,
@@ -643,6 +649,9 @@ pub async fn cli_plugin_search(
 
 /// Autonomous run: as many turns as the task needs, bounded only by the
 /// session token budget.
+///
+/// The failure is classified (AH-009), so the caller can choose an exit status
+/// and a message from what went wrong rather than from how it was worded.
 #[allow(clippy::too_many_arguments)]
 pub async fn cli_agent_run(
     project: &str,
@@ -652,7 +661,7 @@ pub async fn cli_agent_run(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
     format: OutputFormat,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project, task, model, false, overrides, flags, resume, format,
     )
@@ -667,7 +676,7 @@ pub async fn cli_agent_step(
     model: Option<String>,
     overrides: ProviderOverrides,
     flags: SessionFlags,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project,
         task,
@@ -693,8 +702,18 @@ fn build_cli_orchestration_args(
     plan: bool,
     max_parallel_subagents: u32,
     sandbox: Option<bool>,
+    // `[agent].fallback`: providers to try when the model cannot be reached
+    // (AH-193). Empty unless the project configured a chain.
+    fallback_models: Vec<String>,
+    // The named profile this run was started under (AH-186).
+    profile: Option<String>,
 ) -> OrchestrationArgs {
     OrchestrationArgs {
+        profile,
+        fallback_models,
+        // A CLI run is nobody's child.
+        parent_run: None,
+        dispatch_id: None,
         client: crate::core::agent::upstream::agent_http_client(),
         provider_configs: Arc::new(Mutex::new(provider_configs)),
         mcp_servers,
@@ -721,6 +740,7 @@ fn build_cli_orchestration_args(
         session_id: Some(uuid::Uuid::new_v4().to_string()),
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
+        subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
         sandbox,
     }
 }
@@ -731,6 +751,9 @@ fn build_cli_orchestration_args(
 pub(crate) struct PreparedRun {
     pub args: OrchestrationArgs,
     pub body: serde_json::Value,
+    /// The window this run was resolved to, so the headless printer can say
+    /// how full it is getting (AH-077).
+    pub limits: SessionLimits,
     pub permission_requests: PermissionRegistry,
     /// Background connect of `active` MCP servers, awaited before the first turn.
     pub mcp_task: Option<tokio::task::JoinHandle<mcp::ConnectOutcome>>,
@@ -749,7 +772,7 @@ struct PersistTarget {
 
 /// Per-run limits resolved from agent.toml. Grouped rather than passed as a
 /// run of bare numbers, which would be trivial to transpose at a call site.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct SessionLimits {
     /// Context window limit in tokens for the model. Resolution order is the
     /// configured `[agent].context_window` override, then the built-in model
@@ -761,6 +784,9 @@ pub(crate) struct SessionLimits {
     /// Tokens reserved for the model's response. Defaults to 16K if unset.
     /// Compaction triggers at `context_window - reserve_tokens`.
     pub reserve_tokens: u64,
+    /// The shared compaction policy (AH-076); `reserve_tokens` is its
+    /// `reserve_tokens`.
+    pub compaction: tauri_plugin_agent_tools::compaction_policy::Policy,
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     pub max_tokens: Option<u64>,
@@ -823,7 +849,7 @@ impl AgentSession {
 /// A struct rather than a run of positional `bool`s: `(.., false, false, true)`
 /// at a call site names none of them, and the compiler cannot catch two of them
 /// being swapped.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SessionFlags {
     /// Skip the permission prompt for writes, shell, and MCP calls.
     pub auto_approve: bool,
@@ -836,6 +862,16 @@ pub struct SessionFlags {
     /// to `[tools].sandbox`, then the global `sandbox`, then the CLI default of
     /// off.
     pub sandbox: Option<bool>,
+    /// `--profile`: a named variation on this project's settings (AH-186).
+    /// `None` is the project's own configuration.
+    pub profile: Option<String>,
+    /// `--compact` / `--verbose`: how much a headless run says about itself
+    /// (AH-181). `None` defers to `[output].density`, then normal.
+    pub density: Option<Density>,
+    /// `--interrupted`: what to do with a resumed session whose last run was
+    /// cut off mid-turn (AH-026). `None` refuses such a resume rather than
+    /// choosing for the user.
+    pub interrupted: Option<inflight::InterruptedChoice>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -862,7 +898,10 @@ fn prepare_agent_session(
     if let Err(e) = crate::core::agent::global_config::ensure_global_config() {
         log::warn!("Agent: could not scaffold ~/.jan/config.toml: {e}");
     }
-    let cfg = load_agent_config(&project_root)?;
+    // AH-186: the run's settings are the project's, with the chosen profile
+    // folded in. An unknown profile is refused here -- before a provider, a
+    // tool or a model is resolved from settings nobody asked for.
+    let cfg = load_agent_config_with_profile(&project_root, flags.profile.as_deref())?;
     let permissions = permissions_from(&cfg);
 
     // Resolution order: --model flag, then agent.toml [agent].model, then the
@@ -912,12 +951,42 @@ fn prepare_agent_session(
                 .to_string(),
         );
     }
+    // AH-194: the project's own rules about which model answers what. Read
+    // here, where the model has been resolved and before anything is sent, and
+    // refused at startup when a rule cannot be honoured -- a rule quietly
+    // ignored would send the run to a model nobody chose while looking as
+    // though the rule had been honoured.
+    let routing = crate::core::agent::routing::rules(&cfg.routing)
+        .map_err(|e| format!("{}", e.message()))?;
+    let model = match crate::core::agent::routing::route(
+        &routing,
+        &crate::core::agent::routing::Request {
+            role: "task",
+            agent: None,
+            model: &model,
+        },
+    ) {
+        Some(routed) => {
+            eprintln!("(routing: the run's model is {routed})");
+            routed
+        }
+        None => model,
+    };
     // The `smol` role (used by /goal evaluation): an explicit smol_model in
     // ~/.jan/config.toml, else reuse the main model so evaluation always works.
     let smol_model = crate::core::agent::global_config::smol_model()
         .ok()
         .flatten()
         .unwrap_or_else(|| model.clone());
+    let smol_model = crate::core::agent::routing::route(
+        &routing,
+        &crate::core::agent::routing::Request {
+            role: "smol",
+            agent: None,
+            model: &smol_model,
+        },
+    )
+    .unwrap_or(smol_model);
 
     let provider_configs = load_provider_configs(Some(&project_root), &overrides)?;
 
@@ -974,6 +1043,8 @@ fn prepare_agent_session(
         flags.plan,
         max_parallel_subagents,
         flags.sandbox,
+        cfg.agent.fallback.clone(),
+        flags.profile.clone(),
     );
 
     // Resolution order: configured `[agent].context_window` override, then the
@@ -983,6 +1054,15 @@ fn prepare_agent_session(
         cfg.agent.context_window,
     );
 
+    // AH-076: the same policy the loop reads, with the legacy
+    // `[agent].compaction_reserve_tokens` still honoured as a project value.
+    let compaction = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(&crate::core::app::commands::resolve_jan_data_folder()),
+        Some(&resolve_project_root(project)),
+        cfg.agent.compaction_reserve_tokens,
+    )
+    .map_err(|e| e.message().to_string())?;
+
     Ok(AgentSession {
         args,
         permission_requests,
@@ -991,7 +1071,8 @@ fn prepare_agent_session(
         limits: SessionLimits {
             context_window: resolved_window.tokens,
             context_window_source: resolved_window.source,
-            reserve_tokens: cfg.agent.compaction_reserve_tokens.unwrap_or(16_384),
+            reserve_tokens: compaction.reserve_tokens,
+            compaction: compaction.clone(),
             max_tokens: cfg.agent.max_tokens,
             max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
         },
@@ -1031,6 +1112,61 @@ fn load_resume_history(
     Ok(ResumedSession { thread_id, history })
 }
 
+/// Decide what a resumed session continues from when its last run did not end
+/// (AH-026).
+///
+/// A session another live process is running is refused. A session whose run
+/// was cut off is refused unless the caller chose what to do with the
+/// interrupted turn -- keep the partial reply or discard it -- and then
+/// continues from the checkpoint: every completed tool call and result, which
+/// the saved thread (written only at the end of a run) never had.
+fn recover_interrupted(
+    agent_dir: &std::path::Path,
+    resumed: ResumedSession,
+    choice: Option<inflight::InterruptedChoice>,
+) -> Result<ResumedSession, String> {
+    let thread_dir = get_thread_dir(agent_dir, &resumed.thread_id);
+    match inflight::state(&thread_dir) {
+        inflight::RunState::Settled => Ok(resumed),
+        inflight::RunState::Live { pid } => Err(format!(
+            "[invalid_input] session {} is still being run by process {pid}; wait for it to finish or stop it before resuming",
+            short_id(&resumed.thread_id)
+        )),
+        inflight::RunState::Interrupted(checkpoint) => {
+            let Some(choice) = choice else {
+                return Err(format!(
+                    "[invalid_input] session {} was interrupted mid-turn ({} completed message(s), {} character(s) of an unfinished reply). \
+                     Resume with --interrupted=continue to keep the unfinished reply, or --interrupted=discard-partial to drop it",
+                    short_id(&resumed.thread_id),
+                    checkpoint.conversation.len(),
+                    checkpoint.partial.chars().count()
+                ));
+            };
+            // An unreadable checkpoint recovers nothing more than the saved
+            // thread already holds.
+            let base = if checkpoint.conversation.is_empty() {
+                resumed.history.clone()
+            } else {
+                checkpoint.conversation.clone()
+            };
+            let recovered = inflight::recovered_conversation(
+                &inflight::Checkpoint { conversation: base, ..checkpoint },
+                choice,
+            );
+            eprintln!(
+                "(recovered the interrupted turn of session {}: {})",
+                short_id(&resumed.thread_id),
+                match choice {
+                    inflight::InterruptedChoice::Continue => "kept the unfinished reply",
+                    inflight::InterruptedChoice::DiscardPartial => "discarded the unfinished reply",
+                }
+            );
+            inflight::clear(&thread_dir);
+            Ok(ResumedSession { thread_id: resumed.thread_id, history: recovered })
+        }
+    }
+}
+
 fn prepare_agent_run(
     project: &str,
     task: &str,
@@ -1040,6 +1176,7 @@ fn prepare_agent_run(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
 ) -> Result<PreparedRun, String> {
+    let interrupted_choice = flags.interrupted;
     // Non-interactive runs (`agent run`/`step`) have no plan-review handoff, so
     // plan mode stays a TUI-only startup option, and a run with no model has no
     // terminal to recover in, so it must fail rather than launch empty.
@@ -1062,22 +1199,39 @@ fn prepare_agent_run(
     };
 
     // A failed resume is not fatal: report it and run the prompt in a new session.
-    let resumed = resume.and_then(|target| {
-        match load_resume_history(&agent_dir_for(&project_root), &target) {
-            Ok(r) => {
-                eprintln!(
-                    "(resumed session {} with {} message(s))",
-                    short_id(&r.thread_id),
-                    r.history.len()
-                );
-                Some(r)
-            }
+    let resumed = match resume {
+        None => None,
+        Some(target) => match load_resume_history(&agent_dir_for(&project_root), &target) {
+            Ok(r) => Some(recover_interrupted(&agent_dir_for(&project_root), r, interrupted_choice)?),
             Err(e) => {
                 eprintln!("{e}; starting a new session");
                 None
             }
-        }
-    });
+        },
+    };
+    if let Some(r) = resumed.as_ref() {
+        eprintln!(
+            "(resumed session {} with {} message(s))",
+            short_id(&r.thread_id),
+            r.history.len()
+        );
+    }
+
+    // AH-008: the record's session is the conversation the user sees, not the
+    // process that happened to run this turn. Without this a `--resume` run
+    // minted a fresh session id, so seven turns of one conversation left seven
+    // unrelated event logs, seven prompt histories and seven sets of changes,
+    // and nothing could join them.
+    let mut session = session;
+    if let Some(resumed) = resumed.as_ref() {
+        session.args.session_id = Some(resumed.thread_id.clone());
+    }
+    // A new conversation saves under the id its run already used, so the same
+    // join holds from the first turn rather than only from the second.
+    let thread_id = resumed
+        .as_ref()
+        .map(|r| r.thread_id.clone())
+        .or_else(|| session.args.session_id.clone());
 
     let mut history = resumed
         .as_ref()
@@ -1095,13 +1249,14 @@ fn prepare_agent_run(
     Ok(PreparedRun {
         args: session.args,
         body,
+        limits: session.limits,
         permission_requests: session.permission_requests,
         mcp_task: session.mcp_task,
         // Non-interactive runs persist into the same per-project store the TUI
         // uses, so a run can later be continued with --resume from either side.
         persist: PersistTarget {
             agent_dir: agent_dir_for(&project_root),
-            thread_id: resumed.map(|r| r.thread_id),
+            thread_id,
             model: session.model,
             history,
         },
@@ -1123,8 +1278,11 @@ async fn run_agent_loop(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
     format: OutputFormat,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     let started = std::time::Instant::now();
+    // Read before the flags are handed on: this is the run's own answer about
+    // how much to say, and it is wanted after the run as well as during it.
+    let asked_density = flags.density;
     let prepared = prepare_agent_run(
         project,
         task,
@@ -1139,6 +1297,7 @@ async fn run_agent_loop(
     let PreparedRun {
         args,
         body,
+        limits,
         permission_requests,
         mcp_task,
         persist,
@@ -1153,7 +1312,13 @@ async fn run_agent_loop(
                     None,
                 ));
             }
-            return Err(e);
+            // Setup failed before a provider was ever reached: the run never
+            // started, which is a startup failure and not the model's.
+            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                e,
+            )
+            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
         }
     };
 
@@ -1182,52 +1347,195 @@ async fn run_agent_loop(
         }
     }
 
+    // AH-077: the headless run warns as the window fills, once per approach,
+    // with the same words the TUI uses.
+    let pressure_window = limits.context_window;
+    let pressure_reserve = limits.reserve_tokens;
+    // AH-185/AH-184: who to tell, checked before the run rather than when it
+    // ends and nobody is told. A project that declares nothing costs nothing.
+    let notify = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
+        .ok()
+        .map(|cfg| cfg.notify)
+        .unwrap_or_default();
+    let notify = crate::core::agent::notify::check(&notify)?;
+    let notify_root = std::path::PathBuf::from(project);
+    let notify_session = args.session_id.clone().unwrap_or_default();
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
+    // AH-181: how much this run says about itself. The flag outranks the
+    // project's declaration, and an unreadable declaration refuses the run
+    // rather than quietly printing a different amount than was asked for.
+    let density = match asked_density {
+        Some(density) => density,
+        None => {
+            let declared = crate::core::agent::project::load_agent_config(std::path::Path::new(project))
+                .ok()
+                .and_then(|cfg| cfg.output.density)
+                .unwrap_or_default();
+            Density::parse(&declared).map_err(|e| {
+                tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("[output].density: {e}"),
+                )
+                .at(tauri_plugin_agent_tools::harness_error::Stage::Startup)
+            })?
+        }
+    };
+    let notify_for_prompts = notify.clone();
+    let prompt_root = notify_root.clone();
+    let prompt_session = notify_session.clone();
+    // AH-026: the turn in flight is on disk as it happens, so a run killed
+    // mid-turn can be resumed without losing it.
+    // The thread is written when the run starts, not only when it ends: a run
+    // killed mid-turn otherwise leaves a checkpoint in a thread that no
+    // listing knows, and `--resume` cannot name it.
+    if let Some(thread) = persist.thread_id.as_deref() {
+        if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
+            eprintln!("(could not save session before the run: {e})");
+        }
+    }
+    let checkpoint = std::sync::Arc::new(std::sync::Mutex::new(match persist.thread_id.as_deref() {
+        Some(thread) => Some(inflight::Writer::begin(
+            &get_thread_dir(&persist.agent_dir, thread),
+            &persist.model,
+            persist.history.clone(),
+        )?),
+        None => None,
+    }));
+    let checkpoint_for_printer = checkpoint.clone();
     let printer = tokio::spawn(async move {
+        // The last conversation the loop published, kept for the save below.
+        let mut conversation: Option<Vec<serde_json::Value>> = None;
         let mut report = RunReport::default();
+        let mut warned_about_context = false;
         while let Some(ev) = rx.recv().await {
             report.observe(&ev);
+            // Said before the reply that would overflow, not after: the point
+            // of the warning is that there is still a choice to make.
+            if let StreamEvent::TurnUsage { usage } = &ev {
+                let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
+                match crate::core::agent::context_pressure::pressure(
+                    used,
+                    pressure_window,
+                    pressure_reserve,
+                    // The headless path reports the provider's own numbers.
+                    true,
+                ) {
+                    Some(found) if !warned_about_context => {
+                        warned_about_context = true;
+                        eprintln!(
+                            "\n\x1b[33m[context] {}\x1b[0m",
+                            crate::core::agent::context_pressure::line(&found)
+                        );
+                    }
+                    Some(_) => {}
+                    None => warned_about_context = false,
+                }
+            }
+            // The run's own conversation, as the loop last published it. A
+            // headless run used to save only the prompt and the final answer,
+            // so a `--resume` turn handed the model a transcript in which it
+            // had *described* work and never called a tool -- which is an
+            // example of exactly the wrong behaviour, and the model imitates
+            // it. Keeping the calls and their results is what makes a resumed
+            // turn continue the same run rather than re-enact a summary of it.
+            if let StreamEvent::MessagesUpdated { messages } = &ev {
+                conversation = Some(messages.clone());
+            }
+            if let Ok(mut guard) = checkpoint_for_printer.lock() {
+                if let Some(writer) = guard.as_mut() {
+                    match &ev {
+                        StreamEvent::MessagesUpdated { messages } => writer.conversation(messages),
+                        StreamEvent::Token { text } => writer.text(text),
+                        _ => {}
+                    }
+                }
+            }
+            // A run that has stopped to wait for a person is the moment
+            // worth interrupting somebody for: nothing else happens until
+            // they answer.
+            if let (Some(notify), StreamEvent::PermissionRequest { tool_name, .. }) =
+                (notify_for_prompts.as_ref(), &ev)
+            {
+                let note = crate::core::agent::notify::Notification::new(
+                    crate::core::agent::notify::Moment::NeedsAttention,
+                    &prompt_session,
+                    None,
+                    format!("waiting for approval of a {tool_name} call"),
+                );
+                for outcome in crate::core::agent::notify::deliver(
+                    notify,
+                    &note,
+                    &prompt_root,
+                    crate::core::agent::notify::Moment::NeedsAttention,
+                )
+                .await
+                {
+                    if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
+                        log::warn!("notify: {why}");
+                    }
+                }
+            }
             if format.is_json() {
                 resolve_permission_silently(ev, &permission_requests).await;
             } else {
-                print_event(ev, &permission_requests).await;
+                print_event(ev, &permission_requests, density).await;
             }
         }
-        report
+        (report, conversation)
     });
 
     let result = run_orchestration_streamed(&tx, &body, &args).await;
     drop(tx);
-    let report = printer.await.unwrap_or_default();
+    let (report, conversation) = printer.await.unwrap_or_default();
+
+    // AH-185/AH-184: the run is over, whoever started it has moved on, and
+    // this says so. How it ended, and nothing of what it did.
+    if let Some(notify) = notify.as_ref() {
+        let summary = match result.as_ref() {
+            Ok(_) => "the run ended: completed".to_string(),
+            Err(e) => format!("the run ended: {} ({})", e.kind().tag(), e.stage().tag()),
+        };
+        let note = crate::core::agent::notify::Notification::new(
+            crate::core::agent::notify::Moment::RunEnded,
+            &notify_session,
+            None,
+            summary,
+        );
+        for outcome in crate::core::agent::notify::deliver(
+            notify,
+            &note,
+            &notify_root,
+            crate::core::agent::notify::Moment::RunEnded,
+        )
+        .await
+        {
+            if let crate::core::agent::notify::Delivered::Failed(why) = outcome {
+                log::warn!("notify: {why}");
+            }
+        }
+    }
 
     // Write the turn back so the session stays continuable with --resume.
-    let PersistTarget {
-        agent_dir,
-        thread_id,
-        model,
-        mut history,
-    } = persist;
-    let mut session_id = thread_id.clone();
-    let mut final_text = None;
-    if let Ok(completion) = result.as_ref() {
-        final_text = completion_text(completion);
-        if let Some(text) = final_text.as_ref() {
-            history.push(serde_json::json!({ "role": "assistant", "content": text.clone() }));
+    let model = persist.model.clone();
+    let persisted = persist_headless_run(persist, &result, conversation);
+    let (session_id, final_text) = (persisted.session_id, persisted.final_text);
+    // Saved, so nothing is in flight any more. A run that failed before its
+    // thread could be written keeps its checkpoint: its completed steps are
+    // still the only copy.
+    if persisted.saved || result.is_ok() {
+        if let Some(writer) = checkpoint.lock().ok().and_then(|mut g| g.take()) {
+            writer.finish();
         }
-        match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
-            Ok(id) => {
-                if !format.is_json() {
-                    eprintln!(
-                        "\x1b[2m[session {} - resume with `jan --resume={}`]\x1b[0m",
-                        short_id(&id),
-                        short_id(&id)
-                    );
-                }
-                session_id = Some(id);
-            }
-            Err(e) => eprintln!("(could not save session: {e})"),
+    }
+    if persisted.saved && !format.is_json() {
+        if let Some(id) = session_id.as_deref() {
+            eprintln!(
+                "\x1b[2m[session {} - resume with `jan --resume={}`]\x1b[0m",
+                short_id(id),
+                short_id(id)
+            );
         }
     }
     if format.is_json() {
@@ -1238,12 +1546,186 @@ async fn run_agent_loop(
             final_text.as_deref(),
         ));
     }
+    // The stream belongs to this run (AH-183); a later command in the same
+    // process is not it.
+    tauri_plugin_agent_tools::event_log::unwatch();
     // The one-shot CLI runs exactly one turn, so its session ends here: wipe
     // the persistent bash `/tmp` scratch this run used.
     if let Some(session) = args.session_id.as_deref() {
         let _ = workspace::remove_scratch_dir(session).await;
     }
     result.map(|_| ())
+}
+
+/// What writing a finished headless run back produced.
+pub(crate) struct PersistedRun {
+    /// The thread the run lives in: the one it resumed, or the one just saved.
+    pub session_id: Option<String>,
+    pub final_text: Option<String>,
+    /// Whether this call wrote the thread.
+    pub saved: bool,
+}
+
+/// Write a finished headless run to the project's thread store so `--resume`
+/// can continue it. Shared by `jan cli agent run` and the JSON API (AH-182), so
+/// the two cannot save a run differently.
+fn persist_headless_run(
+    persist: PersistTarget,
+    result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    conversation: Option<Vec<serde_json::Value>>,
+) -> PersistedRun {
+    let PersistTarget {
+        agent_dir,
+        thread_id,
+        model,
+        mut history,
+    } = persist;
+    let mut session_id = thread_id.clone();
+    let mut final_text = None;
+    let mut saved = false;
+    if let Ok(completion) = result.as_ref() {
+        final_text = completion_text(completion);
+        // What the run actually did, when the loop published it: the user's
+        // prompt, every tool call the model made, every result it got back,
+        // and the answer. Falling back to prompt-and-answer only when no
+        // conversation was published (a run that never reached a turn).
+        match conversation {
+            Some(messages) if !messages.is_empty() => {
+                history = messages;
+                if let Some(text) = final_text.as_ref() {
+                    let already = history
+                        .last()
+                        .and_then(|m| m.get("content"))
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|last| last == text);
+                    if !already {
+                        history.push(
+                            serde_json::json!({ "role": "assistant", "content": text.clone() }),
+                        );
+                    }
+                }
+            }
+            _ => {
+                if let Some(text) = final_text.as_ref() {
+                    history
+                        .push(serde_json::json!({ "role": "assistant", "content": text.clone() }));
+                }
+            }
+        }
+        match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
+            Ok(id) => {
+                session_id = Some(id);
+                saved = true;
+            }
+            Err(e) => eprintln!("(could not save session: {e})"),
+        }
+    }
+    PersistedRun { session_id, final_text, saved }
+}
+
+/// This project's permission policy, as a document somebody can review
+/// (AH-052).
+pub fn cli_policy_export(
+    project: &str,
+) -> Result<
+    tauri_plugin_agent_tools::policy_transfer::PolicyDocument,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+    let root = resolve_project_root(project);
+    let config = crate::core::agent::project::load_agent_config(&root).map_err(|e| {
+        HarnessError::new(ErrorKind::MalformedState, format!("this project's configuration cannot be read: {e}"))
+            .at(Stage::Startup)
+    })?;
+    Ok(tauri_plugin_agent_tools::policy_transfer::export(
+        config.tools.default.as_deref().unwrap_or("read-only"),
+        &config.tools.allow,
+        &config.tools.deny,
+        &config.tools.allow_write,
+    ))
+}
+
+/// Replace this project's permission policy with a reviewed document
+/// (AH-052).
+///
+/// Refuses anything that would let the agent do more than it can now, unless
+/// `accept_widening` says the caller has seen exactly what it opens.
+pub fn cli_policy_import(
+    project: &str,
+    text: &str,
+    accept_widening: bool,
+) -> Result<
+    tauri_plugin_agent_tools::policy_transfer::PolicyChange,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+    use tauri_plugin_agent_tools::policy_transfer::{plan_import, to_toml, Widening};
+    let current = cli_policy_export(project)?;
+    let (document, change) = plan_import(
+        &current,
+        text,
+        if accept_widening { Widening::Accept } else { Widening::Refuse },
+    )?;
+    if change.is_empty() {
+        return Ok(change);
+    }
+    let root = resolve_project_root(project);
+    let path = agent_dir_for(&root).join("agent.toml");
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let rewritten = crate::core::agent::project::replace_tools_section(&existing, &to_toml(&document));
+    std::fs::create_dir_all(agent_dir_for(&root)).map_err(|e| {
+        HarnessError::new(ErrorKind::Io, format!("the project's config directory is not writable: {e}"))
+            .at(Stage::Persistence)
+    })?;
+    std::fs::write(&path, rewritten).map_err(|e| {
+        HarnessError::new(ErrorKind::Io, format!("the policy could not be written: {e}"))
+            .at(Stage::Persistence)
+    })?;
+    Ok(change)
+}
+
+/// Put `section` where the file's `[tools]` block was, keeping everything
+/// else exactly as it is: a policy import must not rewrite a project's model,
+/// budget or skills.
+/// Send this run's canonical events somewhere as they happen (AH-183).
+///
+/// `-` is stdout, anything else a file that is created or truncated. The
+/// events are the same envelopes the session's log holds, one JSON line each,
+/// written as they are recorded rather than read back afterwards -- so a
+/// caller watching a headless run sees it happen.
+///
+/// Fails before the run starts when the destination cannot be written: a run
+/// whose output nobody can see is not what was asked for.
+pub fn stream_events_to(
+    destination: &str,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use std::io::Write;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+    let sink: std::sync::Arc<std::sync::Mutex<Box<dyn Write + Send>>> = if destination == "-" {
+        std::sync::Arc::new(std::sync::Mutex::new(Box::new(std::io::stdout())))
+    } else {
+        let file = std::fs::File::create(destination).map_err(|e| {
+            HarnessError::new(
+                ErrorKind::Io,
+                format!("the event stream could not be opened: {e}"),
+            )
+            .at(Stage::Startup)
+        })?;
+        std::sync::Arc::new(std::sync::Mutex::new(Box::new(file)))
+    };
+    tauri_plugin_agent_tools::event_log::watch(move |envelope| {
+        let Ok(line) = serde_json::to_string(envelope) else {
+            return;
+        };
+        if let Ok(mut out) = sink.lock() {
+            // A stream nobody is reading any more must not fail the run: the
+            // record is on disk either way.
+            let _ = writeln!(out, "{line}");
+            let _ = out.flush();
+        }
+    });
+    Ok(())
 }
 
 /// Write the result envelope to stdout, the only thing `--output-format json`
@@ -1254,6 +1736,105 @@ fn print_report(report: run_report::RunResult) {
         "{}",
         serde_json::to_string_pretty(&report).unwrap_or_default()
     );
+}
+
+/// Run one durable subagent from its spec (AH-101). Started by a job
+/// supervisor as `jan cli agent run-subagent --spec <file>`; its answer is what
+/// it prints, which the supervisor keeps as the job's output.
+///
+/// Configured exactly as an in-process child is (`configure_child_args`,
+/// `child_body`). Nobody is attached to answer a permission prompt, so every
+/// prompt is denied and said so on stderr: a durable child does only what its
+/// project's rules already allow.
+pub async fn run_durable_subagent(
+    spec_file: &std::path::Path,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use crate::core::agent::subagent::{self as sub, SubagentRegistry, SubagentRequest};
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+    let spec = crate::core::agent::durable_subagent::read_spec(spec_file)?;
+    // The data folder the parent uses: its providers, and where the record of
+    // this run belongs. Set before anything reads it.
+    if !spec.data_folder.is_empty() {
+        std::env::set_var("JAN_DATA_FOLDER", &spec.data_folder);
+    }
+    let session = prepare_agent_session(
+        &spec.project,
+        Some(spec.model.clone()),
+        ProviderOverrides::default(),
+        SessionFlags {
+            require_model: true,
+            ..Default::default()
+        },
+    )
+    .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e).at(Stage::Startup))?;
+    let AgentSession {
+        mut args,
+        permission_requests,
+        mcp_task,
+        ..
+    } = session;
+    args.session_id = Some(spec.session.clone());
+    args.parent_run = (!spec.parent_run.is_empty()).then(|| spec.parent_run.clone());
+    let project_root = args
+        .project_root
+        .clone()
+        .ok_or_else(|| HarnessError::new(ErrorKind::InvalidInput, "no project").at(Stage::Startup))?;
+    let registry = SubagentRegistry::load(&project_root);
+    let request = SubagentRequest {
+        subagent_name: spec.subagent_name.clone(),
+        description: spec.description.clone(),
+        allowed_tools: spec.allowed_tools.clone(),
+        system_prompt: spec.system_prompt.clone(),
+        isolate: Some(false),
+        fork_context: false,
+        durable: true,
+    };
+    let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
+        .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
+    let child_args = sub::configure_child_args(args, &resolved, &spec.dispatch_id);
+    let parent = sub::ParentRun {
+        routing: Vec::new(),
+        conversation: None,
+        model: spec.model.clone(),
+        budget_remaining: spec.max_session_tokens,
+        send_reasoning: spec.send_reasoning,
+    };
+    let mut body = sub::child_body(&resolved, &spec.description, &parent, None);
+    // Routed when it was dispatched; the child runs what its parent chose.
+    body["model"] = serde_json::json!(spec.model);
+
+    if let Some(task) = mcp_task {
+        let _ = task.await;
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
+    let registry = permission_requests.clone();
+    let drain = tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            if let StreamEvent::PermissionRequest {
+                request_id,
+                tool_name,
+                ..
+            } = ev
+            {
+                eprintln!("(durable subagent: {tool_name} needs approval and nobody is attached to give it; denied)");
+                if let Some(sender) = registry.lock().await.remove(&request_id) {
+                    let _ = sender.send(PermissionDecision::Deny);
+                }
+            }
+        }
+    });
+    let result =
+        crate::core::agent::r#loop::run_orchestration_streamed(&tx, &body, &child_args).await;
+    drop(tx);
+    let _ = drain.await;
+    match result {
+        Ok(completion) => {
+            println!("{}", sub::final_assistant_text(&completion));
+            Ok(())
+        }
+        Err(e) => Err(HarnessError::new(ErrorKind::ChildFailed, e.message().to_string()).at(Stage::Child)),
+    }
 }
 
 /// Answer a permission request without printing progress, for the JSON format.
@@ -1337,7 +1918,42 @@ pub fn agent_dir_for(project_root: &std::path::Path) -> PathBuf {
 /// Render one `StreamEvent` for the terminal. Content tokens go to stdout so a
 /// run can be piped; progress/diagnostics go to stderr. `PermissionRequest` is
 /// resolved via the terminal (deny when non-interactive).
-async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
+/// How much a headless run says about itself (AH-181).
+///
+/// The answer on stdout never changes: a piped run yields exactly the model's
+/// completion at every density. What changes is the progress on stderr, which
+/// is what a person reads while waiting and what a log keeps afterwards -- and
+/// those two want different amounts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Density {
+    /// One line per tool call, errors, and the answer. No reasoning, no live
+    /// command output, no turn markers, no tool results.
+    Compact,
+    /// What a run has always printed.
+    #[default]
+    Normal,
+    /// Everything Normal prints, plus each turn's token usage as the provider
+    /// reported it.
+    Verbose,
+}
+
+impl Density {
+    /// Read a declared density. Anything else is refused rather than quietly
+    /// treated as the default, which would be a run that says less than
+    /// somebody asked it to.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "compact" | "quiet" => Ok(Density::Compact),
+            "normal" | "" => Ok(Density::Normal),
+            "verbose" => Ok(Density::Verbose),
+            other => Err(format!(
+                "{other:?} is not an output density; use compact, normal or verbose"
+            )),
+        }
+    }
+}
+
+async fn print_event(ev: StreamEvent, registry: &PermissionRegistry, density: Density) {
     if crate::core::cli::auth::account::take_claude_alias_engaged() {
         eprintln!(
             "\x1b[33m[warning] {}\x1b[0m",
@@ -1345,6 +1961,13 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
         );
     }
     match ev {
+        // AH-078. The snapshot is already written to the data folder by the
+        // dispatcher; this event only says one exists. Headless stdout is the
+        // model's completion and nothing else, and the payload is never printed
+        // anywhere -- reading a snapshot back is `jan snapshots`, which serves
+        // the redacted record. Matched explicitly rather than through a
+        // wildcard so a new event still fails this build instead of vanishing.
+        StreamEvent::PromptSnapshot { .. } => {}
         StreamEvent::Token { text } => {
             print!("{text}");
             let _ = std::io::stdout().flush();
@@ -1354,26 +1977,49 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
         // arrives again with the tool result, which is what the model sees; this
         // is purely so a long command is not silent in a headless run.
         StreamEvent::ToolOutputDelta { delta, .. } => {
-            eprint!("\x1b[2m{delta}\x1b[0m");
-            let _ = std::io::stderr().flush();
+            // Live command output is the noisiest thing a run produces, and
+            // the whole of it arrives again with the tool result.
+            if density != Density::Compact {
+                eprint!("\x1b[2m{delta}\x1b[0m");
+                let _ = std::io::stderr().flush();
+            }
         }
         // Reasoning is progress, not answer: dimmed on stderr so piping stdout
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
-            eprint!("\x1b[2m{text}\x1b[0m");
-            let _ = std::io::stderr().flush();
+            if density != Density::Compact {
+                eprint!("\x1b[2m{text}\x1b[0m");
+                let _ = std::io::stderr().flush();
+            }
         }
-        StreamEvent::Step { index, max } => match max {
-            0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
-            m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
-        },
+        StreamEvent::Step { index, max } => {
+            if density != Density::Compact {
+                match max {
+                    0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
+                    m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
+                }
+            }
+        }
         // In-progress signal is for the live TUI; the piped log stays quiet
         // until the full call (with args) arrives just below.
         // Headless prints one line per completed call; the in-progress signal
         // and its argument deltas have nothing to render into.
         StreamEvent::ToolCallStarted { .. } | StreamEvent::ToolCallArgsDelta { .. } => {}
-        // Headless reports totals once, from the terminal `Done`.
-        StreamEvent::TurnUsage { .. } => {}
+        // Headless reports totals once, from the terminal `Done` -- unless the
+        // run was asked to say more, in which case each turn's own numbers are
+        // worth having, because a total hides which turn was expensive.
+        StreamEvent::TurnUsage { usage } => {
+            if density == Density::Verbose {
+                let (input, output, total) = (
+                    usage.prompt_tokens.unwrap_or(0),
+                    usage.completion_tokens.unwrap_or(0),
+                    usage.total_tokens.unwrap_or(0),
+                );
+                eprintln!(
+                    "\x1b[2m[turn-usage] in={input} out={output} total={total}\x1b[0m"
+                );
+            }
+        }
         StreamEvent::ToolCall { name, args, .. } => eprintln!(
             "\x1b[2m[tool] {}\x1b[0m",
             crate::core::agent::events::describe_tool_call(&name, &args)
@@ -1386,7 +2032,11 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
             } else {
                 "tool-result"
             };
-            eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+            // A failure is never quiet: a compact run drops results, not the
+            // news that something did not work.
+            if density != Density::Compact || is_error {
+                eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+            }
         }
         StreamEvent::SubagentStart { name, .. } => {
             eprintln!("\x1b[2m[subagent:{name}] started (background)\x1b[0m")
@@ -1408,12 +2058,41 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
                 );
             }
         }
+        // AH-174: progress, not answer -- stderr, and only when something ran.
+        StreamEvent::RunResources { resources } => {
+            if density != Density::Compact {
+                let figures = if resources.measured_commands > 0 {
+                    format!(
+                        "CPU {} ms, peak memory {} bytes, {} processes",
+                        resources.cpu_ms, resources.peak_memory_bytes, resources.processes
+                    )
+                } else {
+                    format!(
+                        "not measured: {}",
+                        resources.unmeasured_reason.as_deref().unwrap_or("unknown")
+                    )
+                };
+                eprintln!(
+                    "[2m[resources] {figures} ({} of {} commands measured)[0m",
+                    resources.measured_commands, resources.commands
+                );
+            }
+        }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
             eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
         }
         StreamEvent::Error { code, message } => {
-            eprintln!("\n\x1b[31m[error] {code}: {message}\x1b[0m")
+            // AH-009: the event already carries the classification, so the
+            // line says what kind of failure it was once, and a cancellation
+            // does not read as a crash.
+            if code == "cancelled" {
+                eprintln!("
+[2m[stopped] {message}[0m");
+            } else {
+                eprintln!("
+[31m[error:{code}] {message}[0m");
+            }
         }
         StreamEvent::AskRequest { .. } => {
             eprintln!("\n\x1b[31m[error] interactive ask requires `jan agent ui`\x1b[0m")
@@ -1481,6 +2160,89 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// AH-181: a declared density is read, and anything that is not one is
+    /// refused rather than quietly treated as the default -- a run that says
+    /// less than somebody asked it to is a run whose log is missing what they
+    /// wanted to read.
+    #[test]
+    fn an_output_density_is_read_or_refused_by_name() {
+        use super::Density;
+        assert_eq!(Density::parse("compact"), Ok(Density::Compact));
+        assert_eq!(Density::parse(" QUIET "), Ok(Density::Compact));
+        assert_eq!(Density::parse("normal"), Ok(Density::Normal));
+        // Unset in a config file reads as the default rather than as an error.
+        assert_eq!(Density::parse(""), Ok(Density::Normal));
+        assert_eq!(Density::parse("verbose"), Ok(Density::Verbose));
+        assert_eq!(Density::default(), Density::Normal);
+
+        let err = Density::parse("loud").unwrap_err();
+        assert!(err.contains("not an output density"), "{err}");
+        assert!(err.contains("compact, normal or verbose"), "{err}");
+    }
+
+    /// A headless run's conversation survives being saved and resumed, tool
+    /// calls and all.
+    ///
+    /// This is what stops a resumed turn showing the model a transcript in
+    /// which it described work and never called a tool -- an example of the
+    /// wrong behaviour, which a model will imitate. Observed against a real
+    /// provider before the run's conversation was persisted: the model
+    /// narrated tool calls it had not made and reported their results.
+    #[test]
+    fn a_resumed_turn_still_shows_the_model_the_tools_it_ran() {
+        let base = std::env::temp_dir().join(format!(
+            "jan-cli-resume-tools-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        // What the loop publishes: the prompt, the call, its result, the answer.
+        let conversation = vec![
+            serde_json::json!({ "role": "user", "content": "how many files?" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": { "name": "ls", "arguments": "{\"path\":\".\"}" }
+                }]
+            }),
+            serde_json::json!({ "role": "tool", "tool_call_id": "call_1", "content": "a.py b.py" }),
+            serde_json::json!({ "role": "assistant", "content": "Two." }),
+        ];
+        let id = cli_save_thread(&base, None, "m", &conversation, None).expect("saved");
+
+        let resumed = load_resume_history(&base, &ResumeTarget::Id(id.clone()))
+            .expect("the thread resumes");
+        let roles: Vec<&str> = resumed
+            .history
+            .iter()
+            .filter_map(|m| m.get("role").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(
+            roles,
+            ["user", "assistant", "tool", "assistant"],
+            "the resumed history is not the conversation: {roles:?}"
+        );
+        let call = resumed
+            .history
+            .iter()
+            .find(|m| m.get("tool_calls").is_some())
+            .expect("the assistant's tool call survived");
+        assert_eq!(call["tool_calls"][0]["function"]["name"], "ls");
+        let result = resumed
+            .history
+            .iter()
+            .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
+            .expect("the tool's result survived");
+        assert_eq!(result["tool_call_id"], "call_1");
+        assert_eq!(result["content"], "a.py b.py");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     use super::*;
 
     /// Signing in to Tokamak is what unlocks the desktop inherit. Without it the
@@ -1612,8 +2374,25 @@ mod tests {
         let (messages, skipped) = cli_read_messages_lenient(base, "aaaa1111").unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(skipped, 1);
-        // The strict reader used elsewhere still rejects the same file.
-        assert!(cli_list_messages_in(base, "aaaa1111").is_err());
+        // The shared reader accepts this shape too now: an unterminated final
+        // line is what an interrupted append leaves, and refusing the whole
+        // thread over it made a conversation unreadable (janhq/jan#8019).
+        assert_eq!(cli_list_messages_in(base, "aaaa1111").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_shared_reader_still_rejects_corruption_before_the_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        seed_thread(base, "bbbb2222", 100.0);
+        let raw = std::fs::read_to_string(get_messages_path(base, "bbbb2222")).unwrap();
+        std::fs::write(
+            get_messages_path(base, "bbbb2222"),
+            format!("not json\n{raw}"),
+        )
+        .unwrap();
+
+        assert!(cli_list_messages_in(base, "bbbb2222").is_err());
     }
 
     #[test]

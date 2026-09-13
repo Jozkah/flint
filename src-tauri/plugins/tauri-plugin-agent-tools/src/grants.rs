@@ -43,6 +43,23 @@ pub fn capability() -> bool {
     jail::supports_write_roots(jail::backend())
 }
 
+/// Can this platform confine a run to a worktree Jan owns?
+///
+/// True wherever [`capability`] is, and also on Windows, where AppContainer
+/// can grant a Jan-owned directory the same way it grants the thread
+/// workspace. This is what Managed worktree mode asks.
+pub fn worktree_capability() -> bool {
+    jail::supports_owned_write_roots(jail::backend())
+}
+
+/// Whether `root` is a managed worktree: strictly inside Jan's worktree folder.
+fn is_owned_worktree(root: &Path, data_folder: &Path) -> bool {
+    let Ok(owned) = crate::workspace::worktrees_dir(data_folder).canonicalize() else {
+        return false;
+    };
+    root.starts_with(&owned) && root != owned
+}
+
 /// A new opaque id.
 ///
 /// Process-local and never shown to a model, so this needs to be unique rather
@@ -77,7 +94,7 @@ pub fn authorize(
     workspace: &Path,
     data_folder: &Path,
 ) -> Result<String, String> {
-    if !capability() {
+    if !capability() && !worktree_capability() {
         return Err(format!(
             "this platform cannot confine a shell to a project folder ({}), \
              so editing a folder directly is not available",
@@ -89,6 +106,17 @@ pub fn authorize(
     }
     let root =
         crate::workspace::validate_read_root(Path::new(folder), workspace, Some(data_folder))?;
+    // Where only Jan's own worktrees can be confined, the user's folder cannot
+    // be authorized at all: decided on the canonical path, after validation,
+    // so no spelling of a user folder passes for a worktree.
+    if !capability() && !is_owned_worktree(&root, data_folder) {
+        return Err(format!(
+            "this platform can only confine a run to a Jan-managed worktree ({}), \
+             so editing {} directly is not available; choose Managed worktree instead",
+            jail::backend().as_str(),
+            root.display()
+        ));
+    }
 
     let id = new_id();
     let mut grants = registry().lock().map_err(|_| "grant registry poisoned")?;
@@ -322,6 +350,40 @@ mod tests {
         // Whatever a task calls itself, the id stays a legal workspace name.
         let odd = child_session_id("session-1", "../../etc/passwd");
         assert!(crate::workspace::thread_segment(&odd).is_ok(), "{odd}");
+    }
+
+    /// Windows: the sandbox can hold a run to a Jan-owned worktree, so one is
+    /// authorized, but it will not write an ACE onto the user's own folder, so
+    /// that is refused -- whatever the path looks like.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_only_a_jan_owned_worktree_can_be_authorized() {
+        if jail::backend() != jail::Backend::AppContainer {
+            eprintln!("skipping: AppContainer is not available here");
+            return;
+        }
+        let (ws, data, repo, session) = fixture();
+        let owned = crate::workspace::worktrees_dir(&data).join("key").join("session-1");
+        std::fs::create_dir_all(&owned).unwrap();
+
+        assert!(!capability(), "direct editing stays unavailable on Windows");
+        assert!(worktree_capability());
+        let id = authorize(&session, &owned.to_string_lossy(), &ws, &data)
+            .expect("a Jan-owned worktree is authorized");
+        assert_eq!(resolve(&id, &session), Some(owned.canonicalize().unwrap()));
+
+        let err = authorize(&session, &repo.to_string_lossy(), &ws, &data)
+            .expect_err("the user's own folder is refused");
+        assert!(err.contains("Managed worktree"), "{err}");
+        // The worktree folder itself, and a spelling that climbs out of it,
+        // are not a worktree.
+        let root = crate::workspace::worktrees_dir(&data);
+        assert!(authorize(&session, &root.to_string_lossy(), &ws, &data).is_err());
+        let climb = owned.join("..").join("..").join("..");
+        assert!(authorize(&session, &climb.to_string_lossy(), &ws, &data).is_err());
+
+        revoke_session(&session);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 
     #[test]

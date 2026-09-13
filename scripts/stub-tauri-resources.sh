@@ -9,8 +9,14 @@ mkdir -p src-tauri/resources/bin src-tauri/resources/pre-install src-tauri/icons
 [ -f src-tauri/resources/LICENSE ] || touch src-tauri/resources/LICENSE
 [ -f web-app/dist/index.html ] || touch web-app/dist/index.html
 [ "$(ls -A src-tauri/resources/pre-install 2>/dev/null)" ] || touch src-tauri/resources/pre-install/.gitkeep
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) SIDECAR_EXE=".exe" ;;
+  *) SIDECAR_EXE="" ;;
+esac
 for bin in uv bun; do
-  stub="src-tauri/resources/bin/${bin}-${TRIPLE}"
+  # The preflight checks externalBin with the platform suffix, so a Windows
+  # stub without `.exe` still fails it.
+  stub="src-tauri/resources/bin/${bin}-${TRIPLE}${SIDECAR_EXE}"
   [ -f "$stub" ] || touch "$stub"
 done
 # The engine worker and the ggml runtime beside it. `libggml*` is a glob in the

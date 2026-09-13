@@ -48,18 +48,36 @@ pub(crate) fn shared_http_client() -> reqwest13::Client {
     // clone is cheap and every caller shares the same connections -- building one
     // per turn (or per API-server request) would discard the pool each time,
     // which is the opposite of what the idle-timeout tuning above is for.
-    static SHARED: std::sync::LazyLock<reqwest13::Client> =
-        std::sync::LazyLock::new(build_http_client);
-    SHARED.clone()
+    //
+    // Keyed on the CA bundle in force (AH-190): a bundle set or changed while
+    // the app runs replaces the pool instead of being ignored until a restart.
+    static SHARED: std::sync::Mutex<Option<(u64, reqwest13::Client)>> = std::sync::Mutex::new(None);
+    let key = crate::core::net::tls::fingerprint();
+    let mut shared = SHARED.lock().unwrap_or_else(|p| p.into_inner());
+    match shared.as_ref() {
+        Some((built_for, client)) if *built_for == key => client.clone(),
+        _ => {
+            let client = build_http_client();
+            *shared = Some((key, client.clone()));
+            client
+        }
+    }
 }
 
 fn build_http_client() -> reqwest13::Client {
-    reqwest13::Client::builder()
-        .pool_idle_timeout(POOL_IDLE_TIMEOUT)
-        .tcp_keepalive(TCP_KEEPALIVE)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .build()
-        .unwrap_or_default()
+    crate::core::net::tls::apply13(
+        reqwest13::Client::builder()
+            .pool_idle_timeout(POOL_IDLE_TIMEOUT)
+            .tcp_keepalive(TCP_KEEPALIVE)
+            .connect_timeout(CONNECT_TIMEOUT),
+    )
+    .build()
+    // A client that cannot be built with the bundle's roots must not quietly
+    // become one without them: the fallback trusts nothing.
+    .unwrap_or_else(|e| {
+        log::error!("the outbound HTTP client could not be built ({e}); HTTPS trusts nothing until this is fixed");
+        reqwest13::Client::builder().tls_certs_only(Vec::new()).build().unwrap_or_default()
+    })
 }
 
 /// Turn the full chat-completions URL the resolver produces into the endpoint
@@ -384,6 +402,30 @@ const MAX_RETRY_DELAY: Duration = Duration::from_secs(8);
 /// Total time that may be spent *waiting* between attempts. Bounds the worst
 /// case regardless of attempt count or a hostile `Retry-After`.
 const RETRY_BUDGET: Duration = Duration::from_secs(45);
+/// Fraction of a backoff that jitter may remove.
+///
+/// Jitter only ever *shortens*. Lengthening would let a delay quietly exceed
+/// the [`MAX_RETRY_DELAY`] and [`RETRY_BUDGET`] that the rest of this module --
+/// and anyone reasoning about how long a run can stall -- takes as the ceiling.
+const RETRY_JITTER: f64 = 0.2;
+
+/// Only a TLS endpoint can fail on its certificate. A plain-HTTP endpoint is
+/// never probed: the probe is a real request, and against a plain server it
+/// would only spend one -- in a test, the very response meant for the retry
+/// (R14).
+fn could_be_a_certificate_failure(url: &str) -> bool {
+    url.get(..8).is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+}
+
+/// Whether the endpoint's certificate is why a request failed (R13): one
+/// request through the same client, bounded, whose error -- unlike the one
+/// `genai` hands back -- still carries its cause.
+async fn diagnose_certificate(http: &reqwest13::Client, url: &str) -> Option<String> {
+    match http.get(url).timeout(Duration::from_secs(5)).send().await {
+        Err(e) => crate::core::net::tls::certificate_failure(&e),
+        Ok(_) => None,
+    }
+}
 
 /// What to do about a failed attempt.
 enum Disposition {
@@ -551,6 +593,20 @@ fn completion_json(
         if let Some(v) = u.total_tokens {
             usage_obj.insert("total_tokens".into(), serde_json::json!(v));
         }
+        // genai's normalized cache counts, in the chat/completions shape the
+        // agent loop reads. genai folds a reported zero into `None`, so an
+        // absent count here is "not reported", never a fabricated zero.
+        if let Some(details) = u.prompt_tokens_details.as_ref() {
+            if let Some(v) = details.cached_tokens {
+                usage_obj.insert(
+                    "prompt_tokens_details".into(),
+                    serde_json::json!({ "cached_tokens": v }),
+                );
+            }
+            if let Some(v) = details.cache_creation_tokens {
+                usage_obj.insert("cache_creation_input_tokens".into(), serde_json::json!(v));
+            }
+        }
         if !usage_obj.is_empty() {
             completion.insert("usage".into(), serde_json::Value::Object(usage_obj));
         }
@@ -609,6 +665,8 @@ pub(crate) async fn stream_chat_completions(
 
     let mut spent = Duration::ZERO;
     let mut last_err = String::from("Upstream request failed");
+    // R13: diagnosed once per call, the first time a failure has no response.
+    let mut diagnosed = false;
 
     for (key_index, key) in keys.iter().enumerate() {
         let client = client_for(http, &endpoint_base, upstream_url, *key, adapter);
@@ -653,8 +711,22 @@ pub(crate) async fn stream_chat_completions(
                         Some(s) => disposition_for_status(s),
                         // No HTTP response at all: connect failure, timeout, or a
                         // stream that died before its first event. Nothing was
-                        // received, so another attempt is safe.
-                        None => Disposition::Retry,
+                        // received, so another attempt is safe -- unless the
+                        // reason is the server's certificate, which no attempt
+                        // changes (R13). genai keeps only the text of the
+                        // transport error, so the cause is asked of the endpoint
+                        // itself, once, through the same client.
+                        None => {
+                            if !diagnosed && could_be_a_certificate_failure(upstream_url) {
+                                diagnosed = true;
+                                if let Some(reason) = diagnose_certificate(http, upstream_url).await {
+                                    return Err(format!(
+                                        "{last_err} -- {reason}; not retried, because a certificate failure does not change on another attempt"
+                                    ));
+                                }
+                            }
+                            Disposition::Retry
+                        }
                     };
 
                     match disposition {
@@ -677,7 +749,14 @@ pub(crate) async fn stream_chat_completions(
                             if status == Some(429) && key_index + 1 < keys.len() {
                                 break;
                             }
-                            let delay = next_delay(attempt, headers.and_then(provider_retry_after));
+                            // Independent clients failing against the same
+                            // provider at the same moment would otherwise
+                            // wake together and retry in lockstep.
+                            let delay = next_delay(
+                                attempt,
+                                headers.and_then(provider_retry_after),
+                                rand::random::<f64>(),
+                            );
                             let Some(delay) = budgeted(delay, spent) else {
                                 return Err(format!("{last_err} (retry budget exhausted)"));
                             };
@@ -687,7 +766,17 @@ pub(crate) async fn stream_chat_completions(
                                 delay.as_millis(),
                                 attempt + 2
                             );
-                            tokio::time::sleep(delay).await;
+                            // AH-023. A run cancelled during a two-minute
+                            // backoff should stop then, not two minutes later.
+                            if let Some(reason) =
+                                tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay)
+                                    .await
+                            {
+                                return Err(format!(
+                                    "{last_err} (retry {} while waiting to retry)",
+                                    reason.as_str()
+                                ));
+                            }
                         }
                     }
                 }
@@ -700,10 +789,17 @@ pub(crate) async fn stream_chat_completions(
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
 /// delay taking precedence when it is longer than what we'd have waited anyway.
-fn next_delay(attempt: u32, provider: Option<Duration>) -> Duration {
+///
+/// `jitter` is `0.0` (wait the full backoff) to `1.0` (shave the whole
+/// [`RETRY_JITTER`] band off it), and is applied to *our* backoff only. A
+/// provider's `Retry-After` is never shortened: a server that asked for a
+/// specific wait is not something to second-guess by hammering it early. So the
+/// jitter is taken first and the provider's value still wins if it is longer.
+fn next_delay(attempt: u32, provider: Option<Duration>, jitter: f64) -> Duration {
     let backoff = BASE_RETRY_DELAY
         .saturating_mul(1u32 << attempt.min(15))
         .min(MAX_RETRY_DELAY);
+    let backoff = backoff.mul_f64(1.0 - RETRY_JITTER * jitter.clamp(0.0, 1.0));
     match provider {
         Some(p) if p > backoff => p,
         _ => backoff,
@@ -1323,6 +1419,41 @@ mod tests {
 
     /// A 4xx that is not an auth or rate-limit problem is the same on every
     /// attempt, so it must fail immediately rather than spending the budget.
+    /// R14: the R13 probe is for TLS endpoints only.
+    #[test]
+    fn only_a_tls_endpoint_is_diagnosed_for_its_certificate() {
+        assert!(could_be_a_certificate_failure("https://api.example.com/v1/chat/completions"));
+        assert!(could_be_a_certificate_failure("HTTPS://api.example.com/v1"));
+        assert!(!could_be_a_certificate_failure("http://127.0.0.1:1337/v1/chat/completions"));
+        assert!(!could_be_a_certificate_failure("httpx"));
+        assert!(!could_be_a_certificate_failure(""));
+    }
+
+    /// R13: a server whose certificate is not trusted fails at once, with the
+    /// reason, instead of ten silent attempts over most of a minute.
+    #[tokio::test]
+    async fn a_certificate_failure_is_not_retried_and_names_the_reason() {
+        let ca = crate::core::net::tls::tests::make_ca();
+        let server = crate::core::net::tls::tests::Server::start(ca.path(), "valid");
+        let url = format!("https://127.0.0.1:{}/v1/chat/completions", server.port);
+        let (tx, _rx) = sink();
+        let client = reqwest13::Client::builder().build().unwrap();
+        // The probe on its own first: if it cannot tell, nothing downstream can.
+        let probe = client.get(&url).timeout(Duration::from_secs(5)).send().await.unwrap_err();
+        assert!(
+            crate::core::net::tls::certificate_failure(&probe).is_some(),
+            "the probe's error was not read as a certificate failure: {probe:?}"
+        );
+        assert!(diagnose_certificate(&client, &url).await.is_some(), "diagnose_certificate found nothing for {url}");
+        let started = std::time::Instant::now();
+        let err = stream_chat_completions(&client, &url, &[], None, &body(), &tx).await.unwrap_err();
+        assert!(err.contains("not trusted"), "{err}");
+        assert!(err.contains("not retried"), "{err}");
+        assert!(!err.contains("attempts"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+        assert_eq!(server.requests(), 0, "a request reached a server whose certificate is not trusted");
+    }
+
     #[tokio::test]
     async fn a_bad_request_is_not_retried() {
         let (url, server) = serve(vec![Some(status_response(
@@ -1340,10 +1471,10 @@ mod tests {
 
     #[test]
     fn backoff_grows_then_holds_at_the_ceiling() {
-        assert_eq!(next_delay(0, None), BASE_RETRY_DELAY);
-        assert_eq!(next_delay(1, None), BASE_RETRY_DELAY * 2);
+        assert_eq!(next_delay(0, None, 0.0), BASE_RETRY_DELAY);
+        assert_eq!(next_delay(1, None, 0.0), BASE_RETRY_DELAY * 2);
         assert_eq!(
-            next_delay(20, None),
+            next_delay(20, None, 0.0),
             MAX_RETRY_DELAY,
             "capped, not overflowing"
         );
@@ -1352,13 +1483,45 @@ mod tests {
     #[test]
     fn a_provider_retry_after_wins_only_when_it_is_longer() {
         let long = Duration::from_secs(30);
-        assert_eq!(next_delay(0, Some(long)), long);
+        assert_eq!(next_delay(0, Some(long), 0.0), long);
         // A provider asking for less than our backoff does not get to make us
         // hammer it faster than we would have.
         assert_eq!(
-            next_delay(5, Some(Duration::from_millis(1))),
+            next_delay(5, Some(Duration::from_millis(1)), 0.0),
             MAX_RETRY_DELAY
         );
+    }
+
+    #[test]
+    fn jitter_only_ever_shortens_and_stays_inside_the_band() {
+        // Full jitter removes exactly the band, and nothing beyond it.
+        assert_eq!(
+            next_delay(1, None, 1.0),
+            (BASE_RETRY_DELAY * 2).mul_f64(1.0 - RETRY_JITTER)
+        );
+        // Every factor lands between the shortened floor and the full delay, so
+        // a jittered wait can never exceed the ceiling callers reason about.
+        let full = next_delay(3, None, 0.0);
+        let floor = full.mul_f64(1.0 - RETRY_JITTER);
+        for step in 0..=10 {
+            let delay = next_delay(3, None, f64::from(step) / 10.0);
+            assert!(
+                delay <= full && delay >= floor,
+                "jittered {delay:?} outside [{floor:?}, {full:?}]"
+            );
+        }
+        // Out-of-range factors are clamped rather than extrapolated.
+        assert_eq!(next_delay(3, None, 5.0), floor);
+        assert_eq!(next_delay(3, None, -5.0), full);
+    }
+
+    #[test]
+    fn jitter_never_shortens_a_provider_retry_after() {
+        // The server asked for 30s. Jittering our own backoff must not turn
+        // that into an early retry against a provider that said to wait.
+        let asked = Duration::from_secs(30);
+        assert_eq!(next_delay(0, Some(asked), 1.0), asked);
+        assert_eq!(next_delay(9, Some(asked), 1.0), asked);
     }
 
     #[test]

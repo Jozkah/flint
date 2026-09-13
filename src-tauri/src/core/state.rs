@@ -51,12 +51,34 @@ impl ProviderConfig {
         }
         self.api_key.clone().into_iter().collect()
     }
+
+    /// The config as it may leave the backend: no keys, and no value of a
+    /// header marked secret. janhq/jan#8208.
+    pub fn without_secrets(&self) -> Self {
+        Self {
+            api_key: None,
+            api_keys: Vec::new(),
+            custom_headers: self
+                .custom_headers
+                .iter()
+                .map(|h| ProviderCustomHeader {
+                    value: if h.secret { String::new() } else { h.value.clone() },
+                    ..h.clone()
+                })
+                .collect(),
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ProviderCustomHeader {
     pub header: String,
     pub value: String,
+    /// The value is a credential: kept out of anything the backend returns or
+    /// logs. janhq/jan#8208.
+    #[serde(default)]
+    pub secret: bool,
 }
 
 /// Every connection uses the same handler, so that progress notifications are
@@ -79,6 +101,26 @@ pub type SharedMcpServers = Arc<Mutex<HashMap<String, RunningServiceEnum>>>;
 
 #[cfg(feature = "cli")]
 impl RunningServiceEnum {
+    /// The prompts this server offers (AH-138). Paginated listings are
+    /// followed to the end, the same way tools are.
+    pub async fn list_all_prompts(&self) -> Result<Vec<rmcp::model::Prompt>, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.list_all_prompts().await,
+            Self::WithInit(s) => s.list_all_prompts().await,
+        }
+    }
+
+    /// One prompt, filled in with the server's own arguments (AH-138).
+    pub async fn get_prompt(
+        &self,
+        param: rmcp::model::GetPromptRequestParam,
+    ) -> Result<rmcp::model::GetPromptResult, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.get_prompt(param).await,
+            Self::WithInit(s) => s.get_prompt(param).await,
+        }
+    }
+
     pub async fn list_all_tools(&self) -> Result<Vec<Tool>, ServiceError> {
         match self {
             Self::NoInit(s) => s.list_all_tools().await,
@@ -92,6 +134,30 @@ impl RunningServiceEnum {
         match self {
             Self::NoInit(s) => s.call_tool(params).await,
             Self::WithInit(s) => s.call_tool(params).await,
+        }
+    }
+
+    /// What this server offers to read (AH-137).
+    ///
+    /// A resource is a document rather than a tool: listing or reading one
+    /// runs nothing on the server.
+    pub async fn list_all_resources(
+        &self,
+    ) -> Result<Vec<rmcp::model::Resource>, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.list_all_resources().await,
+            Self::WithInit(s) => s.list_all_resources().await,
+        }
+    }
+
+    /// Read one resource by uri (AH-137).
+    pub async fn read_resource(
+        &self,
+        params: rmcp::model::ReadResourceRequestParam,
+    ) -> Result<rmcp::model::ReadResourceResult, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.read_resource(params).await,
+            Self::WithInit(s) => s.read_resource(params).await,
         }
     }
 
@@ -138,6 +204,15 @@ pub struct AppState {
     /// Cleared only on explicit user deactivation, never on a transient
     /// list-tools failure.
     pub mcp_last_known_tools: Arc<Mutex<HashMap<String, Vec<ToolWithServer>>>>,
+    /// Which instance of a named server is the current one.
+    ///
+    /// A name can be started, stopped and started again with a different
+    /// definition while an earlier start is still in flight. Without this the
+    /// earlier attempt's completion would install a health monitor for a name
+    /// that now means a different program — and that monitor would keep
+    /// reconnecting it. Every start takes a number; a completion only counts
+    /// while its number is still the current one.
+    pub mcp_generation: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 #[cfg(not(feature = "cli"))]
@@ -160,6 +235,7 @@ impl Default for AppState {
             model_param_defaults: Default::default(),
             mcp_reconnect_notify: Arc::new(Notify::new()),
             mcp_last_known_tools: Default::default(),
+            mcp_generation: Default::default(),
         }
     }
 }

@@ -1,13 +1,12 @@
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use tauri::Runtime;
 use uuid::Uuid;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use super::db;
 use super::helpers::{
-    get_lock_for_thread, read_messages_from_file, should_use_sqlite, update_thread_metadata,
-    write_messages_to_file,
+    append_message_line, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
+    update_thread_metadata, write_file_atomically, write_messages_to_file,
 };
 use super::{
     constants::THREADS_FILE,
@@ -84,7 +83,7 @@ pub async fn create_thread<R: Runtime>(
     }
     let path = get_thread_metadata_path(&data_folder, &uuid);
     let data = serde_json::to_string_pretty(&thread).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    write_file_atomically(&path, data.as_bytes())?;
     Ok(thread)
 }
 
@@ -112,7 +111,7 @@ pub async fn modify_thread<R: Runtime>(
     }
     let path = get_thread_metadata_path(&data_folder, thread_id);
     let data = serde_json::to_string_pretty(&thread).map_err(|e| e.to_string())?;
-    fs::write(path, data).map_err(|e| e.to_string())?;
+    write_file_atomically(&path, data.as_bytes())?;
     Ok(())
 }
 
@@ -132,6 +131,15 @@ pub async fn delete_thread<R: Runtime>(
     let thread_dir = get_thread_dir(&data_folder, &thread_id);
     if thread_dir.exists() {
         let _ = fs::remove_dir_all(thread_dir);
+    }
+    // The sanitized copies of what this conversation sent, and the provider's
+    // counts for them, go with it. Best effort, like the directory removal
+    // above: a log that cannot be rewritten right now must not stop the thread
+    // being deleted, and startup compaction still bounds what is left.
+    if let Err(e) =
+        tauri_plugin_agent_tools::retention::delete_session(&data_folder, &thread_id)
+    {
+        log::warn!("could not remove request records for a deleted thread: {e}");
     }
     Ok(())
 }
@@ -204,17 +212,9 @@ pub async fn create_message<R: Runtime>(
             }
         }
 
-        let mut file: File = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .map_err(|e| e.to_string())?;
-
-        let data = serde_json::to_string(&message).map_err(|e| e.to_string())?;
-        writeln!(file, "{data}").map_err(|e| e.to_string())?;
-
-        // Explicitly flush to ensure data is written before returning
-        file.flush().map_err(|e| e.to_string())?;
+        // Settles a torn tail an earlier interrupted write left, so this
+        // message is not glued onto it (janhq/jan#8019).
+        append_message_line(&path, &message)?;
     }
 
     Ok(message)

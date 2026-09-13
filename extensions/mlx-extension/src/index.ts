@@ -22,7 +22,6 @@ import {
   chatCompletionRequest,
   events,
   AppEvent,
-  DownloadEvent,
   logger,
 } from '@janhq/core'
 
@@ -590,176 +589,66 @@ export default class mlx_extension extends AIEngine {
 
     const sourcePath = opts.modelPath
 
-    if (sourcePath.startsWith('https://')) {
-      // Download from URL to mlx models folder
-      const janDataFolderPath = await getJanDataFolderPath()
-      const modelDir = await joinPath([
-        janDataFolderPath,
-        'mlx',
-        'models',
-        modelId,
-      ])
-      const localPath = await joinPath([modelDir, 'model.safetensors'])
-
-      const downloadManager = window.core.extensionManager.getByName(
-        '@janhq/download-extension'
+    if (/^https?:\/\//i.test(sourcePath)) {
+      throw new Error(
+        `Refusing to fetch ${sourcePath}: this build does not download ` +
+          'models. Point the import at a folder already on this machine.'
       )
-
-      // Build download items list
-      const downloadItems: any[] = [
-        {
-          url: sourcePath,
-          save_path: localPath,
-          model_id: modelId,
-        },
-      ]
-
-      // Add additional files if provided (for MLX models - config.json, tokenizer, etc.)
-      if (opts.files && opts.files.length > 0) {
-        for (const file of opts.files) {
-          downloadItems.push({
-            url: file.url,
-            save_path: await joinPath([modelDir, file.filename]),
-            model_id: modelId,
-          })
-        }
-      }
-
-      try {
-        await downloadManager.downloadFiles(
-          downloadItems,
-          this.createDownloadTaskId(modelId),
-          (transferred: number, total: number) => {
-            events.emit(DownloadEvent.onFileDownloadUpdate, {
-              modelId,
-              percent: transferred / total,
-              size: { transferred, total },
-              downloadType: 'Model',
-            })
-          }
-        )
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error)
-        // Pause and cancel both surface here as a cancellation; treat as a
-        // stop (emit stopped, return) so it never becomes an error toast.
-        if (
-          errorMessage.includes('cancelled') ||
-          errorMessage.includes('aborted')
-        ) {
-          logger.info('Download stopped for model:', modelId)
-          events.emit(DownloadEvent.onFileDownloadStopped, {
-            modelId,
-            downloadType: 'Model',
-          })
-          return
-        }
-        logger.error('Error downloading model:', modelId, error)
-        events.emit(DownloadEvent.onFileDownloadError, {
-          modelId,
-          downloadType: 'Model',
-          error: errorMessage,
-        })
-        throw error
-      }
-
-      // Detect capabilities after download
-      const isVision = await this.isVisionSupported(localPath)
-
-      // Build capabilities array
-      const capabilities: string[] = []
-      if (isVision) capabilities.push('vision')
-
-      // Create model.yml with relative path
-      const modelConfig: any = {
-        model_path: `mlx/models/${modelId}/model.safetensors`,
-        name: modelId,
-        size_bytes: opts.modelSize ?? 0,
-      }
-
-      // For vision models, add mmproj_path
-      if (isVision) {
-        modelConfig.mmproj_path = `mlx/models/${modelId}/model.safetensors`
-        logger.info(`Vision model detected: ${modelId}`)
-      }
-
-      // Add capabilities array
-      if (capabilities.length > 0) {
-        modelConfig.capabilities = capabilities
-      }
-
-      await fs.mkdir(modelDir)
-      await invoke<void>('write_yaml', {
-        data: modelConfig,
-        savePath: configPath,
-      })
-
-      events.emit(AppEvent.onModelImported, {
-        modelId,
-        modelPath: modelConfig.model_path,
-        size_bytes: modelConfig.size_bytes,
-        capabilities: capabilities,
-      })
-
-      events.emit(DownloadEvent.onFileDownloadAndVerificationSuccess, {
-        modelId,
-        downloadType: 'Model',
-      })
-    } else {
-      // Local folder - use absolute folder path directly
-      if (!(await fs.existsSync(sourcePath))) {
-        throw new Error(`Folder not found: ${sourcePath}`)
-      }
-
-      // Get folder size
-      const stat = await fs.fileStat(sourcePath)
-      const size_bytes = stat.size
-
-      // Detect capabilities by checking model folder
-      const isVision = await this.isVisionSupported(sourcePath)
-
-      // Build capabilities array
-      const capabilities: string[] = []
-      if (isVision) capabilities.push('vision')
-
-      // Create model.yml with absolute folder path
-      const modelConfig: any = {
-        model_path: sourcePath,
-        name: modelId,
-        size_bytes,
-      }
-
-      // For vision models, add mmproj_path
-      if (isVision) {
-        modelConfig.mmproj_path = sourcePath
-        logger.info(`Vision model detected: ${modelId}`)
-      }
-
-      // Add capabilities array
-      if (capabilities.length > 0) {
-        modelConfig.capabilities = capabilities
-      }
-
-      // Create model folder for model.yml only (no copying of safetensors)
-      const modelDir = await joinPath([
-        await this.getProviderPath(),
-        'models',
-        modelId,
-      ])
-      await fs.mkdir(modelDir)
-
-      await invoke<void>('write_yaml', {
-        data: modelConfig,
-        savePath: configPath,
-      })
-
-      events.emit(AppEvent.onModelImported, {
-        modelId,
-        modelPath: sourcePath,
-        size_bytes,
-        capabilities: capabilities,
-      })
     }
+
+    // Local folder - use absolute folder path directly
+    if (!(await fs.existsSync(sourcePath))) {
+      throw new Error(`Folder not found: ${sourcePath}`)
+    }
+
+    // Get folder size
+    const stat = await fs.fileStat(sourcePath)
+    const size_bytes = stat.size
+
+    // Detect capabilities by checking model folder
+    const isVision = await this.isVisionSupported(sourcePath)
+
+    // Build capabilities array
+    const capabilities: string[] = []
+    if (isVision) capabilities.push('vision')
+
+    // Create model.yml with absolute folder path
+    const modelConfig: any = {
+      model_path: sourcePath,
+      name: modelId,
+      size_bytes,
+    }
+
+    // For vision models, add mmproj_path
+    if (isVision) {
+      modelConfig.mmproj_path = sourcePath
+      logger.info(`Vision model detected: ${modelId}`)
+    }
+
+    // Add capabilities array
+    if (capabilities.length > 0) {
+      modelConfig.capabilities = capabilities
+    }
+
+    // Create model folder for model.yml only (no copying of safetensors)
+    const modelDir = await joinPath([
+      await this.getProviderPath(),
+      'models',
+      modelId,
+    ])
+    await fs.mkdir(modelDir)
+
+    await invoke<void>('write_yaml', {
+      data: modelConfig,
+      savePath: configPath,
+    })
+
+    events.emit(AppEvent.onModelImported, {
+      modelId,
+      modelPath: sourcePath,
+      size_bytes,
+      capabilities: capabilities,
+    })
   }
 
   private createDownloadTaskId(modelId: string) {
@@ -771,30 +660,12 @@ export default class mlx_extension extends AIEngine {
   }
 
   override async abortImport(modelId: string): Promise<void> {
-    // Cancel any active download task
-    // prepend provider name to avoid name collision
-    const taskId = this.createDownloadTaskId(modelId)
-    const downloadManager = window.core.extensionManager.getByName(
-      '@janhq/download-extension'
-    )
-
-    try {
-      await downloadManager.cancelDownload(taskId)
-    } catch (cancelError) {
-      logger.warn('Failed to cancel download task:', cancelError)
-    }
-
-    // Delete the entire model folder if it exists (for validation failures)
+    // No download to cancel; a failed import leaves only its folder behind.
     await this.deleteModelFolder(modelId)
   }
 
-  override async pauseImport(modelId: string): Promise<void> {
-    const taskId = this.createDownloadTaskId(modelId)
-    const downloadManager = window.core.extensionManager.getByName(
-      '@janhq/download-extension'
-    )
-    // Pause keeps the partial .tmp for resume; the model folder is preserved.
-    await downloadManager.pauseDownload(taskId)
+  override async pauseImport(_modelId: string): Promise<void> {
+    // Nothing is ever in flight: models are read from disk, not fetched.
   }
 
   /**

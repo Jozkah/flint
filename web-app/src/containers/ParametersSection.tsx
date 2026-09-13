@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { IconTrash, IconPlus, IconAlertTriangle } from '@tabler/icons-react'
+import { Trash2, Plus, TriangleAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -199,14 +199,14 @@ function StandaloneRow({
         <div className="flex items-center gap-1 min-w-0 flex-1 text-sm">
           <span className="truncate">{def.title}</span>
           {unsupported && (
-            <IconAlertTriangle
+            <TriangleAlert
               size={12}
               className="text-destructive shrink-0"
               aria-label="Not supported — will be stripped on send"
             />
           )}
           {!unsupported && maybeOnly && (
-            <IconAlertTriangle
+            <TriangleAlert
               size={12}
               className="text-amber-500 shrink-0"
               aria-label="May be ignored by this provider"
@@ -220,7 +220,7 @@ function StandaloneRow({
           className="shrink-0 h-7 w-7"
           aria-label={`Remove ${def.title}`}
         >
-          <IconTrash size={14} className="text-destructive" />
+          <Trash2 size={14} className="text-destructive" />
         </Button>
       </div>
       <DynamicControllerSetting
@@ -273,7 +273,7 @@ function GroupBlock({
           onClick={onRemoveGroup}
           aria-label={`Remove ${group.title}`}
         >
-          <IconTrash size={16} className="text-destructive" />
+          <Trash2 size={16} className="text-destructive" />
         </Button>
       </div>
       <div className="space-y-2 pl-2 border-l border-border/40">
@@ -360,7 +360,7 @@ function AddParameterMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full justify-start">
-          <IconPlus size={14} className="mr-1" />
+          <Plus size={14} className="mr-1" />
           Add parameter
         </Button>
       </DropdownMenuTrigger>
@@ -383,7 +383,7 @@ function AddParameterMenu({
                     <span className="text-sm">{entry.def.title}</span>
                     {entry.support.supportedBy.length === 0 &&
                       entry.support.maybeBy.length > 0 && (
-                        <IconAlertTriangle
+                        <TriangleAlert
                           size={11}
                           className="text-amber-500 ml-auto"
                         />

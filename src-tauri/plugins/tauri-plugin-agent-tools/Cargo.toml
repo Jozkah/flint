@@ -26,8 +26,14 @@ similar = "2.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9.34"
+# Content addressing for proposed changes: blob ids, patch and base-state
+# hashes. A proposal is approved by hash, so the hash has to be a real one.
+sha2 = "0.10"
+# The project policy in `.jan/agent/agent.toml` is read here so the backend
+# enforces it; the app crate reading it for the CLI is a different consumer.
+toml = "0.8"
 thiserror = "2.0.12"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 tauri = { version = "2.8.5", default-features = false, optional = true }
 # `provider` only; `default-features = false` keeps `tauri` out of the graph so
 # the headless CLI can use the web tools.
@@ -49,7 +55,13 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_Security_Isolation",
   "Win32_Storage_FileSystem",
   "Win32_System_Console",
+  "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_JobObjects",
   "Win32_System_Memory",
   "Win32_System_Threading",
+  # AH-187: the machine's ProgramData folder, asked of Windows rather than of
+  # the environment, which the process being constrained can set.
+  "Win32_System_Com",
+  "Win32_UI_Shell",
 ] }
+

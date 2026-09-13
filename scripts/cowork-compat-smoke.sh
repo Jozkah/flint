@@ -48,19 +48,23 @@ skip() {
 }
 
 # Prepare before checking, because the first failure on a fresh checkout is not
-# a failing test — it is the Tauri build script refusing to compile at all:
+# a failing test -- it is the Tauri build script refusing to compile at all:
 #
 #   resource path `resources/bin/jan` doesn't exist
 #
 # Every bundle resource, icon and `frontendDist` it validates is a gitignored
-# build output, so a clone has none of them and both `cargo test` checks below
-# die before running a single test. Whoever hit that had to go and find
+# build output, so a clone has none of them and every `cargo test` below dies
+# before running a single test. Whoever hit that had to go and find
 # `scripts/stub-tauri-resources.sh` in the Makefile to get past it, which is a
 # discovery step this script has no business imposing.
 #
-# So it is done here. The stub script is idempotent and guarded — it never
-# clobbers a real local build — and it is the same one the coverage and
+# So it is done here. The stub script is idempotent and guarded -- it never
+# clobbers a real local build -- and it is the same one the coverage and
 # rust-check workflows use, so this cannot drift from CI.
+#
+# These stubs are for compiling only. `scripts/check-sidecars.mjs` is what
+# stands between them and an installer, and it runs in the packaging path, not
+# here.
 step "Preparing the build inputs a fresh checkout does not have"
 if ./scripts/stub-tauri-resources.sh >/dev/null 2>&1; then
   printf '  \033[32mpass\033[0m  %s\n' "bundle resources, icons and frontendDist in place"

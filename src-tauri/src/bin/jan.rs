@@ -138,6 +138,11 @@ struct ResumeRunArgs {
     /// Resume the most recent session (alias for a bare --resume)
     #[arg(long = "continue", short = 'c', conflicts_with = "resume")]
     continue_session: bool,
+    /// When the resumed session's last run was cut off mid-turn: keep its
+    /// unfinished reply (continue) or drop it (discard-partial). Required for
+    /// such a session; completed tool calls are kept either way (AH-026)
+    #[arg(long, value_enum, value_name = "CHOICE")]
+    interrupted: Option<app_lib::core::cli::inflight::InterruptedChoice>,
 }
 
 impl ResumeRunArgs {
@@ -181,15 +186,22 @@ enum Commands {
         #[command(subcommand)]
         cmd: PluginCommands,
     },
-    /// Update this binary to the latest build of the channel it was built for
+    /// Preview, then save, a redacted local diagnostic bundle (never uploaded)
     #[command(display_order = 6)]
-    Update {
-        /// Report whether an update exists without installing it
+    BugReport {
+        /// Bundle this thread id (default: the most recently updated thread)
         #[arg(long)]
-        check: bool,
-        /// Reinstall even when already on the latest version
-        #[arg(long, conflicts_with = "check")]
-        force: bool,
+        thread: Option<String>,
+        /// Print one member's redacted content (e.g. `logs/jan.log`) and exit
+        /// without writing anything
+        #[arg(long, value_name = "MEMBER")]
+        show: Option<String>,
+        /// Save without asking (required when stdin is not a terminal)
+        #[arg(long)]
+        yes: bool,
+        /// Directory for the archive (default: <data folder>/diagnostics)
+        #[arg(long, value_name = "DIR")]
+        out: Option<std::path::PathBuf>,
     },
 }
 
@@ -236,6 +248,12 @@ enum PluginCommands {
 /// The non-interactive command surface, reached via `jan cli <command>`.
 #[derive(Subcommand)]
 enum CliCommands {
+    /// Background work that outlives this process (AH-101/AH-102)
+    #[command(display_order = 9)]
+    Job {
+        #[command(subcommand)]
+        cmd: JobCommands,
+    },
     /// List and inspect conversation threads saved by the Jan app
     #[command(display_order = 10)]
     Threads {
@@ -260,6 +278,69 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: McpCommands,
     },
+    /// Outbound network settings: extra certificate authorities (AH-190)
+    #[command(display_order = 14)]
+    Net {
+        #[command(subcommand)]
+        cmd: NetCommands,
+    },
+    /// Measure the agent harness against a fixed task set (AH-196)
+    #[command(display_order = 15)]
+    Bench {
+        #[command(subcommand)]
+        cmd: BenchCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchCommands {
+    /// Run every task in a task set through the real headless agent and write
+    /// a report
+    Run {
+        /// The task set (TOML)
+        #[arg(long)]
+        tasks: String,
+        /// Model ID to run the tasks with
+        #[arg(long)]
+        model: String,
+        /// Where to write the JSON report
+        #[arg(long)]
+        out: String,
+        /// What is being measured: a commit, a branch, a setting
+        #[arg(long, default_value = "")]
+        label: String,
+    },
+    /// Compare two reports of the same task set; exits non-zero when a task that
+    /// passed before fails now
+    Compare {
+        /// The earlier report
+        before: String,
+        /// The later report
+        after: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum NetCommands {
+    /// Extra certificate authorities trusted for outbound HTTPS
+    Ca {
+        #[command(subcommand)]
+        cmd: CaCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum CaCommands {
+    /// Show which CA bundle is in force, where it was named, and what it holds
+    Status,
+    /// Trust the certificates in a PEM bundle, in addition to the platform's.
+    /// The bundle is checked first; one that cannot be used is refused
+    Set {
+        /// Path to a PEM file of CA certificates
+        path: String,
+    },
+    /// Stop trusting the configured bundle (JAN_CA_BUNDLE, if set, still applies)
+    Clear,
 }
 
 // ── Agent subcommands ──────────────────────────────────────────────────────
@@ -316,7 +397,28 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+        /// Stream this run's canonical events as JSON lines, as they happen:
+        /// a path, or `-` for stdout (AH-183)
+        #[arg(long, value_name = "PATH")]
+        events: Option<String>,
+        /// A named profile from agent.toml's [profiles.<name>] (AH-186)
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
+        /// How much this run says about itself: compact, normal or verbose
+        /// (AH-181). Overrides [output].density.
+        #[arg(long, value_name = "DENSITY")]
+        output_density: Option<String>,
     },
+    /// Run one durable subagent from its spec, as a job's supervisor starts it
+    /// (AH-101). Not meant to be run by hand.
+    #[command(hide = true)]
+    RunSubagent {
+        #[arg(long)]
+        spec: String,
+    },
+    /// Serve a JSON-lines API on stdin/stdout: start runs, stream their events,
+    /// answer their approvals, report status and cancel them (AH-182)
+    Serve,
     /// Run a single turn (debugging)
     Step {
         /// Project root containing .jan/agent/agent.toml
@@ -334,6 +436,9 @@ enum AgentCommands {
         providers: ProviderArgs,
         #[command(flatten)]
         sandbox: SandboxArgs,
+        /// A named profile from agent.toml's [profiles.<name>] (AH-186)
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
     },
     /// Print resolved project config and available providers as JSON
     Status {
@@ -342,6 +447,277 @@ enum AgentCommands {
         project: String,
         #[command(flatten)]
         providers: ProviderArgs,
+    },
+    /// List the exact requests a session sent to the model, or print one as
+    /// text (what the model saw: every message, tool call and tool offered)
+    /// What a session's runs started, as a tree (AH-173)
+    Tree {
+        /// The session to read.
+        #[arg(long)]
+        session: String,
+        /// Print the tree as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run the tests, group the failures by what they said, and re-run each to
+    /// see which happen twice (AH-152, AH-153)
+    TestTriage {
+        /// Project root to run in.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The test command, program first. Defaults to `cargo test`.
+        #[arg(long, value_name = "ARG", num_args = 1..)]
+        command: Vec<String>,
+        /// Do not re-run the failures; then nothing is called flaky.
+        #[arg(long)]
+        no_retry: bool,
+        /// Print the triage as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run the project's own build, test and lint checks once and report (AH-072)
+    Health {
+        /// Project root to scan.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Only these checks: build, test, lint, dependencies.
+        #[arg(long, value_name = "CHECK", num_args = 1..)]
+        only: Vec<String>,
+        /// List what would run, and run nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print the scan as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check dependencies against the licences the project allows (AH-158)
+    Licenses {
+        /// Project root to scan.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Licences to allow, overriding [licenses].allow.
+        #[arg(long, value_name = "SPDX", num_args = 1..)]
+        allow: Vec<String>,
+        /// Write down what is here now, so a later scan can say what is new.
+        #[arg(long)]
+        record: bool,
+        /// Print the scan as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Search past runs' transcripts by content (AH-178)
+    Search {
+        /// What to look for.
+        query: String,
+        /// Project root whose transcripts are searched alongside the data
+        /// folder's.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Treat the query as a regular expression.
+        #[arg(long)]
+        regex: bool,
+        /// Only this session.
+        #[arg(long)]
+        session: Option<String>,
+        /// Only this role: user, assistant or tool.
+        #[arg(long)]
+        role: Option<String>,
+        /// Stop after this many matches (0: every match).
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Print the matches as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Write one session's transcript out (AH-178)
+    Transcript {
+        /// The session to export.
+        session: String,
+        /// Project root to look in, alongside the data folder.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// text, markdown or json (the stored lines themselves).
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Write to this file instead of stdout.
+        #[arg(long, value_name = "PATH")]
+        out: Option<String>,
+    },
+    /// Where use stands against the ceilings in quotas.toml (AH-191, AH-192)
+    Quota {
+        /// Print the standings as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the effective compaction policy and where each value came from (AH-076)
+    Compaction {
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Write this project's agents, skills, commands and policy as one bundle (AH-145)
+    BundleExport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Where to write the bundle (JSON).
+        out: String,
+    },
+    /// Bring a bundle's agents, skills, commands and policy into this project (AH-145)
+    BundleImport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The bundle file.
+        file: String,
+        /// Replace components that exist with different content.
+        #[arg(long)]
+        overwrite: bool,
+        /// Apply a policy that allows more than the project does now.
+        #[arg(long)]
+        accept_widening: bool,
+        /// Check and report, writing nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Import agent definitions written for OpenCode or Qwen Code into Jan's
+    /// own subagent format (AH-118, AH-119)
+    ImportAgents {
+        /// A definition file, a directory of them (`.opencode/agent`,
+        /// `.qwen/agents`), or an `opencode.json`.
+        path: String,
+        /// Where the imported subagents are written: `user` (~/.jan) or
+        /// `project` (<project>/.jan).
+        #[arg(long, default_value = "user")]
+        scope: String,
+        /// Project root, when importing into the project scope.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Replace a subagent of the same name in that scope.
+        #[arg(long)]
+        overwrite: bool,
+        /// Read and report, writing nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Read this project's permission policy as a reviewable document (AH-052)
+    PolicyExport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Write it here instead of to stdout.
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Replace this project's permission policy with a reviewed document (AH-052)
+    PolicyImport {
+        /// The document to apply, or `-` to read it from stdin.
+        file: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Apply it even though it widens what the agent may do. Without
+        /// this, an import that lifts a denial, adds a permission or opens
+        /// the default is refused, and says exactly what it would open.
+        #[arg(long)]
+        accept_widening: bool,
+    },
+    /// Build or update this project's index, and look symbols up in it
+    /// (AH-053/054/055/056)
+    Index {
+        /// The project to index. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Look this name up instead of printing what the update did.
+        #[arg(long)]
+        symbol: Option<String>,
+        /// The most matches to print.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Tokens and, where a price is declared, what they cost (AH-175)
+    Spend {
+        /// A window like 7d, 24h or 30m. Omitted: everything recorded.
+        #[arg(long)]
+        since: Option<String>,
+        /// One conversation only.
+        #[arg(long)]
+        session: Option<String>,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// What this harness writes to disk, at which version (AH-010)
+    State {
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read or write a run's mailbox (AH-103)
+    Mail {
+        /// The run whose mailbox this is about.
+        #[arg(long)]
+        run: String,
+        /// The session it belongs to. Needed to send; a read does not use it.
+        #[arg(long)]
+        session: Option<String>,
+        /// Send instead of read: the run the message is from.
+        #[arg(long)]
+        from: Option<String>,
+        /// What to say. Requires `--from`.
+        #[arg(long)]
+        body: Option<String>,
+        #[arg(long, default_value = "")]
+        subject: String,
+        /// Read without recording delivery, so a person can look without
+        /// consuming what the run has not seen.
+        #[arg(long)]
+        peek: bool,
+    },
+    /// Where this branch stands against its remote, and what a stopped merge
+    /// says (AH-171/AH-165). Reads only; fetches nothing, resolves nothing.
+    Vcs {
+        /// The repository to read. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// What a change can affect, and which tests cover it (AH-065/066/067/151)
+    Impact {
+        /// The files that changed, relative to the project, `/`-separated.
+        /// Repeat the flag, or separate with commas.
+        #[arg(long, value_delimiter = ',', required = true)]
+        changed: Vec<String>,
+        /// The project to read. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Print the answer as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// What a session's last request was made of, by category (AH-087)
+    Context {
+        /// The session to read. Required: a breakdown belongs to one
+        /// conversation, and reading another's is not a default.
+        #[arg(long)]
+        session: String,
+        /// A specific request, by snapshot id. Omitted: the most recent one.
+        #[arg(long)]
+        snapshot: Option<String>,
+        /// The model's context window, when you know it. Omitted, the window
+        /// is reported as unknown rather than guessed at.
+        #[arg(long)]
+        window: Option<u64>,
+        /// Print the breakdown as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    Prompts {
+        /// The session whose requests to list
+        session: String,
+        /// Print one request in full: a snapshot id, or `last`
+        #[arg(long)]
+        show: Option<String>,
     },
 }
 
@@ -381,6 +757,68 @@ enum AgentConfigCommands {
 }
 
 // ── Threads subcommands ────────────────────────────────────────────────────
+
+/// Background jobs: start one that survives this process, see what it has
+/// done, and stop it from anywhere.
+#[derive(Subcommand)]
+enum JobCommands {
+    /// Start a command as a job that keeps running after this process exits
+    Start {
+        /// The conversation the job belongs to; only it can see or stop the job
+        #[arg(long)]
+        owner: String,
+        /// The command to run, as the host shell would run it
+        command: String,
+        /// Where Jan keeps its data. Defaults to the configured data folder
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// This conversation's jobs, newest first
+    List {
+        #[arg(long)]
+        owner: String,
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// What one job has produced so far
+    Output {
+        #[arg(long)]
+        owner: String,
+        id: String,
+        #[arg(long)]
+        data: Option<String>,
+        /// How much of the end to show
+        #[arg(long, default_value_t = 8192)]
+        bytes: usize,
+    },
+    /// Stop one job and the work it is running
+    Cancel {
+        #[arg(long)]
+        owner: String,
+        id: String,
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// Run one job to its end and write down what happened. Started by
+    /// `job start`; not meant to be run by hand.
+    #[command(hide = true)]
+    Supervise {
+        #[arg(long)]
+        data: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        owner: String,
+        #[arg(long)]
+        token: String,
+        /// A line the host shell runs
+        #[arg(long, conflicts_with = "argv_json")]
+        command: Option<String>,
+        /// Arguments for this program, as a JSON array (never a shell line)
+        #[arg(long)]
+        argv_json: Option<String>,
+    },
+}
 
 #[derive(Subcommand)]
 enum ThreadsCommands {
@@ -458,9 +896,27 @@ enum McpCommands {
         /// Header KEY=VALUE for an http/sse server, repeatable
         #[arg(long = "header")]
         header: Vec<String>,
+        /// OAuth scope an http/sse server's sign-in asks for, repeatable (AH-135)
+        #[arg(long = "scope")]
+        scope: Vec<String>,
         /// Mark the server active immediately; defaults to inactive
         #[arg(long)]
         active: bool,
+    },
+    /// List the prompts a server offers (AH-138)
+    Prompts {
+        /// Server name
+        name: String,
+    },
+    /// Fetch one of a server's prompts, filled in (AH-138)
+    Prompt {
+        /// Server name
+        name: String,
+        /// Prompt name
+        prompt: String,
+        /// Argument KEY=VALUE, repeatable
+        #[arg(long = "arg")]
+        args: Vec<String>,
     },
     /// Remove a server entry from mcp_config.json
     Remove {
@@ -474,6 +930,31 @@ enum McpCommands {
     },
     /// Mark a server inactive
     Disable {
+        /// Server name
+        name: String,
+    },
+    /// Print a server's own stderr log, newest last (AH-140)
+    Logs {
+        /// Server name
+        name: String,
+        /// How many lines
+        #[arg(long, default_value_t = 100)]
+        lines: usize,
+    },
+    /// Sign in to a server's OAuth provider (AH-135). Prints the scopes it asks
+    /// for and the consent url, then waits for the redirect. Never opens a
+    /// browser, so it works over SSH and in scripts
+    Auth {
+        /// Server name
+        name: String,
+    },
+    /// Show a server's OAuth state as JSON, without touching the network (AH-134)
+    AuthStatus {
+        /// Server name
+        name: String,
+    },
+    /// Forget a server's stored OAuth tokens (AH-134)
+    AuthClear {
         /// Server name
         name: String,
     },
@@ -493,8 +974,34 @@ fn make_logo() -> String {
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() {
+/// Windows gives a process's main thread a 1 MB stack, and this CLI's command
+/// tree is now deep enough that building it there overflows: every subcommand
+/// added to the tree costs stack in a debug build, and the failure is a bare
+/// "thread 'main' has overflowed its stack" with no other output at all.
+///
+/// So the whole program runs on a thread with room. The alternative -- keeping
+/// the tree small enough to fit -- would mean deciding which of a person's
+/// commands to remove.
+fn main() {
+    let worker = std::thread::Builder::new()
+        .name("jan-main".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("a tokio runtime")
+                .block_on(run())
+        })
+        .expect("a thread to run on");
+    // A panic inside has already printed; exiting non-zero keeps a caller from
+    // reading a crash as success.
+    if worker.join().is_err() {
+        std::process::exit(70);
+    }
+}
+
+async fn run() {
     // Exits early if invoked as the Windows sandbox helper for a `bash` tool
     // call: the helper's only job is to spawn the confined shell and wait, so it
     // must run before anything else -- starting the app first would run a second
@@ -502,19 +1009,20 @@ async fn main() {
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
     // Pre-scan raw args for --verbose / -v before full parse so we can set
-    // the log level before any logging happens.
+    // the log level before any logging happens. stderr keeps its `warn`
+    // default (`info` under -v); every info+ record also goes to a rotating
+    // local file under the data folder, so a hung run leaves a trail without
+    // the user having to rerun with -v (janhq/jan#8713).
     let verbose = std::env::args().any(|a| a == "--verbose" || a == "-v");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(if verbose {
-        "info"
-    } else {
-        "warn"
-    }))
-    .init();
+    app_lib::core::cli::file_log::init(
+        app_lib::core::app::commands::resolve_jan_data_folder(),
+        verbose,
+    );
 
     // Inject the logo at runtime so we can use ANSI styling.
     let logo = make_logo();
     let matches = Cli::command()
-        .version(app_lib::core::cli::updater::build_version())
+        .version(app_lib::core::cli::version::build_version())
         .before_help(logo.clone())
         .before_long_help(logo)
         .get_matches();
@@ -548,13 +1056,6 @@ async fn main() {
         return;
     };
 
-    // `jan update` reports the same thing itself, in more detail. The check
-    // doubles as the usage record (see `updater::fetch_manifest`), so there is
-    // no separate ping to fire here; `JAN_CLI_NO_UPDATE_CHECK` opts out of both.
-    if !matches!(command, Commands::Update { .. }) {
-        app_lib::core::cli::updater::print_update_notice_if_available().await;
-    }
-
     match command {
         Commands::Cli { cmd } => handle_cli(cmd).await,
         Commands::Login { paste_token } => {
@@ -576,40 +1077,95 @@ async fn main() {
             }
         }
         Commands::Plugin { cmd } => handle_plugin(cmd).await,
-        Commands::Update { check, force } => handle_update(check, force).await,
+        Commands::BugReport {
+            thread,
+            show,
+            yes,
+            out,
+        } => handle_bug_report(thread, show, yes, out),
     }
 }
 
-// ── Update handler ─────────────────────────────────────────────────────────
+/// `jan bug-report`: show what the bundle would hold, then write it only when
+/// the user agrees. Writing the local archive is the last thing it does --
+/// nothing is uploaded, opened, or sent.
+fn handle_bug_report(
+    thread: Option<String>,
+    show: Option<String>,
+    yes: bool,
+    out: Option<std::path::PathBuf>,
+) {
+    use std::io::IsTerminal;
 
-async fn handle_update(check: bool, force: bool) {
-    use app_lib::core::cli::updater::{self, UpdateOutcome};
-
-    let result = if check {
-        updater::check_for_update(std::time::Duration::from_secs(10))
-            .await
-            .map(|u| {
-                if u.is_newer() {
-                    println!("{}", u.summary());
-                } else {
-                    println!("Already on the latest {} build ({})", u.channel, u.current);
-                }
-            })
+    let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+    // Agent runs persist threads to the project's `.jan/agent`; the desktop
+    // app uses the data folder. Prefer the project store when the cwd has one,
+    // so running this where the run misbehaved reports on that run.
+    let project = app_lib::core::cli::agent_dir_for(std::path::Path::new("."));
+    let threads_base = if project.join("threads").is_dir() {
+        project
     } else {
-        updater::self_update(force)
-            .await
-            .map(|outcome| match outcome {
-                UpdateOutcome::UpToDate { version } => {
-                    println!("Already up to date ({version})");
-                }
-                UpdateOutcome::Installed { from, to, path } => {
-                    println!("Updated {} from {from} to {to}", path.display());
-                }
-            })
+        data_folder.clone()
     };
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
+    let preview = match app_lib::core::cli::doctor::prepare(
+        &threads_base,
+        &data_folder,
+        thread.as_deref(),
+        out.as_deref(),
+    ) {
+        Ok(preview) => preview,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if let Some(member) = show {
+        match preview.member(&member) {
+            Some(content) => {
+                print!("{content}");
+                if !content.ends_with('\n') {
+                    println!();
+                }
+            }
+            None => {
+                eprintln!("Error: no member named '{member}'. Members:");
+                for (name, _) in &preview.members {
+                    eprintln!("  {name}");
+                }
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    for line in preview.summary() {
+        println!("{line}");
+    }
+    println!("Review a member with: jan bug-report --show <member>");
+
+    let confirmed = if yes {
+        true
+    } else if std::io::stdin().is_terminal() {
+        use std::io::Write;
+        print!("Save this bundle? [y/N] ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        let _ = std::io::stdin().read_line(&mut answer);
+        matches!(answer.trim(), "y" | "Y" | "yes" | "YES")
+    } else {
+        false
+    };
+    if !confirmed {
+        println!("Nothing written. Re-run with --yes to save it.");
+        return;
+    }
+    match preview.save() {
+        Ok(path) => println!("Saved: {}", path.display()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -707,19 +1263,235 @@ fn format_plugin_list(plugins: &[InstalledPlugin]) -> String {
 
 async fn handle_cli(cmd: CliCommands) {
     match cmd {
+        CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
-            if let Err(e) = handle_mcp(cmd) {
+            if let Err(e) = handle_mcp(cmd).await {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
             }
         }
+        CliCommands::Net { cmd } => handle_net(cmd),
+        CliCommands::Bench { cmd } => handle_bench(cmd),
+    }
+}
+
+/// `jan cli bench`: measure the harness against a fixed task set (AH-196).
+fn handle_bench(cmd: BenchCommands) {
+    use app_lib::core::cli::bench;
+    use tauri_plugin_agent_tools::harness_error::ErrorKind;
+    let result: Result<i32, HarnessError> = match cmd {
+        BenchCommands::Run { tasks, model, out, label } => (|| {
+            let (set, digest) = bench::load_tasks(std::path::Path::new(&tasks))?;
+            let program = std::env::current_exe()
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("this program cannot find itself: {e}")))?;
+            let temp = std::env::temp_dir();
+            // What an earlier benchmark that was killed outright left behind.
+            for swept in bench::sweep_stale_scratch(&temp) {
+                eprintln!("  removed scratch left by an earlier benchmark: {}", swept.display());
+            }
+            let scratch = bench::scratch_dir(&temp, std::process::id());
+            // The first Ctrl-C stops the task in flight -- its whole process
+            // tree -- and the report is written as incomplete.
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    if let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                        if runtime.block_on(tokio::signal::ctrl_c()).is_ok() {
+                            eprintln!("  stopping: the task in flight is being ended and the report written");
+                            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                });
+            }
+            let runner = bench::ProcessRunner { program, model: model.clone() };
+            let report = bench::run_tasks(
+                &set,
+                &digest,
+                &model,
+                &label,
+                &scratch,
+                &runner,
+                &|| stop.load(std::sync::atomic::Ordering::SeqCst),
+                &mut |t| eprintln!("  {:<24} {:<14} {:>6} ms  {}", t.id, t.state, t.duration_ms, t.notes.first().map(String::as_str).unwrap_or("")),
+            );
+            let _ = std::fs::remove_dir_all(&scratch);
+            let report = report?;
+            let body = serde_json::to_string_pretty(&report).unwrap_or_default();
+            std::fs::write(&out, body)
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the report could not be written to {out}: {e}")))?;
+            println!(
+                "{} of {} tasks passed{} -- report written to {out}",
+                report.passed(),
+                set.tasks.len(),
+                if report.complete { "" } else { " (stopped before every task ran)" }
+            );
+            Ok(if report.complete { 0 } else { 130 })
+        })(),
+        BenchCommands::Compare { before, after } => (|| {
+            let b = bench::load_report(std::path::Path::new(&before))?;
+            let a = bench::load_report(std::path::Path::new(&after))?;
+            let comparison = bench::compare(&b, &a)?;
+            println!("{}", serde_json::to_string_pretty(&comparison).unwrap_or_default());
+            if !comparison.regressions.is_empty() {
+                eprintln!("Regressed: {}", comparison.regressions.join(", "));
+                return Ok(1);
+            }
+            Ok(0)
+        })(),
+    };
+    match result {
+        Ok(0) => {}
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            std::process::exit(e.exit_code());
+        }
+    }
+}
+
+/// `jan cli net`: outbound network settings (AH-190).
+fn handle_net(cmd: NetCommands) {
+    use app_lib::core::net::tls;
+    let NetCommands::Ca { cmd } = cmd;
+    let result: Result<(), HarnessError> = match cmd {
+        CaCommands::Status => {
+            println!("{}", serde_json::to_string_pretty(&tls::status()).unwrap_or_default());
+            Ok(())
+        }
+        CaCommands::Set { path } => {
+            // Made absolute against the working directory, but not resolved:
+            // resolving would quietly trust whatever a link in the path points
+            // to, which `load` refuses by name.
+            let given = std::path::Path::new(&path);
+            let absolute = if given.is_absolute() {
+                path.clone()
+            } else {
+                std::env::current_dir()
+                    .map(|d| d.join(given).to_string_lossy().to_string())
+                    .unwrap_or(path.clone())
+            };
+            match tls::load(std::path::Path::new(&absolute), tls::Source::CliConfig) {
+                Ok(bundle) => app_lib::core::agent::global_config::set_ca_bundle(Some(&absolute))
+                    .map(|written| {
+                        println!(
+                            "Trusting {} certificate(s) from {} in addition to the platform's roots ({}).",
+                            bundle.fingerprints.len(),
+                            absolute,
+                            written.display()
+                        );
+                        if std::env::var_os(tls::ENV).is_some() {
+                            eprintln!("Note: {} is set in this environment and takes precedence.", tls::ENV);
+                        }
+                    })
+                    .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
+                Err(e) => Err(HarnessError::from(&e)),
+            }
+        }
+        CaCommands::Clear => app_lib::core::agent::global_config::set_ca_bundle(None)
+            .map(|written| println!("No CA bundle is named in {} any more.", written.display()))
+            .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
+    };
+    if let Err(e) = result {
+        eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+        std::process::exit(e.exit_code());
     }
 }
 
 // ── Agent handlers ───────────────────────────────────────────────────────
+
+use tauri_plugin_agent_tools::harness_error::HarnessError;
+
+/// `jan cli job`: work that outlives the process that started it.
+fn handle_job(cmd: JobCommands) {
+    use tauri_plugin_agent_tools::worker;
+    let folder = |given: Option<String>| -> std::path::PathBuf {
+        given
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(app_lib::core::app::commands::resolve_jan_data_folder)
+    };
+    let result = match cmd {
+        JobCommands::Start {
+            owner,
+            command,
+            data,
+        } => {
+            let data = folder(data);
+            // This binary is the supervisor: the same one that is already
+            // installed, so nothing new has to be shipped or found.
+            let me = std::env::current_exe().unwrap_or_else(|_| "jan".into());
+            worker::start(&data, &me, &owner, &command, ("", "", "")).map(|record| {
+                println!("{}", record.id);
+                eprintln!(
+                    "\x1b[2m[job {} started; it keeps running if this process exits]\x1b[0m",
+                    record.id
+                );
+            })
+        }
+        JobCommands::List { owner, data } => {
+            let data = folder(data);
+            // What an earlier process left is settled before it is listed, so
+            // a job nobody is running is not shown as running.
+            worker::reconcile(&data, &owner);
+            let mut jobs = tauri_plugin_agent_tools::job_record::read_owner(&data, &owner);
+            jobs.reverse();
+            if jobs.is_empty() {
+                println!("No background jobs.");
+            }
+            for job in jobs {
+                println!(
+                    "{}  {:<12} {}",
+                    job.id,
+                    job.state.tag(),
+                    job.summary
+                );
+            }
+            Ok(())
+        }
+        JobCommands::Output {
+            owner,
+            id,
+            data,
+            bytes,
+        } => {
+            let data = folder(data);
+            worker::output(&data, &owner, &id, bytes).map(|text| print!("{text}"))
+        }
+        JobCommands::Cancel { owner, id, data } => {
+            let data = folder(data);
+            worker::cancel(&data, &owner, &id).map(|state| {
+                println!("{}", state.tag());
+            })
+        }
+        JobCommands::Supervise {
+            data,
+            id,
+            owner,
+            token,
+            command,
+            argv_json,
+        } => match (command, argv_json) {
+            (_, Some(argv)) => worker::supervise_argv(std::path::Path::new(&data), &id, &owner, &token, &argv),
+            (Some(command), None) => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command),
+            (None, None) => Err(HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                "a job needs --command or --argv-json",
+            )),
+        }
+            .map(|state| {
+                // Nothing is printed on the happy path: the supervisor has no
+                // console, and what it has to say is in the record.
+                let _ = state;
+            }),
+    };
+    if let Err(e) = result {
+        eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+        std::process::exit(e.exit_code());
+    }
+}
 
 async fn handle_agent(cmd: AgentCommands) {
     let result = match cmd {
@@ -732,7 +1504,18 @@ async fn handle_agent(cmd: AgentCommands) {
             sandbox,
             resume,
             output_format,
+            events,
+            profile,
+            output_density,
         } => {
+            // AH-183: before the run, so a destination that cannot be written
+            // fails the command instead of silently streaming nowhere.
+            if let Some(destination) = events.as_deref() {
+                if let Err(e) = app_lib::core::cli::stream_events_to(destination) {
+                    eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                    std::process::exit(e.exit_code());
+                }
+            }
             cli_agent_run(
                 &project,
                 &task,
@@ -741,12 +1524,40 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    profile,
+                    density: match output_density
+                        .as_deref()
+                        .map(app_lib::core::cli::Density::parse)
+                    {
+                        Some(Ok(density)) => Some(density),
+                        Some(Err(e)) => {
+                            let refusal = HarnessError::new(
+                                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                                e,
+                            );
+                            eprintln!(
+                                "Error [{}]: {}",
+                                refusal.kind().tag(),
+                                refusal.message()
+                            );
+                            std::process::exit(refusal.exit_code());
+                        }
+                        None => None,
+                    },
+                    interrupted: resume.interrupted,
                     ..Default::default()
                 },
                 resume.into_target(),
                 output_format,
             )
             .await
+        }
+        AgentCommands::RunSubagent { spec } => {
+            app_lib::core::cli::run_durable_subagent(std::path::Path::new(&spec)).await
+        }
+        AgentCommands::Serve => {
+            app_lib::core::cli::json_api::serve_stdio().await;
+            Ok(())
         }
         AgentCommands::Step {
             project,
@@ -755,6 +1566,7 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            profile,
         } => {
             cli_agent_step(
                 &project,
@@ -764,25 +1576,751 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    profile,
                     ..Default::default()
                 },
             )
             .await
         }
+        AgentCommands::Tree { session, json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::run_tree::of_session(&data, &session).map(|tree| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&tree).unwrap_or_default());
+                } else {
+                    print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
+                }
+            })
+        }
+        AgentCommands::TestTriage {
+            project,
+            command,
+            no_retry,
+            json,
+        } => {
+            use app_lib::core::agent::test_triage;
+            let root = std::path::PathBuf::from(&project);
+            let command = if command.is_empty() {
+                vec!["cargo".to_string(), "test".to_string()]
+            } else {
+                command
+            };
+            test_triage::triage(&root, &command, !no_retry).and_then(|triage| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&triage).unwrap_or_default());
+                } else {
+                    print!("{}", test_triage::render(&triage));
+                }
+                // A suite with failures that happened twice is a suite with
+                // failures; one whose only failures did not reproduce is not
+                // the same thing, and the exit code says which.
+                let real = triage.reproduced.values().any(|r| {
+                    *r == test_triage::Reproduced::Yes || *r == test_triage::Reproduced::NotChecked
+                }) && !triage.failures.is_empty();
+                if real || triage.unreadable {
+                    Err(HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
+                        if triage.unreadable {
+                            "the test run failed and its output could not be read".to_string()
+                        } else {
+                            format!(
+                                "{} failure(s) in {} group(s)",
+                                triage.failures.len(),
+                                triage.clusters.len()
+                            )
+                        },
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+        }
+        AgentCommands::Health {
+            project,
+            only,
+            dry_run,
+            json,
+        } => {
+            use app_lib::core::agent::health;
+            let root = std::path::PathBuf::from(&project);
+            let selected: std::result::Result<Vec<health::Kind>, String> =
+                only.iter().map(|o| health::Kind::parse(o)).collect();
+            selected
+                .map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                        e,
+                    )
+                })
+                .and_then(|selected| {
+                    if dry_run {
+                        let planned: Vec<health::Check> = health::checks(&root)
+                            .into_iter()
+                            .filter(|c| selected.is_empty() || selected.contains(&c.kind))
+                            .collect();
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&planned).unwrap_or_default()
+                            );
+                        } else {
+                            print!("{}", health::render_plan(&planned));
+                        }
+                        return Ok(());
+                    }
+                    let report = health::scan(&root, &selected)?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                    } else {
+                        print!("{}", health::render(&report));
+                    }
+                    // A scan that found something broken says so in its exit
+                    // code: this is the thing somebody runs before starting
+                    // work, and "it printed a failure and exited 0" is how a
+                    // broken tree gets worked in anyway.
+                    if health::healthy(&report) {
+                        Ok(())
+                    } else {
+                        Err(HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::ToolFailed,
+                            "at least one of this project's own checks did not pass",
+                        ))
+                    }
+                })
+        }
+        AgentCommands::Licenses {
+            project,
+            allow,
+            record,
+            json,
+        } => {
+            use app_lib::core::agent::licenses;
+            let root = std::path::PathBuf::from(&project);
+            let allow = if allow.is_empty() {
+                app_lib::core::agent::project::allowed_licenses(&root)
+            } else {
+                allow
+            };
+            licenses::scan(&root, &allow).and_then(|report| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                } else {
+                    print!("{}", licenses::render(&report));
+                }
+                if record {
+                    let path = licenses::record(&root, &report.dependencies)?;
+                    println!("recorded {} dependenc(ies) in {}", report.dependencies.len(), path.display());
+                }
+                // A dependency the project does not allow is a finding, and a
+                // command that finds something says so in its exit code.
+                if report.disallowed.is_empty() {
+                    Ok(())
+                } else {
+                    Err(HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::PolicyViolation,
+                        format!(
+                            "{} dependenc(ies) are not licensed under anything this project allows",
+                            report.disallowed.len()
+                        ),
+                    ))
+                }
+            })
+        }
+        AgentCommands::Search {
+            query,
+            project,
+            regex,
+            session,
+            role,
+            limit,
+            json,
+        } => {
+            use app_lib::core::agent::transcript;
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            transcript::search(
+                Some(std::path::Path::new(&project)),
+                (!data.as_os_str().is_empty()).then_some(data.as_path()),
+                &transcript::Query {
+                    text: query,
+                    regex,
+                    session,
+                    role,
+                    limit,
+                },
+            )
+            .map(|found| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&found).unwrap_or_default());
+                } else {
+                    print!("{}", transcript::render(&found));
+                }
+            })
+        }
+        AgentCommands::Transcript {
+            session,
+            project,
+            format,
+            out,
+        } => {
+            use app_lib::core::agent::transcript;
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            let format = match format.as_str() {
+                "text" => Ok(transcript::Format::Text),
+                "markdown" | "md" => Ok(transcript::Format::Markdown),
+                "json" => Ok(transcript::Format::Json),
+                other => Err(HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("{other:?} is not a format; use text, markdown or json"),
+                )),
+            };
+            format
+                .and_then(|format| {
+                    transcript::export(
+                        Some(std::path::Path::new(&project)),
+                        (!data.as_os_str().is_empty()).then_some(data.as_path()),
+                        &session,
+                        format,
+                    )
+                })
+                .and_then(|text| match out {
+                    Some(path) => std::fs::write(&path, &text)
+                        .map(|()| println!("wrote {path}"))
+                        .map_err(|e| {
+                            HarnessError::new(
+                                tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                                format!("the transcript could not be written to {path}: {e}"),
+                            )
+                        }),
+                    None => {
+                        print!("{text}");
+                        Ok(())
+                    }
+                })
+        }
+        AgentCommands::Quota { json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            use app_lib::core::agent::quota;
+            quota::quotas(&data)
+                .and_then(|declared| quota::standing(&data, &declared))
+                .map_err(|e| HarnessError::from(&e))
+                .map(|standings| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&standings).unwrap_or_default()
+                        );
+                    } else {
+                        print!("{}", quota::render(&standings));
+                    }
+                })
+        }
+        AgentCommands::Compaction { project } => {
+            tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+                Some(&app_lib::core::app::commands::resolve_jan_data_folder()),
+                Some(std::path::Path::new(&project)),
+                None,
+            )
+            .map(|p| println!("{}", serde_json::to_string_pretty(&p).unwrap_or_default()))
+        }
+        AgentCommands::BundleExport { project, out } => {
+            use app_lib::core::agent::agent_bundle;
+            agent_bundle::export(std::path::Path::new(&project)).and_then(|(bundle, report)| {
+                let text = serde_json::to_string_pretty(&bundle).unwrap_or_default();
+                let tmp = format!("{out}.partial");
+                std::fs::write(&tmp, format!("{text}\n"))
+                    .and_then(|()| std::fs::rename(&tmp, &out))
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&tmp);
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                            format!("the bundle could not be written to {out}: {e}"),
+                        )
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                Ok(())
+            })
+        }
+        AgentCommands::BundleImport { project, file, overwrite, accept_widening, dry_run } => {
+            use app_lib::core::agent::agent_bundle;
+            std::fs::read_to_string(&file)
+                .map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
+                        format!("{file} could not be read: {e}"),
+                    )
+                })
+                .and_then(|text| agent_bundle::parse(&text))
+                .and_then(|bundle| {
+                    agent_bundle::import(std::path::Path::new(&project), &bundle, overwrite, accept_widening, dry_run)
+                })
+                .map(|report| println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default()))
+        }
+        AgentCommands::ImportAgents {
+            path,
+            scope,
+            project,
+            overwrite,
+            dry_run,
+        } => {
+            use app_lib::core::agent::subagent::SubagentScope;
+            let resolved = match scope.as_str() {
+                "user" => app_lib::core::agent::subagent::user_subagents_dir()
+                    .map(|dir| (SubagentScope::User, dir))
+                    .ok_or_else(|| {
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
+                            "the home directory could not be resolved, so there is no user scope to import into",
+                        )
+                    }),
+                "project" => Ok((
+                    SubagentScope::Project,
+                    app_lib::core::agent::subagent::project_subagents_dir(std::path::Path::new(
+                        &project,
+                    )),
+                )),
+                other => Err(HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("'{other}' is not a scope; use 'user' or 'project'"),
+                )),
+            };
+            resolved.and_then(|(scope, dir)| {
+                app_lib::core::agent::agent_import::import(
+                    std::path::Path::new(&path),
+                    &dir,
+                    scope,
+                    overwrite,
+                    dry_run,
+                )
+                .map(|report| {
+                    print!("{}", app_lib::core::agent::agent_import::render(&report));
+                    if !report.dry_run {
+                        println!("written to {}", dir.display());
+                    }
+                })
+            })
+        }
+        AgentCommands::PolicyExport { project, out } => {
+            app_lib::core::cli::cli_policy_export(&project).and_then(|document| {
+                let text = tauri_plugin_agent_tools::policy_transfer::render(&document);
+                match out {
+                    Some(path) => std::fs::write(&path, format!("{text}\n")).map_err(|e| {
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                            format!("the policy could not be written to {path}: {e}"),
+                        )
+                    }),
+                    None => {
+                        println!("{text}");
+                        Ok(())
+                    }
+                }
+            })
+        }
+        AgentCommands::PolicyImport {
+            file,
+            project,
+            accept_widening,
+        } => {
+            let text = if file == "-" {
+                use std::io::Read;
+                let mut buffer = String::new();
+                std::io::stdin().read_to_string(&mut buffer).map(|_| buffer).map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                        format!("the policy could not be read from stdin: {e}"),
+                    )
+                })
+            } else {
+                std::fs::read_to_string(&file).map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                        format!("{file} could not be read: {e}"),
+                    )
+                })
+            };
+            text.and_then(|text| {
+                app_lib::core::cli::cli_policy_import(&project, &text, accept_widening)
+            })
+            .map(|change| {
+                if change.is_empty() {
+                    println!("The policy is already what this document says.");
+                    return;
+                }
+                println!("Policy updated.");
+                for (label, rules) in [
+                    ("added allow", &change.allow_added),
+                    ("added deny", &change.deny_added),
+                    ("added allow_write", &change.allow_write_added),
+                    ("removed allow", &change.allow_removed),
+                    ("removed deny", &change.deny_removed),
+                    ("removed allow_write", &change.allow_write_removed),
+                ] {
+                    for rule in rules {
+                        println!("  {label}: {rule}");
+                    }
+                }
+                if let Some(default) = change.default_changed_to.as_deref() {
+                    println!("  default is now: {default}");
+                }
+            })
+        }
+        AgentCommands::Context {
+            session,
+            snapshot,
+            window,
+            json,
+        } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::context_report::of_snapshot(
+                &data,
+                &session,
+                snapshot.as_deref(),
+                window,
+                0,
+            )
+            .map(|breakdown| {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&breakdown).unwrap_or_default()
+                    );
+                } else {
+                    print!(
+                        "{}",
+                        tauri_plugin_agent_tools::context_report::render(&breakdown)
+                    );
+                }
+            })
+        }
+        AgentCommands::Index {
+            project,
+            symbol,
+            limit,
+            json,
+        } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            // Nothing cancels a one-shot command, but the index takes the flag
+            // rather than assuming: the same call is made from a run, where
+            // stopping it has to leave no half index behind.
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            app_lib::core::agent::index::refresh(&data, &root, &cancel)
+                .map_err(|e| HarnessError::from(&e))
+                .map(|(index, update)| {
+                    if let Some(name) = symbol {
+                        let found = app_lib::core::agent::index::find_symbol(&index, &name, limit);
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&found).unwrap_or_default()
+                            );
+                            return;
+                        }
+                        if found.is_empty() {
+                            println!("nothing named {name:?} is defined in {} files", index.files.len());
+                        }
+                        for hit in found {
+                            println!("{}:{} {:?} {}", hit.path, hit.line, hit.kind, hit.name);
+                        }
+                        return;
+                    }
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "files": index.files.len(),
+                                "symbols": index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
+                                "commit": index.commit,
+                                "truncated": index.truncated,
+                                "update": update,
+                            }))
+                            .unwrap_or_default()
+                        );
+                        return;
+                    }
+                    println!(
+                        "{} files, {} symbols{}",
+                        index.files.len(),
+                        index.files.values().map(|f| f.symbols.len()).sum::<usize>(),
+                        if index.truncated { " (a bound stopped the walk)" } else { "" }
+                    );
+                    println!(
+                        "  read {} new, {} changed; reused {} without reading; {} gone{}",
+                        update.added,
+                        update.changed,
+                        update.unchanged,
+                        update.removed,
+                        if update.reconciled { "; the checkout moved, so every entry was re-checked" } else { "" }
+                    );
+                })
+        }
+        AgentCommands::Spend {
+            since,
+            session,
+            json,
+        } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            app_lib::core::agent::spend::report(&data, since.as_deref(), session.as_deref())
+                .map_err(|e| HarnessError::from(&e))
+                .map(|report| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report).unwrap_or_default()
+                        );
+                    } else {
+                        print!("{}", app_lib::core::agent::spend::render(&report));
+                    }
+                })
+        }
+        AgentCommands::State { json } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&app_lib::core::agent::state_schema::stores())
+                        .unwrap_or_default()
+                );
+            } else {
+                print!("{}", app_lib::core::agent::state_schema::render());
+            }
+            Ok(())
+        }
+        AgentCommands::Mail {
+            run,
+            session,
+            from,
+            body,
+            subject,
+            peek,
+        } => {
+            use tauri_plugin_agent_tools::identity::{RunId, SessionId};
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            let to = RunId::parse(run);
+            match (to, from, body) {
+                (Err(e), _, _) => Err(e),
+                (Ok(to), Some(from), Some(body)) => session
+                    .ok_or_else(|| {
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                            "sending needs --session: a message belongs to one conversation",
+                        )
+                    })
+                    .and_then(SessionId::parse)
+                    .and_then(|session| RunId::parse(from).map(|from| (session, from)))
+                    .and_then(|(session, from)| {
+                        tauri_plugin_agent_tools::mailbox::send(
+                            &data, &session, &from, &to, &subject, &body,
+                        )
+                        .map_err(|e| HarnessError::from(&e))
+                    })
+                    .map(|message| {
+                        println!("delivered to {} as message {}", message.to, message.seq);
+                    }),
+                (Ok(to), _, _) => {
+                    tauri_plugin_agent_tools::mailbox::read(&data, &to, !peek)
+                        .map_err(|e| HarnessError::from(&e))
+                        .map(|messages| {
+                            if messages.is_empty() {
+                                println!("no messages");
+                            }
+                            for message in messages {
+                                println!(
+                                    "{} from {}{} [{}]",
+                                    message.at,
+                                    message.from,
+                                    if message.subject.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!(" -- {}", message.subject)
+                                    },
+                                    if message.delivered_at.is_some() { "read" } else { "unread" }
+                                );
+                                println!("  {}", message.body);
+                            }
+                        })
+                }
+            }
+        }
+        AgentCommands::Vcs { project, json } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            app_lib::core::agent::vcs::divergence(&root)
+                .and_then(|divergence| {
+                    app_lib::core::agent::vcs::conflicts(&root).map(|merge| (divergence, merge))
+                })
+                .map_err(|e| HarnessError::from(&e))
+                .map(|(divergence, merge)| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "divergence": divergence,
+                                "merge": merge,
+                            }))
+                            .unwrap_or_default()
+                        );
+                        return;
+                    }
+                    match (&divergence.branch, &divergence.upstream) {
+                        (Some(branch), Some(upstream)) => println!(
+                            "{branch} vs {upstream}: {} ahead, {} behind",
+                            divergence.ahead, divergence.behind
+                        ),
+                        (Some(branch), None) => println!("{branch}: tracks nothing"),
+                        _ => println!("HEAD is detached"),
+                    }
+                    for option in &divergence.options {
+                        println!("  - {option}");
+                    }
+                    if divergence.needs_a_person {
+                        println!("  this needs a decision, not a command");
+                    }
+                    println!();
+                    match app_lib::core::agent::vcs::branches(&root) {
+                        Ok(branches) => {
+                            for b in &branches {
+                                println!(
+                                    "{}{}{}{}",
+                                    if b.current { "* " } else { "  " },
+                                    b.name,
+                                    b.upstream.as_ref().map(|u| format!(" -> {u}")).unwrap_or_default(),
+                                    if b.checked_out_elsewhere { " (held by another worktree)" } else { "" }
+                                );
+                            }
+                        }
+                        Err(e) => println!("branches: {}", e.message),
+                    }
+                    if merge.in_progress {
+                        println!(
+                            "a merge is stopped, with {} file(s) unresolved:",
+                            merge.files.len()
+                        );
+                        for file in &merge.files {
+                            println!(
+                                "  {} ({:?}, {} region(s))",
+                                file.path,
+                                file.kind,
+                                file.hunks.len()
+                            );
+                        }
+                        println!("  {}", merge.note);
+                    }
+                })
+        }
+        AgentCommands::Impact {
+            changed,
+            project,
+            json,
+        } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let runner = app_lib::core::agent::impact::detected_runner(&root);
+            app_lib::core::agent::impact::selection(&root, &changed, runner.as_deref())
+                .map_err(|e| HarnessError::from(&e))
+                .map(|selection| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&selection).unwrap_or_default()
+                        );
+                    } else {
+                        println!("{}", selection.reason);
+                        for test in &selection.impact.tests {
+                            println!("  test: {test}");
+                        }
+                        for unknown in &selection.impact.unknown {
+                            println!("  not seen: {unknown}");
+                        }
+                        match selection.command.as_deref() {
+                            // Printed, never run: what to do about it is the
+                            // caller's decision, not this command's.
+                            Some(command) => println!("run: {command}"),
+                            None => println!("run: (this project does not say)"),
+                        }
+                    }
+                })
+        }
+        AgentCommands::Prompts { session, show } => agent_prompts_text(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+            show.as_deref(),
+        )
+        .map(|text| print!("{text}"))
+        .map_err(HarnessError::legacy),
         AgentCommands::Status { project, providers } => {
             match cli_agent_status(&project, &providers.into_overrides()) {
                 Ok(status) => {
                     println!("{}", serde_json::to_string_pretty(&status).unwrap());
                     Ok(())
                 }
-                Err(e) => Err(e),
+                Err(e) => Err(HarnessError::legacy(e)),
             }
         }
     };
     if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
+        // AH-009: what ended the run decides how it is reported and what the
+        // process exits with. A run the user stopped is not a failure, and a
+        // rejected credential is not an outage -- a script reading the status
+        // can tell them apart without parsing this line.
+        if e.is_cancellation() {
+            eprintln!("Stopped: {}", e.message());
+        } else {
+            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            for cause in e.chain().into_iter().skip(1) {
+                eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
+            }
+        }
+        std::process::exit(e.exit_code());
     }
+}
+
+/// `jan cli agent prompts`: what a session sent to the model (AH-087).
+///
+/// Without `show`, one line per recorded request. With `show`, that request as
+/// text -- `last` for the most recent. The session is required and must match
+/// the record: a snapshot id alone is not enough to read one.
+fn agent_prompts_text(
+    data_folder: &std::path::Path,
+    session: &str,
+    show: Option<&str>,
+) -> Result<String, String> {
+    use tauri_plugin_agent_tools::snapshot::scoped_lookup;
+    if session.trim().is_empty() {
+        return Err("name the session whose requests to show".to_string());
+    }
+    let one = match show {
+        Some("last") | None => None,
+        Some(id) => Some(id),
+    };
+    let found = scoped_lookup(data_folder, one, None, Some(session))?;
+    if found.is_empty() {
+        return Err(match one {
+            Some(id) => format!("no request {id} is recorded for session {session}"),
+            None => format!("no requests are recorded for session {session}"),
+        });
+    }
+    if show.is_some() {
+        // `last` is the newest record; an id matched exactly one.
+        return Ok(found.last().map(|s| s.render_text()).unwrap_or_default());
+    }
+    let mut out = format!("{} request(s) for session {session}\n", found.len());
+    for s in &found {
+        let _ = writeln!(
+            out,
+            "{}  {}  {:?}  {}  {} message(s)  {}",
+            s.id,
+            s.at,
+            s.kind,
+            if s.model.is_empty() { "unknown" } else { &s.model },
+            s.message_count(),
+            s.hash
+        );
+    }
+    Ok(out)
 }
 
 /// `jan auth` handler: report sign-in state or sign out.
@@ -939,26 +2477,15 @@ async fn handle_models(cmd: ModelsCommands) {
                     std::process::exit(1);
                 }
             };
-            let mut output: Vec<serde_json::Value> = configs
-                .values()
-                .filter(|c| app_lib::core::cli::providers::is_cli_reachable(c))
-                .filter(|c| provider.as_ref().is_none_or(|p| &c.provider == p))
-                .flat_map(|c| {
-                    c.models.iter().map(move |m| {
-                        serde_json::json!({
-                            "id": m,
-                            "provider": c.provider,
-                            "base_url": c.base_url,
-                            "api_type": c.api_type,
-                            "has_api_key": app_lib::core::cli::providers::has_credential(c),
-                        })
-                    })
-                })
-                .collect();
-            output.sort_by(|a, b| {
-                (a["provider"].as_str(), a["id"].as_str())
-                    .cmp(&(b["provider"].as_str(), b["id"].as_str()))
-            });
+            let output =
+                app_lib::core::cli::providers::model_listing(&configs, provider.as_deref());
+            if !output.is_empty() && output.iter().all(|m| m["reachable"] == false) {
+                eprintln!(
+                    "None of these models is reachable from the CLI: they run inside the \
+                     Jan app. Enable the app's Local API Server and point the CLI at it:\n  \
+                     jan config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
+                );
+            }
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
     }
@@ -995,11 +2522,14 @@ fn mcp_list_entry(entry: &McpServerEntry, show_secrets: bool) -> serde_json::Val
         "url": cfg.get("url").cloned().unwrap_or(serde_json::Value::Null),
         "env": redact_map(cfg.get("env").and_then(serde_json::Value::as_object)),
         "headers": redact_map(cfg.get("headers").and_then(serde_json::Value::as_object)),
+        // The OAuth scopes a sign-in asks for (AH-135). Not a secret, and the
+        // authority the server's token will carry, so it is never redacted.
+        "oauth": cfg.get("oauth").cloned().unwrap_or(serde_json::Value::Null),
     })
 }
 
 /// Manage MCP servers in mcp_config.json.
-fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
+async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
     match cmd {
         McpCommands::List { show_secrets } => {
             let servers = mcp::list_servers();
@@ -1028,11 +2558,93 @@ fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             r#type,
             url,
             header,
+            scope,
             active,
         } => {
-            let config = build_mcp_config(command, args, env, &r#type, url, header, active)?;
+            let config = build_mcp_config(command, args, env, &r#type, url, header, active, scope)?;
             mcp::upsert_server(&name, &config)?;
             println!("saved server '{name}' to mcp_config.json");
+            Ok(())
+        }
+        McpCommands::AuthStatus { name } => {
+            let entry = app_lib::core::cli::mcp::get_server(&name)
+                .ok_or_else(|| format!("no MCP server named '{name}'"))?;
+            let info = app_lib::core::cli::mcp::auth_status_info(&name, &entry.config);
+            println!("{}", serde_json::to_string_pretty(&info).unwrap_or_default());
+            Ok(())
+        }
+        McpCommands::Auth { name } => {
+            let pending = app_lib::core::cli::mcp::begin_auth(&name).await?;
+            eprintln!(
+                "Signing in to '{name}'. Asking for scopes: {}",
+                if pending.scopes.is_empty() { "(none declared)".to_string() } else { pending.scopes.join(" ") }
+            );
+            eprintln!("Open this address to consent; waiting for the redirect to {}", pending.redirect_uri);
+            println!("{}", pending.authorization_url);
+            let creds = app_lib::core::cli::mcp::finish_auth(pending).await?;
+            eprintln!(
+                "Signed in to '{name}'. Granted scopes: {}",
+                if creds.granted_scopes.is_empty() { "(none)".to_string() } else { creds.granted_scopes.join(" ") }
+            );
+            Ok(())
+        }
+        McpCommands::AuthClear { name } => {
+            if app_lib::core::cli::mcp::clear_auth(&name)? {
+                println!("Forgot the stored tokens for '{name}'");
+            } else {
+                println!("No tokens were stored for '{name}'");
+            }
+            Ok(())
+        }
+        McpCommands::Logs { name, lines } => {
+            let found = app_lib::core::mcp::server_log::tail(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                &name,
+                lines,
+            );
+            if found.is_empty() {
+                println!("'{name}' has not printed anything");
+            }
+            for line in found {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        McpCommands::Prompts { name } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let listed = mcp::list_prompts(&name, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            let listed = listed?;
+            if listed.is_empty() {
+                println!("'{name}' offers no prompts");
+            }
+            for line in listed {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        McpCommands::Prompt { name, prompt, args } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let mut arguments = serde_json::Map::new();
+            for kv in &args {
+                let (k, v) = split_kv(kv, "arg")?;
+                arguments.insert(k, serde_json::json!(v));
+            }
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let fetched = mcp::get_prompt(&name, &prompt, arguments, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            print!("{}", fetched?);
             Ok(())
         }
         McpCommands::Remove { name } => {
@@ -1064,6 +2676,7 @@ fn build_mcp_config(
     url: Option<String>,
     header: Vec<String>,
     active: bool,
+    scopes: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     let mut env_map = serde_json::Map::new();
     for kv in &env {
@@ -1083,12 +2696,42 @@ fn build_mcp_config(
         url.as_deref(),
         header_map,
         active,
+        scopes,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bug_report_parses_its_flags_and_nothing_else() {
+        let cli = Cli::parse_from([
+            "jan",
+            "bug-report",
+            "--thread",
+            "abc123",
+            "--show",
+            "logs/jan.log",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::BugReport { thread, show, yes: false, out: None })
+                if thread.as_deref() == Some("abc123") && show.as_deref() == Some("logs/jan.log")
+        ));
+        let cli = Cli::parse_from(["jan", "bug-report", "--yes", "--out", "."]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::BugReport { yes: true, out: Some(_), .. })
+        ));
+        // There is deliberately no flag that sends the bundle anywhere.
+        for flag in ["--upload", "--submit", "--send", "--open-issue"] {
+            assert!(
+                Cli::try_parse_from(["jan", "bug-report", flag]).is_err(),
+                "{flag} must not exist"
+            );
+        }
+    }
 
     // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must
     // parse on the top-level `jan` command and default off.
@@ -1126,6 +2769,52 @@ mod tests {
         }
     }
 
+    /// AH-087: a session's requests are listed, the last or a named one is
+    /// printed in full, and another session's request is not readable by id.
+    #[test]
+    fn agent_prompts_lists_and_prints_a_sessions_requests_only() {
+        use tauri_plugin_agent_tools::snapshot::{append, capture, Identity};
+        let data = std::env::temp_dir().join(format!("jan-prompts-cli-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let ident = |session: &str| Identity { session: session.into(), ..Default::default() };
+        let first = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "first question" }] }),
+            &ident("s1"),
+        );
+        let second = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "second question" }] }),
+            &ident("s1"),
+        );
+        let other = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "someone else's" }] }),
+            &ident("s2"),
+        );
+        for s in [&first, &second, &other] {
+            append(&data, s);
+        }
+
+        let list = agent_prompts_text(&data, "s1", None).unwrap();
+        assert!(list.starts_with("2 request(s) for session s1"), "{list}");
+        assert!(list.contains(&first.id) && list.contains(&second.id) && !list.contains(&other.id));
+
+        let last = agent_prompts_text(&data, "s1", Some("last")).unwrap();
+        assert!(last.contains("second question") && !last.contains("first question"), "{last}");
+        let named = agent_prompts_text(&data, "s1", Some(&first.id)).unwrap();
+        assert!(named.contains("first question"), "{named}");
+
+        assert!(agent_prompts_text(&data, "s1", Some(&other.id)).is_err(), "another session's request was readable");
+        assert!(agent_prompts_text(&data, "s3", None).unwrap_err().contains("no requests"));
+        assert!(agent_prompts_text(&data, " ", None).is_err());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn prompts_is_a_cli_agent_command() {
+        let cli = Cli::try_parse_from(["jan", "cli", "agent", "prompts", "s1", "--show", "last"]);
+        assert!(cli.is_ok(), "`jan cli agent prompts <session> --show last` must parse");
+    }
+
     #[test]
     fn output_format_parses_and_defaults_to_text() {
         assert_eq!(parsed_output_format(&[]), OutputFormat::Text);
@@ -1147,24 +2836,6 @@ mod tests {
             "yaml"
         ])
         .is_err());
-    }
-
-    #[test]
-    fn update_command_parses() {
-        let cli = Cli::parse_from(["jan", "update"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Update {
-                check: false,
-                force: false
-            })
-        ));
-        let cli = Cli::parse_from(["jan", "update", "--check"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Update { check: true, .. })
-        ));
-        assert!(Cli::try_parse_from(["jan", "update", "--check", "--force"]).is_err());
     }
 
     #[test]
@@ -1253,8 +2924,10 @@ mod tests {
                 r#type,
                 url,
                 header,
+                scope,
                 active,
             } => {
+                assert!(scope.is_empty(), "no --scope was given");
                 assert_eq!(name, "files");
                 assert_eq!(command.as_deref(), Some("npx"));
                 assert_eq!(args, vec!["-y", "my-mcp"]);
@@ -1270,13 +2943,13 @@ mod tests {
 
     #[test]
     fn mcp_build_rejects_http_without_url() {
-        let err = build_mcp_config(None, vec![], vec![], "http", None, vec![], false).unwrap_err();
+        let err = build_mcp_config(None, vec![], vec![], "http", None, vec![], false, Vec::new()).unwrap_err();
         assert!(err.contains("url"), "{err}");
-        let err = build_mcp_config(None, vec![], vec![], "sse", None, vec![], false).unwrap_err();
+        let err = build_mcp_config(None, vec![], vec![], "sse", None, vec![], false, Vec::new()).unwrap_err();
         assert!(err.contains("url"), "{err}");
-        assert!(build_mcp_config(None, vec![], vec![], "bogus", None, vec![], false).is_err());
+        assert!(build_mcp_config(None, vec![], vec![], "bogus", None, vec![], false, Vec::new()).is_err());
         // stdio needs a command.
-        assert!(build_mcp_config(None, vec![], vec![], "stdio", None, vec![], false).is_err());
+        assert!(build_mcp_config(None, vec![], vec![], "stdio", None, vec![], false, Vec::new()).is_err());
     }
 
     #[test]
@@ -1334,6 +3007,7 @@ mod tests {
                 skills: 2,
                 commands: 1,
                 agents: 3,
+                ..Default::default()
             },
             InstalledPlugin {
                 name: "beta".into(),
@@ -1343,6 +3017,7 @@ mod tests {
                 skills: 0,
                 commands: 0,
                 agents: 0,
+                ..Default::default()
             },
         ];
 

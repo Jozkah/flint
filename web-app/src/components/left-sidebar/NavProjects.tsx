@@ -53,13 +53,17 @@ function ProjectItem({
           to="/project/$projectId"
           params={{ projectId: item.id }}
         >
-          <FolderIcon  className="text-foreground/70" size={16} />
-          <span>{item.name}</span>
+          <FolderIcon className="text-ink-2" size={16} />
+          <span className="truncate" title={item.name}>{item.name}</span>
         </Link>
       </SidebarMenuButton>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction showOnHover className="hover:bg-sidebar-foreground/8">
+          {/* Visible on touch screens, which cannot hover to reveal it. */}
+          <SidebarMenuAction
+            showOnHover
+            className="hover:bg-sunken pointer-coarse:opacity-100 pointer-coarse:size-9 pointer-coarse:top-0.5"
+          >
             <MoreHorizontal />
             <span className="sr-only">More</span>
           </SidebarMenuAction>

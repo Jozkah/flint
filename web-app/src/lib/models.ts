@@ -1,15 +1,37 @@
 import { providerModels as models } from '@/constants/models'
 import { ModelCapabilities } from '@/types/models'
 
-export const defaultModel = (provider?: string) => {
-  if (!provider || !Object.keys(models).includes(provider)) {
-    return models.openai.models[0]
-  }
-  return (
-    models[provider as unknown as keyof typeof models]
-      .models as unknown as string[]
-  )[0]
+/**
+ * First model of a provider's built-in cloud catalogue.
+ *
+ * Local engines (llamacpp, mlx, any OpenAI-compatible server the user added)
+ * have no catalogue here, so there is nothing to fall back to and this returns
+ * undefined. It used to return `models.openai.models[0]`, which persisted
+ * threads pairing a cloud model id such as `gpt-5` with `provider: 'llamacpp'`
+ * — an id no local engine can serve. See janhq/jan#8007.
+ */
+export const defaultModel = (provider?: string): string | undefined => {
+  if (!provider) return undefined
+  const catalogue = models[provider as unknown as keyof typeof models]
+  if (!catalogue) return undefined
+  return (catalogue.models as unknown as string[])[0]
 }
+
+/**
+ * The model id a new thread should carry, in order of trust: the model the user
+ * actually selected, then the provider's own first model, then — only for a
+ * provider with a built-in cloud catalogue — that catalogue's first entry.
+ *
+ * Returns undefined when none of those exist. Callers must treat that as "no
+ * model to chat with yet" and refuse to create the thread rather than inventing
+ * an id the provider cannot serve.
+ */
+export const resolveThreadModelId = (
+  provider: string | undefined,
+  selectedModelId: string | undefined,
+  providerModelIds: readonly string[] = []
+): string | undefined =>
+  selectedModelId ?? providerModelIds[0] ?? defaultModel(provider)
 
 /**
  * Determines model capabilities based on provider configuration from token.js

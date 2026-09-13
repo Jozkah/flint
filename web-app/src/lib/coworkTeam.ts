@@ -19,6 +19,17 @@
  * is why [`assembleReport`] takes results rather than prose about them.
  */
 
+import {
+  DECISION_WINDOW_MS,
+  TeamControl,
+  applyReplacement,
+  awaitingDecision,
+  checkRequest,
+  reopen,
+  type ControlRequest,
+  type ControlResult,
+} from '@/lib/coworkTeamControl'
+
 /** What a child was asked to do. */
 export type TeamTask = {
   id: string
@@ -72,6 +83,25 @@ export type TeamTask = {
    * retrying past it would be ignoring it.
    */
   retries?: number
+  /**
+   * Paths this task only reads. Never a conflict: two tasks reading one file,
+   * or one reading what another writes, is not two tasks changing it.
+   */
+  reads?: string[]
+  /** Paths this task expects to delete. A delete of a folder covers its contents. */
+  deletes?: string[]
+  /** Moves this task expects to make. Both ends are changed paths. */
+  renames?: { from: string; to: string }[]
+  /**
+   * Ids this task starts after, whatever became of them.
+   *
+   * Set only by the person resolving an overlap ("run one after the
+   * other"), never read from the model. Unlike `dependsOn` it orders without
+   * implying that the later task builds on the earlier one's result: a failed
+   * earlier task does not block it, and ordering after an isolated task is not
+   * the "waits for changes it cannot see" mistake [`refuseGraph`] refuses.
+   */
+  after?: string[]
 }
 
 /** The most extra attempts a task may ask for. */
@@ -131,10 +161,16 @@ export function danglingDependencies(tasks: readonly TeamTask[]): string[] {
   const known = new Set(tasks.map((task) => task.id))
   const missing = new Set<string>()
   for (const task of tasks) {
-    for (const dep of task.dependsOn) if (!known.has(dep)) missing.add(dep)
+    for (const dep of predecessors(task)) if (!known.has(dep)) missing.add(dep)
   }
   return [...missing].sort()
 }
+
+/** Everything a task starts after: what it needs, and what it was ordered behind. */
+const predecessors = (task: TeamTask): string[] => [
+  ...task.dependsOn,
+  ...(task.after ?? []),
+]
 
 /**
  * A dependency cycle, as the ids involved, or null when there is none.
@@ -158,7 +194,8 @@ export function findCycle(tasks: readonly TeamTask[]): string[] | null {
     }
     visiting.add(id)
     stack.push(id)
-    for (const dep of byId.get(id)?.dependsOn ?? []) {
+    const task = byId.get(id)
+    for (const dep of task ? predecessors(task) : []) {
       const found = walk(dep)
       if (found) return found
     }
@@ -188,11 +225,16 @@ export function readyTasks(
   tasks: readonly TeamTask[],
   state: TeamState
 ): TeamTask[] {
+  const settled = (id: string) => {
+    const status = state[id]?.status ?? 'pending'
+    return status !== 'pending' && status !== 'running'
+  }
   return [...tasks]
     .filter((task) => (state[task.id]?.status ?? 'pending') === 'pending')
     .filter((task) =>
       task.dependsOn.every((dep) => state[dep]?.status === 'completed')
     )
+    .filter((task) => (task.after ?? []).every(settled))
     .sort((a, b) => a.id.localeCompare(b.id))
 }
 
@@ -253,16 +295,23 @@ export type Conflict = {
  * exactly a shared write target with no path between the two tasks.
  */
 export function conflicts(tasks: readonly TeamTask[]): Conflict[] {
-  const related = reachability(tasks)
-  const byPath = new Map<string, string[]>()
+  const related = reachability(tasks, true)
+  // Keyed case-insensitively and after normalising, so `SRC/x.ts` and
+  // `src\x.ts` are the one file they are on Windows; reported as the first
+  // task spelled it.
+  const byPath = new Map<string, { path: string; ids: string[] }>()
   for (const task of tasks) {
-    for (const path of task.writes) {
-      byPath.set(path, [...(byPath.get(path) ?? []), task.id])
+    for (const raw of task.writes) {
+      const path = normalizeScopePath(raw) ?? raw
+      const key = path.toLowerCase()
+      const entry = byPath.get(key) ?? { path, ids: [] }
+      if (!entry.ids.includes(task.id)) entry.ids.push(task.id)
+      byPath.set(key, entry)
     }
   }
 
   const found: Conflict[] = []
-  for (const [path, ids] of byPath) {
+  for (const { path, ids } of byPath.values()) {
     const clashing = new Set<string>()
     for (let i = 0; i < ids.length; i += 1) {
       for (let j = i + 1; j < ids.length; j += 1) {
@@ -280,8 +329,288 @@ export function conflicts(tasks: readonly TeamTask[]): Conflict[] {
   return found.sort((a, b) => a.path.localeCompare(b.path))
 }
 
-/** For each task, every task it transitively depends on. */
-function reachability(tasks: readonly TeamTask[]): Map<string, Set<string>> {
+// ---------------------------------------------------------------------------
+// Write scopes, and where two of them meet
+//
+// What this can and cannot see, stated once: it compares the paths tasks
+// *declare* they will change -- files, folders, deletes, both ends of a move,
+// and the lock file a manifest change regenerates beside it. It does not read
+// code and has no idea whether two edits to different files break each other.
+// A clean answer here means "no declared overlap", never "these changes are
+// compatible". The apply-time check on each child's proposal is what catches
+// an overlap nobody declared.
+
+/**
+ * A declared path as a project-relative, forward-slash path, or null when it
+ * is not one.
+ *
+ * `..` that climbs out, a leading `/`, a drive (`C:`), a UNC or device prefix
+ * (`\\server`, `\\?\`), a `~` home path and a Windows stream (`a.txt:x`) are
+ * all refused rather than guessed at: a scope that could mean a place outside
+ * the project is not a scope. `''` is the project root itself.
+ */
+export function normalizeScopePath(raw: string): string | null {
+  const text = raw.trim().replace(/\\/g, '/')
+  if (!text) return null
+  if (text.startsWith('/') || text.startsWith('~')) return null
+  if (/^[a-z]:/i.test(text) || text.includes(':')) return null
+  const out: string[] = []
+  for (const part of text.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') {
+      if (out.length === 0) return null
+      out.pop()
+      continue
+    }
+    // Windows drops a trailing dot or space, so `a.` is `a` there.
+    out.push(part.replace(/[. ]+$/, '') || part)
+  }
+  return out.join('/')
+}
+
+/** How a task comes to change a path. */
+export type ScopeVia = 'write' | 'delete' | 'rename-from' | 'rename-to' | 'generated'
+
+export type ScopeEntry = {
+  /** Normalised, as the task declared it. */
+  path: string
+  via: ScopeVia
+  /** For a generated file, the manifest whose change regenerates it. */
+  source?: string
+}
+
+/**
+ * Files a change to a manifest rewrites beside it.
+ *
+ * A fixed table, by file name, in the same folder. Two tasks that each touch
+ * `package.json` in different ways both regenerate the lock file next to it,
+ * and that collision is invisible in their declared `writes`.
+ */
+const GENERATED: Record<string, string[]> = {
+  'package.json': [
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'bun.lockb',
+  ],
+  'cargo.toml': ['Cargo.lock'],
+  'pyproject.toml': ['poetry.lock', 'uv.lock', 'pdm.lock'],
+  pipfile: ['Pipfile.lock'],
+  'go.mod': ['go.sum'],
+  gemfile: ['Gemfile.lock'],
+  'composer.json': ['composer.lock'],
+}
+
+/** Everything a task may change, as normalised paths. Reads are not in it. */
+export function writeScope(task: TeamTask): ScopeEntry[] {
+  const out: ScopeEntry[] = []
+  const add = (raw: string, via: ScopeVia) => {
+    const path = normalizeScopePath(raw)
+    if (path === null) return
+    out.push({ path, via })
+    const slash = path.lastIndexOf('/')
+    const dir = slash === -1 ? '' : path.slice(0, slash + 1)
+    const name = path.slice(slash + 1).toLowerCase()
+    if (via === 'delete' || via === 'rename-from') return
+    for (const lock of GENERATED[name] ?? []) {
+      out.push({ path: `${dir}${lock}`, via: 'generated', source: path })
+    }
+  }
+  for (const one of task.writes) add(one, 'write')
+  for (const one of task.deletes ?? []) add(one, 'delete')
+  for (const move of task.renames ?? []) {
+    add(move.from, 'rename-from')
+    add(move.to, 'rename-to')
+  }
+  return out
+}
+
+/** Every declared path that is not a path inside the project. */
+export function invalidScopePaths(tasks: readonly TeamTask[]): string[] {
+  const bad = new Set<string>()
+  for (const task of tasks) {
+    const all = [
+      ...task.writes,
+      ...(task.reads ?? []),
+      ...(task.deletes ?? []),
+      ...(task.renames ?? []).flatMap((m) => [m.from, m.to]),
+    ]
+    for (const one of all) {
+      if (normalizeScopePath(one) === null) bad.add(`${task.id}: ${one}`)
+    }
+  }
+  return [...bad].sort()
+}
+
+export type OverlapKind = 'same-file' | 'nested' | 'rename' | 'delete' | 'generated'
+
+export type Overlap = {
+  kind: OverlapKind
+  /** The first task's path, then the second's, as each declared it. */
+  paths: [string, string]
+  note: string
+}
+
+/** Two tasks that could run at once and whose declared changes meet. */
+export type PairConflict = {
+  /** Sorted. */
+  tasks: [string, string]
+  overlaps: Overlap[]
+}
+
+/** Case-folded, because Windows and macOS read `A.ts` and `a.ts` as one file. */
+const fold = (path: string) => path.toLowerCase()
+
+const covers = (outer: string, inner: string) =>
+  outer === '' || inner === outer || inner.startsWith(`${outer}/`)
+
+function overlapOf(a: ScopeEntry, b: ScopeEntry): Overlap | null {
+  const [fa, fb] = [fold(a.path), fold(b.path)]
+  if (!covers(fa, fb) && !covers(fb, fa)) return null
+  const vias = [a.via, b.via]
+  const kind: OverlapKind = vias.includes('generated')
+    ? 'generated'
+    : vias.includes('delete')
+      ? 'delete'
+      : vias.includes('rename-from') || vias.includes('rename-to')
+        ? 'rename'
+        : fa === fb
+          ? 'same-file'
+          : 'nested'
+  const say = (e: ScopeEntry) =>
+    e.via === 'generated'
+      ? `${e.path} (regenerated by a change to ${e.source})`
+      : e.via === 'delete'
+        ? `${e.path} (deleted)`
+        : e.via === 'rename-from'
+          ? `${e.path} (moved away)`
+          : e.via === 'rename-to'
+            ? `${e.path} (moved to)`
+            : e.path
+  return {
+    kind,
+    paths: [a.path, b.path],
+    note:
+      fa === fb
+        ? `both change ${say(a)}${a.via !== b.via ? ` / ${say(b)}` : ''}`
+        : `${say(a)} and ${say(b)} overlap`,
+  }
+}
+
+/**
+ * Pairs of tasks that could run at the same time and whose declared changes
+ * meet: the same file, a folder and something inside it, either end of a
+ * move, a delete, or a lock file both would regenerate.
+ *
+ * Tasks with any ordering between them -- a dependency, or an `after` the
+ * person set -- never conflict. Reads never conflict.
+ */
+export function scopeConflicts(tasks: readonly TeamTask[]): PairConflict[] {
+  const related = reachability(tasks, true)
+  const scopes = new Map(tasks.map((task) => [task.id, writeScope(task)]))
+  const sorted = [...tasks].sort((a, b) => a.id.localeCompare(b.id))
+  const found: PairConflict[] = []
+  for (let i = 0; i < sorted.length; i += 1) {
+    for (let j = i + 1; j < sorted.length; j += 1) {
+      const [a, b] = [sorted[i].id, sorted[j].id]
+      if (related.get(a)?.has(b) || related.get(b)?.has(a)) continue
+      const overlaps: Overlap[] = []
+      const seen = new Set<string>()
+      for (const ea of scopes.get(a) ?? []) {
+        for (const eb of scopes.get(b) ?? []) {
+          const one = overlapOf(ea, eb)
+          if (!one) continue
+          const key = `${fold(one.paths[0])}>${fold(one.paths[1])}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          overlaps.push(one)
+        }
+      }
+      if (overlaps.length > 0) found.push({ tasks: [a, b], overlaps })
+    }
+  }
+  return found
+}
+
+/**
+ * A stable name for one conflict, so an override applies to exactly the
+ * overlap that was shown -- revising a scope makes a new conflict that has to
+ * be decided again.
+ */
+export const conflictKey = (c: PairConflict): string =>
+  `${c.tasks.join('|')}::${c.overlaps
+    .map((o) => `${fold(o.paths[0])}>${fold(o.paths[1])}`)
+    .sort()
+    .join(',')}`
+
+/** What the person chose for one conflict. */
+export type ConflictDecision =
+  /** Start `then` only after `first` has finished, however it finished. */
+  | { kind: 'serialize'; first: string; then: string }
+  /** Replace what `task` declares it will change. */
+  | { kind: 'revise'; task: string; writes: string[] }
+  /** Let them run side by side. Recorded; apply-time checks still apply. */
+  | { kind: 'parallel' }
+
+/** The graph with one decision applied. `parallel` changes nothing here. */
+export function applyDecision(
+  tasks: readonly TeamTask[],
+  decision: ConflictDecision
+): TeamTask[] {
+  if (decision.kind === 'serialize') {
+    return tasks.map((task) =>
+      task.id === decision.then
+        ? {
+            ...task,
+            after: [...new Set([...(task.after ?? []), decision.first])],
+          }
+        : task
+    )
+  }
+  if (decision.kind === 'revise') {
+    return tasks.map((task) =>
+      task.id === decision.task
+        ? { ...task, writes: decision.writes.filter((one) => one.trim() !== '') }
+        : task
+    )
+  }
+  return [...tasks]
+}
+
+/**
+ * Why a graph still cannot run: overlaps nobody decided about.
+ *
+ * `allowed` holds the [`conflictKey`]s the person chose to run in parallel.
+ */
+export function refuseUnresolved(
+  tasks: readonly TeamTask[],
+  allowed: ReadonlySet<string> = new Set()
+): string | null {
+  const open = scopeConflicts(tasks).filter((c) => !allowed.has(conflictKey(c)))
+  if (open.length === 0) return null
+  const described = open
+    .map(
+      (c) => `${c.overlaps.map((o) => o.paths[0]).join(', ')} (${c.tasks.join(', ')})`
+    )
+    .join('; ')
+  return (
+    `these tasks would change the same files with nothing ordering them: ${described}. ` +
+    'Add a `depends_on` so one runs after the other, or give them separate files.'
+  )
+}
+
+/**
+ * For each task, every task it transitively starts after.
+ *
+ * `withAfter` counts the ordering-only edges a person set. Conflict detection
+ * wants them (ordered tasks do not run at once); the isolation rule does not
+ * (being ordered after an isolated task is not depending on its changes).
+ */
+function reachability(
+  tasks: readonly TeamTask[],
+  withAfter = false
+): Map<string, Set<string>> {
   const byId = new Map(tasks.map((task) => [task.id, task]))
   const cache = new Map<string, Set<string>>()
 
@@ -291,7 +620,13 @@ function reachability(tasks: readonly TeamTask[]): Map<string, Set<string>> {
     if (seen.has(id)) return new Set()
     seen.add(id)
     const out = new Set<string>()
-    for (const dep of byId.get(id)?.dependsOn ?? []) {
+    const task = byId.get(id)
+    const before = task
+      ? withAfter
+        ? predecessors(task)
+        : task.dependsOn
+      : []
+    for (const dep of before) {
       out.add(dep)
       for (const deeper of walk(dep, seen)) out.add(deeper)
     }
@@ -420,12 +755,25 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       typeof one.subagent_name === 'string' && one.subagent_name.trim()
         ? one.subagent_name.trim()
         : undefined
+    const renames = Array.isArray(one.renames)
+      ? one.renames.flatMap((move) => {
+          const m = move as Record<string, unknown> | null
+          return m && typeof m.from === 'string' && typeof m.to === 'string'
+            ? [{ from: m.from, to: m.to }]
+            : []
+        })
+      : []
+    const reads = stringList(one.reads)
+    const deletes = stringList(one.deletes)
     tasks.push({
       id,
       description,
       ...(subagentName ? { subagentName } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
+      ...(reads.length ? { reads } : {}),
+      ...(deletes.length ? { deletes } : {}),
+      ...(renames.length ? { renames } : {}),
       ...(one.isolate === true ? { isolate: true } : {}),
       ...(typeof one.retries === 'number' && one.retries > 0
         ? { retries: Math.min(Math.floor(one.retries), MAX_TASK_RETRIES) }
@@ -458,16 +806,16 @@ export function refuseGraph(tasks: readonly TeamTask[]): string | null {
   if (cycle) {
     return `these tasks depend on each other in a loop: ${cycle.join(' -> ')}`
   }
-  const clashes = conflicts(tasks)
-  if (clashes.length > 0) {
-    const described = clashes
-      .map((one) => `${one.path} (${one.tasks.join(', ')})`)
-      .join('; ')
+  const outside = invalidScopePaths(tasks)
+  if (outside.length > 0) {
     return (
-      `these tasks would change the same files with nothing ordering them: ${described}. ` +
-      'Add a `depends_on` so one runs after the other, or give them separate files.'
+      `these declared paths are not paths inside the project: ${outside.join('; ')}. ` +
+      'Name files relative to the project, without `..`, drives or absolute paths.'
     )
   }
+  // Overlapping writes are not refused here. They are the person's to decide
+  // -- run one after the other, change a scope, or let them run side by side
+  // -- and [`runTeam`] refuses any overlap that was not decided.
   return refuseIsolation(tasks)
 }
 
@@ -512,12 +860,42 @@ export type TeamRunDeps = {
   maxParallel?: number
   /** Called whenever a task changes state, for the Tasks panel. */
   onState?: (state: TeamState) => void
+  /**
+   * The [`conflictKey`]s the person chose to let run side by side.
+   *
+   * Any other overlap refuses the team before a child starts, so a caller
+   * that forgot to ask cannot run overlapping tasks by omission.
+   */
+  allowParallel?: ReadonlySet<string>
+  /**
+   * Restart or replace a failed task while the team runs (AH-111). Present,
+   * a team that would end with failures holds for a decision instead: the
+   * person restarts, replaces, finishes it, or stops the run.
+   */
+  control?: TeamControl
+  /** Told what became of each control request, for the Tasks panel. */
+  onControl?: (request: ControlRequest, result: ControlResult) => void
+  /**
+   * How long a team that would end with failures waits for a decision before
+   * ending on its own. Defaults to [`DECISION_WINDOW_MS`].
+   */
+  decisionWindowMs?: number
 }
 
 export type TeamOutcome =
   /** The graph could not run at all; nothing was dispatched. */
   | { ok: false; refusal: string }
-  | { ok: true; report: TeamReport; state: TeamState }
+  | {
+      ok: true
+      report: TeamReport
+      state: TeamState
+      /**
+       * Why a team with failures ended: a person finished it, the decision
+       * window passed with nobody deciding, or the run was stopped. Absent when
+       * nothing had failed, or no one could have decided.
+       */
+      decision?: 'finished' | 'window-elapsed' | 'stopped'
+    }
 
 /**
  * Run a task graph to completion, or to the first thing that stops it.
@@ -536,13 +914,18 @@ export async function runTeam(
   tasks: readonly TeamTask[],
   deps: TeamRunDeps
 ): Promise<TeamOutcome> {
-  const refusal = refuseGraph(tasks)
+  const refusal =
+    refuseGraph(tasks) ?? refuseUnresolved(tasks, deps.allowParallel)
   if (refusal) return { ok: false, refusal }
 
   const limit = Math.max(1, deps.maxParallel ?? MAX_TEAM_PARALLEL)
-  let state = initialState(tasks)
+  // The graph a replacement can change; the caller's stays as it was.
+  let graph: TeamTask[] = [...tasks]
+  let state = initialState(graph)
   const results: TaskResult[] = []
   const running = new Map<string, Promise<void>>()
+  let finishRequested = false
+  let decision: 'finished' | 'window-elapsed' | 'stopped' | undefined
 
   const publish = () => deps.onState?.(state)
   publish()
@@ -575,7 +958,7 @@ export async function runTeam(
         (result) => {
           results.push(result)
           state = settle(
-            tasks,
+            graph,
             state,
             task.id,
             result.ok ? 'completed' : 'failed'
@@ -593,7 +976,7 @@ export async function runTeam(
             producedBy: task.id,
           })
           state = settle(
-            tasks,
+            graph,
             state,
             task.id,
             cancelled ? 'cancelled' : 'failed'
@@ -609,16 +992,65 @@ export async function runTeam(
     running.set(task.id, work)
   }
 
+  /** Apply what a person asked for since the last look. */
+  const applyControl = () => {
+    for (const request of deps.control?.take() ?? []) {
+      const result = checkRequest(graph, state, request, false)
+      deps.onControl?.(request, result)
+      if (!result.ok) continue
+      if (request.kind === 'finish') {
+        finishRequested = true
+        decision = 'finished'
+        continue
+      }
+      if (request.kind === 'replace') {
+        graph = applyReplacement(graph, request.taskId, request.with)
+      }
+      // The failed attempt stays in the record as an earlier attempt; the
+      // report describes the attempt that counts.
+      for (let i = results.length - 1; i >= 0; i--) {
+        if (results[i].taskId === request.taskId) {
+          results.splice(i, 1)
+          break
+        }
+      }
+      state = reopen(graph, state, request.taskId)
+    }
+  }
+
   while (!deps.signal?.aborted) {
-    for (const task of readyTasks(tasks, state)) {
+    applyControl()
+    for (const task of readyTasks(graph, state)) {
       if (running.size >= limit) break
       start(task)
     }
     publish()
-    if (running.size === 0) break
+    if (running.size === 0) {
+      // Nothing left to run. With failures and a person able to decide, hold
+      // rather than end: ending would make a restart impossible.
+      if (deps.control && !finishRequested && awaitingDecision(state)) {
+        const asked = await deps.control.next(
+          deps.signal,
+          deps.decisionWindowMs ?? DECISION_WINDOW_MS
+        )
+        if (!asked && !deps.signal?.aborted) {
+          // Nobody decided in time: end as the team would have, and say so.
+          decision = 'window-elapsed'
+          break
+        }
+        continue
+      }
+      break
+    }
     // The first to finish, not all of them: a dependent should start as soon
-    // as its last dependency lands.
-    await Promise.race(running.values())
+    // as its last dependency lands -- or a person asks for something.
+    await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(deps.signal)] : [])])
+  }
+  if (deps.control) deps.control.finished = true
+  if (deps.signal?.aborted && deps.control && awaitingDecision(state)) decision = 'stopped'
+  // Anything asked for after the team ended is refused, not silently dropped.
+  for (const request of deps.control?.take() ?? []) {
+    deps.onControl?.(request, checkRequest(graph, state, request, true))
   }
 
   // Let whatever is still in flight settle, so the report describes finished
@@ -626,7 +1058,12 @@ export async function runTeam(
   if (running.size > 0) await Promise.all(running.values())
   publish()
 
-  return { ok: true, report: assembleReport(tasks, results), state }
+  return {
+    ok: true,
+    report: assembleReport(graph, results),
+    state,
+    ...(decision ? { decision } : {}),
+  }
 }
 
 /**

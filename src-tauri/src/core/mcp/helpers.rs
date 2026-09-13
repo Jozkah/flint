@@ -161,6 +161,66 @@ pub async fn run_mcp_commands<R: Runtime>(
     Ok(())
 }
 
+/// What a liveness probe found (AH-139).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Liveness {
+    /// The server answered the protocol `ping`. Any answer counts, a JSON-RPC
+    /// error included: an error is a live server replying.
+    Alive,
+    /// The server ignored `ping` but answered `tools/list`: alive, and not
+    /// following the protocol's liveness request. Kept distinct so the log
+    /// says so instead of hiding it.
+    AliveWithoutPing,
+    /// No answer to either request in time.
+    Unresponsive(String),
+    /// The connection is gone: closed, or the request could not be sent.
+    Gone(String),
+}
+
+impl Liveness {
+    pub(crate) fn is_alive(&self) -> bool {
+        matches!(self, Liveness::Alive | Liveness::AliveWithoutPing)
+    }
+}
+
+/// Probe a server with the MCP protocol `ping` (AH-139), not a tool call: a
+/// tool that happens to be named `ping` is the server's business, and a
+/// `tools/list` makes some servers echo their whole catalogue to stderr every
+/// probe. A server that does not answer `ping` within `ping_wait` gets one
+/// `tools/list` before it is called unresponsive, so a server that skips the
+/// liveness request is not restarted every probe for it.
+pub(crate) async fn probe_liveness(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    ping_wait: Duration,
+    list_wait: Duration,
+) -> Liveness {
+    use rmcp::model::{ClientRequest, PingRequest};
+    match timeout(
+        ping_wait,
+        peer.send_request(ClientRequest::PingRequest(PingRequest::default())),
+    )
+    .await
+    {
+        Ok(Ok(_)) => return Liveness::Alive,
+        Ok(Err(rmcp::ServiceError::McpError(e))) => {
+            log::debug!("MCP ping answered with an error, so the server is up: {e}");
+            return Liveness::Alive;
+        }
+        Ok(Err(e)) => return Liveness::Gone(e.to_string()),
+        Err(_) => {}
+    }
+    match timeout(list_wait, peer.list_all_tools()).await {
+        Ok(Ok(_)) => Liveness::AliveWithoutPing,
+        Ok(Err(rmcp::ServiceError::McpError(_))) => Liveness::AliveWithoutPing,
+        Ok(Err(e)) => Liveness::Gone(e.to_string()),
+        Err(_) => Liveness::Unresponsive(format!(
+            "no answer to ping in {}s or tools/list in {}s",
+            ping_wait.as_secs(),
+            list_wait.as_secs()
+        )),
+    }
+}
+
 /// Monitor MCP server health and auto-reconnect on failure with exponential backoff
 pub async fn monitor_mcp_server_handle<R: Runtime>(
     app: AppHandle<R>,
@@ -174,7 +234,9 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
     let mut consecutive_failures: u32 = 0;
 
     loop {
-        // 30s, not 2s: every probe forces a ListToolsRequest the server echoes to stderr.
+        // Every 30s: the probe is the protocol ping (a tools/list only for a
+        // server that ignores ping), so it is cheap, but a probe is still a
+        // request the server has to answer.
         tokio::select! {
             _ = sleep(Duration::from_secs(30)) => {}
             _ = reconnect_notify.notified() => {
@@ -193,17 +255,19 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
         let health_check_result = {
             let servers = servers_state.lock().await;
             if let Some(service) = servers.get(&name) {
-                match timeout(Duration::from_secs(2), service.list_all_tools()).await {
-                    Ok(Ok(_)) => true,
-                    Ok(Err(e)) => {
-                        log::warn!("MCP server {name} health check failed: {e}");
-                        false
+                let live =
+                    probe_liveness(service, Duration::from_secs(5), Duration::from_secs(2)).await;
+                match &live {
+                    Liveness::Alive => {}
+                    Liveness::AliveWithoutPing => {
+                        log::info!("MCP server {name} does not answer ping; it answered tools/list")
                     }
-                    Err(_) => {
-                        log::warn!("MCP server {name} health check timed out");
-                        false
+                    Liveness::Unresponsive(why) => {
+                        log::warn!("MCP server {name} health check timed out: {why}")
                     }
+                    Liveness::Gone(why) => log::warn!("MCP server {name} health check failed: {why}"),
                 }
+                live.is_alive()
             } else {
                 // Entry was removed (e.g., by get_tools cleanup or deactivate).
                 // Only stop monitoring if the server was deliberately deactivated.
@@ -352,6 +416,16 @@ pub async fn start_mcp_server<R: Runtime>(
         return Ok(());
     }
 
+    // The number this attempt runs under. If the name is stopped and started
+    // again while this one is still in flight, the number moves and this
+    // attempt's completion stops counting.
+    let generation = {
+        let mut generations = app_state.mcp_generation.lock().await;
+        let next = generations.get(&name).copied().unwrap_or(0) + 1;
+        generations.insert(name.clone(), next);
+        next
+    };
+
     // Store active server config for restart purposes
     store_active_server_config(&active_servers_state, &name, &config).await;
 
@@ -368,6 +442,21 @@ pub async fn start_mcp_server<R: Runtime>(
     // Start attempt finished (success or failure) — clear the in-flight marker so
     // future (re)activations aren't blocked.
     app_state.mcp_starting.lock().await.remove(&name);
+
+    // Superseded while we were starting: this service belongs to a name that
+    // now means something else. Installing a monitor for it would keep
+    // reconnecting the wrong program.
+    let superseded = {
+        let generations = app_state.mcp_generation.lock().await;
+        generations.get(&name).copied().unwrap_or(0) != generation
+    };
+    if superseded {
+        log::info!("MCP server {name} was replaced while starting; discarding this attempt");
+        if let Some(service) = servers_state.lock().await.remove(&name) {
+            let _ = service.cancel().await;
+        }
+        return Ok(());
+    }
 
     match first_start_result {
         Ok(_) => {
@@ -431,10 +520,12 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // One client for both transports, and one place the configured headers
         // are turned into a `HeaderMap` -- the http and sse arms used to carry
         // identical copies of that loop.
-        let base = reqwest::Client::builder()
-            .default_headers(header_map(&config_params.headers))
-            .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX))
-            .build()
+        let base = crate::core::net::tls::apply12(
+            reqwest::Client::builder()
+                .default_headers(header_map(&config_params.headers))
+                .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX)),
+        )
+        .build()
             .map_err(|e| format!("Failed to build HTTP client for {name}: {e}"))?;
 
         // Stored OAuth credentials (refreshed if stale) are wrapped around the
@@ -443,7 +534,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // own `Authorization` header, which the base client already sends.
         let authorized = oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
             .await
-            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail)?;
+            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail.to_string())?;
         let had_credentials = authorized.is_some();
 
         let label = if transport == "http" {
@@ -641,6 +732,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // receiving SIGPIPE and to capture diagnostic output.
         if let Some(mut stderr_stream) = stderr {
             let stderr_name = name.clone();
+            let log_folder = crate::core::app::commands::resolve_jan_data_folder();
             tokio::spawn(async move {
                 let mut buf = [0u8; 1024];
                 while let Ok(n) = stderr_stream.read(&mut buf).await {
@@ -651,6 +743,12 @@ async fn schedule_mcp_start_task<R: Runtime>(
                         for line in text.lines() {
                             if !line.trim().is_empty() {
                                 log_mcp_stderr_line(&stderr_name, line);
+                                // AH-140: and into the server's own log.
+                                crate::core::mcp::server_log::append(
+                                    &log_folder,
+                                    &stderr_name,
+                                    line,
+                                );
                             }
                         }
                     }
@@ -763,94 +861,44 @@ async fn schedule_mcp_start_task<R: Runtime>(
 /// Route an MCP server's stderr line through Jan's logger at the level the
 /// server itself reported, defaulting to info when no level tag is present.
 fn log_mcp_stderr_line(server_name: &str, line: &str) {
-    let trimmed = line.trim_start();
-    let level_token = trimmed.split_whitespace().next().map(|t| {
+    let (level, text) = stderr_log_record(server_name, line);
+    log::log!(level, "{text}");
+}
+
+/// The level and text an MCP server's stderr line is logged with.
+///
+/// A server's stderr is third-party text, and servers print credentials in
+/// their banners: it is scrubbed before the application log keeps a copy.
+/// Found by the AH-140 scenario, which saw a fixture's key land verbatim in
+/// the app log while the server's own log was clean.
+fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
+    let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
+    let level_token = scrubbed.trim_start().split_whitespace().next().map(|t| {
         t.trim_matches(|c: char| !c.is_ascii_alphabetic())
             .to_ascii_uppercase()
     });
-    match level_token.as_deref() {
-        Some("ERROR" | "CRITICAL" | "FATAL") => {
-            log::error!("[mcp-stderr:{server_name}] {line}")
-        }
-        Some("WARN" | "WARNING") => log::warn!("[mcp-stderr:{server_name}] {line}"),
-        Some("DEBUG") => log::debug!("[mcp-stderr:{server_name}] {line}"),
-        Some("TRACE") => log::trace!("[mcp-stderr:{server_name}] {line}"),
-        _ => log::info!("[mcp-stderr:{server_name}] {line}"),
-    }
+    let level = match level_token.as_deref() {
+        Some("ERROR" | "CRITICAL" | "FATAL") => log::Level::Error,
+        Some("WARN" | "WARNING") => log::Level::Warn,
+        Some("DEBUG") => log::Level::Debug,
+        Some("TRACE") => log::Level::Trace,
+        _ => log::Level::Info,
+    };
+    (level, format!("[mcp-stderr:{server_name}] {scrubbed}"))
 }
 
-/// Turn the entry's configured `headers` map into a `HeaderMap`, skipping any
-/// pair that is not a valid header name/value. Shared by both remote transports.
-/// Rebuild a command so it runs inside the session's sandbox.
-///
-/// The policy is not invented here: it comes from the agent-tools plugin,
-/// which is the one implementation of Jan's sandboxing and the same one the
-/// agent's own shell runs under. A second, MCP-shaped imitation of it would
-/// drift from the real boundary, and the drift would be invisible until
-/// something escaped.
-///
-/// The environment is rebuilt rather than filtered. `Command` inherits the
-/// parent's environment by default, and Jan's process holds the user's whole
-/// session — so `env_clear` first, then exactly the names the user approved.
-pub(super) fn confined_mcp_command(
-    cmd: Command,
-    params: &crate::core::mcp::models::McpServerConfig,
-    confinement: &crate::core::mcp::models::McpConfinement,
-) -> Result<Command, String> {
-    use tauri_plugin_agent_tools::tools::mcp_confine::{confined_command, McpAuthority};
-
-    let program = cmd.as_std().get_program().to_os_string();
-    let args: Vec<String> = cmd
-        .as_std()
-        .get_args()
-        .map(|arg| arg.to_string_lossy().into_owned())
-        .collect();
-
-    let authority = match confinement.writable_repository.clone() {
-        Some(repository) => McpAuthority::EditFolder {
-            workspace: confinement.workspace.clone(),
-            repository,
-        },
-        None => McpAuthority::ReviewOnly {
-            workspace: confinement.workspace.clone(),
-            repository: confinement.repository.clone(),
-        },
-    };
-
-    let wrapped = confined_command(
-        std::path::Path::new(&program),
-        &args,
-        None,
-        &authority,
-        confinement.jan_data.as_deref(),
-    )
-    .map_err(|e| e.reason())?;
-
-    let mut confined = Command::new(&wrapped.program);
-    for arg in &wrapped.args {
-        confined.arg(arg);
+#[cfg(test)]
+mod stderr_log_tests {
+    #[test]
+    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
+        let (level, text) =
+            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
+        assert_eq!(level, log::Level::Error);
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
+        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
+        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        confined.creation_flags(0x08000000);
-    }
-    #[cfg(unix)]
-    {
-        confined.process_group(0);
-    }
-    confined.kill_on_drop(true);
-
-    // Nothing inherited. Only the names the user approved, and only where the
-    // configuration actually supplied a value for them.
-    confined.env_clear();
-    for name in &confinement.allowed_env {
-        if let Some(value) = params.envs.get(name).and_then(Value::as_str) {
-            confined.env(name, value);
-        }
-    }
-    confined.current_dir(&confinement.workspace);
-    Ok(confined)
 }
 
 fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest::header::HeaderMap {
@@ -1382,12 +1430,12 @@ pub fn add_server_config_with_path<R: Runtime>(
         .ok_or("mcpServers is not an object")?
         .insert(server_key, server_value);
 
-    std::fs::write(
-        &config_path,
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| format!("Failed to serialize config: {e}"))?,
-    )
-    .map_err(|e| format!("Failed to write config file: {e}"))?;
+    let serialized = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    // Atomic: a torn mcp_config.json is what the loader used to answer by
+    // discarding the user's servers (janhq/jan#8519).
+    crate::core::threads::helpers::write_file_atomically(&config_path, serialized.as_bytes())
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
 
     Ok(())
 }

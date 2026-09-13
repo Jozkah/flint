@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   const mockSendMessage = vi.fn()
   const mockRegenerate = vi.fn()
   const mockStop = vi.fn()
+  const SMOKE_KEY = 'sk-live-abcdefghijklmnopqrstuvwxyz012345'
   const mockAddToolOutput = vi.fn()
   const mockSetChatMessages = vi.fn()
   const mockUpdateRag = vi.fn()
@@ -90,7 +91,17 @@ const h = vi.hoisted(() => {
 
   const chatSessionsState: any = {
     sessions: {},
-    getSessionData: vi.fn(() => ({ tools: [] })),
+    // One object per session, as the real store does: it keeps the data on the
+    // session, or in a standalone map keyed by id. A fresh object per call
+    // would make the route's `sessionData.tools` list vanish on every
+    // re-render, which is a property of this mock and not of the store.
+    sessionDataById: {} as Record<string, { tools: unknown[] }>,
+    getSessionData: vi.fn((sessionId: string) => {
+      if (!chatSessionsState.sessionDataById[sessionId]) {
+        chatSessionsState.sessionDataById[sessionId] = { tools: [] }
+      }
+      return chatSessionsState.sessionDataById[sessionId]
+    }),
   }
   const useChatSessionsMock: any = (selector: any) => selector(chatSessionsState)
   useChatSessionsMock.getState = () => chatSessionsState
@@ -140,6 +151,7 @@ const h = vi.hoisted(() => {
     mockSendMessage,
     mockRegenerate,
     mockStop,
+    SMOKE_KEY,
     mockAddToolOutput,
     mockSetChatMessages,
     mockUpdateRag,
@@ -282,6 +294,10 @@ vi.mock('@/lib/utils', () => ({
   cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }))
 
+vi.mock('@/containers/WhatJanIsUsing', () => ({
+  WhatJanIsUsing: () => null,
+}))
+
 vi.mock('@/lib/instructionTemplate', () => ({
   renderInstructions: (i: string) => `rendered:${i}`,
 }))
@@ -369,6 +385,15 @@ vi.mock('@/hooks/useTools', () => ({ useTools: vi.fn() }))
 vi.mock('@/hooks/useAppState', () => ({ useAppState: h.useAppStateMock }))
 vi.mock('@/hooks/useModelProvider', () => ({ useModelProvider: h.useModelProviderMock }))
 vi.mock('@/stores/chat-session-store', () => ({ useChatSessions: h.useChatSessionsMock }))
+// The redaction seam. `@/lib/redactToolOutput` itself is NOT mocked: the point
+// of the test below is that the route routes tool output through it, so only
+// the IPC call underneath is replaced.
+vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
+  secretsRedact: (text: string) =>
+    Promise.resolve(text.split(h.SMOKE_KEY).join('sk-[redacted]')),
+  memoryProposalsList: () => Promise.resolve([]),
+  memoryProposalResolve: () => Promise.resolve(null),
+}))
 vi.mock('@/hooks/useChatAttachments', () => ({
   useChatAttachments: h.useChatAttachmentsMock,
   NEW_THREAD_ATTACHMENT_KEY: '__new-thread__',
@@ -407,7 +432,10 @@ vi.mock('@/constants/chat', () => ({
   TEMPORARY_CHAT_QUERY_ID: 'temporary-chat',
 }))
 
-vi.mock('@/utils/error', () => ({
+vi.mock('@/utils/error', async (importOriginal) => ({
+  // Keep the real parsers: the context banner calls them once an error is
+  // present, and a mock that dropped them made that path untestable.
+  ...(await importOriginal<typeof import('@/utils/error')>()),
   OUT_OF_CONTEXT_SIZE: 'OUT_OF_CONTEXT_SIZE',
 }))
 
@@ -459,7 +487,8 @@ describe('ThreadDetail route', () => {
     h.messagesState.updateMessage = vi.fn()
     h.messagesState.deleteMessage = vi.fn()
     h.messagesState.setMessages = vi.fn()
-    h.chatSessionsState.getSessionData = vi.fn(() => ({ tools: [] }))
+    // Fresh session data per test, still one object per session within a test.
+    h.chatSessionsState.sessionDataById = {}
     h.messageQueueState.dequeue = vi.fn(() => null)
     h.messageQueueState.clearQueue = vi.fn()
     h.agentModeState.agentThreads = {}
@@ -748,7 +777,9 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        undefined
+        undefined,
+        // The prompt describes the call from its arguments.
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -767,7 +798,8 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        'fetch-server'
+        'fetch-server',
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -801,6 +833,125 @@ describe('ThreadDetail route', () => {
       expect(h.mockAddToolOutput).toHaveBeenCalledWith(
         expect.objectContaining({ toolCallId: 'tc2', tool: 'fetch' })
       )
+    })
+
+    // AH-041. The backend keeps the record of which MCP servers the user
+    // trusts and refuses a call to any other, so an approval that happened in
+    // the renderer has to be handed over as something the backend issued. The
+    // assertion is that the call carries one -- not that the renderer decided.
+    // janhq/jan#8777: with built-in web search off, a `web_search` call came
+    // from an MCP server that exposes one. The name alone used to mark it as
+    // Jan's own tool, so it skipped that server's approval prompt and was sent
+    // to the native adapter instead of the server.
+    it('treats an MCP server web_search as that server tool while built-in search is off', async () => {
+      const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      h.appStateState.mcpToolNames = new Set(['web_search'])
+      h.appStateState.tools = [{ name: 'web_search', server: 'mcp-search' }]
+      h.toolApprovalState.requestApproval = vi.fn().mockResolvedValue(true)
+      const allowOnceForServer = vi.fn().mockResolvedValue('ticket-web')
+      const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
+      hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall({
+            toolCall: {
+              toolCallId: 'tcWeb',
+              toolName: 'web_search',
+              input: { query: 'x' },
+            },
+          })
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        expect(h.toolApprovalState.requestApproval).toHaveBeenCalledWith(
+          'tcWeb',
+          'web_search',
+          'thread-1',
+          'mcp-search',
+          expect.objectContaining({ input: { query: 'x' } })
+        )
+        expect(callTool).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'web_search',
+            serverName: 'mcp-search',
+          })
+        )
+      } finally {
+        hub.mcp = realMcp
+        useWebSearchConfig.setState({ webSearchEnabled: true })
+      }
+    })
+
+    it('authorizes an MCP call with a ticket the backend issued', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      h.appStateState.tools = [{ name: 'fetch', server: 'files' }]
+      const allowOnceForServer = vi.fn().mockResolvedValue('ticket-42')
+      const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
+      hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      // The approval records which server definition it was for; the ticket
+      // must be bound to that same definition.
+      const takeApprovedFingerprint = vi.fn(() => 'sha256:files')
+      ;(h.toolApprovalState as any).takeApprovedFingerprint = takeApprovedFingerprint
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcTicket'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        expect(allowOnceForServer).toHaveBeenCalledWith(
+          'files',
+          'fetch',
+          'sha256:files'
+        )
+        expect(callTool).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'fetch',
+            serverName: 'files',
+            approvalTicket: 'ticket-42',
+          })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
+    })
+
+    // AH-045. A transcript is a file that outlives the run and gets exported,
+    // and a tool prints whatever it prints -- a `curl -v` trace, a config file
+    // it read back. The credential must not reach the message store, and the
+    // assertion is on what is absent, because a redactor that silently returns
+    // its input passes any check for what is present.
+    it('never persists a credential a tool printed', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      const callTool = vi.fn().mockResolvedValue({
+        error: '',
+        content: [{ type: 'text', text: `Authorization: ${h.SMOKE_KEY}` }],
+      })
+      hub.mcp = () => ({ callTool }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcRedact'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        const stored = JSON.stringify(h.mockAddToolOutput.mock.calls)
+        expect(stored).not.toContain(h.SMOKE_KEY)
+        // And the call still happened, so this cannot pass by doing nothing.
+        expect(h.mockAddToolOutput).toHaveBeenCalledWith(
+          expect.objectContaining({ toolCallId: 'tcRedact' })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
     })
 
     it('reuses the early approval instead of prompting twice', async () => {
@@ -1020,6 +1171,62 @@ describe('ThreadDetail route', () => {
     screen.getByTestId('del-u1').click()
     expect(h.messagesState.deleteMessage).toHaveBeenCalledWith('thread-1', 'u1')
     expect(h.mockSetChatMessages).toHaveBeenCalled()
+  })
+
+  // janhq/jan#8495: deleting a message in a branched thread used to strand its
+  // children behind a parent that no longer existed, so the rest of the
+  // conversation vanished from the UI.
+  it('delete re-links what hung below the message before removing it', () => {
+    const text = (value: string) => [
+      { type: 'text', text: { value, annotations: [] } },
+    ]
+    h.messagesState.getMessages = vi.fn(() => [
+      { id: 'u1', role: 'user', created_at: 1, content: text('q1'), metadata: { parentId: null, activeChildId: 'a1' } },
+      { id: 'a1', role: 'assistant', created_at: 2, content: text('r1'), metadata: { parentId: 'u1' } },
+      { id: 'u2', role: 'user', created_at: 3, content: text('q2'), metadata: { parentId: 'a1' } },
+      { id: 'a2', role: 'assistant', created_at: 4, content: text('r2'), metadata: { parentId: 'u2' } },
+    ])
+    h.chatState.messages = [
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'r1' }] },
+    ]
+    renderComponent()
+    screen.getByTestId('del-a1').click()
+
+    const updates = (h.messagesState.updateMessage as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0]
+    )
+    expect(updates.find((m) => m.id === 'u2')?.metadata?.parentId).toBe('u1')
+    expect(updates.find((m) => m.id === 'u1')?.metadata?.activeChildId).toBe('u2')
+    expect(h.messagesState.deleteMessage).toHaveBeenCalledWith('thread-1', 'a1')
+  })
+
+  // janhq/jan#8760: raising ctx_len for a server-owned window changed nothing
+  // that was sent, so the button promised a fix that could not work.
+  it('offers Increase Context Size only where Jan sets the window', () => {
+    // The banner is driven by a context error stamped on the thread.
+    h.messagesState.messages = {
+      'thread-1': [
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: [],
+          metadata: { contextError: 'OUT_OF_CONTEXT_SIZE' },
+        },
+      ],
+    }
+    try {
+      h.modelProviderState.selectedProvider = 'openai'
+      const remote = renderComponent()
+      expect(screen.queryByText('Increase Context Size')).toBeNull()
+      expect(screen.getByText(/set by its server/)).toBeInTheDocument()
+      remote.unmount()
+
+      h.modelProviderState.selectedProvider = 'llamacpp'
+      renderComponent()
+      expect(screen.getByText('Increase Context Size')).toBeInTheDocument()
+    } finally {
+      delete h.messagesState.messages
+    }
   })
 
   it('shows PromptProgress while status is submitted', () => {

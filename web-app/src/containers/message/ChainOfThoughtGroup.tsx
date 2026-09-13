@@ -1,6 +1,6 @@
 import { cloneElement, memo, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import { IconArrowDown, IconCircleCheck } from '@tabler/icons-react'
+import { ArrowDown, CircleCheck } from 'lucide-react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -40,6 +40,15 @@ export type ChainOfThoughtGroupProps = {
   hasFollowingContent: boolean
   /** Any tool on the message awaits approval; pins the trace open. */
   awaitingApproval: boolean
+  /**
+   * Keep tool activity on screen once the answer arrives. AH-172.
+   *
+   * In a chat thread a finished trace folds into "Worked for 8s", because the
+   * reasoning is scaffolding and the answer is the point. In Cowork the tool
+   * calls *are* the work -- what was read, what was changed, what was refused
+   * -- and folding them away leaves the user with the model's word for it.
+   */
+  keepToolActivity?: boolean
   citationOffsets: Map<number, number>
   reasoningContainerRef?: React.RefObject<HTMLDivElement | null>
   isReasoningAtBottom?: boolean
@@ -55,6 +64,7 @@ export const ChainOfThoughtGroup = memo(
     isStreaming,
     hasFollowingContent,
     awaitingApproval,
+    keepToolActivity,
     citationOffsets,
     reasoningContainerRef,
     isReasoningAtBottom,
@@ -137,8 +147,11 @@ export const ChainOfThoughtGroup = memo(
     // inside the collapsible and must stay mounted even if an answer has
     // started. The extended view always has the live step to show, so it must
     // not be collapsed out from under the reader who just opened it.
+    const carriesTools = entries.some((e) => isToolPart(e.part))
     const shouldCollapse =
-      hasFollowingContent || !(hasDisplayableContent || isExtended)
+      keepToolActivity && carriesTools
+        ? false
+        : hasFollowingContent || !(hasDisplayableContent || isExtended)
 
     // Done/historical: flatten every entry (reasoning paragraphs, tool calls)
     // into steps on a single continuous dotted rail, so a tool call between two
@@ -186,7 +199,7 @@ export const ChainOfThoughtGroup = memo(
           <StepRow
             key={`${messageId}-done`}
             marker={
-              <IconCircleCheck className="size-4 text-muted-foreground/60" />
+              <CircleCheck className="size-4 text-success" />
             }
             text={t('chat:done')}
           />
@@ -222,13 +235,13 @@ export const ChainOfThoughtGroup = memo(
         </div>
         {!isReasoningAtBottom && (
           <Button
-            className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10"
+            className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10 pointer-coarse:size-11"
             onClick={onReasoningScrollToBottom}
             size="icon"
             type="button"
             variant="outline"
           >
-            <IconArrowDown className="size-3" />
+            <ArrowDown className="size-3" />
           </Button>
         )}
       </div>

@@ -7,13 +7,10 @@ import { useHardware } from '@/hooks/useHardware'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { useDownloadStore } from '@/hooks/useDownloadStore'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
 import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useModelOrder } from '@/hooks/useModelOrder'
-import { useLatestJanModel } from '@/hooks/useLatestJanModel'
-import { useJanModelPromptDismissed } from '@/hooks/useJanModelPrompt'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
@@ -24,6 +21,13 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import { useKeybindings } from '@/hooks/useKeybindings'
+import { useReferenceAliases } from '@/lib/referenceAliases'
+import { useProjectInitDrafts } from '@/lib/projectInit'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -44,13 +48,10 @@ const secondaryStores = [
   useLocalApiServer,
   useToolApproval,
   useToolAvailable,
-  useDownloadStore,
   useProxyConfig,
   useVulkan,
   useFavoriteModel,
   useModelOrder,
-  useLatestJanModel,
-  useJanModelPromptDismissed,
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,
@@ -61,6 +62,13 @@ const secondaryStores = [
   useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,
+  useCoworkDisplay,
+  useKeybindings,
+  useReferenceAliases,
+  useProjectInitDrafts,
+  useModelEvidence,
+  useOnboardingGuide,
+  useSplitConversation,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

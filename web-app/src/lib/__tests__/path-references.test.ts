@@ -3,6 +3,7 @@ import {
   parsePromptForReferences,
   stripPromptReferences,
   lineRangeOf,
+  typedReference,
 } from '../path-references'
 import { codeRefToken, expandCodeRefs } from '../coworkCode'
 
@@ -40,6 +41,25 @@ describe('parsePromptForReferences', () => {
     expect(
       parsePromptForReferences('open @src/main.ts and (@README.md)')
     ).toEqual(['src/main.ts', 'README.md'])
+  })
+})
+
+// AH-204: the `@` menu inserts typed references for skills, agents and
+// aliases. They must come back whole, not as a file called `skill`.
+describe('typed references', () => {
+  it('parses @skill:, @agent: and @alias: whole', () => {
+    expect(
+      parsePromptForReferences('@skill:reviewer then @agent:bot on @alias:spec')
+    ).toEqual(['skill:reviewer', 'agent:bot', 'alias:spec'])
+    expect(typedReference('agent:bot')).toEqual({ kind: 'agent', name: 'bot' })
+    expect(typedReference('src/a.ts')).toBeNull()
+    expect(typedReference('skill:')).toBeNull()
+  })
+
+  it('keeps skill and agent references in the text, and takes aliases out', () => {
+    expect(
+      stripPromptReferences('use @skill:reviewer and @agent:bot on @alias:spec')
+    ).toBe('use @skill:reviewer and @agent:bot on')
   })
 })
 

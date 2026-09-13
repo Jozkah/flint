@@ -616,7 +616,11 @@ describe('ProviderDetail route', () => {
     })
 
     it('refresh toasts error on fetch failure', async () => {
-      h.providersSvc.fetch = vi.fn(() => vi.fn().mockRejectedValue(new Error('nope')))
+      // Refresh now asks the provider itself for its model list; there is
+      // no catalogue fetch behind it any more.
+      h.providersSvc.fetchModelsFromProvider = vi
+        .fn()
+        .mockRejectedValue(new Error('nope'))
       renderComponent()
       const addModel = screen.getByTestId('add-model')
       const refreshBtn = addModel.parentElement?.querySelector('button') as HTMLButtonElement
@@ -725,5 +729,50 @@ describe('ProviderDetail route', () => {
       })
       expect(h.modelsSvc.stopAllModels).toHaveBeenCalled()
     })
+  })
+})
+
+
+// janhq/jan#8374. When the configured data folder could not be used this run,
+// the local model list says so instead of looking empty.
+describe('local model list when the data folder was unavailable', () => {
+  const withUnavailable = (path: string | undefined) => {
+    ;(h.serviceHub as any).app = vi.fn(() => ({
+      getUnavailableJanDataFolder: vi.fn().mockResolvedValue(path),
+    }))
+  }
+
+  it('explains the fallback on the llama.cpp page', async () => {
+    withUnavailable('D:\JanData')
+    h.params.providerName = 'llamacpp'
+    renderComponent()
+    await waitFor(() =>
+      expect(screen.getByTestId('data-folder-unavailable-notice')).toBeInTheDocument()
+    )
+    delete (h.serviceHub as any).app
+    h.params.providerName = 'openai'
+  })
+
+  it('says nothing when the configured folder was used', async () => {
+    withUnavailable(undefined)
+    h.params.providerName = 'llamacpp'
+    renderComponent()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.queryByTestId('data-folder-unavailable-notice')).toBeNull()
+    delete (h.serviceHub as any).app
+    h.params.providerName = 'openai'
+  })
+
+  it('says nothing on a remote provider, whose models do not live there', async () => {
+    withUnavailable('D:\JanData')
+    h.params.providerName = 'openai'
+    renderComponent()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.queryByTestId('data-folder-unavailable-notice')).toBeNull()
+    delete (h.serviceHub as any).app
   })
 })

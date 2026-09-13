@@ -11,6 +11,12 @@ edition = "2021"
 rust-version = "1.85"
 resolver = "2"
 default-run = "Jan-Desktop"
+# Every binary this package ships is declared explicitly below. Cargo otherwise
+# auto-discovers each file in `src/bin/` as a binary of its own, carrying none
+# of the `required-features` a declared target would have -- so a feature-gated
+# helper dropped in there is built unconditionally and fails on the modules it
+# is gated behind. Declaring the targets is the contract; this keeps it honest.
+autobins = false
 
 [lib]
 name = "app_lib"
@@ -26,6 +32,33 @@ name = "jan"
 path = "src/bin/jan.rs"
 required-features = ["cli"]
 
+# Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
+# not in `default`, so `required-features` keeps cargo from building this target
+# unless it is asked for explicitly.
+#
+# An example rather than a [[bin]], because `required-features` only governs
+# cargo. The Tauri bundler enumerates every [[bin]] the package declares and
+# demands each one's file when it computes the installed size, so as a [[bin]]
+# this target failed `tauri build` outright:
+#
+#   failed to bundle project: when getting size of target/release/cowork-smoke.exe:
+#   The system cannot find the file specified. (os error 2)
+#
+# The bundler does not look at examples, so this keeps the harness out of the
+# installer instead of shipping a test binary to satisfy the size calculation.
+# `cargo ... --all-targets` still builds it, so CI coverage is unchanged.
+#
+# It also has to live outside `src/bin/`: the bundler enumerates that directory
+# directly, by file stem, rather than reading cargo's target list -- which is why
+# it asked for `cowork_smoke.exe` (the file name) and not `cowork-smoke.exe` (the
+# target name) even once no such target existed.
+#
+# Run it with: cargo run --example cowork-smoke --features cowork-smoke
+[[example]]
+name = "cowork-smoke"
+path = "examples/cowork_smoke.rs"
+required-features = ["cowork-smoke"]
+
 [features]
 default = [
     "tauri/wry",
@@ -38,6 +71,9 @@ default = [
     "tauri/custom-protocol",
     "desktop",
 ]
+# Builds the `cowork-smoke` binary, which drives the real Tauri app and its
+# real WebView. Never enabled for release bundles.
+cowork-smoke = ["desktop"]
 hardware = ["dep:tauri-plugin-hardware"]
 deep-link = ["dep:tauri-plugin-deep-link"]
 # MLX (tauri-plugin-mlx) is Apple-Silicon-only; it's a macOS-target dependency
@@ -64,7 +100,6 @@ tauri-app = [
     "dep:tauri-plugin-shell",
     "dep:tauri-plugin-store",
     "dep:tauri-plugin-mlx",
-    "dep:tauri-plugin-updater",
     "dep:tauri-plugin-single-instance",
     "dep:tauri-plugin-dialog",
     "dep:fix-path-env",
@@ -137,6 +172,7 @@ serde_yaml = "0.9.34"
 toml = "0.8"
 toml_edit = "0.23"
 sha2 = "0.10"
+unicode-normalization = "0.1"
 tar = "0.4"
 zip = "0.6"
 tauri-plugin-deep-link = { version = "2", optional = true }
@@ -249,7 +285,15 @@ gtk = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 libc = "0.2.172"
-windows-sys = { version = "0.60.2", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.60.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Threading",
+  # Window placement (core::window_state): the OS's own record of the normal
+  # frame, which survives maximise and minimise without guessing.
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 # MLX runs only on Apple Silicon, so the plugin is built solely for macOS.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -264,7 +308,6 @@ genai = { version = "=0.7.0-beta.19", default-features = false, features = ["nat
 # type is a distinct crate. Aliased here solely to build the pool-tuned client
 # `agent_http_client` hands to genai (see core/agent/upstream.rs).
 reqwest13 = { package = "reqwest", version = "0.13", default-features = false, features = ["json", "stream", "charset", "http2", "system-proxy", "native-tls"] }
-tauri-plugin-updater = { version = "2", optional = true }
 once_cell = "1.18"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"], optional = true }
 

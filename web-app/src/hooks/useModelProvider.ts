@@ -4,9 +4,12 @@ import { localStorageKey } from '@/constants/localStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { backendStorage } from '@/lib/backendStorage'
 import { modelSettings } from '@/lib/predefined'
+import { usableContextValue } from '@/lib/modelCapabilities'
+import { forgetAllServerLimits } from '@/lib/contextLimitRecovery'
 import { predefinedProviders } from '@/constants/providers'
 import { isLocalProvider } from '@/lib/utils'
 import { API_KEY_FALLBACKS_SETTING_KEY } from '@/lib/provider-api-keys'
+import { withoutSecretValues } from '@/lib/customHeaders'
 import {
   originOf,
   useProviderReachability,
@@ -29,6 +32,10 @@ export function stripProviderSecrets(provider: ModelProvider): ModelProvider {
     api_key: undefined,
     api_key_fallbacks: undefined,
     ...(settings ? { settings } : {}),
+    // A custom header marked secret is a credential too. janhq/jan#8208.
+    ...(provider.custom_header
+      ? { custom_header: withoutSecretValues(provider.custom_header) }
+      : {}),
   }
 }
 
@@ -247,6 +254,10 @@ export const useModelProvider = create<ModelProviderState>()(
           'api_key' in data ||
           'api_key_fallbacks' in data
         ) {
+          // A context window learned from the old endpoint's own refusal would
+          // be enforced silently against the new one. Forgetting returns it to
+          // unknown, which still dispatches; a stale limit does not.
+          forgetAllServerLimits()
           const previous = get().providers.find(
             (p) => p.provider === providerName
           )
@@ -795,9 +806,52 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 18 && state?.providers) {
+          // A persisted context size of 0 is not a context size.
+          //
+          // It reached settings from a provider that reported `"context_length":
+          // 0`, from a control saved while empty, and from a `parseInt` of a
+          // malformed string. Downstream it was read as a real capacity: the
+          // indicator drew `0 / 0`, the budget had no room for a single token,
+          // and the request carried a reply cap of zero. Every such value
+          // becomes "not set" here, which is the state the rest of the app
+          // already knows how to resolve -- discovery runs, and an undiscovered
+          // window stays explicitly unknown rather than pretending to be empty.
+          //
+          // A positive value is a decision the user or a provider made and is
+          // never touched. Nothing else in the model's settings is altered, so
+          // a profile does not have to be deleted to get out of this state.
+          let repaired = 0
+          state.providers.forEach((provider) => {
+            provider.models?.forEach((model) => {
+              const controllerProps = (
+                model.settings?.ctx_len as
+                  | { controller_props?: { value?: unknown } }
+                  | undefined
+              )?.controller_props
+              if (!controllerProps) return
+              const value = controllerProps.value
+              // An empty control is already "not set"; leave it alone so this
+              // does not churn every model on every upgrade.
+              if (value === '' || value == null) return
+              if (usableContextValue(value) == null) {
+                controllerProps.value = ''
+                repaired += 1
+              }
+            })
+          })
+          if (repaired > 0) {
+            // Counted, not itemised: the number is the useful fact, and a
+            // provider entry carries its API key.
+            console.info(
+              `[jan] migrated ${repaired} model(s) whose stored context size was not a usable number`
+            )
+          }
+        }
+
         return state
       },
-      version: 18,
+      version: 19,
     }
   )
 )

@@ -36,8 +36,81 @@ const NONCE_LEN: usize = 12;
 /// Serializes read-modify-write on the fallback file.
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
+/// The one lock for tests that change the process environment Jan resolves
+/// its folders and keys from (`JAN_DATA_FOLDER`, `JAN_HOME`, the provider key
+/// variables). The environment is one per process and tests run on threads,
+/// so every mutator of these variables takes this lock: two locks for one
+/// variable is no lock, which is how a `TempSecrets` test and a
+/// `with_temp_home` test used to swap each other's `JAN_HOME` mid-run.
+///
+/// Reentrant, because the helpers nest -- a test holding a `TempSecrets` goes
+/// on to call `with_temp_home` -- and a plain mutex would deadlock there.
 #[cfg(test)]
-pub(crate) static SECRET_STORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static TEST_ENV_LOCK: TestEnvLock = TestEnvLock::new();
+
+#[cfg(test)]
+pub(crate) struct TestEnvLock {
+    /// The owning thread and how many times it has taken the lock.
+    state: Mutex<(Option<std::thread::ThreadId>, usize)>,
+    released: std::sync::Condvar,
+}
+
+#[cfg(test)]
+impl TestEnvLock {
+    const fn new() -> Self {
+        Self {
+            state: Mutex::new((None, 0)),
+            released: std::sync::Condvar::new(),
+        }
+    }
+
+    pub(crate) fn lock(&'static self) -> TestEnvGuard {
+        let me = std::thread::current().id();
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            match state.0 {
+                None => {
+                    *state = (Some(me), 1);
+                    break;
+                }
+                Some(owner) if owner == me => {
+                    state.1 += 1;
+                    break;
+                }
+                Some(_) => {
+                    state = self
+                        .released
+                        .wait(state)
+                        .unwrap_or_else(|e| e.into_inner());
+                }
+            }
+        }
+        TestEnvGuard {
+            lock: self,
+            _same_thread: std::marker::PhantomData,
+        }
+    }
+}
+
+/// Held while a test's environment changes are in force. Released on drop,
+/// panics included, on the thread that took it.
+#[cfg(test)]
+pub(crate) struct TestEnvGuard {
+    lock: &'static TestEnvLock,
+    _same_thread: std::marker::PhantomData<*const ()>,
+}
+
+#[cfg(test)]
+impl Drop for TestEnvGuard {
+    fn drop(&mut self) {
+        let mut state = self.lock.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.1 -= 1;
+        if state.1 == 0 {
+            state.0 = None;
+            self.lock.released.notify_one();
+        }
+    }
+}
 /// Serializes read-modify-write on the presence index. Separate from
 /// `FILE_LOCK` because the index is updated around calls that take it.
 static INDEX_LOCK: Mutex<()> = Mutex::new(());
@@ -332,8 +405,20 @@ pub fn delete_secret_record(key: &str) -> Result<(), String> {
 /// lets unit tests exercise the file path without touching the developer's
 /// keychain. Every caller is a `cli`-feature test, so the desktop build would
 /// otherwise carry it unused.
-#[cfg(all(test, feature = "cli"))]
+#[cfg(test)]
 pub(crate) fn force_file_secrets() {
+    KEYRING_DOWN.store(true, Ordering::Relaxed);
+}
+
+/// Keep every provider secret in the data folder's encrypted file for the
+/// rest of the process, never the OS keyring.
+///
+/// For the real-WebView harness. The keyring is keyed by provider name alone
+/// (`jan-providers` / `<provider>`), not by data folder, so an isolated harness
+/// profile still read the developer's real entries and wrote its own test keys
+/// beside them in the system credential store.
+#[cfg(feature = "cowork-smoke")]
+pub fn use_file_secrets_only() {
     KEYRING_DOWN.store(true, Ordering::Relaxed);
 }
 
@@ -350,21 +435,19 @@ pub async fn get_secret(key: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::MutexGuard;
+    use super::TestEnvGuard;
 
     // Field order is drop order: `_dir` must be removed and the env restored
     // while the lock is still held, so `_guard` has to be the last field.
     struct TempDataFolder {
         prev_data_folder: Option<String>,
         _dir: tempfile::TempDir,
-        _guard: MutexGuard<'static, ()>,
+        _guard: TestEnvGuard,
     }
 
     impl TempDataFolder {
         fn new() -> Self {
-            let guard = SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             // Portable override: XDG_DATA_HOME only redirects on Linux, so
@@ -517,5 +600,32 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+}
+
+#[cfg(test)]
+mod test_env_lock_tests {
+    use super::TEST_ENV_LOCK;
+
+    /// Nested helpers take the lock again on the same thread and must not
+    /// deadlock; another thread waits until the outermost guard is gone.
+    #[test]
+    fn the_env_lock_is_reentrant_and_exclusive_across_threads() {
+        let outer = TEST_ENV_LOCK.lock();
+        let inner = TEST_ENV_LOCK.lock();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let _held = TEST_ENV_LOCK.lock();
+            tx.send(()).unwrap();
+        });
+        drop(inner);
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(200)).is_err(),
+            "another thread took the lock while it was still held"
+        );
+        drop(outer);
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the lock is released once the outermost guard drops");
+        waiter.join().unwrap();
     }
 }

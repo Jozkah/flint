@@ -69,82 +69,6 @@ describe('DefaultModelsService - additional coverage', () => {
     })
   })
 
-  describe('fetchLatestJanModel', () => {
-    it.each([
-      ['object response', { model_name: 'jan-nano' }, { model_name: 'jan-nano' }],
-      ['array response', [{ model_name: 'jan-nano' }, { model_name: 'jan-micro' }], { model_name: 'jan-nano' }],
-      ['empty array', [], null],
-    ])('handles %s', async (_label, response, expected) => {
-      ;(fetch as any).mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(response) })
-      expect(await svc.fetchLatestJanModel()).toEqual(expected)
-    })
-
-    it('returns null on non-ok response', async () => {
-      ;(fetch as any).mockResolvedValue({ ok: false, status: 500, statusText: 'Error' })
-      expect(await svc.fetchLatestJanModel()).toBeNull()
-    })
-
-    it('returns null on network error', async () => {
-      ;(fetch as any).mockRejectedValue(new Error('network'))
-      expect(await svc.fetchLatestJanModel()).toBeNull()
-    })
-  })
-
-  describe('pullModelWithMetadata', () => {
-    const hfUrl = 'https://huggingface.co/org/repo/resolve/main/model.gguf'
-    const mmprojUrl = 'https://huggingface.co/org/repo/resolve/main/mmproj.gguf'
-
-    it('calls pullModel with default params when skipVerification is true', async () => {
-      mockEngine.import.mockResolvedValue(undefined)
-      await svc.pullModelWithMetadata('id1', hfUrl)
-      expect(mockEngine.import).toHaveBeenCalledWith('id1', expect.objectContaining({
-        modelPath: hfUrl, mmprojPath: undefined, modelSha256: undefined,
-      }))
-    })
-
-    it('fetches metadata when skipVerification is false', async () => {
-      ;(fetch as any).mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          siblings: [
-            { rfilename: 'model.gguf', lfs: { sha256: 'abc', size: 1000 } },
-            { rfilename: 'mmproj.gguf', lfs: { sha256: 'def', size: 500 } },
-          ],
-        }),
-      })
-      mockEngine.import.mockResolvedValue(undefined)
-      await svc.pullModelWithMetadata('id1', hfUrl, mmprojUrl, undefined, false)
-      expect(mockEngine.import).toHaveBeenCalledWith('id1', expect.objectContaining({
-        modelSha256: 'abc', modelSize: 1000, mmprojSha256: 'def', mmprojSize: 500,
-      }))
-    })
-
-    it('continues without metadata when HF fetch fails', async () => {
-      ;(fetch as any).mockRejectedValue(new Error('fail'))
-      mockEngine.import.mockResolvedValue(undefined)
-      await svc.pullModelWithMetadata('id1', hfUrl, undefined, undefined, false)
-      expect(mockEngine.import).toHaveBeenCalled()
-    })
-
-    it.each([
-      ['Error object', new Error('download failed'), 'download failed'],
-      ['string error', 'string error', 'string error'],
-    ])('emits download error event with %s', async (_label, error, expectedError) => {
-      mockEngine.import.mockRejectedValue(error)
-      await expect(svc.pullModelWithMetadata('id1', hfUrl)).rejects.toThrow()
-      expect(mockEvents.emit).toHaveBeenCalledWith(
-        'onFileDownloadError',
-        expect.objectContaining({ modelId: 'id1' })
-      )
-    })
-
-    it('works with non-HF URL', async () => {
-      mockEngine.import.mockResolvedValue(undefined)
-      await svc.pullModelWithMetadata('id1', '/local/path/model.gguf', undefined, undefined, false)
-      expect(mockEngine.import).toHaveBeenCalled()
-    })
-  })
-
   describe('isToolSupported', () => {
     it('returns true when engine says so', async () => {
       mockEngine.isToolSupported.mockResolvedValue(true)
@@ -448,11 +372,4 @@ describe('DefaultModelsService - additional coverage', () => {
     })
   })
 
-  describe('abortDownload', () => {
-    it('emits stop event even if abort throws', async () => {
-      mockEngine.abortImport.mockRejectedValue(new Error('abort fail'))
-      await svc.abortDownload('m1')
-      expect(mockEvents.emit).toHaveBeenCalledWith('onFileDownloadStopped', expect.objectContaining({ modelId: 'm1' }))
-    })
-  })
 })

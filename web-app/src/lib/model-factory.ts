@@ -63,7 +63,11 @@ import {
   useProviderReachability,
 } from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
-import { fetch as httpFetch } from '@tauri-apps/plugin-http'
+import { providerFetch } from '@/lib/providerFetch'
+
+// These three call sites predate the canonical transport and named the raw
+// Tauri fetch; they are the same transport now, under the name they used.
+const httpFetch = providerFetch
 import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
 import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
 import { filterDefaultSseEvents } from './sseEventTypeFilter'
@@ -83,7 +87,8 @@ import { engineFailure } from '@/lib/engineError'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { ensureAnthropicHeaders } from '@/lib/remoteModelCatalog'
+import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 
 /**
  * Llama.cpp timings structure from the response
@@ -101,6 +106,24 @@ interface LlamaCppTimings {
 // cache_n, so total prompt/context usage is the sum of both.
 const totalPromptTokens = (timings: LlamaCppTimings): number =>
   (timings.prompt_n ?? 0) + (timings.cache_n ?? 0)
+
+// The engine's own cache count, only when it sent one. An engine that reports
+// no `cache_n` has said nothing about its cache, which is not the same as
+// "nothing was cached"; see lib/tokenUsage.ts.
+const cacheTokensOf = (timings: LlamaCppTimings): { cacheTokens?: number } =>
+  typeof timings.cache_n === 'number' && Number.isFinite(timings.cache_n)
+    ? { cacheTokens: timings.cache_n }
+    : {}
+
+const timingsMetadata = (timings: LlamaCppTimings) => ({
+  providerMetadata: {
+    promptTokens: totalPromptTokens(timings),
+    completionTokens: timings.predicted_n ?? null,
+    tokensPerSecond: timings.predicted_per_second ?? null,
+    promptPerSecond: timings.prompt_per_second ?? null,
+    ...cacheTokensOf(timings),
+  },
+})
 
 interface LlamaCppPromptProgress {
   total?: number
@@ -122,16 +145,7 @@ interface LlamaCppChunk {
 const providerMetadataExtractor: MetadataExtractor = {
   extractMetadata: async ({ parsedBody }: { parsedBody: unknown }) => {
     const body = parsedBody as LlamaCppChunk
-    if (body?.timings) {
-      return {
-        providerMetadata: {
-          promptTokens: totalPromptTokens(body.timings),
-          completionTokens: body.timings.predicted_n ?? null,
-          tokensPerSecond: body.timings.predicted_per_second ?? null,
-          promptPerSecond: body.timings.prompt_per_second ?? null,
-        },
-      }
-    }
+    if (body?.timings) return timingsMetadata(body.timings)
     return undefined
   },
   createStreamExtractor: () => {
@@ -149,12 +163,18 @@ const providerMetadataExtractor: MetadataExtractor = {
           state.updateThreadLoadingModel(streamThreadId, false)
         }
         if (chunk?.timings) {
+          // Cumulative per chunk: the latest snapshot replaces the last one,
+          // it is never added to it.
           lastTimings = chunk.timings
+          const cache = cacheTokensOf(lastTimings)
           const liveStats = {
             promptTokens: totalPromptTokens(lastTimings),
             completionTokens: lastTimings.predicted_n ?? 0,
             tokensPerSecond: lastTimings.predicted_per_second ?? null,
             promptPerSecond: lastTimings.prompt_per_second ?? null,
+            ...(cache.cacheTokens !== undefined
+              ? { cachedPromptTokens: cache.cacheTokens }
+              : {}),
           }
           state.updateLiveTokenStats(liveStats)
           if (streamThreadId) {
@@ -179,31 +199,52 @@ const providerMetadataExtractor: MetadataExtractor = {
           }
         }
       },
-      buildMetadata: () => {
-        if (lastTimings) {
-          return {
-            providerMetadata: {
-              promptTokens: totalPromptTokens(lastTimings),
-              completionTokens: lastTimings.predicted_n ?? null,
-              tokensPerSecond: lastTimings.predicted_per_second ?? null,
-              promptPerSecond: lastTimings.prompt_per_second ?? null,
-            },
-          }
-        }
-        return undefined
-      },
+      buildMetadata: () =>
+        lastTimings ? timingsMetadata(lastTimings) : undefined,
     }
   },
 }
+
+/** The llama.cpp/MLX extractor, for tests that drive a real provider model. */
+export const __llamacppExtractorForTests = providerMetadataExtractor
 
 /**
  * Keys from inference parameters that are client-side only and must not
  * be forwarded in the HTTP body to remote APIs.
  */
+/**
+ * Which conversation a model's requests belong to.
+ *
+ * Carried as a model parameter because the model instance is built per session:
+ * a module-level "current dispatch" would race between two sessions streaming
+ * at once, and the AI SDK gives no other place to thread it through. Stripped
+ * from the request body (it is not a sampling parameter) and sent as headers
+ * the provider transport consumes and removes before the request goes out.
+ */
+export const DISPATCH_PARAM_KEY = '__janDispatch'
+
+export type DispatchIdentity = {
+  session: string
+  run?: string
+  thread?: string
+  agent?: string
+  provider?: string
+}
+
+/** Header names the provider transport reads the identity from. */
+export const DISPATCH_HEADERS = {
+  session: 'x-jan-session',
+  run: 'x-jan-run',
+  thread: 'x-jan-thread',
+  agent: 'x-jan-agent',
+  provider: 'x-jan-provider',
+} as const
+
 const CLIENT_SIDE_PARAM_KEYS: ReadonlySet<string> = new Set([
   'ctx_len',
   'max_context_tokens',
   'auto_compact',
+  DISPATCH_PARAM_KEY,
 ])
 
 /**
@@ -384,7 +425,7 @@ export function cleanUpstreamErrorMessage(raw: string): string {
 
 /**
  * Map a transport-level fetch failure (no HTTP response — DNS, connect, TLS,
- * timeout, dropped connection) to an actionable message. `@tauri-apps/plugin-http`
+ * timeout, dropped connection) to an actionable message. the provider transport
  * rethrows reqwest's raw "error sending request for url …" string, which isn't
  * useful to users. Returns null when `err` is not a recognised transport error.
  */
@@ -506,15 +547,37 @@ export function createCustomFetch(
     // set max_output_tokens = 0 in assistant params mean "no cap", not
     // "produce zero tokens" — coerce here, gated to llamacpp only because
     // OpenAI/Anthropic reject negative values.
-    if (keepLlamacppOnly && merged.max_tokens === 0) {
-      merged.max_tokens = -1
+    if (merged.max_tokens === 0) {
+      if (keepLlamacppOnly) {
+        merged.max_tokens = -1
+      } else {
+        // Every other provider takes a zero literally, and a reply capped at
+        // zero tokens is an empty answer, not an unlimited one. A cap nobody
+        // meaningfully set is left out of the request entirely, which is what
+        // "no cap" means on the wire.
+        delete merged.max_tokens
+      }
     }
     decodeAudioSentinelsInBody(merged)
     decodeVideoSentinelsInBody(merged)
     return merged
   }
 
+  const dispatch = parameters[DISPATCH_PARAM_KEY] as DispatchIdentity | undefined
+
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (dispatch?.session) {
+      // The transport records what it is about to send; without knowing whose
+      // conversation this is, the record could not be found again.
+      const headers = new Headers(init?.headers ?? {})
+      headers.set(DISPATCH_HEADERS.session, dispatch.session)
+      if (dispatch.run) headers.set(DISPATCH_HEADERS.run, dispatch.run)
+      if (dispatch.thread) headers.set(DISPATCH_HEADERS.thread, dispatch.thread)
+      if (dispatch.agent) headers.set(DISPATCH_HEADERS.agent, dispatch.agent)
+      if (dispatch.provider)
+        headers.set(DISPATCH_HEADERS.provider, dispatch.provider)
+      init = { ...init, headers }
+    }
     let rawBody: Record<string, unknown> | null = null
     if (init?.method === 'POST' || !init?.method) {
       try {
@@ -886,9 +949,9 @@ function getRuntimeFetch(): typeof globalThis.fetch {
     typeof maybeWindow.__TAURI__ !== 'undefined' ||
     typeof maybeWindow.__TAURI_INTERNALS__ !== 'undefined'
 
-  return isPlatformTauri() && hasTauriRuntime
-    ? (httpFetch as typeof globalThis.fetch)
-    : globalThis.fetch
+  // The canonical provider transport, so a completion resolves its endpoint the
+  // same way model discovery and a connection test do.
+  return isPlatformTauri() && hasTauriRuntime ? providerFetch : globalThis.fetch
 }
 
 /**
@@ -1166,11 +1229,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
     // Custom Anthropic providers may ship no custom_header; Anthropic rejects
     // browser-context requests (webview Origin) without the opt-in header.
     ensureAnthropicHeaders(provider, headers)
@@ -1207,12 +1268,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1252,11 +1310,9 @@ export class ModelFactory {
     parameters: Record<string, unknown> = {}
   ): LanguageModel {
     const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1289,12 +1345,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1328,11 +1381,9 @@ export class ModelFactory {
     parameters: Record<string, unknown> = {}
   ): LanguageModel {
     const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     // Rotate over configured keys on 401/403/429 (e.g. exhausted free-tier
@@ -1373,12 +1424,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     if (keyChain.length === 1) {

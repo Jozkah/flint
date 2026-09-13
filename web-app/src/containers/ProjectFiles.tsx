@@ -15,7 +15,7 @@ import { createDocumentAttachment, type Attachment } from '@/types/attachment'
 import { useAttachments } from '@/hooks/useAttachments'
 import { ExtensionTypeEnum, FileStat, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
-import { IconLoader2, IconPaperclip } from '@tabler/icons-react'
+import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
 
 type ProjectFilesProps = {
@@ -580,7 +580,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           disabled={uploading}
         >
           {uploading ? (
-            <IconLoader2 className="size-4 animate-spin" />
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
             <UploadIcon className="size-4" />
           )}
@@ -606,15 +606,15 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <IconLoader2 className="size-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
         </div>
       ) : isEmpty ? (
         <div
           className={cn(
             'flex flex-col items-center justify-center py-8 px-4 rounded-lg border border-dashed cursor-pointer transition-colors',
             isDragging
-              ? 'bg-primary/10 border-primary'
-              : 'bg-secondary/30 border-border hover:bg-secondary/50'
+              ? 'bg-brand-tint border-brand'
+              : 'bg-sunken/60 border-line-strong hover:bg-sunken'
           )}
           onClick={handleUpload}
           onDragOver={handleDragOver}
@@ -630,7 +630,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         <div
           className={cn(
             'space-y-2 rounded-lg p-1 -m-1 transition-colors',
-            isDragging && 'bg-primary/10 ring-2 ring-primary ring-dashed'
+            isDragging && 'bg-brand-tint outline-2 outline-dashed outline-brand'
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -640,13 +640,13 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             <div
               key={file.id}
               className={cn(
-                'flex items-center gap-2 p-2 rounded-lg',
-                'bg-secondary/30 border border-border/50',
-                'group hover:bg-secondary/50 transition-colors'
+                'flex items-center gap-2 p-2 rounded-md',
+                'bg-card border border-border',
+                'group hover:bg-sunken transition-colors'
               )}
             >
               <div className="shrink-0">
-                <IconPaperclip className="size-5 text-muted-foreground" />
+                <Paperclip className="size-4 text-muted-foreground" />
               </div>
               <div className="flex-1 min-w-0">
                 <Tooltip>
@@ -670,7 +670,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
                 onClick={() => handleDeleteFile(file.id)}
               >
                 <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
@@ -682,8 +682,8 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           className={cn(
             'flex mt-2 flex-col items-center justify-center py-8 px-4 rounded-lg border border-dashed cursor-pointer transition-colors',
             isDragging
-              ? 'bg-primary/10 border-primary'
-              : 'bg-secondary/30 border-border hover:bg-secondary/50'
+              ? 'bg-brand-tint border-brand'
+              : 'bg-sunken/60 border-line-strong hover:bg-sunken'
           )}
           onClick={handleUpload}
           onDragOver={handleDragOver}

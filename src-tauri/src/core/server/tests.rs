@@ -70,6 +70,7 @@ mod server_tests {
             host: "localhost".to_string(),
             port: 1337,
             enable_server_tool_execution: false,
+            cors_enabled: true,
         };
         assert_eq!(config.prefix, "/v1");
         assert_eq!(config.proxy_api_key, "test-key");
@@ -87,6 +88,7 @@ mod server_tests {
             host: "127.0.0.1".to_string(),
             port: 8080,
             enable_server_tool_execution: false,
+            cors_enabled: true,
         };
         assert_eq!(config.prefix, "");
         assert_eq!(config.proxy_api_key, "");
@@ -1117,11 +1119,41 @@ mod server_tests {
             host: "h".to_string(),
             port: 1,
             enable_server_tool_execution: true,
+            cors_enabled: false,
         };
         let cloned = cfg.clone();
         assert_eq!(cloned.prefix, "/p");
         assert_eq!(cloned.proxy_api_key, "k");
         assert!(cloned.enable_server_tool_execution);
+        assert!(!cloned.cors_enabled);
+    }
+
+    /// janhq/jan#8836: with CORS off, a response -- a preflight, one the
+    /// proxy built, or one a backend sent -- carries no Access-Control header,
+    /// so a page on another origin is refused. Everything else is kept.
+    #[test]
+    fn cors_off_strips_every_access_control_header() {
+        let trusted = vec![vec!["localhost".to_string()]];
+        let builder = proxy::add_cors_headers_with_host_and_origin(
+            hyper::Response::builder()
+                .header("content-type", "application/json")
+                .header("Access-Control-Expose-Headers", "x-from-backend"),
+            "localhost",
+            "http://localhost:3000",
+            &trusted,
+        );
+        let mut resp = builder
+            .body(http_body_util::Empty::<hyper::body::Bytes>::new())
+            .unwrap();
+        assert!(resp.headers().contains_key("access-control-allow-origin"));
+
+        proxy::strip_cors_headers(&mut resp);
+        let h = resp.headers();
+        assert!(
+            !h.keys().any(|k| k.as_str().starts_with("access-control-")),
+            "{h:?}"
+        );
+        assert_eq!(h.get("content-type").unwrap(), "application/json");
     }
 
     #[test]
@@ -1155,6 +1187,27 @@ mod server_tests {
         assert_eq!(schema["allOf"][0]["type"], json!("string"));
     }
 
+    // janhq/jan#8792: a browser calling Jan's local API sends its own Origin and
+    // Referer. Forwarding those upstream made a CORS-strict backend (Ollama
+    // with OLLAMA_ORIGINS, or behind nginx) refuse the request with 403.
+    #[test]
+    fn the_caller_origin_and_referer_are_not_forwarded_upstream() {
+        use hyper::header;
+        assert!(!proxy::forwards_to_upstream(&header::ORIGIN));
+        assert!(!proxy::forwards_to_upstream(&header::REFERER));
+        // Set for the upstream, or stale after the body is rewritten.
+        assert!(!proxy::forwards_to_upstream(&header::HOST));
+        assert!(!proxy::forwards_to_upstream(&header::AUTHORIZATION));
+        assert!(!proxy::forwards_to_upstream(&header::CONTENT_LENGTH));
+        assert!(!proxy::forwards_to_upstream(&header::TRANSFER_ENCODING));
+        // What a client legitimately sets still reaches the backend.
+        assert!(proxy::forwards_to_upstream(&header::CONTENT_TYPE));
+        assert!(proxy::forwards_to_upstream(&header::ACCEPT));
+        assert!(proxy::forwards_to_upstream(
+            &header::HeaderName::from_static("x-stainless-lang")
+        ));
+    }
+
     const PROMPT: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
     #[test]
@@ -1171,6 +1224,26 @@ mod server_tests {
             "x-anthropic-billing-header:\n   cc_version=2.1.150.d66; cc_entrypoint=cli; cch=934c8;\n{PROMPT}"
         );
         assert_eq!(proxy::strip_anthropic_billing_header(&text), PROMPT);
+    }
+
+    // janhq/jan#8358: the header check sliced the prompt at a byte length.
+    // This exact prompt puts byte 27 inside a Cyrillic character, which
+    // panicked the handler and made the local API server drop the connection
+    // with no response. One leading space shifts it onto a boundary, which is
+    // why the report found it flipping on a single byte.
+    #[test]
+    fn strip_billing_header_survives_multibyte_text_at_the_key_length() {
+        let cyrillic = "Ты извлекаешь финансовую";
+        assert!(!cyrillic.is_char_boundary("x-anthropic-billing-header:".len()));
+        assert_eq!(proxy::strip_anthropic_billing_header(cyrillic), cyrillic);
+
+        for text in [
+            "日本語のシステムプロンプトです",
+            "émoji 😀 at the start",
+            "x-anthropic-billing-héader: z\nrest",
+        ] {
+            assert_eq!(proxy::strip_anthropic_billing_header(text), text);
+        }
     }
 
     #[test]

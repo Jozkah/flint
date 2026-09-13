@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type {
+  AskAnswer,
+  AskRecord,
   CoworkTurn,
   SubagentRun,
   Usage,
@@ -7,6 +9,10 @@ import type {
   AskRequestPayload,
 } from '@/types/coworkSession'
 import type { ModelLoadProgress } from '@/hooks/useAppState'
+import type { RunOutcome } from '@/lib/coworkRunner'
+
+/** How a session's run ended, as the route shows it. */
+export type RunEnding = Pick<RunOutcome, 'stoppedBy' | 'errorText'>
 
 // The ask shapes live in the store-free types module; re-exported here because
 // this store is where the pending-ask queue lives.
@@ -15,11 +21,16 @@ export type {
   AskQuestion,
   AskRequestPayload,
   AskAnswer,
+  AskRecord,
 } from '@/types/coworkSession'
 
 // StreamEvent shapes emitted by the Rust agent loop (events.rs, tag = "type").
 // Owned here because this store is what consumes/dispatches them.
 export type StreamEvent =
+  // AH-078. Carries the id and hash of the payload that was just dispatched,
+  // never the payload itself: the timeline links to the stored record rather
+  // than embedding a copy that could drift from it.
+  | { type: 'prompt_snapshot'; id: string; hash: string; redactions: number }
   | { type: 'token'; text: string }
   | { type: 'step'; index: number; max: number }
   | { type: 'tool_call_started'; id: string; name: string }
@@ -60,7 +71,38 @@ export function makeToolCallTurn(ev: {
     name: ev.name,
     args: ev.args,
     status: 'running',
+    // The durable item begins here and is never replaced: the result merges
+    // onto this same turn.
+    toolState: 'running',
+    startedAt: Date.now(),
   }
+}
+
+/**
+ * Which terminal state an error result belongs in.
+ *
+ * A refusal and a cancellation are not failures -- they are outcomes the user
+ * or the permission gate chose -- and the timeline has to keep saying which,
+ * because "failed" would read as the tool having gone wrong.
+ */
+export function toolOutcome(
+  isError: boolean,
+  content: string
+): 'succeeded' | 'failed' | 'cancelled' | 'refused' {
+  if (!isError) return 'succeeded'
+  const text = content.toLowerCase()
+  if (text.includes('cancelled') || text.includes('canceled') || text.includes('interrupted')) {
+    return 'cancelled'
+  }
+  if (
+    text.includes('refused') ||
+    text.includes('denied') ||
+    text.includes('not permitted') ||
+    text.includes('permission')
+  ) {
+    return 'refused'
+  }
+  return 'failed'
 }
 
 // Find the tool turn by callId and merge patch onto it; returns the same
@@ -76,9 +118,83 @@ function mergeToolResult(
   return [...turns.slice(0, idx), { ...turns[idx], ...patch }, ...turns.slice(idx + 1)]
 }
 
+/**
+ * Put a question on the assistant turn that was speaking when it was asked.
+ *
+ * Pure, because there are two live-turn lanes: this store, and the Cowork
+ * route's own ref-backed copy that it actually renders. Both have to apply the
+ * same rule, and a rule that lives in one store action is a rule the other
+ * lane silently does not have.
+ */
+export function attachAskToTurns(
+  turns: CoworkTurn[],
+  record: AskRecord
+): CoworkTurn[] {
+  if (turns.some((t) => t.asks?.some((a) => a.requestId === record.requestId))) {
+    return turns
+  }
+  // The assistant turn, not the tool turn: a tool turn is the call itself, and
+  // hanging the card off it would put the question inside the tool card.
+  let idx = -1
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === 'assistant') {
+      idx = i
+      break
+    }
+  }
+  if (idx === -1) {
+    return [...turns, { role: 'assistant', content: '', asks: [record] }]
+  }
+  return [
+    ...turns.slice(0, idx),
+    { ...turns[idx], asks: [...(turns[idx].asks ?? []), record] },
+    ...turns.slice(idx + 1),
+  ]
+}
+
+/** Record what became of a question, in place, without moving it. */
+export function settleAskInTurns(
+  turns: CoworkTurn[],
+  requestId: string,
+  state: AskRecord['state'],
+  answers?: AskAnswer[]
+): CoworkTurn[] {
+  let changed = false
+  const next = turns.map((turn) => {
+    if (!turn.asks?.some((a) => a.requestId === requestId)) return turn
+    changed = true
+    return {
+      ...turn,
+      asks: turn.asks.map((a) =>
+        a.requestId === requestId ? { ...a, state, answers } : a
+      ),
+    }
+  })
+  return changed ? next : turns
+}
+
+/**
+ * Put a prompt snapshot on the turn whose reply that request produced.
+ *
+ * The dispatch happens before the reply streams, so the turn it belongs to is
+ * the open assistant turn -- or a new one, which the reply is then appended to.
+ */
+export function attachPromptSnapshotToTurns(
+  turns: CoworkTurn[],
+  ref: { id: string; hash: string; redactions: number }
+): CoworkTurn[] {
+  if (turns.some((t) => t.promptSnapshot?.id === ref.id)) return turns
+  const last = turns[turns.length - 1]
+  if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
+    return [...turns.slice(0, -1), { ...last, promptSnapshot: ref }]
+  }
+  return [...turns, { role: 'assistant', content: '', promptSnapshot: ref }]
+}
+
 // Apply one wrapped inner subagent event to that subagent's own turn lane
 // (token append / tool_call push / tool_result merge). Pure.
-function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[] {
+/** Exported so the event-to-turn mapping is testable on its own. */
+export function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[] {
   switch (inner.type) {
     case 'token':
       return appendAssistantToken(turns, inner.text)
@@ -86,7 +202,19 @@ function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[
       if (turns.some((tn) => tn.role === 'tool' && tn.callId === inner.id)) return turns
       return [
         ...turns,
-        { role: 'tool', content: '', callId: inner.id, name: inner.name, args: null, argsLive: '', status: 'running' },
+        {
+          role: 'tool',
+          content: '',
+          callId: inner.id,
+          name: inner.name,
+          args: null,
+          argsLive: '',
+          status: 'running',
+          // Named before its arguments have finished streaming: the item
+          // exists from the moment the call was requested.
+          toolState: 'requested',
+          startedAt: Date.now(),
+        },
       ]
     }
     case 'tool_call_args_delta': {
@@ -95,14 +223,67 @@ function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[
       const prev = turns[idx].argsLive ?? ''
       return [...turns.slice(0, idx), { ...turns[idx], argsLive: prev + inner.delta }, ...turns.slice(idx + 1)]
     }
-    case 'tool_call':
+    case 'prompt_snapshot': {
+      // Arrives immediately before the model streams its reply, so it opens the
+      // assistant turn that reply will be appended to. That is what ties a
+      // snapshot to the invocation it belongs to.
+      const last = turns[turns.length - 1]
+      if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
+        return [
+          ...turns.slice(0, -1),
+          {
+            ...last,
+            promptSnapshot: {
+              id: inner.id,
+              hash: inner.hash,
+              redactions: inner.redactions,
+            },
+          },
+        ]
+      }
+      return [
+        ...turns,
+        {
+          role: 'assistant',
+          content: '',
+          promptSnapshot: {
+            id: inner.id,
+            hash: inner.hash,
+            redactions: inner.redactions,
+          },
+        },
+      ]
+    }
+    case 'tool_call': {
+      // The call may already be here from `tool_call_started`; that turn is
+      // advanced rather than duplicated.
+      const idx = turns.findIndex(
+        (tn) => tn.role === 'tool' && tn.callId === inner.id
+      )
+      if (idx !== -1) {
+        return [
+          ...turns.slice(0, idx),
+          {
+            ...turns[idx],
+            args: inner.args,
+            argsLive: undefined,
+            toolState: 'running',
+          },
+          ...turns.slice(idx + 1),
+        ]
+      }
       return [...turns, makeToolCallTurn(inner)]
+    }
     case 'tool_result':
       return mergeToolResult(turns, inner.id, {
         result: inner.content,
         isError: inner.is_error,
         diff: inner.diff,
         status: 'done',
+        // The same item, in a terminal state. Nothing is removed and no
+        // separate result item is appended.
+        toolState: toolOutcome(inner.is_error, inner.content),
+        endedAt: Date.now(),
       })
     default:
       return turns // step / anything else: no visible turn
@@ -130,6 +311,24 @@ type CoworkRunState = {
   // terminal event); untouched by a `null` usage so a provider that doesn't
   // report it on a given turn doesn't blank out the last known value.
   usage: Record<string, Usage>
+  /**
+   * The run each session has in flight, by session (janhq/jan#8905).
+   *
+   * What makes a session "running" -- not the page. Two sessions can each have
+   * one, and a write that names a run the session no longer has is refused, so
+   * a late event from a cancelled or replaced run cannot land anywhere.
+   */
+  runs: Record<string, { runId: string; startedAt: number }>
+  /** How each session's last run ended, until it starts another. */
+  outcomes: Record<string, RunEnding>
+  /** Claim a session for a run: clears its last outcome, usage and lanes. */
+  startRun: (sid: string, runId: string) => void
+  /** Replace a run's live turns, if that run still owns the session. */
+  setRunTurns: (sid: string, runId: string, turns: CoworkTurn[]) => void
+  /** End a run and record how, if that run still owns the session. */
+  finishRun: (sid: string, runId: string, ending: RunEnding | null) => void
+  /** Drop everything held for a session, e.g. once it is deleted. */
+  forgetSession: (sid: string) => void
   /** Set by the artifacts library so Cowork opens that file on mount. */
   pendingPreview: { sessionId: string; path: string } | null
   /**
@@ -210,6 +409,36 @@ type CoworkRunState = {
   ) => void
   addPendingAsk: (sid: string, requestId: string, request: AskRequestPayload) => void
   removePendingAsk: (sid: string, requestId: string) => void
+  /** Put a question in the transcript at the point it was asked. */
+  attachAsk: (sid: string, record: AskRecord) => void
+  /** Record what the model was sent, on the turn its reply appears in. */
+  attachPromptSnapshot: (
+    sid: string,
+    ref: { id: string; hash: string; redactions: number }
+  ) => void
+  /**
+   * Every dispatch this session has made, in order.
+   *
+   * Kept beside the turns rather than on them: the run rebuilds its live turn
+   * array as steps complete, and a reference written onto a turn at dispatch
+   * time does not survive that. The Nth entry belongs to the Nth model
+   * invocation, which is what the timeline zips against.
+   */
+  promptSnapshots: Record<
+    string,
+    { id: string; hash: string; redactions: number }[]
+  >
+  recordPromptSnapshot: (
+    sid: string,
+    ref: { id: string; hash: string; redactions: number }
+  ) => void
+  /** Record what became of a question, in place, without moving it. */
+  settleAsk: (
+    sid: string,
+    requestId: string,
+    state: AskRecord['state'],
+    answers?: AskAnswer[]
+  ) => void
   // Mark running tool turns + subagents done (interrupted). Leaves
   // liveTurns/subagents in place and returns the final values so the caller
   // can commit them before clearCodeRun without a second round of store
@@ -223,7 +452,54 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   liveTurns: {},
   subagents: {},
   pendingAsks: {},
+  promptSnapshots: {},
   usage: {},
+  runs: {},
+  outcomes: {},
+
+  startRun: (sid, runId) =>
+    set((s) => ({
+      runs: { ...s.runs, [sid]: { runId, startedAt: Date.now() } },
+      outcomes: omitKey(s.outcomes, sid),
+      usage: omitKey(s.usage, sid),
+      liveTurns: { ...s.liveTurns, [sid]: [] },
+      subagents: { ...s.subagents, [sid]: [] },
+    })),
+
+  setRunTurns: (sid, runId, turns) =>
+    set((s) =>
+      s.runs[sid]?.runId === runId
+        ? { liveTurns: { ...s.liveTurns, [sid]: turns } }
+        : {}
+    ),
+
+  finishRun: (sid, runId, ending) =>
+    set((s) => {
+      if (s.runs[sid]?.runId !== runId) return {}
+      return {
+        runs: omitKey(s.runs, sid),
+        outcomes: ending
+          ? { ...s.outcomes, [sid]: ending }
+          : omitKey(s.outcomes, sid),
+        liveTurns: omitKey(s.liveTurns, sid),
+      }
+    }),
+
+  forgetSession: (sid) =>
+    set((s) => ({
+      runs: omitKey(s.runs, sid),
+      outcomes: omitKey(s.outcomes, sid),
+      liveTurns: omitKey(s.liveTurns, sid),
+      usage: omitKey(s.usage, sid),
+      subagents: omitKey(s.subagents, sid),
+      pendingAsks: omitKey(s.pendingAsks, sid),
+      promptSnapshots: omitKey(s.promptSnapshots, sid),
+      llamacppRuns: omitKey(s.llamacppRuns, sid),
+      pendingLlamacppError: omitKey(s.pendingLlamacppError, sid),
+      loadingModels: omitKey(s.loadingModels, sid),
+      modelLoadProgress: omitKey(s.modelLoadProgress, sid),
+    })),
+
   pendingPreview: null,
   pendingCodeOpen: null,
   attachFolderRequested: false,
@@ -426,13 +702,59 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
       },
     })),
 
+  attachAsk: (sid, record) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachAskToTurns(st.liveTurns[sid] ?? [], record),
+      },
+    })),
+
+  recordPromptSnapshot: (sid, ref) =>
+    set((st) => {
+      const seen = st.promptSnapshots[sid] ?? []
+      if (seen.some((s) => s.id === ref.id)) return {}
+      return {
+        promptSnapshots: { ...st.promptSnapshots, [sid]: [...seen, ref] },
+      }
+    }),
+
+  attachPromptSnapshot: (sid, ref) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachPromptSnapshotToTurns(st.liveTurns[sid] ?? [], ref),
+      },
+    })),
+
+  settleAsk: (sid, requestId, state, answers) =>
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: settleAskInTurns(
+          st.liveTurns[sid] ?? [],
+          requestId,
+          state,
+          answers
+        ),
+      },
+    })),
+
   finalizeRun: (sid) => {
     // Run-level failure surfaces via `useMessageErrors` (Generation-failed
     // banner), not as a synthetic tool-error turn — that used to render a
     // misleading error-styled tool card even though no tool call failed.
     const turns: CoworkTurn[] = (get().liveTurns[sid] ?? []).map((tn) =>
       tn.role === 'tool' && tn.status === 'running'
-        ? { ...tn, status: 'done' as const, isError: true, result: tn.result || '(interrupted)' }
+        ? {
+            ...tn,
+            status: 'done' as const,
+            isError: true,
+            result: tn.result || '(interrupted)',
+            // The run that would have finished this call is gone.
+            toolState: 'stale' as const,
+            endedAt: Date.now(),
+          }
         : tn
     )
     const subs = (get().subagents[sid] ?? []).map((r) =>

@@ -17,7 +17,7 @@ use rmcp::{
     transport::{
         sse_client::{SseClient, SseClientConfig},
         streamable_http_client::{StreamableHttpClient, StreamableHttpClientTransportConfig},
-        SseClientTransport, StreamableHttpClientTransport, TokioChildProcess,
+        SseClientTransport, StreamableHttpClientTransport,
     },
     ServiceExt,
 };
@@ -165,8 +165,12 @@ pub fn validate_config(config: &Value) -> Result<(), String> {
             if obj.get("url").and_then(Value::as_str).is_none() {
                 return Err(format!("server of type '{transport}' needs a 'url'"));
             }
+            oauth::declared_scopes(config).map_err(|e| e.message().to_string())?;
         }
         "stdio" => {
+            if obj.contains_key("oauth") {
+                return Err("OAuth applies to http/sse servers only".to_string());
+            }
             if obj.get("command").and_then(Value::as_str).is_none() {
                 return Err("stdio server needs a 'command'".to_string());
             }
@@ -208,8 +212,12 @@ pub fn build_server_config(
     url: Option<&str>,
     headers: serde_json::Map<String, Value>,
     active: bool,
+    scopes: Vec<String>,
 ) -> Result<Value, String> {
     let mut config = serde_json::json!({ "type": transport, "active": active });
+    if !scopes.is_empty() {
+        config["oauth"] = serde_json::json!({ "scopes": scopes });
+    }
     match transport {
         "stdio" => {
             let command = command
@@ -414,7 +422,7 @@ async fn connect_in(
                     .await
                     .map_err(|detail| ConnectError::NeedsAuth {
                         server: name.to_string(),
-                        detail,
+                        detail: detail.to_string(),
                     })?;
                 let authorized = auth.is_some();
                 let result = match (transport, auth) {
@@ -470,9 +478,23 @@ async fn connect_in(
                 };
                 let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&params, build)
                     .map_err(ConnectError::Failed)?;
-                let (process, _stderr) = launch
-                    .spawn(Stdio::null())
+                // AH-140: stderr is kept -- line by line into the server's own
+                // log -- rather than discarded, so "why did it stop" has an
+                // answer from the CLI too.
+                let (process, stderr) = launch
+                    .spawn(Stdio::piped())
                     .map_err(|e| ConnectError::Failed(format!("failed to spawn '{name}': {e}")))?;
+                if let Some(stderr) = stderr {
+                    let server = name.to_string();
+                    let folder = data_folder.to_path_buf();
+                    tokio::spawn(async move {
+                        use tokio::io::AsyncBufReadExt;
+                        let mut lines = tokio::io::BufReader::new(stderr).lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            crate::core::mcp::server_log::append(&folder, &server, &line);
+                        }
+                    });
+                }
                 RunningServiceEnum::NoInit(().serve(process).await.map_err(|e| {
                     ConnectError::Failed(format!("failed to connect to '{name}': {e}"))
                 })?)
@@ -555,8 +577,7 @@ fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest::Clie
             }
         }
     }
-    reqwest::Client::builder()
-        .default_headers(map)
+    crate::core::net::tls::apply12(reqwest::Client::builder().default_headers(map))
         .build()
         .map_err(|e| e.to_string())
 }
@@ -586,6 +607,11 @@ pub fn auth_status(name: &str, config: &Value) -> oauth::AuthStatus {
     oauth::status(&default_data_folder(), name, config)
 }
 
+/// The same, with the declared, requested and granted scopes, for display.
+pub fn auth_status_info(name: &str, config: &Value) -> oauth::AuthStatusInfo {
+    oauth::status_info(&default_data_folder(), name, config)
+}
+
 /// Forget one server's stored tokens. `Ok(false)` when there were none.
 pub fn clear_auth(name: &str) -> Result<bool, String> {
     oauth::clear(&default_data_folder(), name)
@@ -604,7 +630,8 @@ pub async fn begin_auth(name: &str) -> Result<oauth::PendingAuth, String> {
         .ok_or_else(|| {
             format!("'{name}' is a stdio server - OAuth applies to http/sse servers only")
         })?;
-    oauth::begin(name, url).await
+    let scopes = oauth::declared_scopes(&entry.config).map_err(|e| e.message().to_string())?;
+    oauth::begin(name, url, &scopes).await
 }
 
 /// Finish an authorization by persisting the tokens it produced.
@@ -729,6 +756,72 @@ pub async fn list_tools(name: &str, servers: &SharedMcpServers) -> Result<Vec<St
         .collect();
     names.sort();
     Ok(names)
+}
+
+/// The prompts a connected server offers (AH-138).
+///
+/// Bounded by the same timeout every other round trip to a peer uses: the
+/// guard here is the process-wide server map that each agent turn also locks,
+/// so a peer that accepts a request and never answers would stall turns and
+/// not just this call.
+pub async fn list_prompts(name: &str, servers: &SharedMcpServers) -> Result<Vec<String>, String> {
+    let timeout_duration = read_settings().tool_call_timeout_duration();
+    let guard = servers.lock().await;
+    let service = guard
+        .get(name)
+        .ok_or_else(|| format!("'{name}' is not connected"))?;
+    let prompts = tokio::time::timeout(timeout_duration, service.list_all_prompts())
+        .await
+        .map_err(|_| {
+            format!(
+                "listing prompts for '{name}' timed out after {}s",
+                timeout_duration.as_secs()
+            )
+        })?
+        .map_err(|e| format!("could not list prompts for '{name}': {e}"))?;
+    let mut lines: Vec<String> = prompts
+        .into_iter()
+        .map(|p| match p.description {
+            Some(description) if !description.is_empty() => format!("{} — {description}", p.name),
+            _ => p.name.to_string(),
+        })
+        .collect();
+    lines.sort();
+    Ok(lines)
+}
+
+/// One prompt from a connected server, filled in (AH-138).
+///
+/// What comes back is the server's content, labelled by role. It is handed on
+/// as a message, the way a person pasting it would -- never merged into the
+/// harness's own instructions.
+pub async fn get_prompt(
+    name: &str,
+    prompt: &str,
+    arguments: serde_json::Map<String, Value>,
+    servers: &SharedMcpServers,
+) -> Result<String, String> {
+    let timeout_duration = read_settings().tool_call_timeout_duration();
+    let guard = servers.lock().await;
+    let service = guard
+        .get(name)
+        .ok_or_else(|| format!("'{name}' is not connected"))?;
+    let result = tokio::time::timeout(
+        timeout_duration,
+        service.get_prompt(rmcp::model::GetPromptRequestParam {
+            name: prompt.to_string(),
+            arguments: (!arguments.is_empty()).then_some(arguments),
+        }),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "asking '{name}' for prompt '{prompt}' timed out after {}s",
+            timeout_duration.as_secs()
+        )
+    })?
+    .map_err(|e| format!("could not get prompt '{prompt}' from '{name}': {e}"))?;
+    Ok(crate::core::mcp::models::render_prompt(&result))
 }
 
 /// Number of servers marked `active` in `mcp_config.json`.

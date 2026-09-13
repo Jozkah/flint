@@ -24,7 +24,9 @@ use std::process::Command;
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
+        .args(crate::core::agent::vcs::HARDENED)
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
@@ -43,8 +45,46 @@ fn git(args: &[&str]) -> Result<String, String> {
 /// with a fixed agent identity so `commit-tree` never needs user config and
 /// never triggers commit signing.
 fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
+    exec(repo, index, args, None).map(|out| out.trim().to_string())
+}
+
+/// [`run`], with stdout returned exactly as written.
+///
+/// NUL-separated output (`-z`) must not be trimmed: a path that begins or ends
+/// with a space is a legal file name, and trimming the whole output would
+/// silently rename the first or last entry.
+fn run_untrimmed(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
+    exec(repo, index, args, None)
+}
+
+fn exec(
+    repo: &Path,
+    index: Option<&Path>,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+) -> Result<String, String> {
+    use std::io::Write;
+    use std::process::Stdio;
+
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo).args(args);
+    cmd.arg("-C").arg(repo).args(crate::core::agent::vcs::HARDENED).env("GIT_TERMINAL_PROMPT", "0");
+    // Snapshot and restore must round-trip the working tree byte for byte.
+    // `core.autocrlf` is on by default in Git for Windows, which converts on
+    // the way into the index and back out again -- so a file snapshotted as
+    // "one\n" was restored as "one\r\n", and Jan silently rewrote the line
+    // endings of every file it put back. These are Jan's own private objects,
+    // not the user's commits, so the conversion has nothing to gain here and a
+    // fidelity guarantee to lose.
+    cmd.arg("-c").arg("core.autocrlf=false");
+    cmd.arg("-c").arg("core.eol=lf");
+    cmd.args(args);
+    // The same fidelity argument covers the repository's own `.gitattributes`:
+    // `text`, `eol=crlf` or a filter there converts on the way in and out
+    // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
+    // as LF. Reading attributes from the empty tree turns that off for Jan's
+    // private objects. Git older than 2.40 ignores the variable and keeps the
+    // previous behaviour.
+    cmd.env("GIT_ATTR_SOURCE", EMPTY_TREE);
     cmd.env("GIT_AUTHOR_NAME", "Jan Agent")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
         .env("GIT_COMMITTER_NAME", "Jan Agent")
@@ -52,11 +92,31 @@ fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, Strin
     if let Some(idx) = index {
         cmd.env("GIT_INDEX_FILE", idx);
     }
-    let out = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
+    let out = match stdin {
+        None => cmd.output(),
+        Some(input) => cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                // Written from another thread so a child that fills its output
+                // pipe before reading all of its input cannot deadlock us.
+                let mut pipe = child.stdin.take();
+                let input = input.to_vec();
+                let writer = std::thread::spawn(move || {
+                    if let Some(pipe) = pipe.as_mut() {
+                        let _ = pipe.write_all(&input);
+                    }
+                });
+                let out = child.wait_with_output();
+                let _ = writer.join();
+                out
+            }),
+    }
+    .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         Err(if stderr.is_empty() {
@@ -76,13 +136,46 @@ fn temp_index() -> PathBuf {
     std::env::temp_dir().join(format!("jan-agent-idx-{}-{n}", std::process::id()))
 }
 
-/// A stable index path for a thread's snapshot chain, kept across calls (not
-/// deleted after use). Reusing it lets `git add -A` compare against its own
-/// prior stat cache instead of a fresh empty one, so unchanged files are only
-/// stat'd (cheap) rather than re-hashed and re-inserted like every other file
-/// touched this turn.
-fn snapshot_index(thread_id: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("jan-agent-snap-idx-{thread_id}"))
+/// Where a thread's scratch indexes live: one directory per thread, one index
+/// file per repository inside it.
+///
+/// The index is kept across calls rather than deleted after use. Reusing it
+/// lets staging compare against its own prior stat cache instead of a fresh
+/// empty one, so unchanged files are only stat'd (cheap) rather than re-hashed
+/// and re-inserted like every other file touched this turn.
+///
+/// The repository has to be part of the key. With the index named only after
+/// the thread, one file was shared by every repository that thread ever
+/// touched, so a snapshot in a second project staged against the first
+/// project's tree. Worse, the file outlives the process: an index left behind
+/// by a crashed session -- or by a repository that has since been deleted --
+/// refers to objects that no longer exist, and every later snapshot for that
+/// thread failed with `fatal: <sha> is not a valid object` and stayed failing.
+fn snapshot_index_dir(thread_id: &str) -> PathBuf {
+    // The id reaches the filesystem, so keep it to something that can be a
+    // directory name on every platform.
+    let safe: String = thread_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    std::env::temp_dir().join("jan-agent-snap-idx").join(safe)
+}
+
+/// A stable digest of the repository path, so the same repository maps to the
+/// same index across processes. FNV-1a: `DefaultHasher` is explicitly not
+/// guaranteed stable between runs, which is exactly what this needs to be.
+fn repo_key(repo: &Path) -> String {
+    let canonical = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in canonical.to_string_lossy().to_lowercase().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
+    snapshot_index_dir(thread_id).join(repo_key(repo))
 }
 
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
@@ -161,23 +254,54 @@ pub(crate) fn snapshot(
     thread_id: &str,
     changed: &[PathBuf],
 ) -> Result<String, String> {
-    let idx = snapshot_index(thread_id);
-    if !idx.exists() {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
+    let idx = snapshot_index(repo, thread_id);
+    if let Some(parent_dir) = idx.parent() {
+        std::fs::create_dir_all(parent_dir)
+            .map_err(|e| format!("snapshot index directory: {e}"))?;
+    }
+
+    // Build the index from the repository's own state.
+    let seed = |idx: &Path| -> Result<(), String> {
         let base_tree = run(repo, None, &["rev-parse", "--verify", "-q", "HEAD^{tree}"])
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| EMPTY_TREE.to_string());
-        run(repo, Some(&idx), &["read-tree", &base_tree])?;
+        run(repo, Some(idx), &["read-tree", &base_tree])?;
         if let Ok(dirty) = run(repo, None, &["diff", "--name-only", "HEAD"]) {
             for rel in dirty.lines().filter(|l| !l.is_empty()) {
-                stage_path(repo, &idx, Path::new(rel), true)?;
+                stage_path(repo, idx, Path::new(rel), true)?;
             }
         }
+        Ok(())
+    };
+
+    let stage_all = |idx: &Path| -> Result<String, String> {
+        for rel in changed {
+            stage_path(repo, idx, rel, false)?;
+        }
+        run(repo, Some(idx), &["write-tree"])
+    };
+
+    if !idx.exists() {
+        seed(&idx)?;
     }
-    for rel in changed {
-        stage_path(repo, &idx, rel, false)?;
-    }
-    let tree = run(repo, Some(&idx), &["write-tree"])?;
+
+    // An index carried over from a previous session can name objects this
+    // repository does not have -- the repository was recreated, or the index
+    // was written against a different one. That is recoverable: the index is a
+    // cache, so throw it away and rebuild rather than leaving the thread
+    // permanently unable to snapshot.
+    let tree = match stage_all(&idx) {
+        Ok(tree) => tree,
+        Err(err) => {
+            let _ = std::fs::remove_file(&idx);
+            seed(&idx).map_err(|second| {
+                format!("snapshot index was unusable ({err}); rebuilding it also failed: {second}")
+            })?;
+            stage_all(&idx)?
+        }
+    };
     let mut args = vec!["commit-tree", &tree];
     if let Some(p) = parent {
         args.push("-p");
@@ -192,7 +316,9 @@ pub(crate) fn snapshot(
 /// after a workspace restore invalidates it). Safe to call even if it was
 /// never created.
 pub(crate) fn cleanup_snapshot_index(thread_id: &str) {
-    let _ = std::fs::remove_file(snapshot_index(thread_id));
+    // Every repository this thread touched, not just one: the caller deleting a
+    // thread has no repository in hand and should not leave indexes behind.
+    let _ = std::fs::remove_dir_all(snapshot_index_dir(thread_id));
 }
 
 /// Point the thread's snapshot ref at `sha` (create or update).
@@ -208,6 +334,363 @@ pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), 
 /// patch exact rather than reconstructed from the working tree.
 pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, String> {
     run(repo, None, &["diff", from, to])
+}
+
+/// Stage the working tree exactly as it stands into a scratch index.
+///
+/// The index is seeded from `base` first so that paths outside `repo` (when
+/// `repo` is a subdirectory of the repository) keep the content `base` gave
+/// them; `add -A` then records every addition, modification and deletion
+/// under `repo`, honouring `.gitignore`. The scratch index is the caller's to
+/// remove. The user's own index is never touched: everything goes through
+/// `GIT_INDEX_FILE`.
+fn stage_worktree(repo: &Path, idx: &Path, base: &str) -> Result<(), String> {
+    run(repo, Some(idx), &["read-tree", base])?;
+    run(repo, Some(idx), &["add", "-A", "--", "."])?;
+    Ok(())
+}
+
+/// Snapshot the whole working tree as it stands, as a commit object.
+///
+/// Unlike [`snapshot`], this scans the tree rather than staging a list of
+/// paths, so it cannot miss an edit nobody reported — a file changed in an
+/// editor, by a build, or by a shell command. That costs a full scan, which is
+/// why it is used only where Jan owns the tree and completeness is what makes
+/// a rewind safe to offer. Branch, HEAD and the real index are untouched.
+pub(crate) fn snapshot_worktree(
+    repo: &Path,
+    parent: Option<&str>,
+    msg: &str,
+) -> Result<String, String> {
+    let idx = temp_index();
+    let result = (|| {
+        let base = match parent {
+            Some(p) => p.to_string(),
+            None => run(repo, None, &["rev-parse", "--verify", "-q", "HEAD^{tree}"])
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| EMPTY_TREE.to_string()),
+        };
+        stage_worktree(repo, &idx, &base)?;
+        let tree = run(repo, Some(&idx), &["write-tree"])?;
+        let mut args: Vec<&str> = vec!["commit-tree", &tree];
+        if let Some(p) = parent {
+            args.push("-p");
+            args.push(p);
+        }
+        args.push("-m");
+        args.push(msg);
+        run(repo, None, &args)
+    })();
+    let _ = std::fs::remove_file(&idx);
+    result
+}
+
+/// Mode git records for a gitlink: a nested repository or submodule, stored as
+/// a pointer to a commit rather than as files.
+const GITLINK_MODE: &str = "160000";
+
+/// One entry of `git diff --raw -z --no-renames`.
+#[derive(Debug, Clone, PartialEq)]
+struct RawChange {
+    old_mode: String,
+    new_mode: String,
+    /// `A`, `D`, `M` or `T`. Renames and copies are never reported because
+    /// every caller passes `--no-renames`.
+    status: char,
+    path: String,
+}
+
+impl RawChange {
+    /// A nested repository or submodule on either side. Its files are not in
+    /// the snapshot — only the commit it pointed at — so it can be neither put
+    /// back nor safely removed, and every restore leaves it alone.
+    fn is_gitlink(&self) -> bool {
+        self.old_mode == GITLINK_MODE || self.new_mode == GITLINK_MODE
+    }
+}
+
+/// Parse `git diff --raw -z --no-renames` output: a `:<old> <new> <sha> <sha>
+/// <status>` header token followed by one path token, each NUL-terminated.
+fn parse_raw_z(out: &str) -> Vec<RawChange> {
+    let mut changes = Vec::new();
+    let mut tokens = out.split('\0');
+    while let Some(header) = tokens.next() {
+        let Some(header) = header.strip_prefix(':') else {
+            continue;
+        };
+        let Some(path) = tokens.next() else { break };
+        let fields: Vec<&str> = header.split(' ').collect();
+        if fields.len() < 5 || path.is_empty() {
+            continue;
+        }
+        changes.push(RawChange {
+            old_mode: fields[0].to_string(),
+            new_mode: fields[1].to_string(),
+            status: fields[4].chars().next().unwrap_or('M'),
+            path: path.to_string(),
+        });
+    }
+    changes
+}
+
+/// How snapshot `to` differs from snapshot `from`.
+// Only the TUI's restore, built with the `cli` feature, compares two snapshots.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+fn tree_changes(repo: &Path, from: &str, to: &str) -> Result<Vec<RawChange>, String> {
+    let out = run_untrimmed(
+        repo,
+        None,
+        &["diff", "--raw", "-z", "--no-renames", "--no-abbrev", from, to],
+    )?;
+    Ok(parse_raw_z(&out))
+}
+
+/// How the working tree differs from snapshot `commit`, staged into `idx`.
+///
+/// `A` is on disk but not in `commit`, `D` is in `commit` but missing on disk,
+/// `M`/`T` differ in content or type. Ignored files never appear.
+fn worktree_changes(repo: &Path, idx: &Path, commit: &str) -> Result<Vec<RawChange>, String> {
+    stage_worktree(repo, idx, commit)?;
+    let out = run_untrimmed(
+        repo,
+        Some(idx),
+        &[
+            "diff",
+            "--cached",
+            "--raw",
+            "-z",
+            "--no-renames",
+            "--no-abbrev",
+            commit,
+        ],
+    )?;
+    Ok(parse_raw_z(&out))
+}
+
+/// Paths whose content in the working tree differs from snapshot `commit`.
+///
+/// Added, modified and deleted paths alike, relative to the repository root,
+/// ignored files and nested repositories excluded. Nothing is written except
+/// loose objects for the scratch staging, which garbage collection reclaims.
+pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, String> {
+    let idx = temp_index();
+    let result = worktree_changes(repo, &idx, commit).map(|changes| {
+        changes
+            .into_iter()
+            .filter(|c| !c.is_gitlink())
+            .map(|c| c.path)
+            .collect()
+    });
+    let _ = std::fs::remove_file(&idx);
+    result
+}
+
+/// What removing one path did.
+#[derive(Debug, PartialEq)]
+enum Removal {
+    Removed,
+    /// Nothing to remove inside the tree: already gone, a real directory, or
+    /// reachable only through a symbolic link or a file.
+    NotThere,
+}
+
+/// Remove `rel` under `repo` without ever following a symbolic link.
+///
+/// Every ancestor is checked with `symlink_metadata` first. A path that can
+/// only be reached through a link leads somewhere this tree does not own, so it
+/// is treated as not there rather than deleted. A symbolic link that is itself
+/// the path is removed as a link; its target is never touched. Directories left
+/// empty are pruned, up to but never including `repo`.
+fn remove_within(repo: &Path, rel: &str) -> Result<Removal, String> {
+    safe_rel(rel).map_err(|_| format!("refusing an unsafe path: {rel}"))?;
+    let components: Vec<_> = Path::new(rel).components().collect();
+    let mut current = repo.to_path_buf();
+    for (i, component) in components.iter().enumerate() {
+        current.push(component);
+        let meta = match std::fs::symlink_metadata(&current) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Removal::NotThere),
+            Err(e) => return Err(e.to_string()),
+        };
+        let is_link = meta.file_type().is_symlink();
+        if i + 1 < components.len() {
+            if is_link || !meta.is_dir() {
+                return Ok(Removal::NotThere);
+            }
+            continue;
+        }
+        if meta.is_dir() && !is_link {
+            return Ok(Removal::NotThere);
+        }
+        remove_entry(&current, &meta)?;
+    }
+    prune_empty_parents(repo, rel);
+    Ok(Removal::Removed)
+}
+
+fn remove_entry(path: &Path, meta: &std::fs::Metadata) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        // A symbolic link to a directory is a directory entry on Windows.
+        Err(_) if meta.file_type().is_symlink() && std::fs::remove_dir(path).is_ok() => Ok(()),
+        // Git for Windows clears the read-only attribute before unlinking, and
+        // so does this: the file's content is held by a snapshot either way.
+        #[cfg(windows)]
+        Err(e)
+            if e.kind() == std::io::ErrorKind::PermissionDenied
+                && meta.permissions().readonly() =>
+        {
+            let mut perms = meta.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            std::fs::set_permissions(path, perms).map_err(|_| e.to_string())?;
+            std::fs::remove_file(path).map_err(|e| e.to_string())
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn prune_empty_parents(repo: &Path, rel: &str) {
+    let mut parent = Path::new(rel).parent();
+    while let Some(dir) = parent {
+        if dir.as_os_str().is_empty() {
+            break;
+        }
+        // Only succeeds on an empty directory, which is exactly the condition.
+        if std::fs::remove_dir(repo.join(dir)).is_err() {
+            break;
+        }
+        parent = dir.parent();
+    }
+}
+
+/// Why a managed restore did not finish.
+#[derive(Debug, PartialEq)]
+pub(crate) enum RestoreError {
+    /// Refused before anything on disk was changed.
+    Refused(String),
+    /// Something was changed and something failed; the tree may be anywhere
+    /// between where it was and the target.
+    Incomplete(String),
+}
+
+/// What a managed restore changed.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct RestoreOutcome {
+    pub written: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+/// Make a Jan-owned working tree match snapshot `target` exactly.
+///
+/// Scope is the working tree under `repo` as `git add -A` sees it: tracked and
+/// untracked files alike, ignored files excluded. Only paths that differ are
+/// touched — a file already matching `target` is not rewritten, which keeps a
+/// failure small and lets a rollback skip whatever the failed attempt never
+/// reached.
+///
+/// - Paths in `target` that are missing or different on disk are written from
+///   the snapshot with `checkout-index`, which replaces a symbolic link on the
+///   way to a path with a real directory instead of writing through it.
+/// - Paths on disk that `target` does not have are removed, without following
+///   symbolic links (see [`remove_within`]).
+/// - Nested repositories and submodules are skipped entirely.
+///
+/// Refuses, before writing anything, when a file must replace a directory that
+/// holds ignored files: `checkout-index -f` would delete that directory with
+/// everything in it, and ignored files are held by no snapshot.
+pub(crate) fn restore_worktree(
+    repo: &Path,
+    target: &str,
+) -> Result<RestoreOutcome, RestoreError> {
+    let current_idx = temp_index();
+    let target_idx = temp_index();
+    let result = (|| {
+        let changes =
+            worktree_changes(repo, &current_idx, target).map_err(RestoreError::Refused)?;
+        let mut write = Vec::new();
+        let mut remove = Vec::new();
+        for change in changes.into_iter().filter(|c| !c.is_gitlink()) {
+            if safe_rel(&change.path).is_err() {
+                return Err(RestoreError::Refused(format!(
+                    "the snapshot names a path outside the tree: {}",
+                    change.path
+                )));
+            }
+            if change.status == 'A' {
+                remove.push(change.path);
+            } else {
+                write.push(change.path);
+            }
+        }
+
+        for path in &write {
+            let on_disk = std::fs::symlink_metadata(repo.join(path));
+            if !matches!(&on_disk, Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink()) {
+                continue;
+            }
+            let ignored = run_untrimmed(
+                repo,
+                Some(&current_idx),
+                &[
+                    "ls-files",
+                    "-z",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "--",
+                    path,
+                ],
+            )
+            .map_err(RestoreError::Refused)?;
+            let ignored: Vec<&str> = ignored.split('\0').filter(|p| !p.is_empty()).collect();
+            if !ignored.is_empty() {
+                return Err(RestoreError::Refused(format!(
+                    "{path} must become a file again, but it is a directory holding ignored \
+                     files no checkpoint keeps ({}); move them out of the way first",
+                    ignored.join(", ")
+                )));
+            }
+        }
+
+        run(repo, Some(&target_idx), &["read-tree", target]).map_err(RestoreError::Refused)?;
+
+        let mut outcome = RestoreOutcome::default();
+        let mut failures = Vec::new();
+        for path in remove {
+            match remove_within(repo, &path) {
+                Ok(Removal::Removed) => outcome.removed.push(path),
+                Ok(Removal::NotThere) => {}
+                Err(e) => failures.push(format!("could not remove {path}: {e}")),
+            }
+        }
+        if !write.is_empty() {
+            let mut input = Vec::new();
+            for path in &write {
+                input.extend_from_slice(path.as_bytes());
+                input.push(0);
+            }
+            match exec(
+                repo,
+                Some(&target_idx),
+                &["checkout-index", "-f", "-z", "--stdin"],
+                Some(&input),
+            ) {
+                Ok(_) => outcome.written = write,
+                Err(e) => failures.push(format!("could not write every file: {}", e.trim())),
+            }
+        }
+        if failures.is_empty() {
+            Ok(outcome)
+        } else {
+            Err(RestoreError::Incomplete(failures.join("; ")))
+        }
+    })();
+    let _ = std::fs::remove_file(&current_idx);
+    let _ = std::fs::remove_file(&target_idx);
+    result
 }
 
 /// Drop a thread's snapshot ref, letting the chain be collected.
@@ -226,19 +709,35 @@ pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
 /// Restore the working tree to snapshot `target`, discarding changes made after
 /// it. `latest` (the newest snapshot) is used only to find files added since
 /// `target` so they can be removed. Files matching `.gitignore` are untouched.
+///
+/// This is the TUI's restore, over snapshots of reported paths only; a managed
+/// Cowork tree uses [`restore_worktree`]. A file that could not be removed is
+/// reported rather than skipped: it used to be dropped silently, and a name
+/// with a space or a non-ASCII character was never removed at all, because it
+/// was read back from git's quoted output.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), String> {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     let idx = temp_index();
     let result = (|| {
         run(repo, Some(&idx), &["read-tree", target])?;
         run(repo, Some(&idx), &["checkout-index", "-a", "-f"])?;
         if target != latest {
-            let added = run(
-                repo,
-                None,
-                &["diff", "--name-only", "--diff-filter=A", target, latest],
-            )?;
-            for rel in added.lines().filter(|l| !l.is_empty()) {
-                let _ = std::fs::remove_file(repo.join(rel));
+            let mut failures = Vec::new();
+            for added in tree_changes(repo, target, latest)?
+                .into_iter()
+                .filter(|c| c.status == 'A' && !c.is_gitlink())
+            {
+                if let Err(e) = remove_within(repo, &added.path) {
+                    failures.push(format!("{}: {e}", added.path));
+                }
+            }
+            if !failures.is_empty() {
+                return Err(format!(
+                    "the files were restored, but some added after the checkpoint could not \
+                     be removed: {}",
+                    failures.join("; ")
+                ));
             }
         }
         Ok(())
@@ -963,6 +1462,109 @@ mod tests {
         repo_root(&root)
     }
 
+    /// Two repositories, one thread id. Before the index was keyed by
+    /// repository as well, the second snapshot staged against the first
+    /// repository's tree.
+    #[test]
+    fn each_repository_gets_its_own_snapshot_index() {
+        let Some(a) = init_repo() else { return };
+        let Some(b) = init_repo() else { return };
+        let thread_id = "shared-thread-id";
+        cleanup_snapshot_index(thread_id);
+
+        assert_ne!(
+            snapshot_index(&a, thread_id),
+            snapshot_index(&b, thread_id),
+            "one index file served two repositories"
+        );
+
+        snapshot(&a, None, "a", thread_id, &[]).expect("snapshot a");
+        snapshot(&b, None, "b", thread_id, &[]).expect("snapshot b");
+        assert!(snapshot_index(&a, thread_id).exists());
+        assert!(snapshot_index(&b, thread_id).exists());
+        cleanup_snapshot_index(thread_id);
+    }
+
+    /// An index left behind by a previous session names objects this repository
+    /// does not have. That must be recoverable: it is a cache, not a record.
+    /// Before this the failure was permanent -- every later snapshot for the
+    /// thread returned `fatal: <sha> is not a valid object`.
+    #[test]
+    fn a_poisoned_snapshot_index_is_rebuilt_rather_than_fatal() {
+        let Some(root) = init_repo() else { return };
+        let thread_id = "poisoned-thread";
+        cleanup_snapshot_index(thread_id);
+
+        snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
+        let idx = snapshot_index(&root, thread_id);
+        assert!(idx.exists());
+
+        // Replace it with an index from a different repository, whose objects
+        // this one has never seen.
+        let Some(other) = init_repo() else { return };
+        let other_thread = "poisoned-thread-source";
+        cleanup_snapshot_index(other_thread);
+        std::fs::write(other.join("a.txt"), "different").unwrap();
+        snapshot(&other, None, "other", other_thread, &[PathBuf::from("a.txt")])
+            .expect("other snapshot");
+        std::fs::copy(snapshot_index(&other, other_thread), &idx).unwrap();
+
+        std::fs::write(root.join("a.txt"), "changed").unwrap();
+        let sha = snapshot(&root, None, "after", thread_id, &[PathBuf::from("a.txt")])
+            .expect("a stale index must not be fatal");
+        assert!(!sha.is_empty());
+
+        cleanup_snapshot_index(thread_id);
+        cleanup_snapshot_index(other_thread);
+    }
+
+    /// `cleanup_snapshot_index` has no repository in hand, so it must clear the
+    /// thread's indexes for every repository it touched.
+    #[test]
+    fn cleanup_clears_every_repository_for_the_thread() {
+        let Some(a) = init_repo() else { return };
+        let Some(b) = init_repo() else { return };
+        let thread_id = "cleanup-thread";
+        cleanup_snapshot_index(thread_id);
+
+        snapshot(&a, None, "a", thread_id, &[]).expect("snapshot a");
+        snapshot(&b, None, "b", thread_id, &[]).expect("snapshot b");
+
+        cleanup_snapshot_index(thread_id);
+        assert!(!snapshot_index(&a, thread_id).exists());
+        assert!(!snapshot_index(&b, thread_id).exists());
+    }
+
+    /// R22: a checkpoint runs no filter program the repository's own config
+    /// names, and a repository using git-lfs's own filter commands keeps
+    /// checkpoints.
+    #[test]
+    fn a_checkpoint_runs_no_filter_program_the_repository_names() {
+        let Some(root) = init_repo() else { return };
+        let marker = root.join("filter-ran.txt");
+        let marker_sh = marker.to_string_lossy().replace('\\', "/");
+        std::fs::write(root.join(".gitattributes"), "*.txt filter=evil\n").unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.clean", &format!("sh -c 'echo ran > \"{marker_sh}\"; cat'")]).unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.smudge", &format!("sh -c 'echo ran > \"{marker_sh}\"; cat'")]).unwrap();
+        std::fs::write(root.join("a.txt"), "changed\n").unwrap();
+        let taken = snapshot(&root, None, "base", "r22-thread", &[PathBuf::from("a.txt")]);
+        assert!(!marker.exists(), "a checkpoint ran the repository's filter program");
+        assert!(taken.is_err(), "a repository naming a filter program was snapshotted: {taken:?}");
+        assert!(taken.unwrap_err().contains("filter.evil"), "the refusal does not name the setting");
+        cleanup_snapshot_index("r22-thread");
+
+        // git-lfs's own filter commands are not refused.
+        run(&root, None, &["config", "--local", "--unset", "filter.evil.clean"]).unwrap();
+        run(&root, None, &["config", "--local", "--unset", "filter.evil.smudge"]).unwrap();
+        std::fs::write(root.join(".gitattributes"), "*.bin filter=lfs\n").unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.clean", "git-lfs clean -- %f"]).unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.smudge", "git-lfs smudge -- %f"]).unwrap();
+        run(&root, None, &["config", "--local", "filter.lfs.process", "git-lfs filter-process"]).unwrap();
+        assert!(snapshot(&root, None, "base", "r22-lfs", &[PathBuf::from("a.txt")]).is_ok(), "a git-lfs repository lost its checkpoints");
+        cleanup_snapshot_index("r22-lfs");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn snapshot_restore_roundtrip() {
         let Some(root) = init_repo() else { return };
@@ -1069,7 +1671,7 @@ mod tests {
         let thread_id = "test-thread-3";
 
         let base = snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
-        let idx = snapshot_index(thread_id);
+        let idx = snapshot_index(&root, thread_id);
         assert!(idx.exists(), "base snapshot should persist its index");
 
         // Two files change on disk, but only one is reported as touched; the

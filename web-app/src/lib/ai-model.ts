@@ -2,6 +2,8 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import type { LanguageModel } from 'ai'
 import { getProviderApiType } from '@/lib/providerCaps'
+import { isLocalEndpoint } from '@/lib/endpointDiagnostics'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 
 /**
  * Llama.cpp timings structure from the response
@@ -104,12 +106,7 @@ export function createLanguageModel(
   // need the Anthropic SDK; openai-compatible's schema rejects Messages-API
   // shaped streams.
   if (getProviderApiType(provider) === 'anthropic') {
-    const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      for (const h of provider.custom_header) {
-        headers[h.header] = h.value
-      }
-    }
+    const headers = applyCustomHeaders({}, provider)
     const anthropic = createAnthropic({
       apiKey: provider.api_key ?? '',
       baseURL: provider.base_url,
@@ -124,9 +121,9 @@ export function createLanguageModel(
     apiKey: provider.api_key ?? '',
     baseURL: provider.base_url ?? 'http://localhost:1337/v1',
     headers: {
-      // Add Origin header for local providers
-      ...(provider.base_url?.includes('localhost:') ||
-      provider.base_url?.includes('127.0.0.1:')
+      // Add Origin header for local providers. Loopback *and* LAN, so a
+      // server on this network is not treated as a remote service.
+      ...(isLocalEndpoint(provider.base_url)
         ? { Origin: 'tauri://localhost' }
         : {}),
     },

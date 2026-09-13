@@ -44,6 +44,67 @@ const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
 static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Counter for unique bash background job ids.
 static BASH_JOB_COUNTER: AtomicUsize = AtomicUsize::new(0);
+/// Background jobs one owner may hold at once. Past this the oldest finished,
+/// uncollected job is dropped; with none finished, a new command is refused a
+/// place in the background rather than growing the registry without bound.
+const MAX_JOBS_PER_OWNER: usize = 32;
+/// How much of a running job's recent output a status check can show.
+const JOB_TAIL_BYTES: usize = 8 * 1024;
+
+/// A per-process prefix for job ids.
+///
+/// The counter restarts at zero every launch while the records that name job
+/// ids are persisted, so `bash-0` alone would name a different command after
+/// every restart. The prefix makes an id from a previous run never match one
+/// minted now.
+fn job_id_prefix() -> &'static str {
+    static PREFIX: OnceLock<String> = OnceLock::new();
+    PREFIX.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let mixed = (nanos as u64) ^ ((std::process::id() as u64) << 20);
+        format!("{:05x}", mixed & 0xf_ffff)
+    })
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// The most recent output of a running job, bounded, for status checks.
+#[derive(Default)]
+struct LiveTail {
+    text: String,
+    /// Bytes dropped from the front to stay within the bound.
+    dropped: usize,
+}
+
+impl LiveTail {
+    fn push(&mut self, chunk: &str) {
+        self.text.push_str(chunk);
+        if self.text.len() > JOB_TAIL_BYTES {
+            let mut cut = self.text.len() - JOB_TAIL_BYTES;
+            while !self.text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            self.dropped += cut;
+            self.text.drain(..cut);
+        }
+    }
+}
+
+/// The exit code a formatted `bash` result reports on its final marker line.
+fn exit_code_of(output: &str) -> Option<i32> {
+    output
+        .lines()
+        .rev()
+        .find_map(|line| line.trim().strip_prefix("[exit ")?.strip_suffix(']')?.parse().ok())
+}
 
 /// One command still running past its `bash` call's timeout.
 ///
@@ -76,12 +137,32 @@ pub struct BashJob {
     /// Without this the whole of a long collection was invisible: the panel
     /// dropped the row and its Stop button reported "unknown job".
     collecting: bool,
+    /// The conversation that started the command. Listing, inspecting,
+    /// collecting and stopping are all confined to it, so one session cannot
+    /// read or kill another's work. `None` is a surface with no conversation
+    /// (a one-shot CLI run), and only another `None` caller matches it.
+    owner: Option<String>,
+    /// Wall-clock start and end, for a surface that shows when it ran.
+    started_at_ms: u64,
+    finished_at_ms: Option<u64>,
+    /// Stopped on request rather than by exiting.
+    stopped_by_request: bool,
+    /// Recent output, fed by the same stream the live view reads.
+    tail: std::sync::Arc<Mutex<LiveTail>>,
 }
 
 impl BashJob {
     /// Has the command finished? Non-destructive from the caller's point of
     /// view: anything received is retained for collection.
     fn poll_finished(&mut self) -> bool {
+        let finished = self.poll_finished_inner();
+        if finished && self.finished_at_ms.is_none() {
+            self.finished_at_ms = Some(now_ms());
+        }
+        finished
+    }
+
+    fn poll_finished_inner(&mut self) -> bool {
         if self.output.is_some() {
             return true;
         }
@@ -101,9 +182,8 @@ impl BashJob {
             }
             Err(oneshot::error::TryRecvError::Empty) => false,
             Err(oneshot::error::TryRecvError::Closed) => {
-                self.output = Some(
-                    "ERROR: background command ended without producing output".to_string(),
-                );
+                self.output =
+                    Some("ERROR: background command ended without producing output".to_string());
                 self.rx = None;
                 true
             }
@@ -112,6 +192,10 @@ impl BashJob {
 }
 
 /// A job as reported to a caller that is listing, not collecting.
+///
+/// The command is redacted (see [`crate::audit::redact`]): this is metadata a
+/// panel shows and a store may keep, and a command line is where a credential
+/// most often appears.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BashJobStatus {
@@ -120,6 +204,41 @@ pub struct BashJobStatus {
     pub elapsed_ms: u64,
     pub finished: bool,
     pub call_id: Option<String>,
+    pub started_at_ms: u64,
+    pub finished_at_ms: Option<u64>,
+    /// From the finished output's `[exit N]` marker, when it has one.
+    pub exit_code: Option<i32>,
+    /// Killed by a signal rather than exiting (including a stop request).
+    pub signalled: bool,
+    /// Someone asked for it to be stopped, and it was.
+    pub stopped_by_request: bool,
+    /// Its output is waiting to be collected. False while running.
+    pub output_available: bool,
+}
+
+impl BashJob {
+    fn status(&mut self, job_id: &str) -> BashJobStatus {
+        let finished = self.poll_finished();
+        let output = self.output.as_deref();
+        BashJobStatus {
+            job_id: job_id.to_string(),
+            command: crate::audit::redact(&self.command),
+            elapsed_ms: match self.finished_at_ms {
+                Some(end) => end.saturating_sub(self.started_at_ms),
+                None => self.started.elapsed().as_millis() as u64,
+            },
+            finished,
+            call_id: self.call_id.clone(),
+            started_at_ms: self.started_at_ms,
+            finished_at_ms: self.finished_at_ms,
+            exit_code: output.and_then(exit_code_of),
+            signalled: output.is_some_and(|o| {
+                o.lines().any(|l| l.trim() == "[terminated by signal]")
+            }),
+            stopped_by_request: self.stopped_by_request,
+            output_available: output.is_some(),
+        }
+    }
 }
 
 /// Why a kill request ended the way it did. Reported rather than inferred so a
@@ -161,23 +280,71 @@ fn bash_jobs() -> &'static Mutex<HashMap<String, BashJob>> {
     JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Every backgrounded command, newest first. Listing never consumes a result:
-/// see [`BashJob::poll_finished`].
-pub fn list_bash_jobs() -> Vec<BashJobStatus> {
+/// Every backgrounded command `owner` started, newest first. Listing never
+/// consumes a result: see [`BashJob::poll_finished`].
+///
+/// Another owner's jobs are not listed at all -- not even as a count -- so a
+/// session can learn nothing about work it did not start.
+pub fn list_bash_jobs(owner: Option<&str>) -> Vec<BashJobStatus> {
     let mut jobs = bash_jobs().lock().unwrap();
     let mut out: Vec<BashJobStatus> = jobs
         .iter_mut()
-        .map(|(job_id, job)| BashJobStatus {
-            job_id: job_id.clone(),
-            command: job.command.clone(),
-            elapsed_ms: job.started.elapsed().as_millis() as u64,
-            finished: job.poll_finished(),
-            call_id: job.call_id.clone(),
-        })
+        .filter(|(_, job)| job.owner.as_deref() == owner)
+        .map(|(job_id, job)| job.status(job_id))
         .collect();
-    // Newest first: job ids are a monotonic `bash-N`.
-    out.sort_by(|a, b| b.job_id.len().cmp(&a.job_id.len()).then(b.job_id.cmp(&a.job_id)));
+    // Newest first, by when it started; the id breaks ties.
+    out.sort_by(|a, b| {
+        b.started_at_ms
+            .cmp(&a.started_at_ms)
+            .then(b.job_id.len().cmp(&a.job_id.len()))
+            .then(b.job_id.cmp(&a.job_id))
+    });
     out
+}
+
+/// One job's status, if `owner` may see it.
+pub fn inspect_bash_job(job_id: &str, owner: Option<&str>) -> Option<BashJobStatus> {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get_mut(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    Some(job.status(job_id))
+}
+
+/// A job's recent output, redacted, for a status check. Never consumes the
+/// result the collector is waiting for.
+fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
+    let jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    let tail = job.tail.lock().ok()?;
+    Some((crate::audit::redact(&tail.text), tail.dropped))
+}
+
+/// Make room for one more job under `owner`. Drops the oldest *finished*
+/// uncollected job when the owner is at its limit; returns false when every
+/// job it holds is still running, so the caller refuses rather than grows.
+fn make_room_for(owner: Option<&str>) -> bool {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let mut mine: Vec<(String, u64, bool)> = jobs
+        .iter_mut()
+        .filter(|(_, job)| job.owner.as_deref() == owner)
+        .map(|(id, job)| (id.clone(), job.started_at_ms, job.poll_finished() && !job.collecting))
+        .collect();
+    if mine.len() < MAX_JOBS_PER_OWNER {
+        return true;
+    }
+    mine.sort_by_key(|(_, started, _)| *started);
+    match mine.iter().find(|(_, _, done)| *done) {
+        Some((oldest, _, _)) => {
+            jobs.remove(oldest);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Kill one backgrounded command and every process it spawned.
@@ -187,9 +354,12 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
 /// the command printed before it was killed instead of `unknown job_id`. A job
 /// that has already finished is left alone — killing it would signal a pid the
 /// OS may since have reused.
-pub fn kill_bash_job(job_id: &str) -> BashJobKill {
+pub fn kill_bash_job(job_id: &str, owner: Option<&str>) -> BashJobKill {
     let mut jobs = bash_jobs().lock().unwrap();
     let (outcome, error) = match jobs.get_mut(job_id) {
+        // Someone else's job reads exactly like no job: saying "not yours"
+        // would confirm that it exists.
+        Some(job) if job.owner.as_deref() != owner => (BashJobKillOutcome::Unknown, None),
         None => (BashJobKillOutcome::Unknown, None),
         Some(job) => {
             if job.poll_finished() {
@@ -208,6 +378,7 @@ pub fn kill_bash_job(job_id: &str) -> BashJobKill {
                         // collectable because the entry is kept.
                         outcome if outcome.stopped() => {
                             job.pid = None;
+                            job.stopped_by_request = true;
                             super::proc::unregister(pid);
                             (BashJobKillOutcome::Killed, None)
                         }
@@ -320,17 +491,108 @@ pub async fn execute_builtin(
 ) -> (String, Option<Vec<ImageContentPart>>) {
     let project_root = ctx.project_root;
     let scratch = ctx.scratch_root;
-    let (content, images) = match tool.name {
-        "read" => read(args, project_root, scratch, ctx.read_roots).await,
-        "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
-        _ => (execute_text(tool, args, ctx).await, None),
+
+    // AH-020/AH-023. Every built-in runs under a deadline and a cancellation
+    // token, not just `bash`. A filesystem call that wedges on a stale network
+    // mount, or a web fetch to a host that accepts and never answers, used to
+    // hang the whole run with nothing able to interrupt it.
+    //
+    // `bash` keeps its own inner deadline: it owns a process tree and has to
+    // kill it, which the generic wrapper cannot do. The wrapper is still the
+    // outer bound, so a bash call whose own handling stalls is not exempt.
+    let token = ctx
+        .cancel
+        .clone()
+        .unwrap_or_else(crate::lifecycle::Token::detached);
+    let limit = crate::lifecycle::Timeouts::default().for_tool(tool.name);
+
+    // AH-127/AH-129. The project's own hooks run around the call. They are
+    // read per call rather than cached: the file is small, and a user who
+    // fixes a hook mid-run means the fixed one, not the one that was read
+    // when the run started.
+    let hook_ctx = crate::hooks::Context {
+        project_root,
+        allow_network: ctx.allow_network,
+        home_readonly: ctx.home_readonly,
+        sandbox: ctx.sandbox,
+        // The same folder `bash` has masked from it on this surface.
+        mask_root: ctx.mask_root,
+        cancel: ctx.cancel.clone(),
     };
+    let hooks = match crate::hooks::load(project_root) {
+        Ok(hooks) => hooks,
+        // A hooks file that cannot be read is not silently no hooks: a
+        // project that declared a policy and got none would be the worst of
+        // the three outcomes.
+        Err(error) => {
+            let harness: crate::harness_error::HarnessError = (&error).into();
+            return (
+                format!(
+                    "ERROR [{}]: this project's hooks could not be read, so no tool ran: {}",
+                    harness.kind().tag(),
+                    error.message
+                ),
+                None,
+            );
+        }
+    };
+    let before =
+        crate::hooks::run(&hooks, crate::hooks::Event::PreTool, Some(tool.name), &hook_ctx).await;
+    if let Some(blocked) = before.blocked {
+        let harness: crate::harness_error::HarnessError = (&blocked).into();
+        return (
+            format!(
+                "ERROR [{}]: a pre-tool hook refused this call: {}",
+                harness.kind().tag(),
+                blocked.message
+            ),
+            None,
+        );
+    }
+
+    let work = async {
+        match tool.name {
+            "read" => read(args, project_root, scratch, ctx.read_roots).await,
+            "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
+            _ => (execute_text(tool, args, ctx).await, None),
+        }
+    };
+
+    let (mut content, images) = match crate::lifecycle::run_with_deadline(&token, limit, work).await {
+        Ok(pair) => pair,
+        // Named, and distinguishable: a person reading the transcript needs to
+        // know whether they stopped this or it ran out of time.
+        Err(reason) => (
+            format!(
+                "ERROR: tool '{}' {} after {}s and was stopped. No result is available.",
+                tool.name,
+                match reason {
+                    crate::lifecycle::StopReason::Timeout => "exceeded its time limit",
+                    crate::lifecycle::StopReason::Cancelled => "was cancelled",
+                },
+                limit.as_secs()
+            ),
+            None,
+        ),
+    };
+
+    // A post-tool hook cannot undo what the tool did, so it never blocks. What
+    // it can do is say something went wrong, where the model and the person
+    // reading the transcript will both see it.
+    let after =
+        crate::hooks::run(&hooks, crate::hooks::Event::PostTool, Some(tool.name), &hook_ctx).await;
+    for warning in &after.warnings {
+        content.push_str(&format!("\n\n[post-tool hook] {}", warning.message));
+    }
+    for warning in &before.warnings {
+        content.push_str(&format!("\n\n[pre-tool hook] {}", warning.message));
+    }
     (content, images)
 }
 
 /// The text result for every tool except `read`. Split out so `read` can also
 /// return image parts without duplicating the remaining tool dispatch.
-async fn execute_text(
+pub(crate) async fn execute_text(
     tool: &BuiltinTool,
     args: &serde_json::Value,
     ctx: &ToolContext<'_>,
@@ -371,6 +633,9 @@ async fn execute_text(
         "memory_list" => memory_list(ctx.store_root).await,
         "memory_read" => memory_read(args, ctx.store_root).await,
         "memory_write" => memory_write(args, ctx.store_root).await,
+        "memory_propose" => memory_propose(args, ctx).await,
+        "message_send" => message_send(args, ctx),
+        "message_check" => message_check(ctx),
         // Skills go through the skills module so the tool honors the folder form
         // (`<name>/SKILL.md`) and frontmatter, matching what the UI writes.
         "skill_list" => skill_list(ctx),
@@ -381,6 +646,72 @@ async fn execute_text(
         "web_fetch" => crate::tools::web::web_fetch(args).await,
         other => format!("ERROR: unknown built-in tool '{other}'"),
     }
+}
+
+/// Apply `edits` to `content` in order, each against the result of the last.
+///
+/// Shared by `edit` and by [`stage_change`], so the change a person reviews is
+/// computed by the same code that later makes it. Two implementations would be
+/// two answers to "what will this edit do".
+fn apply_edits(
+    content: &str,
+    edits: &[serde_json::Value],
+    shown: &str,
+) -> Result<String, String> {
+    let mut content = content.to_string();
+    for (i, e) in edits.iter().enumerate() {
+        let Some(old_string) = e.get("old_string").and_then(|v| v.as_str()) else {
+            return Err(format!("ERROR: {shown}: edit {}: missing 'old_string'", i + 1));
+        };
+        let Some(new_string) = e.get("new_string").and_then(|v| v.as_str()) else {
+            return Err(format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1));
+        };
+        let count = content.matches(old_string).count();
+        if count == 0 {
+            return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+        }
+        if count > 1 {
+            return Err(format!(
+                "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
+                i + 1
+            ));
+        }
+        content = content.replacen(old_string, new_string, 1);
+    }
+    Ok(content)
+}
+
+/// The change a `write` or `edit` call would make, staged as reviewable hunks
+/// against the file as it is now. AH-146/AH-148.
+///
+/// Returns the resolved target alongside the patch, because the patch is only
+/// meaningful against the file it was computed from: the caller keeps both,
+/// and before acting on an approval checks that the file is still that file.
+/// `None` for every other tool, for a call that would change nothing, and for
+/// a call whose own arguments are invalid -- the tool reports that itself.
+pub async fn stage_change(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Option<(PathBuf, crate::patch::StagedPatch)> {
+    let path = arg_str(args, "path")?;
+    let target = resolve_path(ctx.project_root, ctx.scratch_root, path);
+    let prior = match tokio::fs::read(&target).await {
+        // Text only. A binary file has no lines to review, and refusing to
+        // stage it is not refusing the write -- the prompt still shows it.
+        Ok(bytes) => Some(String::from_utf8(bytes).ok()?),
+        Err(_) => None,
+    };
+    let proposed = match tool.name {
+        "write" => arg_str(args, "content")?.to_string(),
+        "edit" => {
+            let edits = args.get("edits").and_then(|v| v.as_array())?;
+            apply_edits(prior.as_deref()?, edits, path).ok()?
+        }
+        _ => return None,
+    };
+    let patch = crate::patch::StagedPatch::stage(prior.as_deref(), &proposed);
+    (!patch.is_empty()).then_some((target, patch))
 }
 
 /// Focused diff previewing what a `write`/`edit` call would change, without
@@ -445,10 +776,64 @@ pub async fn execute_builtin_with_diff(
     match tool.name {
         "write" | "edit" => {
             let diff = preview_diff(tool, args, ctx).await;
+            // Kept from before the call so the post-format diff can be drawn
+            // against the file as the model saw it, rather than against what
+            // the model wrote and the formatter then rewrote.
+            let before = match arg_str(args, "path") {
+                Some(p) => tokio::fs::read_to_string(resolve_path(
+                    ctx.project_root,
+                    ctx.scratch_root,
+                    p,
+                ))
+                .await
+                .ok(),
+                None => None,
+            };
+
+            // A credential in what this change *adds* stops it before it
+            // lands. AH-157. Catching it afterwards is not the same thing: a
+            // key that reaches the working tree is a key that has to be
+            // rotated, and by then it may already be in a commit.
+            //
+            // The removals are ignored on purpose -- a secret on a deleted
+            // line is someone taking it out, and refusing that would fire the
+            // warning on the fix.
+            if let Some(preview) = diff.as_deref() {
+                let findings = crate::secrets::scan_diff(preview);
+                if !findings.is_empty() {
+                    let where_ = findings
+                        .iter()
+                        .map(|f| {
+                            let file = if f.file.is_empty() {
+                                "the file"
+                            } else {
+                                &f.file
+                            };
+                            format!("{} line {} ({})", file, f.line, f.kind.as_str())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return (
+                        format!(
+                            "ERROR: this change was not written: it adds what looks like a \
+                             credential at {where_}. Nothing was changed. Use a placeholder \
+                             and read the real value from the environment, or ask the user \
+                             to add it themselves."
+                        ),
+                        None,
+                        None,
+                    );
+                }
+            }
+
             let (content, images) = execute_builtin(tool, args, ctx).await;
             if content.starts_with("ERROR") {
                 return (content, None, None);
             }
+            // AH-149: the project's own formatter has the last word on layout,
+            // and the diff a person reviews should be what the file now holds
+            // -- not a version the next `cargo fmt` will rewrite.
+            let diff = format_after_edit(args, ctx, before.as_deref(), diff).await;
             (content, diff, images)
         }
         "read" => {
@@ -456,6 +841,51 @@ pub async fn execute_builtin_with_diff(
             (content, None, images)
         }
         _ => (execute_builtin(tool, args, ctx).await.0, None, None),
+    }
+}
+
+/// Hand the edited file to the project's formatter, and redraw the diff
+/// against what the file now holds (AH-149, AH-150).
+///
+/// The diff is redrawn rather than annotated because the point of showing one
+/// is that it is what happened. A formatter that could not run, or refused the
+/// file, leaves the original diff exactly as it was and says so underneath:
+/// silence there would read as "nothing to format".
+async fn format_after_edit(
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+    before: Option<&str>,
+    diff: Option<String>,
+) -> Option<String> {
+    if !ctx.format_on_edit {
+        return diff;
+    }
+    let path = arg_str(args, "path")?;
+    let file = resolve_path(ctx.project_root, ctx.scratch_root, path);
+    let formatter = crate::format::detect(ctx.project_root, &file)?;
+    let project_root = ctx.project_root.to_path_buf();
+    let running = formatter.clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::format::run(&running, &project_root, &file)
+    })
+    .await
+    .unwrap_or_else(|e| crate::format::Formatted::Failed(format!("the formatter could not be run: {e}")));
+    match outcome {
+        crate::format::Formatted::Unchanged => diff,
+        crate::format::Formatted::Failed(why) => Some(format!(
+            "{}\n[{}]",
+            diff.unwrap_or_default().trim_end(),
+            why
+        )),
+        crate::format::Formatted::Changed(after) => {
+            let redrawn = render_hunk_diff(before.unwrap_or(""), &after, 1);
+            Some(format!(
+                "{}\n[formatted with {} ({})]",
+                redrawn.trim_end(),
+                formatter.name,
+                formatter.evidence
+            ))
+        }
     }
 }
 
@@ -601,16 +1031,76 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
     out.trim_end().to_string()
 }
 
+/// What a skill declares it depends on and this run cannot supply (AH-123,
+/// AH-124): a skill that is not installed, one installed at a version the
+/// requirement rules out, or a tool nothing here provides.
+///
+/// Resolution is the caller's, not the skills module's: a dependency may live
+/// in the project's store or in the user's, and only here is that known.
+fn skill_requirements_unmet(ctx: &ToolContext<'_>, name: &str, parsed: &skills::ParsedSkill) -> Vec<String> {
+    let lookup = |wanted: &str| {
+        ctx.skill_project
+            .and_then(|project| skills::read_raw(project, wanted).ok())
+            .or_else(|| skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, wanted).ok())
+    };
+    skills::unmet_requirements(name, parsed, &lookup, ctx.available_tools)
+}
+
 /// `skill_list` tool: catalog of `name — description` lines for ENABLED skills
 /// only (disabled skills must stay invisible to the model). Empty if none.
+///
+/// With an attached project (`ctx.skill_project`), that project's skills and
+/// its enabled plugins' skills come first, filtered by the project's own
+/// `[skills].enabled`; see [`skills::catalog_for_model`].
 fn skill_list(ctx: &ToolContext<'_>) -> String {
-    skills::catalog(ctx.store_root, ctx.enabled_skills)
+    let offered = skills::catalog_for_model_with_user(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.user_skills_root,
+        ctx.enabled_skills,
+    );
+    offered
+        .into_iter()
+        // A skill this run could not carry out is not offered: a catalogue
+        // entry is an invitation, and one that always ends in a refusal is a
+        // worse answer than not listing it.
+        .filter(|meta| match (ctx.permissions, ctx.subject) {
+            (Some(permissions), Some(subject)) => {
+                skills::unusable_tools(&meta.needs, permissions, subject).is_empty()
+            }
+            _ => true,
+        })
+        // AH-124: and neither is a skill whose dependencies are not here. The
+        // catalogue is an offer; one that cannot be taken up is worse than no
+        // entry at all.
+        .filter(|meta| {
+            // The body the listing layer would hand over, not a same-named
+            // skill of another layer.
+            match skills::read_for_model_with_user(
+                ctx.skill_project,
+                ctx.store_root,
+                ctx.user_skills_root,
+                ctx.enabled_skills,
+                &meta.name,
+            ) {
+                Ok(raw) => skill_requirements_unmet(ctx, &meta.name, &skills::parse(&raw)).is_empty(),
+                Err(_) => true,
+            }
+        })
+        .collect::<Vec<_>>()
         .iter()
         .map(|m| {
+            // AH-123: a declared version is part of a skill's identity, so it
+            // is shown where the skill is named. A skill that declares none is
+            // listed as it always was, rather than as some invented version.
+            let name = match &m.version {
+                Some(version) => format!("{} (v{version})", m.name),
+                None => m.name.clone(),
+            };
             if m.description.is_empty() {
-                m.name.clone()
+                name
             } else {
-                format!("{} — {}", m.name, m.description)
+                format!("{name} — {}", m.description)
             }
         })
         .collect::<Vec<_>>()
@@ -618,22 +1108,55 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
 }
 
 /// `skill_read` tool: a skill's full instructions (frontmatter stripped). A
-/// disabled skill — or one with `disable-model-invocation: true` — is treated
-/// as absent so it never reaches the model.
+/// disabled skill, a skill of a disabled plugin, or one with
+/// `disable-model-invocation: true` is treated as absent so it never reaches
+/// the model. Reading a skill grants nothing: scripts it mentions still run
+/// only through `bash`, under the gate.
 fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(name) = arg_str(args, "name") else {
         return "ERROR: missing required argument 'name'".to_string();
     };
-    if !skills::is_enabled(ctx.enabled_skills, name) {
-        return format!("ERROR: skill '{name}' not found");
-    }
-    let raw = match skills::read_raw(ctx.store_root, name) {
+    // The whitelist is applied per layer: an attached project's own
+    // `[skills].enabled`, the caller's for the store and the user's skills.
+    let raw = match skills::read_for_model_with_user(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.user_skills_root,
+        ctx.enabled_skills,
+        name,
+    ) {
         Ok(raw) => raw,
         Err(e) => return e,
     };
     let parsed = skills::parse(&raw);
     if !parsed.model_invocable {
         return format!("ERROR: skill '{name}' not found");
+    }
+    // AH-040: a skill that says which tools it needs is withheld where this
+    // run may not use them. Handing over instructions whose every step will be
+    // refused wastes a turn and reads, to the model, as the harness being
+    // broken rather than as a policy it cannot cross.
+    if let (Some(permissions), Some(subject)) = (ctx.permissions, ctx.subject) {
+        let blocked = skills::unusable_tools(&parsed.needs, permissions, subject);
+        if !blocked.is_empty() {
+            return format!(
+                "ERROR [permission_denied]: the skill '{name}' needs {}, which this run may not \
+                 use. Its instructions are not loaded; do the work with what you have, or ask \
+                 for the policy to be changed.",
+                blocked.join(", ")
+            );
+        }
+    }
+    // AH-124: a skill whose dependencies are absent is not loaded. Failing
+    // here, naming what is missing, is worth more than instructions that refer
+    // to a skill the model will be told does not exist three turns from now.
+    let unmet = skill_requirements_unmet(ctx, name, &parsed);
+    if !unmet.is_empty() {
+        return format!(
+            "ERROR [invalid_input]: the skill '{name}' cannot be loaded here: {}. Its \
+             instructions are not loaded; install what it needs, or do the work without it.",
+            unmet.join("; ")
+        );
     }
     parsed.body
 }
@@ -649,6 +1172,17 @@ fn skill_write(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(content) = arg_str(args, "content") else {
         return "ERROR: missing required argument 'content'".to_string();
     };
+    // An attached project's skills (its own and its plugins') are read-only
+    // here: the folder is mounted read-only, and a same-named store skill
+    // would be shadowed by it and never read back.
+    if let Some(project) = ctx.skill_project {
+        if skills::project_claims(project, name) {
+            return format!(
+                "ERROR: skill '{name}' is provided by the attached project folder \
+                 and is read-only here"
+            );
+        }
+    }
     if !skills::is_enabled(ctx.enabled_skills, name) {
         return format!("ERROR: skill '{name}' is disabled and read-only");
     }
@@ -900,30 +1434,14 @@ async fn edit(
     if symlink_escapes_root(root, scratch, &target) {
         return format!("ERROR: refused to edit through a symlink out of the workspace: {path}");
     }
-    let mut content = match tokio::fs::read_to_string(&target).await {
+    let content = match tokio::fs::read_to_string(&target).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: {shown}: {e}"),
     };
-
-    for (i, e) in edits.iter().enumerate() {
-        let Some(old_string) = e.get("old_string").and_then(|v| v.as_str()) else {
-            return format!("ERROR: {shown}: edit {}: missing 'old_string'", i + 1);
-        };
-        let Some(new_string) = e.get("new_string").and_then(|v| v.as_str()) else {
-            return format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1);
-        };
-        let count = content.matches(old_string).count();
-        if count == 0 {
-            return format!("ERROR: {shown}: edit {}: old_string not found", i + 1);
-        }
-        if count > 1 {
-            return format!(
-                "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
-                i + 1
-            );
-        }
-        content = content.replacen(old_string, new_string, 1);
-    }
+    let content = match apply_edits(&content, edits, &shown) {
+        Ok(content) => content,
+        Err(message) => return message,
+    };
 
     match tokio::fs::write(&target, content).await {
         Ok(()) => format!("Applied {} edit(s) to {shown}", edits.len()),
@@ -931,18 +1449,93 @@ async fn edit(
     }
 }
 
+/// `path` made absolute against this process's working directory, with `.`
+/// and `..` resolved lexically. Nothing has to exist yet.
+fn anchored(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => lexical_normalize(&cwd.join(path)),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let owner = ctx.job_owner;
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
     else {
-        if let Some(job_id) = arg_str(args, "job_id").filter(|job_id| !job_id.trim().is_empty()) {
-            return await_bash_job(job_id).await;
-        }
-        return "ERROR: missing required argument 'command' (or 'job_id' to poll a backgrounded job)"
-            .to_string();
+        let action = arg_str(args, "action").map(str::trim).unwrap_or("");
+        let job_id = arg_str(args, "job_id").map(str::trim).filter(|id| !id.is_empty());
+        return match (action, job_id) {
+            ("" | "await", Some(job_id)) => {
+                let out = await_bash_job(job_id, owner).await;
+                // AH-102: how it ended, on the record, so a listing after a
+                // restart says what became of it.
+                end_job_record(
+                    ctx,
+                    owner,
+                    job_id,
+                    match exit_code_of(&out) {
+                        Some(0) | None => crate::job_record::JobState::Completed,
+                        Some(_) => crate::job_record::JobState::Failed,
+                    },
+                    exit_code_of(&out),
+                    "",
+                );
+                out
+            }
+            ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
+            ("cancel", Some(job_id)) => {
+                let out = bash_job_cancel_text(job_id, owner);
+                if out.starts_with("Stopped job") {
+                    end_job_record(
+                        ctx,
+                        owner,
+                        job_id,
+                        crate::job_record::JobState::Cancelled,
+                        None,
+                        "stopped on request, with every process it started",
+                    );
+                }
+                out
+            }
+            ("list", _) => bash_job_list_text(owner),
+            (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
+                format!(
+                    "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\" or \
+                     \"cancel\" with a job_id."
+                )
+            }
+            _ => "ERROR: missing required argument 'command' (or 'job_id' to collect a \
+                  backgrounded job, or {\"action\": \"list\"})"
+                .to_string(),
+        };
     };
-    let timeout_secs = arg_u64(args, "timeout").unwrap_or(DEFAULT_BASH_TIMEOUT_SECS);
+    // Opt-in: a command that outlives its deadline is terminated unless the
+    // caller explicitly asked for it to keep running and be polled by job_id.
+    let background = arg_bool(args, "background");
+    // A command the caller *asked* to run in the background is backgrounded
+    // straight away rather than after an arbitrary wait. A timeout given with
+    // it still means "wait this long first".
+    let timeout_secs = arg_u64(args, "timeout").unwrap_or(if background {
+        0
+    } else {
+        DEFAULT_BASH_TIMEOUT_SECS
+    });
 
-    let root = ctx.project_root;
+    // Every path the sandbox is given is made absolute first. The confined
+    // helper runs with its working directory set to the workspace, so a
+    // relative path means somewhere else by the time the helper reads it, and
+    // Jan's data folder defaults to the relative `./data`. The shell then
+    // failed in the helper's setup ("workspace does not exist") on every
+    // command, even with a sandbox that works.
+    let root_abs = anchored(ctx.project_root);
+    let root = root_abs.as_path();
+    let mask_abs = ctx.mask_root.map(anchored);
+    let scratch_abs = ctx.scratch_root.map(anchored);
+    let read_abs: Vec<PathBuf> = ctx.read_roots.iter().map(|p| anchored(p)).collect();
+    let write_abs: Vec<PathBuf> = ctx.write_roots.iter().map(|p| anchored(p)).collect();
     if !root.is_dir() {
         return format!(
             "ERROR: working directory does not exist: {}",
@@ -959,21 +1552,26 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     if ctx.sandbox {
         policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
     }
-    if let Some(mask) = ctx.mask_root {
+    if let Some(mask) = mask_abs.as_deref() {
         policy = policy.with_mask_root(mask);
     }
-    if let Some(scratch) = ctx.scratch_root {
+    if let Some(scratch) = scratch_abs.as_deref() {
         policy = policy.with_scratch_root(scratch);
     }
-    if !ctx.read_roots.is_empty() {
-        policy = policy.with_read_roots(ctx.read_roots.to_vec());
+    if !read_abs.is_empty() {
+        policy = policy.with_read_roots(read_abs.clone());
     }
     // The same roots the file tools were granted. Refused outright where the
     // backend cannot confine a shell to them, so `bash` is never the loose end
     // that makes an access mode untrue: on such a platform the run keeps its
     // sandbox-only shell and the mode is not offered in the first place.
-    if !ctx.write_roots.is_empty() && jail::supports_write_roots(jail::backend()) {
-        policy = policy.with_write_roots(ctx.write_roots.to_vec());
+    // On AppContainer that means Jan-owned worktrees only: see
+    // [`jail::can_confine_write_roots`].
+    let owned = mask_abs.as_deref().map(crate::workspace::worktrees_dir);
+    if !write_abs.is_empty()
+        && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
+    {
+        policy = policy.with_write_roots(write_abs.clone());
     }
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -983,14 +1581,38 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // `denial_hint` reads, and an unconfined command can still hit a plain
     // filesystem permission error worth explaining.
     let shell = if ctx.sandbox {
-        // No confinement available means no shell: running unsandboxed would give
-        // the command the whole machine, which is never what the caller asked for.
-        let Some(wrapped) = jail::wrap(proc::shell(), &policy) else {
-            return "ERROR: bash is unavailable because no OS sandbox could be established on \
-                    this system. Use the read/ls/find/grep tools instead."
-                .to_string();
+        // Which shell can be confined is decided by probing, not by assuming.
+        // A shell that starts fine on its own can still fail inside the
+        // sandbox: on Windows, Git Bash is built on the MSYS2 runtime, which
+        // cannot initialise inside an AppContainer however it was installed.
+        // No confinement available means no shell either: running unsandboxed
+        // would give the command the whole machine, which is never what the
+        // caller asked for.
+        let selected = match jail::select_shell(&policy) {
+            Ok(selected) => selected,
+            Err(detail) => {
+                return format!(
+                    "ERROR: bash is unavailable because no shell could be started in a                      sandbox on this system. Use the read/ls/find/grep tools instead.
+{detail}"
+                )
+            }
         };
-        wrapped
+        // A command written for bash is refused rather than handed to PowerShell
+        // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
+        // something, just not what was asked for.
+        if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
+            if let Some(construct) = proc::requires_posix_shell(command) {
+                return proc::posix_unavailable_error(
+                    construct,
+                    &selected.report.cfg,
+                    selected
+                        .posix_rejected
+                        .as_deref()
+                        .unwrap_or("no POSIX shell could be started in the sandbox"),
+                );
+            }
+        }
+        selected.wrapped
     } else {
         proc::shell().clone()
     };
@@ -1005,6 +1627,15 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
     let pid = child.id();
+    // AH-174: measured from here to exit, as a process tree, and kept against
+    // the run and call that started it. A measurement that cannot start is
+    // recorded as such, never as zero.
+    let meter = match pid {
+        Some(pid) => crate::resources::Meter::attach(pid),
+        None => Err("the command exited before it could be measured".to_string()),
+    };
+    let measured_run = ctx.run_id.map(str::to_string);
+    let measured_call = ctx.call_id.map(str::to_string);
     // Captured before the command is moved into its task, so a job's elapsed
     // time counts from the spawn rather than from the timeout that shelved it.
     let job_started = std::time::Instant::now();
@@ -1017,8 +1648,22 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let (tx, mut rx) = oneshot::channel();
     let spill_scratch = ctx.scratch_root.map(Path::to_path_buf);
     // Cloned into the detached task, which is what keeps a backgrounded command
-    // reporting after this call has already returned its `job_id`.
-    let sink = ctx.on_output.clone();
+    // reporting after this call has already returned its `job_id`. Every chunk
+    // also lands in a bounded tail, which is what a status check shows while
+    // the command is still running.
+    let tail = std::sync::Arc::new(Mutex::new(LiveTail::default()));
+    let sink: Option<crate::tools::OutputSink> = {
+        let tail = tail.clone();
+        let live = ctx.on_output.clone();
+        Some(std::sync::Arc::new(move |chunk: String| {
+            if let Ok(mut t) = tail.lock() {
+                t.push(&chunk);
+            }
+            if let Some(live) = live.as_ref() {
+                live(chunk);
+            }
+        }))
+    };
     let sandboxed = ctx.sandbox;
     // The model writes POSIX commands by default, which `cmd` rejects. Surface
     // the resolved shell so it can adapt when the only shell on a Windows box
@@ -1026,6 +1671,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let shell_description = shell.description;
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
+        // The tree has exited (or been stopped): what it used is final.
+        let used = match &meter {
+            Ok(meter) => meter.read(),
+            Err(reason) => crate::resources::Resources::unmeasured(reason.clone()),
+        };
+        drop(meter);
+        crate::resources::record(measured_run.as_deref(), measured_call.as_deref(), used);
         // Appended inside the task so a backgrounded job carries the hint too.
         // `Permission denied` on its own tells the model nothing about *why*;
         // without this it retries the same command until it gives up. Only when
@@ -1050,33 +1702,305 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 
     tokio::select! {
         res = &mut rx => res.unwrap_or_else(|_| "ERROR: background command ended without producing output".to_string()),
-        _ = tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)) => {
-            let job_id = format!("bash-{}", BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
-            bash_jobs().lock().unwrap().insert(
-                job_id.clone(),
-                BashJob {
-                    rx: Some(rx),
-                    output: None,
-                    command: command.to_string(),
-                    started: job_started,
-                    call_id: ctx.call_id.map(str::to_string),
-                    pid,
-                    collecting: false,
-                },
-            );
-            format!(
-                "Command exceeded {timeout_secs}s and is continuing in the background \
-                 (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
-                 command) to wait for and collect its output once it finishes."
+        _ = deadline(root, timeout_secs) => {
+            // AH-020. A timeout used to *background* the command: it kept
+            // running, unowned, after the call that started it had returned,
+            // so "the timeout expired" and "the work stopped" were different
+            // events and a runaway command outlived every limit placed on it.
+            // The timeout now terminates the process tree it owns.
+            //
+            // Backgrounding is still available, but only when the caller asks
+            // for it -- see the `background` argument below. A command the
+            // model did not ask to background does not get to survive its
+            // deadline.
+            if background && !make_room_for(owner) {
+                // Every job this conversation holds is still running. Refused
+                // rather than let the registry grow without bound -- and the
+                // command is stopped, since nothing would own it.
+                let stopped = match pid {
+                    Some(pid) => proc::kill_tree(pid).stopped(),
+                    None => true,
+                };
+                return format!(
+                    "ERROR: this conversation already has {MAX_JOBS_PER_OWNER} background commands \
+                     running, so this one was not backgrounded and was stopped{}. Collect or \
+                     cancel one first ({{\"action\": \"list\"}} shows them).",
+                    if stopped { "" } else { " (the process tree may not have terminated cleanly)" }
+                );
+            }
+            if background {
+                let job_id = format!(
+                    "bash-{}-{}",
+                    job_id_prefix(),
+                    BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
+                );
+                // AH-101/AH-102: a durable record, so a job that outlives the
+                // app is still a job somebody has a record of -- and one whose
+                // process is gone is honestly interrupted rather than
+                // eternally "running". Best effort: the note must never fail
+                // the job it describes.
+                if let (Some(data), Some(owner)) = (ctx.job_record_to, owner) {
+                    let identity = crate::job_record::ProcessIdentity {
+                        pid: pid.unwrap_or(0),
+                        created: pid.and_then(crate::job_record::creation_time_of).unwrap_or(0),
+                    };
+                    let record =
+                        crate::job_record::JobRecord::started(&job_id, owner, command, identity);
+                    // Dropped quietly on failure: the record is a witness, and
+                    // losing one must not fail the job it describes.
+                    let _ = crate::job_record::save(data, &record);
+                }
+                bash_jobs().lock().unwrap().insert(
+                    job_id.clone(),
+                    BashJob {
+                        rx: Some(rx),
+                        output: None,
+                        command: command.to_string(),
+                        started: job_started,
+                        call_id: ctx.call_id.map(str::to_string),
+                        pid,
+                        collecting: false,
+                        owner: owner.map(str::to_string),
+                        started_at_ms: now_ms().saturating_sub(job_started.elapsed().as_millis() as u64),
+                        finished_at_ms: None,
+                        stopped_by_request: false,
+                        tail,
+                    },
+                );
+                // Both forms end in the same fixed sentence, which is what the
+                // desktop reads the job id from (`backgroundJobId`).
+                let waited = if timeout_secs == 0 {
+                    "Command was started as a background job and".to_string()
+                } else {
+                    format!("Command exceeded {timeout_secs}s and")
+                };
+                return format!(
+                    "{waited} is continuing in the background \
+                     (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
+                     command) to wait for and collect its output once it finishes, \
+                     {{\"job_id\": \"{job_id}\", \"action\": \"status\"}} to check on it without \
+                     waiting, or {{\"job_id\": \"{job_id}\", \"action\": \"cancel\"}} to stop it."
+                );
+            }
+
+            let killed = match pid {
+                Some(pid) => proc::kill_tree(pid),
+                // No pid means the child never started; nothing is left running.
+                None => proc::KillOutcome::Gone,
+            };
+            // Whatever the command managed to print is still worth having, and
+            // the collector flushes it once the child is gone. Bounded, so a
+            // process that ignores the kill cannot hold the call open.
+            let partial = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                &mut rx,
             )
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
+
+            let mut out = format!(
+                "ERROR: command timed out after {timeout_secs}s and was terminated. \
+                 This is a timeout, not a cancellation: the command was still running \
+                 when its deadline passed. Re-run it with a larger {{\"timeout\": N}}, \
+                 or with {{\"background\": true}} to let it continue and poll it by \
+                 job_id."
+            );
+            if !killed.stopped() {
+                // Fail loudly rather than claim a clean stop we did not achieve.
+                out.push_str(
+                    "\n[warning: the process tree may not have terminated cleanly]",
+                );
+            }
+            if !partial.trim().is_empty() {
+                out.push_str("\n--- output before the timeout ---\n");
+                out.push_str(&partial);
+            }
+            out
         }
     }
 }
 
+/// A job's state, for the model, without waiting and without collecting.
+fn bash_job_status_text(job_id: &str, owner: Option<&str>) -> String {
+    let Some(status) = inspect_bash_job(job_id, owner) else {
+        return format!("ERROR: unknown or already-collected job_id '{job_id}'");
+    };
+    let state = if !status.finished {
+        "running".to_string()
+    } else if status.stopped_by_request {
+        "stopped (cancelled)".to_string()
+    } else {
+        match (status.exit_code, status.signalled) {
+            (Some(code), _) => format!("finished (exit {code})"),
+            (None, true) => "finished (terminated by signal)".to_string(),
+            (None, false) => "finished".to_string(),
+        }
+    };
+    let mut out = format!(
+        "job_id={job_id} state={state} elapsed={}s\ncommand: {}",
+        status.elapsed_ms / 1000,
+        status.command
+    );
+    if let Some((tail, dropped)) = peek_tail(job_id, owner) {
+        if !tail.trim().is_empty() {
+            let note = if dropped > 0 {
+                format!(" (last {} bytes; {dropped} earlier bytes not shown)", tail.len())
+            } else {
+                String::new()
+            };
+            out.push_str(&format!("\n--- recent output{note} ---\n{tail}"));
+        }
+    }
+    if status.finished {
+        out.push_str(&format!(
+            "\nIts full output is waiting: call bash with {{\"job_id\": \"{job_id}\"}} to collect it."
+        ));
+    }
+    out
+}
+
+/// Close a job's durable record, if this surface keeps one.
+///
+/// Only a record this owner already has is touched: an ending for a job that
+/// was never written down, or that belongs to another conversation, writes
+/// nothing rather than inventing history.
+fn end_job_record(
+    ctx: &ToolContext<'_>,
+    owner: Option<&str>,
+    job_id: &str,
+    state: crate::job_record::JobState,
+    exit_code: Option<i32>,
+    note: &str,
+) {
+    let (Some(data), Some(owner)) = (ctx.job_record_to, owner) else {
+        return;
+    };
+    let Some(mut record) = crate::job_record::read_owner(data, owner)
+        .into_iter()
+        .find(|r| r.id == job_id)
+    else {
+        return;
+    };
+    if record.state.is_ended() {
+        return;
+    }
+    record.state = state;
+    record.exit_code = exit_code;
+    record.ended_at_ms = Some(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+    );
+    if !note.is_empty() {
+        record.note = note.to_string();
+    }
+    // Nothing may act on the process afterwards.
+    record.identity = crate::job_record::ProcessIdentity::default();
+    let _ = crate::job_record::save(data, &record);
+}
+
+/// Stop a job on the model's behalf, and say exactly what happened.
+fn bash_job_cancel_text(job_id: &str, owner: Option<&str>) -> String {
+    let killed = kill_bash_job(job_id, owner);
+    match killed.outcome {
+        BashJobKillOutcome::Killed => format!(
+            "Stopped job {job_id} and every process it started. Call bash with \
+             {{\"job_id\": \"{job_id}\"}} to collect what it printed before it stopped."
+        ),
+        BashJobKillOutcome::AlreadyFinished => format!(
+            "Job {job_id} had already finished; nothing was stopped. Its output is still \
+             collectable."
+        ),
+        BashJobKillOutcome::Unknown => {
+            format!("ERROR: unknown or already-collected job_id '{job_id}'")
+        }
+        BashJobKillOutcome::NoPid => format!(
+            "ERROR: job {job_id} has no process to stop (it never reported one); nothing was \
+             signalled."
+        ),
+        BashJobKillOutcome::Failed => format!(
+            "ERROR: could not stop job {job_id}: {}. It is still running; try again.",
+            killed.error.unwrap_or_default()
+        ),
+    }
+}
+
+/// This conversation's background commands, for the model.
+fn bash_job_list_text(owner: Option<&str>) -> String {
+    let jobs = list_bash_jobs(owner);
+    if jobs.is_empty() {
+        return "No background commands.".to_string();
+    }
+    let mut out = String::from("Background commands (newest first):");
+    for job in jobs {
+        let state = if !job.finished {
+            "running".to_string()
+        } else if job.stopped_by_request {
+            "stopped".to_string()
+        } else {
+            match job.exit_code {
+                Some(code) => format!("finished, exit {code}, not yet collected"),
+                None => "finished, not yet collected".to_string(),
+            }
+        };
+        out.push_str(&format!(
+            "\n- {} [{state}, {}s] {}",
+            job.job_id,
+            job.elapsed_ms / 1000,
+            job.command
+        ));
+    }
+    out
+}
+
+/// When a foreground command's deadline passes: `timeout_secs` from now.
+///
+/// A test can stand in its own moment for a project root (see
+/// [`test_deadline`]), so a deadline test is decided by the event it is about
+/// -- the command having printed -- rather than by how fast a sandboxed shell
+/// happened to start on a busy machine.
+#[cfg_attr(not(test), allow(unused_variables))]
+async fn deadline(root: &Path, timeout_secs: u64) {
+    #[cfg(test)]
+    {
+        let injected = test_deadlines().lock().unwrap().get(root).cloned();
+        if let Some(fire) = injected {
+            fire.notified().await;
+            return;
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await
+}
+
+#[cfg(test)]
+fn test_deadlines(
+) -> &'static Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Notify>>> {
+    static DEADLINES: std::sync::OnceLock<
+        Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Notify>>>,
+    > = std::sync::OnceLock::new();
+    DEADLINES.get_or_init(Default::default)
+}
+
+/// Replace the deadline of every `bash` call made in `root` with the returned
+/// trigger. Keyed by root, which every test owns alone, so parallel tests keep
+/// their real deadlines.
+#[cfg(test)]
+pub(crate) fn test_deadline(root: &Path) -> std::sync::Arc<tokio::sync::Notify> {
+    let fire = std::sync::Arc::new(tokio::sync::Notify::new());
+    test_deadlines()
+        .lock()
+        .unwrap()
+        .insert(root.to_path_buf(), fire.clone());
+    fire
+}
+
 /// Wait for a previously backgrounded command to finish and return its
-/// (already-formatted) output, or an error if `job_id` is unknown or was
-/// already collected.
-async fn await_bash_job(job_id: &str) -> String {
+/// (already-formatted) output, or an error if `job_id` is unknown, was
+/// already collected, or belongs to another conversation.
+async fn await_bash_job(job_id: &str, owner: Option<&str>) -> String {
     // The receiver is taken, but the entry is left behind: for however long
     // this command still runs, it must stay listable and killable. Removed
     // only once it has actually produced its output.
@@ -1091,6 +2015,8 @@ async fn await_bash_job(job_id: &str) -> String {
         let mut jobs = bash_jobs().lock().unwrap();
         match jobs.get_mut(job_id) {
             None => Collect::Unknown,
+            // Another conversation's job: the same answer as no job at all.
+            Some(job) if job.owner.as_deref() != owner => Collect::Unknown,
             Some(job) => {
                 if let Some(done) = job.output.take() {
                     Collect::Parked(done)
@@ -1110,9 +2036,7 @@ async fn await_bash_job(job_id: &str) -> String {
         Collect::Awaiting(rx) => rx.await.unwrap_or_else(|_| {
             "ERROR: background command ended without producing output".to_string()
         }),
-        Collect::Drained => {
-            "ERROR: background command ended without producing output".to_string()
-        }
+        Collect::Drained => "ERROR: background command ended without producing output".to_string(),
         Collect::Unknown => {
             return format!("ERROR: unknown or already-collected job_id '{job_id}'")
         }
@@ -1857,7 +2781,6 @@ fn truncate_line(line: &str) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod bash_job_registry_tests {
     use super::*;
@@ -1882,6 +2805,11 @@ mod bash_job_registry_tests {
                 call_id: Some("call-1".to_string()),
                 pid,
                 collecting: false,
+                owner: None,
+                started_at_ms: now_ms(),
+                finished_at_ms: None,
+                stopped_by_request: false,
+                tail: Default::default(),
             },
         );
         tx
@@ -1889,6 +2817,16 @@ mod bash_job_registry_tests {
 
     /// A kill the OS refuses must not be reported as a kill, and must leave the
     /// pid in place so the request can be made again.
+    ///
+    /// Unix only, and not for want of trying. The test needs a pid that exists,
+    /// cannot be signalled, and is safe to *attempt* -- on Unix that is pid 1.
+    /// Windows has no equivalent: the processes that refuse termination are
+    /// System (pid 4) and Idle (pid 0), and a test that aimed a kill at System
+    /// on a developer's machine would be betting their uptime on the refusal
+    /// working. The refusal path itself is covered on Windows by
+    /// `proc::windows_tests::a_refusal_is_reported_as_a_failure_with_a_reason`,
+    /// which classifies the OS error without aiming a kill at anything.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_refused_kill_is_reported_and_the_job_stays_killable() {
         // pid 1 is init/launchd: it exists, and an unprivileged process may not
@@ -1896,12 +2834,12 @@ mod bash_job_registry_tests {
         // rather than a stub.
         let _tx = park_with_pid("bash-kill-refused", "sleep 300", Some(1));
 
-        let first = kill_bash_job("bash-kill-refused");
+        let first = kill_bash_job("bash-kill-refused", None);
         assert_eq!(first.outcome, BashJobKillOutcome::Failed);
         assert!(first.error.is_some(), "a refusal must say why");
 
         // Still killable: the pid was not surrendered.
-        let second = kill_bash_job("bash-kill-refused");
+        let second = kill_bash_job("bash-kill-refused", None);
         assert_eq!(second.outcome, BashJobKillOutcome::Failed);
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-refused");
     }
@@ -1911,14 +2849,14 @@ mod bash_job_registry_tests {
     #[tokio::test]
     async fn killing_a_process_that_has_already_exited_counts_as_stopped() {
         let tx = park_with_pid("bash-kill-gone", "true", Some(u32::MAX - 5));
-        let killed = kill_bash_job("bash-kill-gone");
+        let killed = kill_bash_job("bash-kill-gone", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
         assert!(killed.error.is_none());
 
         // And its output still reaches the agent.
         tx.send("printed before it died".to_string()).unwrap();
         assert_eq!(
-            await_bash_job("bash-kill-gone").await,
+            await_bash_job("bash-kill-gone", None).await,
             "printed before it died"
         );
     }
@@ -1930,7 +2868,7 @@ mod bash_job_registry_tests {
     async fn a_job_stays_listable_and_killable_while_it_is_collected() {
         let tx = park_with_pid("bash-collect-live", "npm run build", Some(u32::MAX - 8));
 
-        let collector = tokio::spawn(async { await_bash_job("bash-collect-live").await });
+        let collector = tokio::spawn(async { await_bash_job("bash-collect-live", None).await });
         // Let the collector take the receiver.
         for _ in 0..100 {
             if bash_jobs()
@@ -1944,23 +2882,28 @@ mod bash_job_registry_tests {
             tokio::task::yield_now().await;
         }
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-collect-live")
             .expect("a job being collected is still a job");
         assert!(!job.finished, "it is still running");
-        assert_eq!(kill_bash_job("bash-collect-live").outcome, BashJobKillOutcome::Killed);
+        assert_eq!(
+            kill_bash_job("bash-collect-live", None).outcome,
+            BashJobKillOutcome::Killed
+        );
 
         tx.send("built".to_string()).unwrap();
         assert_eq!(collector.await.unwrap(), "built");
         // Collected: now it is gone.
-        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-collect-live"));
+        assert!(!list_bash_jobs(None)
+            .iter()
+            .any(|j| j.job_id == "bash-collect-live"));
     }
 
     #[tokio::test]
     async fn killing_an_unknown_job_reports_it_rather_than_claiming_success() {
-        let killed = kill_bash_job("bash-never-existed");
+        let killed = kill_bash_job("bash-never-existed", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Unknown);
         assert_eq!(killed.job_id, "bash-never-existed");
     }
@@ -1972,18 +2915,20 @@ mod bash_job_registry_tests {
         let tx = park_with_pid("bash-kill-finished", "true", Some(u32::MAX - 2));
         tx.send("all done".to_string()).unwrap();
 
-        let killed = kill_bash_job("bash-kill-finished");
+        let killed = kill_bash_job("bash-kill-finished", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::AlreadyFinished);
-        assert_eq!(await_bash_job("bash-kill-finished").await, "all done");
+        assert_eq!(await_bash_job("bash-kill-finished", None).await, "all done");
     }
 
     #[tokio::test]
     async fn a_job_with_no_pid_is_reported_rather_than_reported_killed() {
         let _tx = park("bash-kill-nopid", "sleep 5");
-        let killed = kill_bash_job("bash-kill-nopid");
+        let killed = kill_bash_job("bash-kill-nopid", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::NoPid);
         // Still listed: nothing was signalled, so nothing has stopped.
-        assert!(list_bash_jobs().iter().any(|j| j.job_id == "bash-kill-nopid"));
+        assert!(list_bash_jobs(None)
+            .iter()
+            .any(|j| j.job_id == "bash-kill-nopid"));
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
     }
 
@@ -1993,13 +2938,13 @@ mod bash_job_registry_tests {
     async fn a_killed_job_still_hands_over_what_it_printed() {
         let tx = park_with_pid("bash-kill-partial", "sleep 300", Some(u32::MAX - 3));
 
-        let killed = kill_bash_job("bash-kill-partial");
+        let killed = kill_bash_job("bash-kill-partial", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
 
         // The detached collector resolves when the shell dies.
         tx.send("half a line before the kill".to_string()).unwrap();
         assert_eq!(
-            await_bash_job("bash-kill-partial").await,
+            await_bash_job("bash-kill-partial", None).await,
             "half a line before the kill"
         );
     }
@@ -2012,11 +2957,11 @@ mod bash_job_registry_tests {
         let _tx = park_with_pid("bash-kill-twice", "sleep 300", Some(u32::MAX - 4));
 
         assert_eq!(
-            kill_bash_job("bash-kill-twice").outcome,
+            kill_bash_job("bash-kill-twice", None).outcome,
             BashJobKillOutcome::Killed
         );
         assert_eq!(
-            kill_bash_job("bash-kill-twice").outcome,
+            kill_bash_job("bash-kill-twice", None).outcome,
             BashJobKillOutcome::NoPid
         );
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-twice");
@@ -2026,7 +2971,7 @@ mod bash_job_registry_tests {
     async fn listing_reports_a_running_job_without_consuming_it() {
         let tx = park("bash-listing-running", "sleep 5");
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-listing-running")
@@ -2037,7 +2982,7 @@ mod bash_job_registry_tests {
 
         // The output still reaches the collector: listing took nothing.
         tx.send("done at last".to_string()).unwrap();
-        assert_eq!(await_bash_job("bash-listing-running").await, "done at last");
+        assert_eq!(await_bash_job("bash-listing-running", None).await, "done at last");
     }
 
     #[tokio::test]
@@ -2047,41 +2992,400 @@ mod bash_job_registry_tests {
         let tx = park("bash-peek-finished", "echo hi");
         tx.send("hi\n".to_string()).unwrap();
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-peek-finished")
             .expect("the job should be listed");
         assert!(job.finished, "the command has produced its output");
 
-        assert_eq!(await_bash_job("bash-peek-finished").await, "hi\n");
+        assert_eq!(await_bash_job("bash-peek-finished", None).await, "hi\n");
     }
 
     #[tokio::test]
     async fn a_job_outlives_the_call_that_backgrounded_it() {
         let tx = park("bash-outlives", "long build");
         // Nothing collects it for now: it stays listed, still running.
-        assert!(list_bash_jobs()
+        assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-outlives" && !j.finished));
 
         tx.send("built".to_string()).unwrap();
         // Finishing does not remove it either — only collection does.
-        assert!(list_bash_jobs()
+        assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-outlives" && j.finished));
 
-        assert_eq!(await_bash_job("bash-outlives").await, "built");
-        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-outlives"));
+        assert_eq!(await_bash_job("bash-outlives", None).await, "built");
+        assert!(!list_bash_jobs(None).iter().any(|j| j.job_id == "bash-outlives"));
     }
 
     #[tokio::test]
     async fn collecting_twice_reports_the_second_as_unknown() {
         let tx = park("bash-twice", "echo x");
         tx.send("x".to_string()).unwrap();
-        assert_eq!(await_bash_job("bash-twice").await, "x");
-        assert!(await_bash_job("bash-twice").await.contains("already-collected"));
+        assert_eq!(await_bash_job("bash-twice", None).await, "x");
+        assert!(await_bash_job("bash-twice", None)
+            .await
+            .contains("already-collected"));
     }
+
+    fn park_owned(job_id: &str, command: &str, owner: &str) -> tokio::sync::oneshot::Sender<String> {
+        let tx = park(job_id, command);
+        bash_jobs().lock().unwrap().get_mut(job_id).unwrap().owner = Some(owner.to_string());
+        tx
+    }
+
+    /// A job id learned in one conversation reaches nothing from another:
+    /// not a listing, not a status, not a collection, not a kill -- and the
+    /// refusal reads exactly like "no such job", so it confirms nothing.
+    #[tokio::test]
+    async fn another_conversations_job_is_invisible_and_untouchable() {
+        let tx = park_owned("bash-owned-a", "make build", "session-a");
+
+        assert!(list_bash_jobs(Some("session-b"))
+            .iter()
+            .all(|j| j.job_id != "bash-owned-a"));
+        assert!(list_bash_jobs(None).iter().all(|j| j.job_id != "bash-owned-a"));
+        assert!(inspect_bash_job("bash-owned-a", Some("session-b")).is_none());
+        assert_eq!(
+            kill_bash_job("bash-owned-a", Some("session-b")).outcome,
+            BashJobKillOutcome::Unknown
+        );
+        tx.send("secret build log".to_string()).unwrap();
+        let stolen = await_bash_job("bash-owned-a", Some("session-b")).await;
+        assert!(stolen.contains("unknown or already-collected"), "{stolen}");
+        assert!(!stolen.contains("secret build log"));
+        assert!(bash_job_status_text("bash-owned-a", Some("session-b")).starts_with("ERROR"));
+
+        // Its own conversation still gets it, exactly once.
+        assert!(list_bash_jobs(Some("session-a"))
+            .iter()
+            .any(|j| j.job_id == "bash-owned-a"));
+        assert_eq!(
+            await_bash_job("bash-owned-a", Some("session-a")).await,
+            "secret build log"
+        );
+    }
+
+    /// A status check shows state and recent output and leaves the result for
+    /// the collector.
+    #[tokio::test]
+    async fn a_status_check_never_takes_the_output() {
+        let tx = park_owned("bash-status", "cargo test", "s-status");
+        bash_jobs()
+            .lock()
+            .unwrap()
+            .get("bash-status")
+            .unwrap()
+            .tail
+            .lock()
+            .unwrap()
+            .push("running 12 tests\n");
+
+        let running = bash_job_status_text("bash-status", Some("s-status"));
+        assert!(running.contains("state=running"), "{running}");
+        assert!(running.contains("running 12 tests"), "{running}");
+
+        tx.send("test result: ok\n[exit 0]".to_string()).unwrap();
+        let done = bash_job_status_text("bash-status", Some("s-status"));
+        assert!(done.contains("finished (exit 0)"), "{done}");
+        assert!(done.contains("waiting"), "{done}");
+        // Still collectable, once.
+        assert_eq!(
+            await_bash_job("bash-status", Some("s-status")).await,
+            "test result: ok\n[exit 0]"
+        );
+        assert!(bash_job_status_text("bash-status", Some("s-status")).starts_with("ERROR"));
+    }
+
+    /// What the panel and the model are shown of a command never carries its
+    /// credentials, and neither does its recent output.
+    #[tokio::test]
+    async fn listed_commands_and_peeked_output_are_redacted() {
+        let _tx = park_owned(
+            "bash-redact",
+            "curl -H token=sk-live1234567890abcdefgh https://api.example.com",
+            "s-redact",
+        );
+        bash_jobs()
+            .lock()
+            .unwrap()
+            .get("bash-redact")
+            .unwrap()
+            .tail
+            .lock()
+            .unwrap()
+            .push("using PGPASSWORD=hunter2hunter2\n");
+        let listed = list_bash_jobs(Some("s-redact"));
+        let job = listed.iter().find(|j| j.job_id == "bash-redact").unwrap();
+        assert!(!job.command.contains("sk-live"), "{}", job.command);
+        let status = bash_job_status_text("bash-redact", Some("s-redact"));
+        assert!(!status.contains("hunter2"), "{status}");
+        assert!(!status.contains("sk-live"), "{status}");
+        let _ = bash_jobs().lock().unwrap().remove("bash-redact");
+    }
+
+    /// Finished work reports how it ended; a stop request is recorded as such.
+    #[tokio::test]
+    async fn a_finished_job_reports_its_exit_and_a_stopped_one_says_so() {
+        let tx = park_owned("bash-exit", "false", "s-exit");
+        tx.send("nope\n[exit 3]".to_string()).unwrap();
+        let st = inspect_bash_job("bash-exit", Some("s-exit")).unwrap();
+        assert!(st.finished && st.output_available);
+        assert_eq!(st.exit_code, Some(3));
+        assert!(st.finished_at_ms.is_some());
+        assert!(!st.stopped_by_request);
+        let _ = await_bash_job("bash-exit", Some("s-exit")).await;
+
+        let _tx2 = park_with_pid("bash-stopped", "sleep 300", Some(u32::MAX - 9));
+        assert_eq!(kill_bash_job("bash-stopped", None).outcome, BashJobKillOutcome::Killed);
+        assert!(inspect_bash_job("bash-stopped", None).unwrap().stopped_by_request);
+        let _ = bash_jobs().lock().unwrap().remove("bash-stopped");
+    }
+
+    /// The registry is bounded per conversation: the oldest finished job makes
+    /// room, and with every job still running a new one is refused.
+    #[tokio::test]
+    async fn a_conversation_holds_a_bounded_number_of_jobs() {
+        let owner = "s-bound";
+        let mut senders = Vec::new();
+        for n in 0..MAX_JOBS_PER_OWNER {
+            let id = format!("bash-bound-{n}");
+            senders.push(park_owned(&id, "sleep 300", owner));
+            bash_jobs().lock().unwrap().get_mut(&id).unwrap().started_at_ms = 1_000 + n as u64;
+        }
+        assert!(!make_room_for(Some(owner)), "every job is running: no room");
+        // Another conversation is unaffected by this one's limit.
+        assert!(make_room_for(Some("s-other")));
+
+        senders.remove(3).send("done\n[exit 0]".to_string()).unwrap();
+        assert!(make_room_for(Some(owner)));
+        assert!(
+            inspect_bash_job("bash-bound-3", Some(owner)).is_none(),
+            "the finished job made room"
+        );
+        for n in 0..MAX_JOBS_PER_OWNER {
+            let _ = bash_jobs().lock().unwrap().remove(&format!("bash-bound-{n}"));
+        }
+    }
+
+    #[test]
+    fn job_ids_carry_a_per_process_prefix() {
+        let p = job_id_prefix();
+        assert_eq!(p.len(), 5);
+        assert!(p.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(p, job_id_prefix(), "stable within the process");
+    }
+
+    #[test]
+    fn the_live_tail_is_bounded_and_keeps_the_end() {
+        let mut tail = LiveTail::default();
+        tail.push(&"a".repeat(JOB_TAIL_BYTES));
+        tail.push("é the end");
+        assert!(tail.text.len() <= JOB_TAIL_BYTES + 1);
+        assert!(tail.text.ends_with("the end"));
+        assert!(tail.dropped > 0);
+    }
+
+    #[test]
+    fn the_exit_marker_is_read_from_the_last_line_that_has_one() {
+        assert_eq!(exit_code_of("x\n[exit 0]"), Some(0));
+        assert_eq!(exit_code_of("[exit 1]\nmore\n[exit 7]\n[output truncated at 1 of 2 bytes]"), Some(7));
+        assert_eq!(exit_code_of("[terminated by signal]"), None);
+    }
+}
+
+/// Record a fact the model inferred, subject to Jan's own gates.
+///
+/// The model proposes; it does not decide. `memory::inferred::decide` reads the
+/// "Automatically save local memories" setting and the existing records, and
+/// answers with one of three outcomes. The reply tells the model what happened
+/// in a sentence, because a tool that silently succeeds teaches it to propose
+/// more, and one that silently fails teaches it to propose the same thing
+/// again.
+///
+/// A proposal is never authority. Nothing here can widen what the model may do:
+/// the worst case is a record the user is asked about.
+/// AH-103. Who the message is from is this run, as the loop told us; the
+/// model supplies only who it is for and what it says.
+fn message_send(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let (Some(data), Some(run), Some(session)) = (ctx.data_folder, ctx.run_id, ctx.session_id)
+    else {
+        return "ERROR [unsupported]: this surface has no run mailbox, so there is nobody to \
+                write to."
+            .to_string();
+    };
+    let to = args.get("to").and_then(|v| v.as_str()).unwrap_or_default().trim();
+    let body = args.get("body").and_then(|v| v.as_str()).unwrap_or_default();
+    if to.is_empty() || body.trim().is_empty() {
+        return "ERROR [invalid_input]: message_send needs `to` and a non-empty `body`."
+            .to_string();
+    }
+    let subject = args.get("subject").and_then(|v| v.as_str()).unwrap_or_default();
+
+    let parsed = crate::identity::SessionId::parse(session).and_then(|session| {
+        let from = crate::identity::RunId::parse(run)?;
+        let to = crate::identity::RunId::parse(to)?;
+        Ok((session, from, to))
+    });
+    let (session, from, to) = match parsed {
+        Ok(ids) => ids,
+        Err(e) => return format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+    };
+    match crate::mailbox::send(data, &session, &from, &to, subject, body) {
+        Ok(message) => format!(
+            "Delivered to {} as message {} of their mailbox.",
+            message.to, message.seq
+        ),
+        Err(e) => {
+            let harness: crate::harness_error::HarnessError = (&e).into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        }
+    }
+}
+
+/// AH-103. What other runs have said to this one since it last looked.
+fn message_check(ctx: &ToolContext<'_>) -> String {
+    let (Some(data), Some(run)) = (ctx.data_folder, ctx.run_id) else {
+        return "ERROR [unsupported]: this surface has no run mailbox.".to_string();
+    };
+    let run = match crate::identity::RunId::parse(run) {
+        Ok(run) => run,
+        Err(e) => return format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+    };
+    // One step, so what is handed back is exactly what was marked delivered:
+    // asking what is unread and then marking everything unread would stamp a
+    // message that arrived in between and never show it to anyone.
+    match crate::mailbox::collect(data, &run) {
+        Ok(fresh) => {
+            if fresh.is_empty() {
+                return "No messages.".to_string();
+            }
+            let mut out = String::new();
+            for message in &fresh {
+                // Named as what it is: another agent's words, which are
+                // information and not an instruction this run has to follow.
+                out.push_str(&format!(
+                    "From run {} at {}{}\n{}\n\n",
+                    message.from,
+                    message.at,
+                    if message.subject.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" -- {}", message.subject)
+                    },
+                    message.body
+                ));
+            }
+            out.trim_end().to_string()
+        }
+        Err(e) => {
+            let harness: crate::harness_error::HarnessError = (&e).into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        }
+    }
+}
+
+async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    use crate::memory::inferred::{self, Decision};
+    use crate::memory::record::{MemoryId, Scope};
+
+    let Some(content) = arg_str(args, "content") else {
+        return "ERROR: memory_propose needs `content`.".to_string();
+    };
+    let content = content.trim();
+    if content.is_empty() {
+        return "ERROR: memory_propose needs a non-empty `content`.".to_string();
+    }
+
+    // Narrowest scope that is true, and `session` when the model does not say:
+    // a guess that applies too widely is the expensive mistake.
+    let scope = match args
+        .get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("session")
+    {
+        "user" => Scope::User,
+        "project" => Scope::Project,
+        _ => Scope::Session,
+    };
+
+    // Project records live in the project's own store, the one every reader
+    // (`commands`, `context::load_memories`, the settings page) opens. This
+    // used to write to `<project>/.jan`, one level above it, so a project
+    // memory the model proposed was saved where nothing ever looked.
+    let store_root = match scope {
+        Scope::Project => crate::workspace::project_store(ctx.project_root),
+        _ => ctx.store_root.to_path_buf(),
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let existing = inferred::existing_records(&store_root, scope);
+    let decision = inferred::decide(
+        MemoryId::new(format!("mem-{now}-{:016x}", fnv1a(content))),
+        content,
+        &existing,
+        &inferred::Context {
+            scope,
+            project_id: crate::memory::identity::project_id(ctx.project_root).as_deref(),
+            session_id: ctx.session_id,
+            temporary: ctx.temporary,
+            now,
+            automatically_save: inferred::automatic_saving_enabled(ctx.store_root),
+        },
+    );
+
+    match decision {
+        Decision::Save(proposal) => match crate::memory::create::commit(&store_root, &proposal) {
+            Ok(id) => format!(
+                "Remembered ({}). id: {}",
+                scope_name(scope),
+                id.as_str()
+            ),
+            Err(e) => format!("ERROR: could not save that memory: {e}"),
+        },
+        Decision::Pending { proposal, reason } => {
+            // Stored, not dropped. The question has to survive the turn that
+            // asked it -- and a restart -- or the user is asked once, in a
+            // place they may not be looking, and never again.
+            // `Status::Proposed` keeps it out of every prompt meanwhile.
+            let pending = inferred::as_pending(&proposal, reason);
+            match crate::memory::store::upsert(&store_root, &pending) {
+                Ok(()) => format!(
+                    "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
+                    reason.explain()
+                ),
+                Err(e) => format!("ERROR: could not record that proposal: {e}"),
+            }
+        }
+        Decision::Refused { reason } => {
+            format!("ERROR: refused: {reason} Do not propose this again.")
+        }
+    }
+}
+
+fn scope_name(scope: crate::memory::record::Scope) -> &'static str {
+    use crate::memory::record::Scope;
+    match scope {
+        Scope::Session => "this conversation",
+        Scope::Project => "this project",
+        Scope::User => "everywhere",
+    }
+}
+
+/// FNV-1a over the content, so the same fact proposed twice lands on the same
+/// id and confirms rather than multiplying.
+fn fnv1a(bytes: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 #[cfg(test)]
@@ -2129,12 +3433,535 @@ mod tests {
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+    /// AH-148, through the function the approval flow actually calls. The
+    /// window is real: a prompt can sit unanswered for minutes while an editor,
+    /// a formatter or another agent writes the same file.
+    #[tokio::test]
+    async fn a_file_changed_after_staging_is_caught_before_it_is_written() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("notes.txt"), "one\ntwo\n").unwrap();
+
+        let (target, patch) = stage_change(
+            lookup("write").unwrap(),
+            &json!({"path": "notes.txt", "content": "one\nTWO\n"}),
+            &ctx,
+        )
+        .await
+        .expect("a change to stage");
+        assert_eq!(patch.hunks().len(), 1);
+        assert!(patch
+            .check_base(crate::patch::BaseStamp::read(&target).await)
+            .is_ok());
+
+        // Someone else writes the file while the prompt is open.
+        std::fs::write(root.join("notes.txt"), "one\ntwo\nthree\n").unwrap();
+        let refused = patch.check_base(crate::patch::BaseStamp::read(&target).await);
+        assert!(refused.is_err(), "an approval must not land on a changed file");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_edit_is_staged_by_the_same_code_that_applies_it() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("a.rs"), "fn a() {}\nfn b() {}\n").unwrap();
+        let args = json!({"path": "a.rs", "edits": [
+            {"old_string": "fn a() {}", "new_string": "fn a() { 1 }"}
+        ]});
+
+        let (_, patch) = stage_change(lookup("edit").unwrap(), &args, &ctx)
+            .await
+            .expect("staged");
+        // What was reviewed is what `edit` writes.
+        let out = super::execute_builtin(lookup("edit").unwrap(), &args, &ctx).await.0;
+        assert!(out.starts_with("Applied"), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.rs")).unwrap(),
+            patch.proposed()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("same.txt"), "x\n").unwrap();
+        assert!(stage_change(
+            lookup("write").unwrap(),
+            &json!({"path": "same.txt", "content": "x\n"}),
+            &ctx
+        )
+        .await
+        .is_none());
+        assert!(stage_change(
+            lookup("edit").unwrap(),
+            &json!({"path": "same.txt", "edits": [{"old_string": "absent", "new_string": "y"}]}),
+            &ctx
+        )
+        .await
+        .is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn unique_root() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir =
             std::env::temp_dir().join(format!("jan_handlers_test_{}_{}", std::process::id(), n));
         std::fs::create_dir_all(&dir).expect("create test root");
         dir
+    }
+
+    // -- shell-aware command fixtures ----------------------------------------
+    //
+    // These tests are about what the `bash` tool does with a command's *output*
+    // -- truncation, spilling, carriage-return collapsing, where the exit
+    // marker goes. None of that is about POSIX, but every one of them was
+    // written as a POSIX one-liner, so on a host whose sandboxed shell is not
+    // POSIX they failed for a reason that had nothing to do with what they
+    // test. On Windows that is every one of them: the MSYS2 runtime Git Bash
+    // is built on cannot start inside an AppContainer, so the confined shell is
+    // PowerShell.
+    //
+    // The fix is to say what shape of output is wanted and let the fixture
+    // write it in whatever language the shell that will actually run it
+    // speaks. The assertions are unchanged: they were never the problem.
+
+    /// An output shape a test needs, independent of how it is produced.
+    #[derive(Debug, Clone, Copy)]
+    enum Shape {
+        /// `count` newline-terminated lines, each `L1`, `L2`, ...
+        Lines { count: usize },
+        /// `count` newline-terminated lines, each a 64-character zero-padded
+        /// number. Used to make output cross a byte cap predictably.
+        PaddedLines { count: usize },
+        /// Text on stderr with no trailing newline, like `git push`.
+        StderrNoNewline(&'static str),
+        /// One logical line redrawn `count` times with `\r` and no `\n`, on
+        /// stderr. Mimics git progress.
+        StderrRedraw { count: usize, prefix: &'static str },
+        /// Read stdin to end and echo nothing.
+        ReadStdin,
+        /// Exactly this text, no trailing newline.
+        Literal(&'static str),
+        /// Wait, producing nothing. For deadline and cancellation tests.
+        Sleep { seconds: u32 },
+        /// Print a line, then wait. The line has to arrive before the deadline
+        /// does, which is the whole point of the tests that use it.
+        PrintThenSleep { text: &'static str, seconds: u32 },
+        /// Wait, then print a line.
+        SleepThenPrint { seconds: u32, text: &'static str },
+        /// Start a child that waits, print `pid=<shell>` and `child=<child>`
+        /// (OS process ids), then a line, then wait for the child. The ids let
+        /// a test check that the whole tree is gone, not just the shell.
+        PrintPidThenSleep { text: &'static str, seconds: u32 },
+    }
+
+    /// The command language the sandboxed shell for `root` actually speaks.
+    ///
+    // ---- AH-040: a skill declares the tools it needs, and the gate says ---
+
+    /// A skill's declared tools are checked against what this run may do. It
+    /// can only ever withhold the skill; nothing here grants a tool.
+    #[tokio::test]
+    async fn a_skill_that_needs_a_denied_tool_is_withheld_and_says_why() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let skills = store.join("skills");
+        std::fs::create_dir_all(skills.join("deployer")).unwrap();
+        std::fs::write(
+            skills.join("deployer").join("SKILL.md"),
+            "---\nname: deployer\ndescription: deploys the thing\nallowed-tools: [bash, write]\n---\nRun the deploy script.\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(skills.join("reader")).unwrap();
+        std::fs::write(
+            skills.join("reader").join("SKILL.md"),
+            "---\nname: reader\ndescription: reads things\nallowed-tools: [read]\n---\nRead the file.\n",
+        )
+        .unwrap();
+
+        let enabled = vec!["deployer".to_string(), "reader".to_string()];
+        let subject = crate::subject::Subject::MainAgent;
+        // This run may not run a shell.
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&root, &store, &enabled).with_permissions(&denied, &subject);
+
+        let refused = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "deployer" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(
+            refused.starts_with("ERROR [permission_denied]"),
+            "a skill needing a denied tool must be withheld: {refused}"
+        );
+        assert!(refused.contains("bash"), "and say which tool: {refused}");
+        assert!(
+            !refused.contains("Run the deploy script"),
+            "its instructions must not be handed over anyway: {refused}"
+        );
+
+        // The one this run can carry out is unaffected.
+        let allowed = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "reader" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(allowed.contains("Read the file"), "{allowed}");
+
+        // And the catalogue does not offer what it would refuse.
+        let listed = super::execute_builtin(lookup("skill_list").unwrap(), &json!({}), &ctx)
+            .await
+            .0;
+        assert!(listed.contains("reader"), "{listed}");
+        assert!(!listed.contains("deployer"), "a skill that cannot run was offered: {listed}");
+
+        // With nothing denied, both are available: the check withholds, it
+        // never grants.
+        let open = ToolPermissions::allow_all();
+        let open_ctx =
+            ToolContext::new(&root, &store, &enabled).with_permissions(&open, &subject);
+        let now = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "deployer" }),
+            &open_ctx,
+        )
+        .await
+        .0;
+        assert!(now.contains("Run the deploy script"), "{now}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A skill that says nothing about tools behaves as it always did: its
+    /// calls are gated when they are made, like anybody else's.
+    #[tokio::test]
+    async fn a_skill_that_declares_nothing_is_not_withheld() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let skills = store.join("skills");
+        std::fs::create_dir_all(skills.join("quiet")).unwrap();
+        std::fs::write(
+            skills.join("quiet").join("SKILL.md"),
+            "---\nname: quiet\ndescription: says nothing about tools\n---\nDo the thing.\n",
+        )
+        .unwrap();
+        let enabled = vec!["quiet".to_string()];
+        let subject = crate::subject::Subject::MainAgent;
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&root, &store, &enabled).with_permissions(&denied, &subject);
+        let out = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({ "name": "quiet" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.contains("Do the thing"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- AH-103: one run writing to another, through the tools ------------
+
+    #[tokio::test]
+    async fn a_run_writes_to_another_run_and_cannot_pretend_to_be_someone_else() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let session = "s-tools";
+        let me = format!("{session}#run-child");
+        let parent = format!("{session}#run-parent");
+
+        let ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some(session), false)
+            .with_run(&me, &data);
+        let sent = super::execute_builtin(
+            lookup("message_send").unwrap(),
+            &json!({ "to": parent, "subject": "schema", "body": "the migration is applied" }),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(!sent.starts_with("ERROR"), "{sent}");
+
+        // The parent reads it, and the message says who it is really from --
+        // which is this run, not anything the arguments claimed.
+        let parent_ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some(session), false)
+            .with_run(&parent, &data);
+        let inbox = super::execute_builtin(lookup("message_check").unwrap(), &json!({}), &parent_ctx)
+            .await
+            .0;
+        assert!(inbox.contains("the migration is applied"), "{inbox}");
+        assert!(inbox.contains(&me), "the reader is told who wrote: {inbox}");
+
+        // Read once: a second check has nothing new.
+        let again = super::execute_builtin(lookup("message_check").unwrap(), &json!({}), &parent_ctx)
+            .await
+            .0;
+        assert_eq!(again, "No messages.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_message_to_another_conversation_is_refused_at_the_tool() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let ctx = ToolContext::new(&root, &store, &[])
+            .in_session(Some("s-mine"), false)
+            .with_run("s-mine#run-a", &data);
+
+        for (target, expected) in [
+            ("s-theirs#run-b", "policy_violation"),
+            ("../elsewhere", "invalid_input"),
+            ("s-mine#run-a", "policy_violation"),
+        ] {
+            let out = super::execute_builtin(
+                lookup("message_send").unwrap(),
+                &json!({ "to": target, "body": "hello" }),
+                &ctx,
+            )
+            .await
+            .0;
+            assert!(
+                out.contains(&format!("ERROR [{expected}]")),
+                "{target} should be refused as {expected}: {out}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A surface with nowhere to keep a message says so rather than
+    /// pretending to have sent one.
+    #[tokio::test]
+    async fn without_a_mailbox_the_tools_say_there_is_nobody_to_write_to() {
+        let root = unique_root();
+        let out = execute_builtin(
+            lookup("message_send").unwrap(),
+            &json!({ "to": "s#run-x", "body": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(out.contains("ERROR [unsupported]"), "{out}");
+        let read = execute_builtin(lookup("message_check").unwrap(), &json!({}), &root).await;
+        assert!(read.contains("ERROR [unsupported]"), "{read}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- AH-127/AH-129: the project's own hooks, around a real tool call ----
+
+    /// Write a hooks file for `root`. Commands here must run under whichever
+    /// shell can be confined on this host, so they use only `echo` and `exit`.
+    fn write_hooks(root: &Path, body: &str) {
+        let dir = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("hooks.toml"), body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run() {
+        let root = unique_root();
+        write_hooks(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"exit 3\"
+on_failure = \"block\"
+tools = [\"write\"]
+",
+        );
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({ "path": "new.txt", "content": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(
+            out.starts_with("ERROR [policy_violation]:"),
+            "a refused call must say what kind of refusal it was: {out}"
+        );
+        assert!(
+            !root.join("new.txt").exists(),
+            "the tool ran anyway; a blocked call must not have happened"
+        );
+        // AH-009: what the run sees is the typed failure, and it is not
+        // something to try again or to try elsewhere.
+        let classified = crate::harness_error::classify_tool("write", &out)
+            .expect("a refusal is a classified failure");
+        assert_eq!(classified.kind(), crate::harness_error::ErrorKind::PolicyViolation);
+        assert!(!crate::harness_error::may_try_another(&classified));
+
+        // A tool the hook does not name is untouched.
+        let read_back =
+            execute_builtin(lookup("ls").unwrap(), &json!({ "path": "." }), &root).await;
+        assert!(!read_back.starts_with("ERROR"), "{read_back}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_warn_hook_lets_the_call_through_and_says_it_failed() {
+        let root = unique_root();
+        write_hooks(
+            &root,
+            "[[hook]]
+event = \"post-tool\"
+command = \"exit 1\"
+on_failure = \"warn\"
+",
+        );
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({ "path": "new.txt", "content": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(!out.starts_with("ERROR"), "a warn hook must not refuse the call: {out}");
+        assert!(root.join("new.txt").exists(), "the write still happened");
+        assert!(
+            out.contains("[post-tool hook]"),
+            "the failure has to be visible to whoever reads the result: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A hooks file that is wrong stops tools rather than quietly meaning no
+    /// hooks: a project that declared a policy and silently got none is the
+    /// outcome worth refusing loudest.
+    #[tokio::test]
+    async fn a_hooks_file_that_cannot_be_read_stops_the_call() {
+        let root = unique_root();
+        write_hooks(&root, "[[hook]]\nevent = \"whenever\"\ncommand = \"echo hi\"\n");
+        let out =
+            execute_builtin(lookup("ls").unwrap(), &json!({ "path": "." }), &root).await;
+        assert!(out.starts_with("ERROR [invalid_input]:"), "{out}");
+        assert!(out.contains("hooks"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Asked of the same code the handler asks, so a fixture cannot be written
+    /// for one shell while the command runs in another.
+    fn sandbox_flavor(root: &Path) -> Option<proc::ShellFlavor> {
+        let policy = jail::Policy::new(root, false);
+        jail::select_shell(&policy)
+            .ok()
+            .map(|selected| selected.report.cfg.flavor)
+    }
+
+    /// `shape` as a command, or `None` when the sandboxed shell speaks a
+    /// language this fixture cannot express it in.
+    ///
+    /// `cmd.exe` is the `None` case. It has no loop that can emit 16,000 lines
+    /// without a temporary batch file, and writing one would be testing the
+    /// fixture rather than the tool. A host with only `cmd` is real, and these
+    /// tests skip there loudly rather than asserting something weaker.
+    fn script(root: &Path, shape: Shape) -> Option<String> {
+        match sandbox_flavor(root)? {
+            proc::ShellFlavor::Posix => Some(match shape {
+                Shape::Lines { count } => {
+                    format!("for i in $(seq 1 {count}); do echo \"L$i\"; done")
+                }
+                Shape::PaddedLines { count } => format!(
+                    "for i in $(seq 1 {count}); do printf '%064d\\n' \"$i\"; done"
+                ),
+                Shape::StderrNoNewline(text) => format!("printf '{text}' 1>&2"),
+                Shape::StderrRedraw { count, prefix } => format!(
+                    "for i in $(seq 1 {count}); do printf '{prefix}%d\\r' \"$i\"; done 1>&2"
+                ),
+                Shape::ReadStdin => "cat".to_string(),
+                Shape::Literal(text) => format!("printf '{text}'"),
+                Shape::Sleep { seconds } => format!("sleep {seconds}"),
+                Shape::PrintThenSleep { text, seconds } => {
+                    format!("printf '{text}\\n'; sleep {seconds}")
+                }
+                Shape::SleepThenPrint { seconds, text } => {
+                    format!("sleep {seconds}; printf '{text}\\n'")
+                }
+                // Under MSYS `$$` is not a Windows pid; `/proc/$$/winpid` is.
+                Shape::PrintPidThenSleep { text, seconds } => format!(
+                    "sleep {seconds} & \
+                     printf 'pid=%s\\nchild=%s\\n' \
+                       \"$(cat /proc/$$/winpid 2>/dev/null || echo $$)\" \
+                       \"$(cat /proc/$!/winpid 2>/dev/null || echo $!)\"; \
+                     printf '{text}\\n'; wait"
+                ),
+            }),
+            proc::ShellFlavor::PowerShell => Some(match shape {
+                Shape::Lines { count } => {
+                    format!("1..{count} | ForEach-Object {{ \"L$_\" }}")
+                }
+                // `-f` formatting rather than string padding: it produces the
+                // same 64 characters as `%064d` without a second allocation
+                // per line, which matters at 16,000 lines.
+                Shape::PaddedLines { count } => format!(
+                    "1..{count} | ForEach-Object {{ '{{0:D64}}' -f $_ }}"
+                ),
+                // `[Console]::Error.Write` rather than `Write-Error`: the
+                // latter emits a formatted error record, and the shape wanted
+                // here is bare text with no trailing newline.
+                Shape::StderrNoNewline(text) => {
+                    format!("[Console]::Error.Write('{text}')")
+                }
+                Shape::StderrRedraw { count, prefix } => format!(
+                    "1..{count} | ForEach-Object {{ [Console]::Error.Write('{prefix}' + $_ + [char]13) }}"
+                ),
+                Shape::ReadStdin => {
+                    "$input | Out-Null".to_string()
+                }
+                Shape::Literal(text) => format!("[Console]::Out.Write('{text}')"),
+                Shape::Sleep { seconds } => format!("Start-Sleep -Seconds {seconds}"),
+                // The write is flushed before the sleep starts, so the line is
+                // already through the pipe when the deadline fires.
+                Shape::PrintThenSleep { text, seconds } => format!(
+                    "[Console]::Out.WriteLine('{text}'); [Console]::Out.Flush(); Start-Sleep -Seconds {seconds}"
+                ),
+                Shape::SleepThenPrint { seconds, text } => format!(
+                    "Start-Sleep -Seconds {seconds}; [Console]::Out.WriteLine('{text}')"
+                ),
+                // Concatenation, not `"$(...)"`: the handler reads `$(` as POSIX
+                // command substitution and refuses the command under PowerShell.
+                Shape::PrintPidThenSleep { text, seconds } => format!(
+                    // The working directory is the project root, named: inside
+                    // the AppContainer the inherited one is not accessible to a
+                    // new process ("The directory name is invalid") and `$PWD`
+                    // is unset.
+                    "$c = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds {seconds}' -WorkingDirectory '{root}' -NoNewWindow -PassThru; \
+                     [Console]::Out.WriteLine('pid=' + $PID); [Console]::Out.WriteLine('child=' + $c.Id); \
+                     [Console]::Out.WriteLine('{text}'); [Console]::Out.Flush(); $c.WaitForExit()",
+                    root = root.display()
+                ),
+            }),
+            proc::ShellFlavor::Cmd => None,
+        }
+    }
+
+    /// Skip the body when the sandboxed shell cannot express `shape`, saying
+    /// so rather than passing quietly.
+    macro_rules! command_or_skip {
+        ($root:expr, $shape:expr) => {
+            match script($root, $shape) {
+                Some(command) => command,
+                None => {
+                    eprintln!(
+                        "skipped: the sandboxed shell here cannot express {:?}",
+                        $shape
+                    );
+                    return;
+                }
+            }
+        };
     }
 
     #[tokio::test]
@@ -2646,6 +4473,10 @@ mod tests {
     async fn write_reports_resolved_path_when_it_escapes_the_project() {
         let root = unique_root();
         let outside = root.parent().unwrap().join("jan_escape_probe.txt");
+        // The probe lands in the shared temp directory, so a leftover from an
+        // earlier run turns the write into "No change" and the test into a
+        // check of nothing. Removed before and after rather than trusted.
+        let _ = std::fs::remove_file(&outside);
         let out = execute_builtin(
             lookup("write").unwrap(),
             &json!({"path": "../jan_escape_probe.txt", "content": "x"}),
@@ -2653,11 +4484,17 @@ mod tests {
         )
         .await;
         assert!(outside.exists(), "precondition: the write escapes the root");
+        // Compared in the separator the tool reports in. It normalises to
+        // forward slashes so one path has one spelling everywhere; asserting
+        // against the raw `PathBuf` would be asserting Windows' separator
+        // rather than the destination.
+        let expected = outside.to_string_lossy().replace('\\', "/");
         assert!(
-            out.contains(outside.to_str().unwrap()),
+            out.contains(&expected),
             "must name the real destination, got: {out}"
         );
         assert!(!out.contains(".."), "must not echo the raw path: {out}");
+        let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -3050,6 +4887,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -3079,6 +4917,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -3323,12 +5162,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A sandboxed command runs when the workspace is spelled relatively, as it
+    /// is under Jan's default `./data` data folder. The confined helper starts
+    /// in the workspace, so a relative path handed to it named somewhere else,
+    /// and every command failed in setup with "workspace does not exist" --
+    /// found by the Windows managed-worktree scenario once a shell started.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_sandboxed_command_runs_in_a_relatively_spelled_workspace() {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let rel = PathBuf::from("target").join(format!(
+            "jan-relative-ws-{}-{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&rel).unwrap();
+        let store = crate::workspace::project_store(&rel);
+        let ctx = ToolContext::new(&rel, &store, &[]);
+        // The target is spelled absolutely so this is about how the workspace
+        // is handed to the sandbox, not about the shell's working directory.
+        let target = anchored(&rel.join("made.txt"));
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": format!("echo made > \"{}\"", target.display())}),
+            &ctx,
+        )
+        .await
+        .0;
+        // No skip for "no shell could be started": on the old code that is
+        // exactly how this failed -- the probe ran under the relative spelling
+        // too -- so it has to fail the test, not excuse it.
+        assert!(!out.contains("does not exist"), "{out}");
+        assert!(rel.join("made.txt").is_file(), "the command did not run: {out}");
+        let _ = std::fs::remove_dir_all(&rel);
+        crate::tools::appcontainer::release(&anchored(&rel));
+    }
+
+    /// A relative path in a sandboxed command lands in the workspace, whatever
+    /// shell was selected. Windows PowerShell in an AppContainer started at a
+    /// drive root instead (`G:\` here), so `echo x > f.txt` wrote elsewhere.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_sandboxed_command_starts_in_its_workspace() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "echo here > relative.txt"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(
+            root.join("relative.txt").is_file(),
+            "a relative path did not land in the workspace: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        crate::tools::appcontainer::release(&root);
+    }
+
     /// A backgrounded command keeps streaming after the call has returned its
     /// `job_id`: the sink lives in the detached task, which is the whole reason
     /// waiting on a long job can show progress.
     #[tokio::test]
     async fn a_backgrounded_command_keeps_streaming() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::SleepThenPrint {
+                seconds: 1,
+                text: "late",
+            }
+        );
         let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let sink = {
             let seen = seen.clone();
@@ -3343,7 +5248,7 @@ mod tests {
         // timeout 0 => backgrounds immediately, before the command prints.
         let out = super::execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; printf 'late\n'", "timeout": 0}),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &ctx,
         )
         .await
@@ -3364,11 +5269,183 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bash_exceeding_timeout_backgrounds_instead_of_erroring() {
+    async fn a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it() {
+        // AH-023 through the real dispatch path: every built-in, not just bash.
+        use crate::lifecycle::{Scope, StopReason, Token};
         let root = unique_root();
+        std::fs::write(root.join("a.txt"), "hello").unwrap();
+
+        let token = Token::new(Scope::new("s1", "r1", "c1"));
+        token.stop(StopReason::Cancelled);
+
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_cancel(token);
+        let (out, _) =
+            super::execute_builtin(lookup("read").unwrap(), &json!({ "path": "a.txt" }), &ctx)
+                .await;
+
+        assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("was cancelled"), "{out}");
+        // Distinguishable from a deadline.
+        assert!(!out.contains("exceeded its time limit"), "{out}");
+        // The file's contents must not leak through a cancelled call.
+        assert!(!out.contains("hello"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_uncancelled_read_still_works() {
+        // The wrapper must not change the ordinary path.
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "hello").unwrap();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let (out, _) =
+            super::execute_builtin(lookup("read").unwrap(), &json!({ "path": "a.txt" }), &ctx)
+                .await;
+        assert!(out.contains("hello"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn bash_exceeding_its_timeout_is_terminated_not_backgrounded() {
+        // AH-020. This previously asserted the opposite: that a command past
+        // its deadline was shelved and kept running. An unowned process that
+        // outlives every limit placed on it is the defect, not the feature.
+        let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Sleep { seconds: 5 });
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 2", "timeout": 0}),
+            &json!({ "command": command, "timeout": 0 }),
+            &root,
+        )
+        .await;
+        assert!(out.starts_with("ERROR"), "a timeout is an error: {out}");
+        assert!(out.contains("timed out"), "{out}");
+        assert!(out.contains("terminated"), "{out}");
+        // Distinguishable from a user cancellation, and it says how to ask for
+        // the old behaviour deliberately.
+        assert!(out.contains("not a cancellation"), "{out}");
+        assert!(out.contains("background"), "{out}");
+        assert!(
+            !out.contains("continuing in the background"),
+            "must not shelve the command: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_timeout_keeps_whatever_the_command_printed_first() {
+        // Partial output survives the kill: the run still gets to see what the
+        // command managed to say before its deadline, and the command is gone.
+        //
+        // The deadline fires the moment the output has been read, not after a
+        // guessed second. With a one-second timeout, a sandboxed shell that
+        // started slowly on a busy machine was killed before it had printed
+        // anything -- the output read only `[exit 1]` -- and the test failed
+        // without any output having been lost.
+        let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::PrintPidThenSleep {
+                text: "partial",
+                seconds: 60,
+            }
+        );
+        let fire = test_deadline(&root);
+        let streamed = std::sync::Arc::new(Mutex::new(String::new()));
+        let sink: crate::tools::OutputSink = {
+            let streamed = streamed.clone();
+            let fire = fire.clone();
+            std::sync::Arc::new(move |chunk: String| {
+                let mut all = streamed.lock().unwrap();
+                all.push_str(&chunk);
+                if all.contains("partial") {
+                    fire.notify_one();
+                }
+            })
+        };
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_output_sink(sink);
+        // The real deadline is far away: only the injected one can fire. The
+        // outer bound only turns "never printed" into a failure, not a hang.
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(180),
+            super::execute_builtin(
+                lookup("bash").unwrap(),
+                &json!({ "command": command, "timeout": 600 }),
+                &ctx,
+            ),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("the command never printed: {:?}", streamed.lock().unwrap()))
+        .0;
+
+        assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("timed out"), "{out}");
+        assert!(
+            out.contains("partial"),
+            "output printed before the deadline must survive: {out}"
+        );
+        assert!(
+            !out.contains("may not have terminated cleanly"),
+            "the kill must be reported as clean: {out}"
+        );
+
+        // And the tree is gone: the shell and the child it started, neither
+        // left running behind the call that owned them.
+        let printed = streamed.lock().unwrap().clone();
+        let id_of = |key: &str| -> u32 {
+            printed
+                .lines()
+                .find_map(|line| line.trim().strip_prefix(key))
+                .and_then(|pid| pid.trim().parse().ok())
+                .unwrap_or_else(|| panic!("the command did not report {key}: {printed:?}"))
+        };
+        for (what, pid) in [("the shell", id_of("pid=")), ("its child", id_of("child="))] {
+            let mut gone = false;
+            for _ in 0..100 {
+                if !process_alive(pid) {
+                    gone = true;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            assert!(gone, "{what} (pid {pid}) outlived the timeout");
+        }
+        test_deadlines().lock().unwrap().remove(&root);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Whether `pid` still names a running process.
+    #[cfg(windows)]
+    fn process_alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+
+    #[cfg(unix)]
+    fn process_alive(pid: u32) -> bool {
+        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), None).is_ok()
+    }
+
+    #[tokio::test]
+    async fn backgrounding_is_available_when_it_is_asked_for() {
+        let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Sleep { seconds: 2 });
+        let out = execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &root,
         )
         .await;
@@ -3381,9 +5458,16 @@ mod tests {
     #[tokio::test]
     async fn bash_job_id_waits_for_and_collects_background_output() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::SleepThenPrint {
+                seconds: 1,
+                text: "done",
+            }
+        );
         let started = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; echo done", "timeout": 0}),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &root,
         )
         .await;
@@ -3424,10 +5508,11 @@ mod tests {
     #[tokio::test]
     async fn bash_command_takes_precedence_over_spurious_job_id() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Literal("hello"));
         for job_id in ["", " ", "x"] {
             let out = execute_builtin(
                 lookup("bash").unwrap(),
-                &json!({"command": "printf hello", "job_id": job_id}),
+                &json!({ "command": command, "job_id": job_id }),
                 &root,
             )
             .await;
@@ -3491,10 +5576,11 @@ mod tests {
     #[tokio::test]
     async fn bash_exit_marker_is_on_its_own_line() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::StderrNoNewline("to remote"));
         // stderr-only output with no trailing newline (mirrors `git push`).
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "printf 'to remote' 1>&2"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3508,10 +5594,11 @@ mod tests {
     #[tokio::test]
     async fn bash_output_past_old_64kb_cap_survives_intact() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 2000 });
         // ~128KB of output: over the shared 64KB cap, under the bash cap.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 2000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3528,12 +5615,19 @@ mod tests {
     #[tokio::test]
     async fn bash_cr_progress_is_collapsed_not_truncated() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::StderrRedraw {
+                count: 30000,
+                prefix: "Receiving objects: ",
+            }
+        );
         // Mimics git progress: one logical line redrawn thousands of times with
         // \r (no \n). Raw bytes exceed the byte cap, but only the final redraw
         // is visible, so the model must see it intact with no truncation notice.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 30000); do printf 'Receiving objects: %d\\r' \"$i\"; done 1>&2"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3552,11 +5646,12 @@ mod tests {
     #[tokio::test]
     async fn bash_output_overflow_spills_to_readable_temp_file() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 16000 });
         // ~1MB of output: over the bash cap, so it must spill to a temp file
         // and tell the agent how to read the rest.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 16000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3593,12 +5688,13 @@ mod tests {
     #[tokio::test]
     async fn bash_spill_is_readable_when_a_scratch_is_set() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 16000 });
         let scratch = unique_root();
         let store = crate::workspace::project_store(&root);
         let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
         let out = super::execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 16000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &ctx,
         )
         .await
@@ -3688,12 +5784,13 @@ mod tests {
     #[tokio::test]
     async fn bash_line_overflow_keeps_the_tail_not_the_head() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Lines { count: 12000 });
         // 12000 short lines: over the 10000-line cap but under the byte cap.
         // Tail truncation must keep the LAST lines (final result/errors) and
         // drop the earliest ones.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 12000); do echo \"L$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3713,15 +5810,25 @@ mod tests {
     #[tokio::test]
     async fn bash_strips_control_chars_but_keeps_text() {
         let root = unique_root();
-        // NUL and bell around visible text plus an ANSI color escape.
-        let out = execute_builtin(
-            lookup("bash").unwrap(),
-            &json!({"command": "printf 'a\\000b\\007\\033[31mred\\033[0m\\n'"}),
-            &root,
-        )
-        .await;
+        // NUL and bell around visible text plus an ANSI color escape, written in
+        // the language of the shell that will run it. `printf` in PowerShell is
+        // an unknown command, and this test used to pass there only because
+        // PowerShell's error echoes the command line, which contains "red".
+        let command = match sandbox_flavor(&root) {
+            Some(proc::ShellFlavor::PowerShell) => {
+                "Write-Output (\"a\" + [char]0 + \"b\" + [char]7 + [char]27 + \"[31mr\" + \"ed\" + [char]27 + \"[0m\")"
+            }
+            Some(proc::ShellFlavor::Cmd) | None => {
+                eprintln!("skipped: no shell here can print raw control characters");
+                return;
+            }
+            Some(proc::ShellFlavor::Posix) => "printf 'a\\000b\\007\\033[31mr''ed\\033[0m\\n'",
+        };
+        let out = execute_builtin(lookup("bash").unwrap(), &json!({"command": command}), &root).await;
+        // "red" never appears in the command itself, so an error that echoes
+        // the command cannot satisfy this.
         assert!(
-            out.contains("red"),
+            out.contains("red") && !out.contains("not recognized") && !out.contains("not found"),
             "text must survive sanitization: {out:?}"
         );
         assert!(!out.contains('\u{0}'), "NUL must be stripped");
@@ -3733,12 +5840,17 @@ mod tests {
     #[tokio::test]
     async fn bash_command_reading_stdin_does_not_hang() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::ReadStdin);
         // stdin is /dev/null, so a command that reads it gets immediate EOF and
         // returns instead of blocking the agent loop forever (e.g. a `sudo`
         // password prompt). The failure/output comes back as a normal result.
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            execute_builtin(lookup("bash").unwrap(), &json!({"command": "cat"}), &root),
+            execute_builtin(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+            ),
         )
         .await
         .expect("must not hang on stdin read");
@@ -3787,6 +5899,307 @@ mod tests {
 
         let l = execute_builtin(lookup("memory_list").unwrap(), &json!({}), &root).await;
         assert_eq!(l, "drift");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-121: `skill_list` and `skill_read` reach the user's own skills from
+    /// any project, a project skill of the same name wins, and the enabled
+    /// whitelist still applies.
+    #[tokio::test]
+    async fn skill_tools_reach_user_skills_and_the_project_shadows_them() {
+        let base = std::env::temp_dir().join(format!(
+            "jan_user_skill_tools_{}",
+            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        let root = base.join("proj");
+        let store = crate::workspace::project_store(&root);
+        let user = base.join("user-store");
+        std::fs::create_dir_all(&root).unwrap();
+        crate::skills::write(&user, "house-style", "---\ndescription: house rules\n---\nSay HOUSE.").unwrap();
+        crate::skills::write(&user, "deploy", "---\ndescription: user deploy\n---\nUSER DEPLOY").unwrap();
+        crate::skills::write(&store, "deploy", "---\ndescription: project deploy\n---\nPROJECT DEPLOY").unwrap();
+
+        let enabled: Vec<String> = Vec::new();
+        let ctx = ToolContext::new(&root, &store, &enabled).with_user_skills(Some(&user));
+        let list = super::execute_builtin(lookup("skill_list").unwrap(), &json!({}), &ctx).await.0;
+        assert!(list.contains("house-style — house rules"), "{list}");
+        assert!(list.contains("deploy — project deploy") && !list.contains("user deploy"), "{list}");
+        let read = |name: &str| json!({ "name": name });
+        let body = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &ctx).await.0;
+        assert_eq!(body.trim(), "Say HOUSE.");
+        let deploy = super::execute_builtin(lookup("skill_read").unwrap(), &read("deploy"), &ctx).await.0;
+        assert_eq!(deploy.trim(), "PROJECT DEPLOY");
+
+        // Without the user store, the project sees only its own.
+        let bare = ToolContext::new(&root, &store, &enabled);
+        let missing = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &bare).await.0;
+        assert!(missing.starts_with("ERROR"), "{missing}");
+
+        // The whitelist governs user skills too.
+        let only_deploy = vec!["deploy".to_string()];
+        let narrow = ToolContext::new(&root, &store, &only_deploy).with_user_skills(Some(&user));
+        let hidden = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &narrow).await.0;
+        assert!(hidden.starts_with("ERROR"), "{hidden}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The attached-project layer and the user's own skills together: the
+    /// catalogue filters (AH-040 unusable tools, AH-124 unmet requirements)
+    /// apply to project and user entries alike, a dependency may be met by the
+    /// project layer, and a name the project hides reaches neither the store
+    /// nor the user layer.
+    #[tokio::test]
+    async fn skill_catalogue_filters_apply_to_project_and_user_layers() {
+        use crate::permissions::{PermissionDefault, ToolPermissions};
+        let sandbox = unique_root();
+        let store = unique_root();
+        let user = unique_root();
+        let project = crate::workspace::project_store(&unique_root());
+        let skill = |at: &std::path::Path, name: &str, content: &str| {
+            crate::skills::write(at, name, content).unwrap();
+        };
+        skill(&project, "proj-shell", "---\ndescription: project shell\nallowed-tools: [bash]\n---\nPROJECT SHELL");
+        skill(&project, "proj-dep", "---\ndescription: project dep\nrequires:\n  - absent >=1.0\n---\nPROJECT DEP");
+        skill(&project, "proj-ok", "---\ndescription: project ok\nversion: 2.0.0\n---\nPROJECT OK");
+        skill(&project, "off", "---\ndescription: project off\n---\nPROJECT OFF");
+        std::fs::write(
+            project.join("agent.toml"),
+            "[skills]\nenabled = [\"proj-shell\", \"proj-dep\", \"proj-ok\"]\n",
+        )
+        .unwrap();
+        skill(&store, "off", "---\ndescription: store off\n---\nSTORE OFF");
+        skill(&user, "off", "---\ndescription: user off\n---\nUSER OFF");
+        skill(&user, "user-shell", "---\ndescription: user shell\nallowed-tools: [bash]\n---\nUSER SHELL");
+        skill(&user, "user-dep", "---\ndescription: user dep\nrequires:\n  - absent >=1.0\n---\nUSER DEP");
+        skill(&user, "user-ok", "---\ndescription: user ok\nrequires:\n  - proj-ok >=2.0\n---\nUSER OK");
+
+        let enabled: [String; 0] = [];
+        let subject = crate::subject::Subject::MainAgent;
+        let denied = ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".into()], &[]);
+        let ctx = ToolContext::new(&sandbox, &store, &enabled)
+            .with_skill_project(Some(&project))
+            .with_user_skills(Some(&user))
+            .with_permissions(&denied, &subject);
+        let run = |name: &'static str, args: serde_json::Value| {
+            let ctx = ctx.clone();
+            async move { super::execute_builtin(lookup(name).unwrap(), &args, &ctx).await.0 }
+        };
+
+        let list = run("skill_list", json!({})).await;
+        assert!(list.contains("proj-ok (v2.0.0) — project ok"), "{list}");
+        assert!(list.contains("user-ok — user ok"), "a dependency met by the project: {list}");
+        for absent in ["proj-shell", "user-shell", "proj-dep", "user-dep", "off"] {
+            assert!(!list.contains(absent), "{absent} offered: {list}");
+        }
+
+        let off = run("skill_read", json!({"name": "off"})).await;
+        assert!(off.starts_with("ERROR"), "{off}");
+        assert!(!off.contains("STORE OFF") && !off.contains("USER OFF"), "{off}");
+        let shell = run("skill_read", json!({"name": "user-shell"})).await;
+        assert!(shell.starts_with("ERROR [permission_denied]"), "{shell}");
+        let dep = run("skill_read", json!({"name": "user-dep"})).await;
+        assert!(dep.starts_with("ERROR [invalid_input]"), "{dep}");
+        let ok = run("skill_read", json!({"name": "user-ok"})).await;
+        assert_eq!(ok.trim(), "USER OK");
+        for dir in [&sandbox, &store, &user] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let _ = std::fs::remove_dir_all(project.parent().and_then(|p| p.parent()).unwrap());
+    }
+
+    /// AH-124: a skill whose dependency is not installed is refused by name,
+    /// with what is missing in the refusal, and is not offered in the
+    /// catalogue either -- an entry that always ends in a refusal is worse
+    /// than no entry.
+    #[tokio::test]
+    async fn a_skill_whose_dependency_is_absent_is_refused_and_not_listed() {
+        let root = unique_root();
+        let skills = root.join(".jan/agent/skills");
+        std::fs::create_dir_all(skills.join("release")).unwrap();
+        std::fs::write(
+            skills.join("release/SKILL.md"),
+            "---\nname: release\ndescription: Cut a release\nrequires:\n  - deploy >=2.0\n---\n\ncut it",
+        )
+        .unwrap();
+
+        let refused = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert!(refused.starts_with("ERROR [invalid_input]"), "{refused}");
+        assert!(refused.contains("'deploy'"), "{refused}");
+        assert!(refused.contains("not installed"), "{refused}");
+        assert!(!refused.contains("cut it"), "the body was handed over anyway: {refused}");
+
+        let listed = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
+        assert!(!listed.contains("release"), "unexpected list: {listed}");
+
+        // Installed, at a version the requirement allows: loaded, and listed
+        // with the version it declares.
+        std::fs::create_dir_all(skills.join("deploy")).unwrap();
+        std::fs::write(
+            skills.join("deploy/SKILL.md"),
+            "---\nname: deploy\ndescription: Ship it\nversion: 2.1.0\n---\n\nship it",
+        )
+        .unwrap();
+        let body = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert_eq!(body, "cut it");
+        let listed = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
+        assert!(listed.contains("deploy (v2.1.0)"), "unexpected list: {listed}");
+        assert!(listed.contains("release"), "unexpected list: {listed}");
+
+        // Downgraded below the bound: refused again, saying what is installed.
+        std::fs::write(
+            skills.join("deploy/SKILL.md"),
+            "---\nname: deploy\ndescription: Ship it\nversion: 1.0.0\n---\n\nship it",
+        )
+        .unwrap();
+        let refused = execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "release"}),
+            &root,
+        )
+        .await;
+        assert!(refused.contains("is 1.0.0"), "{refused}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-124: a skill that names a tool this run does not have is withheld,
+    /// and the same skill is loaded where the tool exists.
+    #[tokio::test]
+    async fn a_skill_naming_a_tool_this_run_lacks_is_withheld() {
+        let root = unique_root();
+        let skills = root.join(".jan/agent/skills");
+        std::fs::create_dir_all(skills.join("shipping")).unwrap();
+        std::fs::write(
+            skills.join("shipping/SKILL.md"),
+            "---\nname: shipping\ndescription: Ship\nallowed-tools:\n  - deploy_tool\n---\n\nrun it",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let none: Vec<String> = vec!["read".to_string()];
+        let without = ToolContext::new(&root, &store, &[]).with_available_tools(&none);
+        let refused = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "shipping"}),
+            &without,
+        )
+        .await
+        .0;
+        assert!(refused.contains("deploy_tool"), "{refused}");
+
+        let have = vec!["read".to_string(), "deploy_tool".to_string()];
+        let with = ToolContext::new(&root, &store, &[]).with_available_tools(&have);
+        let body = super::execute_builtin(
+            lookup("skill_read").unwrap(),
+            &json!({"name": "shipping"}),
+            &with,
+        )
+        .await
+        .0;
+        assert_eq!(body, "run it");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-149/AH-150: what the agent wrote goes through the project's own
+    /// formatter, and the diff a person reviews is what the file now holds --
+    /// not the version the next `cargo fmt` would rewrite.
+    #[tokio::test]
+    async fn an_edited_file_is_formatted_before_its_diff_is_shown() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let badly_laid_out = "pub fn main( ) {let  x  =  1;}\n";
+
+        // Off: the file is left exactly as the model wrote it.
+        let plain = ToolContext::new(&root, &store, &[]);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": badly_laid_out}),
+            &plain,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), badly_laid_out);
+        let diff = diff.expect("a diff");
+        assert!(!diff.contains("formatted with"), "{diff}");
+
+        // On: the formatter runs, the file is what it left, and the diff says
+        // which formatter and on what evidence.
+        std::fs::write(root.join("a.rs"), "pub fn main() {}\n").unwrap();
+        let formatting = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": badly_laid_out}),
+            &formatting,
+        )
+        .await;
+        let on_disk = std::fs::read_to_string(root.join("a.rs")).unwrap();
+        assert!(on_disk.contains("let x = 1;"), "{on_disk}");
+        let diff = diff.expect("a diff");
+        assert!(diff.contains("formatted with rustfmt"), "{diff}");
+        assert!(diff.contains("Cargo.toml (edition 2021)"), "{diff}");
+        // The diff is the formatted text, not what the model wrote.
+        assert!(diff.contains("let x = 1;"), "{diff}");
+        assert!(!diff.contains("let  x  =  1;"), "{diff}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A formatter that refuses the file leaves the edit and its diff alone,
+    /// and says so rather than staying silent about having tried.
+    #[tokio::test]
+    async fn a_formatter_that_refuses_leaves_the_diff_and_says_why() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let not_rust = "fn main( { this is not rust\n";
+        let ctx = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": not_rust}),
+            &ctx,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), not_rust);
+        let diff = diff.expect("a diff");
+        assert!(diff.contains("rustfmt refused the file"), "{diff}");
+        assert!(!diff.contains("formatted with"), "{diff}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project that says nothing about how it is formatted has nothing run
+    /// against it, however familiar the file extension looks.
+    #[tokio::test]
+    async fn a_project_with_no_declared_formatter_has_nothing_run() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::workspace::project_store(&root);
+        let content = "const   x=1\n";
+        let ctx = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.ts", "content": content}),
+            &ctx,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.ts")).unwrap(), content);
+        assert!(!diff.unwrap_or_default().contains("formatted"), "nothing should have run");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3948,6 +6361,81 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The desktop Cowork shape: filesystem tools confined to a sandbox, skill
+    /// tools reading the permanent store plus the attached project's store.
+    #[tokio::test]
+    async fn skill_tools_offer_an_attached_projects_enabled_plugin_skills() {
+        let sandbox = unique_root();
+        let store = unique_root();
+        let folder = unique_root();
+        let project = crate::workspace::project_store(&folder);
+        let plugin_skill = |plugin: &str, name: &str, body: &str| {
+            let dir = project.join("plugins").join(plugin).join("skills").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), body).unwrap();
+        };
+        plugin_skill(
+            "release",
+            "prepare",
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh",
+        );
+        plugin_skill("muted", "hush", "---\ndescription: muted\n---\nmuted body");
+        std::fs::write(project.join("agent.toml"), "[plugins]\ndisabled = [\"muted\"]\n").unwrap();
+        crate::skills::write(&store, "personal", "personal body").unwrap();
+
+        let enabled: [String; 0] = [];
+        let ctx = ToolContext::new(&sandbox, &store, &enabled).with_skill_project(Some(&project));
+        let run = |name: &'static str, args: serde_json::Value| {
+            let ctx = ctx.clone();
+            async move { super::execute_builtin(lookup(name).unwrap(), &args, &ctx).await.0 }
+        };
+
+        let list = run("skill_list", json!({})).await;
+        assert!(list.contains("release:prepare — Prepare a release"), "{list}");
+        assert!(list.contains("personal"), "store skills stay offered: {list}");
+        assert!(!list.contains("muted"), "disabled plugin leaked: {list}");
+
+        let body = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert_eq!(body, "run scripts/prep.sh");
+        // A disabled plugin's files are not readable through the skill tools.
+        for name in ["muted:hush", "hush"] {
+            let out = run("skill_read", json!({"name": name})).await;
+            assert!(out.starts_with("ERROR"), "{name}: {out}");
+            assert!(!out.contains("muted body"), "{name}: {out}");
+        }
+
+        // Plugin skills are read-only, and nothing lands in the plugin.
+        let out = run("skill_write", json!({"name": "release:prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        let out = run("skill_write", json!({"name": "prepare", "content": "x"})).await;
+        assert!(out.starts_with("ERROR") && out.contains("read-only"), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(project.join("plugins/release/skills/prepare/SKILL.md"))
+                .unwrap(),
+            "---\ndescription: Prepare a release\n---\nrun scripts/prep.sh"
+        );
+        // A new skill still goes to the writable store, not the project.
+        let out = run("skill_write", json!({"name": "fresh", "content": "new"})).await;
+        assert!(out.starts_with("Wrote"), "{out}");
+        assert!(store.join("skills/fresh/SKILL.md").is_file());
+        assert!(!project.join("skills/fresh").exists());
+
+        // The project's own whitelist applies, read from its agent.toml.
+        std::fs::write(
+            project.join("agent.toml"),
+            "[skills]\nenabled = [\"jan\"]\n[plugins]\ndisabled = [\"muted\"]\n",
+        )
+        .unwrap();
+        let out = run("skill_read", json!({"name": "release:prepare"})).await;
+        assert!(out.starts_with("ERROR"), "{out}");
+        let list = run("skill_list", json!({})).await;
+        assert!(!list.contains("release:prepare"), "{list}");
+
+        for dir in [sandbox, store, folder] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
     #[tokio::test]
     async fn workspace_name_rejects_traversal() {
         let root = unique_root();
@@ -4046,5 +6534,227 @@ mod tests {
         // The base64 stays out of the model-facing text.
         assert!(!out.contains("base64"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // -- memory_propose --------------------------------------------------
+    //
+    // The typed proposal path. The model says a fact is worth remembering by
+    // calling something; whether it is stored is decided by `memory::inferred`,
+    // which the model cannot reach. These assert what actually lands on disk,
+    // not what the reply says -- a tool that claims to have saved something is
+    // the failure mode worth guarding.
+
+    fn propose_ctx(root: &Path, store: &Path, temporary: bool) -> ToolContext<'static> {
+        // Leaked deliberately: `ToolContext` borrows, and these live for the
+        // test.
+        let root: &'static Path = Box::leak(root.to_path_buf().into_boxed_path());
+        let store: &'static Path = Box::leak(store.to_path_buf().into_boxed_path());
+        ToolContext::new(root, store, &[]).in_session(Some("chat-a"), temporary)
+    }
+
+    fn allow_automatic(store: &Path) {
+        std::fs::create_dir_all(store).expect("store");
+        crate::memory::settings::save(
+            store,
+            &crate::memory::settings::Settings {
+                automatically_save: true,
+                ..Default::default()
+            },
+        )
+        .expect("settings");
+    }
+
+    fn stored(store: &Path) -> Vec<String> {
+        crate::memory::store::load(store, crate::memory::record::Scope::Session)
+            .records
+            .into_iter()
+            .map(|r| r.content)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn memory_propose_asks_before_saving_by_default() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("Not saved yet"), "{out}");
+        assert!(
+            out.contains("waiting for you"),
+            "the reason must be specific: {out}"
+        );
+        // The question is stored so it survives the turn and a restart, but as
+        // a proposal: `is_usable` admits `Active` only, so it reaches no prompt
+        // while it waits for an answer.
+        let records =
+            crate::memory::store::load(&store, crate::memory::record::Scope::Session).records;
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            records[0].status,
+            crate::memory::record::Status::Proposed { .. }
+        ));
+        assert!(
+            !records[0].is_usable(records[0].created_at + 1),
+            "an unanswered guess must never be injected"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_saves_once_the_user_allows_it() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.starts_with("Remembered"), "{out}");
+        assert_eq!(stored(&store).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The guard that matters most, and the one that was broken last time.
+    #[tokio::test]
+    async fn memory_propose_refuses_a_credential_even_when_allowed() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        for content in [
+            "The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.",
+            "Their token is ghp_9d7f6a5b4c3e2d1f0a9b8c7d6e5f4a3b2c1d0e.",
+        ] {
+            let out = execute_text(
+                lookup("memory_propose").unwrap(),
+                &json!({ "content": content }),
+                &ctx,
+            )
+            .await;
+            assert!(out.starts_with("ERROR: refused"), "{out}");
+        }
+        assert!(
+            stored(&store).is_empty(),
+            "a credential must never be stored"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_records_nothing_in_a_temporary_chat() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, true);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("temporary"), "{out}");
+        assert!(stored(&store).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project memory lands in the store the readers open. It used to be
+    /// written one directory above it, where nothing looked.
+    #[tokio::test]
+    async fn memory_propose_project_scope_is_saved_where_it_is_read_back() {
+        let root = unique_root();
+        let session_store = root.join("store");
+        allow_automatic(&session_store);
+        let ctx = propose_ctx(&root, &session_store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "This project builds with yarn.", "scope": "project"}),
+            &ctx,
+        )
+        .await;
+        assert!(out.starts_with("Remembered") || out.contains("Not saved yet"), "{out}");
+        let project = crate::workspace::project_store(&root);
+        let records =
+            crate::memory::store::load(&project, crate::memory::record::Scope::Project).records;
+        assert_eq!(records.len(), 1, "the proposal was not written to the project store");
+        assert_eq!(records[0].content, "This project builds with yarn.");
+        assert!(
+            !root.join(".jan").join("memory").exists(),
+            "nothing may be written to the old, unread location"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The narrowest scope that is true, when the model does not say.
+    #[tokio::test]
+    async fn memory_propose_defaults_to_this_conversation_only() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user is debugging a flaky test."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("this conversation"), "{out}");
+        // Nothing reached the wider scopes.
+        assert!(
+            crate::memory::store::load(&store, crate::memory::record::Scope::User)
+                .records
+                .is_empty()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_needs_content() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = propose_ctx(&root, &store, false);
+        for args in [json!({}), json!({"content": "   "})] {
+            let out = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+            assert!(out.starts_with("ERROR"), "{out}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same fact twice confirms rather than multiplying: the id is derived
+    /// from the content.
+    #[tokio::test]
+    async fn memory_propose_does_not_multiply_a_repeated_fact() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let args = json!({"content": "The user prefers tabs over spaces."});
+        let _ = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+        let _ = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+        assert_eq!(stored(&store).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn memory_propose_is_advertised_with_a_usable_schema() {
+        let schema = crate::tools::schema::builtin_tool_schemas()
+            .into_iter()
+            .find(|s| s["function"]["name"] == "memory_propose")
+            .expect("memory_propose is advertised");
+        let params = &schema["function"]["parameters"];
+        assert_eq!(params["type"], "object");
+        assert!(params["properties"]["content"].is_object());
+        assert_eq!(params["required"][0], "content");
+        // The model is told not to propose credentials, because the refusal
+        // costs it a turn.
+        let description = schema["function"]["description"].as_str().unwrap();
+        assert!(description.contains("credentials"), "{description}");
     }
 }

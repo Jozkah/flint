@@ -1,11 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Card, CardItem } from '@/containers/Card'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { cn, getProviderTitle, getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import {
+  cn,
+  formatBytes,
+  getProviderTitle,
+  getModelDisplayName,
+  isLocalProvider,
+} from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
-import { createFileRoute, Link, useParams } from '@tanstack/react-router'
+import { createFileRoute, useParams } from '@tanstack/react-router'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import Capabilities from '@/containers/Capabilities'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
@@ -17,23 +22,24 @@ import { ModelSetting } from '@/containers/ModelSetting'
 import { DialogDeleteModel } from '@/containers/dialogs/DeleteModel'
 import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
-import { route } from '@/constants/routes'
 import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { SecretInput } from '@/components/ui/secret-input'
+import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
-  IconCircleCheck,
-  IconCircle,
-  IconFolderPlus,
-  IconInfoCircle,
-  IconLoader,
-  IconRefresh,
-} from '@tabler/icons-react'
+  CircleCheck,
+  Circle,
+  FolderPlus,
+  Info,
+  LoaderCircle,
+  RefreshCw,
+} from 'lucide-react'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { predefinedProviders } from '@/constants/providers'
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
@@ -46,9 +52,20 @@ import {
   serializeApiKeyFallbacks,
 } from '@/lib/provider-api-keys'
 import {
-  supportsRemoteCatalog,
-  fetchTopRemoteModels,
-} from '@/lib/remoteModelCatalog'
+  describeEndpointFailure,
+  isLocalEndpoint,
+} from '@/lib/endpointDiagnostics'
+import { errorText } from '@/lib/errorText'
+import {
+  deriveModelStatus,
+  modelStatusLabelKey,
+  modelStatusTone,
+} from '@/lib/modelStatus'
+import { StatusChip } from '@/containers/StatusChip'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 
 // as route.threadsDetail
 export const Route = createFileRoute('/settings/providers/$providerName')({
@@ -61,6 +78,24 @@ export const Route = createFileRoute('/settings/providers/$providerName')({
   },
 })
 
+/** What the file list on disk says about one installed model. */
+type LocalFileInfo = { sizeBytes?: number; fileName?: string }
+
+/** The last path segment, on either separator. */
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
+
+/** A model's configured context length, when it has one. */
+function contextLengthOf(model: Model): number | undefined {
+  const value = (model.settings as any)?.ctx_len?.controller_props?.value
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+/** Columns of the model list once its container is wide enough. */
+const LOCAL_GRID =
+  '@3xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_5.5rem_6rem_10rem_auto]'
+const REMOTE_GRID = '@2xl:grid-cols-[minmax(0,1fr)_10rem_auto]'
+
 function ProviderDetail() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -68,7 +103,18 @@ function ProviderDetail() {
   const [activeModels, setActiveModels] = useAppState(
     useShallow((state) => [state.activeModels, state.setActiveModels])
   )
+  // A load started anywhere else in the app (a chat, the API server).
+  const globallyLoadingModelId = useAppState(
+    (state) => state.modelLoadProgress?.modelId
+  )
   const [loadingModels, setLoadingModels] = useState<string[]>([])
+  /** Models whose last start from this page threw; cleared by a success. */
+  const [failedModels, setFailedModels] = useState<string[]>([])
+  /** A request with the saved keys succeeded while this page was open. */
+  const [connectionVerified, setConnectionVerified] = useState(false)
+  const [localFiles, setLocalFiles] = useState<Record<string, LocalFileInfo>>(
+    {}
+  )
   const [refreshingModels, setRefreshingModels] = useState(false)
   const [importingModel, setImportingModel] = useState<string | null>(null)
   const [apiKeysDraft, setApiKeysDraft] = useState('')
@@ -79,10 +125,12 @@ function ProviderDetail() {
     { index: number; masked: string; status: string; detail: string }[]
   >([])
   const { providerName } = useParams({ from: Route.id })
-  const { getProviderByName, setProviders, updateProvider, addDeletedModels } =
+  const { getProviderByName, setProviders, updateProvider } =
     useModelProvider()
   const provider = getProviderByName(providerName)
   const isLlamacpp = provider?.provider === 'llamacpp'
+  const isEngineProvider =
+    provider?.provider === 'llamacpp' || provider?.provider === 'mlx'
   const isPredefinedProvider = useMemo(
     () => predefinedProviders.some((p) => p.provider === providerName),
     [providerName]
@@ -227,6 +275,42 @@ function ProviderDetail() {
     }
   }, [serviceHub, setActiveModels, provider?.provider])
 
+  // File name and size of installed models, for the list. Read-only, and the
+  // list still renders without it.
+  const modelIdsKey = (provider?.models ?? []).map((m) => m.id).join(' ')
+  useEffect(() => {
+    if (!isEngineProvider || !provider) {
+      setLocalFiles({})
+      return
+    }
+    const models = serviceHub.models() as Partial<
+      ReturnType<typeof serviceHub.models>
+    >
+    if (typeof models.fetchModels !== 'function') return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => models.fetchModels!())
+      .then((infos) => {
+        if (cancelled) return
+        const next: Record<string, LocalFileInfo> = {}
+        for (const info of infos ?? []) {
+          if (info.providerId !== provider.provider) continue
+          next[info.id] = {
+            sizeBytes: info.sizeBytes || undefined,
+            fileName: info.path ? baseName(info.path) : undefined,
+          }
+        }
+        setLocalFiles(next)
+      })
+      .catch(() => {
+        if (!cancelled) setLocalFiles({})
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceHub, isEngineProvider, provider?.provider, modelIdsKey])
+
   // Clear importing state when model appears in the provider's model list
   useEffect(() => {
     if (importingModel && provider?.models) {
@@ -254,28 +338,32 @@ function ProviderDetail() {
     if (!provider) return
     if (provider.provider === 'llamacpp' || provider.provider === 'mlx') return
     setApiKeysDraft(providerRemoteApiKeyChain(provider).join('\n'))
+    // Other keys, or another provider: an earlier success says nothing now.
+    setConnectionVerified(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.api_key, JSON.stringify(provider?.api_key_fallbacks ?? [])])
+
+  // The configured data folder, when this run could not use it (#8374, #8855).
+  const [unavailableDataFolder, setUnavailableDataFolder] = useState<
+    string | undefined
+  >()
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve(serviceHub.app?.()?.getUnavailableJanDataFolder?.())
+      .then((path) => {
+        if (alive) setUnavailableDataFolder(path || undefined)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [serviceHub])
 
   useEffect(() => {
     if (provider?.provider !== 'azure') return
     setBaseUrlDraft(provider.base_url ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.base_url])
-
-  const autoCatalogAttempted = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (!provider) return
-    if (!supportsRemoteCatalog(provider)) return
-    if (provider.models.length > 0) return
-    if (!providerHasRemoteApiKeys(provider)) return
-    if (autoCatalogAttempted.current.has(provider.provider)) return
-    autoCatalogAttempted.current.add(provider.provider)
-    handleRefreshModels()
-    // handleRefreshModels closes over the latest provider; only watch the
-    // signals that decide whether auto-fetch should fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider?.provider, provider?.api_key, provider?.models.length])
 
   const commitApiKeysDraft = useCallback(() => {
     if (!provider) return
@@ -396,13 +484,13 @@ function ProviderDetail() {
   const getStatusClass = useCallback((status: string) => {
     switch (status) {
       case 'ok':
-        return 'text-green-600'
+        return 'text-success'
       case 'unauthorized':
       case 'forbidden':
       case 'http_error':
       case 'network_error':
       case 'rate_limited':
-        return 'text-yellow-600'
+        return 'text-warning'
       default:
         return 'text-destructive'
     }
@@ -439,12 +527,16 @@ function ProviderDetail() {
           'x-api-key': key,
           Authorization: `Bearer ${key}`,
         }
-        if (
-          provider.base_url.includes('localhost:') ||
-          provider.base_url.includes('127.0.0.1:')
-        ) {
+        // Loopback and LAN endpoints are local engines, not remote services.
+        // The old check matched the literal strings "localhost:" and
+        // "127.0.0.1:", so a server on the LAN or on a Tailscale address was
+        // treated as remote.
+        if (isLocalEndpoint(provider.base_url)) {
           headers['Origin'] = 'tauri://localhost'
         }
+        // What a real request sends, so a gateway that needs its own header
+        // does not fail the test for want of it. janhq/jan#8208.
+        applyCustomHeaders(headers, provider)
 
         try {
           const response = await fetchImpl(`${provider.base_url}/models`, {
@@ -462,29 +554,62 @@ function ProviderDetail() {
             index: keyIndex,
             masked: maskApiKey(key),
             status,
-            detail: `${response.status} ${response.statusText}`,
+            // Name the endpoint, the status and whoever answered. A bare
+            // "Forbidden (403)" cannot tell a wrong key from a proxy on the
+            // internet answering for a server the user believes is local.
+            detail: response.ok
+              ? `${response.status} ${response.statusText}`
+              : describeEndpointFailure({
+                  provider: provider.provider,
+                  url: `${provider.base_url}/models`,
+                  method: 'GET',
+                  status: response.status,
+                  statusText: response.statusText,
+                  server: response.headers?.get?.('server') ?? null,
+                }),
           })
         } catch (err) {
           results.push({
             index: keyIndex,
             masked: maskApiKey(key),
             status: 'network_error',
-            detail: err instanceof Error ? err.message : 'Unknown error',
+            detail: describeEndpointFailure({
+              provider: provider.provider,
+              url: `${provider.base_url}/models`,
+              method: 'GET',
+              cause: err,
+            }),
           })
         }
       }
 
       setKeyCheckResults(results)
+      if (results.some((r) => r.status === 'ok')) setConnectionVerified(true)
     } finally {
       setIsTestingKeys(false)
     }
-  }, [apiKeysDraft, maskApiKey, provider?.base_url, serviceHub, t])
+  }, [apiKeysDraft, maskApiKey, provider, serviceHub, t])
 
   // Note: settingsChanged event is now handled globally in GlobalEventHandler
   // This ensures all screens receive the event intermediately
 
   const handleRefreshModels = async () => {
-    if (!provider || !provider.base_url || !providerHasRemoteApiKeys(provider)) {
+    if (!provider || !provider.base_url) {
+      toast.error(t('providers:models'), {
+        description: t('providers:refreshModelsError'),
+      })
+      return
+    }
+    // Only an endpoint that is *definitely* public is asked for a key up
+    // front. A local one needs no credential, and a single-label hostname like
+    // `v100` is not yet known to be either -- refusing those meant Jan told
+    // the user to "configure an API key" for a server that never asked for
+    // one, and never sent the request that would have said what was actually
+    // wrong. Where it is not certain, make the request and report the answer.
+    if (
+      classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
+      !providerHasRemoteApiKeys(provider)
+    ) {
       toast.error(t('providers:models'), {
         description: t('providers:refreshModelsError'),
       })
@@ -493,57 +618,18 @@ function ProviderDetail() {
 
     setRefreshingModels(true)
     try {
-      let newModels: Model[]
-      if (supportsRemoteCatalog(provider)) {
-        const catalog = await fetchTopRemoteModels(provider, serviceHub.providers().fetch())
-        newModels = catalog.map((m) => ({
-          id: m.id,
-          model: m.id,
-          name: m.id,
-          capabilities: m.capabilities,
-          version: '1.0',
-        }))
-      } else {
-        const modelIds = await serviceHub
-          .providers()
-          .fetchModelsFromProvider(provider)
-        newModels = modelIds.map((id) => ({
-          id,
-          model: id,
-          name: id,
-          capabilities: ['completion'],
-          version: '1.0',
-        }))
-      }
+      const modelIds = await serviceHub
+        .providers()
+        .fetchModelsFromProvider(provider)
+      setConnectionVerified(true)
+      const newModels: Model[] = modelIds.map((id) => ({
+        id,
+        model: id,
+        name: id,
+        capabilities: ['completion'],
+        version: '1.0',
+      }))
 
-      if (supportsRemoteCatalog(provider)) {
-        const importedModels = provider.models.filter((m) => m.imported)
-        const importedIds = new Set(importedModels.map((m) => m.id))
-        const fresh = newModels.filter((m) => !importedIds.has(m.id))
-        if (fresh.length === 0) {
-          toast.success(t('providers:models'), {
-            description: t('providers:noNewModels'),
-          })
-          return
-        }
-        const updatedModels = [...importedModels, ...fresh]
-        const keepIds = new Set(updatedModels.map((m) => m.id))
-        const removedIds = provider.models
-          .filter((m) => !m.imported && !keepIds.has(m.id))
-          .map((m) => m.id)
-        addDeletedModels(removedIds)
-        updateProvider(providerName, {
-          ...provider,
-          models: updatedModels,
-        })
-        toast.success(t('providers:models'), {
-          description: t('providers:refreshModelsSuccess', {
-            count: fresh.length,
-            provider: provider.provider,
-          }),
-        })
-        return
-      }
 
       const existingModelIds = provider.models.map((m) => m.id)
       const modelsToAdd = newModels.filter(
@@ -573,10 +659,15 @@ function ProviderDetail() {
         t('providers:refreshModelsFailed', { provider: provider.provider }),
         error
       )
+      // Show what actually failed. The service throws a message naming the
+      // endpoint, the status and whoever answered; replacing it with "check
+      // your API key and base URL" hid a proxy answering 403 for a server the
+      // user believed was local, and pointed at the one thing that was fine.
       toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsFailed', {
-          provider: provider.provider,
-        }),
+        description: errorText(
+          error,
+          t('providers:refreshModelsFailed', { provider: provider.provider })
+        ),
       })
     } finally {
       setRefreshingModels(false)
@@ -590,6 +681,7 @@ function ProviderDetail() {
       try {
         // Start the model with plan result
         await serviceHub.models().startModel(provider, modelId)
+        setFailedModels((prev) => prev.filter((id) => id !== modelId))
 
         // Refresh active models after starting (pass provider to get correct engine's loaded models)
         serviceHub
@@ -597,6 +689,9 @@ function ProviderDetail() {
           .getActiveModels(provider.provider)
           .then((models) => setActiveModels(models || []))
       } catch (error) {
+        setFailedModels((prev) =>
+          prev.includes(modelId) ? prev : [...prev, modelId]
+        )
         setModelLoadError(error as ErrorObject)
       } finally {
         // Remove model from loading state
@@ -622,727 +717,821 @@ function ProviderDetail() {
       })
   }
 
-  return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
-            <div className="flex items-center justify-between">
-              <h1 className="font-medium text-base">
-                {getProviderTitle(providerName)}
-              </h1>
-              <Switch
-                checked={provider?.active ?? false}
-                onCheckedChange={(checked) => provider && updateProvider(providerName, { active: checked })}
-              />
-            </div>
+  const apiKeyMissing =
+    !!provider &&
+    !isEngineProvider &&
+    !!provider.base_url &&
+    classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
+    !providerHasRemoteApiKeys(provider)
 
-            {provider &&
-              !isLocalProvider(provider.provider) &&
-              !supportsRemoteCatalog(provider) && (
-                <div className="flex items-start gap-2 rounded-md border border-main-view-fg/10 bg-main-view-fg/5 px-3 py-2 text-xs text-muted-foreground">
-                  <IconInfoCircle size={16} className="mt-0.5 shrink-0" />
-                  <span>
-                    {t('providers:limitedSupport', {
-                      defaultValue:
-                        'This provider may not be fully supported. Capabilities (tools, vision, audio) are not auto-detected - add models manually and configure capabilities per model.',
-                    })}
+  const statusFor = (modelId: string) =>
+    deriveModelStatus({
+      modelId,
+      engineManaged: isEngineProvider,
+      activeModels,
+      loadingModelIds: globallyLoadingModelId
+        ? [...loadingModels, globallyLoadingModelId]
+        : loadingModels,
+      failedModelIds: failedModels,
+      apiKeyMissing,
+      connectionVerified,
+    })
+
+  const renderStatus = (modelId: string) => {
+    const status = statusFor(modelId)
+    if (!status) return null
+    return (
+      <StatusChip
+        tone={modelStatusTone(status)}
+        pulse={status === 'loading'}
+        data-testid={`model-status-${modelId}`}
+        data-status={status}
+      >
+        {t(modelStatusLabelKey(status))}
+      </StatusChip>
+    )
+  }
+
+  /** One model as a row: a record on narrow screens, table columns on wide. */
+  const renderModelRow = (
+    model: Model,
+    key: string,
+    options: {
+      leading?: ReactNode
+      badges?: ReactNode
+      actions: ReactNode
+      selected?: boolean
+    }
+  ) => {
+    const file = localFiles[model.id]
+    const contextLength = contextLengthOf(model)
+    const metaLabel = 'text-muted-foreground @3xl:sr-only'
+    return (
+      <li
+        key={key}
+        data-testid={`model-row-${model.id}`}
+        className={cn(
+          'relative grid min-h-11 grid-cols-1 gap-x-4 gap-y-2 border-b border-border px-2 py-3 last:border-b-0 @3xl:items-center',
+          isEngineProvider ? LOCAL_GRID : REMOTE_GRID,
+          options.selected &&
+            'bg-brand-tint before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+        )}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          {options.leading}
+          <span
+            className="min-w-0 truncate font-medium text-foreground"
+            title={model.id}
+          >
+            {getModelDisplayName(model)}
+          </span>
+          {/* A renamed model still answers to its own identifier, which is
+              what requests carry. */}
+          {model.displayName && model.displayName !== model.id && (
+            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+              {model.id}
+            </span>
+          )}
+          <Capabilities capabilities={model.capabilities || []} />
+          {options.badges}
+          {model.imported && (
+            <span
+              className="shrink-0 rounded-sm bg-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-2"
+              title={t('providers:importedTooltip')}
+            >
+              {t('providers:imported')}
+            </span>
+          )}
+        </div>
+        {isEngineProvider && (
+          <dl className="contents text-sm">
+            <div className="flex min-w-0 items-baseline justify-between gap-3 @3xl:block">
+              <dt className={metaLabel}>{t('providers:table.file')}</dt>
+              <dd
+                className="min-w-0 truncate font-mono text-xs text-ink-2"
+                title={file?.fileName}
+              >
+                {file?.fileName ?? '—'}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3 @3xl:block">
+              <dt className={metaLabel}>{t('providers:table.size')}</dt>
+              <dd className="tabular-nums text-ink-2">
+                {file?.sizeBytes ? formatBytes(file.sizeBytes) : '—'}
+              </dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-3 @3xl:block">
+              <dt className={metaLabel}>{t('providers:table.context')}</dt>
+              <dd className="tabular-nums text-ink-2">
+                {contextLength ? contextLength.toLocaleString() : '—'}
+              </dd>
+            </div>
+          </dl>
+        )}
+        <div className="flex min-w-0 items-center">{renderStatus(model.id)}</div>
+        <div className="flex flex-wrap items-center justify-start gap-1 @2xl:justify-end">
+          {options.actions}
+        </div>
+      </li>
+    )
+  }
+
+  /** Column labels, shown only once the rows lay out as a table. */
+  const renderListHeader = () => (
+    <div
+      aria-hidden
+      className={cn(
+        'hidden gap-x-4 border-b border-border px-2 pb-2 text-xs font-medium text-muted-foreground',
+        isEngineProvider ? `@3xl:grid ${LOCAL_GRID}` : `@2xl:grid ${REMOTE_GRID}`
+      )}
+    >
+      <span>{t('providers:table.name')}</span>
+      {isEngineProvider && (
+        <>
+          <span>{t('providers:table.file')}</span>
+          <span>{t('providers:table.size')}</span>
+          <span>{t('providers:table.context')}</span>
+        </>
+      )}
+      <span>{t('providers:table.status')}</span>
+      <span className="text-right">{t('providers:table.actions')}</span>
+    </div>
+  )
+
+  const sectionDivider = (label: string, className?: string) => (
+    <div
+      role="separator"
+      aria-label={label}
+      className={cn('flex items-center gap-3', className)}
+    >
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <SettingsPageBody>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <h2 className="min-w-0 truncate font-display text-2xl font-normal text-foreground">
+            {getProviderTitle(providerName)}
+          </h2>
+          <Switch
+            aria-label={t('providers:useProvider', {
+              provider: getProviderTitle(providerName),
+            })}
+            checked={provider?.active ?? false}
+            onCheckedChange={(checked) => provider && updateProvider(providerName, { active: checked })}
+          />
+        </div>
+
+        {provider &&
+          !isLocalProvider(provider.provider) && (
+            <div className="flex items-start gap-2 rounded-md border border-border bg-sunken px-3 py-2 text-xs text-ink-2">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                {t('providers:limitedSupport', {
+                  defaultValue:
+                    'This provider may not be fully supported. Capabilities (tools, vision, audio) are not auto-detected - add models manually and configure capabilities per model.',
+                })}
+              </span>
+            </div>
+          )}
+
+        {provider?.provider === 'mlx' && (
+          <div className="flex items-start gap-2 rounded-md border border-border bg-warning-tint px-3 py-2 text-xs text-ink-2">
+            <Info className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+            <span>
+              {t('providers:mlxExperimental', {
+                defaultValue:
+                  'MLX support is experimental. Embeddings are unavailable, the reasoning toggle is not yet wired through, and some newer model architectures may fail to load. Report issues on GitHub so we can prioritize them.',
+              })}
+            </span>
+          </div>
+        )}
+
+        <div
+          className={cn(
+            'flex flex-col gap-4',
+            provider &&
+              (provider.provider === 'llamacpp' ||
+                provider.provider === 'mlx') &&
+              'flex-col-reverse'
+          )}
+        >
+          {/* Settings — hidden for predefined remote providers since
+              api-key + base-url are both surfaced elsewhere / hidden. */}
+          {!(
+            isPredefinedProvider &&
+            provider?.provider !== 'llamacpp' &&
+            provider?.provider !== 'mlx'
+          ) && (
+          <Card>
+            {provider?.settings.map((setting, settingIndex) => {
+              if (
+                setting.key === 'api-key' &&
+                provider?.provider !== 'llamacpp' &&
+                provider?.provider !== 'mlx'
+              ) {
+                return null
+              }
+
+              if (
+                provider?.provider === 'llamacpp' &&
+                setting.key === 'fit_ctx'
+              ) {
+                return null
+              }
+
+              // Use the DynamicController component
+              const actionComponent = (
+                <div className="mt-1 sm:mt-0">
+                  <DynamicControllerSetting
+                      controllerType={setting.controller_type}
+                      controllerProps={setting.controller_props}
+                      className={cn(setting.key === 'device' && 'hidden')}
+                      onChange={(newValue) => {
+                        if (provider) {
+                          const newSettings = [...provider.settings]
+                          // Handle different value types by forcing the type
+                          // Use type assertion to bypass type checking
+
+                          ;(
+                            newSettings[settingIndex].controller_props as {
+                              value: string | boolean | number
+                            }
+                          ).value = newValue
+
+                          // Create update object with updated settings
+                          const updateObj: Partial<ModelProvider> = {
+                            settings: newSettings,
+                          }
+                          // Check if this is an API key or base URL setting and update the corresponding top-level field
+                          const settingKey = setting.key
+                          if (
+                            settingKey === 'api-key' &&
+                            typeof newValue === 'string'
+                          ) {
+                            updateObj.api_key = newValue
+                          } else if (
+                            settingKey === 'base-url' &&
+                            typeof newValue === 'string'
+                          ) {
+                            updateObj.base_url = newValue
+                          }
+
+                          serviceHub
+                            .providers()
+                            .updateSettings(
+                              providerName,
+                              updateObj.settings ?? []
+                            )
+                          updateProvider(providerName, {
+                            ...provider,
+                            ...updateObj,
+                          })
+
+                          serviceHub.models().stopAllModels()
+
+                          // Refresh active models after stopping
+                          serviceHub
+                            .models()
+                            .getActiveModels()
+                            .then((models) => setActiveModels(models || []))
+                        }
+                      }}
+                    />
+                </div>
+              )
+
+              return (
+                <CardItem
+                  key={settingIndex}
+                  title={setting.title}
+                  className={cn(setting.key === 'device' && 'hidden')}
+                  column={
+                    setting.controller_type === 'input' &&
+                    setting.controller_props.type !== 'number'
+                      ? true
+                      : false
+                  }
+                  description={
+                    <>
+                      <RenderMarkdown
+                        className="![>p]:text-muted-foreground select-none"
+                        content={setting.description}
+                        components={{
+                          // Make links open in a new tab
+                          a: ({ ...props }) => {
+                            return (
+                              <a
+                                {...props}
+                                className="text-brand-text underline-offset-4 hover:underline"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              />
+                            )
+                          },
+                          p: ({ ...props }) => (
+                            <p {...props} className="mb-0!" />
+                          ),
+                        }}
+                      />
+                    </>
+                  }
+                  actions={actionComponent}
+                />
+              )
+            })}
+
+            <DeleteProvider provider={provider} />
+          </Card>
+          )}
+
+          {provider &&
+            provider.provider !== 'llamacpp' &&
+            provider.provider !== 'mlx' && (
+              <Card>
+                {provider.provider === 'azure' && (
+                  <div className="mb-5 space-y-2">
+                    <div className="space-y-1">
+                      <h3 className="font-display text-lg font-normal text-foreground">
+                        {t('providers:baseUrl.title')}
+                      </h3>
+                      <p className="text-sm leading-normal text-muted-foreground">
+                        {t('providers:baseUrl.azureDescription')}
+                      </p>
+                    </div>
+                    <input
+                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      placeholder="https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1"
+                      value={baseUrlDraft}
+                      onChange={(e) => setBaseUrlDraft(e.target.value)}
+                      onBlur={() => commitBaseUrlDraft()}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <h3 className="font-display text-lg font-normal text-foreground">
+                      {t('providers:apiKeys.title')}
+                    </h3>
+                    <p className="text-sm leading-normal text-muted-foreground">
+                      {t('providers:apiKeys.description')}
+                    </p>
+                  </div>
+                  {!showAdvancedApiKeys && (
+                    <div className="flex flex-col gap-2">
+                      <SecretInput
+                        className="font-mono"
+                        placeholder={t('providers:apiKeys.primaryPlaceholder')}
+                        value={primaryKeyDraft}
+                        onChange={(e) => setPrimaryKeyDraft(e.target.value)}
+                        onBlur={() => commitApiKeysDraft()}
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="pointer-coarse:h-11"
+                          onClick={() => {
+                            setShowAdvancedApiKeys(true)
+                            setKeyCheckResults([])
+                          }}
+                        >
+                          {t('providers:apiKeys.advanced')}
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          {t('providers:apiKeys.oneKeyHint')}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {showAdvancedApiKeys && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-muted-foreground">
+                          {t('providers:apiKeys.testHint')}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="pointer-coarse:h-11"
+                            onClick={() => {
+                              commitApiKeysDraft()
+                              setShowAdvancedApiKeys(false)
+                              setKeyCheckResults([])
+                            }}
+                          >
+                            {t('providers:apiKeys.hideAdvanced')}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="pointer-coarse:h-11"
+                            onClick={handleTestApiKeys}
+                            disabled={isTestingKeys}
+                          >
+                            {isTestingKeys ? (
+                              <>
+                                <LoaderCircle
+                                  className="animate-spin"
+                                  aria-hidden
+                                />
+                                {t('providers:apiKeys.testing')}
+                              </>
+                            ) : (
+                              t('providers:apiKeys.test')
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">
+                        Primary key is <span className="font-medium">#1</span>. Jan
+                        retries the next key only on{' '}
+                        <span className="font-mono">401/403/429</span>.
+                      </div>
+
+                      <div className="space-y-2">
+                        {advancedApiKeyLines.map((keyValue, idx) => {
+                          const keyIndex = idx + 1
+                          const rowResult = keyCheckResults.find(
+                            (r) => r.index === keyIndex
+                          )
+
+                          return (
+                            <div
+                              key={idx}
+                              className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.75rem] items-center gap-x-2 gap-y-1"
+                            >
+                              <div className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                                #{keyIndex}
+                              </div>
+
+                              <div className="min-w-0">
+                                <SecretInput
+                                  className="font-mono w-full"
+                                  placeholder={t('providers:apiKeys.keyPlaceholder')}
+                                  value={keyValue}
+                                  onChange={(e) => {
+                                    setKeyAtIndex(idx, e.target.value)
+                                  }}
+                                  onBlur={commitApiKeysDraft}
+                                  spellCheck={false}
+                                  autoComplete="off"
+                                />
+                              </div>
+
+                              <div className="flex justify-end">
+                                {idx !== 0 ? (
+                                  <Button
+                                    size="icon-sm"
+                                    variant="outline"
+                                    className="pointer-coarse:size-11"
+                                    onClick={() => {
+                                      setKeyCheckResults([])
+                                      removeKeyLine(idx)
+                                    }}
+                                    title={t('providers:apiKeys.removeKey')}
+                                  >
+                                    -
+                                  </Button>
+                                ) : (
+                                  <span aria-hidden>&nbsp;</span>
+                                )}
+                              </div>
+
+                              <div aria-hidden />
+                              <div className="min-w-0">
+                                {rowResult && (
+                                  <div
+                                    className={cn(
+                                      'text-right text-xs font-medium',
+                                      getStatusClass(rowResult.status)
+                                    )}
+                                    title={rowResult.detail}
+                                  >
+                                    {getStatusLabel(rowResult.status)}
+                                  </div>
+                                )}
+                              </div>
+                              <div aria-hidden />
+                            </div>
+                          )
+                        })}
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="pointer-coarse:h-11"
+                            onClick={() => {
+                              setKeyCheckResults([])
+                              addKeyLine()
+                            }}
+                          >
+                            + {t('providers:apiKeys.addKey')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <ProviderCustomHeaders provider={provider} />
+              </Card>
+            )}
+
+          {/* janhq/jan#8374. A local model list read from the default data
+              folder because the configured one could not be used is not
+              an empty library: say so here, where the models are missing,
+              not only in Settings > General. */}
+          {unavailableDataFolder &&
+            (provider?.provider === 'llamacpp' || provider?.provider === 'mlx') && (
+              <p
+                role="alert"
+                data-testid="data-folder-unavailable-notice"
+                className="rounded-md border border-destructive/40 bg-destructive-tint px-3 py-2 text-xs text-destructive"
+              >
+                {t('providers:dataFolderUnavailable', {
+                  path: unavailableDataFolder,
+                })}
+              </p>
+            )}
+          {/* Models */}
+          <Card
+            header={
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-display text-xl font-normal text-foreground">
+                  {t('providers:models')}
+                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  {provider && provider.provider !== 'llamacpp' && provider.provider !== 'mlx' && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        className="pointer-coarse:size-11"
+                        onClick={handleRefreshModels}
+                        disabled={refreshingModels}
+                        // Icon-only: without a name a screen reader
+                        // announces nothing but "button".
+                        aria-label={
+                          refreshingModels
+                            ? t('providers:refreshing')
+                            : t('providers:refresh')
+                        }
+                        title={t('providers:refresh')}
+                      >
+                        {refreshingModels ? (
+                          <LoaderCircle
+                            className="animate-spin text-muted-foreground"
+                            aria-hidden
+                          />
+                        ) : (
+                          <RefreshCw
+                            className="text-muted-foreground"
+                            aria-hidden
+                          />
+                        )}
+                      </Button>
+                      <DialogAddModel provider={provider} />
+                    </>
+                  )}
+                  {provider &&
+                    (provider.provider === 'llamacpp' ||
+                      provider.provider === 'mlx') && (
+                      <DialogDeleteAllModels provider={provider} />
+                    )}
+                  {provider && provider.provider === 'llamacpp' && (
+                    <ImportLlamacppModelDialog
+                      provider={provider}
+                      onSuccess={handleModelImportSuccess}
+                      trigger={
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="pointer-coarse:h-11"
+                        >
+                          <FolderPlus aria-hidden />
+                          <span>
+                            {t('providers:import')}
+                          </span>
+                        </Button>
+                      }
+                    />
+                  )}
+                  {provider && provider.provider === 'mlx' && (
+                      <ImportMlxModelDialog
+                        provider={provider}
+                        onSuccess={handleModelImportSuccess}
+                        trigger={
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="pointer-coarse:h-11"
+                          >
+                            <FolderPlus aria-hidden />
+                            <span>{t('providers:import')}</span>
+                          </Button>
+                        }
+                      />
+                    )}
+                </div>
+              </div>
+            }
+          >
+            <div className="@container min-w-0">
+              {provider?.models.length ? (
+                <>
+                {isLlamacpp && embeddingModels.length > 0 && chatModels.length > 0 &&
+                  sectionDivider(t('providers:chatModels'), 'mt-1 mb-3')}
+                {renderListHeader()}
+                <ul className="flex flex-col">
+                {(isLlamacpp ? chatModels : allModels).map((model, modelIndex) => {
+                  const isActive = activeModels.some(
+                    (activeModel) => activeModel === model.id
+                  )
+                  return renderModelRow(model, String(modelIndex), {
+                    actions: (
+                      <>
+                        {provider &&
+                          (provider.provider === 'llamacpp' ||
+                            provider.provider === 'mlx') && (
+                            <span className="mr-1">
+                              {isActive ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="pointer-coarse:h-11"
+                                  onClick={() => handleStopModel(model.id)}
+                                >
+                                  {t('providers:stop')}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="min-w-16 pointer-coarse:h-11"
+                                  disabled={loadingModels.includes(
+                                    model.id
+                                  )}
+                                  onClick={() => handleStartModel(model.id)}
+                                >
+                                  {loadingModels.includes(model.id) ? (
+                                    <LoaderCircle
+                                      className="animate-spin"
+                                      aria-label={t('providers:status.loading')}
+                                    />
+                                  ) : (
+                                    t('providers:start')
+                                  )}
+                                </Button>
+                              )}
+                            </span>
+                          )}
+                        {model.settings && provider &&
+                          provider.provider === 'llamacpp' && (
+                          <ModelSetting provider={provider} model={model} />
+                        )}
+                        <DialogEditModel
+                          provider={provider}
+                          modelId={model.id}
+                        />
+                        {((provider &&
+                          !predefinedProviders.some(
+                            (p) => p.provider === provider.provider
+                          )) ||
+                          (provider &&
+                            predefinedProviders.some(
+                              (p) => p.provider === provider.provider
+                            ) &&
+                            providerHasRemoteApiKeys(provider))) && (
+                          <FavoriteModelAction model={model} />
+                        )}
+                        <DialogDeleteModel
+                          provider={provider}
+                          modelId={model.id}
+                        />
+                      </>
+                    ),
+                  })
+                })}
+                </ul>
+                </>
+              ) : (
+                <div className="rounded-md border border-dashed border-line-strong bg-sunken/50 px-4 py-6 text-center">
+                  <h3 className="font-medium text-foreground">
+                    {t('providers:noModelFound')}
+                  </h3>
+                  <p className="mx-auto mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">
+                    {provider && !isLocalProvider(provider.provider)
+                      ? t('providers:noModelFoundRemoteDesc')
+                      : t('providers:noModelFoundDesc')}
+                  </p>
+                </div>
+              )}
+              {/* Show importing skeleton first if there's one */}
+              {importingModel && (
+                <div
+                  key="importing-skeleton"
+                  role="status"
+                  className="flex min-h-11 items-center gap-2 border-t border-border px-2 py-3"
+                >
+                  <StatusChip tone="progress" pulse>
+                    Importing...
+                  </StatusChip>
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {importingModel}
                   </span>
                 </div>
               )}
 
-            {provider?.provider === 'mlx' && (
-              <div className="flex items-start gap-2 rounded-md border border-main-view-fg/10 bg-main-view-fg/5 px-3 py-2 text-xs text-muted-foreground">
-                <IconInfoCircle size={16} className="mt-0.5 shrink-0" />
-                <span>
-                  {t('providers:mlxExperimental', {
-                    defaultValue:
-                      'MLX support is experimental. Embeddings are unavailable, the reasoning toggle is not yet wired through, and some newer model architectures may fail to load. Report issues on GitHub so we can prioritize them.',
-                  })}
-                </span>
-              </div>
-            )}
-
-            <div
-              className={cn(
-                'flex flex-col gap-3',
-                provider &&
-                  (provider.provider === 'llamacpp' ||
-                    provider.provider === 'mlx') &&
-                  'flex-col-reverse'
-              )}
-            >
-              {/* Settings — hidden for predefined remote providers since
-                  api-key + base-url are both surfaced elsewhere / hidden. */}
-              {!(
-                isPredefinedProvider &&
-                provider?.provider !== 'llamacpp' &&
-                provider?.provider !== 'mlx'
-              ) && (
-              <Card>
-                {provider?.settings.map((setting, settingIndex) => {
-                  if (
-                    setting.key === 'api-key' &&
-                    provider?.provider !== 'llamacpp' &&
-                    provider?.provider !== 'mlx'
-                  ) {
-                    return null
-                  }
-
-                  if (
-                    provider?.provider === 'llamacpp' &&
-                    setting.key === 'fit_ctx'
-                  ) {
-                    return null
-                  }
-
-                  // Use the DynamicController component
-                  const actionComponent = (
-                    <div className="mt-2">
-                      <DynamicControllerSetting
-                          controllerType={setting.controller_type}
-                          controllerProps={setting.controller_props}
-                          className={cn(setting.key === 'device' && 'hidden')}
-                          onChange={(newValue) => {
-                            if (provider) {
-                              const newSettings = [...provider.settings]
-                              // Handle different value types by forcing the type
-                              // Use type assertion to bypass type checking
-
-                              ;(
-                                newSettings[settingIndex].controller_props as {
-                                  value: string | boolean | number
-                                }
-                              ).value = newValue
-
-                              // Create update object with updated settings
-                              const updateObj: Partial<ModelProvider> = {
-                                settings: newSettings,
-                              }
-                              // Check if this is an API key or base URL setting and update the corresponding top-level field
-                              const settingKey = setting.key
-                              if (
-                                settingKey === 'api-key' &&
-                                typeof newValue === 'string'
-                              ) {
-                                updateObj.api_key = newValue
-                              } else if (
-                                settingKey === 'base-url' &&
-                                typeof newValue === 'string'
-                              ) {
-                                updateObj.base_url = newValue
-                              }
-
-                              serviceHub
-                                .providers()
-                                .updateSettings(
-                                  providerName,
-                                  updateObj.settings ?? []
-                                )
-                              updateProvider(providerName, {
-                                ...provider,
-                                ...updateObj,
-                              })
-
-                              serviceHub.models().stopAllModels()
-
-                              // Refresh active models after stopping
-                              serviceHub
-                                .models()
-                                .getActiveModels()
-                                .then((models) => setActiveModels(models || []))
-                            }
-                          }}
-                        />
-                    </div>
-                  )
-
-                  return (
-                    <CardItem
-                      key={settingIndex}
-                      title={setting.title}
-                      className={cn(setting.key === 'device' && 'hidden')}
-                      column={
-                        setting.controller_type === 'input' &&
-                        setting.controller_props.type !== 'number'
-                          ? true
-                          : false
-                      }
-                      description={
-                        <>
-                          <RenderMarkdown
-                            className="![>p]:text-muted-foreground select-none"
-                            content={setting.description}
-                            components={{
-                              // Make links open in a new tab
-                              a: ({ ...props }) => {
-                                return (
-                                  <a
-                                    {...props}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  />
-                                )
-                              },
-                              p: ({ ...props }) => (
-                                <p {...props} className="mb-0!" />
-                              ),
-                            }}
-                          />
-                        </>
-                      }
-                      actions={actionComponent}
-                    />
-                  )
-                })}
-
-                <DeleteProvider provider={provider} />
-              </Card>
-              )}
-
-              {provider &&
-                provider.provider !== 'llamacpp' &&
-                provider.provider !== 'mlx' && (
-                  <Card>
-                    {provider.provider === 'azure' && (
-                      <div className="space-y-2 mb-4">
-                        <div className="space-y-1">
-                          <h2 className="font-medium text-foreground text-base">
-                            {t('providers:baseUrl.title')}
-                          </h2>
-                          <p className="text-sm text-muted-foreground leading-normal">
-                            {t('providers:baseUrl.azureDescription')}
-                          </p>
-                        </div>
-                        <input
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          placeholder="https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1"
-                          value={baseUrlDraft}
-                          onChange={(e) => setBaseUrlDraft(e.target.value)}
-                          onBlur={() => commitBaseUrlDraft()}
-                          spellCheck={false}
-                          autoComplete="off"
-                        />
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <div className="space-y-1">
-                        <h2 className="font-medium text-foreground text-base">
-                          {t('providers:apiKeys.title')}
-                        </h2>
-                        <p className="text-sm text-muted-foreground leading-normal">
-                          {t('providers:apiKeys.description')}
-                        </p>
-                      </div>
-                      {!showAdvancedApiKeys && (
-                        <div className="flex flex-col gap-2">
-                          <SecretInput
-                            className="font-mono"
-                            placeholder={t('providers:apiKeys.primaryPlaceholder')}
-                            value={primaryKeyDraft}
-                            onChange={(e) => setPrimaryKeyDraft(e.target.value)}
-                            onBlur={() => commitApiKeysDraft()}
-                            spellCheck={false}
-                            autoComplete="off"
-                          />
-
-                          <div className="flex items-center justify-between gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setShowAdvancedApiKeys(true)
-                                setKeyCheckResults([])
-                              }}
-                            >
-                              {t('providers:apiKeys.advanced')}
-                            </Button>
-                            <span className="text-xs text-muted-foreground">
-                              {t('providers:apiKeys.oneKeyHint')}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {showAdvancedApiKeys && (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-xs text-muted-foreground">
-                              {t('providers:apiKeys.testHint')}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  commitApiKeysDraft()
-                                  setShowAdvancedApiKeys(false)
-                                  setKeyCheckResults([])
-                                }}
-                              >
-                                {t('providers:apiKeys.hideAdvanced')}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleTestApiKeys}
-                                disabled={isTestingKeys}
-                              >
-                                {isTestingKeys ? (
-                                  <>
-                                    <IconLoader
-                                      size={14}
-                                      className="animate-spin"
-                                    />
-                                    {t('providers:apiKeys.testing')}
-                                  </>
-                                ) : (
-                                  t('providers:apiKeys.test')
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="text-xs text-muted-foreground">
-                            Primary key is <span className="font-medium">#1</span>. Jan
-                            retries the next key only on{' '}
-                            <span className="font-medium">401/403/429</span>.
-                          </div>
-
-                          <div className="space-y-2">
-                            {advancedApiKeyLines.map((keyValue, idx) => {
-                              const keyIndex = idx + 1
-                              const rowResult = keyCheckResults.find(
-                                (r) => r.index === keyIndex
-                              )
-
-                              return (
-                                <div
-                                  key={idx}
-                                  className="grid grid-cols-[2.5rem_1fr_2rem] gap-x-2 gap-y-1 items-center"
-                                >
-                                  <div className="text-right text-xs font-mono text-muted-foreground">
-                                    #{keyIndex}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <SecretInput
-                                      className="font-mono w-full"
-                                      placeholder={t('providers:apiKeys.keyPlaceholder')}
-                                      value={keyValue}
-                                      onChange={(e) => {
-                                        setKeyAtIndex(idx, e.target.value)
-                                      }}
-                                      onBlur={commitApiKeysDraft}
-                                      spellCheck={false}
-                                      autoComplete="off"
-                                    />
-                                  </div>
-
-                                  <div className="flex justify-end">
-                                    {idx !== 0 ? (
-                                      <Button
-                                        size="icon-xs"
-                                        variant="outline"
-                                        onClick={() => {
-                                          setKeyCheckResults([])
-                                          removeKeyLine(idx)
-                                        }}
-                                        title={t('providers:apiKeys.removeKey')}
-                                      >
-                                        -
-                                      </Button>
-                                    ) : (
-                                      <span aria-hidden>&nbsp;</span>
-                                    )}
-                                  </div>
-
-                                  <div aria-hidden />
-                                  <div className="min-w-0">
-                                    {rowResult && (
-                                      <div
-                                        className={cn(
-                                          'text-right text-xs font-medium',
-                                          getStatusClass(rowResult.status)
-                                        )}
-                                        title={rowResult.detail}
-                                      >
-                                        {getStatusLabel(rowResult.status)}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div aria-hidden />
-                                </div>
-                              )
-                            })}
-
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setKeyCheckResults([])
-                                  addKeyLine()
-                                }}
-                              >
-                                + {t('providers:apiKeys.addKey')}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )}
-
-              {/* Models */}
-              <Card
-                header={
-                  <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-foreground font-medium text-base">
-                      {t('providers:models')}
-                    </h1>
-                    <div className="flex items-center gap-2">
-                      {provider && provider.provider !== 'llamacpp' && provider.provider !== 'mlx' && (
-                        <>
-                          <Button
-                            variant="secondary"
-                            size="icon-xs"
-                            onClick={handleRefreshModels}
-                            disabled={refreshingModels}
-                          >
-                            {refreshingModels ? (
-                              <IconLoader
-                                size={18}
-                                className="text-muted-foreground animate-spin"
-                              />
-                            ) : (
-                              <IconRefresh
-                                size={18}
-                                className="text-muted-foreground"
-                              />
-                            )}
-                          </Button>
-                          <DialogAddModel provider={provider} />
-                        </>
-                      )}
-                      {provider &&
-                        (provider.provider === 'llamacpp' ||
-                          provider.provider === 'mlx') && (
-                          <DialogDeleteAllModels provider={provider} />
-                        )}
-                      {provider && provider.provider === 'llamacpp' && (
-                        <ImportLlamacppModelDialog
-                          provider={provider}
-                          onSuccess={handleModelImportSuccess}
-                          trigger={
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                            >
-                              <IconFolderPlus
-                                size={18}
-                                className="text-muted-foreground"
-                              />
-                              <span>
-                                {t('providers:import')}
-                              </span>
-                            </Button>
+              {isLlamacpp && provider && embeddingModels.length > 0 && (
+                <>
+                  {sectionDivider(t('providers:embeddingModels'), 'mt-6 mb-3')}
+                  {renderListHeader()}
+                  <ul className="flex flex-col">
+                  {embeddingModels.map((model, modelIndex) => {
+                    const isDefault = defaultEmbeddingModelId === model.id
+                    return renderModelRow(model, `embedding-${modelIndex}`, {
+                      selected: isDefault,
+                      leading: (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDefaultEmbeddingModel(
+                              'llamacpp',
+                              model.id
+                            )
                           }
-                        />
-                      )}
-                      {provider && provider.provider === 'mlx' && (
-                          <ImportMlxModelDialog
-                            provider={provider}
-                            onSuccess={handleModelImportSuccess}
-                            trigger={
-                              <Button variant="secondary" size="sm">
-                                <IconFolderPlus
-                                  size={18}
-                                  className="text-muted-foreground"
-                                />
-                                <span>{t('providers:import')}</span>
-                              </Button>
-                            }
-                          />
-                        )}
-                    </div>
-                  </div>
-                }
-              >
-                {provider?.models.length ? (
-                  <>
-                  {isLlamacpp && embeddingModels.length > 0 && chatModels.length > 0 && (
-                    <div
-                      role="separator"
-                      aria-label={t('providers:chatModels')}
-                      className="mt-1 mb-3 flex items-center gap-3"
-                    >
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {t('providers:chatModels')}
-                      </span>
-                      <span className="h-0.5 flex-1 rounded-full bg-main-view-fg/15" />
-                    </div>
-                  )}
-                  {(isLlamacpp ? chatModels : allModels).map((model, modelIndex) => {
-                    const capabilities = model.capabilities || []
-                    return (
-                      <CardItem
-                        key={modelIndex}
-                        title={
-                          <div className="flex items-center gap-2">
-                            <h1
-                              className="font-medium line-clamp-1"
-                              title={model.id}
-                            >
-                              {getModelDisplayName(model)}
-                            </h1>
-                            {/* A renamed model still answers to its own
-                                identifier, which is what requests carry. */}
-                            {model.displayName &&
-                              model.displayName !== model.id && (
-                                <span className="shrink-0 truncate text-xs text-muted-foreground">
-                                  {model.id}
-                                </span>
-                              )}
-                            <Capabilities capabilities={capabilities} />
-                            {model.imported && (
-                              <span
-                                className="shrink-0 rounded-sm bg-main-view-fg/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                                title={t('providers:importedTooltip')}
-                              >
-                                {t('providers:imported')}
-                              </span>
-                            )}
-                          </div>
-                        }
-                        actions={
-                          <div className="flex items-center gap-0.5">
-                            <DialogEditModel
-                              provider={provider}
-                              modelId={model.id}
-                            />
-                            {model.settings && provider &&
-                              provider.provider === 'llamacpp' && (
-                              <ModelSetting provider={provider} model={model} />
-                            )}
-                            {((provider &&
-                              !predefinedProviders.some(
-                                (p) => p.provider === provider.provider
-                              )) ||
-                              (provider &&
-                                predefinedProviders.some(
-                                  (p) => p.provider === provider.provider
-                                ) &&
-                                providerHasRemoteApiKeys(provider))) && (
-                              <FavoriteModelAction model={model} />
-                            )}
-                            <DialogDeleteModel
-                              provider={provider}
-                              modelId={model.id}
-                            />
-                            {provider &&
-                              (provider.provider === 'llamacpp' ||
-                                provider.provider === 'mlx') && (
-                                <div className="ml-2">
-                                  {activeModels.some(
-                                    (activeModel) => activeModel === model.id
-                                  ) ? (
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => handleStopModel(model.id)}
-                                    >
-                                      {t('providers:stop')}
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      disabled={loadingModels.includes(
-                                        model.id
-                                      )}
-                                      onClick={() => handleStartModel(model.id)}
-                                    >
-                                      {loadingModels.includes(model.id) ? (
-                                        <div className="flex items-center gap-2">
-                                          <IconLoader
-                                            size={16}
-                                            className="animate-spin"
-                                          />
-                                        </div>
-                                      ) : (
-                                        t('providers:start')
-                                      )}
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                          </div>
-                        }
-                      />
-                    )
-                  })}
-                  </>
-                ) : (
-                  <div className="-mt-2">
-                    <div className="flex items-center gap-2">
-                      <h6 className="font-medium text-base">
-                        {t('providers:noModelFound')}
-                      </h6>
-                    </div>
-                    <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                      {provider && !isLocalProvider(provider.provider) ? (
-                        t('providers:noModelFoundRemoteDesc')
-                      ) : (
-                        <>
-                          {t('providers:noModelFoundDesc')}
-                          &nbsp;
-                          <Link to={route.hub.index}>{t('common:hub')}</Link>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                )}
-                {/* Show importing skeleton first if there's one */}
-                {importingModel && (
-                  <CardItem
-                    key="importing-skeleton"
-                    title={
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 animate-pulse">
-                          <div className="flex gap-2 px-2 py-1 rounded-full text-xs">
-                            <IconLoader
-                              size={16}
-                              className="animate-spin"
-                            />
-                            Importing...
-                          </div>
-                          <h1 className="font-medium line-clamp-1">
-                            {importingModel}
-                          </h1>
-                        </div>
-                      </div>
-                    }
-                  />
-                )}
-
-                {isLlamacpp && provider && embeddingModels.length > 0 && (
-                  <>
-                    <div
-                      role="separator"
-                      aria-label={t('providers:embeddingModels')}
-                      className="mt-5 mb-3 flex items-center gap-3"
-                    >
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {t('providers:embeddingModels')}
-                      </span>
-                      <span className="h-0.5 flex-1 rounded-full bg-main-view-fg/15" />
-                    </div>
-                    {embeddingModels.map((model, modelIndex) => {
-                      const isDefault = defaultEmbeddingModelId === model.id
-                      return (
-                        <CardItem
-                          key={`embedding-${modelIndex}`}
+                          aria-label={
+                            isDefault
+                              ? t('providers:embeddingModelIsDefault')
+                              : t('providers:embeddingModelSetDefault')
+                          }
+                          aria-pressed={isDefault}
                           title={
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDefaultEmbeddingModel(
-                                    'llamacpp',
-                                    model.id
-                                  )
-                                }
-                                aria-label={
-                                  isDefault
-                                    ? t('providers:embeddingModelIsDefault')
-                                    : t('providers:embeddingModelSetDefault')
-                                }
-                                title={
-                                  isDefault
-                                    ? t('providers:embeddingModelIsDefault')
-                                    : t('providers:embeddingModelSetDefault')
-                                }
-                                className="size-6 flex items-center justify-center rounded transition-all hover:bg-main-view-fg/8"
-                              >
-                                {isDefault ? (
-                                  <IconCircleCheck
-                                    size={18}
-                                    className="text-muted-foreground"
-                                  />
-                                ) : (
-                                  <IconCircle
-                                    size={18}
-                                    className="text-muted-foreground"
-                                  />
-                                )}
-                              </button>
-                              <h1
-                                className="font-medium line-clamp-1"
-                                title={model.id}
-                              >
-                                {getModelDisplayName(model)}
-                              </h1>
-                              {model.displayName &&
-                                model.displayName !== model.id && (
-                                  <span className="shrink-0 truncate text-xs text-muted-foreground">
-                                    {model.id}
-                                  </span>
-                                )}
-                              <Capabilities
-                                capabilities={model.capabilities || []}
-                              />
-                              {isDefault && (
-                                <span className="shrink-0 rounded-sm bg-main-view-fg/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                                  {t('providers:embeddingModelDefault')}
-                                </span>
-                              )}
-                              {model.imported && (
-                                <span
-                                  className="shrink-0 rounded-sm bg-main-view-fg/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                                  title={t('providers:importedTooltip')}
-                                >
-                                  {t('providers:imported')}
-                                </span>
-                              )}
-                            </div>
+                            isDefault
+                              ? t('providers:embeddingModelIsDefault')
+                              : t('providers:embeddingModelSetDefault')
                           }
-                          actions={
-                            <div className="flex items-center gap-0.5">
-                              <DialogEditModel
-                                provider={provider}
-                                modelId={model.id}
-                              />
-                              {model.settings && (
-                                <ModelSetting
-                                  provider={provider}
-                                  model={model}
-                                />
-                              )}
-                              <DialogDeleteModel
-                                provider={provider}
-                                modelId={model.id}
-                              />
-                            </div>
-                          }
-                        />
-                      )
-                    })}
-                  </>
-                )}
-              </Card>
+                          className="grid size-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                        >
+                          {isDefault ? (
+                            <CircleCheck
+                              className="size-4.5 text-brand-text"
+                              aria-hidden
+                            />
+                          ) : (
+                            <Circle
+                              className="size-4.5 text-muted-foreground"
+                              aria-hidden
+                            />
+                          )}
+                        </button>
+                      ),
+                      badges: isDefault && (
+                        <span className="shrink-0 rounded-sm bg-brand-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+                          {t('providers:embeddingModelDefault')}
+                        </span>
+                      ),
+                      actions: (
+                        <>
+                          {model.settings && (
+                            <ModelSetting
+                              provider={provider}
+                              model={model}
+                            />
+                          )}
+                          <DialogEditModel
+                            provider={provider}
+                            modelId={model.id}
+                          />
+                          <DialogDeleteModel
+                            provider={provider}
+                            modelId={model.id}
+                          />
+                        </>
+                      ),
+                    })
+                  })}
+                  </ul>
+                </>
+              )}
             </div>
-          </div>
+          </Card>
         </div>
-      </div>
+      </SettingsPageBody>
     </div>
   )
 }

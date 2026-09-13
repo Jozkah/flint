@@ -4,11 +4,12 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card'
 import {
-  IconAlertTriangle,
-  IconCheck,
-  IconDeviceDesktopQuestion,
-  IconX,
-} from '@tabler/icons-react'
+  Check,
+  CircleHelp,
+  TriangleAlert,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { CatalogModel, ModelQuant } from '@/services/models/types'
 import { selectDefaultQuant, extractQuantLabel } from '@/lib/models'
 import { useHardware } from '@/hooks/useHardware'
@@ -30,7 +31,7 @@ interface ModelInfoHoverCardProps {
 }
 
 type TriggerStyle = {
-  icon: typeof IconCheck
+  icon: LucideIcon
   label: string
   detail: string
   pill: string
@@ -39,32 +40,32 @@ type TriggerStyle = {
 
 const TRIGGER_STYLES: Record<FitTier, TriggerStyle> = {
   green: {
-    icon: IconCheck,
+    icon: Check,
     label: 'Fits',
     detail: 'Should run comfortably on your device',
-    pill: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    dot: 'bg-emerald-500',
+    pill: 'bg-success-tint text-success',
+    dot: 'bg-success',
   },
   yellow: {
-    icon: IconAlertTriangle,
+    icon: TriangleAlert,
     label: 'May be slow',
     detail: 'Will run but leaves little memory headroom',
-    pill: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
-    dot: 'bg-amber-500',
+    pill: 'bg-warning-tint text-warning',
+    dot: 'bg-warning',
   },
   red: {
-    icon: IconX,
+    icon: X,
     label: "Won't fit",
     detail: 'Likely exceeds your available memory',
-    pill: 'bg-red-500/10 text-red-600 dark:text-red-400',
-    dot: 'bg-red-500',
+    pill: 'bg-destructive-tint text-destructive',
+    dot: 'bg-destructive',
   },
   unknown: {
-    icon: IconDeviceDesktopQuestion,
+    icon: CircleHelp,
     label: 'Fit unknown',
     detail: 'Could not estimate memory requirements',
-    pill: 'bg-secondary text-muted-foreground',
-    dot: 'bg-neutral-400',
+    pill: 'bg-sunken text-ink-2',
+    dot: 'bg-muted-foreground/60',
   },
 }
 
@@ -110,9 +111,9 @@ export const ModelInfoHoverCard = ({
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
-      <HoverCardContent className="w-80 p-4" side="left">
+      <HoverCardContent className="w-80 max-w-[calc(100vw-1.5rem)] bg-card p-4" side="left">
         <div className="space-y-4">
-          <div className="border-b pb-3">
+          <div className="border-b border-border pb-3">
             <h4 className="text-sm font-semibold">
               {!isDefaultVariant ? variant?.model_id : model?.model_name}
             </h4>
@@ -159,7 +160,7 @@ export const ModelInfoHoverCard = ({
           </div>
 
           {((model.num_mmproj ?? 0) > 0 || model.tools) && (
-            <div className="border-t pt-3">
+            <div className="border-t border-border pt-3">
               <h5 className="text-xs font-medium text-muted-foreground mb-2">
                 Features
               </h5>

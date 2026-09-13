@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
+import { errorText } from '@/lib/errorText'
 
 /**
  * The Jan-owned worktrees this renderer knows about.
@@ -92,8 +93,8 @@ type WorktreesState = {
   forget: (sessionId: string) => void
 }
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
   bySession: {},

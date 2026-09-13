@@ -18,15 +18,36 @@ export type HubSkill = { name: string; description: string }
 // case — it just makes "none" representable, unlike a bare [] (which means all).
 export const SKILLS_NONE = ''
 
+/**
+ * Does one whitelist entry enable the skill named `skillName`?
+ *
+ * Mirrors `entry_enabled` in the agent-tools crate, which is what actually
+ * decides what the agent is offered: an entry matches the full name, and for
+ * a plugin skill (`<plugin>:<skill>`) also its plain skill name or the plugin
+ * id alone (which enables every skill that plugin ships).
+ */
+export function whitelistMatches(entry: string, skillName: string): boolean {
+  if (entry === SKILLS_NONE) return false
+  if (entry === skillName) return true
+  const colon = skillName.indexOf(':')
+  if (colon < 0) return false
+  return (
+    entry === skillName.slice(0, colon) || entry === skillName.slice(colon + 1)
+  )
+}
+
 /** Resolve the stored whitelist to the set of skills actually enabled. */
 export function effectiveEnabled(
   enabled: string[],
   allNames: string[]
 ): Set<string> {
   if (enabled.length === 0) return new Set(allNames)
-  // Drop the sentinel and any stale names (e.g. a since-deleted skill).
+  // Stale entries (a since-deleted skill, a removed plugin) and the sentinel
+  // match nothing, so they drop out here.
   return new Set(
-    enabled.filter((n) => n !== SKILLS_NONE && allNames.includes(n))
+    allNames.filter((name) =>
+      enabled.some((entry) => whitelistMatches(entry, name))
+    )
   )
 }
 
@@ -43,6 +64,17 @@ const useSkillsVersion = create<{ v: number; bump: () => void }>((set) => ({
   v: 0,
   bump: () => set((s) => ({ v: s.v + 1 })),
 }))
+
+/**
+ * Make every mounted `useSkills` re-fetch.
+ *
+ * For changes made outside the skill CRUD itself -- installing, enabling,
+ * disabling or removing a plugin changes which plugin skills exist -- so the
+ * selector and the manager never show a list the backend no longer offers.
+ */
+export function invalidateSkills(): void {
+  useSkillsVersion.getState().bump()
+}
 
 /**
  * CRUD over the agent's per-project skills (`<folder>/.jan/agent/skills/*.md`).

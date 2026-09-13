@@ -1,5 +1,4 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { shapingNotice } from '@/lib/coworkContext'
 import {
   CONTEXT_CATEGORIES,
   accountedTotal,
@@ -7,6 +6,7 @@ import {
   type ContextCategory,
   type Measured,
 } from '@/lib/coworkReadiness'
+import { formatContextUsage } from '@/lib/modelCapabilities'
 
 /**
  * Where the context went, category by category.
@@ -44,23 +44,12 @@ function value(
 
 export function CoworkContextBreakdown({
   context,
-  repositoryMapNotice,
 }: {
   context: ContextAccounting
-  /**
-   * Why the repository-map row is zero, when it is zero because something
-   * failed rather than because the tree is empty.
-   *
-   * A zero on its own is honest but not actionable — "nothing sent" reads the
-   * same whether the repository is empty or the walk was refused. This is the
-   * difference, and it is only ever shown when there is one.
-   */
-  repositoryMapNotice?: string | null
 }) {
   const { t } = useTranslation()
   const total = accountedTotal(context)
   const budget = context.budget
-  const shaping = shapingNotice(context.shaping)
 
   // Only meaningful when both halves are known. A "remaining" computed against
   // an unknown window would be an invented reassurance, and computed from an
@@ -70,18 +59,22 @@ export function CoworkContextBreakdown({
       ? { used: total.tokens, window: budget.tokens }
       : null
 
+  // Collapsed by default. This is reference material for the moment someone
+  // asks "what did the model actually get"; it sat open above the composer on
+  // every single message, pushing the conversation up the screen.
   return (
-    <section
+    <details
+      className="group rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
     >
-      <h3 className="mb-1 text-main-view-fg/50">
+      <summary className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
         {t('common:readiness.contextBreakdown')}
-      </h3>
+      </summary>
+      <div className="mt-1">
       <dl className="grid gap-1">
         {CONTEXT_CATEGORIES.map((category) => (
           <div key={category} className="flex items-baseline gap-2">
-            <dt className="shrink-0 text-main-view-fg/50">
+            <dt className="shrink-0 text-muted-foreground">
               {t(categoryLabelKey(category))}
             </dt>
             <dd className="min-w-0 truncate">
@@ -90,7 +83,7 @@ export function CoworkContextBreakdown({
           </div>
         ))}
         <div className="flex items-baseline gap-2">
-          <dt className="shrink-0 text-main-view-fg/50">
+          <dt className="shrink-0 text-muted-foreground">
             {t('common:readiness.budgetLabel')}
           </dt>
           <dd className="min-w-0 truncate">
@@ -100,31 +93,14 @@ export function CoworkContextBreakdown({
                 ? t('common:readiness.budgetOver', {
                     over: usage.used - usage.window,
                   })
-                : t('common:readiness.budgetRemaining', {
-                    used: usage.used,
-                    total: usage.window,
-                  })}
+                : // "3,367 / 32,768 tokens": both numbers, grouped, so the
+                  // headroom is read rather than worked out.
+                  (formatContextUsage(usage.used, usage.window) ??
+                  t('common:readiness.budgetUnknown'))}
           </dd>
         </div>
-        <div className="flex items-baseline gap-2">
-          <dt className="shrink-0 text-main-view-fg/50">
-            {t('common:readiness.shapingLabel')}
-          </dt>
-          {/* What the context manager did on the way out. Shown for every
-              state, `unchanged` included: "the whole conversation was sent" is
-              the reassurance the rest of this panel is measured against, and a
-              row that only appears when something went wrong leaves the reader
-              unable to tell "nothing was dropped" from "nobody checked". */}
-          <dd className="min-w-0 truncate">{t(shaping.key, shaping.params)}</dd>
-        </div>
       </dl>
-      {repositoryMapNotice ? (
-        <p role="status" className="mt-1 text-main-view-fg/70">
-          {t('common:readiness.repositoryMapFailed', {
-            reason: repositoryMapNotice,
-          })}
-        </p>
-      ) : null}
-    </section>
+      </div>
+    </details>
   )
 }

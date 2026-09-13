@@ -10,17 +10,22 @@ import {
 import { useTokensCount, type TokenUsageSource } from '@/hooks/useTokensCount'
 import { ThreadMessage } from '@janhq/core'
 import {
-  IconBrain,
-  IconArrowUp,
-  IconArrowDown,
-  IconSum,
-  IconRulerMeasure,
-  IconStack2,
-  IconPhoto,
-  IconMicrophone,
-  IconMoon,
-  IconAdjustmentsAlt,
-} from '@tabler/icons-react'
+  finalizeTokenUsage,
+  readTokenUsage,
+  summarizeUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
+import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import {
+  Brain,
+  Sigma,
+  Ruler,
+  Layers2,
+  Image,
+  Mic,
+  Moon,
+  Sliders,
+} from 'lucide-react'
 
 interface TokenCounterProps {
   messages?: ThreadMessage[]
@@ -44,6 +49,22 @@ export const TokenCounter = memo(function TokenCounter({
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
+  // Which conversation these numbers belong to, stamped on the badge and its
+  // popover so nothing -- a test, a screen reader, a stale portal left over
+  // from the previous session -- can mistake one session's usage for another's.
+  const scope = source?.threadId ?? messages[0]?.thread_id
+  // Every request of this conversation, added up: a surface that keeps its
+  // own turns hands them in; a chat thread's messages each carry theirs.
+  const sessionUsage = useMemo(
+    () =>
+      source?.session ??
+      summarizeUsage(
+        messages.map((m) =>
+          readTokenUsage((m.metadata as { usage?: unknown } | undefined)?.usage)
+        )
+      ),
+    [source?.session, messages]
+  )
 
   const [isAnimating, setIsAnimating] = useState(false)
   const [prevTokenCount, setPrevTokenCount] = useState(0)
@@ -88,6 +109,24 @@ export const TokenCounter = memo(function TokenCounter({
     return (totalTokens / tokenData.maxTokens) * 100
   }, [totalTokens, tokenData.maxTokens])
 
+  // What the popover itemises. A caller that reported no breakdown still has
+  // its input/output/total, which is all the older counter showed.
+  const breakdown: TokenUsage = useMemo(
+    () =>
+      tokenData.usage ??
+      finalizeTokenUsage({
+        inputTokens: tokenData.inputTokens,
+        outputTokens: tokenData.outputTokens,
+        totalTokens: tokenData.tokenCount > 0 ? tokenData.tokenCount : undefined,
+      }),
+    [
+      tokenData.usage,
+      tokenData.inputTokens,
+      tokenData.outputTokens,
+      tokenData.tokenCount,
+    ]
+  )
+
   const tier: 'ok' | 'warn' | 'over' = useMemo(() => {
     if (pct === undefined) return 'ok'
     if (pct >= OVER_PCT) return 'over'
@@ -102,8 +141,9 @@ export const TokenCounter = memo(function TokenCounter({
     return (
       <TokenCountOnly
         totalTokens={totalTokens}
-        inputTokens={tokenData.inputTokens}
-        outputTokens={tokenData.outputTokens}
+        usage={breakdown}
+        sessionUsage={sessionUsage}
+        scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         className={className}
       />
@@ -129,7 +169,7 @@ export const TokenCounter = memo(function TokenCounter({
         ? 'bg-amber-500'
         : 'bg-primary'
 
-  const { inputTokens, outputTokens, modelProps, modelDisplayName } = tokenData
+  const { modelProps, modelDisplayName } = tokenData
   const remaining = Math.max(0, tokenData.maxTokens - totalTokens)
   const showFittedBadge =
     tokenData.fitEnabled &&
@@ -147,7 +187,11 @@ export const TokenCounter = memo(function TokenCounter({
     <TooltipProvider delayDuration={isUpdating ? 1200 : 400}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div
+          <button
+            type="button"
+            aria-label="Token usage"
+            data-testid="token-counter"
+            data-usage-scope={scope}
             className={cn('relative cursor-pointer', className)}
             onClick={handleCalculateTokens}
           >
@@ -192,8 +236,19 @@ export const TokenCounter = memo(function TokenCounter({
                   />
                 </svg>
               </div>
+              {tier !== 'ok' && (
+                // AH-077: said in words, not only by colour, and announced.
+                <span
+                  role="status"
+                  data-testid="context-pressure"
+                  data-tier={tier}
+                  className={cn('text-[11px] font-medium', textCls)}
+                >
+                  {tier === 'over' ? 'Full' : 'Nearly full'}
+                </span>
+              )}
             </div>
-          </div>
+          </button>
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
@@ -201,10 +256,11 @@ export const TokenCounter = memo(function TokenCounter({
           sideOffset={6}
           showArrow={false}
           className="min-w-72 max-w-80 bg-background border p-0 overflow-hidden"
+          data-testid="token-usage-popover"
         >
           {/* Header */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-            <IconBrain className="size-4 text-muted-foreground shrink-0" />
+            <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
                 Context window
@@ -216,7 +272,7 @@ export const TokenCounter = memo(function TokenCounter({
               )}
             </div>
             {modelProps?.isSleeping && (
-              <IconMoon
+              <Moon
                 className="size-3.5 text-muted-foreground"
                 aria-label="Model sleeping"
               />
@@ -225,6 +281,24 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Progress block */}
           <div className="px-3 py-2.5">
+            {tier !== 'ok' && (
+              <p
+                data-testid="context-pressure-detail"
+                className={cn('mb-2 text-[11px] leading-snug', textCls)}
+              >
+                {tier === 'over'
+                  ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
+                  : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                {/* AH-077: an estimate that reads like a measurement is worse
+                    than no number, so the figures say where they came from. */}
+                <span className="block" data-testid="context-pressure-source">
+                  {formatExact(totalTokens)} of {formatExact(tokenData.maxTokens)} tokens,{' '}
+                  {breakdown.reported
+                    ? 'counted by the provider'
+                    : "Jan's estimate"}
+                </span>
+              </p>
+            )}
             <div className="flex items-baseline justify-between mb-1.5">
               <span
                 className={cn(
@@ -257,32 +331,15 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Token breakdown */}
           <div className="px-3 py-2 border-t border-border space-y-1.5">
-            {typeof inputTokens === 'number' && inputTokens > 0 && (
-              <Row
-                icon={<IconArrowUp className="size-3.5" />}
-                label="Prompt"
-                value={formatExact(inputTokens)}
-              />
-            )}
-            {typeof outputTokens === 'number' && outputTokens > 0 && (
-              <Row
-                icon={<IconArrowDown className="size-3.5" />}
-                label="Completion"
-                value={formatExact(outputTokens)}
-              />
-            )}
+            <TokenUsageBreakdown usage={breakdown} scope={scope} />
             <Row
-              icon={<IconSum className="size-3.5" />}
-              label="Used"
-              value={formatExact(totalTokens)}
-              strong
-            />
-            <Row
-              icon={<IconRulerMeasure className="size-3.5" />}
+              icon={<Ruler className="size-3.5" />}
               label="Remaining"
               value={formatExact(remaining)}
             />
           </div>
+
+          <SessionUsageSection usage={sessionUsage} scope={scope} />
 
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
@@ -292,14 +349,14 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title={`Configured ctx_len: ${formatExact(tokenData.configuredCtxLen!)}`}
                 >
-                  <IconAdjustmentsAlt className="size-3" />
+                  <Sliders className="size-3" />
                   Fitted to {formatTokenCount(tokenData.maxTokens)}
                 </span>
               )}
               {modelProps?.totalSlots !== undefined &&
                 modelProps.totalSlots > 1 && (
                   <span className="flex items-center gap-1">
-                    <IconStack2 className="size-3" />
+                    <Layers2 className="size-3" />
                     {modelProps.totalSlots} slots
                   </span>
                 )}
@@ -308,7 +365,7 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title="Vision input supported"
                 >
-                  <IconPhoto className="size-3" />
+                  <Image className="size-3" />
                   Vision
                 </span>
               )}
@@ -317,7 +374,7 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title="Audio input supported"
                 >
-                  <IconMicrophone className="size-3" />
+                  <Mic className="size-3" />
                   Audio
                 </span>
               )}
@@ -331,14 +388,16 @@ export const TokenCounter = memo(function TokenCounter({
 
 function TokenCountOnly({
   totalTokens,
-  inputTokens,
-  outputTokens,
+  usage,
+  sessionUsage,
+  scope,
   modelDisplayName,
   className,
 }: {
   totalTokens: number
-  inputTokens?: number
-  outputTokens?: number
+  usage: TokenUsage
+  sessionUsage?: TokenUsage
+  scope?: string
   modelDisplayName?: string
   className?: string
 }) {
@@ -346,24 +405,31 @@ function TokenCountOnly({
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={cn('relative cursor-default', className)}>
+          <button
+            type="button"
+            aria-label="Token usage"
+            data-testid="token-counter"
+            data-usage-scope={scope}
+            className={cn('relative cursor-default', className)}
+          >
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border">
-              <IconSum className="size-3.5 text-muted-foreground shrink-0" />
+              <Sigma className="size-3.5 text-muted-foreground shrink-0" />
               <span className="text-xs font-medium tabular-nums text-foreground">
                 {formatTokenCount(totalTokens)}
               </span>
             </div>
-          </div>
+          </button>
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="min-w-56 max-w-72 bg-background border p-0 overflow-hidden"
+          className="min-w-64 max-w-80 bg-background border p-0 overflow-hidden"
+          data-testid="token-usage-popover"
         >
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-            <IconBrain className="size-4 text-muted-foreground shrink-0" />
+            <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
                 Token usage
@@ -375,28 +441,10 @@ function TokenCountOnly({
               )}
             </div>
           </div>
-          <div className="px-3 py-2 space-y-1.5">
-            {typeof inputTokens === 'number' && inputTokens > 0 && (
-              <Row
-                icon={<IconArrowUp className="size-3.5" />}
-                label="Prompt"
-                value={formatExact(inputTokens)}
-              />
-            )}
-            {typeof outputTokens === 'number' && outputTokens > 0 && (
-              <Row
-                icon={<IconArrowDown className="size-3.5" />}
-                label="Completion"
-                value={formatExact(outputTokens)}
-              />
-            )}
-            <Row
-              icon={<IconSum className="size-3.5" />}
-              label="Used"
-              value={formatExact(totalTokens)}
-              strong
-            />
+          <div className="px-3 py-2">
+            <TokenUsageBreakdown usage={usage} scope={scope} />
           </div>
+          <SessionUsageSection usage={sessionUsage} scope={scope} />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -428,6 +476,35 @@ function Row({
       >
         {value}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Every request of this conversation, added up: how many requests there were
+ * and how many reused the provider's cache, apart from the token totals.
+ */
+function SessionUsageSection({
+  usage,
+  scope,
+}: {
+  usage?: TokenUsage
+  scope?: string
+}) {
+  if (!usage || (usage.requests ?? 0) <= 0) return null
+  return (
+    <div
+      className="px-3 py-2 border-t border-border space-y-1"
+      data-testid="session-usage"
+      data-usage-scope={scope}
+      data-requests={usage.requests}
+      data-cache-hit-requests={usage.cacheHitRequests}
+    >
+      <div className="text-[11px] font-medium text-foreground">
+        This conversation ({usage.requests}{' '}
+        {usage.requests === 1 ? 'request' : 'requests'})
+      </div>
+      <TokenUsageBreakdown usage={usage} scope={scope} testIdPrefix="session-token-usage" />
     </div>
   )
 }

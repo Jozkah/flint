@@ -58,8 +58,7 @@ pub(crate) async fn discover_models(
     credential: &str,
     oauth: bool,
 ) -> Result<Vec<String>, LoginError> {
-    let client = reqwest::Client::builder()
-        .timeout(VERIFY_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| LoginError::Unavailable(format!("could not build an HTTP client: {e}")))?;
     let url = format!(
@@ -138,8 +137,7 @@ pub(crate) async fn discover_codex_models(
     } else {
         base_url
     };
-    let client = reqwest::Client::builder()
-        .timeout(VERIFY_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| LoginError::Unavailable(format!("could not build an HTTP client: {e}")))?;
 
@@ -346,30 +344,36 @@ mod tests {
     use super::*;
     use crate::core::agent::global_config::{load_global_config, with_temp_home};
     use crate::core::cli::auth::provider_by_id;
-    use crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK;
+    use crate::core::server::provider_secrets::TEST_ENV_LOCK;
     use serde_json::json;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::MutexGuard;
+    use crate::core::server::provider_secrets::TestEnvGuard;
 
     struct TempSecrets {
-        _guard: MutexGuard<'static, ()>,
+        _guard: TestEnvGuard,
         prev_data_folder: Option<String>,
+        prev_home: Option<std::ffi::OsString>,
         _dir: tempfile::TempDir,
     }
 
     impl TempSecrets {
         fn new() -> Self {
-            let guard = SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());
+            // These tests persist a secret *and* non-secret config, and the
+            // non-secret half lands in `~/.jan`. Pin that to the same scratch
+            // tree, or the test reads back whatever home another test happened
+            // to leave configured.
+            let prev_home = std::env::var_os(crate::core::app::commands::JAN_HOME_ENV);
+            std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, dir.path());
             crate::core::server::provider_secrets::force_file_secrets();
             Self {
                 _guard: guard,
                 prev_data_folder,
+                prev_home,
                 _dir: dir,
             }
         }
@@ -380,6 +384,10 @@ mod tests {
             match &self.prev_data_folder {
                 Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
                 None => std::env::remove_var("JAN_DATA_FOLDER"),
+            }
+            match &self.prev_home {
+                Some(v) => std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, v),
+                None => std::env::remove_var(crate::core::app::commands::JAN_HOME_ENV),
             }
         }
     }

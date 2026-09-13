@@ -209,4 +209,13 @@ describe('switching compatibility on', () => {
       })
     ).toBeInTheDocument()
   })
+
+  it('opens closed, so configuration does not fill the conversation column', () => {
+    show()
+    const disclosure = screen
+      .getByTestId('cowork-compat')
+      .querySelector('details')
+    expect(disclosure).not.toBeNull()
+    expect(disclosure).not.toHaveAttribute('open')
+  })
 })

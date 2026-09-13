@@ -181,7 +181,7 @@ describe('settling a shell command', () => {
       output:
         'Command exceeded 120s and is continuing in the background (job_id=bash-3).',
     })
-    recordJobCollected('bash-3', { output: 'built in 9m' })
+    recordJobCollected(run.sessionId, 'bash-3', { output: 'built in 9m' })
     expect(store().tasks[idOf('call-1')]).toMatchObject({
       status: 'done',
       output: 'built in 9m',
@@ -200,7 +200,9 @@ describe('settling a shell command', () => {
 
   it('ignores a collection for a job nothing here started', () => {
     expect(() =>
-      recordJobCollected('bash-999', { output: 'from another session' })
+      recordJobCollected(run.sessionId, 'bash-999', {
+        output: 'from another session',
+      })
     ).not.toThrow()
     expect(store().tasks[idOf('call-1')].status).toBe('running')
   })
@@ -292,7 +294,7 @@ describe('two runs reusing one provider call id', () => {
         'Command exceeded 120s and is continuing in the background (job_id=bash-9).',
     })
 
-    recordJobCollected('bash-9', { output: 'tests passed' })
+    recordJobCollected(other.sessionId, 'bash-9', { output: 'tests passed' })
 
     expect(
       store().tasks[idOf('call-1', other.runId, other.sessionId)]

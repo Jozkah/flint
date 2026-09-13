@@ -336,12 +336,22 @@ describe('generatePreset n-gpu-layers under fit', () => {
     expect(ini).toContain('n-gpu-layers = 33')
   })
 
-  it('omits per-model n-gpu-layers when auto-fit is enabled', async () => {
+  // janhq/jan#8894: fit defaults to on, so gating the override on `fit: false`
+  // meant a user who set GPU Layers got no `-ngl` in the launch args at all and
+  // kept running on CPU.
+  it('emits per-model n-gpu-layers even when auto-fit is enabled', async () => {
     setupModel('llama', { n_gpu_layers: 33 })
     await generatePreset('/p', '/jan', { fit: true } as any, {
     })
     const ini = writtenFiles['/p/router.preset.ini']
-    expect(ini).not.toContain('n-gpu-layers')
+    expect(ini).toContain('n-gpu-layers = 33')
+  })
+
+  it('emits nothing for a model the user never set GPU Layers on', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { fit: true } as any, {
+    })
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('n-gpu-layers')
   })
 })
 

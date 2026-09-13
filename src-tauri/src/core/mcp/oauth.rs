@@ -13,22 +13,37 @@
 //! Absolute expiry is not redundant. `rmcp`'s `get_access_token` tests
 //! `expires_in()`, which is the *original* lifetime from the token response and
 //! never decreases, so its automatic refresh never fires. `StoredCredentials`
-//! stamps `expires_at` at exchange time and `authorized_client` refreshes
-//! against the clock instead.
+//! stamps `expires_at` at exchange time; `authorized_client` refreshes against
+//! the clock when it connects, and a refresher refreshes a live connection's
+//! token ahead of its expiry for as long as that connection exists (AH-134).
+//!
+//! Tokens live in the OS secret store (`provider_secrets`: the keyring, or its
+//! encrypted file when the keyring is unavailable), keyed by data folder and
+//! server name. Earlier builds kept them in plaintext in `mcp_oauth.json`; a
+//! record found there is moved into the store the first time it is read.
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rmcp::transport::auth::{AuthClient, OAuthState, OAuthTokenResponse};
+use rmcp::transport::auth::{AuthClient, AuthorizationManager, OAuthState, OAuthTokenResponse};
+use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+use crate::core::server::provider_secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Credential store, next to `mcp_config.json` but deliberately not inside it:
-/// the config is hand-edited, copied between machines and shared with the
-/// desktop, and bearer tokens have no business travelling with it.
+/// Where earlier builds kept tokens, in plaintext, next to `mcp_config.json`.
+/// Read only to migrate: a record found here is moved into the secret store and
+/// removed, and the file is deleted once it holds nothing.
 const STORE_FILE: &str = "mcp_oauth.json";
+
+/// How often a waiting refresher checks that its connection still exists, so a
+/// dropped connection's refresher ends within this long rather than sleeping
+/// until the token's expiry.
+const REFRESH_POLL: Duration = Duration::from_secs(2);
 
 /// How long the loopback listener waits for the browser redirect before giving
 /// up, so an abandoned sign-in cannot pin a port for the rest of the session.
@@ -66,6 +81,15 @@ pub struct StoredCredentials {
     /// The MCP url these tokens were issued for. Editing a server's url points
     /// it at a different resource, so credentials for the old one are stale.
     pub resource: String,
+    /// The scopes the consent request asked for (AH-135): the server's
+    /// declared `oauth.scopes` at the time. Empty for tokens from before scopes
+    /// were declared, which is also what "none declared" means.
+    #[serde(default)]
+    pub requested_scopes: Vec<String>,
+    /// The scopes the provider granted. Never wider than `requested_scopes`:
+    /// a grant that is wider is refused before it is stored.
+    #[serde(default)]
+    pub granted_scopes: Vec<String>,
 }
 
 impl StoredCredentials {
@@ -76,7 +100,15 @@ impl StoredCredentials {
             tokens,
             expires_at,
             resource,
+            requested_scopes: Vec::new(),
+            granted_scopes: Vec::new(),
         }
+    }
+
+    fn with_scopes(mut self, requested: Vec<String>, granted: Vec<String>) -> Self {
+        self.requested_scopes = requested;
+        self.granted_scopes = granted;
+        self
     }
 
     /// Whether the access token is past `expires_at` (minus the refresh skew).
@@ -106,6 +138,133 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Tokens from a refresh, keeping the refresh token they replaced when the
+/// provider did not send a new one. RFC 6749 section 6 lets a provider keep the
+/// refresh token it issued; dropping it would make the next refresh impossible
+/// and send the user back through the browser for no reason. `true` when the
+/// previous one was carried over.
+fn keep_refresh_token(mut tokens: OAuthTokenResponse, previous: &OAuthTokenResponse) -> (OAuthTokenResponse, bool) {
+    use oauth2::TokenResponse;
+    if tokens.refresh_token().is_none() {
+        if let Some(old) = previous.refresh_token() {
+            tokens.set_refresh_token(Some(old.clone()));
+            return (tokens, true);
+        }
+    }
+    (tokens, false)
+}
+
+/// An authorization manager holding `tokens`, discovered against `url`.
+/// The scopes a server's configuration declares for OAuth (AH-135):
+/// `"oauth": { "scopes": ["read", "write"] }` in its `mcp_config.json` entry.
+///
+/// These are what a consent request asks for and the most a stored token may
+/// carry. Sorted and de-duplicated, so two spellings of the same list compare
+/// equal. Refused, by kind, when the entry cannot be read as a list of RFC 6749
+/// scope tokens, or names an `oauth` setting Jan does not read -- a typo there
+/// must not quietly mean "no scopes".
+pub fn declared_scopes(config: &Value) -> Result<Vec<String>, HarnessError> {
+    let refuse = |message: String| HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup);
+    let Some(oauth) = config.get("oauth") else {
+        return Ok(Vec::new());
+    };
+    let settings = oauth
+        .as_object()
+        .ok_or_else(|| refuse("'oauth' must be an object such as {\"scopes\": [\"read\"]}".to_string()))?;
+    if let Some(unknown) = settings.keys().find(|k| k.as_str() != "scopes") {
+        return Err(refuse(format!("'oauth.{unknown}' is not a setting Jan reads (only 'scopes' is)")));
+    }
+    let Some(list) = settings.get("scopes") else {
+        return Ok(Vec::new());
+    };
+    let items = list
+        .as_array()
+        .ok_or_else(|| refuse("'oauth.scopes' must be a list of strings".to_string()))?;
+    let mut scopes = Vec::with_capacity(items.len());
+    for item in items {
+        let scope = item
+            .as_str()
+            .ok_or_else(|| refuse("'oauth.scopes' must be a list of strings".to_string()))?;
+        if !is_scope_token(scope) {
+            return Err(refuse(format!("{scope:?} is not a valid OAuth scope")));
+        }
+        scopes.push(scope.to_string());
+    }
+    Ok(normalized(scopes))
+}
+
+/// RFC 6749 section 3.3: `scope-token = 1*( %x21 / %x23-5B / %x5D-7E )`. No
+/// spaces (they separate scopes), no quotes, no backslashes, nothing outside
+/// printable ASCII.
+fn is_scope_token(scope: &str) -> bool {
+    !scope.is_empty()
+        && scope
+            .chars()
+            .all(|c| c == '\x21' || ('\x23'..='\x5b').contains(&c) || ('\x5d'..='\x7e').contains(&c))
+}
+
+fn normalized(scopes: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut scopes: Vec<String> = scopes.into_iter().collect();
+    scopes.sort();
+    scopes.dedup();
+    scopes
+}
+
+/// What a token response says was granted. RFC 6749 section 5.1: a response
+/// without `scope` grants what was asked for, so `fallback` is the request.
+fn granted_scopes(tokens: &OAuthTokenResponse, fallback: &[String]) -> Vec<String> {
+    use oauth2::TokenResponse;
+    match tokens.scopes() {
+        Some(list) => normalized(list.iter().map(|s| s.as_str().to_string())),
+        None => fallback.to_vec(),
+    }
+}
+
+/// Refuse a grant carrying any scope that was not asked for. A provider that
+/// widens a grant is handing out authority nobody consented to on Jan's side,
+/// so the token is not kept rather than kept and trusted.
+fn check_grant(name: &str, allowed: &[String], granted: &[String]) -> Result<(), HarnessError> {
+    let extra: Vec<&str> = granted
+        .iter()
+        .filter(|scope| !allowed.contains(scope))
+        .map(String::as_str)
+        .collect();
+    if extra.is_empty() {
+        return Ok(());
+    }
+    Err(HarnessError::new(
+        ErrorKind::PermissionDenied,
+        format!(
+            "the provider for '{name}' granted scopes that were not asked for ({}); the token was not kept",
+            extra.join(" ")
+        ),
+    )
+    .at(Stage::Startup))
+}
+
+async fn manager_for(
+    name: &str,
+    url: &str,
+    base: &reqwest::Client,
+    client_id: &str,
+    tokens: OAuthTokenResponse,
+) -> Result<AuthorizationManager, HarnessError> {
+    let auth = |message: String| HarnessError::new(ErrorKind::Authentication, message).at(Stage::Startup);
+    let mut state = OAuthState::new(url.to_string(), Some(base.clone()))
+        .await
+        .map_err(|e| {
+            HarnessError::new(ErrorKind::Transport, format!("could not prepare OAuth for '{name}': {e}"))
+                .at(Stage::Startup)
+        })?;
+    state
+        .set_credentials(client_id, tokens)
+        .await
+        .map_err(|e| auth(format!("stored credentials for '{name}' are unusable: {e}")))?;
+    state
+        .into_authorization_manager()
+        .ok_or_else(|| auth(format!("OAuth for '{name}' did not reach an authorized state")))
+}
+
 /// What the `/mcp` screen reports on its `Auth:` line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthStatus {
@@ -114,14 +273,29 @@ pub enum AuthStatus {
     /// The user configured an `Authorization` header by hand. OAuth would fight
     /// with it, so it is never attempted and never reported as missing.
     StaticHeader,
-    /// Tokens on disk, still valid.
-    Authenticated { expires_at: Option<u64> },
+    /// Tokens on disk, still valid, carrying `granted`.
+    Authenticated {
+        expires_at: Option<u64>,
+        granted: Vec<String>,
+    },
     /// Tokens on disk but past their expiry. Renewable without the browser when
     /// a refresh token came with them.
     Expired {
         renewable: bool,
         expires_at: Option<u64>,
+        granted: Vec<String>,
     },
+    /// Tokens on disk whose scopes are not the ones the configuration now
+    /// declares (AH-135). Not used until the server is authorized again: a
+    /// token asked for under other scopes is not what the user configured.
+    ScopeMismatch {
+        declared: Vec<String>,
+        requested: Vec<String>,
+        granted: Vec<String>,
+    },
+    /// The configuration's `oauth` entry cannot be read, so nothing is
+    /// authorized until it is fixed.
+    InvalidScopes { detail: String },
     /// Tokens on disk, issued for a different url than the server now points at.
     StaleResource,
     /// Nothing stored. Whether that is a problem is up to the server.
@@ -141,6 +315,14 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
     if has_static_authorization(config) {
         return AuthStatus::StaticHeader;
     }
+    let declared = match declared_scopes(config) {
+        Ok(declared) => declared,
+        Err(e) => {
+            return AuthStatus::InvalidScopes {
+                detail: e.message().to_string(),
+            }
+        }
+    };
     let Some(stored) = load(data_folder, name) else {
         return AuthStatus::Unauthenticated;
     };
@@ -148,15 +330,43 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
     if !url.is_empty() && stored.resource != url {
         return AuthStatus::StaleResource;
     }
+    if !scopes_match(&declared, &stored) {
+        return AuthStatus::ScopeMismatch {
+            declared,
+            requested: stored.requested_scopes,
+            granted: stored.granted_scopes,
+        };
+    }
     if stored.is_expired() {
         return AuthStatus::Expired {
             renewable: stored.has_refresh_token(),
             expires_at: stored.expires_at,
+            granted: stored.granted_scopes,
         };
     }
     AuthStatus::Authenticated {
         expires_at: stored.expires_at,
+        granted: stored.granted_scopes,
     }
+}
+
+/// Whether stored credentials may be used under the declared scopes: they were
+/// asked for under exactly those, and carry nothing beyond them.
+fn scopes_match(declared: &[String], stored: &StoredCredentials) -> bool {
+    normalized(stored.requested_scopes.clone()) == declared
+        && stored.granted_scopes.iter().all(|scope| declared.contains(scope))
+}
+
+/// [`status`] with what the configuration declares, for the wire.
+pub fn status_info(data_folder: &Path, name: &str, config: &Value) -> AuthStatusInfo {
+    let mut info: AuthStatusInfo = status(data_folder, name, config).into();
+    info.declared_scopes = declared_scopes(config).unwrap_or_default();
+    if let Some(stored) = load(data_folder, name) {
+        if info.requested_scopes.is_empty() {
+            info.requested_scopes = stored.requested_scopes;
+        }
+    }
+    info
 }
 
 /// `AuthStatus` flattened for the wire, so the settings UI can render a badge
@@ -169,7 +379,7 @@ pub fn status(data_folder: &Path, name: &str, config: &Value) -> AuthStatus {
 #[serde(rename_all = "camelCase")]
 pub struct AuthStatusInfo {
     /// One of `notApplicable`, `staticHeader`, `authenticated`, `expired`,
-    /// `staleResource`, `unauthenticated`.
+    /// `staleResource`, `scopeMismatch`, `invalidScopes`, `unauthenticated`.
     pub state: &'static str,
     /// Whether an interactive sign-in is possible and would mean something.
     pub can_authenticate: bool,
@@ -180,21 +390,55 @@ pub struct AuthStatusInfo {
     pub renewable: bool,
     /// Unix seconds the access token expires at, when known.
     pub expires_at: Option<u64>,
+    /// What the configuration declares (AH-135): what a sign-in will ask for.
+    pub declared_scopes: Vec<String>,
+    /// What the stored token was asked for under.
+    pub requested_scopes: Vec<String>,
+    /// What the provider granted the stored token.
+    pub granted_scopes: Vec<String>,
+    /// Why the state is what it is, when that is not obvious from the state.
+    pub detail: Option<String>,
 }
 
 impl From<AuthStatus> for AuthStatusInfo {
     fn from(status: AuthStatus) -> Self {
+        let mut requested_scopes = Vec::new();
+        let mut granted_scopes = Vec::new();
+        let mut detail = None;
         let (state, can_authenticate, has_credentials, renewable, expires_at) = match status {
             AuthStatus::NotApplicable => ("notApplicable", false, false, false, None),
             AuthStatus::StaticHeader => ("staticHeader", false, false, false, None),
-            AuthStatus::Authenticated { expires_at } => {
+            AuthStatus::Authenticated { expires_at, granted } => {
+                granted_scopes = granted;
                 ("authenticated", true, true, false, expires_at)
             }
             AuthStatus::Expired {
                 renewable,
                 expires_at,
-            } => ("expired", true, true, renewable, expires_at),
+                granted,
+            } => {
+                granted_scopes = granted;
+                ("expired", true, true, renewable, expires_at)
+            }
             AuthStatus::StaleResource => ("staleResource", true, true, false, None),
+            AuthStatus::ScopeMismatch {
+                declared,
+                requested,
+                granted,
+            } => {
+                detail = Some(format!(
+                    "the stored token was asked for [{}] but the configuration declares [{}]",
+                    requested.join(" "),
+                    declared.join(" ")
+                ));
+                requested_scopes = requested;
+                granted_scopes = granted;
+                ("scopeMismatch", true, true, false, None)
+            }
+            AuthStatus::InvalidScopes { detail: why } => {
+                detail = Some(why);
+                ("invalidScopes", false, false, false, None)
+            }
             AuthStatus::Unauthenticated => ("unauthenticated", true, false, false, None),
         };
         Self {
@@ -203,6 +447,10 @@ impl From<AuthStatus> for AuthStatusInfo {
             has_credentials,
             renewable,
             expires_at,
+            declared_scopes: Vec::new(),
+            requested_scopes,
+            granted_scopes,
+            detail,
         }
     }
 }
@@ -226,21 +474,27 @@ fn store_path(data_folder: &Path) -> PathBuf {
     data_folder.join(STORE_FILE)
 }
 
-fn read_store(data_folder: &Path) -> BTreeMap<String, StoredCredentials> {
+fn read_legacy(data_folder: &Path) -> BTreeMap<String, StoredCredentials> {
     match std::fs::read_to_string(store_path(data_folder)) {
         Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s).unwrap_or_default(),
         _ => BTreeMap::new(),
     }
 }
 
-/// Persist the whole store (tmp + rename), owner-only on Unix. The file holds
-/// bearer tokens, so the mode is set on the temp file *before* the rename --
-/// writing world-readable and tightening afterwards leaves a window.
-fn write_store(
+/// Rewrite the legacy file without the records that have moved (tmp + rename,
+/// owner-only on Unix), or delete it once nothing is left in it.
+fn write_legacy(
     data_folder: &Path,
     store: &BTreeMap<String, StoredCredentials>,
 ) -> Result<(), String> {
     let path = store_path(data_folder);
+    if store.is_empty() {
+        return match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        };
+    }
     let body = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
@@ -253,25 +507,215 @@ fn write_store(
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// The secret-store record for one server in one data folder. The folder is
+/// part of the key because the OS keyring belongs to the user, not to a Jan
+/// profile: two profiles that each configure a server called `github` must not
+/// read or overwrite each other's tokens.
+fn secret_key(data_folder: &Path, name: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let folder = std::fs::canonicalize(data_folder).unwrap_or_else(|_| data_folder.to_path_buf());
+    let mut hasher = Sha256::new();
+    hasher.update(folder.to_string_lossy().as_bytes());
+    hasher.update([0u8]);
+    hasher.update(name.as_bytes());
+    let digest = format!("{:x}", hasher.finalize());
+    format!("mcp-oauth:{}", &digest[..32])
+}
+
+fn store_err(name: &str, detail: impl std::fmt::Display) -> HarnessError {
+    HarnessError::new(
+        ErrorKind::Io,
+        format!("could not keep the tokens for '{name}' in the secret store: {detail}"),
+    )
+    .at(Stage::Persistence)
+}
+
+/// Write one server's record to the secret store. The old record is removed
+/// first: the keyring refuses values over its size limit, and the store then
+/// writes the encrypted file instead, where a keyring copy left behind would be
+/// read first and hand back the tokens this write replaced.
+fn store_record(data_folder: &Path, name: &str, creds: &StoredCredentials) -> Result<(), HarnessError> {
+    let body = serde_json::to_string(creds).map_err(|e| store_err(name, e))?;
+    let key = secret_key(data_folder, name);
+    provider_secrets::delete_secret_record(&key).map_err(|e| store_err(name, e))?;
+    provider_secrets::store_secret_record(&key, &body).map_err(|e| store_err(name, e))
+}
+
+/// Move one server's plaintext record into the secret store. The plaintext
+/// copy is removed only once the store holds it, so a store that cannot be
+/// written leaves the credential where it was instead of losing it.
+fn migrate_legacy(data_folder: &Path, name: &str) -> Option<StoredCredentials> {
+    let mut legacy = read_legacy(data_folder);
+    let creds = legacy.get(name)?.clone();
+    match store_record(data_folder, name, &creds) {
+        Ok(()) => {
+            legacy.remove(name);
+            if let Err(e) = write_legacy(data_folder, &legacy) {
+                log::warn!("moved the tokens for '{name}' into the secret store but could not remove them from {STORE_FILE}: {e}");
+            } else {
+                log::info!("moved the tokens for '{name}' from {STORE_FILE} into the secret store");
+            }
+        }
+        Err(e) => log::warn!("{e}; they stay in {STORE_FILE} until the store can be written"),
+    }
+    Some(creds)
+}
+
 pub fn load(data_folder: &Path, name: &str) -> Option<StoredCredentials> {
-    read_store(data_folder).remove(name)
+    if let Some(raw) = provider_secrets::load_secret_record(&secret_key(data_folder, name)) {
+        match serde_json::from_str(&raw) {
+            Ok(creds) => return Some(creds),
+            Err(e) => log::warn!("the stored tokens for '{name}' could not be read ({e}); treating them as absent"),
+        }
+    }
+    migrate_legacy(data_folder, name)
 }
 
 pub fn save(data_folder: &Path, name: &str, creds: &StoredCredentials) -> Result<(), String> {
-    let mut store = read_store(data_folder);
-    store.insert(name.to_string(), creds.clone());
-    write_store(data_folder, &store)
+    store_record(data_folder, name, creds).map_err(|e| e.to_string())?;
+    // A plaintext copy from an earlier build must not outlive the one that
+    // replaced it.
+    let mut legacy = read_legacy(data_folder);
+    if legacy.remove(name).is_some() {
+        write_legacy(data_folder, &legacy)?;
+    }
+    Ok(())
 }
 
 /// Forget one server's tokens. `Ok(false)` when there were none, so the caller
 /// can tell "cleared" from "nothing to clear" without a second read.
 pub fn clear(data_folder: &Path, name: &str) -> Result<bool, String> {
-    let mut store = read_store(data_folder);
-    if store.remove(name).is_none() {
-        return Ok(false);
+    let key = secret_key(data_folder, name);
+    let stored = provider_secrets::load_secret_record(&key).is_some();
+    provider_secrets::delete_secret_record(&key)?;
+    let mut legacy = read_legacy(data_folder);
+    let plaintext = legacy.remove(name).is_some();
+    if plaintext {
+        write_legacy(data_folder, &legacy)?;
     }
-    write_store(data_folder, &store)?;
-    Ok(true)
+    Ok(stored || plaintext)
+}
+
+/// Live refreshers, by secret key, so a test can prove one ends with its
+/// connection.
+static REFRESHERS: std::sync::Mutex<BTreeMap<String, usize>> = std::sync::Mutex::new(BTreeMap::new());
+
+struct RefresherAlive(String);
+
+impl RefresherAlive {
+    fn new(key: String) -> Self {
+        *REFRESHERS.lock().unwrap_or_else(|p| p.into_inner()).entry(key.clone()).or_default() += 1;
+        Self(key)
+    }
+}
+
+impl Drop for RefresherAlive {
+    fn drop(&mut self) {
+        let mut live = REFRESHERS.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(n) = live.get_mut(&self.0) {
+            *n -= 1;
+            if *n == 0 {
+                live.remove(&self.0);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+fn live_refreshers(data_folder: &Path, name: &str) -> usize {
+    REFRESHERS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&secret_key(data_folder, name))
+        .copied()
+        .unwrap_or(0)
+}
+
+/// Keep a live connection's access token fresh: refresh it `EXPIRY_SKEW`
+/// before it expires, store what the provider returned, and repeat for the
+/// new token. Holds the connection's authorization manager only weakly, so the
+/// refresher ends once the connection is dropped (checked every
+/// `REFRESH_POLL`). A refresh the provider refuses ends it too: the next
+/// request is then refused and the server reports that it needs
+/// authentication, which is where re-authorizing is offered.
+fn spawn_refresher(
+    data_folder: PathBuf,
+    name: String,
+    url: String,
+    base: reqwest::Client,
+    client_id: String,
+    manager: Weak<tokio::sync::Mutex<AuthorizationManager>>,
+    mut current: OAuthTokenResponse,
+    mut expires_at: Option<u64>,
+    requested: Vec<String>,
+    mut granted: Vec<String>,
+) {
+    let alive = RefresherAlive::new(secret_key(&data_folder, &name));
+    tokio::spawn(async move {
+        let _alive = alive;
+        loop {
+            // A token with no expiry is refreshed only when it is refused.
+            let Some(at) = expires_at else { return };
+            let due = at.saturating_sub(EXPIRY_SKEW.as_secs());
+            loop {
+                if manager.strong_count() == 0 {
+                    return;
+                }
+                let now = now_secs();
+                if now >= due {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(due - now).min(REFRESH_POLL)).await;
+            }
+            let Some(strong) = manager.upgrade() else { return };
+            let mut guard = strong.lock().await;
+            let outcome = guard.refresh_token().await;
+            match outcome {
+                Ok(tokens) => {
+                    // AH-135: a refresh may not widen what was granted. The
+                    // widened token is not stored, and the live connection is
+                    // put back on the token it had.
+                    let refreshed_scopes = granted_scopes(&tokens, &granted);
+                    if let Err(e) = check_grant(&name, &requested, &refreshed_scopes) {
+                        log::warn!("{}", e.message());
+                        if let Ok(previous) = manager_for(&name, &url, &base, &client_id, current.clone()).await {
+                            *guard = previous;
+                        }
+                        return;
+                    }
+                    granted = refreshed_scopes;
+                    let (tokens, carried) = keep_refresh_token(tokens, &current);
+                    if carried {
+                        // The manager holds what the provider sent, without the
+                        // refresh token; give it the whole set, or its next
+                        // refresh has nothing to send.
+                        match manager_for(&name, &url, &base, &client_id, tokens.clone()).await {
+                            Ok(replacement) => *guard = replacement,
+                            Err(e) => {
+                                log::warn!("could not keep the refresh token for '{name}' on the live connection: {e}");
+                            }
+                        }
+                    }
+                    drop(guard);
+                    drop(strong);
+                    let creds = StoredCredentials::from_exchange(client_id.clone(), tokens, url.clone())
+                        .with_scopes(requested.clone(), granted.clone());
+                    expires_at = creds.expires_at;
+                    current = creds.tokens.clone();
+                    match save(&data_folder, &name, &creds) {
+                        Ok(()) => log::info!("refreshed the access token for '{name}' ahead of its expiry"),
+                        Err(e) => log::warn!("refreshed the access token for '{name}' but could not store it: {e}"),
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "could not refresh the access token for '{name}' ahead of its expiry: {e}; the server will ask to re-authenticate"
+                    );
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// Whether the server at `url` advertises OAuth, used to turn a failed connect
@@ -300,6 +744,9 @@ pub struct PendingAuth {
     /// a remote or headless session finishes by pasting it somewhere else.
     pub authorization_url: String,
     pub redirect_uri: String,
+    /// The scopes the consent request asks for (AH-135), shown to the user
+    /// before they consent.
+    pub scopes: Vec<String>,
 }
 
 /// Start an authorization: bind the loopback listener, register (or reuse) a
@@ -309,7 +756,11 @@ pub struct PendingAuth {
 /// The listener is bound *before* the redirect uri is minted because dynamic
 /// registration sends that uri to the provider; picking a port afterwards could
 /// hand out one another process just took.
-pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
+pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<PendingAuth, String> {
+    let scopes = normalized(scopes.to_vec());
+    if let Some(bad) = scopes.iter().find(|s| !is_scope_token(s)) {
+        return Err(format!("{bad:?} is not a valid OAuth scope"));
+    }
     let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
         .await
         .map_err(|e| format!("could not open a local callback port: {e}"))?;
@@ -324,8 +775,9 @@ pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
     let mut state = OAuthState::new(url.to_string(), None)
         .await
         .map_err(|e| format!("could not reach '{url}' for OAuth discovery: {e}"))?;
+    let asked: Vec<&str> = scopes.iter().map(String::as_str).collect();
     state
-        .start_authorization(&[], &redirect_uri, Some(CLIENT_NAME))
+        .start_authorization(&asked, &redirect_uri, Some(CLIENT_NAME))
         .await
         .map_err(|e| format!("'{server}' does not offer OAuth we can use: {e}"))?;
     let authorization_url = state
@@ -340,6 +792,7 @@ pub async fn begin(server: &str, url: &str) -> Result<PendingAuth, String> {
         resource: url.to_string(),
         authorization_url,
         redirect_uri,
+        scopes,
     })
 }
 
@@ -366,7 +819,11 @@ impl PendingAuth {
         let tokens =
             tokens.ok_or_else(|| "authorization finished without an access token".to_string())?;
 
-        let creds = StoredCredentials::from_exchange(client_id, tokens, self.resource);
+        // AH-135: nothing wider than what was asked for is kept.
+        let granted = granted_scopes(&tokens, &self.scopes);
+        check_grant(&self.server, &self.scopes, &granted).map_err(|e| e.message().to_string())?;
+        let creds = StoredCredentials::from_exchange(client_id, tokens, self.resource)
+            .with_scopes(self.scopes, granted);
         save(data_folder, &self.server, &creds)?;
         Ok(creds)
     }
@@ -533,56 +990,74 @@ pub async fn authorized_client(
     url: &str,
     config: &Value,
     base: reqwest::Client,
-) -> Result<Option<AuthClient<reqwest::Client>>, String> {
+) -> Result<Option<AuthClient<reqwest::Client>>, HarnessError> {
+    let auth = |message: String| HarnessError::new(ErrorKind::Authentication, message).at(Stage::Startup);
     if has_static_authorization(config) {
         return Ok(None);
     }
+    let declared = declared_scopes(config)?;
     let Some(stored) = load(data_folder, name) else {
         return Ok(None);
     };
     if stored.resource != url {
-        return Err(format!(
+        return Err(auth(format!(
             "stored credentials for '{name}' were issued for {} - re-authenticate from /mcp",
             stored.resource
-        ));
+        )));
+    }
+    // AH-135: a token asked for under other scopes, or carrying more than the
+    // configuration declares, is never sent.
+    if !scopes_match(&declared, &stored) {
+        return Err(auth(format!(
+            "the stored token for '{name}' was asked for [{}] and granted [{}], but the configuration declares [{}] - re-authenticate from /mcp",
+            stored.requested_scopes.join(" "),
+            stored.granted_scopes.join(" "),
+            declared.join(" ")
+        )));
     }
 
-    let mut state = OAuthState::new(url.to_string(), Some(base.clone()))
-        .await
-        .map_err(|e| format!("could not prepare OAuth for '{name}': {e}"))?;
-    state
-        .set_credentials(&stored.client_id, stored.tokens.clone())
-        .await
-        .map_err(|e| format!("stored credentials for '{name}' are unusable: {e}"))?;
+    if stored.is_expired() && !stored.has_refresh_token() {
+        return Err(auth(format!(
+            "the access token for '{name}' expired and there is no refresh token - re-authenticate from /mcp"
+        )));
+    }
+    let mut manager = manager_for(name, url, &base, &stored.client_id, stored.tokens.clone()).await?;
 
+    let mut current = stored.clone();
     if stored.is_expired() {
-        if !stored.has_refresh_token() {
-            return Err(format!(
-                "the access token for '{name}' expired and there is no refresh token - re-authenticate from /mcp"
-            ));
-        }
-        state.refresh_token().await.map_err(|e| {
-            format!(
+        let tokens = manager.refresh_token().await.map_err(|e| {
+            auth(format!(
                 "could not refresh the access token for '{name}': {e} - re-authenticate from /mcp"
-            )
+            ))
         })?;
-        let (client_id, tokens) = state
-            .get_credentials()
-            .await
-            .map_err(|e| format!("refresh for '{name}' returned no tokens: {e}"))?;
-        if let Some(tokens) = tokens {
-            save(
-                data_folder,
-                name,
-                &StoredCredentials::from_exchange(client_id, tokens, url.to_string()),
-            )?;
+        // A refresh may not widen the grant: refused, and nothing is stored.
+        let refreshed_scopes = granted_scopes(&tokens, &stored.granted_scopes);
+        check_grant(name, &declared, &refreshed_scopes)?;
+        let (tokens, carried) = keep_refresh_token(tokens, &stored.tokens);
+        if carried {
+            manager = manager_for(name, url, &base, &stored.client_id, tokens.clone()).await?;
         }
+        current = StoredCredentials::from_exchange(stored.client_id.clone(), tokens, url.to_string())
+            .with_scopes(stored.requested_scopes.clone(), refreshed_scopes);
+        store_record(data_folder, name, &current)?;
     }
 
-    let manager = state
-        .into_authorization_manager()
-        .ok_or_else(|| format!("OAuth for '{name}' did not reach an authorized state"))?;
-    Ok(Some(AuthClient::new(base, manager)))
+    let client = AuthClient::new(base.clone(), manager);
+    if current.has_refresh_token() {
+        spawn_refresher(
+            data_folder.to_path_buf(),
+            name.to_string(),
+            url.to_string(),
+            base,
+            current.client_id.clone(),
+            Arc::downgrade(&client.auth_manager),
+            current.tokens.clone(),
+            current.expires_at,
+            current.requested_scopes.clone(),
+            current.granted_scopes.clone(),
+        );
+    }
+    Ok(Some(client))
 }
 
 #[cfg(test)]
@@ -622,9 +1097,63 @@ mod tests {
         )
     }
 
+    /// A data folder of its own, with the secret store pointed at it and kept
+    /// off the OS keyring, so no test reads or writes the developer's real
+    /// credentials. Holds the environment lock for as long as it lives.
+    struct Isolated {
+        dir: tempfile::TempDir,
+        previous: Option<std::ffi::OsString>,
+        _guard: crate::core::server::provider_secrets::TestEnvGuard,
+    }
+
+    impl Isolated {
+        fn path(&self) -> &Path {
+            self.dir.path()
+        }
+    }
+
+    impl Drop for Isolated {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(p) => std::env::set_var("JAN_DATA_FOLDER", p),
+                None => std::env::remove_var("JAN_DATA_FOLDER"),
+            }
+        }
+    }
+
+    fn isolated() -> Isolated {
+        let guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        crate::core::server::provider_secrets::force_file_secrets();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous = std::env::var_os("JAN_DATA_FOLDER");
+        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        Isolated { dir, previous, _guard: guard }
+    }
+
+    /// Every file under `dir`, read as bytes.
+    fn files_under(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for entry in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else {
+                    out.push((p.clone(), std::fs::read(&p).unwrap()));
+                }
+            }
+        }
+        out
+    }
+
+    fn contains(haystack: &[u8], needle: &str) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle.as_bytes())
+    }
+
     #[test]
     fn store_round_trips_and_clears() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = isolated();
         let c = creds(Some(3600), true, "https://x/mcp");
 
         assert!(load(dir.path(), "srv").is_none());
@@ -643,7 +1172,7 @@ mod tests {
 
     #[test]
     fn saving_one_server_leaves_the_others_alone() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = isolated();
         save(dir.path(), "a", &creds(Some(60), false, "https://a")).unwrap();
         save(dir.path(), "b", &creds(Some(60), false, "https://b")).unwrap();
 
@@ -652,17 +1181,542 @@ mod tests {
         assert_eq!(load(dir.path(), "b").unwrap().resource, "https://b");
     }
 
-    #[cfg(unix)]
+    /// AH-134: a saved token is in the secret store, and no file in the data
+    /// folder holds it in plaintext.
     #[test]
-    fn the_token_store_is_owner_only() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        save(dir.path(), "srv", &creds(Some(60), false, "https://x")).unwrap();
-        let mode = std::fs::metadata(store_path(dir.path()))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o600);
+    fn saved_tokens_are_in_the_secret_store_and_nowhere_in_plaintext() {
+        let dir = isolated();
+        let mut c = creds(Some(3600), true, "https://x/mcp");
+        c.tokens = {
+            let mut t = OAuthTokenResponse::new(
+                AccessToken::new("plaintext-canary-access".to_string()),
+                oauth2::basic::BasicTokenType::Bearer,
+                EmptyExtraTokenFields {},
+            );
+            t.set_refresh_token(Some(RefreshToken::new("plaintext-canary-refresh".to_string())));
+            t
+        };
+        save(dir.path(), "srv", &c).unwrap();
+        assert!(!store_path(dir.path()).exists(), "no plaintext store is written");
+        let files = files_under(dir.path());
+        assert!(!files.is_empty(), "the secret store wrote nothing, so this proves nothing");
+        for (path, bytes) in &files {
+            assert!(!contains(bytes, "plaintext-canary"), "{} holds a token in plaintext", path.display());
+        }
+        let key = secret_key(dir.path(), "srv");
+        assert!(crate::core::server::provider_secrets::load_secret_record(&key).is_some());
+        assert_eq!(load(dir.path(), "srv").unwrap().tokens.access_token().secret(), "plaintext-canary-access");
+    }
+
+    /// AH-134: a plaintext record from an earlier build is moved into the
+    /// secret store the first time it is read, and the file goes once empty.
+    #[test]
+    fn plaintext_records_are_moved_into_the_secret_store_on_first_read() {
+        let dir = isolated();
+        let mut legacy = BTreeMap::new();
+        legacy.insert("a".to_string(), creds(Some(3600), true, "https://a/mcp"));
+        legacy.insert("b".to_string(), creds(Some(3600), false, "https://b/mcp"));
+        write_legacy(dir.path(), &legacy).unwrap();
+
+        assert_eq!(load(dir.path(), "a").unwrap().resource, "https://a/mcp");
+        let left = read_legacy(dir.path());
+        assert!(!left.contains_key("a") && left.contains_key("b"), "only the record read moves");
+        assert!(crate::core::server::provider_secrets::load_secret_record(&secret_key(dir.path(), "a")).is_some());
+
+        assert!(matches!(
+            status(dir.path(), "b", &json!({ "type": "http", "url": "https://b/mcp" })),
+            AuthStatus::Authenticated { .. }
+        ));
+        assert!(!store_path(dir.path()).exists(), "the emptied plaintext file is deleted");
+        // What moved is still there on the next read, from the store alone.
+        assert_eq!(load(dir.path(), "b").unwrap().resource, "https://b/mcp");
+        assert!(clear(dir.path(), "a").unwrap());
+        assert!(load(dir.path(), "a").is_none());
+    }
+
+    /// AH-134 refusal: a store that cannot be written is a typed error for a
+    /// save, and a migration keeps the plaintext record rather than losing it.
+    #[test]
+    fn a_store_that_cannot_be_written_refuses_and_loses_nothing() {
+        let dir = isolated();
+        let mut legacy = BTreeMap::new();
+        legacy.insert("a".to_string(), creds(Some(3600), true, "https://a/mcp"));
+        write_legacy(dir.path(), &legacy).unwrap();
+        // The encrypted store's file path is taken by a directory.
+        std::fs::create_dir_all(dir.path().join("provider_secrets.enc")).unwrap();
+
+        let err = store_record(dir.path(), "x", &creds(Some(60), true, "https://x")).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Io);
+        assert_eq!(err.stage(), Stage::Persistence);
+        assert!(save(dir.path(), "x", &creds(Some(60), true, "https://x")).is_err());
+
+        assert_eq!(load(dir.path(), "a").unwrap().resource, "https://a/mcp");
+        assert!(read_legacy(dir.path()).contains_key("a"), "the only copy stays where it was");
+    }
+
+    /// AH-134 security: tokens are keyed by data folder and server, so another
+    /// profile, or another server name, cannot read or be handed them.
+    #[test]
+    fn another_profile_or_server_cannot_use_a_servers_tokens() {
+        let dir = isolated();
+        let other = tempfile::tempdir().unwrap();
+        save(dir.path(), "github", &creds(Some(3600), true, "https://gh/mcp")).unwrap();
+        assert!(load(other.path(), "github").is_none(), "a second profile reads nothing");
+        assert!(load(dir.path(), "github2").is_none());
+        assert!(load(dir.path(), "GitHub").is_none());
+        assert_ne!(secret_key(dir.path(), "github"), secret_key(other.path(), "github"));
+        // Clearing in the other profile does not touch this one.
+        assert!(!clear(other.path(), "github").unwrap());
+        assert!(load(dir.path(), "github").is_some());
+        // And a server re-pointed at another url is refused the stored token.
+        assert_eq!(
+            status(dir.path(), "github", &json!({ "type": "http", "url": "https://evil/mcp" })),
+            AuthStatus::StaleResource
+        );
+    }
+
+    /// The OAuth fixture: an authorization server and an MCP endpoint that
+    /// needs a token it issued. Python is required -- a missing interpreter
+    /// fails the test rather than skipping it.
+    struct OauthFixture {
+        child: std::process::Child,
+        port: u16,
+        log: PathBuf,
+        _dir: tempfile::TempDir,
+    }
+
+    impl OauthFixture {
+        fn start(extra: &[&str]) -> Self {
+            use std::io::BufRead;
+            let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mock_oauth_server.py");
+            let python = ["python3", "python"]
+                .into_iter()
+                .find(|p| {
+                    std::process::Command::new(p)
+                        .arg("--version")
+                        .output()
+                        .is_ok_and(|o| o.status.success())
+                })
+                .expect("python is required for the OAuth fixture");
+            let dir = tempfile::tempdir().unwrap();
+            let log = dir.path().join("oauth.log");
+            let mut child = std::process::Command::new(python)
+                .arg(&script)
+                .arg("--log")
+                .arg(&log)
+                .args(extra)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("start the OAuth fixture");
+            let mut line = String::new();
+            std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+            let port = line.trim().trim_start_matches("PORT ").parse().expect("fixture port");
+            Self { child, port, log, _dir: dir }
+        }
+
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}/mcp", self.port)
+        }
+
+        fn entries(&self, path: &str) -> Vec<Value> {
+            std::fs::read_to_string(&self.log)
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .filter(|e| e["path"] == path)
+                .collect()
+        }
+    }
+
+    impl Drop for OauthFixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    fn fixture_creds(fixture: &OauthFixture, access: &str, refresh: &str, expires_in: u64) -> StoredCredentials {
+        let mut t = OAuthTokenResponse::new(
+            AccessToken::new(access.to_string()),
+            oauth2::basic::BasicTokenType::Bearer,
+            EmptyExtraTokenFields {},
+        );
+        t.set_expires_in(Some(&Duration::from_secs(expires_in)));
+        t.set_refresh_token(Some(RefreshToken::new(refresh.to_string())));
+        StoredCredentials::from_exchange("client-1".to_string(), t, fixture.url())
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap()
+    }
+
+    fn http() -> Value {
+        json!({ "type": "http" })
+    }
+
+    /// Follow a consent url the way a browser would: the fixture consents on
+    /// its own and redirects to the loopback callback, which completes the flow.
+    async fn consent(url: &str) {
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let redirect = client.get(url).send().await.unwrap();
+        assert_eq!(redirect.status(), 302, "the fixture redirects to the callback");
+        let location = redirect.headers()["location"].to_str().unwrap().to_string();
+        let landed = client.get(&location).send().await.unwrap();
+        assert_eq!(landed.status(), 200);
+    }
+
+    /// AH-135 (written before the implementation, as the failing evidence): a
+    /// provider that grants a scope nobody asked for must not end up with a
+    /// stored token carrying it.
+    #[test]
+    fn a_grant_wider_than_was_asked_for_is_refused_and_not_stored() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-extra-scope", "admin"]);
+        let outcome = runtime().block_on(async {
+            let pending = begin("srv", &fixture.url(), &[]).await.unwrap();
+            let url = pending.authorization_url.clone();
+            let completing = tokio::spawn({
+                let folder = dir.path().to_path_buf();
+                async move { pending.complete(&folder).await }
+            });
+            consent(&url).await;
+            completing.await.unwrap()
+        });
+        let exchanges: Vec<Value> = fixture
+            .entries("/token")
+            .into_iter()
+            .filter(|e| e["grant"] == "authorization_code")
+            .collect();
+        assert_eq!(exchanges.len(), 1, "{exchanges:?}");
+        assert!(exchanges[0]["granted_scope"].as_str().unwrap().contains("admin"));
+        assert!(outcome.is_err(), "a grant carrying an unrequested scope was accepted");
+        assert!(load(dir.path(), "srv").is_none(), "the widened token was stored");
+    }
+
+    fn scoped(fixture: &OauthFixture, scopes: &[&str]) -> Value {
+        json!({ "type": "http", "url": fixture.url(), "oauth": { "scopes": scopes } })
+    }
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Run a whole sign-in against the fixture and return its outcome.
+    fn sign_in(dir: &Isolated, fixture: &OauthFixture, scopes: &[&str]) -> (String, Result<StoredCredentials, String>) {
+        runtime().block_on(async {
+            let pending = begin("srv", &fixture.url(), &strings(scopes)).await.unwrap();
+            let url = pending.authorization_url.clone();
+            let completing = tokio::spawn({
+                let folder = dir.path().to_path_buf();
+                async move { pending.complete(&folder).await }
+            });
+            consent(&url).await;
+            (url, completing.await.unwrap())
+        })
+    }
+
+    /// AH-135: what a configuration declares is read as a sorted set of RFC
+    /// 6749 scope tokens, and anything else is refused by kind rather than
+    /// quietly read as "no scopes".
+    #[test]
+    fn declared_scopes_are_read_as_a_set_and_anything_else_is_refused() {
+        assert!(declared_scopes(&json!({ "type": "http" })).unwrap().is_empty());
+        assert_eq!(
+            declared_scopes(&json!({ "oauth": { "scopes": ["b:write", "a:read", "a:read"] } })).unwrap(),
+            strings(&["a:read", "b:write"])
+        );
+        for broken in [
+            json!({ "oauth": ["read"] }),
+            json!({ "oauth": { "scope": ["read"] } }),
+            json!({ "oauth": { "scopes": "read write" } }),
+            json!({ "oauth": { "scopes": [1] } }),
+            json!({ "oauth": { "scopes": ["read write"] } }),
+            json!({ "oauth": { "scopes": [""] } }),
+            json!({ "oauth": { "scopes": ["say\"hi"] } }),
+            json!({ "oauth": { "scopes": ["caf\u{00e9}"] } }),
+        ] {
+            let e = declared_scopes(&broken).expect_err(&broken.to_string());
+            assert_eq!(e.kind(), ErrorKind::InvalidInput, "{broken}");
+        }
+    }
+
+    /// AH-135: the sign-in asks for exactly the declared scopes, the provider
+    /// sees them, and what it granted is stored with the token and shown.
+    #[test]
+    fn a_sign_in_asks_for_the_declared_scopes_and_keeps_what_was_granted() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&[]);
+        let (url, outcome) = sign_in(&dir, &fixture, &["mcp:tools", "mcp:read"]);
+        let query = url.split_once('?').map(|(_, q)| q).unwrap_or_default();
+        let asked: Vec<String> = form_urlencoded::parse(query.as_bytes())
+            .filter(|(k, _)| k == "scope")
+            .map(|(_, v)| v.into_owned())
+            .collect();
+        assert_eq!(asked, vec!["mcp:read mcp:tools".to_string()], "{url}");
+        assert_eq!(fixture.entries("/authorize")[0]["requested_scope"], "mcp:read mcp:tools");
+        let creds = outcome.expect("the sign-in completes");
+        assert_eq!(creds.requested_scopes, strings(&["mcp:read", "mcp:tools"]));
+        assert_eq!(creds.granted_scopes, strings(&["mcp:read", "mcp:tools"]));
+        let config = scoped(&fixture, &["mcp:read", "mcp:tools"]);
+        let info = status_info(dir.path(), "srv", &config);
+        assert_eq!(info.state, "authenticated");
+        assert_eq!(info.declared_scopes, strings(&["mcp:read", "mcp:tools"]));
+        assert_eq!(info.granted_scopes, strings(&["mcp:read", "mcp:tools"]));
+        runtime().block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            assert!(client.get_access_token().await.unwrap().starts_with("code-access-"));
+        });
+    }
+
+    /// AH-135: a provider that adds a scope to a grant that did ask for some is
+    /// refused as well, and nothing is stored.
+    #[test]
+    fn a_widened_grant_is_refused_even_when_scopes_were_asked_for() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-extra-scope", "mcp:admin"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read"]);
+        let refusal = outcome.expect_err("a widened grant is refused");
+        assert!(refusal.contains("mcp:admin"), "{refusal}");
+        assert!(load(dir.path(), "srv").is_none(), "the widened token was stored");
+    }
+
+    /// AH-135: a narrower grant is the provider's right; it is kept and shown
+    /// as what it is. A response that names no scope grants what was asked.
+    #[test]
+    fn a_narrower_grant_is_kept_and_an_omitted_scope_means_what_was_asked() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--grant-only", "mcp:read"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read", "mcp:tools"]);
+        assert_eq!(outcome.unwrap().granted_scopes, strings(&["mcp:read"]));
+        assert!(matches!(
+            status(dir.path(), "srv", &scoped(&fixture, &["mcp:read", "mcp:tools"])),
+            AuthStatus::Authenticated { ref granted, .. } if granted == &strings(&["mcp:read"])
+        ));
+        drop(fixture);
+
+        let dir = isolated_again(dir);
+        let fixture = OauthFixture::start(&["--omit-granted-scope"]);
+        let (_, outcome) = sign_in(&dir, &fixture, &["mcp:read"]);
+        assert_eq!(outcome.unwrap().granted_scopes, strings(&["mcp:read"]));
+    }
+
+    fn isolated_again(previous: Isolated) -> Isolated {
+        drop(previous);
+        isolated()
+    }
+
+    /// AH-135, security: once the configuration declares other scopes -- wider
+    /// or narrower -- a stored token is not sent, and the server is shown as
+    /// needing a new sign-in.
+    #[test]
+    fn a_token_is_never_sent_under_scopes_it_was_not_asked_for() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--initial-access", "at-scoped"]);
+        let mut t = OAuthTokenResponse::new(
+            AccessToken::new("at-scoped".to_string()),
+            oauth2::basic::BasicTokenType::Bearer,
+            EmptyExtraTokenFields {},
+        );
+        t.set_expires_in(Some(&Duration::from_secs(3600)));
+        let stored = StoredCredentials::from_exchange("client-1".to_string(), t, fixture.url())
+            .with_scopes(strings(&["mcp:read"]), strings(&["mcp:read"]));
+        save(dir.path(), "srv", &stored).unwrap();
+
+        for declared in [&["mcp:read", "mcp:admin"][..], &[][..], &["mcp:write"][..]] {
+            let config = scoped(&fixture, declared);
+            assert!(matches!(status(dir.path(), "srv", &config), AuthStatus::ScopeMismatch { .. }), "{declared:?}");
+            let info = status_info(dir.path(), "srv", &config);
+            assert_eq!(info.state, "scopeMismatch");
+            assert!(info.can_authenticate && info.has_credentials);
+            let refused = runtime()
+                .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+                .err()
+                .unwrap_or_else(|| panic!("a mismatched token was used under {declared:?}"));
+            assert_eq!(refused.kind(), ErrorKind::Authentication);
+        }
+        // The matching declaration still works, so the refusal above was the
+        // scopes and not the token.
+        let config = scoped(&fixture, &["mcp:read"]);
+        assert!(matches!(status(dir.path(), "srv", &config), AuthStatus::Authenticated { .. }));
+        assert!(fixture.entries("/mcp").is_empty(), "nothing was sent to the server");
+        assert!(fixture.entries("/token").is_empty());
+
+        // A configuration that cannot be read authorizes nothing.
+        let broken = json!({ "type": "http", "url": fixture.url(), "oauth": { "scopes": "mcp:read" } });
+        assert!(matches!(status(dir.path(), "srv", &broken), AuthStatus::InvalidScopes { .. }));
+        let refused = runtime()
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest::Client::new()))
+            .err()
+            .expect("an unreadable declaration authorizes nothing");
+        assert_eq!(refused.kind(), ErrorKind::InvalidInput);
+    }
+
+    /// AH-135, security: a refresh that comes back wider than the grant is
+    /// refused, and the stored token stays the one that was consented to.
+    #[test]
+    fn a_refresh_that_widens_the_grant_is_refused_and_nothing_is_stored() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "rt-good", "--refresh-scope", "mcp:read mcp:admin"]);
+        let stored = fixture_creds(&fixture, "at-old", "rt-good", 30)
+            .with_scopes(strings(&["mcp:read"]), strings(&["mcp:read"]));
+        save(dir.path(), "srv", &stored).unwrap();
+        let config = scoped(&fixture, &["mcp:read"]);
+        let refused = runtime()
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+            .err()
+            .expect("a widened refresh is refused");
+        assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
+        assert!(refused.message().contains("mcp:admin"), "{}", refused.message());
+        let after = load(dir.path(), "srv").unwrap();
+        assert_eq!(after.tokens.access_token().secret(), "at-old");
+        assert_eq!(after.granted_scopes, strings(&["mcp:read"]));
+        assert_eq!(fixture.entries("/token").len(), 1, "the refresh did happen");
+    }
+
+    /// AH-135: a record written before scopes existed reads as asked for and
+    /// granted nothing, so a server that declares none keeps working.
+    #[test]
+    fn a_record_from_before_scopes_reads_as_none_and_still_works() {
+        let dir = isolated();
+        let mut record = serde_json::to_value(creds(Some(3600), true, "https://x/mcp")).unwrap();
+        let object = record.as_object_mut().unwrap();
+        object.remove("requested_scopes");
+        object.remove("granted_scopes");
+        let old: StoredCredentials = serde_json::from_value(record).unwrap();
+        assert!(old.requested_scopes.is_empty() && old.granted_scopes.is_empty());
+        save(dir.path(), "s", &old).unwrap();
+        let http = json!({ "type": "http", "url": "https://x/mcp" });
+        assert!(matches!(status(dir.path(), "s", &http), AuthStatus::Authenticated { .. }));
+    }
+
+    /// AH-134: a token inside the refresh window is refreshed at connect,
+    /// against the provider, and the refreshed token is what gets stored and
+    /// sent.
+    #[test]
+    fn an_expiring_token_is_refreshed_at_connect_and_stored() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "rt-good"]);
+        save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-good", 30)).unwrap();
+        runtime().block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            assert_eq!(client.get_access_token().await.unwrap(), "refreshed-access-1");
+            assert_eq!(live_refreshers(dir.path(), "srv"), 1, "the refreshed connection is kept fresh");
+        });
+        assert!(load(dir.path(), "srv").unwrap().has_refresh_token(), "the refresh token is stored with it");
+        let refreshes = fixture.entries("/token");
+        assert_eq!(refreshes.len(), 1, "{refreshes:?}");
+        assert_eq!(refreshes[0]["refresh_token"], "rt-good");
+        assert_eq!(refreshes[0]["outcome"], "issued");
+        let stored = load(dir.path(), "srv").unwrap();
+        assert_eq!(stored.tokens.access_token().secret(), "refreshed-access-1");
+        assert!(stored.expires_at.unwrap() >= now_secs() + 3500);
+    }
+
+    /// AH-134: a live connection's token is refreshed ahead of its expiry, more
+    /// than once, and the refresher ends when the connection is dropped.
+    #[test]
+    fn a_live_connection_is_refreshed_ahead_of_expiry_and_the_refresher_ends_with_it() {
+        let dir = isolated();
+        // Every token lives 62s, so each is due two seconds after it is issued.
+        let fixture = OauthFixture::start(&["--accept", "rt-good", "--expires-in", "62"]);
+        save(dir.path(), "srv", &fixture_creds(&fixture, "at-first", "rt-good", 62)).unwrap();
+        let rt = runtime();
+        rt.block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            assert_eq!(client.get_access_token().await.unwrap(), "at-first", "not yet due at connect");
+            assert_eq!(live_refreshers(dir.path(), "srv"), 1);
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            while fixture.entries("/token").len() < 2 {
+                assert!(std::time::Instant::now() < deadline, "no second refresh ahead of expiry");
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            let token = client.get_access_token().await.unwrap();
+            assert!(token.starts_with("refreshed-access-"), "{token}");
+            assert!(load(dir.path(), "srv").unwrap().tokens.access_token().secret().starts_with("refreshed-access-"));
+
+            drop(client);
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while live_refreshers(dir.path(), "srv") > 0 {
+                assert!(std::time::Instant::now() < deadline, "the refresher outlived its connection");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let after = fixture.entries("/token").len();
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            assert_eq!(fixture.entries("/token").len(), after, "a refresh after the connection was dropped");
+        });
+    }
+
+    /// AH-134: a provider that does not resend the refresh token on refresh
+    /// (RFC 6749 section 6) keeps the one it issued: it is stored, and the live
+    /// connection can refresh again with it.
+    #[test]
+    fn a_refresh_that_omits_the_refresh_token_keeps_the_previous_one() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "rt-kept", "--expires-in", "62", "--omit-refresh"]);
+        save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-kept", 30)).unwrap();
+        runtime().block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            let stored = load(dir.path(), "srv").unwrap();
+            assert_eq!(stored.tokens.access_token().secret(), "refreshed-access-1");
+            assert_eq!(stored.tokens.refresh_token().map(|t| t.secret().as_str()), Some("rt-kept"));
+            // The refresher refreshes again through the live connection, which
+            // is only possible if the carried token reached it.
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            while fixture.entries("/token").iter().filter(|e| e["outcome"] == "issued").count() < 3 {
+                assert!(std::time::Instant::now() < deadline, "the connection could not refresh again: {:?}", fixture.entries("/token"));
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            assert!(fixture.entries("/token").iter().all(|e| e["refresh_token"] == "rt-kept"));
+            drop(client);
+        });
+    }
+
+    #[test]
+    fn keeping_the_refresh_token_only_fills_a_gap() {
+        let with = tokens(Some(60), true);
+        let (kept, carried) = keep_refresh_token(tokens(Some(60), false), &with);
+        assert!(carried && kept.refresh_token().is_some());
+        let mut newer = tokens(Some(60), false);
+        newer.set_refresh_token(Some(RefreshToken::new("rt-2".to_string())));
+        let (kept, carried) = keep_refresh_token(newer, &with);
+        assert!(!carried);
+        assert_eq!(kept.refresh_token().unwrap().secret(), "rt-2", "a new refresh token wins");
+        let (kept, carried) = keep_refresh_token(tokens(Some(60), false), &tokens(Some(60), false));
+        assert!(!carried && kept.refresh_token().is_none());
+    }
+
+    /// AH-134 refusal: a refresh the provider refuses is a typed
+    /// authentication error, and the stored tokens are left as they were.
+    #[test]
+    fn a_refused_refresh_is_a_typed_error_and_keeps_the_stored_tokens() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "a-different-token"]);
+        save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-revoked", 10)).unwrap();
+        let err = runtime()
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new()))
+            .err()
+            .expect("a refused refresh is an error");
+        assert_eq!(err.kind(), ErrorKind::Authentication);
+        assert!(err.message().contains("re-authenticate"), "{err}");
+        assert_eq!(fixture.entries("/token")[0]["outcome"], "refused");
+        assert_eq!(load(dir.path(), "srv").unwrap().tokens.access_token().secret(), "at-old");
+        assert_eq!(live_refreshers(dir.path(), "srv"), 0, "no refresher for a refused connection");
     }
 
     #[test]
@@ -683,7 +1737,7 @@ mod tests {
 
     #[test]
     fn status_reports_each_case() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = isolated();
         let http = json!({ "type": "http", "url": "https://x/mcp" });
 
         assert_eq!(
@@ -726,7 +1780,8 @@ mod tests {
             status(dir.path(), "s", &http),
             AuthStatus::Expired {
                 renewable: true,
-                expires_at: Some(_)
+                expires_at: Some(_),
+                ..
             }
         ));
         save(dir.path(), "s", &creds(Some(0), false, "https://x/mcp")).unwrap();
@@ -734,7 +1789,8 @@ mod tests {
             status(dir.path(), "s", &http),
             AuthStatus::Expired {
                 renewable: false,
-                expires_at: Some(_)
+                expires_at: Some(_),
+                ..
             }
         ));
     }
@@ -752,7 +1808,7 @@ mod tests {
 
     #[test]
     fn a_static_header_short_circuits_the_authorized_client() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = isolated();
         save(dir.path(), "s", &creds(Some(3600), true, "https://x/mcp")).unwrap();
         let config = json!({
             "type": "http",
@@ -776,7 +1832,7 @@ mod tests {
 
     #[test]
     fn a_url_change_refuses_the_stored_token_instead_of_sending_it() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = isolated();
         save(dir.path(), "s", &creds(Some(3600), true, "https://old/mcp")).unwrap();
         let config = json!({ "type": "http", "url": "https://new/mcp" });
         let got = tokio::runtime::Builder::new_current_thread()
@@ -791,7 +1847,8 @@ mod tests {
                 reqwest::Client::new(),
             ));
         let err = got.expect_err("stale resource is an error, not a silent skip");
-        assert!(err.contains("https://old/mcp"), "{err}");
+        assert_eq!(err.kind(), ErrorKind::Authentication);
+        assert!(err.message().contains("https://old/mcp"), "{err}");
     }
 
     #[test]

@@ -106,7 +106,10 @@ for (const declared of bundle.externalBin ?? []) {
     )
     process.exit(1)
   }
-  const suffixed = `${declared}-${triple}`
+  // Tauri appends the host triple, and on Windows the `.exe` extension too, so
+  // the file on disk is `bun-x86_64-pc-windows-msvc.exe`. Checking for the
+  // unsuffixed name reports every Windows build as missing its sidecars.
+  const suffixed = `${declared}-${triple}${process.platform === 'win32' ? '.exe' : ''}`
   if (!satisfied(suffixed)) missing.push(`src-tauri/${suffixed}`)
 }
 

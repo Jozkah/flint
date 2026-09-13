@@ -87,6 +87,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The steps below interpolate these inputs straight into shell scripts.
+      # Check them first, reading them only through the environment, so a
+      # crafted value stops the job before any of those scripts runs
+      # (janhq/jan#7871).
+      - name: Validate inputs
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          NEW_VERSION: ${{ inputs.new_version }}
+        run: |
+          case "$CHANNEL" in
+            stable|beta|nightly|agent-nightly) ;;
+            *) echo "::error::channel must be stable, beta, nightly or agent-nightly"; exit 1 ;;
+          esac
+          if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]*)?$ ]]; then
+            echo "::error::new_version must look like 1.2.3 or 1.2.3-suffix"
+            exit 1
+          fi
+
       - name: Getting the repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -211,8 +230,6 @@ jobs:
           JAN_ENGINE_REQUIRE_SIGNING: '1'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_PATH: '.'
-          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
-          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
           APPLE_CERTIFICATE: ${{ secrets.CODE_SIGN_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.CODE_SIGN_P12_PASSWORD }}
           APPLE_API_ISSUER: ${{ secrets.NOTARY_ISSUER }}

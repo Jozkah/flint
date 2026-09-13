@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useToolApprovalRequests } from '../useToolApprovalRequests'
 import { useToolApproval } from '../useToolApproval'
+import { getServiceHub } from '@/hooks/useServiceHub'
 
 // useToolApproval persists via backendStorage; stub the persist layer so the
 // import is inert and no disk I/O happens in tests.
@@ -20,14 +21,19 @@ vi.mock('zustand/middleware', () => ({
 describe('useToolApprovalRequests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useToolApprovalRequests.setState({ pending: {} })
+    useToolApprovalRequests.setState({ pending: {}, approvedFingerprints: {} })
     useToolApproval.setState({
       approvedTools: {},
+      approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      invalidatedServers: [],
       allowAllMCPPermissions: false,
     })
   })
+
+  // What `mcp_server_fingerprints` reports for the server in these tests.
+  const GH = { serverFingerprint: 'sha256:gh' }
 
   it('stores a pending approval keyed by toolCallId', () => {
     const { result } = renderHook(() => useToolApprovalRequests())
@@ -110,7 +116,7 @@ describe('useToolApprovalRequests', () => {
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github')
+      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
     })
     act(() => {
       result.current.resolveApproval('tc1', 'allow-always')
@@ -118,10 +124,41 @@ describe('useToolApprovalRequests', () => {
 
     await expect(p!).resolves.toBe(true)
     const approval = useToolApproval.getState()
-    expect(approval.isToolApproved('thread-2', 'other-tool', 'github')).toBe(
-      true
-    )
-    expect(approval.isToolApproved('thread-2', 'tool-a', 'gitlab')).toBe(false)
+    expect(
+      approval.isToolApproved('thread-2', 'other-tool', 'github', 'sha256:gh')
+    ).toBe(true)
+    expect(
+      approval.isToolApproved('thread-2', 'tool-a', 'gitlab', 'sha256:gh')
+    ).toBe(false)
+    // Bound to the definition shown, not the name.
+    expect(
+      approval.isToolApproved('thread-2', 'other-tool', 'github', 'sha256:changed')
+    ).toBe(false)
+  })
+
+  // AH-041. Renderer state is what the prompt reads; the backend is what the
+  // gate reads. An answer that updated only the first would be forgotten by the
+  // thing that actually enforces it, and the user would be asked again with no
+  // explanation.
+  it('records an allow-always server with the backend, not only in the store', async () => {
+    const trustServer = vi.fn().mockResolvedValue(undefined)
+    const hub = getServiceHub() as unknown as Record<string, unknown>
+    const realMcp = hub.mcp
+    hub.mcp = () => ({ trustServer }) as never
+    try {
+      const { result } = renderHook(() => useToolApprovalRequests())
+      let p: Promise<boolean>
+      act(() => {
+        p = result.current.requestApproval('tc9', 'tool-a', 'thread-1', 'github', GH)
+      })
+      act(() => {
+        result.current.resolveApproval('tc9', 'allow-always')
+      })
+      await expect(p!).resolves.toBe(true)
+      expect(trustServer).toHaveBeenCalledWith('github', 'sha256:gh')
+    } finally {
+      hub.mcp = realMcp
+    }
   })
 
   it('resolveApproval allow-always falls back to the tool when it has no server', async () => {
@@ -143,29 +180,51 @@ describe('useToolApprovalRequests', () => {
 
   it('auto-resolves true when the tool comes from an already trusted server', async () => {
     act(() => {
-      useToolApproval.getState().approveServer('github')
+      useToolApproval.getState().approveServer('github', 'sha256:gh')
     })
     const { result } = renderHook(() => useToolApprovalRequests())
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github')
+      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
     })
 
     await expect(p!).resolves.toBe(true)
     expect(result.current.pending['tc1']).toBeUndefined()
   })
 
-  it('keeps the server on the pending entry so the prompt can name it', () => {
+  it('keeps the server and its definition on the pending entry so the prompt can name it', async () => {
     const { result } = renderHook(() => useToolApprovalRequests())
 
     act(() => {
-      result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github')
+      void result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
     })
 
     expect(result.current.pending['tc1']).toMatchObject({
       serverName: 'github',
+      serverFingerprint: 'sha256:gh',
     })
+  })
+
+  it('looks up the server definition when the caller does not supply it', async () => {
+    const { result } = renderHook(() => useToolApprovalRequests())
+    const hub = getServiceHub() as unknown as Record<string, unknown>
+    const realMcp = hub.mcp
+    hub.mcp = () =>
+      ({ serverFingerprints: vi.fn().mockResolvedValue({ github: 'sha256:gh' }) }) as never
+    try {
+      act(() => {
+        void result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github')
+      })
+      await vi.waitFor(() =>
+        expect(useToolApprovalRequests.getState().pending['tc1']).toMatchObject({
+          serverName: 'github',
+          serverFingerprint: 'sha256:gh',
+        })
+      )
+    } finally {
+      hub.mcp = realMcp
+    }
   })
 
   it('resolveApproval deny resolves false', async () => {

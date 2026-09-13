@@ -178,9 +178,11 @@ describe('ServiceHub Integration Tests', () => {
   describe('Service Access', () => {
     it('should provide access to all required services', () => {
       const services = [
-        'theme', 'window', 'events', 'hardware', 'app', 'analytic',
+        // No 'analytic' and no 'updater': this build reports nothing and
+        // checks for no releases, so those services do not exist to access.
+        'theme', 'window', 'events', 'hardware', 'app',
         'messages', 'mcp', 'threads', 'providers', 'models', 'assistants',
-        'dialog', 'opener', 'updater', 'path', 'core', 'deeplink'
+        'dialog', 'opener', 'path', 'core', 'deeplink'
       ]
 
       services.forEach(serviceName => {

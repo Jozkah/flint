@@ -239,8 +239,12 @@ fn clamp_scratch(scratch: &Path, rel: &str) -> PathBuf {
 /// The `/tmp`-relative tail of an absolute `/tmp/...` path; `Some("")` for the
 /// bare `/tmp` dir itself; `None` when `raw` is not such a path.
 fn tmp_relative(raw: &str) -> Option<String> {
-    let path = Path::new(raw);
-    if !path.is_absolute() {
+    // Tested with a leading slash rather than `Path::is_absolute`, which asks
+    // the *host's* question: on Windows `/tmp` is not absolute (no drive
+    // letter), so the check rejected every path this function exists to
+    // recognise. The paths here are POSIX ones from inside a bubblewrap
+    // namespace and are absolute by that grammar, whatever host is asking.
+    if !raw.starts_with('/') {
         return None;
     }
     // Match only the exact `/tmp` dir or a genuine `/tmp/...` descendant: a
@@ -389,6 +393,30 @@ fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R21: on Windows a path with a root but no drive names the root of the
+    /// project's drive, not somewhere in the project. It escapes, for writes
+    /// and reads alike, and resolves to where the file would really land.
+    #[test]
+    #[cfg(windows)]
+    fn a_root_relative_path_is_not_inside_the_project() {
+        let base = std::env::temp_dir().join(format!("jan-r21-{}", std::process::id()));
+        let project = base.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        for raw in ["/jan-r21-outside.txt", "\\jan-r21-outside.txt", "/tmp/dbg.py"] {
+            assert!(escapes_project(&project, None, raw).unwrap(), "{raw} was treated as inside the project");
+            assert!(escapes_write_roots(&project, None, &[], raw).unwrap(), "{raw}: write");
+            assert!(escapes_read_roots(&project, None, &[], raw).unwrap(), "{raw}: read");
+            let landed = resolve_path(&project, None, raw);
+            assert!(!landed.starts_with(&project), "{raw} resolved into the project: {landed:?}");
+        }
+        // Drive-relative (`C:foo`) is not a project path either.
+        assert!(escapes_project(&project, None, "C:jan-r21-drive-relative.txt").unwrap());
+        // Ordinary relative paths are still inside.
+        assert!(!escapes_project(&project, None, "src/ok.txt").unwrap());
+        assert!(!escapes_project(&project, None, "./src/ok.txt").unwrap());
+        let _ = std::fs::remove_dir_all(&base);
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -615,9 +643,18 @@ mod tests {
         } else {
             "/var/scratch/jan-agent-s1"
         });
+        // A path outside the scratch, written in the host's own grammar. A
+        // POSIX-looking string is not a path Windows can answer questions
+        // about, and comparing one against a normalised result compares
+        // separators rather than behaviour.
+        let other = PathBuf::from(if cfg!(windows) {
+            r"C:\elsewhere\out.txt"
+        } else {
+            "/elsewhere/out.txt"
+        });
         let file = scratch.join("out.txt");
         assert!(in_scratch(Some(&scratch), &file));
-        assert!(!in_scratch(Some(&scratch), Path::new("/elsewhere/out.txt")));
+        assert!(!in_scratch(Some(&scratch), &other));
         assert!(!in_scratch(None, &file));
         if cfg!(target_os = "linux") {
             assert_eq!(scratch_display_path(Some(&scratch), &file), "/tmp/out.txt");
@@ -629,7 +666,6 @@ mod tests {
             );
         }
         // Outside the scratch the path is untouched either way.
-        let other = PathBuf::from("/elsewhere/out.txt");
         assert_eq!(
             scratch_display_path(Some(&scratch), &other),
             other.to_string_lossy()

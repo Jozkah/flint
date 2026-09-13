@@ -57,7 +57,7 @@ export function CoworkSandboxChip() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1.5 rounded-full bg-amber-500/10 text-amber-600 shrink-0 hover:bg-amber-500/20 dark:text-amber-400"
+          className="h-7 shrink-0 gap-1.5 rounded-md border border-warning/40 bg-warning-tint text-warning hover:bg-warning-tint/70 pointer-coarse:h-11"
           aria-label={t('common:sandbox.a11y')}
         >
           <TriangleAlert size={12} className="shrink-0" />

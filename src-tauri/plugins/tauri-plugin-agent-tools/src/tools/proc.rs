@@ -3,6 +3,12 @@
 //! cancel, or app shutdown can reap the entire descendant tree, not just the
 //! top-level shell. Without this, any command that spawns children (a build, a
 //! `foo &`, a pipeline) leaks orphans when the run is torn down.
+//!
+//! It is also where a shell is *chosen*, and where what is known about that
+//! choice is kept honest. A shell has a location (which is a fact about a path,
+//! never a deduction from a failure), a command language (which decides whether
+//! a given command can be run at all), and a probe result (which is the only
+//! thing that establishes it can start under the sandbox in force).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -11,11 +17,38 @@ use std::sync::{Mutex, OnceLock};
 
 use tokio::process::{Child, Command};
 
+/// The command language a shell actually speaks.
+///
+/// Carried rather than inferred from the description, because the point of
+/// having it is to stop a POSIX command string being handed to something that
+/// will mis-execute it. `cmd` given `rm -rf build && echo done` does not fail
+/// cleanly: it runs whatever `rm` is on `PATH`, ignores the flags it does not
+/// know, and reads `&&` as its own operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellFlavor {
+    /// POSIX `sh`/`bash` semantics.
+    Posix,
+    /// Windows PowerShell or PowerShell 7.
+    PowerShell,
+    /// `cmd.exe`.
+    Cmd,
+}
+
+impl ShellFlavor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShellFlavor::Posix => "posix",
+            ShellFlavor::PowerShell => "powershell",
+            ShellFlavor::Cmd => "cmd",
+        }
+    }
+}
+
 /// How to invoke the host shell. `program` + `args` are fixed; the command
 /// string is appended as the final argv element, or piped to stdin when
 /// `via_stdin` is set (legacy WSL `bash.exe`, which cannot take `-c`).
 /// `description` names the shell for the model (e.g. git-bash vs `cmd`), so it
-/// can adapt command syntax instead of assuming POSIX bash.
+/// can adapt command syntax instead of assuming POSIX.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellConfig {
     pub program: PathBuf,
@@ -23,36 +56,92 @@ pub struct ShellConfig {
     pub via_stdin: bool,
     /// A short human-readable name of the resolved shell, for the model.
     pub description: &'static str,
+    /// The command language this shell will apply to the command string.
+    pub flavor: ShellFlavor,
 }
 
 /// Resolved shell for this process, computed once. Prefers a real `bash`
 /// (matching the tool's name and documented guidance) and falls back to a
 /// POSIX `sh`/`cmd` only when no bash is found.
+///
+/// This is the *unconfined* preference. A sandboxed run must go through
+/// [`super::jail::select_shell`] instead, because a shell that starts fine on
+/// its own can still be unable to start inside a container -- and the only way
+/// to know is to try it.
 pub fn shell() -> &'static ShellConfig {
     static SHELL: OnceLock<ShellConfig> = OnceLock::new();
-    SHELL.get_or_init(resolve_shell)
+    SHELL.get_or_init(|| {
+        candidates()
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| c("/bin/sh", &["-c"], "sh", ShellFlavor::Posix))
+    })
 }
 
-fn c(program: &str, args: &[&str], description: &'static str) -> ShellConfig {
+fn c(program: &str, args: &[&str], description: &'static str, flavor: ShellFlavor) -> ShellConfig {
     ShellConfig {
         program: PathBuf::from(program),
         args: args.iter().map(|s| s.to_string()).collect(),
         via_stdin: false,
         description,
+        flavor,
     }
 }
 
-fn resolve_shell() -> ShellConfig {
-    if let Some(path) = std::env::var_os("JAN_AGENT_SHELL") {
-        let p = PathBuf::from(&path);
-        if p.exists() {
-            return ShellConfig {
-                program: p,
-                args: vec!["-c".to_string()],
-                via_stdin: false,
-                description: "custom",
-            };
-        }
+fn at(
+    program: PathBuf,
+    args: &[&str],
+    description: &'static str,
+    flavor: ShellFlavor,
+) -> ShellConfig {
+    ShellConfig {
+        program,
+        args: args.iter().map(|s| s.to_string()).collect(),
+        via_stdin: false,
+        description,
+        flavor,
+    }
+}
+
+/// The shell named by `JAN_AGENT_SHELL`, when it names something real.
+///
+/// Assumed POSIX, because that is what the setting has always meant and what
+/// the tool's command strings are written in. A user pointing it at
+/// `powershell.exe` gets PowerShell, and the flavor says so.
+fn configured_shell() -> Option<ShellConfig> {
+    let path = PathBuf::from(std::env::var_os("JAN_AGENT_SHELL")?);
+    if !path.exists() {
+        return None;
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    Some(
+        if name.starts_with("powershell") || name.starts_with("pwsh") {
+            at(
+                path,
+                &["-NoProfile", "-NonInteractive", "-Command"],
+                "custom powershell",
+                ShellFlavor::PowerShell,
+            )
+        } else if name.starts_with("cmd") {
+            at(path, &["/C"], "custom cmd", ShellFlavor::Cmd)
+        } else {
+            at(path, &["-c"], "custom", ShellFlavor::Posix)
+        },
+    )
+}
+
+/// Every shell this host could run a command with, best first.
+///
+/// A list rather than a single answer, because "best" depends on something
+/// this function cannot know: whether the shell can start under the sandbox the
+/// run will use. The caller probes down the list.
+pub fn candidates() -> Vec<ShellConfig> {
+    let mut out = Vec::new();
+    if let Some(configured) = configured_shell() {
+        out.push(configured);
     }
     #[cfg(unix)]
     {
@@ -64,34 +153,24 @@ fn resolve_shell() -> ShellConfig {
         // or `PATH` is degenerate but `/bin/bash` is real (e.g. cron); `/bin/sh`
         // is the guaranteed-POSIX last resort.
         if let Some(p) = which("bash") {
-            return ShellConfig {
-                program: p,
-                args: vec!["-c".to_string()],
-                via_stdin: false,
-                description: "bash",
-            };
+            out.push(at(p, &["-c"], "bash", ShellFlavor::Posix));
         }
         if Path::new("/bin/bash").exists() {
-            return c("/bin/bash", &["-c"], "bash");
+            out.push(c("/bin/bash", &["-c"], "bash", ShellFlavor::Posix));
         }
-        c("/bin/sh", &["-c"], "sh")
+        out.push(c("/bin/sh", &["-c"], "sh", ShellFlavor::Posix));
     }
     #[cfg(windows)]
     {
-        // Prefer a real bash before ever falling back to cmd, so POSIX command
-        // syntax keeps working. Check the standard git-bash/msys install
-        // locations under the well-known program dirs first, then `bash` on
-        // PATH.
+        // Prefer a real bash before ever falling back to PowerShell or cmd, so
+        // POSIX command syntax keeps working. Check the standard git-bash/msys
+        // install locations under the well-known program dirs first, then `bash`
+        // on PATH.
         for var in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
             if let Some(base) = std::env::var_os(var) {
                 let git_bash = PathBuf::from(base).join("Git").join("bin").join("bash.exe");
-                if git_bash.exists() {
-                    return ShellConfig {
-                        program: git_bash,
-                        args: vec!["-c".to_string()],
-                        via_stdin: false,
-                        description: "git-bash",
-                    };
+                if git_bash.exists() && !out.iter().any(|s| s.program == git_bash) {
+                    out.push(at(git_bash, &["-c"], "git-bash", ShellFlavor::Posix));
                 }
             }
         }
@@ -111,27 +190,252 @@ fn resolve_shell() -> ShellConfig {
                     .and_then(|n| n.to_str())
                     .map(|n| n.eq_ignore_ascii_case("System32"))
                     .unwrap_or(false);
-            if is_wsl {
-                return ShellConfig {
-                    program: p,
-                    args: vec!["-s".to_string()],
-                    via_stdin: true,
-                    description: "wsl bash",
-                };
+            if !out.iter().any(|s| s.program == p) {
+                out.push(if is_wsl {
+                    ShellConfig {
+                        program: p,
+                        args: vec!["-s".to_string()],
+                        via_stdin: true,
+                        description: "wsl bash",
+                        flavor: ShellFlavor::Posix,
+                    }
+                } else {
+                    at(p, &["-c"], "bash", ShellFlavor::Posix)
+                });
             }
-            return ShellConfig {
-                program: p,
-                args: vec!["-c".to_string()],
-                via_stdin: false,
-                description: "bash",
-            };
         }
-        // No bash anywhere: cmd is the only shell. The model is told this (the
-        // runtime env block reports COMSPEC, and the bash handler's output note
-        // names cmd) so it can write cmd syntax rather than silently passing
-        // POSIX commands that cmd would reject.
-        c("cmd.exe", &["/C"], "cmd")
+        // PowerShell and cmd are not bash and are never silently substituted for
+        // it -- a command that needs POSIX semantics is refused rather than
+        // reinterpreted (see [`requires_posix_shell`]). They are here so a
+        // shell-neutral command still runs on a host where bash cannot, which
+        // on Windows includes every sandboxed run: the MSYS2 runtime Git Bash
+        // is built on cannot initialise inside an AppContainer.
+        for candidate in ["pwsh.exe", "powershell.exe"] {
+            if let Some(p) = which(candidate) {
+                if !out.iter().any(|s| s.program == p) {
+                    out.push(at(
+                        p,
+                        &["-NoProfile", "-NonInteractive", "-Command"],
+                        "powershell",
+                        ShellFlavor::PowerShell,
+                    ));
+                }
+            }
+        }
+        let cmd = std::env::var_os("ComSpec")
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| PathBuf::from("cmd.exe"));
+        out.push(at(cmd, &["/C"], "cmd", ShellFlavor::Cmd));
     }
+    out
+}
+
+/// Where a shell was found, said accurately.
+///
+/// This type exists because a generic process-start failure was once reported
+/// as "a shell installed under your user profile is unreadable to the sandbox"
+/// for a `bash.exe` sitting in `C:\Program Files\Git\bin`. A location is a fact
+/// about a path. It is never inferred from a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellOrigin {
+    /// Named by `JAN_AGENT_SHELL`.
+    Configured,
+    /// Under `%ProgramFiles%`, `%ProgramFiles(x86)%` or `%ProgramW6432%`.
+    SystemInstall,
+    /// Under the user's own profile, which an AppContainer cannot read.
+    UserInstall,
+    /// Under `%SystemRoot%` -- `cmd.exe`, `powershell.exe`, the WSL launcher.
+    WindowsSystem,
+    /// Shipped next to the Jan binary.
+    Bundled,
+    /// A real path matching none of the above.
+    Elsewhere,
+}
+
+impl ShellOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShellOrigin::Configured => "configured",
+            ShellOrigin::SystemInstall => "system-install",
+            ShellOrigin::UserInstall => "user-install",
+            ShellOrigin::WindowsSystem => "windows-system",
+            ShellOrigin::Bundled => "bundled",
+            ShellOrigin::Elsewhere => "elsewhere",
+        }
+    }
+}
+
+/// The directories that decide a shell's origin. Passed in rather than read
+/// from the process, so the classification is testable without a real profile.
+#[derive(Debug, Clone, Default)]
+pub struct OriginRoots {
+    pub program_files: Vec<PathBuf>,
+    pub user_profile: Vec<PathBuf>,
+    pub system_root: Option<PathBuf>,
+    pub bundled: Option<PathBuf>,
+}
+
+impl OriginRoots {
+    /// The roots of the machine this is running on.
+    pub fn from_host() -> Self {
+        let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
+        Self {
+            program_files: ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"]
+                .into_iter()
+                .filter_map(var)
+                .collect(),
+            user_profile: ["USERPROFILE", "LOCALAPPDATA", "APPDATA"]
+                .into_iter()
+                .filter_map(var)
+                .collect(),
+            system_root: var("SystemRoot").or_else(|| var("windir")),
+            bundled: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
+        }
+    }
+}
+
+/// Case-insensitive component-wise prefix test, which is the only correct one
+/// for Windows paths and harmless elsewhere. Whole components are compared so
+/// `C:\Users\me2` is not read as living under `C:\Users\me`.
+fn under(path: &Path, root: &Path) -> bool {
+    if root.as_os_str().is_empty() {
+        return false;
+    }
+    let mut walker = path.components();
+    for component in root.components() {
+        match walker.next() {
+            Some(mine)
+                if mine
+                    .as_os_str()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(&component.as_os_str().to_string_lossy()) => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Classify where a shell lives. Ordered so the most specific answer wins: a
+/// program directory is checked before the profile, because on a machine where
+/// the two overlap the sandbox-relevant fact is the program directory.
+pub fn classify_origin(program: &Path, configured: bool, roots: &OriginRoots) -> ShellOrigin {
+    if configured {
+        return ShellOrigin::Configured;
+    }
+    if roots.program_files.iter().any(|r| under(program, r)) {
+        return ShellOrigin::SystemInstall;
+    }
+    if roots
+        .system_root
+        .as_ref()
+        .is_some_and(|r| under(program, r))
+    {
+        return ShellOrigin::WindowsSystem;
+    }
+    if roots.user_profile.iter().any(|r| under(program, r)) {
+        return ShellOrigin::UserInstall;
+    }
+    if roots.bundled.as_ref().is_some_and(|r| under(program, r)) {
+        return ShellOrigin::Bundled;
+    }
+    ShellOrigin::Elsewhere
+}
+
+/// What a probe found out about one shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProbeOutcome {
+    /// The shell started, ran a harmless command and exited cleanly.
+    Usable,
+    /// The shell exists but could not be started under the policy in force.
+    /// The string is what was reported, not a guess at why.
+    Unusable { reason: String },
+    /// Nothing exists at that path.
+    Missing,
+    /// No sandbox backend could confine this shell, so it was never tried.
+    NoSandbox,
+}
+
+impl ProbeOutcome {
+    pub fn usable(&self) -> bool {
+        matches!(self, ProbeOutcome::Usable)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProbeOutcome::Usable => "usable",
+            ProbeOutcome::Unusable { .. } => "unusable",
+            ProbeOutcome::Missing => "missing",
+            ProbeOutcome::NoSandbox => "no-sandbox",
+        }
+    }
+}
+
+/// A shell, where it came from, and whether it works here. This is what a
+/// readiness view renders and what a diagnostics copy contains.
+#[derive(Debug, Clone)]
+pub struct ShellReport {
+    pub cfg: ShellConfig,
+    pub origin: ShellOrigin,
+    pub outcome: ProbeOutcome,
+}
+
+/// The command a probe runs. Harmless in every shell this module knows about,
+/// writes nothing, and exits immediately.
+pub const PROBE_COMMAND: &str = "exit 0";
+
+/// Constructs that only a POSIX shell will execute correctly.
+///
+/// Deliberately short. The cost of a false positive is a clear refusal naming
+/// bash; the cost of a false negative is `cmd` quietly doing something else
+/// with the user's command. Only constructs with no compatible reading in
+/// PowerShell or `cmd` are listed -- `&&` is absent because all three accept
+/// it, and `|` because all three pipe.
+const POSIX_ONLY: &[(&str, &str)] = &[
+    ("$(", "command substitution `$(...)`"),
+    ("${", "parameter expansion `${...}`"),
+    ("<<", "a heredoc"),
+    ("2>&1", "POSIX descriptor redirection"),
+    ("&>", "POSIX descriptor redirection"),
+    ("export ", "`export`"),
+    ("xargs", "`xargs`"),
+    ("#!/", "a shebang"),
+];
+
+/// The POSIX construct a command depends on, or `None` when it would run the
+/// same anywhere. Used to refuse rather than reinterpret.
+pub fn requires_posix_shell(command: &str) -> Option<&'static str> {
+    // A closed backtick pair is command substitution. A lone backtick is more
+    // often quoting inside a message, and in PowerShell it is the escape
+    // character, so it is not on its own evidence of anything.
+    if command.matches('`').count() >= 2 {
+        return Some("command substitution with backticks");
+    }
+    POSIX_ONLY
+        .iter()
+        .find(|(needle, _)| command.contains(needle))
+        .map(|(_, what)| *what)
+}
+
+/// The refusal handed back when a command needs a POSIX shell and none can run.
+///
+/// Structured and actionable on purpose: it names the construct, the shell that
+/// is available instead, and why the POSIX one is not being used. It never
+/// silently re-runs the command through another interpreter.
+pub fn posix_unavailable_error(construct: &str, available: &ShellConfig, why: &str) -> String {
+    format!(
+        "ERROR: this command needs a POSIX shell -- it uses {construct} -- and none is \
+         available here.\n\
+         Available shell: {} ({} syntax).\n\
+         Why a POSIX shell is not being used: {why}\n\
+         Do one of: rewrite the command in {} syntax, or use the read/ls/find/grep \
+         tools, which do not need a shell.",
+        available.description,
+        available.flavor.as_str(),
+        available.flavor.as_str()
+    )
 }
 
 /// Locate an executable on PATH via the platform's own resolver. Also used by
@@ -162,7 +466,7 @@ pub(crate) fn which(name: &str) -> Option<PathBuf> {
 /// `JAN_DATA_FOLDER` -- so the shell is launched with only what a command needs
 /// to run at all. Applied here, the one choke point all backends (bubblewrap,
 /// seatbelt, and the Windows AppContainer helper) funnel through.
-const SANDBOX_ENV_ALLOW: &[&str] = &[
+pub const SANDBOX_ENV_ALLOW: &[&str] = &[
     "PATH",
     "HOME",
     "USERPROFILE",
@@ -180,6 +484,14 @@ const SANDBOX_ENV_ALLOW: &[&str] = &[
     "PATHEXT",
     "ProgramFiles",
     "ProgramData",
+    // Windows only, and not for the shell: on Windows the process spawned here
+    // is the AppContainer helper, which builds the confined shell's environment
+    // itself (`tools::win_env`). `CreateProcessW` resolves the container's own
+    // storage -- `%LOCALAPPDATA%\Packages\<moniker>\AC` -- out of the block it
+    // is handed, and returns ERROR_ENVVAR_NOT_FOUND (203) with no process
+    // created when the name is absent. So the helper needs it to do its job;
+    // the shell it starts is given the sandbox's own synthetic profile instead.
+    "LOCALAPPDATA",
 ];
 
 /// Every spelling of "where temporary files go": POSIX tools read `TMPDIR`,
@@ -190,11 +502,19 @@ const TEMP_ENV_KEYS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
 /// Bound the resource exhaustion a sandboxed command could otherwise trigger on
 /// the host. `bwrap` 0.6.1 (and older) has no `--rlimit`, so instead we clamp the
 /// child's soft limits here, before exec, from the one choke point every backend
-/// funnels through. A fork-bomb is capped by `NPROC`, descriptor exhaustion by
-/// `NOFILE`, and disk fill through the unbounded workspace bind by `FSIZE`. The
-/// bwrap wrapper execs `bwrap` itself, which sets up the namespace and then
-/// execs the real shell, so the limits carry over to every descendant. Linux
-/// only; the Windows AppContainer child is limited by its token.
+/// funnels through. Descriptor exhaustion is capped by `NOFILE` and disk fill
+/// through the unbounded workspace bind by `FSIZE`.
+///
+/// `NPROC` is charged to the whole Unix user, not to this shell tree, so on a
+/// busy workstation unrelated processes can use up the allowance and make an
+/// ordinary tool command fail at `fork()`. Linux keeps a finite fork-bomb
+/// ceiling at 8192; macOS already enforces its own per-user ceiling
+/// (`kern.maxprocperuid`) that an unprivileged child cannot raise, so no cap is
+/// set there (adapted from janhq/jan#8785).
+///
+/// The bwrap wrapper execs `bwrap` itself, which sets up the namespace and then
+/// execs the real shell, so the limits carry over to every descendant. The
+/// Windows AppContainer child is limited by its token instead.
 #[cfg(unix)]
 fn confine_limits(cmd: &mut Command) {
     // `tokio::process::Command::pre_exec` (unix) is the std `pre_exec`; the call
@@ -206,8 +526,9 @@ fn confine_limits(cmd: &mut Command) {
     unsafe {
         cmd.pre_exec(|| {
             for (resource, limit) in [
-                (nix::libc::RLIMIT_NPROC, 4096_u64),
-                (nix::libc::RLIMIT_NOFILE, 1024_u64),
+                #[cfg(target_os = "linux")]
+                (nix::libc::RLIMIT_NPROC, 8192_u64),
+                (nix::libc::RLIMIT_NOFILE, 2048_u64),
                 (nix::libc::RLIMIT_FSIZE, 1024_u64 * 1024_u64 * 1024_u64),
             ] {
                 let r = nix::libc::rlimit {
@@ -223,6 +544,102 @@ fn confine_limits(cmd: &mut Command) {
     }
 }
 
+/// The command as the shell should receive it, starting where it is meant to.
+///
+/// Windows PowerShell inside an AppContainer does not take its location from
+/// the process's working directory: measured on Windows 11, it starts at a
+/// drive root the container can see (`G:\` on the development machine) while
+/// `cmd` in the same container starts in the workspace. A command with a
+/// relative path then read or wrote somewhere other than the workspace the
+/// model was told about.
+///
+/// `Set-Location` straight into the workspace is refused there ("Access is
+/// denied"): PowerShell checks each ancestor of the path, and the container
+/// may not look at its parents. So the workspace is mounted as a drive of its
+/// own, whose root is the one directory the container can see, and the shell
+/// moves to it. The path is quoted as a PowerShell literal (see
+/// [`ps_literal`]). The process's own working directory is already the
+/// workspace, so native programs the command runs are unaffected.
+pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
+    match flavor {
+        ShellFlavor::PowerShell => format!(
+            "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{}' -Scope Global; \
+             Set-Location JanWorkspace:\\; {command}",
+            ps_literal(&cwd.to_string_lossy())
+        ),
+        _ => command.to_string(),
+    }
+}
+
+/// Text to put between single quotes in a PowerShell command.
+///
+/// PowerShell ends a single-quoted string on `'` and also on the typographic
+/// quotes U+2018 to U+201B, so a folder named `Bob’s project` ended the
+/// literal early -- every command failed to parse, and a folder named to do
+/// so could run a command nobody approved. Each of them is doubled, which is
+/// how PowerShell escapes any of the five inside a literal.
+pub(crate) fn ps_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    for c in text.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod located_tests {
+    use super::*;
+
+    #[test]
+    fn every_quote_powershell_honours_is_doubled() {
+        assert_eq!(ps_literal("a'b"), "a''b");
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(ps_literal(&format!("x{q}y")), format!("x{q}{q}y"));
+        }
+        assert_eq!(ps_literal("plain \"text\""), "plain \"text\"");
+    }
+
+    /// A workspace whose name closes a PowerShell literal runs nothing, and
+    /// the command still starts inside it. Unsandboxed PowerShell parses the
+    /// prefix exactly as the sandboxed one does.
+    #[cfg(windows)]
+    #[test]
+    fn a_folder_named_to_close_the_literal_runs_nothing() {
+        let root = std::env::temp_dir().join(format!(
+            "jan-located-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let ws = root.join("Bob\u{2019}; Write-Output INJECTED; \u{2019}x");
+        std::fs::create_dir_all(&ws).unwrap();
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(located(
+                ShellFlavor::PowerShell,
+                "Write-Output ('at:' + (Get-Item .).FullName)",
+                &ws,
+            ))
+            .current_dir(&ws)
+            .output()
+            .expect("powershell runs");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            !text.lines().any(|l| l.trim() == "INJECTED"),
+            "the folder name ran a command: {text}"
+        );
+        assert!(
+            text.contains("at:") && text.contains("Write-Output INJECTED"),
+            "the command did not start in the workspace: {text} / {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 pub async fn spawn(
     cfg: &ShellConfig,
     command: &str,
@@ -232,7 +649,7 @@ pub async fn spawn(
     let mut cmd = Command::new(&cfg.program);
     cmd.args(&cfg.args);
     if !cfg.via_stdin {
-        cmd.arg(command);
+        cmd.arg(located(cfg.flavor, command, cwd));
     }
     // Strip every inherited variable, then re-add only the allowlist so the
     // sandboxed process holds no host secrets regardless of which backend wraps
@@ -341,9 +758,7 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
         Err(Errno::ESRCH) => match kill(target, Signal::SIGKILL) {
             Ok(()) => KillOutcome::Signalled,
             Err(Errno::ESRCH) => KillOutcome::Gone,
-            Err(Errno::EPERM) => {
-                KillOutcome::Failed("not permitted to signal this process".into())
-            }
+            Err(Errno::EPERM) => KillOutcome::Failed("not permitted to signal this process".into()),
             Err(e) => KillOutcome::Failed(e.desc().to_string()),
         },
         Err(Errno::EPERM) => {
@@ -355,38 +770,325 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
 
 /// Kill the process `pid` and every descendant it spawned.
 ///
-/// Windows has no process groups a signal can reach across, so this shells out
-/// to `taskkill /T`, which walks the tree itself. Two things can go wrong and
-/// both are reported: `taskkill` may fail to launch at all (absent from PATH in
-/// a stripped image), and it may run and refuse — exit code 128 is "no such
-/// process", which means the command had already finished.
+/// Windows has no process groups a signal can reach across, so the tree is
+/// walked here, from a kernel process snapshot, and each member terminated by
+/// handle. This used to shell out to `taskkill /T`, which asks WMI for the
+/// tree: on a machine where the WMI service had stopped answering, every kill
+/// -- including of a pid that did not exist -- came back "the timeout period
+/// expired", so the Stop button could not stop anything. The snapshot needs no
+/// service at all.
+///
+/// The outcome is the root's: [`Gone`](KillOutcome::Gone) when it had already
+/// exited, a failure when the OS refused it. Descendants are best effort --
+/// one that exits or refuses on its own does not undo the kill that mattered.
 #[cfg(windows)]
 pub fn kill_tree(pid: u32) -> KillOutcome {
-    /// `taskkill` exit code for "the process is not running".
-    const ERROR_NOT_FOUND: i32 = 128;
+    use windows_sys::Win32::Foundation::{GetLastError, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{TerminateProcess, WaitForSingleObject};
 
-    let output = match std::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .output()
-    {
-        Ok(output) => output,
-        Err(e) => return KillOutcome::Failed(format!("could not run taskkill: {e}")),
+    let root = match win_tree::Owned::open(pid) {
+        Ok(root) => root,
+        Err(error) => return classify_open_error(error),
     };
-    if output.status.success() {
-        return KillOutcome::Signalled;
-    }
-    if output.status.code() == Some(ERROR_NOT_FOUND) {
-        return KillOutcome::Gone;
-    }
-    // taskkill explains itself on stderr; its first line is the useful part
-    // and names no path of ours.
-    let reason = String::from_utf8_lossy(&output.stderr);
-    let first = reason.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    KillOutcome::Failed(if first.is_empty() {
-        format!("taskkill exited with {}", output.status)
+    // Every descendant is opened before anything is terminated: a handle pins
+    // the process it names, so a pid recycled mid-kill can never be hit.
+    let tree = win_tree::descendants(&root);
+
+    let outcome = if unsafe { TerminateProcess(root.handle, 1) } != 0 {
+        KillOutcome::Signalled
     } else {
-        first.trim().to_string()
-    })
+        let error = unsafe { GetLastError() };
+        // Terminating a process that has already exited fails too, with
+        // "access denied"; tell that apart from a real refusal.
+        if unsafe { WaitForSingleObject(root.handle, 0) } == WAIT_OBJECT_0 {
+            KillOutcome::Gone
+        } else {
+            classify_open_error(error)
+        }
+    };
+    for member in &tree {
+        unsafe { TerminateProcess(member.handle, 1) };
+    }
+    // Anything a member started while the first pass ran.
+    for member in &tree {
+        for late in win_tree::descendants(member) {
+            unsafe { TerminateProcess(late.handle, 1) };
+        }
+    }
+    outcome
+}
+
+/// When the process holding `pid` was created, or `None` if nothing does.
+///
+/// Opened for query only: asking which process something *is* must not require
+/// the right to end it, and a durable job record checks pids that may by then
+/// belong to strangers -- that check is exactly what stops one of them being
+/// mistaken for ours (AH-101).
+#[cfg(windows)]
+pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    unsafe { CloseHandle(handle) };
+    if ok == 0 {
+        return None;
+    }
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    (ticks != 0).then_some(ticks)
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if nothing
+/// can be asked about that pid.
+///
+/// Needed beside the creation time: Windows keeps an ended process's record
+/// -- creation time included -- for as long as anything holds a handle to it,
+/// so a matching creation time alone reads a process that is gone as alive.
+#[cfg(windows)]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let waited = unsafe { WaitForSingleObject(handle, 0) };
+    unsafe { CloseHandle(handle) };
+    match waited {
+        WAIT_OBJECT_0 => Some(true),
+        WAIT_TIMEOUT => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if unknown.
+/// A zombie -- ended, not yet reaped -- has ended.
+#[cfg(not(windows))]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let state = stat.rsplit_once(')')?.1.split_whitespace().next()?;
+    Some(matches!(state, "Z" | "X" | "x"))
+}
+
+/// When `handle`'s process was created, as a FILETIME count. `None` if unknown.
+#[cfg(all(windows, test))]
+pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u64> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    (ok != 0).then(|| ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
+}
+
+/// Every live descendant of `root`, found from one process snapshot.
+///
+/// A process is a child of an ancestor only if its recorded parent id is the
+/// ancestor's *and* it was created no earlier than the ancestor was -- the
+/// check that keeps a recycled parent id from adopting a stranger. With no
+/// creation time for the root, nothing is claimed as a descendant.
+#[cfg(all(windows, test))]
+pub(crate) fn descendants_of(root: u32, root_created: Option<u64>) -> Vec<u32> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let Some(root_created) = root_created else {
+        return Vec::new();
+    };
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Vec::new();
+    }
+    let mut pairs: Vec<(u32, u32)> = Vec::new();
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while more {
+        pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+        more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+    unsafe { CloseHandle(snapshot) };
+
+    let created_at = |pid: u32| -> Option<u64> {
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return None;
+        }
+        let at = creation_time(handle);
+        unsafe { CloseHandle(handle) };
+        at
+    };
+
+    let mut found = Vec::new();
+    let mut frontier = vec![(root, root_created)];
+    while let Some((parent, parent_created)) = frontier.pop() {
+        for &(pid, ppid) in &pairs {
+            if ppid != parent || pid == parent || pid == root || found.contains(&pid) {
+                continue;
+            }
+            match created_at(pid) {
+                Some(at) if at >= parent_created => {
+                    found.push(pid);
+                    frontier.push((pid, at));
+                }
+                _ => {}
+            }
+        }
+    }
+    found
+}
+
+/// What a Win32 error from opening or terminating the root means.
+///
+/// Split out from [`kill_tree`] so every outcome can be tested without aiming
+/// a kill at a process that refuses one: the only such processes are System
+/// and Idle, which no test should be targeting on a developer's machine.
+#[cfg(windows)]
+fn classify_open_error(error: u32) -> KillOutcome {
+    use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER};
+
+    match error {
+        // No process has that id: the command had already finished, which is
+        // the outcome the caller wanted.
+        ERROR_INVALID_PARAMETER => KillOutcome::Gone,
+        ERROR_ACCESS_DENIED => KillOutcome::Failed("access is denied".to_string()),
+        other => KillOutcome::Failed(format!("the process could not be stopped (error {other})")),
+    }
+}
+
+/// The process tree under a root, read from a Toolhelp snapshot.
+#[cfg(windows)]
+mod win_tree {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, FILETIME, HANDLE, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        PROCESS_TERMINATE,
+    };
+
+    /// An open process handle, closed on drop.
+    pub struct Owned {
+        pub pid: u32,
+        pub handle: HANDLE,
+        /// Creation time, as 100ns ticks.
+        pub created: u64,
+    }
+
+    impl Owned {
+        /// Open `pid` for termination, or return the Win32 error.
+        pub fn open(pid: u32) -> Result<Owned, u32> {
+            let handle = unsafe {
+                OpenProcess(
+                    PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                    0,
+                    pid,
+                )
+            };
+            if handle.is_null() {
+                return Err(unsafe { GetLastError() });
+            }
+            let zero = FILETIME {
+                dwLowDateTime: 0,
+                dwHighDateTime: 0,
+            };
+            let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+            let created = if unsafe {
+                GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
+            } != 0
+            {
+                (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime)
+            } else {
+                0
+            };
+            Ok(Owned {
+                pid,
+                handle,
+                created,
+            })
+        }
+    }
+
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.handle) };
+        }
+    }
+
+    /// Every running `(pid, parent pid)` pair. Empty when no snapshot could be
+    /// taken, which leaves the root to be killed on its own.
+    fn snapshot() -> Vec<(u32, u32)> {
+        let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snap == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut pairs = Vec::new();
+        let mut more = unsafe { Process32FirstW(snap, &mut entry) } != 0;
+        while more {
+            pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+            more = unsafe { Process32NextW(snap, &mut entry) } != 0;
+        }
+        unsafe { CloseHandle(snap) };
+        pairs
+    }
+
+    /// Every descendant of `root`, opened.
+    ///
+    /// A parent pid is only a number, and Windows recycles them: a process
+    /// whose parent died long ago can name a pid that now belongs to `root`.
+    /// A real child is created after its parent, so one created earlier is
+    /// someone else's orphan and is left alone.
+    pub fn descendants(root: &Owned) -> Vec<Owned> {
+        let pairs = snapshot();
+        let mut found: Vec<Owned> = Vec::new();
+        let mut frontier: Vec<(u32, u64)> = vec![(root.pid, root.created)];
+        while let Some((parent, parent_created)) = frontier.pop() {
+            for &(pid, ppid) in &pairs {
+                if ppid != parent || pid == parent || pid == root.pid {
+                    continue;
+                }
+                if found.iter().any(|f| f.pid == pid) {
+                    continue;
+                }
+                let Ok(child) = Owned::open(pid) else {
+                    continue;
+                };
+                if child.created < parent_created {
+                    continue;
+                }
+                frontier.push((child.pid, child.created));
+                found.push(child);
+            }
+        }
+        found
+    }
 }
 
 fn running() -> &'static Mutex<HashSet<u32>> {
@@ -422,7 +1124,14 @@ mod env_allowlist_tests {
     /// a bare Windows box can actually run a command.
     #[test]
     fn allowlist_has_windows_system_keys() {
-        for key in ["SystemRoot", "windir", "ComSpec", "PATHEXT", "ProgramFiles", "ProgramData"] {
+        for key in [
+            "SystemRoot",
+            "windir",
+            "ComSpec",
+            "PATHEXT",
+            "ProgramFiles",
+            "ProgramData",
+        ] {
             assert!(
                 SANDBOX_ENV_ALLOW.contains(&key),
                 "missing {key} in SANDBOX_ENV_ALLOW"
@@ -431,7 +1140,7 @@ mod env_allowlist_tests {
     }
 }
 
-/// Windows-only behaviour of `kill_tree`, which shells out to `taskkill`
+/// Windows-only behaviour of `kill_tree`, which walks the process tree itself
 /// rather than signalling a process group. Compiled and run only on Windows —
 /// a unix test asserting these would prove nothing about them.
 #[cfg(all(test, windows))]
@@ -442,42 +1151,243 @@ mod windows_tests {
         std::env::temp_dir()
     }
 
-    /// `taskkill /T` walks the tree and reports success.
-    #[tokio::test]
-    async fn kills_a_running_command_and_reports_it() {
-        // `timeout` is a stock Windows command that simply waits.
-        let mut child = spawn(shell(), "timeout /t 300 /nobreak", &tmp(), None)
-            .await
-            .unwrap();
-        let pid = child.id().unwrap();
-
-        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
-        unregister(pid);
+    /// A command that waits, in whatever language the resolved shell speaks.
+    ///
+    /// `timeout /t 300` is a `cmd` builtin, and the shell here is whichever one
+    /// `shell()` resolved -- on a machine with Git for Windows that is bash,
+    /// which runs `timeout` as its own coreutil, rejects the arguments and
+    /// exits immediately. The process was then already gone by the time the
+    /// kill was attempted, so the test proved nothing about killing.
+    fn wait_command() -> &'static str {
+        match shell().flavor {
+            ShellFlavor::Posix => "sleep 300",
+            ShellFlavor::PowerShell => "Start-Sleep -Seconds 300",
+            ShellFlavor::Cmd => "timeout /t 300 /nobreak",
+        }
     }
 
-    /// taskkill exits 128 for "the process is not running", which is not a
-    /// failure — there was nothing left to kill.
+    /// Is `pid` a running process? Asked of the OS directly, not of `taskkill`.
+    fn alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+
+    fn ping(seconds: u32) -> std::process::Child {
+        std::process::Command::new("ping")
+            .args(["-n", &seconds.to_string(), "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("ping starts")
+    }
+
+    /// The tree is stopped and the kill reports it, promptly.
+    ///
+    /// Spawned directly rather than through [`spawn`], which registers the pid
+    /// in the process-wide table `kill_all` reaps from. Sharing that table with
+    /// every other test in the binary meant this one's process could be gone
+    /// before the kill it is testing, and the failure looked like `kill_tree`
+    /// misreporting rather than like a test racing its neighbours.
+    ///
+    /// Bounded in time because the `taskkill` this replaced took about a
+    /// minute on some hosts and then reported failure.
+    #[tokio::test]
+    async fn kills_a_running_command_and_reports_it() {
+        let cfg = shell();
+        let mut command = Command::new(&cfg.program);
+        command
+            .args(&cfg.args)
+            .arg(wait_command())
+            .current_dir(tmp())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        // In its own process group, as `spawn` puts every real command. Left
+        // in the test runner's group it shared the console with every other
+        // process there, and a console control event aimed at that group --
+        // from any concurrently running test binary on the same console --
+        // ended the shell before the kill, which then correctly reported
+        // `Gone`.
+        set_process_group(&mut command);
+        let mut child = command.spawn().unwrap();
+        let pid = child.id().unwrap();
+
+        let started = std::time::Instant::now();
+        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
+        assert!(!alive(pid), "the process is still running");
+    }
+
+    /// Whether `pid` still names a running process.
+    fn running(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        match win_tree::Owned::open(pid) {
+            Ok(p) => (unsafe { WaitForSingleObject(p.handle, 0) }) == WAIT_TIMEOUT,
+            Err(_) => false,
+        }
+    }
+
+    /// The grandchild is what `taskkill /T` existed for and what a plain
+    /// terminate would leave running: `cmd` starts `ping`, and killing `cmd`
+    /// has to take `ping` with it.
+    #[test]
+    fn kills_the_whole_tree_not_just_the_root() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "ping -n 300 127.0.0.1 >NUL"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let root = win_tree::Owned::open(child.id()).unwrap();
+        let mut grandchild = None;
+        for _ in 0..100 {
+            if let Some(found) = win_tree::descendants(&root).into_iter().next() {
+                grandchild = Some(found.pid);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let grandchild = grandchild.expect("cmd never started ping");
+        // Held open so the pid cannot be recycled while it is being checked.
+        let pinned = win_tree::Owned::open(grandchild).unwrap();
+
+        assert_eq!(kill_tree(child.id()), KillOutcome::Signalled);
+        let _ = child.wait();
+        let mut gone = false;
+        for _ in 0..100 {
+            use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+            use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            if unsafe { WaitForSingleObject(pinned.handle, 0) } == WAIT_OBJECT_0 {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(gone, "the grandchild outlived the tree kill");
+        drop(root);
+    }
+
+    /// A pid no process has is not a failure: there was nothing left to kill.
     #[test]
     fn a_pid_that_does_not_exist_reports_gone() {
         assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
     }
 
-    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as
-    /// a failure carrying taskkill's own explanation. pid 0 is the System Idle
-    /// Process, which cannot be terminated.
+    /// A grandchild goes with its parent: `cmd` runs `ping` as a child, and
+    /// killing `cmd` stops `ping` too.
     #[test]
-    fn a_refusal_is_reported_with_the_reason_taskkill_gave() {
-        match kill_tree(0) {
-            KillOutcome::Failed(reason) => {
-                assert!(!reason.is_empty(), "a refusal must say why");
-                assert!(
-                    !reason.contains('\\'),
-                    "the reason is shown to the user and must name no path: {reason}"
-                );
+    fn kills_the_whole_tree() {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let mut parent = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >nul"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("cmd starts");
+        let pid = parent.id();
+        let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        let created = creation_time(root);
+        unsafe { CloseHandle(root) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let children = loop {
+            let found = descendants_of(pid, created);
+            if !found.is_empty() || std::time::Instant::now() > deadline {
+                break found;
             }
-            other => panic!("terminating the idle process must fail, got {other:?}"),
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        assert!(!children.is_empty(), "cmd never started ping");
+
+        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        let _ = parent.wait();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        for child in children {
+            assert!(!alive(child), "descendant {child} survived its parent");
         }
+    }
+
+    /// Killing one tree leaves a process outside it running.
+    #[test]
+    fn an_unrelated_process_is_left_alone() {
+        let mut target = ping(60);
+        let mut bystander = ping(60);
+        assert_eq!(kill_tree(target.id()), KillOutcome::Signalled);
+        let _ = target.wait();
+        assert!(alive(bystander.id()), "a process outside the tree was killed");
+        let _ = bystander.kill();
+        let _ = bystander.wait();
+    }
+
+    /// A process that exited while its parent still holds it -- the state a
+    /// finished command is in until it is collected -- is gone, not refused,
+    /// even though terminating it fails with "access denied".
+    #[test]
+    fn a_process_that_already_exited_reports_gone() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        // Exited, but `child` keeps its handle, so the pid is still this one.
+        let _ = child.try_wait();
+        for _ in 0..100 {
+            if !running(pid) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(kill_tree(pid), KillOutcome::Gone);
+        let _ = child.wait();
+    }
+
+    /// A refusal is a failure that says why, and names no path. Tested through
+    /// the classifier rather than by refusing a real kill: the only processes
+    /// that refuse are System and Idle, and no test should aim a kill at them.
+    #[test]
+    fn a_refusal_is_reported_as_a_failure_with_a_reason() {
+        use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+        match classify_open_error(ERROR_ACCESS_DENIED) {
+            KillOutcome::Failed(reason) => {
+                assert_eq!(reason, "access is denied");
+                assert!(!reason.contains('\\'), "{reason}");
+            }
+            other => panic!("access denied is a refusal, got {other:?}"),
+        }
+        match classify_open_error(1234) {
+            KillOutcome::Failed(reason) => assert!(reason.contains("1234"), "{reason}"),
+            other => panic!("an unknown error is a failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_such_process_is_classified_as_gone() {
+        use windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER;
+        assert_eq!(
+            classify_open_error(ERROR_INVALID_PARAMETER),
+            KillOutcome::Gone
+        );
     }
 }
 
@@ -581,7 +1491,10 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
-        assert!(!alive(grandchild), "grandchild must be reaped by group kill");
+        assert!(
+            !alive(grandchild),
+            "grandchild must be reaped by group kill"
+        );
     }
 
     /// A pid nothing owns is not a failure: there is nothing left to kill.
@@ -639,12 +1552,180 @@ mod tests {
         unregister(pid);
 
         // Spawn a shell that reports its own soft NOFILE limit; confine_limits
-        // sets it to 1024, which should be visible inside the sandbox.
+        // sets it to 2048, which should be visible inside the sandbox.
         let child = spawn(shell(), "ulimit -n", &tmp(), None).await.unwrap();
         let pid = child.id().unwrap();
         let out = child.wait_with_output().await.unwrap();
         unregister(pid);
         let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        assert_eq!(val, "1024", "NOFILE soft limit should be capped, got: {val}");
+        assert_eq!(
+            val, "2048",
+            "NOFILE soft limit should be capped, got: {val}"
+        );
+    }
+}
+
+/// Where a shell lives is a fact about its path. These tests exist because it
+/// used to be a deduction from a failure -- a `bash.exe` in `C:\Program Files`
+/// was reported to users as "installed under your user profile".
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    fn roots() -> OriginRoots {
+        OriginRoots {
+            program_files: vec![
+                PathBuf::from(r"C:\Program Files"),
+                PathBuf::from(r"C:\Program Files (x86)"),
+            ],
+            user_profile: vec![
+                PathBuf::from(r"C:\Users\me"),
+                PathBuf::from(r"C:\Users\me\AppData\Local"),
+            ],
+            system_root: Some(PathBuf::from(r"C:\Windows")),
+            bundled: Some(PathBuf::from(r"C:\Program Files\Jan")),
+        }
+    }
+
+    fn origin(path: &str) -> ShellOrigin {
+        classify_origin(Path::new(path), false, &roots())
+    }
+
+    #[test]
+    fn git_under_program_files_is_a_system_install() {
+        assert_eq!(
+            origin(r"C:\Program Files\Git\bin\bash.exe"),
+            ShellOrigin::SystemInstall
+        );
+        // Windows paths are case-insensitive, and the classification has to be
+        // too or the same install reads differently depending on who typed it.
+        assert_eq!(
+            origin(r"c:\program files\git\bin\bash.exe"),
+            ShellOrigin::SystemInstall
+        );
+        assert_eq!(
+            origin(r"C:\Program Files (x86)\Git\bin\bash.exe"),
+            ShellOrigin::SystemInstall
+        );
+    }
+
+    #[test]
+    fn git_under_the_profile_is_a_user_install() {
+        assert_eq!(
+            origin(r"C:\Users\me\AppData\Local\Programs\Git\bin\bash.exe"),
+            ShellOrigin::UserInstall
+        );
+    }
+
+    #[test]
+    fn a_sibling_directory_is_not_the_profile() {
+        // `C:\Users\me2` starts with `C:\Users\me` as a string and is a
+        // different user's directory.
+        assert_eq!(
+            origin(r"C:\Users\me2\tools\bash.exe"),
+            ShellOrigin::Elsewhere
+        );
+    }
+
+    #[test]
+    fn the_windows_shells_are_windows_system() {
+        assert_eq!(
+            origin(r"C:\Windows\System32\cmd.exe"),
+            ShellOrigin::WindowsSystem
+        );
+        assert_eq!(
+            origin(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            ShellOrigin::WindowsSystem
+        );
+    }
+
+    #[test]
+    fn an_explicit_setting_outranks_the_path() {
+        assert_eq!(
+            classify_origin(Path::new(r"C:\Users\me\my-shell.exe"), true, &roots()),
+            ShellOrigin::Configured
+        );
+    }
+
+    #[test]
+    fn an_unknown_location_is_said_to_be_unknown() {
+        assert_eq!(origin(r"D:\tools\busybox\sh.exe"), ShellOrigin::Elsewhere);
+    }
+}
+
+/// A command written for bash must be refused rather than reinterpreted. `cmd`
+/// handed `foo $(bar)` does not fail cleanly -- it runs something else.
+#[cfg(test)]
+mod posix_tests {
+    use super::*;
+
+    #[test]
+    fn posix_only_constructs_are_recognised() {
+        for command in [
+            "echo $(date)",
+            "echo ${HOME}",
+            "cat <<EOF\nhi\nEOF",
+            "build 2>&1 | tee log",
+            "ls | xargs rm",
+            "export FOO=1 && run",
+            "echo `date`",
+        ] {
+            assert!(
+                requires_posix_shell(command).is_some(),
+                "not recognised: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_neutral_commands_are_left_alone() {
+        for command in [
+            "git status",
+            "npm run build",
+            "echo hello",
+            "cargo test --lib",
+            // A single backtick is PowerShell's escape character and is not on
+            // its own evidence of command substitution.
+            "echo a`b",
+        ] {
+            assert_eq!(
+                requires_posix_shell(command),
+                None,
+                "wrongly refused: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_refusal_names_the_construct_the_shell_and_the_reason() {
+        let cmd = c("cmd.exe", &["/C"], "cmd", ShellFlavor::Cmd);
+        let message = posix_unavailable_error(
+            "command substitution `$(...)`",
+            &cmd,
+            "C:\\Program Files\\Git\\bin\\bash.exe could not start in the sandbox: \
+             the MSYS2 runtime cannot initialise inside an AppContainer",
+        );
+        assert!(message.starts_with("ERROR:"), "{message}");
+        assert!(message.contains("command substitution"), "{message}");
+        assert!(message.contains("cmd"), "{message}");
+        assert!(message.contains("MSYS2"), "{message}");
+        // It must never suggest the shell is missing when it is installed.
+        assert!(!message.contains("not installed"), "{message}");
+    }
+
+    #[test]
+    fn every_candidate_declares_the_language_it_speaks() {
+        for shell in candidates() {
+            match shell.flavor {
+                ShellFlavor::Cmd => assert!(shell.args.iter().any(|a| a == "/C"), "{shell:?}"),
+                ShellFlavor::PowerShell => {
+                    assert!(shell.args.iter().any(|a| a == "-Command"), "{shell:?}")
+                }
+                ShellFlavor::Posix => assert!(
+                    shell.args.iter().any(|a| a == "-c" || a == "-s"),
+                    "{shell:?}"
+                ),
+            }
+        }
     }
 }

@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { WEB_SEARCH_PROVIDER_CONFIG_ANCHOR } from '@/lib/settingsSearch'
 import { Switch } from '@/components/ui/switch'
@@ -21,7 +20,7 @@ import {
   useWebSearchConfig,
   WEB_SEARCH_PROVIDERS,
   getProviderMeta,
-  providerFavicon,
+  providerInitial,
 } from '@/hooks/useWebSearchConfig'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,12 +28,10 @@ export const Route = createFileRoute(route.settings.web_search as any)({
   component: WebSearchContent,
 })
 
-const ProviderFavicon = ({ src }: { src: string }) => (
-  <img
-    src={src}
-    alt=""
-    className="size-4 shrink-0 rounded-full border border-border/50 bg-white object-contain"
-  />
+const ProviderFavicon = ({ initial }: { initial: string }) => (
+  <span aria-hidden className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-line-strong bg-sunken text-[0.5rem] font-medium uppercase text-ink-2">
+    {initial}
+  </span>
 )
 
 function WebSearchContent() {
@@ -56,25 +53,19 @@ function WebSearchContent() {
   const endpoint = endpoints[provider.id] ?? ''
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className="font-medium text-base font-studio">
-            {t('common:settings')}
-          </span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             <Card
               header={
-                <div className="flex items-center justify-between">
-                  <h1 className="text-foreground font-studio font-medium text-base mb-2">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h1 className="font-display text-xl font-normal text-foreground">
                     {t('settings:webSearch.title')}
                   </h1>
                   <Switch
+                    aria-label={t('settings:webSearch.enable')}
                     checked={webSearchEnabled}
                     onCheckedChange={setWebSearchEnabled}
                   />
@@ -95,9 +86,9 @@ function WebSearchContent() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="justify-between gap-2"
+                        className="max-w-full justify-between gap-2 pointer-coarse:h-11"
                       >
-                        <ProviderFavicon src={providerFavicon(provider)} />
+                        <ProviderFavicon initial={providerInitial(provider)} />
                         <span className="truncate">{provider.label}</span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
                       </Button>
@@ -108,11 +99,11 @@ function WebSearchContent() {
                           key={p.id}
                           className={cn(
                             'cursor-pointer my-0.5 gap-2',
-                            searchProvider === p.id && 'bg-secondary-foreground/8'
+                            searchProvider === p.id && 'bg-brand-tint'
                           )}
                           onClick={() => setSearchProvider(p.id)}
                         >
-                          <ProviderFavicon src={providerFavicon(p)} />
+                          <ProviderFavicon initial={providerInitial(p)} />
                           <span className="truncate">{p.label}</span>
                         </DropdownMenuItem>
                       ))}
@@ -141,7 +132,7 @@ function WebSearchContent() {
                       </p>
                       <Input
                         type="text"
-                        className="w-full"
+                        className="w-full font-mono"
                         placeholder={t(
                           'settings:webSearch.endpointPlaceholder'
                         )}
@@ -173,7 +164,7 @@ function WebSearchContent() {
                       <div className="relative">
                         <Input
                           type={showKey ? 'text' : 'password'}
-                          className="w-full pr-16"
+                          className="w-full pr-12 font-mono"
                           placeholder={t(
                             'settings:webSearch.apiKeyPlaceholder',
                             { provider: provider.label }
@@ -183,10 +174,17 @@ function WebSearchContent() {
                             setApiKey(provider.id, e.target.value)
                           }
                         />
-                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
                           <button
+                            type="button"
+                            aria-label={
+                              showKey
+                                ? t('settings:webSearch.hideKey')
+                                : t('settings:webSearch.showKey')
+                            }
+                            aria-pressed={showKey}
                             onClick={() => setShowKey(!showKey)}
-                            className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
+                            className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
                           >
                             {showKey ? (
                               <EyeOff size={16} />

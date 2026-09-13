@@ -7,10 +7,17 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: vi.fn().mockImplementation(async (input: any, init: any) => {
+vi.mock('@/lib/providerFetch', () => ({
+  // Provider requests go through the canonical transport now; this is the
+  // seam that used to be `@tauri-apps/plugin-http`.
+  providerFetch: vi.fn().mockImplementation(async () => {
     return new Response('{}', { status: 200 })
   }),
+  runtimeProviderFetch: vi.fn(),
+  hasTauriRuntime: vi.fn(() => true),
+  endpointDiagnostics: vi.fn(async () => null),
+  refreshEndpoint: vi.fn(async () => undefined),
+  endpointOf: vi.fn(() => null),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({

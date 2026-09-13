@@ -15,10 +15,18 @@ on:
         description: "stable/beta/nightly"
         required: true
         default: "stable"
+        type: choice
+        options:
+          - stable
+          - beta
+          - nightly
 
 jobs:
   build-windows-portable:
-    uses: janhq/jan/.github/workflows/template-tauri-build-windows-x64.yml@main
+    # This repository's own template. It used to name upstream's at @main,
+    # which ran code this repository does not control with its secrets
+    # inherited (janhq/jan#7871).
+    uses: ./.github/workflows/template-tauri-build-windows-x64.yml
     secrets: inherit
     with:
       ref: ${{ inputs.build_ref }}

@@ -1,160 +1,348 @@
-# Jan - Open-source ChatGPT replacement
+# JAN
 
-<img width="2048" height="280" alt="github jan banner" src="https://github.com/user-attachments/assets/f3f87889-c133-433b-b250-236218150d3f" />
+A private, local-first AI workspace for your desktop: chat with models on your own computer, let an agent work on files and projects with your approval, and see exactly what it used and changed.
 
-<p align="center">
-  <strong>English</strong> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a><br/>
-  <sub>The translations are upstream Jan's text and do not describe this fork's changes.</sub>
-</p>
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="JAN Cowork with parallel agents and a live timeline" width="100%">
 
 <p align="center">
-  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/Jozkah/jan"/>
-  <img alt="Github Last Commit" src="https://img.shields.io/github/last-commit/Jozkah/jan"/>
-  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/Jozkah/jan"/>
-</p>
-
-<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#a-visual-tour">Visual tour</a> ·
+  <a href="#features">Features</a> ·
   <a href="#build-from-source">Build from source</a>
-  - <a href="#this-build-is-local-only">What was removed</a>
-  - <a href="https://github.com/Jozkah/jan/issues">Bug reports</a>
-  - <a href="https://github.com/janhq/jan">Upstream project</a>
 </p>
 
-Jan is bringing the best of open-source AI in an easy-to-use product. Run LLMs with **full control** and **privacy**.
+---
 
-This repository is a fork of [janhq/jan](https://github.com/janhq/jan) with the
-network-reaching services stripped out and a desktop coding workspace added on
-top. It ships no binaries of its own — you build it from source.
+## What JAN is
 
-## This build is local-only
+JAN puts two ways of working side by side:
 
-This fork has had every service that reaches the network on its own removed.
-It does not phone home, and it will not fetch anything you did not ask it for.
+- **Chat** for questions, writing and documents. Conversations stay on your computer, can be grouped into projects, and can run side by side in a split view.
+- **Cowork** for tasks that touch files. An agent reads, writes and runs commands in a sandbox or a managed copy of your project, asks before it does anything you have not allowed, and ends every run with a plain summary of what happened, what it checked and what is left to review.
 
-**Removed**
+Everything is designed to be understandable without prior AI experience: plain-language approvals, a short first-run guide, and explanations of technical terms where they appear.
 
-- **Telemetry and analytics.** No PostHog, no product analytics, no consent
-  prompt, no analytics settings, and no `POSTHOG_KEY` / `POSTHOG_HOST` build
-  variables. Nothing counts what you do.
-- **Update checking.** The desktop app ships no updater plugin and configures no
-  update endpoint (`plugins.updater` is absent from `src-tauri/tauri.conf.json`),
-  so it never asks whether a newer version exists — update it the way you
-  installed it.
-- **Vendor services.** No `jan.ai` URLs in the app's own code, no documentation,
-  release, repository, community or issue-tracker links, and no vendor
-  identification headers on outbound provider requests.
+### Local-only by design
 
-> **One exception, in the headless CLI.** `src-tauri/src/core/cli/updater.rs`
-> still checks for updates through an analytics proxy on `jan.ai`, sending an
-> anonymous install id kept in `~/.jan/cli_telemetry.json`. It only runs in
-> binaries built by the nightly CI templates, which embed
-> `JAN_CLI_UPDATE_CHANNEL`; a local `cargo build --features cli` is a no-op, and
-> `JAN_CLI_NO_UPDATE_CHECK` opts out either way. The desktop app is unaffected.
+This build does not phone home. There is no telemetry, no analytics, no update check, no model catalogue and no downloader. Nothing reaches the network until you set it up yourself:
 
-**You bring your own models.** Point the app at models already on your
-machine: add a local GGUF through **Settings → Model Providers → llama.cpp →
-Import**, or an MLX model through the MLX provider.
-
-> **In progress.** The built-in model catalogue and downloader have not been
-> removed yet. Until they are, the Hub can still fetch model listings from
-> HuggingFace and download weights when you use it.
-
-**What can still reach the network, only if you set it up.** Nothing below is
-configured out of the box, and nothing happens until you enter a credential:
-
-| Capability | Reaches the network when |
+| Capability | Reaches the network only when |
 |---|---|
-| Cloud model providers | You enter your own API key for one |
-| MCP servers | You add a server that is not on localhost |
-| Web search | You enable it and supply a key |
+| Cloud model providers | You add your own API key for one |
+| MCP servers | You add a server that is not on your machine |
+| Web search | You turn it on and supply a key |
 
-Leave them alone and the app makes no outbound request at all — not at
-startup, not while you use it.
+Automated guards in `web-app/src/__tests__/localOnly.test.ts` and `scripts/local-only-guard.mjs` fail the build if telemetry, update checks, vendor services or download sources are reintroduced.
 
-Guards live in `web-app/src/__tests__/localOnly.test.ts`: the suite fails if an
-analytics SDK, an update check, or a `jan.ai` URL is reintroduced. It scans the
-web app's sources and `src-tauri/tauri.conf.json` — the Rust core is not covered,
-which is why the CLI update check above survives it.
+## Install
 
+This repository does not publish installers. Build JAN from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
-## Installation
+**You bring your own models.** Use a GGUF model file you already have (Settings → Models → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
-There are no prebuilt binaries for this fork. The Microsoft Store, Flathub and
-`app.jan.ai` downloads all ship **upstream Jan**, which still has telemetry and
-update checking in it — installing one of those does not get you this build.
+## Getting started
 
-To run this fork, [build it from source](#build-from-source).
+1. **Open JAN.** The first-run guide asks what you want to do — ask a question, work with documents, or build or change a project — and explains the difference between local and cloud processing. You can skip the guide at any time and reopen it from Settings → General.
+2. **Choose a model.** Import a local model or add a provider in **Models**. Each model shows whether it is loaded, and the fit indicator separates what was *measured on this device* from what is only *estimated*. Estimates never block you from trying a model.
+3. **Start a chat.** Type in the composer and press Enter. Attach files with **+**. Open **What JAN is using** in the conversation header to see the model, instructions, attachments, memory and tools that apply to the conversation.
+4. **Try Cowork for file work.** Open **Cowork** from the Workspace sidebar, attach a project folder or work in the session sandbox, and describe the task. When the agent wants to change a file or run a command you have not allowed, JAN shows what it wants to do, the files involved, the scope of the permission and what happens if you deny it.
+5. **Review the result.** The run summary explains what happened, where the result is, which commands were actually run and checked, and what is still unresolved. The **Changes** panel shows real diffs; checkpoints let you restore earlier states.
+
+## A visual tour
+
+Screenshots of the real app with demo content. Phone layouts are the same app in a 390×844 window.
+
+### Chat
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-chat-conversation.png" alt="A conversation with a formatted table and code" width="100%">
+Replies render tables, lists and code, and everything stays on your computer.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-split-conversations.png" alt="Two independent conversations side by side" width="100%">
+**Split conversations.** Two chats side by side, each with its own model, draft and stream.
+
+### Cowork: agents that work on your files
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-managed-worktree-review.png" alt="Reviewing an agent's changes from a managed worktree" width="100%">
+**Managed worktrees and review.** The agent works in an isolated copy of your project. You review each file and hunk, then apply what you want or reject it.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="A team of agents working in parallel with a live timeline" width="100%">
+**Parallel agents.** Explorer, security, reviewer and planner roles work at the same time, and the timeline shows each dispatch as it happens.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-tool-call-timeline.png" alt="The execution timeline with tool call details" width="100%">
+**Tool call history.** Every call is recorded with its phases, approvals, duration, input and output, and the diff it produced.
+
+### Context and token usage
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What JAN is using panel" width="100%">
+**What JAN is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-message-token-usage.png" alt="Token usage for one message" width="100%">
+**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.
+
+### Phone-sized windows
+
+<p>
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-chat.png" alt="A conversation on a phone-sized window" width="240">
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-split-switch.png" alt="Switching between split panes on a phone-sized window" width="240">
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-navigation.png" alt="The navigation sheet on a phone-sized window" width="240">
+</p>
 
 ## Features
 
-- **Local AI Models**: Download and run LLMs (Llama, Gemma, Qwen, GPT-oss etc.) from HuggingFace
-- **Cloud Integration**: Connect to GPT models via OpenAI, Claude models via Anthropic, Mistral, Groq, MiniMax, and others
-- **Custom Assistants**: Create specialized AI assistants for your tasks
-- **OpenAI-Compatible API**: Local server at `localhost:1337` for other applications
-- **Model Context Protocol**: MCP integration for agentic capabilities
-- **Privacy First**: Everything runs locally when you want it to
+Everything below is implemented in this fork, on top of upstream Jan. Each agent capability maps to an item in the [agent harness feature registry](docs/AGENT_HARNESS_FEATURE_REGISTRY.md) (208 of its 211 items are implemented). Open a section to see the full list.
 
-### Workspace edition highlights
+<details>
+<summary><strong>Workspace and design</strong></summary>
 
-This fork extends Jan with a more complete desktop workspace for coding and
-long-running agent tasks:
+- **JAN Atelier design:** ivory and graphite themes in light and dark, IBM Plex Sans and Mono with Newsreader (bundled, never fetched), and Lucide icons throughout.
+- **Accent colour:** choose Vermilion, Ink, Moss or any hex value. Colours are derived per theme and checked for contrast, invalid hex is refused, there is a reset, and older accent settings migrate. Success, warning and error colours never change.
+- **One layout for every screen:** a rail for Workspace, Library, Models, Tools, Search, System and Settings; a resizable sidebar; a context bar for the current page; and a status bar showing loaded models, runs, waiting approvals and the Local API server.
+- **Any window size:** below 1024px navigation moves into a sheet; on phones dialogs become bottom sheets, touch targets are at least 44px, and the layout follows the on-screen keyboard.
+- **System area:** system monitor, app logs and Local API server logs in one log viewer.
+- **Library** of artifacts from your sessions, with "Go to session".
+- **Settings search** across every settings page, grouped by section.
+- **Command palette and custom shortcuts:** rebind any shortcut, conflicts are refused, and defaults can be restored.
+- **First-run guide:** asks what you want to do, explains local and cloud processing, can be skipped or reopened, and finishes without downloading anything.
+- **Plain-language help** for terms like worktree, context, MCP server, checkpoint and agent; advanced settings are grouped separately.
+- **Accessibility:** agent screens have screen-reader roles, labels and announcements, work fully from the keyboard, and keep focus rings visible.
 
-- **Unified workspace rail**: Open Files, Code, Changes, and Activity from one
-  discoverable toolbar without leaving the conversation.
-- **Read-only code workspace**: Browse project files, open referenced files from
-  tool output or assistant messages, inspect syntax-highlighted source, and send
-  only the selected code back into the conversation.
-- **Git working-tree review**: Review modified and untracked files as real diffs
-  in the Changes panel, including safe handling for symlinks and inaccessible
-  paths.
-- **Background activity tracking**: Follow running shell jobs from the Activity
-  panel, status chip, or conversation; inspect their state and cancel individual
-  jobs when needed.
-- **Search across Settings**: Find settings globally, see results grouped by
-  section, and jump directly to the relevant control with keyboard focus.
-- **Temporary chats**: Start conversations that are not saved automatically,
-  then explicitly keep or discard them, with protection against accidentally
-  leaving an unfinished temporary chat.
-- **Per-chat model controls**: Override the model and reasoning effort for an
-  individual conversation and see the selected reasoning level at a glance.
-- **Project-aware instructions**: Agent sessions automatically use the active
-  project's `JAN.md` guidance while keeping project file access isolated.
-- **Clickable local file references**: Open safe `@path` references from
-  assistant messages directly in the Code panel.
-- **macOS window polish**: Keeps the Jan header and navigation clear of the
-  native close, minimize, and zoom controls.
+</details>
 
-## Build from Source
+<details>
+<summary><strong>Chat</strong></summary>
 
-For those who enjoy the scenic route:
+- **Split conversations:** two independent chats side by side, each with its own model, draft, attachments, queue, approvals and Stop.
+- **Temporary chats** that you can keep or discard, with a warning before you leave.
+- **Per-chat model and reasoning settings.**
+- **Text and code attachments** also work with models that have no vision.
+- **What JAN is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
+- **Collection memory** follows a chat's collection; temporary chats use no memory.
+- **Sensible default model:** your preferred default, then the last model used, then the first local model. Jan never switches to a cloud provider on its own.
+- **Safer editing:** deleting a message keeps later replies, "Delete all" cannot be triggered by Enter, and interrupted writes cannot leave a damaged thread.
+
+</details>
+
+<details>
+<summary><strong>Cowork: modes, scope and planning</strong></summary>
+
+- **Run modes:** Auto, Ask before changes, and Review (a repository starts in Review).
+- **Plan mode:** read-only exploration; leaving it requires approving the plan.
+- **Write scope** is granted separately from how freely Jan acts, and shell commands are held to the same folders.
+- **Readiness check** of each part of the setup before tools are allowed.
+- **Describe this project:** a read-only survey of a new folder that proposes a JAN.md.
+- **Todo list** that survives restarts, and a **shared task board** where tasks start only when their dependencies are done.
+- **One @ menu** for files, folders, skills, agents and saved aliases, including line ranges.
+- **Steering:** redirect, answer or interrupt a run while it works.
+
+</details>
+
+<details>
+<summary><strong>Cowork: worktrees, changes and review</strong></summary>
+
+- **Managed Git worktrees** per session and per agent, on Windows too, with lifecycle management, recovery and safe cleanup that never loses unmerged work.
+- **Diff before approval** for every write; Stop withdraws a pending prompt so a late "yes" runs nothing.
+- **Per-hunk review:** apply only the hunks you choose; applying over changed content fails loudly and merge conflicts are shown.
+- **Risky changes flagged:** dependency, lock file and migration changes need an explicit acknowledgement.
+- **Secret scan** blocks diffs that contain credentials, and new dependencies are checked against allowed licences.
+- **Changes panel** with the working tree, line-numbered diffs and a count of Jan's own changes.
+- **Change attribution:** every change records which agent and run made it.
+- **Format on edit** with the project's own formatter.
+- **Worktree bundles:** export a reviewable patch bundle and import it through the same review.
+- **Checkpoints and rewind:** restoring first takes a safety checkpoint, refuses to overwrite newer edits and verifies the result. Undo and redo a turn's file changes.
+- **Read-only code workspace:** file explorer, code viewer, open files from the transcript, by drag and drop or with Ctrl/Cmd+O.
+
+</details>
+
+<details>
+<summary><strong>Cowork: agents, teams and background work</strong></summary>
+
+- **Agent profiles** from project, user and plugin folders, each with its own model and tools and never more authority than its parent.
+- **Six built-in roles:** explorer, planner, implementer, reviewer, tester and security, each with an enforced tool list.
+- **Parallel sub-agents** that can start from a copy of the conversation, run in the background, message each other, and be listed, cancelled, restarted or replaced one by one.
+- **Teams:** a team row with its members underneath, isolated checkouts for isolated tasks, and review of overlapping work.
+- **Consensus gates** that require agreement from several independent reviewers, with limits on how deep and wide agents can spawn.
+- **Background shell jobs** you can watch and stop individually, with an honest record of how each ended.
+- **Helper agents** for titles and compaction run without tools and are logged.
+
+</details>
+
+<details>
+<summary><strong>Cowork: timeline, run record and limits</strong></summary>
+
+- **Live tool timeline** with each call's phases, approvals, duration, input, output and resulting diff.
+- **One event log per session** for both Chat and Cowork, with typed errors.
+- **Process tree** of what a run started, and CPU and memory per run.
+- **Honest run summaries:** what was attempted, what finished and what passed; only real test, build and lint commands count as checks.
+- **Replay** a finished run step by step or from its record, **export** its events or a full audit record, and **search** past transcripts.
+- **Limits:** token budget, step limit, wall-clock deadline, per-tool and per-run timeouts.
+- **Stopping that works:** cancelling reaches sub-agents and kills started processes; one Stop asks how far to stop; an emergency kill switch stops everything.
+- **Recovery:** retries with backoff for retryable errors, stuck-loop and repeated-call detection, and runs that resume after a restart with their tool calls intact.
+- **Notifications** when a run finishes or needs you, and **webhooks**.
+- **Sessions:** fork a session without copying its permissions, export and import a session, or hand one to another computer.
+
+</details>
+
+<details>
+<summary><strong>Coding intelligence and Git</strong></summary>
+
+- **Repository index** built once and kept current across edits and branch changes.
+- **Language servers:** symbol search, find references, go to definition, call hierarchy, and compiler diagnostics fed back after edits.
+- **Change impact:** import graph, tests that cover a file, what a change can affect, and automatic test selection.
+- **Project detection** of framework, build system and test runner, plus a health scan.
+- **Test triage:** failures grouped by cause and flaky tests told apart from regressions.
+- **Git workflows:** commit messages, commit splitting, branch management, pull requests and description sync, working through review comments, merge conflict, rebase and cherry-pick help, and diverged-remote detection.
+
+</details>
+
+<details>
+<summary><strong>Context and memory</strong></summary>
+
+- **Exact context accounting:** token counts from the request actually sent, split by system prompt, tools, project context, skills and messages.
+- **Visible compaction** with one setting everywhere, warnings before the window fills and room reserved for each turn.
+- **What the model received:** the saved request for each turn, context replay and a diff between two turns.
+- **Context window size** learned from the server rather than guessed.
+- **Memory scopes:** project, session and user memory with the source of every line, a stated precedence and conflict detection.
+- **Memory settings:** scope tabs, a collection picker, conflict resolution, export and import, and forgetting that also reaches saved requests.
+- **Memory proposals** that you review before saving; sensitive content is refused.
+- **Instruction files:** JAN.md, CLAUDE.md and AGENTS.md, nearest file wins.
+- **Retention limits** for saved requests, removed together with their thread.
+
+</details>
+
+<details>
+<summary><strong>Models and providers</strong></summary>
+
+- **Rename and reorder models.**
+- **Evidence-based model fit:** "Measured on this device" is kept separate from "Estimate", estimates never block you, and a real compatibility test protects other loaded models.
+- **Preferred default model** and one model status vocabulary across the app.
+- **Provider fallback and routing rules.**
+- **Fully local runs** with no network dependency.
+- **Custom request headers** with secret values, and **llmman** as a built-in local provider.
+- **Accurate provider status:** offline only after a real failure, LAN endpoints treated as local, and the actual failure reason shown.
+- **Proxy settings** with authentication and no-proxy rules.
+
+</details>
+
+<details>
+<summary><strong>Tools, MCP, skills and plugins</strong></summary>
+
+- **MCP servers:** tools, resources and prompts, protocol health checks, per-server logs, restart without restarting Jan, cancellation, pagination and per-server size limits.
+- **MCP sign-in (OAuth)** with tokens in the OS keychain, refreshed automatically, and requested scopes shown and enforced.
+- **Trust bound to a server's configuration:** changing, renaming or deleting a server invalidates its approvals with a stated reason.
+- **Validated MCP setup** with clear connection states and a per-server auto-approve switch.
+- **Sandboxed servers:** imported and local servers are confined to the session's permissions.
+- **Skills** from project and user folders with versions, requirements and enforced tool scopes.
+- **Plugins:** a manifest format, install and remove without running plugin code, a marketplace index, and a Cowork plugin manager to enable, disable, install and remove.
+- **Lifecycle hooks** that run sandboxed with timeouts and a declared failure policy.
+- **Imports:** OpenCode and Qwen agent definitions, Claude Code project settings (opt-in), and portable bundles of agents, skills, commands and policy.
+
+</details>
+
+<details>
+<summary><strong>Permissions and safety</strong></summary>
+
+- **Permission rules** by capability, path, command (compound commands are split first), agent, skill and MCP server; deny wins and the most specific rule applies.
+- **Network controls:** one switch for all tools and domain allow and deny lists.
+- **Secrets:** protected secret files, redaction in logs and transcripts, and credentials in the OS keychain.
+- **Destructive Git commands** gated separately.
+- **Plain-language approval prompts** that say what will happen, which files are involved and what denying does, offer only real scopes, and focus Deny first.
+- **Allow once is never saved,** and an approval covers only the exact command or file shown.
+- **Permissions page:** every standing grant with Revoke, trusted MCP servers, invalidated approvals with reasons and the latest audit decisions.
+- **Policy files:** import and export a permission policy, and a machine policy a project cannot loosen.
+
+</details>
+
+<details>
+<summary><strong>Usage and cost</strong></summary>
+
+- **Token usage per message and per session:** input, cached input, cache writes, output and total, marked "Not reported" when a provider does not report a figure.
+- **Token and cost dashboard** per run and period, priced where you set prices.
+- **Usage quotas and spend budgets** across runs.
+- **Correct generation speed** for providers that stream without a start event.
+
+</details>
+
+<details>
+<summary><strong>Privacy and local-only</strong></summary>
+
+- **No telemetry, analytics, update checks, model catalogue or downloader.**
+- **No outside calls you did not set up:** extensions no longer fetch, vendor hosts are removed, and web search results are not sent to third parties.
+- **Automated local-only guards** over the source and the shipped app.
+- **Request log** of what the model was sent and where every request went.
+- **Local API server:** a working CORS switch, and caller origins are not forwarded.
+- **Diagnostic bundle** that is redacted, previewed and never uploaded.
+
+</details>
+
+<details>
+<summary><strong>The <code>jan</code> command line</strong></summary>
+
+- **Headless agent runs:** text or JSON output, a live event stream, output density, profiles, plan and ask modes, sandbox control, and resume or continue after an interruption.
+- **`jan cli agent serve`:** a JSON-lines API to start runs, stream events, answer approvals and cancel.
+- **Agent tools from the terminal:** process tree, test triage, health scan, licence check, transcript search, quotas and spend, compaction, bundles, agent imports, policy import and export, repository index, run state, agent mail, Git helpers, change impact and context inspection.
+- **Background jobs** that outlive the process (`jan cli job`).
+- **MCP from the terminal:** prompts, logs and OAuth sign-in management.
+- **Benchmarks** (`jan cli bench`) and **bug reports** (`jan bug-report`, `/bug` in the TUI) with a local log file.
+- **Slash commands** with arguments from built-ins, skills and plugins (command line only).
+
+</details>
+
+<details>
+<summary><strong>Platforms</strong></summary>
+
+- **OS sandbox for shell commands:** bubblewrap on Linux, Seatbelt on macOS and AppContainer on Windows.
+- **Windows:** working builds and sidecars, managed worktrees, the tool timeline and native window controls, with the window position restored.
+- **macOS:** window controls kept clear of the header, and the whole header drags the window.
+- **Custom data folder** honoured everywhere, with a safe fallback if it disappears.
+
+</details>
+
+<details>
+<summary><strong>Verification tooling</strong></summary>
+
+- **Machine-readable feature registry** with validation, rendering and architecture decision records.
+- **Benchmark harness, golden repositories and a prompt-injection and escalation corpus.**
+- **Real-app scenario harness** (`cowork-smoke`) that drives the actual desktop app with a local model fixture.
+
+</details>
+
+### Not finished yet
+
+- Semantic code search is built but has not been verified against a real embedding model.
+- Custom CA certificates are verified on Windows only.
+- The desktop app has no slash commands or marketplace browsing; those are available from the command line or as agent tools only.
+- A full screen-reader pass has not been done.
+
+## Build from source
 
 ### Prerequisites
 
-- Node.js ≥ 20.0.0
-- Yarn ≥ 4.5.3
-- Make ≥ 3.81
-- Rust (for Tauri)
-- (macOS Apple Silicon only) MetalToolchain `xcodebuild -downloadComponent MetalToolchain`
+- Node.js 20 or newer and Yarn 4.5.3 (`corepack enable`)
+- Rust (stable) for Tauri
+- Make
+- Windows: Visual Studio 2022 Build Tools (MSVC x64 and Windows SDK), LLVM (`clang-cl`), Ninja and CMake; run `make` from Git Bash
+- macOS on Apple silicon: the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
+- CUDA Toolkit only for CUDA engine builds
 
-### Run with Make
+### Run in development
 
 ```bash
-git clone https://github.com/Jozkah/jan
+git clone <this repository>
 cd jan
 make dev
 ```
 
-This handles everything: installs dependencies, builds core components, and launches the app.
+`make dev` installs dependencies, builds the core packages and the engine, and launches the app.
 
-**Available make targets:**
-- `make dev` - Full development setup and launch
-- `make build` - Production build
-- `make test` - Run tests and linting
-- `make clean` - Delete everything and start fresh
+### Other targets
 
-### Manual Commands
+- `make build` — production build
+- `make test` — tests and linting
+- `make build-cli` — the `jan` command-line agent
+- `make clean` — remove build output
+
+Or with Yarn directly:
 
 ```bash
 yarn install
@@ -162,68 +350,28 @@ yarn build
 yarn dev
 ```
 
-### Building on Windows
+### Engine variants
 
-Run `make dev` from **Git Bash** (installed with Git for Windows) — make dispatches its recipes through `sh`, so a plain `cmd.exe` won't work.
-
-You do **not** need a "Native Tools Command Prompt for VS 2022". The bundled llama.cpp engine builds with Ninja + `clang-cl`, and `clang-cl` locates the MSVC toolchain and Windows SDK on its own. What has to be installed (and on `PATH` for `ninja`/`clang-cl`/`cmake`):
-
-- Visual Studio 2022 Build Tools (MSVC x64 workload + Windows SDK)
-- LLVM (provides `clang-cl`)
-- Ninja
-- CMake
-- CUDA Toolkit — only for `JAN_ENGINE_VARIANT=cuda12`/`cuda13` builds
-
-Engine variants are picked with `JAN_ENGINE_VARIANT` (tokens: `cpu`, `vulkan`, `metal`, `cuda12`, `cuda13`, `hip`/`rocm`, joined by `-`), e.g.:
+Choose the llama.cpp engine build with `JAN_ENGINE_VARIANT` (tokens `cpu`, `vulkan`, `metal`, `cuda12`, `cuda13`, `hip`/`rocm`, joined with `-`):
 
 ```bash
 make dev JAN_ENGINE_VARIANT=cuda13
 ```
 
-**"nvcc fatal : Could not open output file ...fattn-...cu.obj.d"** during `tauri-plugin-llamacpp(build)` means the build path crossed Windows' 260-character `MAX_PATH` limit — nvcc does not honor the long-path opt-in. The build script now detects this and automatically relocates the llama.cpp build tree to a short directory under `%LOCALAPPDATA%\jan-engine`. If you hit path-length errors anyway, set `JAN_ENGINE_BUILD_DIR` to a short path (e.g. `C:\jb`) or move the checkout closer to the drive root.
+On Windows, if an engine build fails with an nvcc "Could not open output file" error, the build path is too long: the build script relocates it automatically, or set `JAN_ENGINE_BUILD_DIR` to a short path such as `C:\jb`.
 
-## System Requirements
+## Documentation in this repository
 
-**Minimum specs for a decent experience:**
-
-- **macOS**: 13.6+ (8GB RAM for 3B models, 16GB for 7B, 32GB for 13B)
-- **Windows**: 10+ with GPU support for NVIDIA/AMD/Intel Arc
-- **Linux**: Most distributions work, GPU acceleration available
-
-For detailed compatibility, see the [upstream installation
-guides](https://jan.ai/docs/desktop/mac) — they describe upstream Jan, but the
-hardware requirements are the same.
-
-## Troubleshooting
-
-If things go sideways:
-
-1. Copy your error logs and system specs
-2. Open an issue on [this fork](https://github.com/Jozkah/jan/issues)
-
-Upstream's [troubleshooting docs](https://jan.ai/docs/desktop/troubleshooting)
-still apply to anything this fork did not change. Upstream's Discord and issue
-tracker do not support this fork — do not report fork bugs there.
-
-
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full spiel.
-
-## Links
-
-- [This fork's issues](https://github.com/Jozkah/jan/issues) - Bugs in this build
-- [janhq/jan](https://github.com/janhq/jan) - The upstream project
-- [Upstream documentation](https://jan.ai/docs) - Applies to anything unchanged here
+- `docs/ATELIER_IMPLEMENTATION.md` — the design system, shell and feature map
+- `docs/BEGINNER_WORKFLOWS_HANDOFF.md` — onboarding, permissions, results and model-fit behaviour
+- `docs/IMPLEMENTATION_BASELINE.md` — contracts the interface relies on
+- `docs/AGENT_HARNESS_FEATURE_REGISTRY.md` — the agent capability registry
+- `CONTRIBUTING.md` — how to contribute
 
 ## License
 
-Apache 2.0 - Because sharing is caring.
+Apache 2.0.
 
 ## Acknowledgements
 
-Built on the shoulders of giants:
-
-- [Llama.cpp](https://github.com/ggerganov/llama.cpp)
-- [Tauri](https://tauri.app/)
-- [Scalar](https://github.com/scalar/scalar)
+Built on [llama.cpp](https://github.com/ggerganov/llama.cpp), [Tauri](https://tauri.app/) and [Scalar](https://github.com/scalar/scalar).

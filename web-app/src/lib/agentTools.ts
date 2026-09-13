@@ -1,15 +1,20 @@
+import type { ChangeActorInput, ToolResources } from '@janhq/tauri-plugin-agent-tools-api'
 import {
-  toolSchemas,
+  advertisedToolSchemas,
   executeTool,
+  previewChange,
   sandboxStatus,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
+  type ComponentReport,
+  type OmittedTool,
   type SandboxStatus,
   type ToolSchema,
   type WorkspaceScope,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { errorText } from '@/lib/errorText'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -41,20 +46,22 @@ export const AGENT_TOOL_NAMES = new Set([
   'screenshot',
 ])
 
-/**
- * Tools that only run under an enforcing OS sandbox. They stay in
- * `AGENT_TOOL_NAMES` -- the desktop still owns dispatching them -- but are held
- * back from the advertised schemas when no backend can confine them.
- */
-const SANDBOX_REQUIRED_TOOLS = new Set(['bash'])
-
+// Keyed by what the answer depends on. One module-level list shared by chat
+// and Cowork meant whichever surface asked first decided the tool set for every
+// later caller -- a chat with no folder, say, fixing the list a Cowork session
+// with a folder then received.
 let schemaCache: ToolSchema[] | null = null
+let schemaCacheKey = ''
+let omittedCache: OmittedTool[] = []
 let statusCache: Promise<SandboxStatus> | null = null
 
 /**
  * The sandbox backend for this machine, fetched once. A failure is treated as
  * "no sandbox", which withholds `bash` rather than offering something that
  * cannot run.
+ *
+ * Kept alongside readiness rather than replaced by it: the system prompt needs
+ * a synchronous answer to this one question, and `sandboxEnforces()` is that.
  */
 export function getSandboxStatus(): Promise<SandboxStatus> {
   statusCache ??= sandboxStatus()
@@ -72,14 +79,18 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
 let enforcesNow = false
 
 /**
- * Re-probe the sandbox, dropping both caches. Installing a backend (bubblewrap
- * on Linux) cannot take effect otherwise: `statusCache` is module-level, and
- * leaving `schemaCache` behind would keep `bash` withheld even once a backend
- * enforces.
+ * Re-probe the environment, dropping every cache.
+ *
+ * Installing a sandbox backend, fixing a permission or attaching a folder
+ * cannot take effect otherwise: the caches are module-level, and leaving
+ * `schemaCache` behind would keep a tool withheld after the thing that withheld
+ * it was fixed. Readiness changes must reach the next dispatch without a
+ * restart, and this is how.
  */
 export function refreshSandboxStatus(): Promise<SandboxStatus> {
   statusCache = null
   schemaCache = null
+  omittedCache = []
   return getSandboxStatus()
 }
 
@@ -93,17 +104,54 @@ export function sandboxEnforces(): boolean {
 }
 
 /**
- * Schemas for the advertised subset. Rust's `schema.rs` is the only source, and
- * the sandbox decides whether `bash` is among them.
+ * Which tools were held back last time the list was built, and why.
+ *
+ * Recorded rather than discarded because a tool that silently disappears is
+ * indistinguishable from a bug. This is what the activity log and the
+ * Environment readiness card render, and what "what the model received" reports
+ * as the reason a tool is not in the payload.
  */
-export async function getAgentToolSchemas(): Promise<ToolSchema[]> {
-  if (schemaCache) return schemaCache
-  const [all, sandbox] = await Promise.all([toolSchemas(), getSandboxStatus()])
-  schemaCache = all.filter(
-    (s) =>
-      AGENT_TOOL_NAMES.has(s.function.name) &&
-      (sandbox.enforces || !SANDBOX_REQUIRED_TOOLS.has(s.function.name))
+export function omittedAgentTools(): OmittedTool[] {
+  return omittedCache
+}
+
+/**
+ * The schemas this environment can actually run.
+ *
+ * The single production decision about what a model is offered. Rust's
+ * `schema.rs` is still the only source of the schemas themselves; what changed
+ * is that the subset is chosen by capability rather than by one sandbox
+ * boolean, so a machine with no shell keeps its filesystem tools and a machine
+ * whose only shell is `cmd` keeps `bash` (a POSIX-only command is refused per
+ * call, where the construct can be named, rather than reinterpreted).
+ *
+ * `reported` carries the components only the renderer's stores can answer for.
+ * A failure to reach the backend withholds nothing beyond what the environment
+ * already withholds: the previous list is kept if there is one, since an empty
+ * tool set would silently turn an agent into a chatbot.
+ */
+export async function getAgentToolSchemas(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<ToolSchema[]> {
+  const key = JSON.stringify([
+    projectRoot ?? '',
+    (reported ?? []).map((r) => `${r.component}:${r.state}`),
+  ])
+  if (schemaCache && schemaCacheKey === key) return schemaCache
+  const [advertised] = await Promise.all([
+    advertisedToolSchemas(projectRoot, reported).catch((e) => {
+      console.warn('[agentTools] Failed to read readiness:', messageOf(e))
+      return null
+    }),
+    getSandboxStatus(),
+  ])
+  if (!advertised) return schemaCache ?? []
+  schemaCache = advertised.schemas.filter((s) =>
+    AGENT_TOOL_NAMES.has(s.function.name)
   )
+  schemaCacheKey = key
+  omittedCache = advertised.omitted.filter((o) => AGENT_TOOL_NAMES.has(o.name))
   return schemaCache
 }
 
@@ -112,12 +160,12 @@ type AgentToolResult = {
   error?: string
   /** Unified diff from `write`/`edit`. Display-only; never sent to the model. */
   diff?: string
+  /** What the call's command used (AH-174), failed or not. */
+  resources?: ToolResources
 }
 
-const messageOf = (e: unknown): string =>
-  e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 /**
  * Execute one built-in agent tool.
@@ -164,6 +212,23 @@ export type AgentToolOptions = {
    * to, so nothing a model emits can widen or redirect where a write lands.
    */
   writeGrant?: string | null
+  /**
+   * The run this call belongs to. Given, the backend journals the files a
+   * `write` or `edit` changes against it, so the turn can be undone (AH-202).
+   */
+  undoRun?: string
+  /**
+   * The call's id. With `undoRun`, what its command uses is kept against the
+   * run and returned with the result (AH-174).
+   */
+  callId?: string
+  /**
+   * Who is making the call (AH-110). Journaled with every file the call
+   * changes, so a change can name the agent that made it after a restart. The
+   * backend refuses an identity that is not an agent rather than attributing
+   * the change to no one -- or to the wrong one.
+   */
+  actor?: ChangeActorInput
 }
 
 export async function executeAgentTool(
@@ -191,12 +256,46 @@ export async function executeAgentTool(
       // binding's parameter list so a change there is visible here.
       options.readOnlyProject ?? undefined,
       options.writeGrant ?? undefined,
-      options.scope ?? ('thread' as WorkspaceScope)
+      options.scope ?? ('thread' as WorkspaceScope),
+      options.callId,
+      options.undoRun,
+      options.actor
     )
-    if (result.isError) return { error: result.content }
-    return { content: result.content, diff: result.diff ?? undefined }
+    const resources = result.resources ?? undefined
+    if (result.isError) return { error: result.content, resources }
+    return { content: result.content, diff: result.diff ?? undefined, resources }
   } catch (e) {
     return { error: messageOf(e) }
+  }
+}
+
+/**
+ * The diff a `write` or `edit` call would make, for its approval prompt
+ * (AH-146). Computed by the backend against the same path resolution the call
+ * would use, and only where it could write. `undefined` when there is none --
+ * another tool, no change, a path it may not write, or a failure: a missing
+ * preview never stops the prompt, it only leaves it without the diff.
+ */
+export async function previewAgentChange(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  options: Pick<AgentToolOptions, 'scope' | 'writeGrant'> = {}
+): Promise<string | undefined> {
+  try {
+    const dataFolder = await getServiceHub().app().getJanDataFolder()
+    if (!dataFolder) return undefined
+    const args =
+      input && typeof input === 'object'
+        ? (input as Record<string, unknown>)
+        : {}
+    const diff = await previewChange(dataFolder, threadId, toolName, args, {
+      writeGrant: options.writeGrant ?? undefined,
+      scope: options.scope ?? ('thread' as WorkspaceScope),
+    })
+    return diff ?? undefined
+  } catch {
+    return undefined
   }
 }
 

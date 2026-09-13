@@ -195,6 +195,47 @@ describe('retrieve', () => {
     expect(parsePayload(res).scope).toBe('project')
   })
 
+  // janhq/jan#7939
+  it('accepts top_k and file_ids the model serialized as strings', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ searchCollection })
+    extMgr().getByName.mockReturnValue({
+      embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1], index: 0 }] }),
+    })
+
+    await ext.callTool('retrieve', {
+      thread_id: 't1',
+      query: 'q',
+      top_k: '6',
+      file_ids: '["f1","f2"]',
+    })
+
+    expect(searchCollection).toHaveBeenCalledWith(
+      't1',
+      [1],
+      6,
+      0.3,
+      'auto',
+      ['f1', 'f2']
+    )
+  })
+
+  it('falls back to the configured limit when top_k is unusable', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ searchCollection })
+    extMgr().getByName.mockReturnValue({
+      embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1], index: 0 }] }),
+    })
+
+    await ext.callTool('retrieve', {
+      thread_id: 't1',
+      query: 'q',
+      top_k: 'lots',
+    })
+
+    expect(searchCollection).toHaveBeenCalledWith('t1', [1], 3, 0.3, 'auto', undefined)
+  })
+
   it('captures search errors', async () => {
     extMgr().get.mockReturnValue({
       searchCollection: vi.fn().mockRejectedValue(new Error('db down')),
@@ -287,6 +328,35 @@ describe('getChunks', () => {
       scope: 'project',
     })
     expect(getChunksForProject).toHaveBeenCalledWith('p1', 'f1', 1, 3)
+  })
+
+  // janhq/jan#7939: several OpenAI-compatible runtimes serialize every tool
+  // argument as a string, and the strictly typed Rust engine rejected them with
+  // `invalid type: string "0", expected i64`.
+  it('accepts orders the model serialized as strings', async () => {
+    const getChunks = vi.fn().mockResolvedValue([])
+    extMgr().get.mockReturnValue({ getChunks })
+    const res = await ext.callTool('get_chunks', {
+      thread_id: 't1',
+      file_id: 'f1',
+      start_order: '0',
+      end_order: '5',
+    })
+    expect(getChunks).toHaveBeenCalledWith('t1', 'f1', 0, 5)
+    expect(res.error).toBe('')
+  })
+
+  it('still refuses an order that is not a number at all', async () => {
+    const getChunks = vi.fn()
+    extMgr().get.mockReturnValue({ getChunks })
+    const res = await ext.callTool('get_chunks', {
+      thread_id: 't1',
+      file_id: 'f1',
+      start_order: 'first',
+      end_order: '5',
+    })
+    expect(getChunks).not.toHaveBeenCalled()
+    expect(res.error).toContain('Missing thread_id, file_id, start_order')
   })
 })
 

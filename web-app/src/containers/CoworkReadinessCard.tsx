@@ -1,6 +1,5 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modeLabelKey } from '@/lib/coworkMode'
-import { shapingNotice, shapingWorthReporting } from '@/lib/coworkContext'
 import {
   accountedTotal,
   CONTEXT_CATEGORIES,
@@ -27,7 +26,7 @@ const instructionSummaryKey = (file: InstructionFile): string =>
 
 const skillToneClass = (skill: ResolvedSkill): string =>
   skill.state === 'active'
-    ? 'text-main-view-fg/80'
+    ? 'text-ink-2'
     : // Everything else means the user asked for something they did not get.
       'text-destructive'
 
@@ -40,7 +39,7 @@ function Row({
 }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <dt className="shrink-0 text-main-view-fg/50">{label}</dt>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 truncate">{children}</dd>
     </div>
   )
@@ -83,7 +82,7 @@ export function CoworkReadinessCard({
   return (
     <section
       aria-label={t('common:readiness.title')}
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
     >
       <dl className="grid gap-1 sm:grid-cols-2">
         <Row label={t('common:readiness.repository')}>
@@ -150,8 +149,8 @@ export function CoworkReadinessCard({
                   key={file.name}
                   className={
                     file.active
-                      ? 'text-main-view-fg/80'
-                      : 'text-main-view-fg/50'
+                      ? 'text-ink-2'
+                      : 'text-muted-foreground'
                   }
                 >
                   {file.name} · {t(instructionSummaryKey(file))}
@@ -196,27 +195,78 @@ export function CoworkReadinessCard({
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}
         </Row>
+        {manifest.folder && manifest.tooling ? (
+          // AH-068 / AH-069 / AH-070. What the model will be told about how
+          // this project builds and tests, shown with the same evidence.
+          <div className="flex min-w-0 gap-2 sm:col-span-2" data-testid="readiness-tooling">
+            <dt className="shrink-0 text-muted-foreground">
+              {t('common:readiness.tooling.label')}
+            </dt>
+            <dd className="min-w-0">
+              {manifest.tooling.state === 'loading' ? (
+                t('common:readiness.tooling.loading')
+              ) : manifest.tooling.state === 'failed' ? (
+                <span className="text-muted-foreground">
+                  {t('common:readiness.tooling.failed', {
+                    kind: manifest.tooling.error.kind,
+                  })}
+                </span>
+              ) : manifest.tooling.facts.length === 0 ? (
+                t('common:readiness.tooling.none')
+              ) : (
+                <span className="flex flex-wrap gap-x-2">
+                  {manifest.tooling.facts.map((fact, i) => (
+                    <span
+                      key={`${fact.kind}-${fact.value}-${fact.source}-${i}`}
+                      data-testid="readiness-tooling-fact"
+                      data-kind={fact.kind}
+                      data-confidence={fact.confidence}
+                      title={t('common:readiness.tooling.fact', {
+                        value: fact.value,
+                        confidence: fact.confidence,
+                        source: fact.source,
+                        reason: fact.reason,
+                      })}
+                      className={
+                        fact.confidence === 'high'
+                          ? 'text-ink-2'
+                          : 'text-muted-foreground'
+                      }
+                    >
+                      {fact.value}
+                      {fact.command ? (
+                        <code className="ml-1 font-mono">{fact.command}</code>
+                      ) : null}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {manifest.tooling.state === 'ready' &&
+              manifest.tooling.conflicts.length > 0 ? (
+                <span className="block text-destructive">
+                  {manifest.tooling.conflicts.join(' · ')}
+                </span>
+              ) : null}
+              {manifest.tooling.state === 'ready' && manifest.tooling.truncated ? (
+                <span className="block text-muted-foreground">
+                  {t('common:readiness.tooling.incomplete', {
+                    reason: manifest.tooling.truncated,
+                  })}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         <Row label={t('common:readiness.context')}>
-          {/* Three separate admissions, and the wording keeps them separate.
+          {/* Two separate admissions, and the wording keeps them separate.
               "At least" covers a category that could not be measured at all;
               the tilde and the named method cover a number that was derived
-              rather than counted; and the clause below covers a total measured
-              from a payload the context manager cut down on the way out. A
-              total that silently omitted any of them would read as an exact,
-              complete count of the whole conversation. */}
+              rather than counted. A total that silently omitted either would
+              read as an exact and complete one. */}
           {t(contextKey(total), {
             count: total.tokens,
             method: estimateMethod(manifest.context),
           })}
-          {shapingWorthReporting(manifest.context.shaping) ? (
-            <>
-              {' · '}
-              {(() => {
-                const notice = shapingNotice(manifest.context.shaping)
-                return t(notice.key, notice.params)
-              })()}
-            </>
-          ) : null}
         </Row>
       </dl>
     </section>

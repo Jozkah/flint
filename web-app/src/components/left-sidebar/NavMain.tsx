@@ -26,23 +26,17 @@ import {
   MessageCircleIcon,
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
-import {
-  SettingsIcon,
-  type SettingsIconHandle,
-} from '@/components/animated-icon/settings'
-import { BlocksIcon, type BlocksIconHandle } from '../animated-icon/blocks'
-import {
-  BotIcon,
-  type BotIconHandle,
-} from '@/components/animated-icon/bot'
+import { type SettingsIconHandle } from '@/components/animated-icon/settings'
+import { type BlocksIconHandle } from '../animated-icon/blocks'
+import { BotIcon, type BotIconHandle } from '@/components/animated-icon/bot'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
-import { SearchDialog } from '@/containers/dialogs/SearchDialog'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutHint } from '@/containers/ShortcutHint'
 
 type AnimatedIconHandle =
   | SearchIconHandle
@@ -74,18 +68,19 @@ const getNavMainItems = (
   onJanClaw: () => void,
   onOpenCodeFolder: () => void
 ): NavMainItem[] => [
+  // Search first, matching the Cowork nav. The two lists differ in what they
+  // offer, but an entry both have should not be in a different place on each.
+  {
+    title: 'common:search',
+    animatedIcon: SearchIcon,
+    onClick: onSearch,
+    shortcut: <ShortcutHint action={ShortcutAction.SEARCH} />,
+  },
   {
     title: 'common:newChat',
     animatedIcon: MessageCircleIcon,
     onClick: onNewChat,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_CHAT].key}</Kbd>
-      </KbdGroup>
-    ),
+    shortcut: <ShortcutHint action={ShortcutAction.NEW_CHAT} />,
   },
   {
     title: 'common:newAgentChat',
@@ -96,7 +91,9 @@ const getNavMainItems = (
         <Kbd className="bg-transparent size-3">
           <PlatformMetaKey />
         </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_AGENT_CHAT].key}</Kbd>
+        <Kbd className="bg-transparent size-3 uppercase">
+          {PlatformShortcuts[ShortcutAction.NEW_AGENT_CHAT].key}
+        </Kbd>
       </KbdGroup>
     ),
   },
@@ -104,14 +101,7 @@ const getNavMainItems = (
     title: 'common:projects.new',
     animatedIcon: FolderPlusIcon,
     onClick: onNewProject,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_PROJECT].key}</Kbd>
-      </KbdGroup>
-    ),
+    shortcut: <ShortcutHint action={ShortcutAction.NEW_PROJECT} />,
   },
   // Distinct from a collection on purpose: this is the entry point that
   // actually opens a folder, and until it existed the only thing that looked
@@ -121,29 +111,9 @@ const getNavMainItems = (
     animatedIcon: FolderOpenIcon,
     onClick: onOpenCodeFolder,
   },
-  {
-    title: 'common:search',
-    animatedIcon: SearchIcon,
-    onClick: onSearch,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.SEARCH].key} </Kbd>
-      </KbdGroup>
-    ),
-  },
-  {
-    title: 'common:hub',
-    url: route.hub.index,
-    animatedIcon: BlocksIcon,
-  },
-  {
-    title: 'common:settings',
-    url: route.settings.general,
-    animatedIcon: SettingsIcon,
-  },
+  // Settings is deliberately not in this list. It is pinned to the bottom of
+  // the sidebar for every tab, so it stays in one place instead of moving up
+  // and down as the entries above it change from page to page.
 ]
 
 function NavMainItemWithAnimatedIcon({
@@ -158,7 +128,7 @@ function NavMainItemWithAnimatedIcon({
 
   const content = (
     <>
-      <AnimatedIcon ref={iconRef} className="text-foreground/70" size={16} />
+      <AnimatedIcon ref={iconRef} className="text-ink-2" size={16} />
       <span>{label}</span>
       {item.shortcut}
     </>
@@ -183,7 +153,7 @@ export function NavMain() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { addFolder } = useThreadManagement()
-  const { open: searchOpen, setOpen: setSearchOpen } = useSearchDialog()
+  const { setOpen: setSearchOpen } = useSearchDialog()
   const { open: projectDialogOpen, setOpen: setProjectDialogOpen } =
     useProjectDialog()
   const navMainItems = getNavMainItems(
@@ -238,13 +208,13 @@ export function NavMain() {
               >
                 {item.url ? (
                   <Link to={item.url}>
-                    {Icon && <Icon className="text-foreground/70" />}
+                    {Icon && <Icon className="text-ink-2" />}
                     <span>{t(item.title)}</span>
                     {item.shortcut}
                   </Link>
                 ) : (
                   <>
-                    {Icon && <Icon className="text-foreground/70" />}
+                    {Icon && <Icon className="text-ink-2" />}
                     <span>{t(item.title)}</span>
                     {item.shortcut}
                   </>
@@ -262,7 +232,9 @@ export function NavMain() {
         onSave={handleCreateProject}
       />
 
-      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      {/* The dialog itself is mounted once at the app root: it is opened from
+          Cowork's header as well as from here, and this component is not
+          rendered on every surface that offers Search. */}
     </>
   )
 }

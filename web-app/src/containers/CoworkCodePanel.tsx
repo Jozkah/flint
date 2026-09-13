@@ -55,6 +55,7 @@ import {
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
+import { errorText } from '@/lib/errorText'
 
 type DirState =
   | { status: 'loading' }
@@ -564,23 +565,23 @@ export function CoworkCodePanel({
                   {expanded ? (
                     <ChevronDown
                       size={12}
-                      className="shrink-0 text-main-view-fg/50"
+                      className="shrink-0 text-muted-foreground"
                     />
                   ) : (
                     <ChevronRight
                       size={12}
-                      className="shrink-0 text-main-view-fg/50"
+                      className="shrink-0 text-muted-foreground"
                     />
                   )}
                   {expanded ? (
                     <FolderOpen
                       size={13}
-                      className="shrink-0 text-main-view-fg/60"
+                      className="shrink-0 text-muted-foreground"
                     />
                   ) : (
                     <Folder
                       size={13}
-                      className="shrink-0 text-main-view-fg/60"
+                      className="shrink-0 text-muted-foreground"
                     />
                   )}
                   <span className="min-w-0 flex-1 truncate">{entry.name}</span>
@@ -612,7 +613,7 @@ export function CoworkCodePanel({
               style={indent(depth)}
             >
               <span className="w-3 shrink-0" />
-              <FileIcon size={13} className="shrink-0 text-main-view-fg/50" />
+              <FileIcon size={13} className="shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{entry.name}</span>
             </button>
           )
@@ -656,7 +657,7 @@ export function CoworkCodePanel({
             onClick={() => setExplorerOpen((v) => !v)}
             className={cn(
               'shrink-0',
-              explorerOpen ? 'text-primary' : 'text-muted-foreground'
+              explorerOpen ? 'text-brand-text' : 'text-muted-foreground'
             )}
           >
             <FolderTree className="size-3.5" />
@@ -673,8 +674,8 @@ export function CoworkCodePanel({
                 className={cn(
                   'group flex shrink-0 cursor-pointer items-center gap-1 rounded-sm px-2 py-0.5 text-xs',
                   isActive
-                    ? 'bg-secondary text-main-view-fg'
-                    : 'text-main-view-fg/60 hover:bg-muted/50'
+                    ? 'bg-secondary text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50'
                 )}
                 title={`${tab.path} — ${originTitle(tab, t)}`}
                 onClick={() => onStateChange(focusTab(state, id))}
@@ -702,7 +703,7 @@ export function CoworkCodePanel({
                   // say so rather than letting the name imply it.
                   <span
                     aria-hidden
-                    className="shrink-0 text-[10px] uppercase tracking-wide text-main-view-fg/40"
+                    className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground"
                   >
                     {tab.origin.kind === 'external' ? 'ext' : 'ws'}
                   </span>
@@ -715,7 +716,7 @@ export function CoworkCodePanel({
                     e.stopPropagation()
                     onStateChange(closeTab(state, id))
                   }}
-                  className="rounded-sm text-main-view-fg/40 hover:text-main-view-fg"
+                  className="rounded-sm text-muted-foreground hover:text-foreground"
                 >
                   <X size={12} />
                 </button>
@@ -780,7 +781,7 @@ export function CoworkCodePanel({
               {active.origin.kind === 'external' && (
                 <div
                   role="status"
-                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-ink-2"
                 >
                   <span className="min-w-0 flex-1">
                     {t('common:codePanel.externalNote')}
@@ -798,7 +799,7 @@ export function CoworkCodePanel({
               {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
                 <div
                   role="status"
-                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-ink-2"
                 >
                   <span className="min-w-0 flex-1">
                     {t('common:codePanel.stale')}
@@ -989,7 +990,5 @@ function originTitle(
 
 const DENIED_PREFIX = 'DENIED: '
 
-const messageOf = (e: unknown): string =>
-  e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText

@@ -1,42 +1,54 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
-import { Card, CardItem } from '@/containers/Card'
 import {
-  IconPencil,
-  IconPlus,
-  IconTrash,
-  IconCodeCircle,
-} from '@tabler/icons-react'
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
+import { Card, CardItem } from '@/containers/Card'
+import { Braces, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   useMCPServers,
   MCPServerConfig,
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
+import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { twMerge } from 'tailwind-merge'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
+import { resolveServerFingerprints } from '@/lib/mcpServerIdentity'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { listen } from '@tauri-apps/api/event'
 import { SystemEvent } from '@/types/events'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { normalizeAppError } from '@/utils/appError'
 import { McpServerAuth } from '@/containers/McpServerAuth'
-import { useMcpAuth, needsAuthDetail } from '@/hooks/useMcpAuth'
+import { useMcpAuth } from '@/hooks/useMcpAuth'
+import {
+  activationConfirmed,
+  activationFailed,
+  beginActivation,
+  classifyActivationFailure,
+  deriveConnectionState,
+  runtimeCleared,
+  type McpServerRuntime,
+} from '@/lib/mcpConnectionState'
+import { deriveMcpServerProfile, transportOf } from '@/lib/mcpServerProfile'
+import {
+  McpServerDetails,
+  McpServerStatus,
+  mcpServerErrorId,
+} from '@/containers/McpServerConnectionDetails'
 
 
 // Function to mask sensitive URL parameters
@@ -111,14 +123,25 @@ function MCPServersDesktop() {
     setSettings,
     updateSettings,
   } = useMCPServers()
-  const { allowAllMCPPermissions, setAllowAllMCPPermissions } =
-    useToolApproval()
+  const {
+    allowAllMCPPermissions,
+    setAllowAllMCPPermissions,
+    isServerApproved,
+    approveServerTrust,
+    revokeServerTrust,
+    forgetServer,
+    approvedServers,
+    invalidatedServers,
+  } = useToolApproval()
 
   const [open, setOpen] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [currentConfig, setCurrentConfig] = useState<
     MCPServerConfig | undefined
   >(undefined)
+
+  // Per-server log dialog state (AH-140)
+  const [logServer, setLogServer] = useState<string | null>(null)
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -159,6 +182,117 @@ function MCPServersDesktop() {
       )
   }, [serviceHub])
   const setErrorMessage = useAppState((state) => state.setErrorMessage)
+
+  /** In-flight activation and last failure per server; see mcpConnectionState. */
+  const [runtime, setRuntime] = useState<Record<string, McpServerRuntime>>({})
+  /**
+   * Each server's security fingerprint, as the backend computes it from the
+   * saved or running definition. Auto-approve is bound to it, so an edit that
+   * changes what runs shows as needing renewed approval.
+   */
+  const [fingerprints, setFingerprints] = useState<Record<string, string>>({})
+  const refreshFingerprints = useCallback(async () => {
+    const next = await resolveServerFingerprints()
+    setFingerprints(next)
+    return next
+  }, [])
+  const serversSignature = JSON.stringify(mcpServers)
+  useEffect(() => {
+    void refreshFingerprints()
+  }, [serversSignature, refreshFingerprints])
+
+  /**
+   * A server name is going away (deleted or renamed): its approvals and stored
+   * sign-in go with it, so nothing is inherited by a server added under that
+   * name later. The renderer part always happens; a backend failure is shown.
+   */
+  const forgetServerGrants = (
+    name: string,
+    reason: 'deleted' | 'renamed',
+    newName?: string
+  ) => {
+    void Promise.resolve()
+      .then(() => forgetServer(name, reason))
+      .then(() => {
+        if (reason === 'renamed') {
+          toast(
+            t('mcp-servers:renameServer.approvalsReset', {
+              oldName: name,
+              newName,
+            }),
+            { description: t('mcp-servers:renameServer.approvalsResetDesc') }
+          )
+        }
+      })
+      .catch((error) => {
+        toast.error(
+          reason === 'renamed'
+            ? t('mcp-servers:renameServer.forgetFailed', { oldName: name })
+            : t('mcp-servers:deleteServer.forgetFailed', { serverName: name }),
+          { description: errorText(error) }
+        )
+      })
+  }
+
+  const handleAutoApprove = async (serverKey: string, checked: boolean) => {
+    try {
+      if (checked) {
+        // Read fresh rather than from the cached map: a definition saved a
+        // moment ago must be the one approved, not the one before it.
+        const fingerprint = (await refreshFingerprints())[serverKey]
+        if (!fingerprint) {
+          throw new Error(`'${serverKey}' is not saved yet`)
+        }
+        await approveServerTrust(serverKey, fingerprint)
+      } else {
+        await revokeServerTrust(serverKey)
+      }
+    } catch (error) {
+      toast.error(
+        t('mcp-servers:approval.autoApproveFailed', { serverName: serverKey }),
+        { description: errorText(error) }
+      )
+    }
+  }
+  /**
+   * Tool names per connected server: `undefined` while loading, `null` when
+   * the list could not be read.
+   */
+  const [serverTools, setServerTools] = useState<
+    Record<string, string[] | null>
+  >({})
+  const serviceHubRef = useRef(serviceHub)
+  serviceHubRef.current = serviceHub
+  // Server names may contain spaces ("Jan Browser MCP"), so join on NUL.
+  const connectedKey = connectedServers.join('\u0000')
+
+  useEffect(() => {
+    let cancelled = false
+    const names = connectedKey ? connectedKey.split('\u0000') : []
+    void Promise.all(
+      names.map(async (name) => {
+        try {
+          const tools = await serviceHubRef.current
+            .mcp()
+            .getToolsForServers([name])
+          return [
+            name,
+            tools
+              .filter((tool) => !tool.server || tool.server === name)
+              .map((tool) => tool.name),
+          ] as const
+        } catch (error) {
+          console.debug(`Could not list tools for MCP server ${name}:`, error)
+          return [name, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setServerTools(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [connectedKey])
 
   const updateToolCallTimeout = (rawValue: string) => {
     if (rawValue === '') {
@@ -243,6 +377,9 @@ function MCPServersDesktop() {
         toggleServer(editingKey, false)
         renameServer(editingKey, name, config)
         toggleServer(name, true)
+        // Grants never follow a rename: the approval was for the old name,
+        // and its OAuth tokens may belong to an endpoint the edit changed.
+        forgetServerGrants(editingKey, 'renamed', name)
         // Restart servers to update tool references with new server name
         syncServersAndRestart()
       } else {
@@ -258,6 +395,21 @@ function MCPServersDesktop() {
       toggleServer(name, true)
       syncServers()
     }
+  }
+
+  /** Whether an approval this server had no longer matches its configuration. */
+  const approvalChanged = (serverKey: string) => {
+    const current = fingerprints[serverKey]
+    const staleGrant =
+      !!current &&
+      (approvedServers ?? []).some(
+        (grant) => grant.name === serverKey && grant.fingerprint !== current
+      )
+    const invalidated = (invalidatedServers ?? []).some(
+      (entry) =>
+        entry.name === serverKey && entry.reason === 'configuration-changed'
+    )
+    return staleGrant || invalidated
   }
 
   const handleEdit = (serverKey: string) => {
@@ -279,6 +431,8 @@ function MCPServersDesktop() {
       }
 
       deleteServer(serverToDelete)
+      forgetServerGrants(serverToDelete, 'deleted')
+      setRuntime((prev) => ({ ...prev, [serverToDelete]: runtimeCleared() }))
       toast.success(
         t('mcp-servers:deleteServer.success', { serverName: serverToDelete })
       )
@@ -352,6 +506,13 @@ function MCPServersDesktop() {
         deleteServer(serverKey)
       })
 
+      // A name that is not in the edited JSON is gone, whatever else was
+      // added: forget its grants. A name that stays keeps them, and any edit
+      // to what it runs is caught by its fingerprint instead.
+      Object.keys(mcpServers)
+        .filter((serverKey) => !(serverKey in nextServers))
+        .forEach((serverKey) => forgetServerGrants(serverKey, 'deleted'))
+
       // Add all servers from the JSON
       Object.entries(nextServers).forEach(([key, config]) => {
         addServer(key, config)
@@ -371,7 +532,12 @@ function MCPServersDesktop() {
     try {
       await authorize(serverKey)
       toast.success(t('mcp-servers:auth.authorized', { serverName: serverKey }))
-      if (mcpServers[serverKey]?.active) {
+      // A start that failed for want of sign-in reverted the flag, but the
+      // user was trying to turn it on: finish what they started.
+      if (
+        mcpServers[serverKey]?.active ||
+        runtime[serverKey]?.failure?.needsAuth
+      ) {
         toggleServer(serverKey, true)
       }
     } catch (error) {
@@ -419,36 +585,49 @@ function MCPServersDesktop() {
       setLoadingServers((prev) => ({ ...prev, [serverKey]: true }))
       const config = getServerConfig(serverKey)
       if (active && config) {
+        const transport = transportOf(config)
+        setRuntime((prev) => ({ ...prev, [serverKey]: beginActivation() }))
+        let started = false
         serviceHub
           .mcp()
-          .activateMCPServer(serverKey, {
-            ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-            active,
-          })
-          .then(() => {
-            // Save single server
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active,
-            })
+          .activateMCPServer(serverKey, { ...config, active })
+          .then(async () => {
+            started = true
+            // `activate` resolving means the first start attempt returned.
+            // Only the backend's connected list says the server is up, so
+            // nothing is saved or announced until it appears there.
+            const connected = await serviceHub.mcp().getConnectedServers()
+            setConnectedServers(connected)
+            if (!connected.includes(serverKey)) {
+              throw new Error(t('mcp-servers:connection.notListedAfterStart'))
+            }
+            editServer(serverKey, { ...config, active })
             syncServers()
-            toast.success(
-              active
-                ? t('mcp-servers:serverStatusActive', { serverKey })
-                : t('mcp-servers:serverStatusInactive', { serverKey })
-            )
-            refreshConnectedServers()
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationConfirmed(),
+            }))
+            toast.success(t('mcp-servers:serverStatusActive', { serverKey }))
           })
           .catch((error) => {
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active: false,
-            })
+            if (started) {
+              // It started but was not confirmed: stop it, so nothing keeps
+              // running behind a switch that shows off.
+              void Promise.resolve()
+                .then(() => serviceHub.mcp().deactivateMCPServer(serverKey))
+                .catch(() => {})
+                .finally(refreshConnectedServers)
+            }
+            editServer(serverKey, { ...config, active: false })
+            const failure = classifyActivationFailure(error, transport)
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationFailed(failure),
+            }))
             // A server that only needs signing in is not a misconfigured one:
             // the backend tags it, so point at the fix rather than telling the
             // user to check parameters they got right.
-            const authDetail = needsAuthDetail(error)
-            if (authDetail !== null) {
+            if (failure.needsAuth) {
               void refreshAuth()
               setErrorMessage({
                 message: t('mcp-servers:auth.needsAuth', {
@@ -459,7 +638,7 @@ function MCPServersDesktop() {
               return
             }
             setErrorMessage({
-              message: normalizeAppError(error),
+              message: failure.message,
               subtitle: t('mcp-servers:checkParams'),
             })
           })
@@ -467,6 +646,7 @@ function MCPServersDesktop() {
             setLoadingServers((prev) => ({ ...prev, [serverKey]: false }))
           })
       } else {
+        setRuntime((prev) => ({ ...prev, [serverKey]: runtimeCleared() }))
         editServer(serverKey, {
           ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
           active,
@@ -503,29 +683,29 @@ function MCPServersDesktop() {
 
   return (
     <Fragment>
-      <div className="flex flex-col h-svh w-full">
-        <HeaderPage>
-          <div className={cn("flex items-center justify-between w-full mr-2 pr-3", !IS_MACOS && "pr-30")}>
-            <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-            <Button variant="outline" size="sm" onClick={() => handleOpenDialog()} className="relative z-50">
-              <IconPlus size={18} className="text-muted-foreground" />
-              {t('mcp-servers:addServer')}
-            </Button>
-          </div>
-        </HeaderPage>
-        <div className="flex h-[calc(100%-60px)]">
-          <SettingsMenu />
-          <div className="p-4 pt-0 w-full overflow-y-auto">
-            <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <div className="flex flex-col h-full w-full">
+        <SettingsPageHeader>
+          <Button
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => handleOpenDialog()}
+          >
+            <Plus aria-hidden />
+            {t('mcp-servers:addServer')}
+          </Button>
+        </SettingsPageHeader>
+        <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+          <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
               <Card
                 header={
-                  <div className="flex flex-col mb-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-foreground font-medium text-base font-studio">
+                  <div className="mb-4 flex flex-col">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h1 className="font-display text-xl font-normal text-foreground">
                           {t('mcp-servers:title')}
                         </h1>
-                        <div className="text-xs bg-secondary border text-muted-foreground rounded-full py-0.5 px-2">
+                        <div className="rounded-full bg-warning-tint px-2 py-0.5 text-xs text-warning">
                           <span>{t('mcp-servers:experimental')}</span>
                         </div>
                       </div>
@@ -534,23 +714,22 @@ function MCPServersDesktop() {
                         <Button
                           onClick={() => handleOpenJsonEditor()}
                           title={t('mcp-servers:editAllJson')}
-                          size="icon-xs"
-                          variant="ghost"
+                          aria-label={t('mcp-servers:editAllJson')}
+                          size="icon-sm"
+                          variant="outline"
+                          className="pointer-coarse:size-11"
                         >
-                          <IconCodeCircle
-                            size={18}
-                            className="text-muted-foreground"
-                          />
+                          <Braces className="text-muted-foreground" aria-hidden />
                         </Button>
                       </div>
                     </div>
-                    <p className="text-sm mt-1">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       {t('mcp-servers:findMore')}{' '}
                       <a
                         href="https://mcp.so/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline"
+                        className="text-brand-text underline-offset-4 hover:underline"
                       >
                         mcp.so
                       </a>
@@ -563,7 +742,7 @@ function MCPServersDesktop() {
                   title={t('mcp-servers:allowPermissions')}
                   description={t('mcp-servers:allowPermissionsDesc')}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={allowAllMCPPermissions}
                         onCheckedChange={setAllowAllMCPPermissions}
@@ -622,7 +801,7 @@ function MCPServersDesktop() {
                     'mcp-servers:runtimeSettings.smartToolRoutingDesc'
                   )}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={settings.enableSmartToolRouting}
                         onCheckedChange={(checked) => {
@@ -649,7 +828,7 @@ function MCPServersDesktop() {
                     'mcp-servers:runtimeSettings.useLightweightRouterModelDesc'
                   )}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={settings.useLightweightRouterModel}
                         disabled={!settings.enableSmartToolRouting}
@@ -707,29 +886,37 @@ function MCPServersDesktop() {
               </Card>
 
               {Object.keys(mcpServers).length === 0 ? (
-                <div className="py-4 text-center font-medium text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-line-strong bg-card px-4 py-8 text-center font-medium text-muted-foreground">
                   {t('mcp-servers:noServers')}
                 </div>
               ) : (
-                Object.entries(mcpServers).map(([key, config], index) => (
+                Object.entries(mcpServers).map(([key, config], index) => {
+                  const authStatus = authStatuses[key]
+                  const profile = deriveMcpServerProfile(config, authStatus)
+                  const snapshot = deriveConnectionState({
+                    installed: true,
+                    enabled: !!config.active,
+                    connected: connectedServers.includes(key),
+                    runtime: runtime[key],
+                    authStatus,
+                    transport: profile.transport,
+                  })
+                  const toolNames = snapshot.connected
+                    ? serverTools[key]
+                    : undefined
+                  return (
                   <Card key={`${key}-${index}`}>
                     <CardItem
                       align="start"
                       title={
-                        <div className="flex items-center gap-x-2">
-                          <div
-                            className={twMerge(
-                              'size-2 rounded-full',
-                              connectedServers.includes(key)
-                                ? 'bg-green-600 dark:bg-green-600'
-                                : 'bg-secondary'
-                            )}
-                          />
-                          <h1 className="text-foreground text-base capitalize font-studio">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          {/* The connection state is the chip under the
+                              title; a coloured dot here only repeated it. */}
+                          <h1 className="min-w-0 break-words font-display text-lg font-normal capitalize text-foreground">
                             {key}
                           </h1>
                           {config.official && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 text-xs bg-secondary border rounded-sm">
+                            <div className="flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-0.5 text-xs text-ink-2">
                               <img
                                 src="/images/jan-logo.png"
                                 alt="Jan"
@@ -741,22 +928,27 @@ function MCPServersDesktop() {
                         </div>
                       }
                       descriptionOutside={
-                        <div className="text-sm text-muted-foreground">
+                        <div className="min-w-0 pt-2 text-sm text-muted-foreground">
                           <div className="mb-1">
                             Transport:{' '}
-                            <span className="uppercase">
+                            <span className="font-mono text-xs uppercase text-ink-2">
                               {config.type || 'stdio'}
                             </span>
                           </div>
 
                           {config.type === 'stdio' || !config.type ? (
                             <>
-                              <div>
-                                {t('mcp-servers:command')}: {config.command}
+                              <div className="break-all">
+                                {t('mcp-servers:command')}:{' '}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {config.command}
+                                </span>
                               </div>
                               <div className="my-1 break-all">
                                 {t('mcp-servers:args')}:{' '}
-                                {config?.args?.join(', ')}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {config?.args?.join(', ')}
+                                </span>
                               </div>
                               {config.env &&
                                 Object.keys(config.env).length > 0 && (
@@ -777,7 +969,7 @@ function MCPServersDesktop() {
                                     href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-500 hover:underline"
+                                    className="text-brand-text underline-offset-4 hover:underline"
                                   >
                                     Install Extension →
                                   </a>
@@ -787,7 +979,10 @@ function MCPServersDesktop() {
                           ) : (
                             <>
                               <div className="break-all">
-                                URL: {maskSensitiveUrl(config.url || '')}
+                                URL:{' '}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {maskSensitiveUrl(config.url || '')}
+                                </span>
                               </div>
                               {config.headers &&
                                 Object.keys(config.headers).length > 0 && (
@@ -810,49 +1005,115 @@ function MCPServersDesktop() {
                               />
                             </>
                           )}
+                          <McpServerStatus
+                            serverName={key}
+                            snapshot={snapshot}
+                            toolNames={toolNames}
+                            canAuthorize={!!authStatus?.canAuthenticate}
+                            onRetry={() => toggleServer(key, true)}
+                            onAuthorize={() => void handleAuthorize(key)}
+                          />
+                          <McpServerDetails
+                            profile={profile}
+                            toolNames={toolNames}
+                            authStateLabel={
+                              authStatus
+                                ? t(`mcp-servers:auth.state.${authStatus.state}`)
+                                : undefined
+                            }
+                          />
+                          <div className="mt-3 flex min-h-11 items-center gap-2 border-t border-border pt-3 sm:min-h-0">
+                            <Switch
+                              checked={isServerApproved(key, fingerprints[key])}
+                              aria-label={t('mcp-servers:autoApproveServer')}
+                              aria-describedby={
+                                approvalChanged(key)
+                                  ? `mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+                                  : undefined
+                              }
+                              onCheckedChange={(checked) =>
+                                void handleAutoApprove(key, checked)
+                              }
+                            />
+                            <span className="text-foreground">
+                              {t('mcp-servers:autoApproveServer')}
+                            </span>
+                          </div>
+                          {approvalChanged(key) && (
+                            <p
+                              id={`mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                              className="mt-1 text-xs text-warning"
+                            >
+                              {t('mcp-servers:approval.changedSinceApproval')}
+                            </p>
+                          )}
                         </div>
                       }
                       actions={
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end">
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="pointer-coarse:size-11"
                             onClick={() => handleOpenJsonEditor(key)}
                             title={t('mcp-servers:editJson.title', {
                               serverName: key,
                             })}
+                            aria-label={t('mcp-servers:editJson.title', {
+                              serverName: key,
+                            })}
                           >
-                            <IconCodeCircle
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Braces className="text-muted-foreground" aria-hidden />
                           </Button>
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="pointer-coarse:size-11"
+                            onClick={() => setLogServer(key)}
+                            title={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                            aria-label={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                          >
+                            <FileText className="text-muted-foreground" aria-hidden />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="pointer-coarse:size-11"
                             onClick={() => handleEdit(key)}
                             title={t('mcp-servers:editServer')}
+                            aria-label={`${t('mcp-servers:editServer')}: ${key}`}
                           >
-                            <IconPencil
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Pencil className="text-muted-foreground" aria-hidden />
                           </Button>
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
                             onClick={() => handleDeleteClick(key)}
                             title={t('mcp-servers:deleteServer.title')}
+                            aria-label={`${t('mcp-servers:deleteServer.title')}: ${key}`}
                           >
-                            <IconTrash
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Trash2 aria-hidden />
                           </Button>
-                          <div className="ml-2">
+                          <div className="ml-1 flex min-h-11 items-center sm:min-h-0">
                             <Switch
-                              checked={config.active}
-                              loading={!!loadingServers[key]}
+                              checked={snapshot.switchOn}
+                              loading={
+                                !!loadingServers[key] ||
+                                snapshot.state === 'connecting'
+                              }
+                              aria-label={t('mcp-servers:connection.toggleLabel', {
+                                serverName: key,
+                              })}
+                              aria-describedby={
+                                snapshot.failure
+                                  ? mcpServerErrorId(key)
+                                  : undefined
+                              }
                               onCheckedChange={(checked) =>
                                 toggleServer(key, checked)
                               }
@@ -862,7 +1123,8 @@ function MCPServersDesktop() {
                       }
                     />
                   </Card>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -876,6 +1138,13 @@ function MCPServersDesktop() {
         editingKey={editingKey}
         initialData={currentConfig}
         onSave={handleSaveServer}
+        existingNames={Object.keys(mcpServers)}
+      />
+
+      <McpServerLogDialog
+        open={logServer !== null}
+        onOpenChange={(o) => !o && setLogServer(null)}
+        serverName={logServer ?? ''}
       />
 
       {/* Delete confirmation dialog */}

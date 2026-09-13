@@ -7,6 +7,17 @@
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
+    /// A snapshot of the exact payload that was just dispatched. AH-078.
+    ///
+    /// Carries the identity and the hash, never the payload: the activity
+    /// timeline links to the record rather than embedding a copy that could
+    /// drift from it, and the redaction count tells a reader that something was
+    /// removed without saying what.
+    PromptSnapshot {
+        id: String,
+        hash: String,
+        redactions: usize,
+    },
     /// A streamed content delta from the model.
     Token { text: String },
     /// A streamed reasoning delta, carried natively when the upstream exposes
@@ -63,6 +74,10 @@ pub enum StreamEvent {
         is_error: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff: Option<String>,
+    },
+    /// What the commands a run started used, sent once as it ends (AH-174).
+    RunResources {
+        resources: tauri_plugin_agent_tools::resources::RunResources,
     },
     /// A backgrounded subagent run began. `run_id` identifies the run so a
     /// consumer can attribute concurrent children; brackets the child's wrapped
@@ -161,6 +176,11 @@ pub enum StreamEvent {
         /// change before approving; `None` for other tools.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff: Option<String>,
+        /// The same change as reviewable hunks, with the base it was computed
+        /// against. AH-146. The text diff above is for reading; this is for a
+        /// client that wants to present, or decide on, one hunk at a time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        patch: Option<tauri_plugin_agent_tools::patch::PatchView>,
         prompt_kind: String,
         offers_always: bool,
     },
@@ -240,20 +260,39 @@ fn arg_name(args: &serde_json::Value) -> String {
         .unwrap_or_default()
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct Usage {
     pub prompt_tokens: Option<u64>,
     pub completion_tokens: Option<u64>,
     pub total_tokens: Option<u64>,
+    /// Prompt tokens the provider read from its cache
+    /// (`prompt_tokens_details.cached_tokens`). `None` when the provider did
+    /// not say, which is not the same as nothing having been cached.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_prompt_tokens: Option<u64>,
+    /// Prompt tokens written to the provider's cache. Part of the prompt
+    /// total, never added to it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl Usage {
     pub(crate) fn from_completion(completion: &serde_json::Value) -> Option<Self> {
         let usage = completion.get("usage")?;
+        let details = usage.get("prompt_tokens_details");
         Some(Self {
             prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()),
             completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()),
             total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()),
+            cached_prompt_tokens: details
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|v| v.as_u64()),
+            // Anthropic's name, as the server converter and OpenAI-shaped
+            // proxies in front of Anthropic pass it through.
+            cache_write_tokens: usage
+                .get("cache_creation_input_tokens")
+                .or_else(|| details.and_then(|d| d.get("cache_creation_tokens")))
+                .and_then(|v| v.as_u64()),
         })
     }
 }
@@ -400,6 +439,7 @@ mod tests {
             path: Some("out.txt".into()),
             command: None,
             diff: Some("@@ created file @@\n+ hi".into()),
+            patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
         })
@@ -488,5 +528,37 @@ mod tests {
         assert_eq!(parsed.total_tokens, Some(15));
 
         assert!(Usage::from_completion(&json!({ "choices": [] })).is_none());
+    }
+
+    #[test]
+    fn usage_keeps_cache_counts_only_when_reported() {
+        let cached = Usage::from_completion(&json!({
+            "usage": {
+                "prompt_tokens": 5974, "completion_tokens": 8, "total_tokens": 5982,
+                "prompt_tokens_details": { "cached_tokens": 5957 },
+                "cache_creation_input_tokens": 12
+            }
+        }))
+        .unwrap();
+        assert_eq!(cached.cached_prompt_tokens, Some(5957));
+        assert_eq!(cached.cache_write_tokens, Some(12));
+
+        // A measured zero stays a zero.
+        let zero = Usage::from_completion(&json!({
+            "usage": { "prompt_tokens": 10, "prompt_tokens_details": { "cached_tokens": 0 } }
+        }))
+        .unwrap();
+        assert_eq!(zero.cached_prompt_tokens, Some(0));
+
+        // Nothing reported is nothing known, and is not serialized as zero.
+        let silent = Usage::from_completion(&json!({
+            "usage": { "prompt_tokens": 10, "completion_tokens": 1, "total_tokens": 11 }
+        }))
+        .unwrap();
+        assert_eq!(silent.cached_prompt_tokens, None);
+        assert_eq!(silent.cache_write_tokens, None);
+        let wire = serde_json::to_value(&silent).unwrap();
+        assert!(wire.get("cached_prompt_tokens").is_none());
+        assert!(wire.get("cache_write_tokens").is_none());
     }
 }

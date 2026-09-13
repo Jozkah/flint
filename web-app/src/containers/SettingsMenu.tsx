@@ -3,27 +3,30 @@ import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useState, useEffect, useCallback } from 'react'
 import {
-  IconAdjustmentsHorizontal,
-  IconCircles,
-  IconChevronDown,
-  IconChevronRight,
-  IconCommand,
-  IconFeather,
-  IconPalette,
-  IconPlus,
-  IconTopologyStar3,
-  IconCpu,
-  IconWorld,
-  IconWorldSearch,
-  IconFolderCode,
-  IconPaperclip,
-  IconPuzzle,
-} from '@tabler/icons-react'
+  SlidersHorizontal,
+  Network,
+  ChevronDown,
+  ChevronRight,
+  Command,
+  Feather,
+  Palette,
+  Plus,
+  Waypoints,
+  Cpu,
+  Globe,
+  Search,
+  Brain,
+  FolderCode,
+  Paperclip,
+  Puzzle,
+  ShieldCheck,
+} from 'lucide-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getProviderTitle, isLocalProvider } from '@/lib/utils'
+import { useProviderLocations } from '@/hooks/useEndpointLocations'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { AddProviderDialog } from '@/containers/dialogs'
 import {
@@ -40,7 +43,23 @@ import {
   type SettingsPageId,
 } from '@/lib/settingsSearch'
 
-const SettingsMenu = () => {
+/**
+ * Core pages most people never need to open. They stay one click away in an
+ * "Advanced" group; nothing about how they behave changes by being grouped.
+ */
+const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
+  'local-api-server',
+  'https-proxy',
+  'hardware',
+  'agent-tools',
+])
+
+type SettingsMenuProps = {
+  /** `sidebar`: rendered by the shell's contextual sidebar, full width. */
+  variant?: 'column' | 'sidebar'
+}
+
+const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const { t } = useTranslation()
   const [expandedProviders, setExpandedProviders] = useState(true)
 
@@ -100,12 +119,23 @@ const SettingsMenu = () => {
     return true
   })
 
-  const activeLocalProviders = activeProviders.filter((p) =>
-    isLocalProvider(p.provider)
+  // Grouped by where inference actually runs, not by whether the provider
+  // shipped an engine: a workstation or tailnet endpoint the user configured
+  // by hand belongs under LOCAL, and used to be filed with the hosted APIs.
+  const locationOf = useProviderLocations(activeProviders, (name) =>
+    Boolean(isLocalProvider(name))
   )
-  const activeRemoteProviders = activeProviders.filter(
-    (p) => !isLocalProvider(p.provider)
+  const activeLocalProviders = activeProviders.filter(
+    (p) => locationOf(p) === 'local'
   )
+  // Anything still resolving stays out of REMOTE rather than being filed
+  // there and moved a moment later. A provider with no endpoint of its own is
+  // a hosted API on its built-in URL, which is remote by definition -- that is
+  // not the unresolved case.
+  const activeRemoteProviders = activeProviders.filter((p) => {
+    const location = locationOf(p)
+    return location === 'remote' || location === 'unknown'
+  })
 
   const hiddenProviders = providers.filter((provider) => {
     if (provider.active) return false
@@ -121,11 +151,14 @@ const SettingsMenu = () => {
         match.params.providerName === provider.provider
     )
     return (
-      <div
+      <button
         key={provider.provider}
+        type="button"
+        aria-current={isRouteActive ? 'page' : undefined}
         className={cn(
-          'flex px-2 items-center gap-1.5 cursor-pointer hover:bg-secondary/60 py-1 w-full rounded-sm text-foreground',
-          isRouteActive && 'bg-secondary',
+          menuLinkClass,
+          'flex items-center gap-2.5 text-left',
+          isRouteActive && 'active',
           provider.provider === 'llama.cpp' &&
             stepSetupRemoteProvider &&
             'hidden'
@@ -141,10 +174,10 @@ const SettingsMenu = () => {
         }
       >
         <ProvidersAvatar provider={provider} />
-        <div className="truncate flex-1">
-          <span>{getProviderTitle(provider.provider)}</span>
-        </div>
-      </div>
+        <span className="truncate flex-1">
+          {getProviderTitle(provider.provider)}
+        </span>
+      </button>
     )
   }
 
@@ -181,19 +214,21 @@ const SettingsMenu = () => {
     SettingsPageId,
     (props: { size?: number; className?: string }) => React.ReactNode
   > = {
-    general: IconAdjustmentsHorizontal,
+    general: SlidersHorizontal,
     // "Appearance" is implemented by the existing Interface settings route.
-    appearance: IconPalette,
-    assistants: IconFeather,
-    attachments: IconPaperclip,
-    'local-api-server': IconCircles,
-    'https-proxy': IconWorld,
-    'web-search': IconWorldSearch,
-    'agent-tools': IconFolderCode,
-    shortcuts: IconCommand,
-    hardware: IconCpu,
-    'mcp-servers': IconTopologyStar3,
-    extensions: IconPuzzle,
+    appearance: Palette,
+    assistants: Feather,
+    attachments: Paperclip,
+    'local-api-server': Network,
+    'https-proxy': Globe,
+    'web-search': Search,
+    memory: Brain,
+    permissions: ShieldCheck,
+    'agent-tools': FolderCode,
+    shortcuts: Command,
+    hardware: Cpu,
+    'mcp-servers': Waypoints,
+    extensions: Puzzle,
     'claude-code': ({ size, className }) => (
       <img
         src="/images/code-claude.svg"
@@ -204,52 +239,101 @@ const SettingsMenu = () => {
     ),
   }
 
+  // Selected rows use the accent tint and a side marker, like every other
+  // contextual list in the shell.
+  const menuLinkClass =
+    'relative block px-2 py-1.5 pointer-coarse:py-2.5 w-full cursor-pointer rounded-md text-ink-2 hover:bg-sunken hover:text-foreground [&.active]:bg-brand-tint [&.active]:text-foreground [&.active]:before:absolute [&.active]:before:left-0 [&.active]:before:inset-y-1.5 [&.active]:before:w-0.5 [&.active]:before:rounded-full [&.active]:before:bg-brand'
+
   const withIcon = (page: SettingsPage) => ({
     ...page,
     title: page.titleKey,
     icon: pageIcons[page.id as SettingsPageId],
   })
-  const coreSettings = SETTINGS_PAGES.filter((p) => p.group === 'core').map(
-    withIcon
-  )
+  const coreSettings = SETTINGS_PAGES.filter(
+    (p) => p.group === 'core' && !ADVANCED_PAGE_IDS.has(p.id)
+  ).map(withIcon)
+  const advancedSettings = SETTINGS_PAGES.filter(
+    (p) => p.group === 'core' && ADVANCED_PAGE_IDS.has(p.id)
+  ).map(withIcon)
   const integrationSettings = SETTINGS_PAGES.filter(
     (p) => p.group === 'integrations'
   ).map(withIcon)
 
+  // Advanced pages are grouped, never removed: the group opens by itself when
+  // one of them is the current page, and search still finds every setting.
+  const onAdvancedPage = advancedSettings.some((page) =>
+    matches.some((match) => match.pathname === page.route)
+  )
+  const [advancedOpen, setAdvancedOpen] = useState(onAdvancedPage)
+  useEffect(() => {
+    if (onAdvancedPage) setAdvancedOpen(true)
+  }, [onAdvancedPage])
+
+  const renderPageLink = (menu: ReturnType<typeof withIcon>) => (
+    <div key={menu.title}>
+      <Link to={menu.route} className={menuLinkClass}>
+        <div className="flex items-center gap-2.5">
+          <menu.icon size={18} className="shrink-0 text-muted-foreground" />
+          <span>{t(menu.title)}</span>
+        </div>
+      </Link>
+    </div>
+  )
+
   return (
     <>
-      <div className="h-full w-58 shrink-0 flex flex-col overflow-auto">
+      <div
+        data-testid="settings-menu"
+        className={cn(
+          'h-full shrink-0 flex flex-col overflow-auto',
+          variant === 'column' ? 'w-58' : 'w-full'
+        )}
+      >
         <SettingsSearch />
-        <div className="flex flex-col gap-1 w-full px-1.5 font-medium">
+        <div className="flex flex-col gap-0.5 w-full px-1.5 font-medium">
           {/* Core settings */}
-          {coreSettings.map((menu) => (
-            <div key={menu.title}>
-              <Link
-                to={menu.route}
-                className="block px-2 gap-1.5 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary py-1 w-full rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
-              >
-                <div className="flex items-center gap-2">
-                  <menu.icon size={18} className="shrink-0 text-muted-foreground" />
-                  <span>{t(menu.title)}</span>
-                </div>
-              </Link>
-            </div>
-          ))}
+          {coreSettings.map(renderPageLink)}
+
+          {/* Advanced core settings, grouped rather than hidden */}
+          <div className="mt-1">
+            <button
+              type="button"
+              aria-expanded={advancedOpen}
+              aria-controls="settings-advanced-pages"
+              onClick={() => setAdvancedOpen((open) => !open)}
+              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 pointer-coarse:py-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+            >
+              {advancedOpen ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+              {t('navigation:advancedSettings')}
+            </button>
+            {advancedOpen && (
+              <div id="settings-advanced-pages" className="mt-1 flex flex-col gap-1">
+                <p className="px-2 text-[11px] font-normal text-muted-foreground">
+                  {t('navigation:advancedSettingsHint')}
+                </p>
+                {advancedSettings.map(renderPageLink)}
+              </div>
+            )}
+          </div>
 
           {/* Integrations section */}
           <div className="mt-4">
-            <span className="px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('common:integrations')}
-              <span className="text-[11px] capitalize ml-2 font-medium px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400">
+              <span className="text-[11px] normal-case tracking-normal ml-2 font-medium px-2 py-0.5 rounded-full bg-sunken text-ink-2">
                 {t('common:experimental')}
               </span>
             </span>
-            <div className="mt-1 flex flex-col gap-1">
+            <div className="mt-1 flex flex-col gap-0.5">
               {integrationSettings.map((menu) => (
                 <Link
                   key={menu.title}
                   to={menu.route}
-                  className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
+                  className={cn(menuLinkClass, 'flex items-center gap-2.5')}
                 >
                   <menu.icon size={18} className="shrink-0 text-muted-foreground" />
                   <span>{t(menu.title)}</span>
@@ -266,7 +350,7 @@ const SettingsMenu = () => {
               </span>
               <AddProviderDialog onCreateProvider={createProvider}>
                 <Button variant="ghost" size="icon-xs">
-                  <IconPlus size={12} />
+                  <Plus size={12} />
                 </Button>
               </AddProviderDialog>
             </div>
@@ -297,6 +381,9 @@ const SettingsMenu = () => {
               {hiddenProviders.length > 0 && (
                 <>
                   <button
+                    type="button"
+                    aria-expanded={expandedProviders}
+                    aria-controls="settings-hidden-providers"
                     className="flex items-center justify-between px-2 py-1 w-full rounded-sm text-muted-foreground hover:bg-secondary/60"
                     onClick={() => setExpandedProviders(!expandedProviders)}
                   >
@@ -306,41 +393,47 @@ const SettingsMenu = () => {
                       })}
                     </span>
                     {expandedProviders ? (
-                      <IconChevronDown size={14} />
+                      <ChevronDown size={14} />
                     ) : (
-                      <IconChevronRight size={14} />
+                      <ChevronRight size={14} />
                     )}
                   </button>
-                  {expandedProviders &&
-                    hiddenProviders.map((provider) => {
-                      const isRouteActive = matches.some(
-                        (match) =>
-                          match.routeId ===
-                            '/settings/providers/$providerName' &&
-                          'providerName' in match.params &&
-                          match.params.providerName === provider.provider
-                      )
-                      return (
-                        <div
-                          key={provider.provider}
-                          className={cn(
-                            'flex px-2 items-center gap-1.5 cursor-pointer hover:bg-secondary/60 py-1 w-full rounded-sm text-muted-foreground',
-                            isRouteActive && 'bg-secondary'
-                          )}
-                          onClick={() =>
-                            navigate({
-                              to: route.settings.providers,
-                              params: { providerName: provider.provider },
-                            })
-                          }
-                        >
-                          <ProvidersAvatar provider={provider} />
-                          <div className="truncate flex-1">
-                            <span>{getProviderTitle(provider.provider)}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                  {expandedProviders && (
+                    <div id="settings-hidden-providers" className="contents">
+                      {hiddenProviders.map((provider) => {
+                        const isRouteActive = matches.some(
+                          (match) =>
+                            match.routeId ===
+                              '/settings/providers/$providerName' &&
+                            'providerName' in match.params &&
+                            match.params.providerName === provider.provider
+                        )
+                        return (
+                          <button
+                            key={provider.provider}
+                            type="button"
+                            aria-current={isRouteActive ? 'page' : undefined}
+                            className={cn(
+                              menuLinkClass,
+                              'flex items-center gap-2.5 text-left text-muted-foreground',
+                              isRouteActive && 'active'
+                            )}
+                            onClick={() =>
+                              navigate({
+                                to: route.settings.providers,
+                                params: { providerName: provider.provider },
+                              })
+                            }
+                          >
+                            <ProvidersAvatar provider={provider} />
+                            <span className="truncate flex-1">
+                              {getProviderTitle(provider.provider)}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </div>

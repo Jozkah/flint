@@ -17,8 +17,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 // Mock the Tauri HTTP plugin
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: vi.fn(),
+vi.mock('@/lib/providerFetch', () => ({
+  // Provider requests go through the canonical transport now; this is the
+  // seam that used to be `@tauri-apps/plugin-http`.
+  providerFetch: vi.fn(),
+  runtimeProviderFetch: vi.fn(),
+  hasTauriRuntime: vi.fn(() => true),
+  endpointDiagnostics: vi.fn(async () => null),
+  refreshEndpoint: vi.fn(async () => undefined),
+  endpointOf: vi.fn(() => null),
 }))
 
 // Mock the AI SDK providers
@@ -203,6 +210,86 @@ describe('ModelFactory', () => {
       expect(model).toBeDefined()
       expect(model.type).toBe('openai-compatible')
     })
+
+    /// janhq/jan#8208. A custom header named like the key's header went out
+    /// beside the configured key -- `authorization` and `Authorization` both
+    /// -- and on the SDK providers replaced it outright.
+    it('never lets a custom header stand in for the configured key', async () => {
+      const provider: ProviderObject = {
+        provider: 'custom',
+        api_key: 'test-api-key',
+        base_url: 'https://custom.api.com/v1',
+        models: [],
+        settings: [],
+        active: true,
+        custom_header: [
+          { header: 'authorization', value: 'Bearer spoofed' },
+          { header: 'X-Tenant', value: 'acme' },
+          { header: 'X-Unloaded-Secret', value: '', secret: true },
+        ],
+      }
+
+      await ModelFactory.createModel('custom-model', provider)
+      const headers = mockedCreateOpenAICompatible.mock.calls.at(-1)![0]
+        .headers as Record<string, string>
+      expect(headers).toEqual({
+        'X-Tenant': 'acme',
+        Authorization: 'Bearer test-api-key',
+      })
+    })
+
+    /// A header belongs to the provider it is configured on: another
+    /// provider's requests never carry it.
+    it('sends a provider’s custom headers only with that provider’s requests', async () => {
+      const base = { models: [], settings: [], active: true }
+      await ModelFactory.createModel('m', {
+        ...base,
+        provider: 'gateway-a',
+        api_key: 'key-a',
+        base_url: 'https://a.example/v1',
+        custom_header: [{ header: 'X-Tenant', value: 'tenant-a' }],
+      } as ProviderObject)
+      await ModelFactory.createModel('m', {
+        ...base,
+        provider: 'gateway-b',
+        api_key: 'key-b',
+        base_url: 'https://b.example/v1',
+      } as ProviderObject)
+      const calls = mockedCreateOpenAICompatible.mock.calls
+      const a = calls.at(-2)![0].headers as Record<string, string>
+      const b = calls.at(-1)![0].headers as Record<string, string>
+      expect(a['X-Tenant']).toBe('tenant-a')
+      expect(Object.keys(b)).not.toContain('X-Tenant')
+      expect(JSON.stringify(b)).not.toContain('tenant-a')
+    })
+
+    it('never lets a custom header replace the Anthropic key', async () => {
+      const { createAnthropic } = await import('@ai-sdk/anthropic')
+      vi.mocked(createAnthropic).mockClear()
+      await ModelFactory.createModel('claude-3-haiku', {
+        provider: 'anthropic',
+        api_key: 'sk-real',
+        base_url: 'https://api.anthropic.com/v1',
+        models: [],
+        settings: [],
+        active: true,
+        custom_header: [
+          { header: 'X-Api-Key', value: 'spoofed' },
+          { header: 'Anthropic-Version', value: '2024-01-01' },
+        ],
+      })
+      const headers = vi.mocked(createAnthropic).mock.calls.at(-1)![0]!
+        .headers as Record<string, string>
+      expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain(
+        'x-api-key'
+      )
+      // A built-in default the user overrides is replaced, not duplicated.
+      expect(
+        Object.entries(headers).filter(
+          ([h]) => h.toLowerCase() === 'anthropic-version'
+        )
+      ).toEqual([['Anthropic-Version', '2024-01-01']])
+    })
   })
 
 })
@@ -360,9 +447,18 @@ describe('createCustomFetch — max_tokens coercion', () => {
     expect(sent.max_tokens).toBe(-1)
   })
 
-  it('does not coerce when keepLlamacppOnly is false (non-llamacpp providers)', async () => {
+  // `-1` is llama-server's spelling of "no cap" and every other provider
+  // rejects it, so a zero cannot be coerced for them -- but it cannot be sent
+  // either: an OpenAI-compatible server reads `max_tokens: 0` as a request for
+  // an empty answer. Omitting the key is what "no cap" means on that wire.
+  it('omits a zero cap when keepLlamacppOnly is false (non-llamacpp providers)', async () => {
     const sent = await captureSentBody({}, false, { max_tokens: 0 })
-    expect(sent.max_tokens).toBe(0)
+    expect('max_tokens' in sent).toBe(false)
+  })
+
+  it('leaves a real cap alone for non-llamacpp providers', async () => {
+    const sent = await captureSentBody({}, false, { max_tokens: 512 })
+    expect(sent.max_tokens).toBe(512)
   })
 
   it('sets timings_per_token when keepLlamacppOnly and streaming', async () => {

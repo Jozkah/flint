@@ -151,7 +151,7 @@ describe('Providers Settings Route', () => {
     render(<Component />)
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
@@ -267,8 +267,8 @@ describe('Providers Settings Route', () => {
     const container = screen.getByTestId('header-page')
     expect(container).toBeInTheDocument()
     
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should render settings buttons for each provider', () => {

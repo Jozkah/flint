@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { Route as GeneralRoute } from '../general'
 
+const mockGetUnavailableJanDataFolder = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined)
+)
+
 // Mock all the dependencies
 vi.mock('@/containers/SettingsMenu', () => ({
   default: () => <div data-testid="settings-menu">Settings Menu</div>,
@@ -179,6 +183,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
     app: () => ({
       factoryReset: vi.fn(),
       getJanDataFolder: vi.fn().mockResolvedValue('/test/data/folder'),
+      getUnavailableJanDataFolder: mockGetUnavailableJanDataFolder,
       relocateJanDataFolder: vi.fn(),
     }),
     models: () => ({
@@ -273,6 +278,7 @@ vi.mock('@/types/events', () => ({
 
 
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
   createFileRoute: (path: string) => (config: any) => ({
     ...config,
     component: config.component,
@@ -304,6 +310,7 @@ Object.assign(navigator, {
 describe('General Settings Route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetUnavailableJanDataFolder.mockResolvedValue(undefined)
     // Reset the mock to return a promise that resolves immediately by default
   })
 
@@ -314,8 +321,31 @@ describe('General Settings Route', () => {
     })
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
+  })
+
+  it('says so when the saved data folder is unavailable (#8855)', async () => {
+    // Not Once: the mocked hub is a new object every render, so the page
+    // fetches again on each one.
+    mockGetUnavailableJanDataFolder.mockResolvedValue('/gone/drive/Jan/data')
+    const Component = GeneralRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'settings:dataFolder.unavailable'
+    )
+  })
+
+  it('shows no data folder warning when the saved folder is in use', async () => {
+    const Component = GeneralRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('should render app version', async () => {
@@ -386,7 +416,7 @@ describe('General Settings Route', () => {
 
     // Test that component renders without errors
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should handle copy to clipboard', async () => {
@@ -397,7 +427,7 @@ describe('General Settings Route', () => {
 
     // Test that component renders without errors
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should handle factory reset dialog', async () => {

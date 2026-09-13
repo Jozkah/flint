@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock all external dependencies before imports
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: vi.fn(),
+vi.mock('@/lib/providerFetch', () => ({
+  // Provider requests go through the canonical transport now; this is the
+  // seam that used to be `@tauri-apps/plugin-http`.
+  providerFetch: vi.fn(),
+  runtimeProviderFetch: vi.fn(),
+  hasTauriRuntime: vi.fn(() => true),
+  endpointDiagnostics: vi.fn(async () => null),
+  refreshEndpoint: vi.fn(async () => undefined),
+  endpointOf: vi.fn(() => null),
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -70,7 +77,7 @@ vi.mock('@/lib/provider-api-keys', () => ({
   API_KEY_FALLBACKS_SETTING_KEY: 'api-key-fallbacks',
 }))
 
-import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { providerFetch as fetchTauri } from '@/lib/providerFetch'
 import { invoke } from '@tauri-apps/api/core'
 import { EngineManager } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -260,7 +267,7 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Authentication failed')
+        .rejects.toThrow(/test-provider.*https:\/\/api\.test\.com\/v1\/models.*401/s)
       errSpy.mockRestore()
     })
 
@@ -273,7 +280,7 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Access forbidden')
+        .rejects.toThrow(/test-provider.*https:\/\/api\.test\.com\/v1\/models.*403/s)
       errSpy.mockRestore()
     })
 
@@ -286,11 +293,11 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Models endpoint not found')
+        .rejects.toThrow(/test-provider.*404.*ends at \/v1/s)
       errSpy.mockRestore()
     })
 
-    it('throws generic error on other status codes', async () => {
+    it('names the provider, endpoint and status on other status codes', async () => {
       vi.mocked(fetchTauri).mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -299,25 +306,40 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Failed to fetch models from')
+        .rejects.toThrow(/test-provider.*500.*check its logs/s)
       errSpy.mockRestore()
     })
 
-    it('throws connection error on fetch failure', async () => {
+    it('names the endpoint it could not reach, not just the provider', async () => {
       vi.mocked(fetchTauri).mockRejectedValueOnce(new Error('fetch failed'))
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Cannot connect to')
+      await expect(svc.fetchModelsFromProvider(baseProvider)).rejects.toThrow(
+        /test-provider.*could not reach GET https:\/\/api\.test\.com\/v1\/models/s
+      )
       errSpy.mockRestore()
     })
 
-    it('throws generic fallback for non-fetch errors', async () => {
-      vi.mocked(fetchTauri).mockRejectedValueOnce(new Error('something else'))
+    it("keeps the transport's own diagnosis instead of burying it", async () => {
+      // What a short hostname resolving to the wrong machine actually looks
+      // like. The resolution detail is the whole answer, and wrapping it in
+      // "Unexpected error while fetching models from X" read as a fault in
+      // Jan rather than an endpoint that was not listening.
+      // Not `Once`: this asserts twice, and a second call falling through to
+      // a different mock would be testing something else.
+      vi.mocked(fetchTauri).mockRejectedValue(
+        new Error(
+          'v100:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1)'
+        )
+      )
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Unexpected error')
+      await expect(svc.fetchModelsFromProvider(baseProvider)).rejects.toThrow(
+        /203\.0\.113\.9 \[public, suppressed\]/
+      )
+      await expect(
+        svc.fetchModelsFromProvider(baseProvider)
+      ).rejects.not.toThrow(/Unexpected error/)
       errSpy.mockRestore()
     })
 

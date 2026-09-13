@@ -21,6 +21,7 @@ import {
   unresolvedRefs,
   type PreviewState,
 } from '@/lib/coworkPreview'
+import { errorText } from '@/lib/errorText'
 
 /** Held as a key, not a translated string: the loader must not depend on `t`,
  * whose identity changes on every render. */
@@ -101,7 +102,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
         setState({
           status: 'failed',
           path,
-          reason: e instanceof Error ? e.message : String(e),
+          reason: errorText(e),
         })
       }
     })()
@@ -129,7 +130,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
           aria-pressed={active}
           className={cn(
             'shrink-0',
-            active ? 'text-primary' : 'text-muted-foreground'
+            active ? 'text-brand-text' : 'text-muted-foreground'
           )}
         >
           <Icon className="size-4" />
@@ -142,7 +143,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
   if (!path) {
     return (
       <CoworkSidePanel title={t('common:preview.title')} onClose={onClose}>
-        <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
+        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
           {t('common:preview.empty')}
         </p>
       </CoworkSidePanel>
@@ -236,7 +237,7 @@ function PreviewBody({
             title={state.path}
             srcDoc={buildSrcDoc(state.content ?? '', allowNetwork, scripts)}
             sandbox={scripts ? 'allow-scripts' : ''}
-            className="min-h-0 w-full flex-1 border-0 bg-white"
+            className="min-h-0 w-full flex-1 border-0 bg-card"
           />
         </div>
       )

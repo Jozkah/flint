@@ -198,41 +198,15 @@ describe('useGeneralSetting', () => {
       expect(result.current.huggingfaceToken).toBe('')
     })
 
-    it('should call ExtensionManager when setting token', async () => {
-      const mockSettings = [
-        { key: 'hf-token', controllerProps: { value: 'old-value' } },
-        { key: 'other-setting', controllerProps: { value: 'other-value' } },
-      ]
-
-      const mockGetByName = vi.fn()
-      const mockGetSettings = vi.fn().mockResolvedValue(mockSettings)
-      const mockUpdateSettings = vi.fn()
-
-      mockExtensionManager.getInstance.mockReturnValue({
-        getByName: mockGetByName,
-      })
-      mockGetByName.mockReturnValue({
-        getSettings: mockGetSettings,
-        updateSettings: mockUpdateSettings,
-      })
-
+    it('keeps the token without handing it to a download extension', async () => {
       const { result } = renderHook(() => useGeneralSetting())
 
       act(() => {
         result.current.setHuggingfaceToken('new-token')
       })
 
-      expect(mockExtensionManager.getInstance).toHaveBeenCalled()
-      expect(mockGetByName).toHaveBeenCalledWith('@janhq/download-extension')
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 0))
-
-      expect(mockGetSettings).toHaveBeenCalled()
-      expect(mockUpdateSettings).toHaveBeenCalledWith([
-        { key: 'hf-token', controllerProps: { value: 'new-token' } },
-        { key: 'other-setting', controllerProps: { value: 'other-value' } },
-      ])
+      expect(result.current.huggingfaceToken).toBe('new-token')
+      expect(mockExtensionManager.getInstance).not.toHaveBeenCalled()
     })
   })
 

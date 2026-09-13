@@ -12,15 +12,16 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
-  IconLoader2,
-  IconSparkles,
-  IconPhoto,
-  IconMicrophone,
-  IconCheck,
-  IconAlertTriangle,
-  IconCodeCircle2,
-  IconBolt,
-} from '@tabler/icons-react'
+  Check,
+  FileCode,
+  Image,
+  LoaderCircle,
+  Mic,
+  Sparkles,
+  TriangleAlert,
+  Zap,
+} from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
 
 type DetectedModalities = { vision: boolean; audio: boolean }
@@ -495,10 +496,10 @@ export const ImportLlamacppModelDialog = ({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="border  rounded-lg p-4 space-y-3">
-            <div className="flex items-start space-x-3">
+          <div className="border border-border rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-3">
               <div className="shrink-0 mt-0.5">
-                <IconSparkles size={20} className="text-muted-foreground" />
+                <Sparkles size={20} className="text-muted-foreground" />
               </div>
               <div className="flex-1">
                 <h3 className="font-medium">Multimodal Support</h3>
@@ -525,10 +526,10 @@ export const ImportLlamacppModelDialog = ({
             </div>
           </div>
 
-          <div className="border  rounded-lg p-4 space-y-3">
-            <div className="flex items-start space-x-3">
+          <div className="border border-border rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-3">
               <div className="shrink-0 mt-0.5">
-                <IconBolt size={20} className="text-muted-foreground" />
+                <Zap size={20} className="text-muted-foreground" />
               </div>
               <div className="flex-1">
                 <h3 className="font-medium">Draft Model Support</h3>
@@ -572,33 +573,33 @@ export const ImportLlamacppModelDialog = ({
           {/* File Selection Area */}
           <div className="space-y-4">
             {/* Model File Selection */}
-            <div className="border  rounded-lg p-4 space-y-3">
+            <div className="border border-border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="font-medium">
                   Model File (GGUF)
                 </h3>
-                <span className="text-xs bg-secondary px-2 py-1 rounded-sm">
+                <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
                   Required
                 </span>
               </div>
 
               {modelFile ? (
                 <div className="space-y-2">
-                  <div className="border rounded-lg p-3">
+                  <div className="border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {isValidating ? (
-                          <IconLoader2
+                          <LoaderCircle
                             size={16}
                             className="animate-spin"
                           />
                         ) : validationError ? (
-                          <IconAlertTriangle
+                          <TriangleAlert
                             size={16}
                             className="text-destructive"
                           />
                         ) : (
-                          <IconCheck size={16}  />
+                          <Check size={16}  />
                         )}
                         <span className="text-sm font-medium">
                           {modelFile.split(/[\\/]/).pop()}
@@ -617,9 +618,9 @@ export const ImportLlamacppModelDialog = ({
 
                   {/* Validation Error Display */}
                   {validationError && (
-                    <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                    <div className="bg-destructive-tint border border-destructive/30 rounded-lg p-3">
                       <div className="flex items-start gap-2">
-                        <IconAlertTriangle
+                        <TriangleAlert
                           size={16}
                           className="text-destructive mt-0.5 shrink-0"
                         />
@@ -637,13 +638,13 @@ export const ImportLlamacppModelDialog = ({
 
                   {/* Validation Loading State */}
                   {isValidating && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="bg-brand-tint border border-border rounded-lg p-3">
                       <div className="flex items-center gap-2">
-                        <IconLoader2
+                        <LoaderCircle
                           size={16}
-                          className="text-blue-500 animate-spin"
+                          className="text-brand-text animate-spin"
                         />
-                        <p className="text-sm text-blue-700">
+                        <p className="text-sm text-ink-2">
                           Validating model file...
                         </p>
                       </div>
@@ -651,8 +652,8 @@ export const ImportLlamacppModelDialog = ({
                   )}
 
                   {!isValidating && !validationError && isEmbeddingModel && (
-                    <div className="border rounded-lg p-3 flex items-start gap-2">
-                      <IconCodeCircle2 size={16} className="mt-0.5 shrink-0" />
+                    <div className="border border-border rounded-lg p-3 flex items-start gap-2">
+                      <FileCode size={16} className="mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm font-medium">
                           Embedding model detected
@@ -671,7 +672,7 @@ export const ImportLlamacppModelDialog = ({
                   variant="link"
                   onClick={() => handleFileSelect('model')}
                   disabled={importing}
-                  className="w-full h-12 border border-dashed text-muted-foreground"
+                  className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
                 >
                   Select GGUF File
                 </Button>
@@ -679,31 +680,31 @@ export const ImportLlamacppModelDialog = ({
             </div>
 
             {isMultimodal && (
-              <div className="border rounded-lg p-4 space-y-3">
+              <div className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium">MMPROJ File</h3>
-                  <span className="text-xs bg-secondary px-2 py-1 rounded-sm">
+                  <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
                     Required for Multimodal
                   </span>
                 </div>
 
                 {mmProjFile ? (
                   <div className="space-y-2">
-                    <div className="bg-accent/10 border rounded-lg p-3">
+                    <div className="bg-sunken border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {isValidatingMmproj ? (
-                            <IconLoader2
+                            <LoaderCircle
                               size={16}
                               className="animate-spin"
                             />
                           ) : mmprojValidationError ? (
-                            <IconAlertTriangle
+                            <TriangleAlert
                               size={16}
                               className="text-destructive"
                             />
                           ) : (
-                            <IconCheck size={16} />
+                            <Check size={16} />
                           )}
                           <span className="text-sm font-medium">
                             {mmProjFile.split(/[\\/]/).pop()}
@@ -726,14 +727,14 @@ export const ImportLlamacppModelDialog = ({
                               Detected:
                             </span>
                             {detectedModalities.vision && (
-                              <span className="inline-flex items-center gap-1 text-xs bg-secondary px-2 py-0.5 rounded-sm">
-                                <IconPhoto size={12} />
+                              <span className="inline-flex items-center gap-1 text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                                <Image size={12} />
                                 Vision
                               </span>
                             )}
                             {detectedModalities.audio && (
-                              <span className="inline-flex items-center gap-1 text-xs bg-secondary px-2 py-0.5 rounded-sm">
-                                <IconMicrophone size={12} />
+                              <span className="inline-flex items-center gap-1 text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                                <Mic size={12} />
                                 Audio
                               </span>
                             )}
@@ -743,9 +744,9 @@ export const ImportLlamacppModelDialog = ({
 
                     {/* MMProj Validation Error Display */}
                     {mmprojValidationError && (
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                      <div className="bg-destructive-tint border border-destructive/30 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <IconAlertTriangle
+                          <TriangleAlert
                             size={16}
                             className="text-destructive mt-0.5 shrink-0"
                           />
@@ -763,13 +764,13 @@ export const ImportLlamacppModelDialog = ({
 
                     {/* MMProj Validation Loading State */}
                     {isValidatingMmproj && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="bg-brand-tint border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
-                          <IconLoader2
+                          <LoaderCircle
                             size={16}
-                            className="text-blue-500 animate-spin"
+                            className="text-brand-text animate-spin"
                           />
-                          <p className="text-sm text-blue-700">
+                          <p className="text-sm text-ink-2">
                             Validating MMProj file...
                           </p>
                         </div>
@@ -782,7 +783,7 @@ export const ImportLlamacppModelDialog = ({
                     variant="link"
                     onClick={() => handleFileSelect('mmproj')}
                     disabled={importing}
-                    className="w-full h-12 border border-dashed text-muted-foreground"
+                    className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
                   >
                     Select MMPROJ File
                   </Button>
@@ -791,28 +792,28 @@ export const ImportLlamacppModelDialog = ({
             )}
 
             {isDraftModel && (
-              <div className="border rounded-lg p-4 space-y-3">
+              <div className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="font-medium">Draft Model File (GGUF)</h3>
-                  <span className="text-xs bg-secondary px-2 py-1 rounded-sm">
+                  <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
                     Required for Draft Model
                   </span>
                 </div>
 
                 {draftFile ? (
                   <div className="space-y-2">
-                    <div className="bg-accent/10 border rounded-lg p-3">
+                    <div className="bg-sunken border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {isValidatingDraft ? (
-                            <IconLoader2 size={16} className="animate-spin" />
+                            <LoaderCircle size={16} className="animate-spin" />
                           ) : draftValidationError ? (
-                            <IconAlertTriangle
+                            <TriangleAlert
                               size={16}
                               className="text-destructive"
                             />
                           ) : (
-                            <IconCheck size={16} />
+                            <Check size={16} />
                           )}
                           <span className="text-sm font-medium">
                             {draftFile.split(/[\\/]/).pop()}
@@ -830,9 +831,9 @@ export const ImportLlamacppModelDialog = ({
                     </div>
 
                     {draftValidationError && (
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                      <div className="bg-destructive-tint border border-destructive/30 rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <IconAlertTriangle
+                          <TriangleAlert
                             size={16}
                             className="text-destructive mt-0.5 shrink-0"
                           />
@@ -849,13 +850,13 @@ export const ImportLlamacppModelDialog = ({
                     )}
 
                     {isValidatingDraft && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="bg-brand-tint border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
-                          <IconLoader2
+                          <LoaderCircle
                             size={16}
-                            className="text-blue-500 animate-spin"
+                            className="text-brand-text animate-spin"
                           />
-                          <p className="text-sm text-blue-700">
+                          <p className="text-sm text-ink-2">
                             Validating draft model file...
                           </p>
                         </div>
@@ -868,7 +869,7 @@ export const ImportLlamacppModelDialog = ({
                     variant="link"
                     onClick={() => handleFileSelect('draft')}
                     disabled={importing}
-                    className="w-full h-12 border border-dashed text-muted-foreground"
+                    className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
                   >
                     Select Draft GGUF File
                   </Button>
@@ -878,7 +879,7 @@ export const ImportLlamacppModelDialog = ({
           </div>
         </div>
 
-        <div className="flex gap-2 pt-4 justify-end">
+        <div className={`flex flex-col-reverse gap-2 sm:flex-row sm:justify-end ${STICKY_DIALOG_FOOTER}`}>
           <Button
             variant="ghost"
             size="sm"
@@ -904,7 +905,7 @@ export const ImportLlamacppModelDialog = ({
               isValidatingDraft
             }
           >
-            {importing && <IconLoader2 className="mr-2 size-4 animate-spin" />}
+            {importing && <LoaderCircle className="mr-2 size-4 animate-spin" />}
             {importing ? 'Importing...' : 'Import Model'}
           </Button>
         </div>

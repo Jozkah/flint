@@ -4,7 +4,6 @@ export const localStorageKey = {
   messages: 'messages',
   theme: 'theme',
   modelProvider: 'model-provider',
-  modelSources: 'model-sources',
   settingInterface: 'setting-appearance',
   settingGeneral: 'setting-general',
   settingCodeBlock: 'setting-code-block',
@@ -24,13 +23,10 @@ export const localStorageKey = {
   modelOrder: 'model-order',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
-  modelSupportCache: 'jan_model_support_cache',
   recentSearches: 'recent-searches',
-  janModelPromptDismissed: 'jan-model-prompt-dismissed',
   agentMode: 'agent-mode',
-  latestJanModel: 'latest-jan-model',
+  coworkDisplay: 'cowork-display',
   defaultEmbeddingModel: 'default-embedding-model',
-  pausedDownloads: 'paused-downloads',
   modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
   fileActivity: 'file-activity',
@@ -38,6 +34,15 @@ export const localStorageKey = {
   coworkActivity: 'cowork-activity',
   claudeCompat: 'claude-compat',
   coworkCheckpoints: 'cowork-checkpoints',
+  keybindings: 'keybindings',
+  referenceAliases: 'reference-aliases',
+  projectInitDrafts: 'project-init-drafts',
+  /** Measured model test results, preferred default model, dismissed hints. */
+  modelEvidence: 'model-evidence',
+  /** First-run guide progress: chosen intention, current step, skipped/done. */
+  onboardingGuide: 'onboarding-guide',
+  /** Split conversations: open or closed, the second pane's thread, width share. */
+  splitConversation: 'split-conversation',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

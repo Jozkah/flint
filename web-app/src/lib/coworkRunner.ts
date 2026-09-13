@@ -1,6 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  recordToolActivity,
+  type ToolActivityContext,
+} from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
+import type {
+  AskAnswer,
+  CoworkTurn,
+  TurnMemory,
+  Usage,
+} from '@/types/coworkSession'
 import {
   MAX_AGENT_STEPS,
   budgetExceeded,
@@ -8,6 +17,60 @@ import {
   recordSpend,
   type BudgetStop,
 } from '@/lib/coworkBudget'
+import {
+  detectLoop,
+  loopStopMessage,
+  type ObservedCall,
+} from '@/lib/runLoopGuard'
+import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
+import { decideRetry, waitFor } from '@/lib/runRetry'
+import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
+
+/**
+ * The HTTP status a failure carried, when it carried one.
+ *
+ * Providers surface it in different places -- a `status` field, a `cause`, or
+ * only in the message -- and the difference between a 429 and a 401 decides
+ * whether retrying is sensible or is re-sending the same rejection.
+ */
+function statusOf(failure: unknown): number | null {
+  if (!failure || typeof failure !== 'object') return null
+  const record = failure as Record<string, unknown>
+  for (const key of ['status', 'statusCode']) {
+    const value = record[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  if (record.cause) return statusOf(record.cause)
+  const match = /\b(4\d{2}|5\d{2})\b/.exec(
+    failure instanceof Error ? failure.message : ''
+  )
+  return match ? Number(match[1]) : null
+}
+
+/** `Retry-After`, when the endpoint named its own delay. */
+function retryAfterOf(failure: unknown): string | null {
+  if (!failure || typeof failure !== 'object') return null
+  const record = failure as Record<string, unknown>
+  const headers = record.headers as
+    | { get?: (name: string) => string | null }
+    | undefined
+  const header = headers?.get?.('retry-after')
+  if (header) return header
+  const direct = record.retryAfter
+  if (typeof direct === 'string') return direct
+  return record.cause ? retryAfterOf(record.cause) : null
+}
+
+/** The path a tool call acted on, for the no-progress check. */
+function pathOf(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const record = input as Record<string, unknown>
+  for (const key of ['path', 'file_path', 'filePath']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
 
 /**
  * The Cowork agent loop.
@@ -27,6 +90,12 @@ export type PendingToolCall = {
   toolCallId: string
   toolName: string
   input: unknown
+  /**
+   * Set when the SDK rejected the call before it could run -- an unknown tool,
+   * or input that failed the tool's schema. Such a call is never dispatched;
+   * the reason goes back to the model as the call's error result.
+   */
+  invalid?: string
 }
 
 export type ToolOutcome = {
@@ -35,10 +104,46 @@ export type ToolOutcome = {
   isError?: boolean
   /** Display-only unified diff. Never reaches the model. */
   diff?: string
+  /** What the call's command used (AH-174). Never reaches the model. */
+  resources?: unknown
+  /**
+   * Set when the harness declined the call rather than a tool failing, so a
+   * caller branches on the kind instead of parsing `output`.
+   */
+  refusal?: HarnessRefusal
+}
+
+/**
+ * Why the harness declined a call without running anything.
+ *
+ * - `tool-not-offered`: the agent asked for a tool it was never given -- for a
+ *   role, a tool outside its allowlist. Authority is not widened by asking.
+ * - `invalid-call`: the call named an offered tool but its arguments could not
+ *   be used.
+ */
+export type HarnessRefusalKind = 'tool-not-offered' | 'invalid-call'
+
+export type HarnessRefusal = {
+  kind: HarnessRefusalKind
+  tool: string
+  /** The agent that asked (`main`, or a role or custom agent's name). */
+  agent?: string
+}
+
+/** The kind of refusal an invalid call is, from the SDK's own reason. */
+export function refusalKindOf(invalid: string): HarnessRefusalKind {
+  return /unavailable tool|no such tool|not (?:a|an) (?:available|offered) tool/i.test(invalid)
+    ? 'tool-not-offered'
+    : 'invalid-call'
 }
 
 /** One model turn's worth of stream, folded into a shape the loop can act on. */
 export type StepResult = {
+  /**
+   * Memory ids the request carried and withheld, as the transport reported
+   * them. Absent when the transport retrieved nothing.
+   */
+  memory?: TurnMemory
   text: string
   toolCalls: PendingToolCall[]
   usage: Usage | null
@@ -184,7 +289,7 @@ export function abortRun(sid: string, reason = 'cancelled'): void {
  * Whether a rejection means "the user stopped this", not "this failed".
  *
  * Needed because the abort does not arrive as an `AbortError`: Jan streams
- * through `@tauri-apps/plugin-http`, whose `fetch` rejects with a plain
+ * through the provider transport, whose `fetch` rejects with a plain
  * `Error('Request cancelled')` when the signal fires. Matched exactly rather
  * than by substring — "connection aborted" is a network failure and must keep
  * being reported as one.
@@ -212,17 +317,45 @@ export function answerAsk(
   return true
 }
 
-const usageOf = (meta: unknown): Usage | null => {
-  const u = (meta as { usage?: Record<string, unknown> } | undefined)?.usage
-  if (!u || typeof u !== 'object') return null
-  const num = (v: unknown) => (typeof v === 'number' ? v : undefined)
+// The cache counts ride along: dropping them here was where a provider's
+// cache report used to stop on its way to the Cowork counter.
+const idList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+
+const memoryOf = (meta: unknown): TurnMemory | undefined => {
+  const m = (meta as { memory?: unknown } | undefined)?.memory
+  if (!m || typeof m !== 'object') return undefined
+  const r = m as Record<string, unknown>
+  const issues = idList(r.storageIssues)
+  const off = idList(r.recallOff)
+  const recall = Array.isArray(r.recall)
+    ? r.recall.flatMap((x) => {
+        const v = x as Record<string, unknown>
+        return typeof v?.id === 'string' && typeof v.reason === 'string'
+          ? [{ id: v.id, rank: typeof v.rank === 'number' ? v.rank : 0, reason: v.reason }]
+          : []
+      })
+    : []
   return {
-    prompt_tokens: num(u.inputTokens ?? u.promptTokens ?? u.prompt_tokens),
-    completion_tokens: num(
-      u.outputTokens ?? u.completionTokens ?? u.completion_tokens
-    ),
-    total_tokens: num(u.totalTokens ?? u.total_tokens),
+    injectedIds: idList(r.injectedIds),
+    conflictIds: idList(r.conflictIds),
+    ...(issues.length > 0 ? { storageIssues: issues } : {}),
+    ...(off.length > 0 ? { recallOff: off } : {}),
+    ...(recall.length > 0 ? { recall } : {}),
+    ...(Array.isArray(r.overridden) && r.overridden.length > 0
+      ? { overridden: r.overridden as NonNullable<TurnMemory['overridden']> }
+      : {}),
+    ...(Array.isArray(r.refused) && r.refused.length > 0
+      ? { refused: r.refused as NonNullable<TurnMemory['refused']> }
+      : {}),
   }
+}
+
+const usageOf = (meta: unknown): Usage | null => {
+  const usage = readTokenUsage(
+    (meta as { usage?: unknown } | undefined)?.usage
+  )
+  return usage ? toCoworkUsage(usage) : null
 }
 
 export type StreamSink = {
@@ -232,6 +365,55 @@ export type StreamSink = {
   onToolCall: (call: PendingToolCall) => void
 }
 
+function stopReason(signal: AbortSignal): unknown {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException(String(signal.reason ?? 'aborted'), 'AbortError')
+}
+
+/**
+ * `work`, or a rejection the moment `signal` fires, whichever comes first.
+ * janhq/jan#8905.
+ *
+ * Stop has to end a run at once, whatever the run is waiting on. The transport
+ * is handed the signal too, but does not always act on it -- a request still
+ * waiting for its response to start, a stream it does not close -- and a run
+ * that waited for it stayed running long after Stop. Whatever `work` produces
+ * after that is handed to `release`, so it is not left open.
+ */
+export function untilStopped<T>(
+  work: Promise<T>,
+  signal: AbortSignal,
+  release?: (late: T) => void
+): Promise<T> {
+  const settleLate = () =>
+    work.then(
+      (late) => release?.(late),
+      () => {}
+    )
+  if (signal.aborted) {
+    settleLate()
+    return Promise.reject(stopReason(signal))
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      settleLate()
+      reject(stopReason(signal))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
 /**
  * Fold one `sendMessages` stream into a `StepResult`, reporting progress as it
  * goes. Reading to completion is what makes tool dispatch safe: results land on
@@ -239,7 +421,8 @@ export type StreamSink = {
  */
 export async function consumeStep(
   stream: ReadableStream<UIMessageChunk>,
-  sink: StreamSink
+  sink: StreamSink,
+  signal?: AbortSignal
 ): Promise<StepResult> {
   const reader = stream.getReader()
   const result: StepResult = {
@@ -250,7 +433,12 @@ export async function consumeStep(
   }
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      // The read watches the signal itself. Leaving it to the transport to
+      // close the stream on abort meant a stream it did not close -- a
+      // provider still streaming -- kept the run going after Stop.
+      const { done, value } = await (signal
+        ? untilStopped(reader.read(), signal)
+        : reader.read())
       if (done) break
       const chunk = value as any
       switch (chunk.type) {
@@ -274,6 +462,36 @@ export async function consumeStep(
           sink.onToolCall(call)
           break
         }
+        // The model asked for a tool it was not offered, or with input its
+        // schema rejects. Kept as a call that failed, not dropped: dropping it
+        // left the step with no tool calls, so the loop read it as a finished
+        // answer -- the run ended with nothing done, nothing recorded and
+        // nothing said, and the model never learned its call was refused.
+        case 'tool-input-error': {
+          // Arguments that are not JSON arrive as their raw text. That text
+          // must not become the call's input: the history replays it to the
+          // model, and a tool call whose input is a string rather than an
+          // object broke every later request in the session. The text goes in
+          // the refusal instead, so the model still sees what it sent.
+          const raw = chunk.input
+          const usable =
+            raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+          const call: PendingToolCall = {
+            toolCallId: chunk.toolCallId,
+            toolName: chunk.toolName,
+            input: usable ? raw : {},
+            invalid:
+              String(chunk.errorText ?? 'the call was not valid') +
+              (usable || raw === undefined
+                ? ''
+                : ` (the arguments sent were: ${
+                    typeof raw === 'string' ? raw : JSON.stringify(raw)
+                  })`),
+          }
+          result.toolCalls.push(call)
+          sink.onToolCall(call)
+          break
+        }
         case 'error':
           result.errorText = chunk.errorText
           break
@@ -282,11 +500,25 @@ export async function consumeStep(
           break
         case 'finish':
           result.usage = usageOf(chunk.messageMetadata) ?? result.usage
+          result.memory = memoryOf(chunk.messageMetadata) ?? result.memory
+          // A reply the provider never finished -- the connection dropped
+          // mid-stream -- still ends with a `finish` chunk, carrying whatever
+          // text arrived. Read as an answer, a child cut off after one word
+          // was reported as a completed task. See `streamCutOff`.
+          if (chunk.messageMetadata?.streamCutOff && !result.errorText) {
+            result.errorText =
+              "the model's reply ended before it finished: the stream was cut off"
+          }
           break
         default:
           break
       }
     }
+  } catch (e) {
+    // Stopped mid-read: cancel the stream so the request underneath is
+    // released rather than left streaming into nothing.
+    if (signal?.aborted) void reader.cancel(signal.reason).catch(() => {})
+    throw e
   } finally {
     reader.releaseLock()
   }
@@ -328,7 +560,17 @@ export function turnsFor(
   outcomes: Map<string, ToolOutcome>
 ): CoworkTurn[] {
   const turns: CoworkTurn[] = []
-  if (step.text) turns.push({ role: 'assistant', content: step.text })
+  // The request's own usage and memory ride on the turn it produced, so an
+  // earlier turn's breakdown -- and which memories it carried -- can be shown
+  // for that turn rather than only the session's latest.
+  if (step.text) {
+    turns.push({
+      role: 'assistant',
+      content: step.text,
+      ...(step.usage ? { usage: step.usage } : {}),
+      ...(step.memory ? { memory: step.memory } : {}),
+    })
+  }
   for (const call of step.toolCalls) {
     const outcome = outcomes.get(call.toolCallId)
     turns.push({
@@ -362,8 +604,30 @@ export type RunDeps = {
     turns: CoworkTurn[]
     outcomes: Map<string, ToolOutcome>
   }) => void
+  /**
+   * Called once a step's model response has been read, before any of its tool
+   * calls run. The one moment the request that produced the step's calls is
+   * still the latest the caller has seen: a subagent dispatched by one of
+   * those calls sends requests of its own.
+   */
+  onResponse?: () => void
+  /**
+   * Who this run records its calls as: session, run, agent, and the request
+   * the current step answered. Read when a call is recorded here (a call the
+   * runner refuses without dispatching), so the refusal lands in the right
+   * session's record rather than in one with no session at all.
+   */
+  activity?: () => ToolActivityContext
   /** Monotonic ids for the assistant messages this run appends. */
   nextMessageId: () => string
+  /**
+   * Input the user typed while this run was working, handed over at a safe
+   * boundary: before a model call, after every tool result of the previous
+   * step, and when the model is about to hand back its answer. Returns the
+   * messages taken, in the order they were typed; they are no longer pending
+   * once returned. janhq/jan#8864.
+   */
+  takeSteering?: () => UIMessage[]
 }
 
 export type RunOutcome = {
@@ -371,7 +635,8 @@ export type RunOutcome = {
   steps: number
   usage: Usage | null
   sessionTokens: number
-  stoppedBy: BudgetStop | 'error' | 'aborted' | 'done'
+  /** One reason, chosen by `terminalReason` when more than one was true. */
+  stoppedBy: BudgetStop | 'error' | 'aborted' | 'done' | 'deadline' | 'timeout' | 'loop'
   errorText?: string
 }
 
@@ -389,10 +654,25 @@ export async function runTurn(opts: {
   maxSteps?: number
   /** Tokens already spent by this session, which the caps apply across. */
   sessionTokens?: number
+  /**
+   * When this run must be over. AH-019.
+   *
+   * Absolute, so it means the same thing after a restart as before one. Absent
+   * leaves the run bounded only by steps and tokens, which is what a run
+   * started before deadlines existed had.
+   */
+  deadline?: Deadline | null
+  /** One model stream's limit. AH-021. */
+  operationTimeoutMs?: number
+  /** The clock, so the caps are testable without waiting for them. */
+  now?: () => number
 }): Promise<RunOutcome> {
   const { deps, signal } = opts
   const maxSteps = opts.maxSteps ?? MAX_AGENT_STEPS
+  const now = opts.now ?? Date.now
   const messages = [...opts.messages]
+  /** Every tool call this run made, for the loop guard. AH-029/AH-030. */
+  const observed: ObservedCall[] = []
   let step = 0
   // Not a running sum of each step's `total_tokens`: every step replays the whole
   // conversation, so summing totals charges the same context once per step.
@@ -423,14 +703,88 @@ export async function runTurn(opts: {
       }
     }
 
+    // Checked before the step starts, not after it finishes: a run whose time
+    // is up should not spend another model call discovering that.
+    if (opts.deadline && isExpired(opts.deadline, now())) {
+      return {
+        messages,
+        steps: step,
+        usage,
+        sessionTokens: spend.spent,
+        stoppedBy: 'deadline',
+      }
+    }
+
+    // The safe boundary (janhq/jan#8864): every tool result of the last step is
+    // in and no model call is under way, so input typed meanwhile reaches the
+    // model now rather than after the run ends. Plain user messages, in the
+    // order typed -- never folded into the model's own turn.
+    const steered = deps.takeSteering?.() ?? []
+    if (steered.length > 0) messages.push(...steered)
+
     // A snapshot, not the live array: the loop pushes to `messages` after the
     // stream is handed over, and the transport rewrites what it is given
     // (trimming, compaction) without expecting it to move underneath.
     let result: StepResult
+    let attempt = 1
+    let timedOut = false
     try {
-      const stream = await deps.sendStep([...messages], signal)
-      result = await consumeStep(stream, deps.sink)
+      /**
+       * One step, retried only where retrying can help. AH-021/AH-024/AH-025.
+       *
+       * The timeout is chained to the run's own signal, so a stream that goes
+       * quiet and a user who pressed Stop end the same way. A retry is a new
+       * dispatch and gets its own invocation and snapshot, because it is a
+       * different request that happens to carry the same messages.
+       */
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const operation = operationSignal(signal, opts.operationTimeoutMs)
+        try {
+          // Not left to the transport to notice Stop: see `untilStopped`.
+          const stream = await untilStopped(
+
+            deps.sendStep([...messages], operation.signal),
+
+            operation.signal,
+
+            (late) => void late.cancel().catch(() => {})
+
+          )
+          result = await consumeStep(stream, deps.sink, operation.signal)
+          break
+        } catch (failure) {
+          timedOut = operation.timedOut()
+          const decision = decideRetry({
+            facts: {
+              status: statusOf(failure),
+              retryAfter: retryAfterOf(failure),
+              message: failure instanceof Error ? failure.message : String(failure),
+              // A timeout is transient by definition; a user's stop is not.
+              aborted: signal.aborted,
+            },
+            attempt,
+            now: now(),
+          })
+          if (!decision.retry) throw failure
+          // A wait that was cut short is a stop, not a completed backoff.
+          if (!(await waitFor(decision.delayMs, signal))) throw failure
+          attempt = decision.attempt
+        } finally {
+          operation.dispose()
+        }
+      }
     } catch (e) {
+      if (timedOut && !signal.aborted) {
+        return {
+          messages,
+          steps: step,
+          usage,
+          sessionTokens: spend.spent,
+          stoppedBy: 'timeout',
+          errorText: e instanceof Error ? e.message : String(e),
+        }
+      }
       // A transport failure is an outcome, not an exception: throwing here left
       // the caller with no steps, no usage and nothing to render but the raw
       // message, and a user-initiated stop arrived down this same path.
@@ -448,6 +802,7 @@ export async function runTurn(opts: {
       }
     }
     step += 1
+    deps.onResponse?.()
     if (result.usage) {
       usage = result.usage
       spend = recordSpend(spend, result.usage)
@@ -488,7 +843,88 @@ export async function runTurn(opts: {
         })
         continue
       }
-      outcomes.set(call.toolCallId, await deps.dispatch(call, signal))
+      if (call.invalid !== undefined) {
+        const who = deps.activity?.()
+        const refusal: HarnessRefusal = {
+          kind: refusalKindOf(call.invalid),
+          tool: call.toolName,
+          ...(who?.agent ? { agent: who.agent } : {}),
+        }
+        const outcome: ToolOutcome = {
+          output:
+            `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
+            'Use one of the tools you were given, with the arguments its ' +
+            'schema describes.',
+          isError: true,
+          refusal,
+        }
+        outcomes.set(call.toolCallId, outcome)
+        // On the durable timeline as a refusal, the same as any other call the
+        // run did not carry out, so the record says it was asked for -- in
+        // this run's session, under this agent, with the refusal's kind.
+        const identity = {
+          call: call.toolCallId,
+          tool: call.toolName,
+          session: who?.session ?? '',
+          run: who?.run ?? '',
+          invocation: who?.invocation ?? '',
+          agent: who?.agent ?? '',
+          project: who?.project ?? '',
+          source: who?.source ?? '',
+          parent: who?.parent ?? '',
+        }
+        void recordToolActivity({ ...identity, phase: 'requested' })
+        void recordToolActivity({
+          ...identity,
+          phase: 'refused',
+          detail: 'not a valid call',
+          refusal: refusal.kind,
+        })
+        observed.push({
+          tool: call.toolName,
+          input: call.input,
+          failed: true,
+          error: outcome.output,
+          path: pathOf(call.input),
+          after: undefined,
+        })
+        continue
+      }
+      const outcome = await deps.dispatch(call, signal)
+      outcomes.set(call.toolCallId, outcome)
+      observed.push({
+        tool: call.toolName,
+        input: call.input,
+        failed: outcome.isError,
+        error: outcome.isError ? outcome.output : undefined,
+        path: pathOf(call.input),
+        after: outcome.diff,
+      })
+    }
+
+    /**
+     * Stop a run that has stopped getting anywhere. AH-029/AH-030.
+     *
+     * Counted from what happened rather than asked of the model: a model in a
+     * loop is the one most likely to insist it is about to finish, so the
+     * guard is not something it can waive.
+     */
+    const loop = detectLoop(observed)
+    if (loop.tripped) {
+      if (result.text || result.toolCalls.length > 0) {
+        messages.push(
+          assistantMessageFor(deps.nextMessageId(), result, outcomes)
+        )
+      }
+      deps.onStep({ step, result, turns: turnsFor(result, outcomes), outcomes })
+      return {
+        messages,
+        steps: step,
+        usage,
+        sessionTokens: spend.spent,
+        stoppedBy: 'loop',
+        errorText: loopStopMessage(loop),
+      }
     }
 
     if (result.text || result.toolCalls.length > 0) {
@@ -507,6 +943,14 @@ export async function runTurn(opts: {
     }
     // No tool calls means the model answered rather than asked for more work.
     if (result.toolCalls.length === 0) {
+      // Input that arrived while that answer was written continues this run:
+      // the answer is already in the history, the input follows it, and the
+      // model replies to both. The caps are checked again at the top.
+      const late = deps.takeSteering?.() ?? []
+      if (late.length > 0) {
+        messages.push(...late)
+        continue
+      }
       return {
         messages,
         steps: step,

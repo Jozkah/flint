@@ -11,7 +11,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 
@@ -30,7 +30,9 @@ export function DeleteAllThreadsInProjectDialog({
 }: DeleteAllThreadsInProjectDialogProps) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
-  const deleteButtonRef = useRef<HTMLButtonElement>(null)
+  // Focus lands on Cancel. It used to land on the destructive button, so
+  // opening this dialog and pressing Enter deleted every thread at once.
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
@@ -49,24 +51,19 @@ export function DeleteAllThreadsInProjectDialog({
     })
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleDeleteAll()
-    }
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <DropdownMenuItem variant="destructive" onSelect={(e) => e.preventDefault()}>
-          <IconTrash size={16} />
+          <Trash2 className="size-4" />
           <span>{t('common:deleteAll')}</span>
         </DropdownMenuItem>
       </DialogTrigger>
       <DialogContent
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          deleteButtonRef.current?.focus()
+          cancelButtonRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -78,15 +75,18 @@ export function DeleteAllThreadsInProjectDialog({
           </DialogDescription>
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <DialogClose asChild>
-              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
+              <Button
+                ref={cancelButtonRef}
+                variant="ghost"
+                size="sm"
+                className="w-full sm:w-auto"
+              >
                 {t('common:cancel')}
               </Button>
             </DialogClose>
             <Button
-              ref={deleteButtonRef}
               variant="destructive"
               onClick={handleDeleteAll}
-              onKeyDown={handleKeyDown}
               size="sm"
               className="w-full sm:w-auto"
               aria-label={t('common:deleteAll')}

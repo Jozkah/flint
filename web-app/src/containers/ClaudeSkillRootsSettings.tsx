@@ -63,16 +63,16 @@ export function ClaudeSkillRootsSettings({
       className="flex flex-col gap-2 text-xs"
     >
       <header className="flex flex-col gap-0.5">
-        <h3 className="font-medium text-main-view-fg">
+        <h3 className="font-medium text-foreground">
           {t('common:claudeCompat.roots.title')}
         </h3>
-        <p className="text-main-view-fg/60">
+        <p className="text-muted-foreground">
           {t('common:claudeCompat.roots.description')}
         </p>
       </header>
 
       {roots.length === 0 ? (
-        <p className="text-main-view-fg/70">
+        <p className="text-ink-2">
           {t('common:claudeCompat.roots.none')}
         </p>
       ) : (
@@ -82,10 +82,10 @@ export function ClaudeSkillRootsSettings({
             return (
               <li key={root} className="flex items-start justify-between gap-2">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-mono text-main-view-fg/90">
+                  <span className="block truncate font-mono text-foreground">
                     {root}
                   </span>
-                  <span className="block text-main-view-fg/60">
+                  <span className="block text-muted-foreground">
                     {found?.error
                       ? `${t('common:claudeCompat.roots.unreadable')}: ${found.error}`
                       : found

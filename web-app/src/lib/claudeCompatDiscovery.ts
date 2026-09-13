@@ -7,6 +7,7 @@ import {
   type McpProbe,
   type SkillProbe,
 } from '@/lib/claudeCompat'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Finding Claude configuration in an attached repository.
@@ -76,8 +77,8 @@ const UNSUPPORTED_AGENT_FIELDS = [
 const isMissing = (message: string): boolean =>
   /not found|no such file|ENOENT/i.test(message)
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 /**
  * Parse the leading `---` frontmatter block.
