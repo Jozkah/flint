@@ -50,10 +50,23 @@ pub struct McpServerConfig {
 /// Parse a raw `mcp_config.json` server entry into typed connection params.
 pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
     let obj = config.as_object()?;
-    let command = obj.get("command")?.as_str()?.to_string();
-    let args = obj.get("args")?.as_array()?.clone();
     let url = obj.get("url").and_then(|u| u.as_str()).map(String::from);
     let transport_type = obj.get("type").and_then(|t| t.as_str()).map(String::from);
+    // A remote server is a url; `command` and `args` describe a process and
+    // are required only when there is one to start. `jan cli mcp add --type
+    // http` writes neither, and requiring them made every server it added
+    // unconnectable.
+    let remote = matches!(transport_type.as_deref(), Some("http" | "sse")) && url.is_some();
+    let command = match obj.get("command") {
+        Some(c) => c.as_str()?.to_string(),
+        None if remote => String::new(),
+        None => return None,
+    };
+    let args = match obj.get("args") {
+        Some(a) => a.as_array()?.clone(),
+        None if remote => Vec::new(),
+        None => return None,
+    };
     let timeout = obj
         .get("timeout")
         .and_then(|t| t.as_u64())
@@ -307,6 +320,24 @@ mod tests {
         // args not an array
         let cfg = serde_json::json!({"command": "npx", "args": "oops"});
         assert!(extract_command_args(&cfg).is_none());
+    }
+
+    /// Found running the AH-134 CLI exercise: a server added with `jan cli mcp
+    /// add --type http` has no `command` or `args`, and was refused as an
+    /// invalid config before any request was made.
+    #[test]
+    fn a_remote_server_needs_no_command_or_args_but_a_local_one_does() {
+        let http = serde_json::json!({ "type": "http", "url": "http://127.0.0.1:1/mcp", "active": true });
+        let parsed = extract_command_args(&http).expect("an http server with a url parses");
+        assert_eq!(parsed.transport_type.as_deref(), Some("http"));
+        assert_eq!(parsed.url.as_deref(), Some("http://127.0.0.1:1/mcp"));
+        assert!(parsed.command.is_empty() && parsed.args.is_empty());
+        assert!(extract_command_args(&serde_json::json!({ "type": "sse", "url": "http://x/sse" })).is_some());
+        // Without a url it is not a remote server, and nothing to start either.
+        assert!(extract_command_args(&serde_json::json!({ "type": "http" })).is_none());
+        assert!(extract_command_args(&serde_json::json!({ "type": "stdio", "url": "http://x" })).is_none());
+        // A present but malformed field is still refused.
+        assert!(extract_command_args(&serde_json::json!({ "type": "http", "url": "http://x", "args": "oops" })).is_none());
     }
 
     #[test]
