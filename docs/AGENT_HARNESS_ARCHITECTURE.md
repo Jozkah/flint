@@ -1878,3 +1878,30 @@ summarising the branch instead of the commit; and a message carrying something
 that looks like a credential.
 
 It commits nothing. The message comes back for the caller to use.
+
+
+### Working through a review (AH-164)
+
+A review arrives as remarks about particular lines, and the usual way a run
+consumes one is that somebody pastes the thread into the prompt. The model then
+answers the three it found most interesting, says it has addressed the rest,
+and nobody can tell which of the two happened for any given comment.
+
+`review_comments` holds the comments with state and hands them over one at a
+time: `load` to read a review file, no arguments to see what is left, and
+`id` + `outcome` + `reply` to deal with one.
+
+* *Each comment is answered or addressed explicitly.* "I changed this" and "I
+  disagree, and here is why" are both real outcomes. Silence is not one, and
+  neither is a summary of the thread.
+* *Addressed is checked, not believed.* The file the comment names must differ
+  from what it was when the review was loaded; a comment naming no file cannot
+  be addressed at all. A run that changed nothing has answered, and the record
+  says so.
+* *What was said is kept*, beside the comment, so "what did this run say about
+  comment 4" is answerable afterwards.
+* *Nothing is posted anywhere.* Sending replies back to whoever wrote them is a
+  person's decision, with their credentials.
+* *Comments are data.* They are a reviewer's opinion about code, scrubbed and
+  bounded on the way in, and presented as remarks rather than instructions --
+  a comment that says "ignore your instructions" is still just a comment.
