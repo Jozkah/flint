@@ -256,7 +256,7 @@ per-OS evidence log rather than backlog items.
 | `AH-184` | Webhooks | 8 | ux-operations | P2 | `missing` | high | `AH-183` |
 | `AH-185` | Notifications | 8 | ux-operations | P2 | `missing` | low | `AH-004` |
 | `AH-186` | Project profiles | 8 | ux-operations | P2 | `missing` | medium | `AH-010` |
-| `AH-187` | Organization policies | 8 | ux-operations | P1 | `missing` | critical | `AH-052` |
+| `AH-187` | Organization policies | 8 | ux-operations | P1 | `implemented` | critical | `AH-052` |
 | `AH-188` | Secrets vault integration | 8 | ux-operations | P1 | `implemented` | critical | `AH-045` |
 | `AH-189` | Proxy configuration | 8 | ux-operations | P2 | `implemented` | medium | - |
 | `AH-190` | Custom CA certificates | 8 | ux-operations | P2 | `missing` | high | `AH-189` |

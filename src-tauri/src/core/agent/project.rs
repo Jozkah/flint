@@ -278,6 +278,24 @@ pub(crate) fn enabled_skills(project_root: &Path) -> Vec<String> {
 /// gating is the plugin's, not this one.
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn permissions_from(cfg: &AgentToml) -> ToolPermissions {
+    let (org, error) = tauri_plugin_agent_tools::org_policy::load();
+    if let Some(error) = &error {
+        eprintln!("machine policy: {}", error.message);
+    }
+    permissions_under(cfg, &org.unwrap_or_default())
+}
+
+/// The same, against a given machine policy (AH-187).
+///
+/// The project file is writable by anyone who can push to the repository, so
+/// what it says is a request, not a decision: the machine's policy caps the
+/// default and adds its denies, and a project can only be stricter than that.
+/// Split out so the combination is testable without an installed file.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn permissions_under(
+    cfg: &AgentToml,
+    org: &tauri_plugin_agent_tools::org_policy::OrgPolicy,
+) -> ToolPermissions {
     let default = cfg
         .tools
         .default
@@ -285,11 +303,21 @@ pub(crate) fn permissions_from(cfg: &AgentToml) -> ToolPermissions {
         .map(PermissionDefault::from_str_lenient)
         .unwrap_or_default();
     ToolPermissions::new(
-        default,
+        org.clamp_default(default),
         &cfg.tools.allow,
-        &cfg.tools.deny,
+        &org.clamp_deny(&cfg.tools.deny),
         &cfg.tools.allow_write,
     )
+}
+
+/// Whether this run may reach the network, given what the project asked for.
+///
+/// The machine's answer is a ceiling: a project may decline the network it was
+/// offered and may never take one it was not.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn network_allowed(project_asked: bool) -> bool {
+    let (org, _) = tauri_plugin_agent_tools::org_policy::load();
+    org.unwrap_or_default().clamp_network(project_asked)
 }
 
 /// Ensure a usable `.jan/agent/{agent.toml, skills/, memory/}` exists under

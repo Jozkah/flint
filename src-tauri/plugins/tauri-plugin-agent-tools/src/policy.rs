@@ -74,20 +74,41 @@ pub fn agent_toml_path(project_root: &Path) -> std::path::PathBuf {
 /// at all -- belongs to the caller; what this does is keep the deny lists it
 /// could read and refuse to invent the rest.
 pub fn load(project_root: Option<&Path>, network_default: Option<bool>) -> ProjectPolicy {
+    let (org, org_error) = crate::org_policy::load();
+    if let Some(error) = &org_error {
+        eprintln!("machine policy: {}", error.message);
+    }
+    load_under(project_root, network_default, &org.unwrap_or_default())
+}
+
+/// The same, against a given machine policy (AH-187).
+///
+/// Split out so the combination of the two policies is testable without an
+/// installed file, and so there is exactly one place where a project's
+/// declaration meets what the machine allows.
+pub fn load_under(
+    project_root: Option<&Path>,
+    network_default: Option<bool>,
+    org: &crate::org_policy::OrgPolicy,
+) -> ProjectPolicy {
+    let org = org.clone();
     let mut policy = ProjectPolicy::default();
-    policy.network.allowed = network_default.unwrap_or(true);
+    policy.network.allowed = org.clamp_network(network_default.unwrap_or(true));
 
     let Some(root) = project_root else {
-        return policy;
+        // AH-187: with no project there is still a machine. What an
+        // administrator denied is denied in a run that has no repository at
+        // all, which is the case a bypass would otherwise live in.
+        return clamp(policy, &org);
     };
     let Ok(raw) = std::fs::read_to_string(agent_toml_path(root)) else {
-        return policy;
+        return clamp(policy, &org);
     };
     let parsed: AgentToml = match toml::from_str(&raw) {
         Ok(parsed) => parsed,
         Err(e) => {
             eprintln!("agent.toml: could not read the tool policy: {e}");
-            return policy;
+            return clamp(policy, &org);
         }
     };
 
@@ -101,14 +122,46 @@ pub fn load(project_root: Option<&Path>, network_default: Option<bool>) -> Proje
         // else to stop working.
         .unwrap_or(PermissionDefault::Allow);
 
+    // AH-187: the project may tighten what the machine allows and may never
+    // loosen it. The clamping happens on the lists, before they are compiled,
+    // so there is one place where the two policies meet rather than a check
+    // at every use.
     ProjectPolicy {
-        permissions: ToolPermissions::new(default, &tools.allow, &tools.deny, &tools.allow_write),
+        permissions: ToolPermissions::new(
+            org.clamp_default(default),
+            &tools.allow,
+            &org.clamp_deny(&tools.deny),
+            &tools.allow_write,
+        ),
         network: NetworkPolicy {
             // The project's setting wins over the surface's default, which is
-            // the point of writing it down in the repository.
-            allowed: tools.allow_network.or(network_default).unwrap_or(true),
-            allow_domains: tools.allow_domains,
-            deny_domains: tools.deny_domains,
+            // the point of writing it down in the repository -- within what
+            // the machine allows.
+            allowed: org.clamp_network(
+                tools.allow_network.or(network_default).unwrap_or(true),
+            ),
+            allow_domains: org.clamp_allow_domains(&tools.allow_domains),
+            deny_domains: org.clamp_deny_domains(&tools.deny_domains),
+        },
+    }
+}
+
+/// Apply the machine's policy to a project that declared none of its own.
+fn clamp(policy: ProjectPolicy, org: &crate::org_policy::OrgPolicy) -> ProjectPolicy {
+    if org.is_empty() {
+        return policy;
+    }
+    ProjectPolicy {
+        permissions: ToolPermissions::new(
+            org.clamp_default(crate::permissions::PermissionDefault::Allow),
+            &[],
+            &org.clamp_deny(&[]),
+            &[],
+        ),
+        network: NetworkPolicy {
+            allowed: org.clamp_network(policy.network.allowed),
+            allow_domains: org.clamp_allow_domains(&policy.network.allow_domains),
+            deny_domains: org.clamp_deny_domains(&policy.network.deny_domains),
         },
     }
 }
@@ -136,6 +189,86 @@ mod tests {
         let policy = load(None, None);
         assert!(!policy.permissions.is_denied("read", &crate::subject::Subject::MainAgent));
         assert!(policy.network.allowed);
+    }
+
+    // ---- AH-187: what the machine decided, which a project cannot loosen ---
+
+    fn machine(body: &str) -> crate::org_policy::OrgPolicy {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "jan-policy-machine-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("policy.toml");
+        std::fs::write(&path, body).unwrap();
+        let (policy, error) = crate::org_policy::load_from(&path, None);
+        assert!(error.is_none(), "{error:?}");
+        policy.expect("a machine policy")
+    }
+
+    /// A repository that says "allow everything, and the network too" does not
+    /// get it when the machine says otherwise. This is the case the feature
+    /// exists for: the project file is writable by anyone who can push.
+    #[test]
+    fn a_repository_cannot_grant_itself_what_the_machine_denies() {
+        let root = project_with(
+            "[tools]\ndefault = \"allow\"\nallow_network = true\nallow_domains = [\"evil.example\"]\n",
+        );
+        let org = machine(
+            "[tools]\nmax_default = \"read-only\"\ndeny = [\"bash\"]\nallow_network = false\nallow_domains = [\"docs.internal\"]\n",
+        );
+        let policy = load_under(Some(&root), None, &org);
+        let subject = crate::subject::Subject::MainAgent;
+        assert!(policy.permissions.is_denied("bash", &subject), "the machine's deny must hold");
+        assert!(!policy.network.allowed, "the machine turned the network off");
+        assert!(
+            !policy.network.allow_domains.contains(&"evil.example".to_string()),
+            "a destination the machine never listed: {:?}",
+            policy.network.allow_domains
+        );
+    }
+
+    /// And a project that is stricter than the machine keeps its own answer:
+    /// clamping is one-directional.
+    #[test]
+    fn a_repository_may_still_be_stricter_than_the_machine() {
+        let root = project_with("[tools]\ndefault = \"deny\"\ndeny = [\"read(**/.ssh/**)\"]\n");
+        let org = machine("[tools]\nmax_default = \"read-only\"\n");
+        let policy = load_under(Some(&root), None, &org);
+        let subject = crate::subject::Subject::MainAgent;
+        let secret = crate::resource::Resource::path("/home/me/.ssh/id_rsa", None);
+        assert!(
+            policy
+                .permissions
+                .denies_call("read", std::slice::from_ref(&secret), &subject)
+                .is_some(),
+            "the project's own deny survives"
+        );
+        // And its stricter default is the one that survives the clamp: the
+        // machine capped at read-only, the project asked for less than that.
+        assert_eq!(
+            org.clamp_default(crate::permissions::PermissionDefault::Deny),
+            crate::permissions::PermissionDefault::Deny
+        );
+    }
+
+    /// A machine policy applies to a run with no repository at all -- the
+    /// place a bypass would otherwise be: open a directory that has no
+    /// `.jan/agent/agent.toml` and the policy disappears.
+    #[test]
+    fn the_machines_policy_holds_where_there_is_no_project() {
+        let org = machine("[tools]\ndeny = [\"bash\"]\nallow_network = false\n");
+        let policy = load_under(None, Some(true), &org);
+        assert!(policy.permissions.is_denied("bash", &crate::subject::Subject::MainAgent));
+        assert!(!policy.network.allowed);
+
+        // A project whose file cannot be read is the same case.
+        let root = project_with("this is not toml");
+        let broken = load_under(Some(&root), Some(true), &org);
+        assert!(broken.permissions.is_denied("bash", &crate::subject::Subject::MainAgent));
+        assert!(!broken.network.allowed);
     }
 
     #[test]

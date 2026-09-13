@@ -865,9 +865,14 @@ const DEFAULT_ALLOW_NETWORK: bool = true;
 #[cfg(not(feature = "cli"))]
 const DEFAULT_ALLOW_NETWORK: bool = false;
 
-/// `[tools].allow_network` wins over the surface default when set.
+/// `[tools].allow_network` wins over the surface default when set -- within
+/// what this machine allows (AH-187).
+///
+/// An administrator's `allow_network = false` is a ceiling: a repository that
+/// asks for the network does not get it, and a repository that declines it is
+/// not given one.
 fn resolve_allow_network(configured: Option<bool>) -> bool {
-    configured.unwrap_or(DEFAULT_ALLOW_NETWORK)
+    crate::core::agent::project::network_allowed(configured.unwrap_or(DEFAULT_ALLOW_NETWORK))
 }
 
 /// Default for whether the sandboxed shell can read `$HOME`, used when
@@ -1564,13 +1569,33 @@ impl CompositeToolInvoker {
     }
 }
 
-/// Message for a tool blocked by the project's own deny list, naming the
-/// exact config file so the block is actionable, not mysterious.
+/// Message for a tool blocked by policy, naming the file the rule is actually
+/// in so the block is actionable, not mysterious.
+///
+/// Which file matters (AH-187). A rule from this machine's policy is not the
+/// project's to change, and telling someone to edit `agent.toml` when the deny
+/// came from `policy.toml` sends them to edit a file that will not help --
+/// found by running a real denial and reading what it said. The kind is stated
+/// too: a refusal is `permission_denied`, not a tool that failed, so nothing
+/// downstream has to guess from the words.
 fn denied_by_policy_msg(name: &str, project_root: &std::path::Path) -> String {
-    format!(
-        "ERROR: tool '{name}' denied by project policy (see [tools] deny in {})",
-        crate::core::agent::project::agent_toml_path(project_root).display()
-    )
+    let (org, _) = tauri_plugin_agent_tools::org_policy::load();
+    let from_machine = org
+        .as_ref()
+        .filter(|org| org.deny.iter().any(|rule| rule == name || rule.starts_with(&format!("{name}("))))
+        .map(|org| org.source.clone());
+    match from_machine {
+        Some(source) => format!(
+            "ERROR [permission_denied]: tool '{name}' is denied by this machine's policy \
+             (see [tools] deny in {}). A project cannot grant it.",
+            source.display()
+        ),
+        None => format!(
+            "ERROR [permission_denied]: tool '{name}' denied by project policy (see [tools] \
+             deny in {})",
+            crate::core::agent::project::agent_toml_path(project_root).display()
+        ),
+    }
 }
 
 /// Message for a call that reached the hidden agent state directory. Says the

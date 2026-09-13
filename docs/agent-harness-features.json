@@ -6326,13 +6326,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-052"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/org_policy.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "An administrator can impose policy that a user cannot loosen locally.",
@@ -6342,10 +6347,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/org_policy.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs::a_repository_cannot_grant_itself_what_the_machine_denies",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs::the_machines_policy_holds_where_there_is_no_project"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). An administrator's policy.toml lives outside every project (%ProgramData%\\Jan on Windows, /etc/jan elsewhere) and combines with the project's agent.toml by one rule: a project may tighten and may never loosen. Denies union, the network is allowed only if both allow it, destinations may be narrowed and never added, and the permission default is capped. It holds where there is no project and where the project's file will not parse; JAN_ORG_POLICY is a fallback for a machine with none installed and is ignored when one exists; a malformed policy is read at its strictest rather than as no policy. Proven by two real CLI runs of a project that grants itself everything -- the shell is refused under the policy and runs without it. Two defects found doing it: the CLI built its permissions outside policy::load and so was unclamped, and the refusal named the project's file rather than the machine's and was classified tool_failed rather than permission_denied."
     },
     {
       "id": "AH-188",

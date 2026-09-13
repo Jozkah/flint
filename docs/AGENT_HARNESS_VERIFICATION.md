@@ -1538,3 +1538,36 @@ while naming what it could not place; a path that leaves the project refused
 as `sandbox_denied`; a bound making the answer partial; the test-file
 convention; generated and vendored trees not read; and that the runner command
 is the project's own or there is none.
+
+### Machine policy (AH-187)
+
+Nine tests, plus two real CLI runs of the same project against the same
+scripted provider -- one with a machine policy, one without:
+
+```
+=== with the machine policy in force
+  tool.requested bash
+  tool.failed    bash   permission_denied
+ERROR [permission_denied]: tool 'bash' is denied by this machine's policy (see [tools] deny in .../policy.toml)
+=== the same project and the same run, with no machine policy
+  tool.requested bash
+  tool.succeeded bash
+```
+
+The project's own `agent.toml` asks for `default = "allow"`,
+`allow_network = true` and shell access in both runs.
+
+Two defects the real run found, both fixed here:
+
+| Found by | What was wrong | Fix |
+| --- | --- | --- |
+| The first run: the shell succeeded under a policy that denied it | the CLI builds its permissions in `project.rs`, not through `policy::load`, so machine policy reached the desktop path only | `permissions_under` and `network_allowed` clamp the CLI's path too |
+| Reading the refusal | it named the project's `agent.toml`, which the developer cannot usefully change, and classified as `tool_failed` | the message names the file the rule is actually in and is tagged `permission_denied` |
+
+Covered by test: the clamp in each direction (a project asking for everything
+gets the cap; one stricter than the cap keeps its own answer); denies unioned;
+the network off however loudly a project asks; destinations narrowed but never
+added; the machine's policy holding where there is no project and where the
+project file will not parse; `JAN_ORG_POLICY` ignored when an installed policy
+exists and honoured when none is; and a malformed policy read at its strictest
+and reported as `invalid_input` that is never retried.

@@ -1583,3 +1583,45 @@ outcome rather than a confident wrong one. And the command comes from the
 project's own detected test runner (AH-070) or there is no command at all; a
 guessed `npm test` at a project with no such script is a turn spent learning
 that it does not work.
+
+## Machine policy an organisation sets (AH-187)
+
+`.jan/agent/agent.toml` is the *project's* policy, and anyone who can push to
+the repository can write it. That is the right answer for a developer's own
+rules and the wrong one for an organisation's: "nothing on this machine
+reaches the network from a tool" has to survive a checkout that says
+otherwise.
+
+So there is a second file, outside every project, that only an administrator
+can write -- `%ProgramData%\Jan\policy.toml` on Windows, `/etc/jan/policy.toml`
+elsewhere:
+
+```toml
+[tools]
+max_default = "read-only"      # the most permissive default a project may set
+deny = ["bash(rm *)"]          # denied here whatever a project says
+allow_network = false          # a ceiling, not a default
+allow_domains = ["docs.internal"]   # the only destinations any project may reach
+deny_domains = ["evil.example"]
+```
+
+One rule combines the two: **a project may tighten and may never loosen.**
+Denies are the union. The network is allowed only if both allow it. Where the
+organisation lists destinations, a project may choose fewer and never others.
+Where it caps the default, a project may be stricter than the cap.
+
+Three places a bypass would otherwise live, each closed and each tested:
+
+* *A run with no project.* Opening a directory with no `agent.toml` used to
+  mean the permissive default; the machine's policy applies there too.
+* *A project file that will not parse.* Same case, same answer.
+* *`JAN_ORG_POLICY`.* It names a policy file for a machine that has none
+  installed -- a container, a test. When the installed file exists the variable
+  is not consulted, because anything a user can set is not where administrator
+  policy comes from. A policy file that will not parse is read at its strictest
+  (`read-only`, no network) and reported, rather than read as no policy.
+
+The refusal says which file the rule is in. Telling someone to edit
+`agent.toml` when the deny came from `policy.toml` sends them to change a file
+that cannot help, and the refusal is tagged `permission_denied` so nothing
+downstream has to infer it from the words.
