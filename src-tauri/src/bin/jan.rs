@@ -341,6 +341,9 @@ enum AgentCommands {
         #[arg(long, value_name = "DENSITY")]
         output_density: Option<String>,
     },
+    /// Serve a JSON-lines API on stdin/stdout: start runs, stream their events,
+    /// answer their approvals, report status and cancel them (AH-182)
+    Serve,
     /// Run a single turn (debugging)
     Step {
         /// Project root containing .jan/agent/agent.toml
@@ -1325,6 +1328,10 @@ async fn handle_agent(cmd: AgentCommands) {
                 output_format,
             )
             .await
+        }
+        AgentCommands::Serve => {
+            app_lib::core::cli::json_api::serve_stdio().await;
+            Ok(())
         }
         AgentCommands::Step {
             project,

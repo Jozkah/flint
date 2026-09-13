@@ -83,6 +83,13 @@ impl RunReport {
         }
     }
 
+    /// The client stopped the run (AH-182). Reported as its own stop reason: it
+    /// is neither the model's failure nor a crash.
+    pub(crate) fn cancel(&mut self, message: &str) {
+        self.error = Some(("cancelled".to_string(), message.to_string()));
+        self.stop_reason = Some("cancelled".to_string());
+    }
+
     /// Render the envelope. `final_text` is the completion the run returned;
     /// on failure there is none and the partial prose stands in for it.
     pub(crate) fn finish(
@@ -93,11 +100,14 @@ impl RunReport {
         final_text: Option<&str>,
     ) -> RunResult {
         let is_error = self.error.is_some();
+        let cancelled = matches!(&self.error, Some((code, _)) if code == "cancelled");
         RunResult {
             kind: "result",
             is_error,
             result: super::tui::answer_without_reasoning(final_text.unwrap_or(&self.partial)),
-            stop_reason: if is_error {
+            stop_reason: if cancelled {
+                "cancelled".to_string()
+            } else if is_error {
                 "error".to_string()
             } else {
                 self.stop_reason.unwrap_or_else(|| "stop".to_string())
@@ -190,6 +200,18 @@ mod tests {
         StreamEvent::Token {
             text: text.to_string(),
         }
+    }
+
+    #[test]
+    fn a_cancelled_run_says_so() {
+        let mut report = RunReport::default();
+        report.observe(&token("half an ans"));
+        report.cancel("the run was cancelled by the client");
+        let out = value(report.finish(None, "m", 10, None));
+        assert_eq!(out["is_error"], true);
+        assert_eq!(out["stop_reason"], "cancelled");
+        assert_eq!(out["error"]["code"], "cancelled");
+        assert_eq!(out["result"], "half an ans", "what was said before the stop is kept");
     }
 
     #[test]

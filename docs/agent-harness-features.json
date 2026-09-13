@@ -6476,13 +6476,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-008"
       ],
       "owner": "lane-09-ux-observability",
       "files": [
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/cli/json_api.rs",
+        "src-tauri/src/core/cli/mod.rs",
         "src-tauri/src/core/cli/run_report.rs"
       ],
       "securityImpact": "medium",
@@ -6493,10 +6496,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/json_api.rs",
+        "src-tauri/src/core/cli/run_report.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "--output-format json emits a single terminal object, not a machine API surface."
+      "auditNote": "--output-format json emits a single terminal object, not a machine API surface. 2026-09-13 (Phase 6): implemented. `jan cli agent serve`: JSON-lines over stdio with run/status/approve/cancel/shutdown, streamed events and one result envelope per run; strict typed refusals (invalid_input/not_found); cancel drops the run and disconnects its MCP servers, clears approvals and scratch; EOF/shutdown cancels and waits for every run. Same preparation and persistence as `agent run`. Proven by driving the real binary against mock providers (19/19 checks, first run) and protocol tests with a stub runner."
     },
     {
       "id": "AH-183",

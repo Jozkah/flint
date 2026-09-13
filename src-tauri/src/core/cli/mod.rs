@@ -9,6 +9,7 @@ pub mod device_auth;
 pub mod doctor;
 pub mod file_log;
 pub mod journal;
+pub mod json_api;
 pub mod login;
 pub mod mcp;
 mod model_capabilities;
@@ -1426,6 +1427,54 @@ async fn run_agent_loop(
     }
 
     // Write the turn back so the session stays continuable with --resume.
+    let model = persist.model.clone();
+    let persisted = persist_headless_run(persist, &result, conversation);
+    let (session_id, final_text) = (persisted.session_id, persisted.final_text);
+    if persisted.saved && !format.is_json() {
+        if let Some(id) = session_id.as_deref() {
+            eprintln!(
+                "\x1b[2m[session {} - resume with `jan --resume={}`]\x1b[0m",
+                short_id(id),
+                short_id(id)
+            );
+        }
+    }
+    if format.is_json() {
+        print_report(report.finish(
+            session_id.as_deref().map(short_id).as_deref(),
+            &model,
+            started.elapsed().as_millis(),
+            final_text.as_deref(),
+        ));
+    }
+    // The stream belongs to this run (AH-183); a later command in the same
+    // process is not it.
+    tauri_plugin_agent_tools::event_log::unwatch();
+    // The one-shot CLI runs exactly one turn, so its session ends here: wipe
+    // the persistent bash `/tmp` scratch this run used.
+    if let Some(session) = args.session_id.as_deref() {
+        let _ = workspace::remove_scratch_dir(session).await;
+    }
+    result.map(|_| ())
+}
+
+/// What writing a finished headless run back produced.
+pub(crate) struct PersistedRun {
+    /// The thread the run lives in: the one it resumed, or the one just saved.
+    pub session_id: Option<String>,
+    pub final_text: Option<String>,
+    /// Whether this call wrote the thread.
+    pub saved: bool,
+}
+
+/// Write a finished headless run to the project's thread store so `--resume`
+/// can continue it. Shared by `jan cli agent run` and the JSON API (AH-182), so
+/// the two cannot save a run differently.
+fn persist_headless_run(
+    persist: PersistTarget,
+    result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    conversation: Option<Vec<serde_json::Value>>,
+) -> PersistedRun {
     let PersistTarget {
         agent_dir,
         thread_id,
@@ -1434,6 +1483,7 @@ async fn run_agent_loop(
     } = persist;
     let mut session_id = thread_id.clone();
     let mut final_text = None;
+    let mut saved = false;
     if let Ok(completion) = result.as_ref() {
         final_text = completion_text(completion);
         // What the run actually did, when the loop published it: the user's
@@ -1465,38 +1515,13 @@ async fn run_agent_loop(
         }
         match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
             Ok(id) => {
-                if !format.is_json() {
-                    eprintln!(
-                        "\x1b[2m[session {} - resume with `jan --resume={}`]\x1b[0m",
-                        short_id(&id),
-                        short_id(&id)
-                    );
-                }
                 session_id = Some(id);
+                saved = true;
             }
             Err(e) => eprintln!("(could not save session: {e})"),
         }
     }
-    if format.is_json() {
-        print_report(report.finish(
-            session_id.as_deref().map(short_id).as_deref(),
-            &model,
-            started.elapsed().as_millis(),
-            final_text.as_deref(),
-        ));
-    }
-    // The stream belongs to this run (AH-183); a later command in the same
-    // process is not it.
-    tauri_plugin_agent_tools::event_log::unwatch();
-    // The stream belongs to this run (AH-183); a later command in the same
-    // process is not it.
-    tauri_plugin_agent_tools::event_log::unwatch();
-    // The one-shot CLI runs exactly one turn, so its session ends here: wipe
-    // the persistent bash `/tmp` scratch this run used.
-    if let Some(session) = args.session_id.as_deref() {
-        let _ = workspace::remove_scratch_dir(session).await;
-    }
-    result.map(|_| ())
+    PersistedRun { session_id, final_text, saved }
 }
 
 /// This project's permission policy, as a document somebody can review
