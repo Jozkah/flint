@@ -103,7 +103,7 @@ export function CompactionPolicySettings() {
             actions={
               <select
                 aria-label={t('settings:compaction.strategy')}
-                className="h-9 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                className="h-9 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                 value={policy.strategy}
                 onChange={(e) =>
                   void save({ strategy: e.currentTarget.value as CompactionPolicy['strategy'] })

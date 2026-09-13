@@ -721,7 +721,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           <div className="relative z-20 flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-md border border-line-strong bg-card px-2.5 text-sm transition-colors hover:bg-sunken pointer-coarse:h-11">
             <button
               type="button"
-              className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {provider && (
                 <div className="shrink-0">
@@ -795,7 +795,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               <button
                 type="button"
                 aria-label={t('common:dismiss')}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={onClearSearch}
               >
                 <X className="size-4" />
@@ -807,7 +807,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   type="button"
                   aria-label={t('common:sortModels')}
                   title={t('common:sortModels')}
-                  className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-sunken transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+                  className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-sunken transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <ArrowUpDown className="size-3.5 text-muted-foreground" />
@@ -861,7 +861,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             // Selected state needs stronger contrast than the surrounding secondary tint.
                             isSelected &&
@@ -937,7 +937,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             isSelected &&
                               'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
@@ -1020,7 +1020,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           aria-label={t('model-fit:providerSettings', {
                             provider: getProviderTitle(providerInfo.provider),
                           })}
-                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-card focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-card focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate({
@@ -1053,7 +1053,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                               {...selectableRow(searchableModel, isSelected)}
                               className={cn(
                                 'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                                'hover:bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                                'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                 modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                                 isSelected &&
                                   'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'

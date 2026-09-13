@@ -357,7 +357,7 @@ export const ModelSupportStatus = ({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex size-5 items-center justify-center rounded-full hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-8"
+            className="flex size-5 items-center justify-center rounded-full hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-8"
             aria-label={t('model-fit:triggerLabel', {
               status: dismissed ? estimate : `${headline}. ${estimate}`,
             })}
@@ -437,7 +437,7 @@ export const ModelSupportStatus = ({
               })}
             </p>
             <Collapsible>
-              <CollapsibleTrigger className="text-xs text-brand-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-ring">
+              <CollapsibleTrigger className="text-xs text-brand-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring">
                 {t('model-fit:showReasons')}
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2 text-xs">

@@ -186,7 +186,7 @@ const ThreadItem = memo(
         onKeyDown={onRowKeyDown}
       >
         {currentProjectId ?
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative mb-2 block max-w-full overflow-hidden rounded-lg border border-border bg-card px-4 py-3.5 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring", isSelected && "border-brand-soft bg-brand-tint before:absolute before:left-0 before:inset-y-3 before:w-0.5 before:rounded-full before:bg-brand")}>
+          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative mb-2 block max-w-full overflow-hidden rounded-lg border border-border bg-card px-4 py-3.5 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring", isSelected && "border-brand-soft bg-brand-tint before:absolute before:left-0 before:inset-y-3 before:w-0.5 before:rounded-full before:bg-brand")}>
               <div className="flex items-center gap-1.5 min-w-0 pr-10">
                 {isActive && (
                   <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />

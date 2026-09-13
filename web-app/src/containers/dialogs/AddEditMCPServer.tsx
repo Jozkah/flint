@@ -92,7 +92,7 @@ function RowIconButton({
       title={label}
       onClick={onClick}
       className={cn(
-        'grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11 [&_svg]:size-4',
+        'grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11 [&_svg]:size-4',
         destructive
           ? 'text-muted-foreground hover:text-destructive'
           : 'text-muted-foreground hover:text-foreground'
@@ -511,7 +511,7 @@ export default function AddEditMCPServer({
             <button
               type="button"
               className={cn(
-                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11',
+                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
                 isToggled && 'bg-brand-tint text-brand-text'
               )}
               title="Add server by JSON"

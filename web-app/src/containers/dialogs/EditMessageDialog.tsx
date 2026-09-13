@@ -120,7 +120,7 @@ export function EditMessageDialog({
                     <button
                       type="button"
                       aria-label={t('common:dismiss')}
-                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-7"
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptImages((prev) =>
                           prev.filter((_, i) => i !== index)
@@ -143,7 +143,7 @@ export function EditMessageDialog({
                     <button
                       type="button"
                       aria-label={t('common:dismiss')}
-                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-7"
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptFiles((prev) =>
                           prev.filter((f) => f.id !== file.id)

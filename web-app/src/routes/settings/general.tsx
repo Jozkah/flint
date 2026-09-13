@@ -260,7 +260,7 @@ function General() {
                         onClick={() =>
                           janDataFolder && copyToClipboard(janDataFolder)
                         }
-                        className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                        className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                         title={
                           isCopied
                             ? t('settings:general.copied')

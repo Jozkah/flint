@@ -1066,7 +1066,7 @@ function ProviderDetail() {
                       </p>
                     </div>
                     <input
-                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       placeholder="https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1"
                       value={baseUrlDraft}
                       onChange={(e) => setBaseUrlDraft(e.target.value)}
@@ -1485,7 +1485,7 @@ function ProviderDetail() {
                               ? t('providers:embeddingModelIsDefault')
                               : t('providers:embeddingModelSetDefault')
                           }
-                          className="grid size-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+                          className="grid size-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                         >
                           {isDefault ? (
                             <CircleCheck

@@ -198,7 +198,7 @@ export function CoworkRewind(props: RewindProps) {
               close()
             }
           }}
-          className="mt-2 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-2 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {open.plan.kind === 'restore' ? (
             <>
@@ -268,7 +268,7 @@ export function CoworkRewind(props: RewindProps) {
                     <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
-                        className="mt-0.5 rounded-sm accent-[var(--brand-fill)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        className="mt-0.5 rounded-sm accent-[var(--brand-fill)] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
                         checked={acknowledged}
                         disabled={busy}
                         onChange={(event) =>

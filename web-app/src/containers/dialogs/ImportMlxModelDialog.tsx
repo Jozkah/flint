@@ -166,7 +166,7 @@ export const ImportMlxModelDialog = ({
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
               placeholder="my-mlx-model"
-              className="w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring md:text-sm"
+              className="w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring md:text-sm"
             />
             <p className="text-xs text-muted-foreground">
               Only alphanumeric and _ - . characters are allowed

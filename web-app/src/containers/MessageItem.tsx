@@ -592,7 +592,7 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
@@ -604,7 +604,7 @@ export const MessageItem = memo(
           </span>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"

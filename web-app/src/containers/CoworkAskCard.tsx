@@ -212,7 +212,7 @@ export function CoworkAskCard({
                 className={cn(
                   'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left',
                   'hover:bg-sunken focus-visible:outline-none',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                   checked && 'bg-sunken'
                 )}
               >

@@ -337,7 +337,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           message. A run that did not finish opens, because what it left
           behind is the thing to read. */}
       <details open={interrupted} className="group">
-        <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11">
           <span className="min-w-0 flex-1 truncate">
             {t('common:coworkOrigins.title')}
           </span>

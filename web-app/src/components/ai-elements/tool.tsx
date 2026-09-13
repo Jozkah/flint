@@ -203,7 +203,7 @@ export const ToolHeader = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          'cursor-pointer flex w-full min-w-0 items-center gap-2 rounded-md text-muted-foreground text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+          'cursor-pointer flex w-full min-w-0 items-center gap-2 rounded-md text-muted-foreground text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
           !isOpen && 'hover:bg-sunken',
           className
         )}

@@ -54,7 +54,7 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
     const itemClass = cn(
       'relative flex w-full flex-col items-center justify-center gap-1.5 text-[12px] font-medium leading-none outline-hidden',
       'h-[72px] shrink-0 text-rail-muted hover:bg-rail-hover hover:text-rail-foreground',
-      'focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-brand-rail',
+      'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-brand-rail',
       '[@media(max-height:620px)]:h-14 [@media(max-height:620px)]:gap-1',
       isCurrent &&
         'bg-rail-active text-rail-foreground before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-brand-rail'
@@ -109,7 +109,7 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
         to="/"
         aria-label={t('common:appRail.home')}
         onClick={() => onNavigate?.()}
-        className="relative flex h-[72px] shrink-0 items-center justify-center font-display text-[26px] leading-none tracking-tight text-rail-foreground outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-brand-rail [@media(max-height:620px)]:h-12"
+        className="relative flex h-[72px] shrink-0 items-center justify-center font-display text-[26px] leading-none tracking-tight text-rail-foreground outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-brand-rail [@media(max-height:620px)]:h-12"
       >
         JAN
         {working && (

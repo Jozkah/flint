@@ -102,7 +102,7 @@ export function CoworkTodoPanel({
                     <button
                       type="button"
                       onClick={() => togglePhase(phase.name)}
-                      className="group mb-1 flex w-full items-center gap-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                      className="group mb-1 flex w-full items-center gap-1 rounded-md text-left outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
                     >
                       <ChevronDown
                         size={11}

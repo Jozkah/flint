@@ -565,7 +565,7 @@ const SidebarGroupLabel = React.forwardRef<
 			ref={ref}
 			data-sidebar="group-label"
 			className={cn(
-				"duration-200 flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground outline-hidden transition-[margin,opa] ease-linear focus-visible:outline-2 focus-visible:outline-ring [&>svg]:size-4 [&>svg]:shrink-0",
+				"duration-200 flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground outline-hidden transition-[margin,opa] ease-linear focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring [&>svg]:size-4 [&>svg]:shrink-0",
 				"group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
 				className,
 			)}
@@ -638,7 +638,7 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem";
 
 const sidebarMenuButtonVariants = cva(
-	"peer/menu-button relative flex w-full items-center gap-2.5 overflow-hidden rounded-md px-2 text-left text-sm text-ink-2 outline-hidden transition-[width,height,padding] hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-brand-tint data-[active=true]:font-medium data-[active=true]:text-foreground data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:inset-y-2 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-brand data-[state=open]:hover:bg-sunken group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+	"peer/menu-button relative flex w-full items-center gap-2.5 overflow-hidden rounded-md px-2 text-left text-sm text-ink-2 outline-hidden transition-[width,height,padding] hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-brand-tint data-[active=true]:font-medium data-[active=true]:text-foreground data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:inset-y-2 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-brand data-[state=open]:hover:bg-sunken group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
 	{
 		variants: {
 			variant: {

@@ -28,7 +28,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
       {onRemove && (
         <button
           type="button"
-          className="ml-auto flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+          className="ml-auto flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
           onClick={() => onRemove(message.id)}
         >
           <X className="size-3.5" />

@@ -2358,7 +2358,7 @@ const ChatInput = memo(function ChatInput({
                             <button
                               type="button"
                               aria-label={`${t('common:dismiss')} ${att.name}`}
-                              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-9"
+                              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-9"
                               onClick={() => handleRemoveAttachment(idx)}
                             >
                               <X className="size-3.5" />
@@ -3185,7 +3185,7 @@ const ChatInput = memo(function ChatInput({
             <button
               type="button"
               aria-label={t('common:dismiss')}
-              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
               onClick={() => {
                 setMessage('')
                 // Reset file input to allow re-uploading the same file

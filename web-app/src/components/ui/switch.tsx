@@ -15,7 +15,7 @@ function Switch({ loading, className, ...props }: SwitchProps) {
         // Checked uses the accent indicator (3:1 against the page in both
         // themes); the fill colour itself may be too light to see as a track.
         // On touch screens an invisible margin brings the target to 44px.
-        'relative peer cursor-pointer data-[state=checked]:bg-brand data-[state=unchecked]:bg-input inline-flex h-[18px] w-8.5 shrink-0 items-center rounded-full border border-transparent outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-3 pointer-coarse:after:content-[""]',
+        'relative peer cursor-pointer data-[state=checked]:bg-brand data-[state=unchecked]:bg-input inline-flex h-[18px] w-8.5 shrink-0 items-center rounded-full border border-transparent outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-3 pointer-coarse:after:content-[""]',
         loading && 'w-4.5 pointer-events-none',
         className
       )}

@@ -33,7 +33,7 @@ const ResultRow = ({
     href={url}
     target="_blank"
     rel="noreferrer noopener"
-    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
     title={url}
   >
     <Favicon url={url} />

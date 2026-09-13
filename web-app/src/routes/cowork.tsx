@@ -3845,7 +3845,7 @@ function CoworkPage() {
                   data-testid={`cowork-view-${option}`}
                   onClick={() => showView(option)}
                   className={cn(
-                    'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                    'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
                     index > 0 && 'border-l border-line-strong',
                     view === option
                       ? 'bg-brand-tint text-foreground'

@@ -787,7 +787,7 @@ function MemorySettings() {
                       role="tab"
                       aria-selected={tab.scope === scope}
                       className={cn(
-                        '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pt-1.5 pb-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                        '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pt-1.5 pb-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
                         tab.scope === scope
                           ? 'border-brand text-foreground'
                           : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -901,7 +901,7 @@ function MemorySettings() {
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Conversation
                     <select
-                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Conversation whose memory to show"
                       data-testid="memory-session-picker"
                       value={sessionId ?? ''}
@@ -926,7 +926,7 @@ function MemorySettings() {
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Project folder
                     <select
-                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Project whose memory to show"
                       data-testid="memory-project-picker"
                       value={projectRoot ?? ''}
@@ -967,7 +967,7 @@ function MemorySettings() {
                         if (e.target.value) setProjectRoot('')
                         setOffset(0)
                       }}
-                      className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
+                      className="h-9 min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                     >
                       <option value="">Choose a project</option>
                       {projects.map((project) => (
@@ -1022,7 +1022,7 @@ function MemorySettings() {
                             {formatWhen(memory.lastUsedAt)}
                           </p>
                           <details className="mt-1 text-xs" data-testid="memory-provenance">
-                            <summary className="cursor-pointer rounded-sm text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:py-2">
+                            <summary className="cursor-pointer rounded-sm text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
                               Why Jan remembers this
                             </summary>
                             <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-sunken p-2 text-ink-2 sm:grid-cols-[auto_1fr]">

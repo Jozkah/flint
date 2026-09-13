@@ -438,7 +438,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
       }}
     >
       <summary
-        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm"
+        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm"
         aria-controls={panelId}
         data-testid="prompt-snapshot-toggle"
       >

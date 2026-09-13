@@ -419,7 +419,7 @@ function SetupScreen() {
                               data-testid={`setup-intent-${intent}`}
                               onClick={() => guide.setIntent(intent)}
                               className={cn(
-                                'flex min-h-11 items-start gap-3 rounded-md border px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                'flex min-h-11 items-start gap-3 rounded-md border px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
                                   ? 'border-brand bg-brand-tint'
                                   : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
@@ -641,7 +641,7 @@ function SetupScreen() {
                               data-testid="setup-local-model"
                               onClick={() => setChosenModel(model.id)}
                               className={cn(
-                                'flex min-h-11 items-center justify-between gap-2 rounded-md border px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                'flex min-h-11 items-center justify-between gap-2 rounded-md border px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
                                   ? 'border-brand bg-brand-tint'
                                   : 'border-border bg-card hover:border-line-strong hover:bg-sunken'

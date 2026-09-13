@@ -298,7 +298,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
               aria-expanded={advancedOpen}
               aria-controls="settings-advanced-pages"
               onClick={() => setAdvancedOpen((open) => !open)}
-              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 pointer-coarse:py-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring"
+              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 pointer-coarse:py-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
             >
               {advancedOpen ? (
                 <IconChevronDown size={14} />

@@ -116,7 +116,7 @@ export function CoworkWorkflowCard({
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
               >
                 <StatusIcon status={task.status} />
                 {task.kind === 'shell' ? (

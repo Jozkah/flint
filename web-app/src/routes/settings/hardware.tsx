@@ -245,7 +245,7 @@ function GpuGroupCard({
                     onClick={() => onSelect(groupDevice.id)}
                     title={t('settings:hardware.backendSelectDesc')}
                     className={cn(
-                      'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs uppercase tracking-wider transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                      'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs uppercase tracking-wider transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
                       isSelected
                         ? 'border-brand bg-card text-foreground'
                         : 'border-border text-muted-foreground hover:border-line-strong hover:bg-card hover:text-foreground'

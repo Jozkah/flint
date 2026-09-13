@@ -56,7 +56,7 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
                   key={key}
                   type="button"
                   onClick={() => onPick(text)}
-                  className="max-w-full rounded-md border border-transparent px-2 py-1.5 text-left text-sm text-ink-2 outline-none transition-colors hover:border-border hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                  className="max-w-full rounded-md border border-transparent px-2 py-1.5 text-left text-sm text-ink-2 outline-none transition-colors hover:border-border hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
                 >
                   {text}
                 </button>

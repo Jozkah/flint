@@ -558,7 +558,7 @@ function LocalAPIServerContent() {
             <Card>
               <Collapsible defaultOpen={false}>
                 <div className="flex items-center justify-between">
-                  <CollapsibleTrigger className="flex min-h-11 items-center gap-2 rounded-sm hover:no-underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0 data-[state=open]:[&>svg.chevron-down]:hidden data-[state=closed]:[&>svg.chevron-up]:hidden">
+                  <CollapsibleTrigger className="flex min-h-11 items-center gap-2 rounded-sm hover:no-underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring sm:min-h-0 data-[state=open]:[&>svg.chevron-down]:hidden data-[state=closed]:[&>svg.chevron-up]:hidden">
                     <ChevronDown size={16} className="chevron-down" aria-hidden />
                     <ChevronUp size={16} className="chevron-up" aria-hidden />
                     <span className="font-medium text-sm">Server Log</span>

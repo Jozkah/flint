@@ -39,7 +39,7 @@ export function TermHint({
         <button
           type="button"
           className={cn(
-            'inline cursor-help rounded-sm underline decoration-muted-foreground decoration-dotted underline-offset-2 hover:decoration-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+            'inline cursor-help rounded-sm underline decoration-muted-foreground decoration-dotted underline-offset-2 hover:decoration-brand focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
             className
           )}
           aria-label={t('glossary:explain', { term: name })}

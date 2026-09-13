@@ -257,7 +257,7 @@ export function McpServerDetails({
     // announces expanded state without extra wiring. Nothing here is
     // reachable only by hovering.
     <details className="mt-2 group">
-      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0">
+      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring sm:min-h-0">
         {t('mcp-servers:details.toggle')}
       </summary>
       <div className="mt-2 flex flex-col gap-3 rounded-md bg-sunken p-3 text-ink-2">

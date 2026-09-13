@@ -132,7 +132,7 @@ function PaneTab({
       title={threadId ? plainTitle(title, t('common:newThread')) : undefined}
       onClick={() => setActivePane(pane)}
       className={cn(
-        'relative flex h-8 min-w-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:h-10',
+        'relative flex h-8 min-w-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-10',
         selected
           ? 'bg-card text-foreground shadow-sm'
           : 'text-ink-2 hover:text-foreground'
@@ -271,7 +271,7 @@ export function SplitDivider({
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       data-testid="split-divider"
-      className="group relative z-10 w-2 shrink-0 cursor-col-resize touch-none outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      className="group relative z-10 w-2 shrink-0 cursor-col-resize touch-none outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
       <span
         aria-hidden
@@ -388,7 +388,7 @@ export function SecondaryPanePicker({
                       type="button"
                       onClick={() => choose(th.id)}
                       data-testid={`split-pick-${th.id}`}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                      className="flex w-full min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
                     >
                       <MessageCircle className="size-4 shrink-0 text-ink-2" />
                       <span className="min-w-0 truncate" title={title}>
