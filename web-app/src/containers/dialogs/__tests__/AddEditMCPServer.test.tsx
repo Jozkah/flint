@@ -198,6 +198,112 @@ describe('AddEditMCPServer', () => {
     expect(props.onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  describe('form validation', () => {
+    const typeName = (value: string) =>
+      fireEvent.change(
+        screen.getByPlaceholderText('mcp-servers:enterServerName'),
+        { target: { value } }
+      )
+
+    it('blocks save, marks the field invalid and focuses the first invalid field', () => {
+      const props = baseProps()
+      render(<AddEditMCPServer {...props} />)
+      typeName('myServer')
+      // No command entered for a stdio server.
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+
+      expect(props.onSave).not.toHaveBeenCalled()
+      expect(props.onOpenChange).not.toHaveBeenCalled()
+
+      const command = screen.getByPlaceholderText('mcp-servers:enterCommand')
+      expect(command).toHaveAttribute('aria-invalid', 'true')
+      const describedBy = command.getAttribute('aria-describedby')
+      expect(describedBy).toBeTruthy()
+      expect(document.getElementById(describedBy!)).toHaveTextContent(
+        'mcp-servers:validation.commandRequired'
+      )
+      expect(document.activeElement).toBe(command)
+      // The command field is labelled, not just placeholdered.
+      expect(screen.getByLabelText('mcp-servers:command')).toBe(command)
+    })
+
+    it('clears the error once the field is fixed and then saves', () => {
+      const props = baseProps()
+      render(<AddEditMCPServer {...props} />)
+      typeName('myServer')
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      fireEvent.change(screen.getByPlaceholderText('mcp-servers:enterCommand'), {
+        target: { value: 'uvx' },
+      })
+      expect(
+        screen.queryByText('mcp-servers:validation.commandRequired')
+      ).not.toBeInTheDocument()
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      expect(props.onSave).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects a name that is already configured', () => {
+      const props = { ...baseProps(), existingNames: ['github'] }
+      render(<AddEditMCPServer {...props} />)
+      typeName('github')
+      fireEvent.change(screen.getByPlaceholderText('mcp-servers:enterCommand'), {
+        target: { value: 'npx' },
+      })
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      expect(props.onSave).not.toHaveBeenCalled()
+      const name = screen.getByPlaceholderText('mcp-servers:enterServerName')
+      expect(name).toHaveAttribute('aria-invalid', 'true')
+      expect(document.activeElement).toBe(name)
+      expect(
+        screen.getByText('mcp-servers:validation.nameDuplicate')
+      ).toBeInTheDocument()
+    })
+
+    it('lets an edited server keep its own name', () => {
+      const props = {
+        ...baseProps(),
+        editingKey: 'github',
+        existingNames: ['github'],
+        initialData: { command: 'npx', args: [], env: {}, type: 'stdio' },
+      }
+      render(<AddEditMCPServer {...props} />)
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      expect(props.onSave).toHaveBeenCalledWith('github', expect.anything())
+    })
+
+    it('requires an http(s) URL for remote transports', () => {
+      const props = baseProps()
+      render(<AddEditMCPServer {...props} />)
+      typeName('remote')
+      fireEvent.click(screen.getByLabelText('HTTP'))
+      fireEvent.change(screen.getByPlaceholderText('Enter URL'), {
+        target: { value: 'ftp://example.com' },
+      })
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      expect(props.onSave).not.toHaveBeenCalled()
+      const url = screen.getByPlaceholderText('Enter URL')
+      expect(url).toHaveAttribute('aria-invalid', 'true')
+      expect(document.activeElement).toBe(url)
+      expect(
+        screen.getByText('mcp-servers:validation.urlScheme')
+      ).toBeInTheDocument()
+    })
+
+    it('shows warnings without blocking save', () => {
+      const props = baseProps()
+      render(<AddEditMCPServer {...props} />)
+      typeName('warned')
+      fireEvent.change(screen.getByPlaceholderText('mcp-servers:enterCommand'), {
+        target: { value: 'npx -y some-server' },
+      })
+      expect(
+        screen.getByText('mcp-servers:validation.commandHasSpaces')
+      ).toBeInTheDocument()
+      fireEvent.click(screen.getByText('mcp-servers:save'))
+      expect(props.onSave).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('rejects JSON where a server declares an invalid transport type', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)

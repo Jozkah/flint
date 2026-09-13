@@ -191,7 +191,11 @@ import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
-import { hasJanAuthoredChanges } from '@/lib/coworkOrigins'
+import { janAuthoredPaths } from '@/lib/coworkOrigins'
+import {
+  deriveRunOutcome,
+  shouldShowRunOutcome,
+} from '@/lib/coworkRunOutcome'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
@@ -1171,6 +1175,52 @@ function CoworkPage() {
         toolActivity
       ),
     [running, liveTurns, session?.turns, toolActivity]
+  )
+
+  /**
+   * The last run's outcome, derived once from the evidence every other
+   * surface reads: the ledger, the tool record and the run's stop reason.
+   * Subscribed to the checkpoint chain so a new point, or a restore, is
+   * reflected without waiting for an unrelated render.
+   */
+  const checkpointChain = useCoworkCheckpoints((s) =>
+    session?.id ? s.bySession[session.id] : undefined
+  )
+  const runOutcome = useMemo(
+    () =>
+      deriveRunOutcome({
+        running,
+        stoppedBy,
+        errorText: runError,
+        turns: displayedTurns,
+        summary: runOrigins?.summary ?? null,
+        destination: runOrigins?.context.destination ?? null,
+        tree:
+          runOrigins?.context.tree ?? runOrigins?.context.binding.folder ?? null,
+        sessionId: session?.id ?? null,
+        runId: session?.id ?? null,
+        finishedAt: runOrigins?.at ?? null,
+        checkpoints: checkpointChain ?? [],
+        handlers: {
+          // Opening a file resolves against the attached folder or the
+          // sandbox; a managed worktree's files are reviewed in Changes.
+          openResult:
+            runOrigins?.context.destination === 'repository' ||
+            runOrigins?.context.destination === 'sandbox',
+          reviewChanges: true,
+          continue: true,
+          retry: true,
+        },
+      }),
+    [
+      running,
+      stoppedBy,
+      runError,
+      displayedTurns,
+      runOrigins,
+      session?.id,
+      checkpointChain,
+    ]
   )
   // A presentation filter: the turns themselves are untouched, so turning the
   // option off puts the activity straight back without a reload.
@@ -2438,20 +2488,20 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, _input, preview, signal) =>
+              onApprove: (callId, toolName, input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(
-                    callId,
-                    toolName,
-                    sid,
-                    undefined,
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel:
+                      (destination ? destination.path : current?.folder) ??
+                      undefined,
                     preview,
-                    destination
+                    origin: destination
                       ? `${resolved.name} (its own checkout)`
                       : resolved.name,
-                    signal
-                  ),
+                    signal,
+                  }),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
                   sessionId: sid,
@@ -2685,18 +2735,15 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName, _input, preview, signal) =>
+              onApprove: (callId, toolName, input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(
-                    callId,
-                    toolName,
-                    sid,
-                    undefined,
+                  .requestApproval(callId, toolName, sid, undefined, {
+                    input,
+                    workspaceLabel: current?.folder ?? undefined,
                     preview,
-                    undefined,
-                    signal
-                  ),
+                    signal,
+                  }),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>
@@ -3793,13 +3840,38 @@ function CoworkPage() {
                     </div>
                   )}
                   {!running &&
-                    runOrigins?.summary &&
-                    // Only when this run actually wrote something. A working
-                    // tree that was already dirty is not the run's work, and
-                    // reporting it here left a permanent panel over the
-                    // composer listing the user's own edits.
-                    hasJanAuthoredChanges(runOrigins.summary) && (
-                      <CoworkRunSummary summary={runOrigins.summary} />
+                    (runEnding || runOrigins?.summary) &&
+                    // Only when the run has something of its own to report:
+                    // a write, a check, a loose end, or an ending that was
+                    // not a clean finish. A working tree that was already
+                    // dirty is not the run's work, and reporting it here left
+                    // a permanent panel over the composer listing the user's
+                    // own edits. The stop reason itself stays in the notice
+                    // below; this shows what was kept.
+                    shouldShowRunOutcome(runOutcome) && (
+                      <CoworkRunSummary
+                        outcome={runOutcome}
+                        canOpenPath={shouldOpenInCode}
+                        onOpenPath={
+                          runOutcome.resultLocation.destination ===
+                            'repository' && treeRoot
+                            ? (path) => openToolPath(`${treeRoot}/${path}`)
+                            : runOutcome.resultLocation.destination ===
+                                'sandbox'
+                              ? openToolPath
+                              : undefined
+                        }
+                        onReviewChanges={() => setRail({ kind: 'diff' })}
+                        onRestore={() => setRail({ kind: 'diff' })}
+                        onRetry={() => void runRequest(null)}
+                        onContinue={() =>
+                          document
+                            .querySelector<HTMLTextAreaElement>(
+                              '[data-testid="chat-input"]'
+                            )
+                            ?.focus()
+                        }
+                      />
                     )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
@@ -4056,7 +4128,7 @@ function CoworkPage() {
               ) : null}
               <CoworkRewind
                 points={
-                  session?.id
+                  session?.id && checkpointChain
                     ? useCoworkCheckpoints
                         .getState()
                         .usable(session.id, treeRoot)
@@ -4065,6 +4137,26 @@ function CoworkPage() {
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
                 }
+                // Newer edits Jan made itself are not someone else's work, so
+                // only the rest need an explicit acknowledgement.
+                janAuthored={
+                  runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []
+                }
+                onSafetyCapture={async (label) => {
+                  if (!session?.id || !treeRoot)
+                    return { ok: false, reason: 'no working tree' }
+                  const saved = await useCoworkCheckpoints
+                    .getState()
+                    .captureSafety({
+                      sessionId: session.id,
+                      root: treeRoot,
+                      label,
+                      access: effective.access,
+                    })
+                  return saved.ok
+                    ? { ok: true, point: saved.entry }
+                    : saved
+                }}
                 onRestore={async (sha) => {
                   const done = await useCoworkCheckpoints
                     .getState()

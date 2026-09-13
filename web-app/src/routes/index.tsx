@@ -24,6 +24,7 @@ import { useThreads } from '@/hooks/useThreads'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { NewTemporaryChatButton } from '@/containers/NewTemporaryChatButton'
+import { GettingStartedCard } from '@/containers/GettingStartedCard'
 
 export const Route = createFileRoute(route.home as any)({
   component: Index,
@@ -88,6 +89,7 @@ function Index() {
               {t('chat:description')}
             </h1>
           </div>
+          <GettingStartedCard />
           <div className="flex-1 shrink-0">
             <ChatInput
               showSpeedToken={false}

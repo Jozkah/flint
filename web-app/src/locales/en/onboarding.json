@@ -1,0 +1,64 @@
+{
+  "intentHeading": "What would you like to do first?",
+  "intentHint": "This only decides where the guide takes you. Everything else in JAN stays available.",
+  "intent": {
+    "question": {
+      "title": "Ask a question",
+      "description": "Chat with a model about anything."
+    },
+    "documents": {
+      "title": "Work with documents",
+      "description": "Attach files and ask about them."
+    },
+    "project": {
+      "title": "Build or change a project",
+      "description": "Let JAN work in a folder on this computer, asking before it changes anything."
+    }
+  },
+  "skipGuide": "Skip the guide",
+  "resumeNotice": "Welcome back. You can continue where you left off.",
+  "processingHeading": "Where your conversations are processed",
+  "processingLocal": "A local model runs on this computer. Your messages and files stay here, and no account or API key is needed.",
+  "processingRemote": "A remote provider (for example OpenAI) runs the model on its servers. Your messages and any files you include are sent there, and the provider may charge you. You set this up yourself in Settings; JAN never switches to one on its own.",
+  "connectRemote": "Connect a remote provider instead",
+  "guideTitle": {
+    "question": "Getting started: ask a question",
+    "documents": "Getting started: work with documents",
+    "project": "Getting started: build or change a project"
+  },
+  "guideRegion": "Getting started guide",
+  "stepDone": "Done",
+  "stepTodo": "To do",
+  "step": {
+    "choose-model": {
+      "title": "Choose or connect a model",
+      "body": "Pick a model with the selector at the top. Local models run on this computer; remote providers need their own account."
+    },
+    "add-material": {
+      "documents": "Attach a document with the paperclip button in the message box.",
+      "project": "Open Cowork and choose your project's folder. JAN asks before it edits files or runs commands."
+    },
+    "first-task": {
+      "title": "Send your first message",
+      "body": "Ask something, or describe the change you want. This step completes when a conversation starts."
+    },
+    "review-context": {
+      "title": "Check what JAN used",
+      "body": "After JAN answers, open \"What JAN is using\" in the conversation to see which attachments and instructions were available to it."
+    },
+    "addMaterialTitle": {
+      "documents": "Add a document",
+      "project": "Choose a project folder"
+    }
+  },
+  "confirmStep": "I've done this",
+  "openProviders": "Model settings",
+  "openCowork": "Open Cowork",
+  "hideGuide": "Hide guide",
+  "guideComplete": "You're set up. Reopen this guide any time from Settings > General.",
+  "finish": "Finish guide",
+  "reopenGuide": "Getting started guide",
+  "reopenGuideDescription": "Walk through choosing a model, adding material and completing a first task again.",
+  "reopenGuideAction": "Open guide",
+  "resumeRecent": "Continue your last conversation: {{title}}"
+}

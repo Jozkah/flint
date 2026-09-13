@@ -1381,6 +1381,27 @@ pub fn bash_job_kill(job_id: String, session: String) -> crate::tools::handlers:
     crate::tools::handlers::kill_bash_job(&job_id, Some(&session))
 }
 
+/// The most recent permission decisions the gate recorded, newest first.
+///
+/// Read-only: it reads `<data folder>/audit/permissions.jsonl` and nothing
+/// else, returns at most `audit::RECENT_MAX` records, and redacts resource and
+/// reason again on the way out. A missing log is an empty list, not an error.
+#[tauri::command]
+pub async fn permission_audit_recent(
+    data_folder: String,
+    limit: Option<usize>,
+) -> Result<Vec<crate::audit::PermissionRecord>, AgentToolsError> {
+    if data_folder.trim().is_empty() {
+        return Err("no data folder to read the permission history from"
+            .to_string()
+            .into());
+    }
+    Ok(crate::audit::recent(
+        Path::new(&data_folder),
+        limit.unwrap_or(50),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,7 +16,7 @@ import {
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
@@ -27,6 +27,8 @@ import { twMerge } from 'tailwind-merge'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
+import { resolveServerFingerprints } from '@/lib/mcpServerIdentity'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { listen } from '@tauri-apps/api/event'
@@ -38,7 +40,22 @@ import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { normalizeAppError } from '@/utils/appError'
 import { McpServerAuth } from '@/containers/McpServerAuth'
-import { useMcpAuth, needsAuthDetail } from '@/hooks/useMcpAuth'
+import { useMcpAuth } from '@/hooks/useMcpAuth'
+import {
+  activationConfirmed,
+  activationFailed,
+  beginActivation,
+  classifyActivationFailure,
+  deriveConnectionState,
+  runtimeCleared,
+  type McpServerRuntime,
+} from '@/lib/mcpConnectionState'
+import { deriveMcpServerProfile, transportOf } from '@/lib/mcpServerProfile'
+import {
+  McpServerDetails,
+  McpServerStatus,
+  mcpServerErrorId,
+} from '@/containers/McpServerConnectionDetails'
 
 
 // Function to mask sensitive URL parameters
@@ -117,8 +134,11 @@ function MCPServersDesktop() {
     allowAllMCPPermissions,
     setAllowAllMCPPermissions,
     isServerApproved,
-    approveServer,
-    revokeServer,
+    approveServerTrust,
+    revokeServerTrust,
+    forgetServer,
+    approvedServers,
+    invalidatedServers,
   } = useToolApproval()
 
   const [open, setOpen] = useState(false)
@@ -169,6 +189,117 @@ function MCPServersDesktop() {
       )
   }, [serviceHub])
   const setErrorMessage = useAppState((state) => state.setErrorMessage)
+
+  /** In-flight activation and last failure per server; see mcpConnectionState. */
+  const [runtime, setRuntime] = useState<Record<string, McpServerRuntime>>({})
+  /**
+   * Each server's security fingerprint, as the backend computes it from the
+   * saved or running definition. Auto-approve is bound to it, so an edit that
+   * changes what runs shows as needing renewed approval.
+   */
+  const [fingerprints, setFingerprints] = useState<Record<string, string>>({})
+  const refreshFingerprints = useCallback(async () => {
+    const next = await resolveServerFingerprints()
+    setFingerprints(next)
+    return next
+  }, [])
+  const serversSignature = JSON.stringify(mcpServers)
+  useEffect(() => {
+    void refreshFingerprints()
+  }, [serversSignature, refreshFingerprints])
+
+  /**
+   * A server name is going away (deleted or renamed): its approvals and stored
+   * sign-in go with it, so nothing is inherited by a server added under that
+   * name later. The renderer part always happens; a backend failure is shown.
+   */
+  const forgetServerGrants = (
+    name: string,
+    reason: 'deleted' | 'renamed',
+    newName?: string
+  ) => {
+    void Promise.resolve()
+      .then(() => forgetServer(name, reason))
+      .then(() => {
+        if (reason === 'renamed') {
+          toast(
+            t('mcp-servers:renameServer.approvalsReset', {
+              oldName: name,
+              newName,
+            }),
+            { description: t('mcp-servers:renameServer.approvalsResetDesc') }
+          )
+        }
+      })
+      .catch((error) => {
+        toast.error(
+          reason === 'renamed'
+            ? t('mcp-servers:renameServer.forgetFailed', { oldName: name })
+            : t('mcp-servers:deleteServer.forgetFailed', { serverName: name }),
+          { description: errorText(error) }
+        )
+      })
+  }
+
+  const handleAutoApprove = async (serverKey: string, checked: boolean) => {
+    try {
+      if (checked) {
+        // Read fresh rather than from the cached map: a definition saved a
+        // moment ago must be the one approved, not the one before it.
+        const fingerprint = (await refreshFingerprints())[serverKey]
+        if (!fingerprint) {
+          throw new Error(`'${serverKey}' is not saved yet`)
+        }
+        await approveServerTrust(serverKey, fingerprint)
+      } else {
+        await revokeServerTrust(serverKey)
+      }
+    } catch (error) {
+      toast.error(
+        t('mcp-servers:approval.autoApproveFailed', { serverName: serverKey }),
+        { description: errorText(error) }
+      )
+    }
+  }
+  /**
+   * Tool names per connected server: `undefined` while loading, `null` when
+   * the list could not be read.
+   */
+  const [serverTools, setServerTools] = useState<
+    Record<string, string[] | null>
+  >({})
+  const serviceHubRef = useRef(serviceHub)
+  serviceHubRef.current = serviceHub
+  // Server names may contain spaces ("Jan Browser MCP"), so join on NUL.
+  const connectedKey = connectedServers.join('\u0000')
+
+  useEffect(() => {
+    let cancelled = false
+    const names = connectedKey ? connectedKey.split('\u0000') : []
+    void Promise.all(
+      names.map(async (name) => {
+        try {
+          const tools = await serviceHubRef.current
+            .mcp()
+            .getToolsForServers([name])
+          return [
+            name,
+            tools
+              .filter((tool) => !tool.server || tool.server === name)
+              .map((tool) => tool.name),
+          ] as const
+        } catch (error) {
+          console.debug(`Could not list tools for MCP server ${name}:`, error)
+          return [name, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setServerTools(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [connectedKey])
 
   const updateToolCallTimeout = (rawValue: string) => {
     if (rawValue === '') {
@@ -253,6 +384,9 @@ function MCPServersDesktop() {
         toggleServer(editingKey, false)
         renameServer(editingKey, name, config)
         toggleServer(name, true)
+        // Grants never follow a rename: the approval was for the old name,
+        // and its OAuth tokens may belong to an endpoint the edit changed.
+        forgetServerGrants(editingKey, 'renamed', name)
         // Restart servers to update tool references with new server name
         syncServersAndRestart()
       } else {
@@ -268,6 +402,21 @@ function MCPServersDesktop() {
       toggleServer(name, true)
       syncServers()
     }
+  }
+
+  /** Whether an approval this server had no longer matches its configuration. */
+  const approvalChanged = (serverKey: string) => {
+    const current = fingerprints[serverKey]
+    const staleGrant =
+      !!current &&
+      (approvedServers ?? []).some(
+        (grant) => grant.name === serverKey && grant.fingerprint !== current
+      )
+    const invalidated = (invalidatedServers ?? []).some(
+      (entry) =>
+        entry.name === serverKey && entry.reason === 'configuration-changed'
+    )
+    return staleGrant || invalidated
   }
 
   const handleEdit = (serverKey: string) => {
@@ -289,6 +438,8 @@ function MCPServersDesktop() {
       }
 
       deleteServer(serverToDelete)
+      forgetServerGrants(serverToDelete, 'deleted')
+      setRuntime((prev) => ({ ...prev, [serverToDelete]: runtimeCleared() }))
       toast.success(
         t('mcp-servers:deleteServer.success', { serverName: serverToDelete })
       )
@@ -362,6 +513,13 @@ function MCPServersDesktop() {
         deleteServer(serverKey)
       })
 
+      // A name that is not in the edited JSON is gone, whatever else was
+      // added: forget its grants. A name that stays keeps them, and any edit
+      // to what it runs is caught by its fingerprint instead.
+      Object.keys(mcpServers)
+        .filter((serverKey) => !(serverKey in nextServers))
+        .forEach((serverKey) => forgetServerGrants(serverKey, 'deleted'))
+
       // Add all servers from the JSON
       Object.entries(nextServers).forEach(([key, config]) => {
         addServer(key, config)
@@ -381,7 +539,12 @@ function MCPServersDesktop() {
     try {
       await authorize(serverKey)
       toast.success(t('mcp-servers:auth.authorized', { serverName: serverKey }))
-      if (mcpServers[serverKey]?.active) {
+      // A start that failed for want of sign-in reverted the flag, but the
+      // user was trying to turn it on: finish what they started.
+      if (
+        mcpServers[serverKey]?.active ||
+        runtime[serverKey]?.failure?.needsAuth
+      ) {
         toggleServer(serverKey, true)
       }
     } catch (error) {
@@ -429,36 +592,49 @@ function MCPServersDesktop() {
       setLoadingServers((prev) => ({ ...prev, [serverKey]: true }))
       const config = getServerConfig(serverKey)
       if (active && config) {
+        const transport = transportOf(config)
+        setRuntime((prev) => ({ ...prev, [serverKey]: beginActivation() }))
+        let started = false
         serviceHub
           .mcp()
-          .activateMCPServer(serverKey, {
-            ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-            active,
-          })
-          .then(() => {
-            // Save single server
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active,
-            })
+          .activateMCPServer(serverKey, { ...config, active })
+          .then(async () => {
+            started = true
+            // `activate` resolving means the first start attempt returned.
+            // Only the backend's connected list says the server is up, so
+            // nothing is saved or announced until it appears there.
+            const connected = await serviceHub.mcp().getConnectedServers()
+            setConnectedServers(connected)
+            if (!connected.includes(serverKey)) {
+              throw new Error(t('mcp-servers:connection.notListedAfterStart'))
+            }
+            editServer(serverKey, { ...config, active })
             syncServers()
-            toast.success(
-              active
-                ? t('mcp-servers:serverStatusActive', { serverKey })
-                : t('mcp-servers:serverStatusInactive', { serverKey })
-            )
-            refreshConnectedServers()
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationConfirmed(),
+            }))
+            toast.success(t('mcp-servers:serverStatusActive', { serverKey }))
           })
           .catch((error) => {
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active: false,
-            })
+            if (started) {
+              // It started but was not confirmed: stop it, so nothing keeps
+              // running behind a switch that shows off.
+              void Promise.resolve()
+                .then(() => serviceHub.mcp().deactivateMCPServer(serverKey))
+                .catch(() => {})
+                .finally(refreshConnectedServers)
+            }
+            editServer(serverKey, { ...config, active: false })
+            const failure = classifyActivationFailure(error, transport)
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationFailed(failure),
+            }))
             // A server that only needs signing in is not a misconfigured one:
             // the backend tags it, so point at the fix rather than telling the
             // user to check parameters they got right.
-            const authDetail = needsAuthDetail(error)
-            if (authDetail !== null) {
+            if (failure.needsAuth) {
               void refreshAuth()
               setErrorMessage({
                 message: t('mcp-servers:auth.needsAuth', {
@@ -469,7 +645,7 @@ function MCPServersDesktop() {
               return
             }
             setErrorMessage({
-              message: normalizeAppError(error),
+              message: failure.message,
               subtitle: t('mcp-servers:checkParams'),
             })
           })
@@ -477,6 +653,7 @@ function MCPServersDesktop() {
             setLoadingServers((prev) => ({ ...prev, [serverKey]: false }))
           })
       } else {
+        setRuntime((prev) => ({ ...prev, [serverKey]: runtimeCleared() }))
         editServer(serverKey, {
           ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
           active,
@@ -721,16 +898,31 @@ function MCPServersDesktop() {
                   {t('mcp-servers:noServers')}
                 </div>
               ) : (
-                Object.entries(mcpServers).map(([key, config], index) => (
+                Object.entries(mcpServers).map(([key, config], index) => {
+                  const authStatus = authStatuses[key]
+                  const profile = deriveMcpServerProfile(config, authStatus)
+                  const snapshot = deriveConnectionState({
+                    installed: true,
+                    enabled: !!config.active,
+                    connected: connectedServers.includes(key),
+                    runtime: runtime[key],
+                    authStatus,
+                    transport: profile.transport,
+                  })
+                  const toolNames = snapshot.connected
+                    ? serverTools[key]
+                    : undefined
+                  return (
                   <Card key={`${key}-${index}`}>
                     <CardItem
                       align="start"
                       title={
                         <div className="flex items-center gap-x-2">
                           <div
+                            aria-hidden="true"
                             className={twMerge(
                               'size-2 rounded-full',
-                              connectedServers.includes(key)
+                              snapshot.state === 'connected'
                                 ? 'bg-green-600 dark:bg-green-600'
                                 : 'bg-secondary'
                             )}
@@ -820,17 +1012,46 @@ function MCPServersDesktop() {
                               />
                             </>
                           )}
+                          <McpServerStatus
+                            serverName={key}
+                            snapshot={snapshot}
+                            toolNames={toolNames}
+                            canAuthorize={!!authStatus?.canAuthenticate}
+                            onRetry={() => toggleServer(key, true)}
+                            onAuthorize={() => void handleAuthorize(key)}
+                          />
+                          <McpServerDetails
+                            profile={profile}
+                            toolNames={toolNames}
+                            authStateLabel={
+                              authStatus
+                                ? t(`mcp-servers:auth.state.${authStatus.state}`)
+                                : undefined
+                            }
+                          />
                           <div className="flex items-center gap-2 mt-2">
                             <Switch
-                              checked={isServerApproved(key)}
+                              checked={isServerApproved(key, fingerprints[key])}
+                              aria-label={t('mcp-servers:autoApproveServer')}
+                              aria-describedby={
+                                approvalChanged(key)
+                                  ? `mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+                                  : undefined
+                              }
                               onCheckedChange={(checked) =>
-                                checked
-                                  ? approveServer(key)
-                                  : revokeServer(key)
+                                void handleAutoApprove(key, checked)
                               }
                             />
                             <span>{t('mcp-servers:autoApproveServer')}</span>
                           </div>
+                          {approvalChanged(key) && (
+                            <p
+                              id={`mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                              className="mt-1 text-xs text-destructive"
+                            >
+                              {t('mcp-servers:approval.changedSinceApproval')}
+                            </p>
+                          )}
                         </div>
                       }
                       actions={
@@ -888,8 +1109,19 @@ function MCPServersDesktop() {
                           </Button>
                           <div className="ml-2">
                             <Switch
-                              checked={config.active}
-                              loading={!!loadingServers[key]}
+                              checked={snapshot.switchOn}
+                              loading={
+                                !!loadingServers[key] ||
+                                snapshot.state === 'connecting'
+                              }
+                              aria-label={t('mcp-servers:connection.toggleLabel', {
+                                serverName: key,
+                              })}
+                              aria-describedby={
+                                snapshot.failure
+                                  ? mcpServerErrorId(key)
+                                  : undefined
+                              }
                               onCheckedChange={(checked) =>
                                 toggleServer(key, checked)
                               }
@@ -899,7 +1131,8 @@ function MCPServersDesktop() {
                       }
                     />
                   </Card>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -913,6 +1146,7 @@ function MCPServersDesktop() {
         editingKey={editingKey}
         initialData={currentConfig}
         onSave={handleSaveServer}
+        existingNames={Object.keys(mcpServers)}
       />
 
       <McpServerLogDialog

@@ -60,6 +60,33 @@ export interface MCPAuthStatus {
   detail: string | null
 }
 
+/** Why a server's grants are being forgotten. */
+export type MCPForgetReason = 'deleted' | 'renamed'
+
+/** One backend trust grant, as reported by `mcp_trust_report`. */
+export interface MCPTrustEntry {
+  name: string
+  /** The definition the user approved. */
+  fingerprint: string
+  grantedAt: string
+  /** The definition configured now; `null` when the server is gone. */
+  currentFingerprint: string | null
+}
+
+/** A backend approval that no longer applies. */
+export interface MCPInvalidatedEntry {
+  name: string
+  /** `schema-v1` (approved before fingerprints existed) or `configuration-changed`. */
+  reason: string
+  at: string
+  fingerprint: string | null
+}
+
+export interface MCPTrustReport {
+  trusted: MCPTrustEntry[]
+  invalidated: MCPInvalidatedEntry[]
+}
+
 export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
   restartMCPServers(): Promise<void>
@@ -90,15 +117,38 @@ export interface MCPService {
   }): Promise<MCPToolCallResult>
   /** Servers the user has trusted, as the backend records them. AH-041. */
   trustedServers(): Promise<string[]>
-  /** Record that the user trusts a server in every conversation. AH-041. */
-  trustServer(serverName: string): Promise<void>
+  /**
+   * Standing grants with the fingerprint each server has now, and approvals
+   * that stopped applying and need renewing.
+   */
+  trustReport(): Promise<MCPTrustReport>
+  /**
+   * The security fingerprint of every configured or running server, by name.
+   * Computed by the backend (`mcp_identity`), never in the renderer.
+   */
+  serverFingerprints(): Promise<Record<string, string>>
+  /**
+   * Record that the user trusts a server in every conversation. AH-041.
+   * `fingerprint` is the definition the user was shown; the backend refuses
+   * when the server's configuration no longer matches it.
+   */
+  trustServer(serverName: string, fingerprint?: string): Promise<void>
   /** Withdraw trust from a server. AH-041. */
   revokeServer(serverName: string): Promise<void>
   /**
-   * Authorize one call to one tool on one server, returning the ticket the
-   * backend will consume. AH-041.
+   * Forget a server that is being deleted or renamed: backend trust (audited
+   * with the reason) and stored OAuth tokens.
    */
-  allowOnceForServer(serverName: string, toolName: string): Promise<string>
+  forgetServer(serverName: string, reason: MCPForgetReason): Promise<void>
+  /**
+   * Authorize one call to one tool on one server, returning the ticket the
+   * backend will consume. AH-041. Bound to `fingerprint` when given.
+   */
+  allowOnceForServer(
+    serverName: string,
+    toolName: string,
+    fingerprint?: string
+  ): Promise<string>
   callToolWithCancellation(args: {
     toolName: string
     serverName?: string

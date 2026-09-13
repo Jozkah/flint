@@ -65,4 +65,7 @@ permissions = [
     "allow-project-init-accept",
     "allow-bash-jobs-list",
     "allow-bash-job-kill",
+    # Read-only view of the permission decision log for Settings > Permissions.
+    # Bounded, and redacted before it is returned.
+    "allow-permission-audit-recent",
 ]

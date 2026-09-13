@@ -147,7 +147,11 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_skill_enabled_get,
         core::agent::commands::agent_skill_enabled_set,
         core::agent::commands::agent_plugin_list,
+        core::agent::commands::agent_plugin_details,
+        core::agent::commands::agent_plugin_sources,
         core::agent::commands::agent_plugin_install,
+        core::agent::commands::agent_plugin_install_cancel,
+        core::agent::commands::agent_plugin_set_enabled,
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_git_branch,
@@ -186,8 +190,11 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::get_server_summaries,
         core::mcp::commands::call_tool,
         core::mcp::commands::mcp_trusted_servers,
+        core::mcp::commands::mcp_trust_report,
+        core::mcp::commands::mcp_server_fingerprints,
         core::mcp::commands::mcp_trust_server,
         core::mcp::commands::mcp_revoke_server,
+        core::mcp::commands::mcp_forget_server,
         core::mcp::commands::mcp_allow_once,
         core::mcp::commands::cancel_tool_call,
         core::mcp::commands::restart_mcp_servers,
@@ -434,6 +441,19 @@ pub fn build_app() -> tauri::App {
                     "background jobs: {} left by an earlier process were settled",
                     settled.len()
                 );
+            }
+            // Request snapshots and usage counts are bounded rather than kept
+            // forever. Off the main thread: a large log is a rewrite, and the
+            // window should not wait for it.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                std::thread::spawn(move || {
+                    if let Err(e) =
+                        tauri_plugin_agent_tools::retention::compact_default(&data_folder)
+                    {
+                        log::warn!("request log compaction failed: {e}");
+                    }
+                });
             }
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()

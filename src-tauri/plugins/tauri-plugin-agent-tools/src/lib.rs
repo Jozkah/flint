@@ -25,6 +25,8 @@ pub mod mailbox;
 pub mod org_policy;
 pub mod identity;
 pub mod job_record;
+/// The security identity (fingerprint) of an MCP server definition.
+pub mod mcp_identity;
 /// Which MCP servers the user has agreed to run tools from (AH-041).
 pub mod mcp_trust;
 /// A proposed change held as reviewable hunks (AH-146/147/148).
@@ -41,6 +43,7 @@ pub mod project_init;
 pub mod proposal;
 pub mod readiness;
 pub mod resource;
+pub mod retention;
 pub mod review_flags;
 pub mod secrets;
 pub mod skills;
@@ -134,7 +137,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::project_survey,
             commands::project_init_accept,
             commands::bash_jobs_list,
-            commands::bash_job_kill
+            commands::bash_job_kill,
+            commands::permission_audit_recent
         ])
         .build()
 }

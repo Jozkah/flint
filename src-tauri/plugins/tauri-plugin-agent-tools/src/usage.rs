@@ -77,6 +77,8 @@ pub fn append(data_folder: &Path, usage: &PayloadUsage) {
 }
 
 fn try_append(data_folder: &Path, usage: &PayloadUsage) -> Result<(), String> {
+    // Shared with compaction and deletion; see `crate::retention`.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

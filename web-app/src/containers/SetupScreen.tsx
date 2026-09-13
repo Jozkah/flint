@@ -21,6 +21,9 @@ import {
 } from '@/hooks/useSetupChecklist'
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useThreads } from '@/hooks/useThreads'
+import { destinationFor, INTENTS } from '@/lib/onboarding'
 
 /**
  * One page of the setup flow. The last page is not a readiness probe, so it
@@ -45,14 +48,38 @@ function SetupScreen() {
   const llamaProvider = getProviderByName('llamacpp')
   /** Whichever local model the user picks on the last page, if any. */
   const [chosenModel, setChosenModel] = useState<string | null>(null)
+  const guide = useOnboardingGuide()
+  const threadCount = useThreads((s) => Object.keys(s.threads ?? {}).length)
+  // Where setup was left last time. Read once: resuming is a starting point,
+  // not something to keep re-deciding while the user moves through the pages.
+  const [resumedFrom] = useState(
+    () => useOnboardingGuide.getState().setupPage
+  )
+  const resumed = resumedFrom !== 'welcome'
+
   // Nothing is probed until the user starts: the first page is an invitation,
-  // not a progress report.
-  const [hasStarted, setHasStarted] = useState(false)
-  const beginSetup = useCallback(() => {
+  // not a progress report. A setup the user already started resumes.
+  const [hasStarted, setHasStarted] = useState(resumed)
+  const startEngine = useCallback(() => {
     setHasStarted(true)
+    guide.setSetupPage('setup')
     // Not awaited: the readiness checks are what report its progress.
     void serviceHub.models().startEngineSetup()
-  }, [serviceHub])
+  }, [serviceHub, guide])
+  const beginSetup = useCallback(() => {
+    guide.start(guide.intent, threadCount)
+    startEngine()
+  }, [guide, threadCount, startEngine])
+  /** Setup still runs; only the guide on the home screen is left out. */
+  const skipGuide = useCallback(() => {
+    guide.skip()
+    startEngine()
+  }, [guide, startEngine])
+  useEffect(() => {
+    if (resumed) void serviceHub.models().startEngineSetup()
+    // Once, for a resumed setup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const { stages, warnings, gpu, isRunning, rerun } = useSetupChecklist({
     enabled: hasStarted,
   })
@@ -63,7 +90,9 @@ function SetupScreen() {
   // Use ref to track if we've already navigated
   const hasNavigatedRef = useRef(false)
   /** Pages the user has passed despite a warning; they must not reappear. */
-  const [acknowledged, setAcknowledged] = useState<string[]>([])
+  const [acknowledged, setAcknowledged] = useState<string[]>(() =>
+    resumedFrom === 'finish' ? ['setup'] : []
+  )
 
   /**
    * Finish onboarding.
@@ -78,6 +107,7 @@ function SetupScreen() {
       hasNavigatedRef.current = true
 
       localStorage.setItem(localStorageKey.setupCompleted, 'true')
+      useOnboardingGuide.getState().setSetupPage('welcome')
 
       if (!modelId) {
         navigate({ to: route.home, replace: true, search: {} })
@@ -89,6 +119,13 @@ function SetupScreen() {
         localStorageKey.lastUsedModel,
         JSON.stringify({ provider: 'llamacpp', model: modelId })
       )
+      // Project work continues in Cowork with the chosen model selected; the
+      // other intentions start from a new chat.
+      const intent = useOnboardingGuide.getState().intent
+      if (destinationFor(intent) === route.cowork) {
+        navigate({ to: route.cowork, replace: true })
+        return
+      }
       navigate({
         to: route.home,
         replace: true,
@@ -208,9 +245,13 @@ function SetupScreen() {
   const currentPage = currentIndex === -1 ? undefined : pages[currentIndex]
 
 
-  const acknowledge = useCallback((id: string) => {
-    setAcknowledged((prev) => (prev.includes(id) ? prev : [...prev, id]))
-  }, [])
+  const acknowledge = useCallback(
+    (id: string) => {
+      setAcknowledged((prev) => (prev.includes(id) ? prev : [...prev, id]))
+      if (id === 'setup') guide.setSetupPage('finish')
+    },
+    [guide]
+  )
 
 
   const isWarning = currentPage?.status === 'warning'
@@ -240,9 +281,12 @@ function SetupScreen() {
       <div className="flex flex-col h-svh w-full">
         <HeaderPage />
 
-        <div className="flex h-[calc(100%-60px)] items-center justify-center px-6">
+        {/* Scrolls rather than clips: on a short window the intentions and the
+            finish page are taller than the space, and centring with
+            items-center pushed the primary actions out of reach. */}
+        <div className="flex h-[calc(100%-60px)] min-h-0 overflow-y-auto px-6 py-6">
           <div
-            className="w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
+            className="m-auto w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
             data-testid="setup-wizard"
             data-page={currentPage?.id ?? 'done'}
           >
@@ -310,10 +354,96 @@ function SetupScreen() {
                   )}
                 </div>
 
+                {resumed && currentPage.id !== 'welcome' && (
+                  <p
+                    className="mt-3 text-xs text-muted-foreground"
+                    data-testid="setup-resumed"
+                  >
+                    {t('onboarding:resumeNotice')}
+                  </p>
+                )}
+
                 {currentPage.id === 'welcome' && (
-                  <Button className="mt-6 w-full" onClick={beginSetup}>
-                    {t('setup:startSetup')}
-                  </Button>
+                  <>
+                    <fieldset className="mt-6" data-testid="setup-intents">
+                      <legend className="text-sm font-medium">
+                        {t('onboarding:intentHeading')}
+                      </legend>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {t('onboarding:intentHint')}
+                      </p>
+                      <div
+                        role="radiogroup"
+                        aria-label={t('onboarding:intentHeading')}
+                        className="mt-2 flex flex-col gap-1.5"
+                        onKeyDown={(event) => {
+                          // Arrow keys move and select within the group, as a
+                          // native radio group does; Tab still leaves it.
+                          const step =
+                            event.key === 'ArrowDown' || event.key === 'ArrowRight'
+                              ? 1
+                              : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+                                ? -1
+                                : 0
+                          if (!step) return
+                          event.preventDefault()
+                          // With nothing chosen yet, the first arrow picks the
+                          // first (down) or last (up) option.
+                          const current = guide.intent
+                            ? INTENTS.indexOf(guide.intent)
+                            : step > 0
+                              ? -1
+                              : 0
+                          const next =
+                            INTENTS[(current + step + INTENTS.length) % INTENTS.length]
+                          guide.setIntent(next)
+                          ;(
+                            event.currentTarget.querySelector(
+                              `[data-testid="setup-intent-${next}"]`
+                            ) as HTMLElement | null
+                          )?.focus()
+                        }}
+                      >
+                        {INTENTS.map((intent) => {
+                          const isChosen = guide.intent === intent
+                          return (
+                            <button
+                              key={intent}
+                              type="button"
+                              role="radio"
+                              aria-checked={isChosen}
+                              data-testid={`setup-intent-${intent}`}
+                              onClick={() => guide.setIntent(intent)}
+                              className={cn(
+                                'rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                isChosen
+                                  ? 'border-primary/40 bg-primary/10'
+                                  : 'hover:bg-secondary/40'
+                              )}
+                            >
+                              <span className="block font-medium">
+                                {t(`onboarding:intent.${intent}.title`)}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {t(`onboarding:intent.${intent}.description`)}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </fieldset>
+                    <Button className="mt-6 w-full" onClick={beginSetup}>
+                      {t('setup:startSetup')}
+                    </Button>
+                    <Button
+                      variant="link"
+                      className="mt-1 w-full"
+                      data-testid="setup-skip-guide"
+                      onClick={skipGuide}
+                    >
+                      {t('onboarding:skipGuide')}
+                    </Button>
+                  </>
                 )}
 
                 {/* The one fact a user cannot infer from a progress line:
@@ -440,6 +570,34 @@ function SetupScreen() {
 
                 {currentPage.id === 'finish' && (
                   <div className="mt-5" data-testid="setup-finish">
+                    <section
+                      aria-labelledby="setup-processing-heading"
+                      className="mb-4 rounded-xl border bg-muted/40 px-3.5 py-3 text-xs"
+                      data-testid="setup-processing"
+                    >
+                      <h2
+                        id="setup-processing-heading"
+                        className="text-sm font-medium text-foreground"
+                      >
+                        {t('onboarding:processingHeading')}
+                      </h2>
+                      <p className="mt-1 text-muted-foreground">
+                        {t('onboarding:processingLocal')}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {t('onboarding:processingRemote')}
+                      </p>
+                      <Button
+                        variant="link"
+                        className="h-auto px-0 text-xs"
+                        data-testid="setup-connect-remote"
+                        onClick={() =>
+                          navigate({ to: route.settings.model_providers })
+                        }
+                      >
+                        {t('onboarding:connectRemote')}
+                      </Button>
+                    </section>
                     {localModels.length > 0 ? (
                       <div
                         role="radiogroup"

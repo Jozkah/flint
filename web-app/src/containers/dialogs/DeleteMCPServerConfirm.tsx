@@ -32,6 +32,13 @@ export default function DeleteMCPServerConfirm({
             {t('mcp-servers:deleteServer.description', { serverName })}
           </DialogDescription>
         </DialogHeader>
+        {/* Deleting revokes every approval for the name (renderer and backend
+            trust) and clears its OAuth tokens, so a server added later under
+            the same name inherits nothing. Audit history is kept. */}
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>{t('mcp-servers:deleteServer.approvalsRemoved')}</p>
+          <p>{t('mcp-servers:deleteServer.disableInstead')}</p>
+        </div>
         <DialogFooter>
           <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}

@@ -143,10 +143,30 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   /**
+   * Project memory follows the folder attached to the run.
+   *
+   * Not `workspacePath`: that is this session's own sandbox, and keying
+   * project memory to it would make every "project" memory belong to one
+   * session. With no folder attached there is no project, and only chat and
+   * across-chat memories apply.
+   */
+  protected override syncMemoryBinding(): void {
+    this.setMemoryBinding({
+      projectRoot: this.config.readOnlyFolder ?? undefined,
+      temporary: false,
+    })
+  }
+
+  /**
    * Cowork's own prompt replaces the chat one wholesale — the agent-tools and
    * web-search blurbs are written for a chat that occasionally reaches for a
    * tool, not for a run whose whole purpose is tool use. The attached-files
    * instruction is kept: a pasted document is otherwise never explained.
+   *
+   * Remembered facts go after the policy and project instructions, never
+   * above them: the block labels itself as facts rather than instructions,
+   * and its position says the same thing -- nothing remembered outranks the
+   * run's rules or JAN.md.
    */
   protected override buildSystemPrompt(messages: UIMessage[]): string {
     const base = buildCoworkSystemPrompt({

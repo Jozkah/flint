@@ -19,6 +19,7 @@ import {
   IconFolderCode,
   IconPaperclip,
   IconPuzzle,
+  IconShieldCheck,
 } from '@tabler/icons-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,17 @@ import {
   type SettingsPage,
   type SettingsPageId,
 } from '@/lib/settingsSearch'
+
+/**
+ * Core pages most people never need to open. They stay one click away in an
+ * "Advanced" group; nothing about how they behave changes by being grouped.
+ */
+const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
+  'local-api-server',
+  'https-proxy',
+  'hardware',
+  'agent-tools',
+])
 
 const SettingsMenu = () => {
   const { t } = useTranslation()
@@ -203,6 +215,7 @@ const SettingsMenu = () => {
     'https-proxy': IconWorld,
     'web-search': IconWorldSearch,
     memory: IconBrain,
+    permissions: IconShieldCheck,
     'agent-tools': IconFolderCode,
     shortcuts: IconCommand,
     hardware: IconCpu,
@@ -223,12 +236,39 @@ const SettingsMenu = () => {
     title: page.titleKey,
     icon: pageIcons[page.id as SettingsPageId],
   })
-  const coreSettings = SETTINGS_PAGES.filter((p) => p.group === 'core').map(
-    withIcon
-  )
+  const coreSettings = SETTINGS_PAGES.filter(
+    (p) => p.group === 'core' && !ADVANCED_PAGE_IDS.has(p.id)
+  ).map(withIcon)
+  const advancedSettings = SETTINGS_PAGES.filter(
+    (p) => p.group === 'core' && ADVANCED_PAGE_IDS.has(p.id)
+  ).map(withIcon)
   const integrationSettings = SETTINGS_PAGES.filter(
     (p) => p.group === 'integrations'
   ).map(withIcon)
+
+  // Advanced pages are grouped, never removed: the group opens by itself when
+  // one of them is the current page, and search still finds every setting.
+  const onAdvancedPage = advancedSettings.some((page) =>
+    matches.some((match) => match.pathname === page.route)
+  )
+  const [advancedOpen, setAdvancedOpen] = useState(onAdvancedPage)
+  useEffect(() => {
+    if (onAdvancedPage) setAdvancedOpen(true)
+  }, [onAdvancedPage])
+
+  const renderPageLink = (menu: ReturnType<typeof withIcon>) => (
+    <div key={menu.title}>
+      <Link
+        to={menu.route}
+        className="block px-2 gap-1.5 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary py-1 w-full rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
+      >
+        <div className="flex items-center gap-2">
+          <menu.icon size={18} className="shrink-0 text-muted-foreground" />
+          <span>{t(menu.title)}</span>
+        </div>
+      </Link>
+    </div>
+  )
 
   return (
     <>
@@ -236,19 +276,33 @@ const SettingsMenu = () => {
         <SettingsSearch />
         <div className="flex flex-col gap-1 w-full px-1.5 font-medium">
           {/* Core settings */}
-          {coreSettings.map((menu) => (
-            <div key={menu.title}>
-              <Link
-                to={menu.route}
-                className="block px-2 gap-1.5 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary py-1 w-full rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
-              >
-                <div className="flex items-center gap-2">
-                  <menu.icon size={18} className="shrink-0 text-muted-foreground" />
-                  <span>{t(menu.title)}</span>
-                </div>
-              </Link>
-            </div>
-          ))}
+          {coreSettings.map(renderPageLink)}
+
+          {/* Advanced core settings, grouped rather than hidden */}
+          <div className="mt-1">
+            <button
+              type="button"
+              aria-expanded={advancedOpen}
+              aria-controls="settings-advanced-pages"
+              onClick={() => setAdvancedOpen((open) => !open)}
+              className="flex w-full items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {advancedOpen ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )}
+              {t('navigation:advancedSettings')}
+            </button>
+            {advancedOpen && (
+              <div id="settings-advanced-pages" className="mt-1 flex flex-col gap-1">
+                <p className="px-2 text-[11px] font-normal text-muted-foreground">
+                  {t('navigation:advancedSettingsHint')}
+                </p>
+                {advancedSettings.map(renderPageLink)}
+              </div>
+            )}
+          </div>
 
           {/* Integrations section */}
           <div className="mt-4">

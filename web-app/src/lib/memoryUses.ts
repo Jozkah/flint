@@ -1,6 +1,7 @@
 import { memoryRecordUses } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import type { TurnMemory } from '@/types/coworkSession'
+import { memoryLocation } from '@/lib/memoryBinding'
 
 /**
  * Record, on each memory a request carried, that this turn used it (AH-083).
@@ -13,6 +14,11 @@ import type { TurnMemory } from '@/types/coworkSession'
 export async function recordMemoryUses(opts: {
   sessionId: string | undefined
   projectRoot?: string
+  /**
+   * The Jan workspace project a folderless chat is in, so a project memory it
+   * carried is visible to the backend when the use is recorded.
+   */
+  janProjectId?: string
   memory: TurnMemory | undefined
   turnId?: string
   snapshotId?: string
@@ -24,7 +30,11 @@ export async function recordMemoryUses(opts: {
     if (!dataFolder) return
     const reasons = new Map((opts.memory?.recall ?? []).map((r) => [r.id, r.reason]))
     await memoryRecordUses(
-      { dataFolder, projectRoot: opts.projectRoot, sessionId: opts.sessionId },
+      memoryLocation(
+        dataFolder,
+        { projectRoot: opts.projectRoot, janProjectId: opts.janProjectId },
+        opts.sessionId
+      ),
       ids.map((id) => ({ id, reason: reasons.get(id) })),
       { turnId: opts.turnId, snapshotId: opts.snapshotId }
     )

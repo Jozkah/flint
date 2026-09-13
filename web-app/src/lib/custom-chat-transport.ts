@@ -35,8 +35,23 @@ import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
   type MemoryInstruction,
-  type MemoryRetrieved,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { TEMPORARY_CHAT_ID } from '@/constants/chat'
+import {
+  chatMemoryBinding,
+  memoryLocation,
+  type MemoryBinding,
+  type ScopedMemoryRetrieved,
+} from '@/lib/memoryBinding'
+import {
+  assembleAttribution,
+  attributionMetadata,
+  bindUsageAtFinish,
+  newRequestId,
+  requestAttributions,
+  type RequestAttribution,
+} from '@/lib/requestAttribution'
+import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
@@ -836,24 +851,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * would attribute the wrong memories to it. Cleared and refetched at the top
    * of each `sendMessages`.
    */
-  protected memorySelection: MemoryRetrieved | null = null
+  protected memorySelection: ScopedMemoryRetrieved | null = null
   /**
-   * The project this chat belongs to, when it belongs to one.
+   * The project folder this conversation belongs to, when it has one.
    *
-   * Undefined for an ordinary chat, which is the common case and means project
-   * memories simply do not apply -- not that they are hidden. Cowork sets it,
-   * which is what makes a project memory cross that project's chats and no
-   * others.
+   * Set by Cowork from the folder attached to the run (see
+   * `CoworkChatTransport.syncMemoryBinding`). An ordinary chat has no folder;
+   * its project, if any, is `janProjectId`.
    */
   protected projectRoot?: string
+  /**
+   * The Jan sidebar project an ordinary chat belongs to. Read from the thread
+   * at send time, so moving the chat or deleting the project changes the next
+   * request's scope and never the one already running.
+   */
+  protected janProjectId?: string
+  protected janProjectName?: string
   /**
    * A temporary chat neither reads nor records memory.
    *
    * Carried here rather than inferred from the absence of a thread id: an
    * unsaved chat and a deliberately temporary one are different things, and
-   * only the second should be denied its own memory.
+   * only the second should be denied its own memory. The temporary chat's own
+   * id binds it from construction, so no caller has to remember to.
    */
   protected temporary = false
+  /** The binding the last retrieval actually used, for the context panel. */
+  private memoryBindingUsed: MemoryBinding | null = null
+  /** The request id of the last `sendMessages`, for attribution lookups. */
+  private lastRequestId: string | null = null
   private continueFromContent: ContinuationContent | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
@@ -867,6 +893,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   constructor(systemMessage?: string, threadId?: string) {
     this.systemMessage = systemMessage
     this.threadId = threadId
+    this.temporary = threadId === TEMPORARY_CHAT_ID
     this.serviceHub = useServiceStore.getState().serviceHub
     // Tools will be loaded when updateRagToolsAvailability is called with model capabilities
   }
@@ -899,10 +926,54 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   setMemoryBinding(binding: {
     projectRoot?: string
+    janProjectId?: string
+    janProjectName?: string
     temporary?: boolean
   }): void {
     this.projectRoot = binding.projectRoot
-    this.temporary = binding.temporary ?? false
+    this.janProjectId = binding.janProjectId
+    this.janProjectName = binding.janProjectName
+    // Defaulting to "not temporary" would let a caller that forgot the flag
+    // read memory into the temporary chat.
+    this.temporary = binding.temporary ?? this.threadId === TEMPORARY_CHAT_ID
+  }
+
+  /**
+   * Re-read the binding from its source just before retrieval.
+   *
+   * For chat that is the thread: its project can change between requests
+   * (moved in the sidebar, project deleted) while this transport lives on in
+   * the session store. A thread not in the store keeps the last explicit
+   * binding.
+   */
+  protected syncMemoryBinding(): void {
+    if (!this.threadId) return
+    const thread = useThreads.getState().threads[this.threadId]
+    if (!thread && this.threadId !== TEMPORARY_CHAT_ID) return
+    this.setMemoryBinding(chatMemoryBinding(this.threadId, thread))
+  }
+
+  /** The binding the next request will use. */
+  currentMemoryBinding(): MemoryBinding {
+    this.syncMemoryBinding()
+    return {
+      projectRoot: this.projectRoot,
+      janProjectId: this.janProjectId,
+      janProjectName: this.janProjectName,
+      temporary: this.temporary,
+    }
+  }
+
+  /** The binding the last request used; `null` before the first request. */
+  memoryBindingForLastRequest(): MemoryBinding | null {
+    return this.memoryBindingUsed
+  }
+
+  /** What the last request from this transport was assembled from. */
+  lastAttribution(): RequestAttribution | undefined {
+    return this.lastRequestId
+      ? requestAttributions.get(this.lastRequestId)
+      : undefined
   }
 
   updateSystemMessage(systemMessage: string | undefined) {
@@ -1015,6 +1086,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   protected async refreshMemory(): Promise<void> {
     this.memorySelection = null
+    this.syncMemoryBinding()
+    const binding: MemoryBinding = {
+      projectRoot: this.projectRoot,
+      janProjectId: this.janProjectId,
+      janProjectName: this.janProjectName,
+      temporary: this.temporary,
+    }
+    this.memoryBindingUsed = binding
     let dataFolder: string | null = null
     try {
       // Guarded rather than optional-chained one level: a hub without an app
@@ -1026,14 +1105,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
     if (!dataFolder) return
     try {
-      this.memorySelection = await memoryRetrieve(
+      this.memorySelection = (await memoryRetrieve(
+        memoryLocation(dataFolder, binding, this.threadId),
         {
-          dataFolder,
-          projectRoot: this.projectRoot,
-          sessionId: this.threadId,
-        },
-        { temporary: this.temporary, instructions: this.memoryInstructions() }
-      )
+          temporary: binding.temporary,
+          instructions: this.memoryInstructions(),
+        }
+      )) as ScopedMemoryRetrieved
     } catch (e) {
       console.warn('[memory] retrieval failed:', errorText(e))
     }
@@ -1049,7 +1127,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   }
 
   /** The memories the last dispatch carried, for the snapshot and accounting. */
-  memoryUsed(): MemoryRetrieved | null {
+  memoryUsed(): ScopedMemoryRetrieved | null {
     return this.memorySelection
   }
 
@@ -1313,12 +1391,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     provider: ProviderObject,
     parameters: Record<string, unknown>,
     providerId: string,
-    abortSignal: AbortSignal | undefined
+    abortSignal: AbortSignal | undefined,
+    runId?: string
   ): Promise<LanguageModel> {
     // Which conversation this model's requests belong to, so the transport can
     // record what was sent and the timeline can find that record again. Set on
     // the model instance, which is per conversation -- a shared "current
-    // dispatch" would race between two sessions streaming at once.
+    // dispatch" would race between two sessions streaming at once. The run is
+    // this request, so its snapshot can be attributed to it and not merely to
+    // "the thread's latest dispatch".
     const modelPromise = ModelFactory.createModel(modelId, provider, {
       ...parameters,
       ...(this.threadId
@@ -1326,6 +1407,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             [DISPATCH_PARAM_KEY]: {
               session: this.threadId,
               provider: providerId,
+              ...(runId ? { run: runId } : {}),
             },
           }
         : {}),
@@ -1382,6 +1464,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     const myGeneration = ++this.streamGeneration
+    const requestId = newRequestId()
     useAppState.getState().setCurrentStreamThreadId(threadId)
     // Capture the effective provider name early so the Anthropic serial
     // tool-use repair later uses the same value that was used to create the
@@ -1481,7 +1564,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         updatedProvider ?? provider,
         mergedParams,
         providerId,
-        options.abortSignal
+        options.abortSignal,
+        requestId
       )
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
@@ -1696,6 +1780,28 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       )
     )
 
+    // The assembled request, by reference: ids and hashes of what went in,
+    // never the content. Dispatch events move it to sent / response-started /
+    // failed, and it rides on the assistant message's metadata.
+    requestAttributions.begin(
+      threadId,
+      assembleAttribution({
+        requestId,
+        memory: this.memorySelection,
+        binding: this.memoryBindingUsed ?? {
+          projectRoot: this.projectRoot,
+          janProjectId: this.janProjectId,
+          janProjectName: this.janProjectName,
+          temporary: this.temporary,
+        },
+        tools: shouldEnableTools ? Object.keys(this.tools) : [],
+        messages: effectiveMessages,
+        provider: providerId,
+        model: modelId,
+      })
+    )
+    this.lastRequestId = requestId
+
     let streamStartTime: number | undefined
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
@@ -1774,6 +1880,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             recordChatUsage(threadId, invocation, usageEventPayload(reported))
           }
         }
+
+        // The attribution travels with the message from its first part, and
+        // again once the provider has answered (the snapshot reference is
+        // known by then), so a reply persisted at any point carries it.
+        if (part.type === 'start' || part.type === 'start-step') {
+          return attributionMetadata(requestAttributions, requestId, part.type)
+        }
+
         if (part.type === 'finish-step') {
           tokensPerSecond =
             (part.providerMetadata?.providerMetadata
@@ -1816,6 +1930,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             void recordMemoryUses({
               sessionId: this.threadId,
               projectRoot: this.projectRoot,
+              janProjectId: this.janProjectId,
               memory: {
                 injectedIds: this.memorySelection.injectedIds,
                 conflictIds: this.memorySelection.conflictIds,
@@ -1826,7 +1941,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 : {}),
             })
           }
+
+          // Bind the provider's own count to the dispatch it counted, the
+          // way Cowork does. Only with an invocation: an unbound count is
+          // what the usage record exists to refuse.
+          bindUsageAtFinish({
+            registry: requestAttributions,
+            requestId,
+            session: threadId,
+            model: modelId,
+            usage: usage
+              ? {
+                  inputTokens: usage.inputTokens,
+                  outputTokens,
+                  totalTokens: usage.totalTokens,
+                }
+              : undefined,
+            record: recordPayloadUsage,
+          })
+
           return {
+            ...attributionMetadata(requestAttributions, requestId, 'finish'),
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
             usage,
@@ -1875,6 +2010,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return undefined
       },
       onError: (error) => {
+        requestAttributions.fail(requestId)
         // A superseded request (e.g. after Reload) must not clear loading/stream
         // state the newer request already owns.
         if (this.streamGeneration === myGeneration) {

@@ -25,7 +25,7 @@ describe('a prompt whose run stops is withdrawn', () => {
 
   it('removes the shown prompt and answers it no', async () => {
     const run = new AbortController()
-    const answer = store().requestApproval('c1', 'write', 's1', undefined, undefined, undefined, run.signal)
+    const answer = store().requestApproval('c1', 'write', 's1', undefined, { signal: run.signal })
     const requestId = store().pending['c1'].requestId
     run.abort('cancelled')
     await expect(answer).resolves.toBe(false)
@@ -38,7 +38,7 @@ describe('a prompt whose run stops is withdrawn', () => {
   it('removes a queued prompt without touching the one shown for another run', async () => {
     const mine = new AbortController()
     const shown = store().requestApproval('c1', 'write', 'child-a')
-    const queued = store().requestApproval('c1', 'write', 'child-b', undefined, undefined, undefined, mine.signal)
+    const queued = store().requestApproval('c1', 'write', 'child-b', undefined, { signal: mine.signal })
     expect(store().queued['c1']).toHaveLength(1)
     mine.abort('cancelled')
     await expect(queued).resolves.toBe(false)
@@ -52,7 +52,7 @@ describe('a prompt whose run stops is withdrawn', () => {
     const run = new AbortController()
     run.abort('cancelled')
     await expect(
-      store().requestApproval('c1', 'write', 's1', undefined, undefined, undefined, run.signal)
+      store().requestApproval('c1', 'write', 's1', undefined, { signal: run.signal })
     ).resolves.toBe(false)
     expect(store().pending['c1']).toBeUndefined()
   })

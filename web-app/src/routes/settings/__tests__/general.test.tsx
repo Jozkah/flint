@@ -278,6 +278,7 @@ vi.mock('@/types/events', () => ({
 
 
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
   createFileRoute: (path: string) => (config: any) => ({
     ...config,
     component: config.component,

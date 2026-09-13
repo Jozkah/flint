@@ -1285,6 +1285,26 @@ const SCENARIOS: &[Scenario] = &[
         name: "mcp-web-search-is-approved-as-the-servers-tool",
         run: scenario_mcp_web_search_approval,
     },
+    Scenario {
+        name: "beginner-model-picker-rows-are-keyboard-selectable",
+        run: scenario_picker_rows_keyboard,
+    },
+    Scenario {
+        name: "beginner-always-allow-then-revoke-asks-again",
+        run: scenario_always_allow_then_revoke,
+    },
+    Scenario {
+        name: "beginner-mcp-trust-follows-server-identity",
+        run: scenario_mcp_trust_identity,
+    },
+    Scenario {
+        name: "beginner-guide-card-persists-and-explains-terms",
+        run: scenario_guide_card,
+    },
+    Scenario {
+        name: "beginner-collection-memory-reaches-its-chats-only",
+        run: scenario_collection_memory,
+    },
 ];
 
 /// The real-provider lane: the app against a real OpenAI-compatible server,
@@ -15529,9 +15549,11 @@ fn scenario_mcp_web_search_approval(ctx: &Ctx) -> ScenarioResult {
             "document.querySelector('[data-test-id=\"send-message-button\"]').click();
              return true;",
         )?;
+        // The prompt offers one button per scope the backend supports; the
+        // allow-once scope is always among them.
         let asked = ctx.wait_until(
             "the approval request",
-            "return (document.body.innerText || '').includes('This tool needs your approval before it runs.');",
+            "return !!document.querySelector('button[data-scope=\"allow-once\"]');",
             Duration::from_secs(60),
         );
         if asked.is_err() {
@@ -15547,11 +15569,10 @@ fn scenario_mcp_web_search_approval(ctx: &Ctx) -> ScenarioResult {
             "the MCP server ran web_search before the user approved it"
         );
         let clicked = ctx.eval_bool(
-            "const b = [...document.querySelectorAll('button')]
-               .find(x => (x.textContent || '').trim() === 'Allow Once');
+            "const b = document.querySelector('button[data-scope=\"allow-once\"]');
              if (!b) return false; b.click(); return true;",
         )?;
-        ensure!(clicked, "no Allow Once control on the approval card");
+        ensure!(clicked, "no allow-once control on the approval card");
         let deadline = Instant::now() + Duration::from_secs(60);
         while calls() == before {
             ensure!(
@@ -15581,6 +15602,557 @@ fn scenario_mcp_web_search_approval(ctx: &Ctx) -> ScenarioResult {
     let restored = set_builtin_web_search(ctx, was_on);
     result?;
     restored.map(|_| ())
+}
+
+
+// ---------------------------------------------------------------------------
+// Beginner workflows (docs/BEGINNER_WORKFLOWS_HANDOFF.md)
+// ---------------------------------------------------------------------------
+
+/// Invoke a Tauri command from the page, exactly as the app's own services do.
+fn invoke(ctx: &Ctx, command: &str, args: &Value) -> Result<Value, Failure> {
+    let args = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
+    ctx.eval(&format!(
+        "return await window.__TAURI_INTERNALS__.invoke({command:?}, {args});"
+    ))
+}
+
+fn mcp_trust_file() -> Result<Value, Failure> {
+    let path = data_folder()?.join("mcp-trust.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
+    serde_json::from_str(&text).map_err(|e| Failure(format!("mcp-trust.json: {e}")))
+}
+
+fn trusted_names(trust: &Value) -> Vec<String> {
+    trust
+        .get("trusted")
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|e| e.get("name").and_then(Value::as_str).map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn open_model_picker(ctx: &Ctx) -> ScenarioResult {
+    let open_js = "return [...document.querySelectorAll('input')].some(i =>
+            /search|find|model/i.test(i.getAttribute('placeholder') || ''));";
+    for _ in 0..3 {
+        if ctx.eval_bool(open_js)? {
+            return Ok(());
+        }
+        ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /select a model|smoke-model|smoke-alt/i.test(
+                 (x.getAttribute('aria-label') || '') + ' ' + (x.textContent || '')));
+             if (!b) return false; b.click(); return true;",
+        )?;
+        if ctx
+            .wait_until("the model picker to open", open_js, Duration::from_secs(8))
+            .is_ok()
+        {
+            return Ok(());
+        }
+    }
+    bail!("the model picker never opened")
+}
+
+/// Rows in the model picker are buttons that Enter selects, so choosing a
+/// model does not require a pointer.
+fn scenario_picker_rows_keyboard(ctx: &Ctx) -> ScenarioResult {
+    new_chat(ctx)?;
+    let pick = |model: &str| -> ScenarioResult {
+        open_model_picker(ctx)?;
+        let dispatched = ctx.eval_bool(&format!(
+            "const row = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
+               .find(r => (r.textContent || '').includes({model:?}));
+             if (!row) return false;
+             row.focus();
+             if (document.activeElement !== row) return false;
+             row.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', bubbles: true }}));
+             return true;"
+        ))?;
+        ensure!(dispatched, "no focusable, keyboard-selectable row for {model}");
+        ctx.wait_until(
+            &format!("{model} to be selected by keyboard"),
+            &format!(
+                "const open = [...document.querySelectorAll('input')].some(i =>
+                   /search|find|model/i.test(i.getAttribute('placeholder') || ''));
+                 return !open && [...document.querySelectorAll('button')].some(b =>
+                   (b.textContent || '').trim().startsWith({model:?}));"
+            ),
+            Duration::from_secs(15),
+        )
+    };
+    pick("smoke-alt")?;
+    pick(SMOKE_MODEL)
+}
+
+/// "Always allow" for an MCP server is stored in the backend against the
+/// server's fingerprint; revoking it in Settings > Permissions removes it,
+/// and the next call asks again without running the tool.
+fn scenario_always_allow_then_revoke(ctx: &Ctx) -> ScenarioResult {
+    let log = data_folder()?.join("mcp-web-search-calls.jsonl");
+    let calls = || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    };
+    let send_tool_request = |query: &str| -> ScenarioResult {
+        ctx.script_model(
+            "tools",
+            &[&format!("web_search:{{\"query\":\"{query}\"}}")],
+        )?;
+        new_chat(ctx)?;
+        ctx.type_into("[data-testid=\"chat-input\"]", "search the web for the smoke query")?;
+        ctx.wait_until(
+            "the send control to arm",
+            "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+             return !!b && b.disabled !== true;",
+            Duration::from_secs(60),
+        )?;
+        ctx.eval(
+            "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+             return true;",
+        )?;
+        ctx.wait_until(
+            "the approval request",
+            "return !!document.querySelector('button[data-scope=\"allow-once\"]');",
+            Duration::from_secs(60),
+        )
+    };
+    let was_on = set_builtin_web_search(ctx, false)?;
+    let result = (|| {
+        let before = calls();
+        send_tool_request("smoke always query")?;
+        ensure!(calls() == before, "the tool ran before the user answered");
+        let offered_always = ctx.eval_bool(
+            "return !!document.querySelector('button[data-scope=\"allow-always\"]');",
+        )?;
+        ensure!(offered_always, "an MCP server's tool did not offer 'always allow'");
+        ctx.eval(
+            "document.querySelector('button[data-scope=\"allow-always\"]').click(); return true;",
+        )?;
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while calls() == before {
+            ensure!(Instant::now() < deadline, "the always-allowed call never ran");
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        ctx.wait_until(
+            "the run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(90),
+        )?;
+        let trust = mcp_trust_file()?;
+        let entry = trust
+            .get("trusted")
+            .and_then(Value::as_array)
+            .and_then(|e| {
+                e.iter()
+                    .find(|x| x.get("name").and_then(Value::as_str) == Some(SMOKE_MCP_WEB_SEARCH))
+            })
+            .cloned();
+        let fingerprint = entry
+            .as_ref()
+            .and_then(|e| e.get("fingerprint"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        ensure!(
+            fingerprint.starts_with("sha256:"),
+            "the backend did not record trust bound to a fingerprint: {trust}"
+        );
+
+        ctx.goto("/settings/permissions")?;
+        let label = format!("Revoke {SMOKE_MCP_WEB_SEARCH}");
+        ctx.wait_until(
+            "the server on the Permissions page",
+            &format!("return !!document.querySelector('button[aria-label={label:?}]');"),
+            Duration::from_secs(30),
+        )?;
+        ctx.eval(&format!(
+            "document.querySelector('button[aria-label={label:?}]').click(); return true;"
+        ))?;
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while trusted_names(&mcp_trust_file()?).contains(&SMOKE_MCP_WEB_SEARCH.to_string()) {
+            ensure!(Instant::now() < deadline, "revoking in Settings left the backend trust in place");
+            std::thread::sleep(Duration::from_millis(300));
+        }
+
+        let before_again = calls();
+        send_tool_request("smoke after revoke")?;
+        ensure!(
+            calls() == before_again,
+            "after revoking, the server's tool ran without asking"
+        );
+        let denied = ctx.eval_bool(
+            "const group = document.querySelector('[role=\"group\"][aria-label]');
+             const deny = group && [...group.querySelectorAll('button')]
+               .find(b => (b.textContent || '').trim() === 'Deny');
+             if (!deny) return false; deny.click(); return true;",
+        )?;
+        ensure!(denied, "the renewed approval request offered no Deny");
+        ctx.wait_until(
+            "the run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(90),
+        )?;
+        ensure!(calls() == before_again, "a denied call reached the MCP server");
+        Ok(())
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    let restored = set_builtin_web_search(ctx, was_on);
+    result?;
+    restored.map(|_| ())
+}
+
+/// Trust belongs to a server's identity, not its name: changing what runs
+/// stops the grant from applying, deleting the server revokes it, and a
+/// server re-added under the same name inherits nothing.
+fn scenario_mcp_trust_identity(ctx: &Ctx) -> ScenarioResult {
+    let name = SMOKE_MCP_USER_SERVER;
+    let fingerprints = invoke(ctx, "mcp_server_fingerprints", &serde_json::json!({}))?;
+    let fingerprint = fingerprints
+        .get(name)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    ensure!(
+        fingerprint.starts_with("sha256:"),
+        "no fingerprint for {name}: {fingerprints}"
+    );
+    invoke(
+        ctx,
+        "mcp_trust_server",
+        &serde_json::json!({ "serverName": name, "fingerprint": fingerprint }),
+    )?;
+    ensure!(
+        trusted_names(&mcp_trust_file()?).contains(&name.to_string()),
+        "trusting {name} was not recorded"
+    );
+
+    let original = invoke(ctx, "get_mcp_configs", &serde_json::json!({}))?;
+    let original = original.as_str().unwrap_or_default().to_string();
+    let mut changed: Value =
+        serde_json::from_str(&original).map_err(|e| Failure(format!("mcp config: {e}")))?;
+    changed["mcpServers"][name]["args"] = serde_json::json!(["--a-different-program-now"]);
+    invoke(
+        ctx,
+        "save_mcp_configs",
+        &serde_json::json!({ "configs": changed.to_string() }),
+    )?;
+
+    let report = invoke(ctx, "mcp_trust_report", &serde_json::json!({}))?;
+    let current = report
+        .get("trusted")
+        .and_then(Value::as_array)
+        .and_then(|e| e.iter().find(|x| x.get("name").and_then(Value::as_str) == Some(name)))
+        .and_then(|e| e.get("currentFingerprint"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    ensure!(
+        current.as_deref() != Some(fingerprint.as_str()),
+        "changing the server's arguments left its fingerprint unchanged: {report}"
+    );
+    let ticket = invoke(
+        ctx,
+        "mcp_allow_once",
+        &serde_json::json!({ "serverName": name, "toolName": "anything", "fingerprint": fingerprint }),
+    );
+    ensure!(
+        ticket.is_err(),
+        "a one-time approval was issued for a configuration the user never saw"
+    );
+
+    // Put the original definition back and trust it, then delete it in the UI.
+    invoke(ctx, "save_mcp_configs", &serde_json::json!({ "configs": original }))?;
+    let fingerprints = invoke(ctx, "mcp_server_fingerprints", &serde_json::json!({}))?;
+    let fingerprint = fingerprints.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
+    invoke(
+        ctx,
+        "mcp_trust_server",
+        &serde_json::json!({ "serverName": name, "fingerprint": fingerprint }),
+    )?;
+
+    ctx.goto("/settings/general")?;
+    ctx.goto("/settings/mcp-servers")?;
+    ctx.wait_until(
+        "the server row",
+        &format!("return (document.body.innerText || '').includes({name:?});"),
+        Duration::from_secs(30),
+    )?;
+    let clicked = ctx.eval_bool(&format!(
+        "const buttons = [...document.querySelectorAll('button[title=\"Delete MCP Server\"]')];
+         const b = buttons.find(btn => {{
+           let el = btn;
+           for (let i = 0; i < 8 && el; i++) {{
+             el = el.parentElement;
+             if (el && (el.textContent || '').includes({name:?})
+                 && el.querySelectorAll('button[title=\"Delete MCP Server\"]').length === 1) return true;
+           }}
+           return false;
+         }});
+         if (!b) return false; b.click(); return true;"
+    ))?;
+    ensure!(clicked, "no delete control on the {name} row");
+    ctx.wait_until(
+        "the delete confirmation",
+        "const d = document.querySelector('[role=\"dialog\"]');
+         return !!d && (d.textContent || '').includes('starts with no approvals');",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "const d = document.querySelector('[role=\"dialog\"]');
+         const b = [...d.querySelectorAll('button')].find(x => (x.textContent || '').trim() === 'Delete');
+         b.click(); return true;",
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while trusted_names(&mcp_trust_file()?).contains(&name.to_string()) {
+        ensure!(Instant::now() < deadline, "deleting {name} in Settings left its trust in place");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+
+    // Re-add the same name with the same definition: nothing is inherited.
+    invoke(ctx, "save_mcp_configs", &serde_json::json!({ "configs": original }))?;
+    let names = invoke(ctx, "mcp_trusted_servers", &serde_json::json!({}))?;
+    ensure!(
+        !names.to_string().contains(name),
+        "a server re-added under the same name inherited trust: {names}"
+    );
+    Ok(())
+}
+
+/// The home guide card is driven by persisted state, its self-confirmed steps
+/// persist, its term hint opens and closes without a pointer-only gesture, and
+/// hiding it is remembered.
+fn scenario_guide_card(ctx: &Ctx) -> ScenarioResult {
+    let state = serde_json::json!({
+        "state": {
+            "status": "in-progress",
+            "intent": "documents",
+            "threadCountAtStart": 0,
+            "confirmedSteps": [],
+            "setupPage": "welcome"
+        },
+        "version": 0
+    });
+    invoke(
+        ctx,
+        "settings_set",
+        &serde_json::json!({ "key": "onboarding-guide", "value": state.to_string() }),
+    )?;
+    ctx.eval_detached("window.location.replace('/')")?;
+    std::thread::sleep(Duration::from_secs(2));
+    ctx.settle();
+    ctx.wait_until(
+        "the guide card after a reload",
+        "return !!document.querySelector('[data-testid=\"getting-started\"]');",
+        Duration::from_secs(60),
+    )?;
+    let confirmed = ctx.eval_bool(
+        "const card = document.querySelector('[data-testid=\"getting-started\"]');
+         const b = [...card.querySelectorAll('button')].find(x => (x.textContent || '').includes(\"I've done this\"));
+         if (!b) return false; b.click(); return true;",
+    )?;
+    ensure!(confirmed, "the guide offered no self-confirmation for a user step");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let saved = invoke(ctx, "settings_get", &serde_json::json!({ "key": "onboarding-guide" }))?;
+        if saved.to_string().contains("add-material") {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the confirmed step was not persisted: {saved}");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+
+    let opened = ctx.eval_bool(
+        "const b = document.querySelector('button[aria-label=\"What does \\\"Context\\\" mean?\"]');
+         if (!b) return false; b.focus(); b.click(); return true;",
+    )?;
+    ensure!(opened, "the 'Context' term had no explanation control");
+    ctx.wait_until(
+        "the definition",
+        "return (document.body.innerText || '').includes('The information included in the conversation');",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval(
+        "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the definition to close with Escape",
+        "return !(document.body.innerText || '').includes('The information included in the conversation');",
+        Duration::from_secs(10),
+    )?;
+
+    ctx.eval(
+        "const card = document.querySelector('[data-testid=\"getting-started\"]');
+         [...card.querySelectorAll('button')].find(x => (x.textContent || '').trim() === 'Hide guide').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the guide to hide",
+        "return !document.querySelector('[data-testid=\"getting-started\"]');",
+        Duration::from_secs(10),
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let saved = invoke(ctx, "settings_get", &serde_json::json!({ "key": "onboarding-guide" }))?;
+        if saved.to_string().contains("skipped") {
+            return Ok(());
+        }
+        ensure!(Instant::now() < deadline, "hiding the guide was not persisted: {saved}");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}
+
+
+/// Create a collection through the sidebar dialog and return its id.
+fn create_collection(ctx: &Ctx, name: &str) -> Result<String, Failure> {
+    ctx.goto("/")?;
+    let opened = ctx.eval_bool(
+        "const b = [...document.querySelectorAll('a,button,[role=\"button\"],li,div')]
+           .filter(e => e.children.length <= 4 && (e.textContent || '').trim().startsWith('New collection'))
+           .pop();
+         if (!b) return false; (b.closest('a,button,[role=\"button\"],li') || b).click(); return true;",
+    )?;
+    ensure!(opened, "no 'New collection' entry in the sidebar");
+    ctx.wait_until(
+        "the collection dialog",
+        "return !!document.querySelector('input[placeholder=\"Enter collection name...\"]');",
+        Duration::from_secs(15),
+    )?;
+    ctx.type_into("input[placeholder=\"Enter collection name...\"]", name)?;
+    ctx.eval(
+        "const d = document.querySelector('[role=\"dialog\"]');
+         [...d.querySelectorAll('button')].find(b => (b.textContent || '').trim() === 'Create').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the collection page",
+        "return window.location.pathname.startsWith('/project/');",
+        Duration::from_secs(20),
+    )?;
+    let id = ctx.eval_string("return decodeURIComponent(window.location.pathname.split('/')[2] || '');")?;
+    ensure!(!id.is_empty(), "the new collection had no id in its route");
+    Ok(id)
+}
+
+/// Commit a project-scope memory for a collection the way Settings > Memory does.
+fn commit_collection_memory(ctx: &Ctx, collection: &str, content: &str) -> ScenarioResult {
+    let data = data_folder()?.to_string_lossy().to_string();
+    let location = serde_json::json!({ "dataFolder": data, "janProjectId": collection });
+    let proposal = invoke(
+        ctx,
+        "plugin:agent-tools|memory_record_propose",
+        &serde_json::json!({ "location": location, "scope": "project", "content": content }),
+    )?;
+    let hash = proposal
+        .get("contentHash")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Failure(format!("proposal had no contentHash: {proposal}")))?
+        .to_string();
+    invoke(
+        ctx,
+        "plugin:agent-tools|memory_record_commit",
+        &serde_json::json!({
+            "location": location, "scope": "project", "content": content, "expectedHash": hash
+        }),
+    )?;
+    Ok(())
+}
+
+fn send_in_current_page(ctx: &Ctx, text: &str) -> ScenarioResult {
+    ctx.wait_until(
+        "the composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;",
+    )?;
+    ctx.wait_until(
+        "the reply",
+        &format!("return (document.body.innerText || '').includes({DEFAULT_REPLY:?});"),
+        Duration::from_secs(90),
+    )
+}
+
+/// A memory saved for one collection is sent with that collection's chats,
+/// never with another collection's or with an ordinary chat, and the context
+/// panel verifies it against the recorded request.
+fn scenario_collection_memory(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    script_reply(ctx, DEFAULT_REPLY)?;
+    let alpha = create_collection(ctx, "Smoke Alpha")?;
+    let marker = "SMOKE-ALPHA-DEPLOYS-WITH-MAKE-SHIP";
+    commit_collection_memory(ctx, &alpha, &format!("The team deploys with {marker}."))?;
+
+    // A chat in Alpha carries the memory.
+    ctx.goto(&format!("/project/{alpha}"))?;
+    send_in_current_page(ctx, "how do we deploy?")?;
+    let prompt = last_system_prompt(ctx)?;
+    ensure!(
+        prompt.contains(marker),
+        "the collection's memory was not sent with its chat. system prompt: {prompt:.600}"
+    );
+
+    // The panel verifies it from the sanitized request, not from intent.
+    ctx.wait_until(
+        "the chat route",
+        "return window.location.pathname.startsWith('/threads/');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"what-jan-is-using\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the memory section",
+        "return !!document.querySelector('[data-testid=\"context-section-memory\"]');",
+        Duration::from_secs(20),
+    )?;
+    ctx.wait_until(
+        "the memory to be verified in the request",
+        &format!(
+            "const s = document.querySelector('[data-testid=\"context-section-memory\"]');
+             const t = (s && s.innerText) || '';
+             return t.includes({marker:?}) && t.includes('Verified in the last request');"
+        ),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "document.activeElement && document.activeElement.dispatchEvent(
+           new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         return true;",
+    )?;
+
+    // Another collection's chat, and an ordinary chat, do not.
+    let beta = create_collection(ctx, "Smoke Beta")?;
+    ctx.goto(&format!("/project/{beta}"))?;
+    send_in_current_page(ctx, "how do we deploy?")?;
+    let prompt = last_system_prompt(ctx)?;
+    ensure!(
+        !prompt.contains(marker),
+        "another collection's memory leaked into this chat: {prompt:.600}"
+    );
+    new_chat(ctx)?;
+    send_in_current_page(ctx, "how do we deploy?")?;
+    let prompt = last_system_prompt(ctx)?;
+    ensure!(
+        !prompt.contains(marker),
+        "a collection memory leaked into an ordinary chat: {prompt:.600}"
+    );
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

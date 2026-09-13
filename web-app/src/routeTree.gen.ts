@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
+import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
@@ -72,6 +73,11 @@ const SettingsWebSearchRoute = SettingsWebSearchRouteImport.update({
 const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
   id: '/settings/shortcuts',
   path: '/settings/shortcuts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsPermissionsRoute = SettingsPermissionsRouteImport.update({
+  id: '/settings/permissions',
+  path: '/settings/permissions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsMemoryRoute = SettingsMemoryRouteImport.update({
@@ -176,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -202,6 +209,7 @@ export interface FileRoutesByTo {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -229,6 +237,7 @@ export interface FileRoutesById {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/permissions'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -283,6 +293,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/permissions'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -309,6 +320,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/permissions'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -336,6 +348,7 @@ export interface RootRouteChildren {
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
+  SettingsPermissionsRoute: typeof SettingsPermissionsRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
@@ -399,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/shortcuts'
       fullPath: '/settings/shortcuts'
       preLoaderRoute: typeof SettingsShortcutsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/permissions': {
+      id: '/settings/permissions'
+      path: '/settings/permissions'
+      fullPath: '/settings/permissions'
+      preLoaderRoute: typeof SettingsPermissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/memory': {
@@ -536,6 +556,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,
+  SettingsPermissionsRoute: SettingsPermissionsRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,

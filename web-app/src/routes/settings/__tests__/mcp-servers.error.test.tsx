@@ -6,6 +6,7 @@ import { useAppState } from '@/hooks/useAppState'
 const activateMCPServer = vi.fn()
 const deactivateMCPServer = vi.fn()
 const getConnectedServers = vi.fn().mockResolvedValue([])
+const getToolsForServers = vi.fn().mockResolvedValue([])
 const updateSettings = vi.fn()
 
 vi.mock('@/containers/SettingsMenu', () => ({
@@ -28,15 +29,18 @@ vi.mock('@/containers/Card', () => ({
   CardItem: ({
     title,
     description,
+    descriptionOutside,
     actions,
   }: {
     title?: React.ReactNode
     description?: React.ReactNode
+    descriptionOutside?: React.ReactNode
     actions?: React.ReactNode
   }) => (
     <div data-testid="card-item">
       <div>{title}</div>
       <div>{description}</div>
+      <div>{descriptionOutside}</div>
       <div>{actions}</div>
     </div>
   ),
@@ -93,15 +97,19 @@ vi.mock('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }))
 
-vi.mock('@/hooks/useServiceHub', () => ({
-  useServiceHub: () => ({
+vi.mock('@/hooks/useServiceHub', () => {
+  // One stable hub, like the real hook: a new object per render would re-run
+  // every effect that depends on it and consume queued mock responses.
+  const hub = {
     mcp: () => ({
       activateMCPServer,
       deactivateMCPServer,
       getConnectedServers,
+      getToolsForServers,
     }),
-  }),
-}))
+  }
+  return { useServiceHub: () => hub, getServiceHub: () => hub }
+})
 
 vi.mock('@/hooks/useToolApproval', () => ({
   useToolApproval: () => ({
@@ -241,6 +249,132 @@ describe('MCP servers route error handling', () => {
     await waitFor(() => {
       expect(useAppState.getState().errorMessage?.message).toBe('wrapped startup failed')
     })
+  })
+})
+
+// Connection state on the row. Mock-backed: activate/getConnectedServers are
+// vi.fn()s, no real MCP server is started.
+describe('MCP server connection state on the row', () => {
+  const serverToggle = () => {
+    const toggles = screen.getAllByRole('button', { name: 'toggle' })
+    return toggles[toggles.length - 1]
+  }
+  const status = () => screen.getByTestId('mcp-status-NotesMCP')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAppState.setState({ errorMessage: undefined })
+    getConnectedServers.mockResolvedValue([])
+    getToolsForServers.mockResolvedValue([])
+    deactivateMCPServer.mockResolvedValue(undefined)
+  })
+
+  it('reverts the switch and shows the failure inline with a next step', async () => {
+    activateMCPServer.mockRejectedValueOnce(new Error('spawn npx ENOENT'))
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    await act(async () => {
+      fireEvent.click(serverToggle())
+    })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('spawn npx ENOENT')
+    expect(alert).toHaveTextContent('mcp-servers:connection.nextStep.checkCommand')
+    expect(status()).toHaveTextContent('mcp-servers:connection.state.failed')
+    expect(serverToggle()).toHaveAttribute('aria-pressed', 'false')
+    const { toast } = await import('sonner')
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('shows connecting until the re-query lists the server, then connected', async () => {
+    let resolveConnected: (names: string[]) => void = () => {}
+    activateMCPServer.mockResolvedValueOnce(undefined)
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    expect(status()).toHaveTextContent('mcp-servers:connection.state.disabled')
+
+    getConnectedServers.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveConnected = resolve
+        })
+    )
+    getToolsForServers.mockResolvedValue([
+      { name: 'search_notes', server: 'NotesMCP' },
+    ])
+
+    await act(async () => {
+      fireEvent.click(serverToggle())
+    })
+
+    // Activation has resolved but the backend has not confirmed yet.
+    expect(activateMCPServer).toHaveBeenCalledTimes(1)
+    expect(status()).toHaveTextContent('mcp-servers:connection.state.connecting')
+    expect(serverToggle()).toHaveAttribute('aria-pressed', 'true')
+    const { toast } = await import('sonner')
+    expect(toast.success).not.toHaveBeenCalled()
+
+    getConnectedServers.mockResolvedValue(['NotesMCP'])
+    await act(async () => {
+      resolveConnected(['NotesMCP'])
+    })
+
+    await waitFor(() =>
+      expect(status()).toHaveTextContent('mcp-servers:connection.state.connected')
+    )
+    expect(toast.success).toHaveBeenCalledWith(
+      'mcp-servers:serverStatusActive:NotesMCP'
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByText('mcp-servers:connection.toolsAvailable')
+      ).toBeInTheDocument()
+    )
+    expect(getToolsForServers).toHaveBeenCalledWith(['NotesMCP'])
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('treats a start that never appears as connected as a failure and stops it', async () => {
+    activateMCPServer.mockResolvedValueOnce(undefined)
+    getConnectedServers.mockResolvedValue([])
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+
+    await act(async () => {
+      fireEvent.click(serverToggle())
+    })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('mcp-servers:connection.notListedAfterStart')
+    expect(status()).toHaveTextContent('mcp-servers:connection.state.failed')
+    await waitFor(() =>
+      expect(deactivateMCPServer).toHaveBeenCalledWith('NotesMCP')
+    )
+  })
+
+  it('offers an expandable explanation with where it runs and what delete keeps', async () => {
+    const Component = McpServersRoute.component as React.ComponentType
+    await act(async () => {
+      render(<Component />)
+    })
+    const summary = screen.getByText('mcp-servers:details.toggle')
+    expect(summary.tagName).toBe('SUMMARY')
+    expect(
+      screen.getByText('mcp-servers:details.runsWhereLocalProcess')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('mcp-servers:details.externalDepends')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('mcp-servers:details.effectRemove')
+    ).toBeInTheDocument()
   })
 })
 

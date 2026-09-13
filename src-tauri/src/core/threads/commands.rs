@@ -132,6 +132,15 @@ pub async fn delete_thread<R: Runtime>(
     if thread_dir.exists() {
         let _ = fs::remove_dir_all(thread_dir);
     }
+    // The sanitized copies of what this conversation sent, and the provider's
+    // counts for them, go with it. Best effort, like the directory removal
+    // above: a log that cannot be rewritten right now must not stop the thread
+    // being deleted, and startup compaction still bounds what is left.
+    if let Err(e) =
+        tauri_plugin_agent_tools::retention::delete_session(&data_folder, &thread_id)
+    {
+        log::warn!("could not remove request records for a deleted thread: {e}");
+    }
     Ok(())
 }
 

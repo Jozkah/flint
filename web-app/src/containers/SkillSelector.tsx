@@ -56,7 +56,13 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-1">
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-          {t('common:skillsInContext')}
+          <div>{t('common:skillsInContext')}</div>
+          <div>
+            {t('connections:skills.summary', {
+              enabled: effective.size,
+              installed: allNames.length,
+            })}
+          </div>
         </div>
         <div className="max-h-64 overflow-y-auto">
           {skills.map((s) => (
@@ -75,10 +81,16 @@ export default function SkillSelector({ folder }: { folder: string | null }) {
               <Switch
                 checked={effective.has(s.name)}
                 onCheckedChange={() => toggle(s.name)}
+                aria-label={s.name}
               />
             </label>
           ))}
         </div>
+        {/* Enabling here only changes what the agent is offered; it grants no
+            tool access (skill tools are always-allowed workspace tools). */}
+        <p className="border-t px-2 py-1.5 text-xs text-muted-foreground">
+          {t('connections:skills.toolAccess')}
+        </p>
       </PopoverContent>
     </Popover>
   )

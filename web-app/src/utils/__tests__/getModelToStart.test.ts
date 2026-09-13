@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { getModelToStart, getLastUsedModel } from '../getModelToStart'
 import { localStorageKey } from '@/constants/localStorage'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
 
 const LS_KEY = localStorageKey.lastUsedModel
 
@@ -126,5 +127,32 @@ describe('getModelToStart', () => {
     expect(
       getModelToStart({ getProviderByName, selectedModel: null, selectedProvider: null })
     ).toBeNull()
+  })
+})
+
+describe('getModelToStart with a preferred default', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useModelEvidence.setState({ preferredModel: null })
+  })
+
+  it('starts the preferred model over the last-used one', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ provider: 'llamacpp', model: 'a' }))
+    useModelEvidence.setState({ preferredModel: { provider: 'llamacpp', model: 'b' } })
+    const llamacpp = mkProvider('llamacpp', ['a', 'b'])
+    const result = getModelToStart({
+      getProviderByName: (n: string) => (n === 'llamacpp' ? llamacpp : undefined),
+    })
+    expect(result?.model).toBe('b')
+  })
+
+  it('falls back to the last-used model when the preferred one is gone', () => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ provider: 'llamacpp', model: 'a' }))
+    useModelEvidence.setState({ preferredModel: { provider: 'llamacpp', model: 'deleted' } })
+    const llamacpp = mkProvider('llamacpp', ['a'])
+    const result = getModelToStart({
+      getProviderByName: (n: string) => (n === 'llamacpp' ? llamacpp : undefined),
+    })
+    expect(result?.model).toBe('a')
   })
 })

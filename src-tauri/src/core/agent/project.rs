@@ -178,6 +178,50 @@ pub(crate) struct PluginsSection {
     /// Unset disables name-based installs; direct git URLs still work.
     #[serde(default)]
     pub marketplace: Option<String>,
+    /// Installed plugins (by directory name) that stay on disk but contribute
+    /// nothing: their skills, commands and agents are skipped by discovery.
+    /// Absent or empty means every installed plugin is enabled.
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+
+/// The project's `[plugins].disabled` list. A missing or malformed agent.toml
+/// yields an empty list, the same fallback every other discovery path uses.
+pub(crate) fn disabled_plugins(project_root: &Path) -> Vec<String> {
+    load_agent_config(project_root)
+        .map(|c| c.plugins.disabled)
+        .unwrap_or_default()
+}
+
+/// Whether the plugin installed in directory `plugin` is disabled for this
+/// project.
+pub(crate) fn plugin_disabled(project_root: &Path, plugin: &str) -> bool {
+    disabled_plugins(project_root).iter().any(|p| p == plugin)
+}
+
+/// Persist a string array at `[section].key` in the agent.toml at `path`,
+/// format-preserving (comments and unrelated keys kept).
+pub(crate) fn set_string_array_in_agent_toml(
+    path: &Path,
+    section: &str,
+    key: &str,
+    values: &[String],
+) -> Result<(), String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let mut doc = raw
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?;
+
+    let table = doc[section].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+    let mut arr = toml_edit::Array::new();
+    for value in values {
+        arr.push(value.as_str());
+    }
+    table[key] = toml_edit::value(arr);
+
+    std::fs::write(path, doc.to_string())
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
 /// `[provider]` — project-local override of a single provider's config,
@@ -652,21 +696,7 @@ pub(crate) fn set_skills_enabled_in_agent_toml(
     path: &Path,
     enabled: &[String],
 ) -> Result<(), String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    let mut doc = raw
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?;
-
-    let skills = doc["skills"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
-    let mut arr = toml_edit::Array::new();
-    for name in enabled {
-        arr.push(name.as_str());
-    }
-    skills["enabled"] = toml_edit::value(arr);
-
-    std::fs::write(path, doc.to_string())
-        .map_err(|e| format!("Failed to write {}: {e}", path.display()))
+    set_string_array_in_agent_toml(path, "skills", "enabled", enabled)
 }
 
 #[cfg(test)]

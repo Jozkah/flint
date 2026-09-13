@@ -511,6 +511,9 @@ pub fn append(data_folder: &Path, snapshot: &PromptSnapshot) {
 }
 
 fn try_append(data_folder: &Path, snapshot: &PromptSnapshot) -> Result<(), String> {
+    // Shared with compaction and deletion, so a record appended while the log
+    // is being rewritten is not lost between the read and the rename.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

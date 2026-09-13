@@ -53,7 +53,8 @@ const positive = (value: unknown): number | null =>
  *
  * Never rejects and never throws: a run must not fail because its accounting
  * line could not be written, and a caller should not have to guard it. Outside
- * Tauri there is nowhere to write and this is a no-op.
+ * Tauri there is nowhere to write and this is a no-op. Resolves `true` only
+ * when the backend accepted the record.
  */
 export async function recordPayloadUsage(input: {
   session: string
@@ -61,11 +62,11 @@ export async function recordPayloadUsage(input: {
   snapshot: PromptSnapshotRef | null
   model?: string
   usage: ProviderUsage
-}): Promise<void> {
+}): Promise<boolean> {
   const invocation = input.snapshot?.invocation ?? ''
   // Without an invocation there is nothing to bind the count to, and an
   // unbound count is exactly what this record exists to stop.
-  if (!invocation) return
+  if (!invocation) return false
 
   const cached = positive(input.usage?.cached_prompt_tokens)
   const cacheWrite = positive(input.usage?.cache_write_tokens)
@@ -89,8 +90,10 @@ export async function recordPayloadUsage(input: {
         source: input.usage ? 'provider' : 'estimated',
       } satisfies PayloadUsage,
     })
+    return true
   } catch {
     // Reported by the backend; never fatal here.
+    return false
   }
 }
 

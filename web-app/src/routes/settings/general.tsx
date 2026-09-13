@@ -1,4 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useThreads } from '@/hooks/useThreads'
 import { invoke } from '@tauri-apps/api/core'
 import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
@@ -41,6 +43,7 @@ function General() {
     setHuggingfaceToken,
   } = useGeneralSetting()
   const serviceHub = useServiceHub()
+  const navigate = useNavigate()
 
   const openFileTitle = (): string => {
     if (IS_MACOS) {
@@ -214,6 +217,27 @@ function General() {
                 anchor="settings-general-language"
                 title={t('common:language')}
                 actions={<LanguageSwitcher />}
+              />
+              <CardItem
+                title={t('onboarding:reopenGuide')}
+                description={t('onboarding:reopenGuideDescription')}
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      useOnboardingGuide
+                        .getState()
+                        .start(
+                          useOnboardingGuide.getState().intent,
+                          Object.keys(useThreads.getState().threads).length
+                        )
+                      navigate({ to: route.home })
+                    }}
+                  >
+                    {t('onboarding:reopenGuideAction')}
+                  </Button>
+                }
               />
             </Card>
 

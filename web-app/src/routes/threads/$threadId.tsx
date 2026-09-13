@@ -102,8 +102,13 @@ import {
   resourceOf,
   withToolActivity,
 } from '@/lib/toolActivity'
+import {
+  APPROVAL_CANCELLED_TEXT,
+  APPROVAL_DENIED_TEXT,
+} from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { WhatJanIsUsing } from '@/containers/WhatJanIsUsing'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { redactDeep, redactText } from '@/lib/redactToolOutput'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
@@ -632,21 +637,36 @@ function ThreadDetail() {
                       toolCall.toolCallId,
                       toolName,
                       threadId,
-                      serverForTool(toolName)
+                      serverForTool(toolName),
+                      {
+                        input: toolCall.input,
+                        threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                      }
                     ))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
+              // A prompt withdrawn because the conversation stopped is not a
+              // "no" from the user, and the transcript should not say it was.
+              const refusal = useToolApprovalRequests
+                .getState()
+                .takeRefusal?.(toolCall.toolCallId)
               await recordToolActivity({
                 ...permissionEvent,
                 phase: 'refused',
-                detail: 'denied by the user',
+                detail:
+                  refusal === 'cancelled'
+                    ? 'cancelled before the user answered'
+                    : 'denied by the user',
               })
               await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                errorText: 'Tool execution denied by user',
+                errorText:
+                  refusal === 'cancelled'
+                    ? APPROVAL_CANCELLED_TEXT
+                    : APPROVAL_DENIED_TEXT,
               })
               continue
             }
@@ -702,12 +722,17 @@ function ThreadDetail() {
               // happened here has to be handed over as something it issued.
               // Minted for every call rather than only untrusted ones: trust
               // can be withdrawn between the approval and the call, and an
-              // unused ticket simply expires.
+              // unused ticket simply expires. Bound to the server definition
+              // the approval was for, so a server edited in between is
+              // refused rather than called.
               const server = serverForTool(toolName)
+              const approvedFingerprint = useToolApprovalRequests
+                .getState()
+                .takeApprovedFingerprint?.(toolCall.toolCallId)
               const approvalTicket = server
                 ? await serviceHub
                     .mcp()
-                    .allowOnceForServer(server, toolName)
+                    .allowOnceForServer(server, toolName, approvedFingerprint)
                     .catch(() => undefined)
                 : undefined
               result = await serviceHub.mcp().callTool({
@@ -876,7 +901,11 @@ function ThreadDetail() {
               toolCall.toolCallId,
               toolCall.toolName,
               threadId,
-              serverForTool(toolCall.toolName)
+              serverForTool(toolCall.toolName),
+              {
+                input: toolCall.input,
+                threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+              }
             )
         )
       }
@@ -903,6 +932,8 @@ function ThreadDetail() {
     onResolved: onMemoryProposalResolved,
   } = useMemoryProposals({
     sessionId: threadId,
+    // So a project memory proposed in this chat can be listed and approved.
+    janProjectId: thread?.metadata?.project?.id,
     enabled: threadId !== TEMPORARY_CHAT_ID,
   })
   const navigate = useNavigate()
@@ -1940,7 +1971,10 @@ function ThreadDetail() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2 gap-2">
           <DropdownModelProvider model={threadModel} />
-          <TemporaryChatBanner threadId={threadId} />
+          <div className="flex items-center gap-2">
+            <WhatJanIsUsing threadId={threadId} messages={chatMessages} />
+            <TemporaryChatBanner threadId={threadId} />
+          </div>
         </div>
       </HeaderPage>
       <div className="flex flex-1 flex-col h-full overflow-hidden">

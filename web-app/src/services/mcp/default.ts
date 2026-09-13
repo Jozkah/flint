@@ -8,6 +8,8 @@ import type {
   MCPService,
   MCPConfig,
   MCPAuthStatus,
+  MCPForgetReason,
+  MCPTrustReport,
   ServerSummary,
   ToolCallWithCancellationResult,
 } from './types'
@@ -62,7 +64,17 @@ export class DefaultMCPService implements MCPService {
   // and a base signature taking fewer arguments is not one an override
   // satisfies. They are named in the message rather than discarded, so a
   // failure says which server it was about.
-  async trustServer(serverName: string): Promise<void> {
+  async trustReport(): Promise<MCPTrustReport> {
+    return { trusted: [], invalidated: [] }
+  }
+
+  /** No backend, so no identity: nothing can be approved against it. */
+  async serverFingerprints(): Promise<Record<string, string>> {
+    return {}
+  }
+
+  async trustServer(serverName: string, fingerprint?: string): Promise<void> {
+    void fingerprint
     throw new Error(
       `cannot trust MCP server '${serverName}': that needs the desktop backend`
     )
@@ -74,10 +86,21 @@ export class DefaultMCPService implements MCPService {
     )
   }
 
+  async forgetServer(
+    serverName: string,
+    reason: MCPForgetReason
+  ): Promise<void> {
+    throw new Error(
+      `cannot forget MCP server '${serverName}' (${reason}): that needs the desktop backend`
+    )
+  }
+
   async allowOnceForServer(
     serverName: string,
-    toolName: string
+    toolName: string,
+    fingerprint?: string
   ): Promise<string> {
+    void fingerprint
     throw new Error(
       `cannot authorize '${toolName}' on MCP server '${serverName}': ` +
         'that needs the desktop backend'

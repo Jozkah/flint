@@ -18,7 +18,119 @@ const captured = (sha: string) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  useCoworkCheckpoints.setState({ bySession: {} })
+  useCoworkCheckpoints.setState({ bySession: {}, head: {} })
+})
+
+// Mock-backed: `invoke` is a stub, so these pin down the store's transitions
+// and the commands it sends, not what Git does with them.
+describe('a restore that can be undone', () => {
+  const chain = () => [
+    { ...captured('sha1'), at: 1, access: 'managed-worktree' },
+    { ...captured('sha2'), at: 2, access: 'managed-worktree' },
+  ]
+
+  it('adds a safety point to the chain before restoring', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: { [SESSION]: chain() },
+      head: { [SESSION]: 'sha2' },
+    })
+    invoke.mockResolvedValueOnce({ ...captured('safe'), label: 'Before restore' })
+
+    const safety = await store().captureSafety({
+      sessionId: SESSION,
+      root: TREE,
+      label: 'Before restore',
+      access: 'managed-worktree',
+    })
+
+    expect(safety).toMatchObject({ ok: true, entry: { sha: 'safe', safety: true } })
+    // Chained onto the newest point, and recorded as a whole-tree capture in a
+    // tree Jan owns.
+    expect(invoke).toHaveBeenCalledWith(
+      'agent_checkpoint_capture',
+      expect.objectContaining({ parent: 'sha2', destination: 'managed' })
+    )
+    expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
+      'sha1',
+      'sha2',
+      'safe',
+    ])
+
+    invoke.mockResolvedValueOnce(undefined)
+    expect(await store().restore(SESSION, 'sha1')).toEqual({ ok: true })
+
+    // Restored against the safety point, so files added since the target are
+    // removed and every one of them is still held by that point.
+    expect(invoke).toHaveBeenLastCalledWith(
+      'agent_checkpoint_restore',
+      expect.objectContaining({
+        checkpoint: expect.objectContaining({ sha: 'sha1' }),
+        latest: 'safe',
+        // Named as the safety point, so the backend can check that it holds
+        // everything on disk before overwriting any of it.
+        safety: 'safe',
+      })
+    )
+    // The way back from the restore survives it; the point it skipped over
+    // does not.
+    expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
+      'sha1',
+      'safe',
+    ])
+    expect(store().head[SESSION]).toBe('sha1')
+  })
+
+  it('returns the reason, and changes nothing, when the safety point fails', async () => {
+    useCoworkCheckpoints.setState({ bySession: { [SESSION]: chain() } })
+    invoke.mockRejectedValueOnce(new Error('index.lock exists'))
+
+    const safety = await store().captureSafety({
+      sessionId: SESSION,
+      root: TREE,
+      label: 'Before restore',
+      access: 'managed-worktree',
+    })
+
+    expect(safety).toEqual({ ok: false, reason: 'index.lock exists' })
+    expect(store().bySession[SESSION]).toHaveLength(2)
+  })
+
+  it('compares newer edits with the state the tree was last put in', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: {
+        [SESSION]: [
+          ...chain(),
+          { ...captured('safe'), at: 3, access: 'managed-worktree', safety: true },
+        ],
+      },
+      // Restored to sha1: the safety point holds what the restore replaced,
+      // which is not an edit someone made afterwards.
+      head: { [SESSION]: 'sha1' },
+    })
+    invoke.mockResolvedValueOnce({ kind: 'restore', sha: 'sha2', files: [], changedSinceLatest: [] })
+
+    await store().plan(SESSION, 'sha2')
+
+    expect(invoke).toHaveBeenCalledWith(
+      'agent_checkpoint_plan',
+      expect.objectContaining({ latest: 'sha1' })
+    )
+  })
+
+  it('falls back to the newest point when the head is not in the chain', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: { [SESSION]: chain() },
+      head: { [SESSION]: 'gone' },
+    })
+    invoke.mockResolvedValueOnce({ kind: 'restore', sha: 'sha1' })
+
+    await store().plan(SESSION, 'sha1')
+
+    expect(invoke).toHaveBeenCalledWith(
+      'agent_checkpoint_plan',
+      expect.objectContaining({ latest: 'sha2' })
+    )
+  })
 })
 
 describe('the points a session can go back to', () => {
@@ -106,6 +218,12 @@ describe('the points a session can go back to', () => {
     invoke.mockResolvedValueOnce(undefined)
 
     expect(await store().restore(SESSION, 'sha2')).toEqual({ ok: true })
+    // No safety point was taken, so none is claimed: the backend then checks
+    // the tree against the newest point instead, and refuses if it differs.
+    expect(invoke).toHaveBeenCalledWith(
+      'agent_checkpoint_restore',
+      expect.objectContaining({ latest: 'sha3', safety: null })
+    )
     // Everything after the restored point describes a tree that is gone;
     // keeping it would offer a way "forward" resolving against nothing.
     expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
@@ -134,6 +252,62 @@ describe('the points a session can go back to', () => {
       reason: 'this checkpoint is in your own checkout',
     })
     expect(store().bySession[SESSION]).toHaveLength(2)
+  })
+
+  it('keeps the chain and passes on the reason when the backend refuses unsaved edits', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: {
+        [SESSION]: [
+          { ...captured('sha1'), at: 1, access: 'managed-worktree' },
+          { ...captured('safe'), at: 2, access: 'managed-worktree', safety: true },
+        ],
+      },
+      head: { [SESSION]: 'sha1' },
+    })
+    invoke.mockRejectedValueOnce(
+      'nothing was restored: 1 path changed after checkpoint safe and no checkpoint holds it: notes.md'
+    )
+
+    const done = await store().restore(SESSION, 'sha1')
+
+    expect(done).toMatchObject({ ok: false })
+    expect((done as { reason: string }).reason).toContain('notes.md')
+    expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
+      'sha1',
+      'safe',
+    ])
+    expect(store().head[SESSION]).toBe('sha1')
+  })
+
+  it('reports a restore that failed partway, and keeps the safety point to go back to', async () => {
+    useCoworkCheckpoints.setState({
+      bySession: {
+        [SESSION]: [
+          { ...captured('sha1'), at: 1, access: 'managed-worktree' },
+          { ...captured('sha2'), at: 2, access: 'managed-worktree' },
+          { ...captured('safe'), at: 3, access: 'managed-worktree', safety: true },
+        ],
+      },
+      head: { [SESSION]: 'sha2' },
+    })
+    invoke.mockRejectedValueOnce(
+      'the restore to sha1 did not complete (unable to unlink old a.txt); every file was put back as it was before the restore, from checkpoint safe'
+    )
+
+    const done = await store().restore(SESSION, 'sha1')
+
+    expect(done).toEqual({
+      ok: false,
+      reason: expect.stringContaining('did not complete'),
+    })
+    // Nothing is dropped: the tree may be anywhere between the two states, and
+    // every point — the safety point above all — must stay reachable.
+    expect(store().bySession[SESSION].map((one) => one.sha)).toEqual([
+      'sha1',
+      'sha2',
+      'safe',
+    ])
+    expect(store().head[SESSION]).toBe('sha2')
   })
 
   it('refuses to plan or restore a point it never recorded', async () => {

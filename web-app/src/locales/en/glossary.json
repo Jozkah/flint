@@ -1,0 +1,23 @@
+{
+  "explain": "What does \"{{term}}\" mean?",
+  "worktree": {
+    "term": "Worktree",
+    "definition": "A separate working copy of your project. JAN can make changes there without touching the copy you are working in, and you decide what to keep."
+  },
+  "context": {
+    "term": "Context",
+    "definition": "The information included in the conversation that the model reads before it answers: your messages, attached files, instructions and anything JAN adds."
+  },
+  "mcpServer": {
+    "term": "MCP server",
+    "definition": "A connection that gives JAN additional tools, such as reading a database or calling a service. Some run on this computer; some contact external services."
+  },
+  "checkpoint": {
+    "term": "Checkpoint",
+    "definition": "A saved point that can restore supported state, such as project files JAN changed. It cannot undo messages already sent or anything that happened outside this computer."
+  },
+  "agent": {
+    "term": "Agent",
+    "definition": "An assistant working on a task: it can plan, use tools and take several steps, asking permission where needed."
+  }
+}

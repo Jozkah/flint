@@ -3007,6 +3007,7 @@ mod tests {
                 skills: 2,
                 commands: 1,
                 agents: 3,
+                ..Default::default()
             },
             InstalledPlugin {
                 name: "beta".into(),
@@ -3016,6 +3017,7 @@ mod tests {
                 skills: 0,
                 commands: 0,
                 agents: 0,
+                ..Default::default()
             },
         ];
 

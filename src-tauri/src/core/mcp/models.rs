@@ -403,44 +403,15 @@ pub enum RegistrationDecision {
 
 /// The identity of a server definition, for deciding whether two are the same.
 ///
-/// Compares what actually determines the program: transport, executable,
-/// argv, endpoint and the environment *names* it is handed. Ordering and
-/// unrelated keys (a description, an `active` flag) do not make it a different
-/// server, so they are excluded.
+/// The canonical, secret-free identity material from
+/// [`tauri_plugin_agent_tools::mcp_identity`] -- the same definition the trust
+/// gate fingerprints, so "is this the same server that is running" and "is
+/// this the server the user approved" can never disagree. It covers transport,
+/// executable, argv, normalized endpoint, working directory, environment and
+/// header *names*, and confinement. Presentation keys (a description, an
+/// `active` flag) and secret values do not make it a different server.
 pub fn definition_identity(config: &Value) -> String {
-    let obj = config.as_object();
-    let field = |key: &str| {
-        obj.and_then(|one| one.get(key))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    let args: Vec<String> = obj
-        .and_then(|one| one.get("args"))
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut env_names: Vec<String> = obj
-        .and_then(|one| one.get("env"))
-        .and_then(Value::as_object)
-        .map(|env| env.keys().cloned().collect())
-        .unwrap_or_default();
-    env_names.sort();
-
-    serde_json::json!({
-        "type": field("type"),
-        "command": field("command"),
-        "url": field("url"),
-        "args": args,
-        "env": env_names,
-    })
-    .to_string()
+    tauri_plugin_agent_tools::mcp_identity::identity_material(config).to_string()
 }
 
 /// Decide whether to start, skip, or refuse.

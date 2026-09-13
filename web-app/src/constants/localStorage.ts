@@ -37,6 +37,10 @@ export const localStorageKey = {
   keybindings: 'keybindings',
   referenceAliases: 'reference-aliases',
   projectInitDrafts: 'project-init-drafts',
+  /** Measured model test results, preferred default model, dismissed hints. */
+  modelEvidence: 'model-evidence',
+  /** First-run guide progress: chosen intention, current step, skipped/done. */
+  onboardingGuide: 'onboarding-guide',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

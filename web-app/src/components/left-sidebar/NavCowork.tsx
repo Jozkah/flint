@@ -36,6 +36,7 @@ import {
   Share2,
   Upload,
   MoreHorizontal,
+  Puzzle,
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
@@ -73,6 +74,7 @@ import {
 } from '@/lib/sessionHandoff'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
+import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 
 type CoworkNavItem = {
   title: string
@@ -303,6 +305,7 @@ export function NavCowork() {
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
   const [pendingDelete, setPendingDelete] = useState<{
     id: string
@@ -349,6 +352,11 @@ export function NavCowork() {
       title: t('common:importSession'),
       icon: Upload,
       onClick: () => void importFromFile(),
+    },
+    {
+      title: t('plugins:navLabel'),
+      icon: Puzzle,
+      onClick: () => setPluginsOpen(true),
     },
   ]
 
@@ -476,6 +484,7 @@ export function NavCowork() {
       )}
 
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
+      <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />
 
       <Dialog
         open={pendingDelete !== null}

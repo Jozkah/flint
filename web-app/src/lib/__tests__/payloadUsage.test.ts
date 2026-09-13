@@ -74,9 +74,17 @@ it('drops a nonsense figure instead of storing it', async () => {
 
 it('never fails a run because its accounting could not be written', async () => {
   invoke.mockRejectedValue(new Error('no backend'))
+  // Resolves, never rejects -- and says the record was not accepted.
   await expect(
     recordPayloadUsage({ session: 's1', run: 'r1', snapshot, usage: {} })
-  ).resolves.toBeUndefined()
+  ).resolves.toBe(false)
+})
+
+it('says when the backend accepted the record', async () => {
+  invoke.mockResolvedValue(undefined)
+  await expect(
+    recordPayloadUsage({ session: 's1', run: 'r1', snapshot, usage: {} })
+  ).resolves.toBe(true)
 })
 
 it('refuses an unscoped lookup rather than reading everything', async () => {

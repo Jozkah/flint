@@ -24,6 +24,16 @@ pub struct Settings {
     /// way; turning a scope off only stops it being sent.
     #[serde(default)]
     pub recall: Recall,
+    /// Whether remembered facts are added to requests at all.
+    ///
+    /// On by default, so an install that predates the switch keeps behaving as
+    /// it did. Honoured by `memory_retrieve`, which answers "nothing" before
+    /// opening a store when this is off -- the renderer is told, it does not
+    /// decide. Separate from `automatically_save`: turning memory off for
+    /// prompts is not a decision about what may be saved, and the saved
+    /// memories stay where they are, manageable in Settings.
+    #[serde(default = "default_enabled")]
+    pub memory_enabled: bool,
     #[serde(default = "default_schema")]
     pub schema_version: u32,
 }
@@ -79,11 +89,16 @@ fn default_schema() -> u32 {
     1
 }
 
+fn default_enabled() -> bool {
+    true
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
             automatically_save: false,
             recall: Recall::default(),
+            memory_enabled: default_enabled(),
             schema_version: default_schema(),
         }
     }

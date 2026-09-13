@@ -294,6 +294,10 @@ vi.mock('@/lib/utils', () => ({
   cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }))
 
+vi.mock('@/containers/WhatJanIsUsing', () => ({
+  WhatJanIsUsing: () => null,
+}))
+
 vi.mock('@/lib/instructionTemplate', () => ({
   renderInstructions: (i: string) => `rendered:${i}`,
 }))
@@ -773,7 +777,9 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        undefined
+        undefined,
+        // The prompt describes the call from its arguments.
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -792,7 +798,8 @@ describe('ThreadDetail route', () => {
         'tc1',
         'fetch',
         'thread-1',
-        'fetch-server'
+        'fetch-server',
+        expect.objectContaining({ input: { url: 'x' } })
       )
     })
 
@@ -864,7 +871,8 @@ describe('ThreadDetail route', () => {
           'tcWeb',
           'web_search',
           'thread-1',
-          'mcp-search'
+          'mcp-search',
+          expect.objectContaining({ input: { query: 'x' } })
         )
         expect(callTool).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -884,6 +892,10 @@ describe('ThreadDetail route', () => {
       const allowOnceForServer = vi.fn().mockResolvedValue('ticket-42')
       const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
       hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      // The approval records which server definition it was for; the ticket
+      // must be bound to that same definition.
+      const takeApprovedFingerprint = vi.fn(() => 'sha256:files')
+      ;(h.toolApprovalState as any).takeApprovedFingerprint = takeApprovedFingerprint
       try {
         renderComponent()
         await act(async () => {
@@ -893,7 +905,11 @@ describe('ThreadDetail route', () => {
           await finishWithToolCalls()
         })
 
-        expect(allowOnceForServer).toHaveBeenCalledWith('files', 'fetch')
+        expect(allowOnceForServer).toHaveBeenCalledWith(
+          'files',
+          'fetch',
+          'sha256:files'
+        )
         expect(callTool).toHaveBeenCalledWith(
           expect.objectContaining({
             toolName: 'fetch',
