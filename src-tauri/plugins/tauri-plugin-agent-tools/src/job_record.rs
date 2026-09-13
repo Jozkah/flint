@@ -298,8 +298,50 @@ pub fn still_running(identity: &ProcessIdentity) -> Verdict {
     }
     match creation_time_of(identity.pid) {
         None => Verdict::Gone,
-        Some(created) if created == identity.created => Verdict::Alive,
+        // The same process -- but one that has ended while something still
+        // holds a handle to it is gone, not alive.
+        Some(created) if created == identity.created => {
+            if crate::tools::proc::has_exited_pid(identity.pid) == Some(true) {
+                Verdict::Gone
+            } else {
+                Verdict::Alive
+            }
+        }
         Some(_) => Verdict::Reused,
+    }
+}
+
+#[cfg(test)]
+mod liveness_tests {
+    use super::*;
+
+    /// Found by the AH-026 forced-kill exercise: a run killed with `taskkill`
+    /// still read as alive, because the test driver held the process's handle
+    /// and Windows keeps an ended process's creation time while one is held.
+    #[test]
+    fn a_process_that_has_ended_is_gone_even_while_its_handle_is_held() {
+        #[cfg(windows)]
+        let mut child = std::process::Command::new("cmd").args(["/c", "exit 0"]).spawn().unwrap();
+        #[cfg(not(windows))]
+        let mut child = std::process::Command::new("sh").args(["-c", "exit 0"]).spawn().unwrap();
+        let pid = child.id();
+        let identity = ProcessIdentity { pid, created: creation_time_of(pid).expect("a live process has a creation time") };
+        // Ended, but `child` still holds it: on Windows its handle is open,
+        // on Unix it is an unreaped zombie until `wait`.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let verdict_before_reap = still_running(&identity);
+        child.wait().unwrap();
+        assert_ne!(verdict_before_reap, Verdict::Alive, "an ended process read as alive");
+        assert_ne!(still_running(&identity), Verdict::Alive);
+        // A running process is still alive.
+        #[cfg(windows)]
+        let mut long = std::process::Command::new("cmd").args(["/c", "ping -n 30 127.0.0.1 >NUL"]).spawn().unwrap();
+        #[cfg(not(windows))]
+        let mut long = std::process::Command::new("sh").args(["-c", "sleep 30"]).spawn().unwrap();
+        let live = ProcessIdentity { pid: long.id(), created: creation_time_of(long.id()).unwrap() };
+        assert_eq!(still_running(&live), Verdict::Alive);
+        let _ = long.kill();
+        let _ = long.wait();
     }
 }
 

@@ -26,7 +26,7 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 0 | 12 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 0 | 0 | 1 | 19 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 3 | 0 | 0 | 14 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 0 | 16 | 0 | 0 | 0 | 16 |
@@ -35,7 +35,7 @@ and the latter two require a recorded `blockedReason`.
 | 7 | Coding and Git workflows | 5 | 0 | 0 | 21 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 2 | 0 | 0 | 26 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **12** | **0** | **4** | **191** | **3** | **0** | **1** | **211** |
+| **all** | | **12** | **0** | **3** | **192** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -95,7 +95,7 @@ per-OS evidence log rather than backlog items.
 | `AH-023` | In-flight tool-call cancellation | 1 | execution | P0 | `implemented` | high | `AH-022` |
 | `AH-024` | Retry policy with backoff | 1 | execution | P1 | `implemented` | low | `AH-009` |
 | `AH-025` | Retryable-error classification | 1 | execution | P1 | `implemented` | low | `AH-024`, `AH-009` |
-| `AH-026` | Run resume after restart | 1 | execution | P1 | `in-progress` | medium | `AH-010` |
+| `AH-026` | Run resume after restart | 1 | execution | P1 | `implemented` | medium | `AH-010` |
 | `AH-027` | Run checkpoints | 1 | execution | P1 | `implemented` | medium | `AH-010` |
 | `AH-028` | Checkpoint rollback | 1 | execution | P1 | `implemented` | high | `AH-027` |
 | `AH-029` | Stuck-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-004` |
@@ -304,7 +304,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-023` In-flight tool-call cancellation** - Cancellation reaches every path. lifecycle::Token is scoped to session/run/call, records why it stopped (first reason wins), owns and reaps child pids, kills a child adopted after cancellation so the spawn/cancel race cannot leak a process, and refuses results that arrive after the stop. CompositeToolInvoker owns the run's scope; all three dispatch paths (parallel reads, direct allow, both post-prompt branches) mint a call token under it and hold the guard across the await. The permission wait races the token, removes the pending request either way so the approval UI stops offering it, and treats an answer for an already-stopped call as stale. MCP calls race the canonical token, joining the pre-existing oneshot channel and timeout at core/mcp/commands.rs rather than replacing them; a batch completing during a stop is discarded. Retry backoff is cancellable through a task-local token -- the provider retry loop sits several calls below the dispatcher -- and stays scope-precise, proved by a test that one run's stop does not end another run's backoff. Subagents capture the parent token at spawn (a spawned task inherits no task-locals), get their own token under the parent's scope, race their body against it, and resolve to Cancelled rather than reporting a late answer. The AH-049 cancelled outcome has a single producer in CompositeToolInvoker::cancelled, which writes the transcript message and the audit record together. Guards mutation-checked: accepting late results, and ignoring scope boundaries, each turn the relevant tests red. Incidental safety fix: resolve_jan_data_folder had no cfg(test) redirect, so a cargo test run would have appended audit records to the data folder of whoever ran it.
 - **`AH-024` Retry policy with backoff** - Bounded exponential backoff with full jitter, capped, honouring Retry-After in both spellings; waits are cancellable and a cut-short wait is never mistaken for a completed one. Each attempt is a fresh dispatch with its own invocation and snapshot.
 - **`AH-025` Retryable-error classification** - Typed classification: transient, rate-limited, auth, invalid, refused, cancelled, deterministic, unknown. Only transient and rate-limited are eligible; auth, permissions, invalid input, refusals, cancellation and deterministic tool failures are never retried.
-- **`AH-026` Run resume after restart** - A resumed run now carries the conversation the loop published -- every tool call and its result -- so the model is no longer shown a transcript in which it described work it never did (2026-09-12, Phase 5; found when a real model imitated that transcript and fabricated subagent results, and the execution record disproved them). Remaining gap: state is still written at turn boundaries only, so a turn interrupted mid-flight is still lost on resume, and resume still lives in the CLI layer.
+- **`AH-026` Run resume after restart** - A resumed run now carries the conversation the loop published -- every tool call and its result -- so the model is no longer shown a transcript in which it described work it never did (2026-09-12, Phase 5; found when a real model imitated that transcript and fabricated subagent results, and the execution record disproved them). Remaining gap: state is still written at turn boundaries only, so a turn interrupted mid-flight is still lost on resume, and resume still lives in the CLI layer. 2026-09-13 (Phase 6): implemented. The turn in flight is kept as it happens on both surfaces (CLI/JSON API inflight.json with pid+creation time; Cowork inFlight on the persisted session), the loop publishes every completed step, and liveness now checks whether a process ended. A later resume refuses a live session, refuses an interrupted one until the user chooses continue or discard-partial, and sends the recovered turn with a note from Jan. Proven by a real CLI forced-kill exercise (19/19 on attempt 4; attempts 1-3 each exposed a defect, fixed with regression tests) and a real desktop kill-and-restart scenario pair.
 - **`AH-027` Run checkpoints** - Capture, plan, restore and forget behind Tauri commands with a persisted chain; snapshot commits stay off the user's branch. The TUI is no longer the only driver.
 - **`AH-028` Checkpoint rollback** - RewindPlan::{Restore,Patch}; restore refuses a UserCheckout destination, so a rewind can never rewrite the user's own checkout.
 - **`AH-029` Stuck-loop detection** - detectLoop counts repeated identical calls, canonically equivalent calls, and repeated identical failures from what actually happened, and stops the run. The model cannot waive it.

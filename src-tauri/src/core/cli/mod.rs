@@ -8,6 +8,7 @@ pub mod browser;
 pub mod device_auth;
 pub mod doctor;
 pub mod file_log;
+pub mod inflight;
 pub mod journal;
 pub mod json_api;
 pub mod login;
@@ -866,6 +867,10 @@ pub struct SessionFlags {
     /// `--compact` / `--verbose`: how much a headless run says about itself
     /// (AH-181). `None` defers to `[output].density`, then normal.
     pub density: Option<Density>,
+    /// `--interrupted`: what to do with a resumed session whose last run was
+    /// cut off mid-turn (AH-026). `None` refuses such a resume rather than
+    /// choosing for the user.
+    pub interrupted: Option<inflight::InterruptedChoice>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1106,6 +1111,61 @@ fn load_resume_history(
     Ok(ResumedSession { thread_id, history })
 }
 
+/// Decide what a resumed session continues from when its last run did not end
+/// (AH-026).
+///
+/// A session another live process is running is refused. A session whose run
+/// was cut off is refused unless the caller chose what to do with the
+/// interrupted turn -- keep the partial reply or discard it -- and then
+/// continues from the checkpoint: every completed tool call and result, which
+/// the saved thread (written only at the end of a run) never had.
+fn recover_interrupted(
+    agent_dir: &std::path::Path,
+    resumed: ResumedSession,
+    choice: Option<inflight::InterruptedChoice>,
+) -> Result<ResumedSession, String> {
+    let thread_dir = get_thread_dir(agent_dir, &resumed.thread_id);
+    match inflight::state(&thread_dir) {
+        inflight::RunState::Settled => Ok(resumed),
+        inflight::RunState::Live { pid } => Err(format!(
+            "[invalid_input] session {} is still being run by process {pid}; wait for it to finish or stop it before resuming",
+            short_id(&resumed.thread_id)
+        )),
+        inflight::RunState::Interrupted(checkpoint) => {
+            let Some(choice) = choice else {
+                return Err(format!(
+                    "[invalid_input] session {} was interrupted mid-turn ({} completed message(s), {} character(s) of an unfinished reply). \
+                     Resume with --interrupted=continue to keep the unfinished reply, or --interrupted=discard-partial to drop it",
+                    short_id(&resumed.thread_id),
+                    checkpoint.conversation.len(),
+                    checkpoint.partial.chars().count()
+                ));
+            };
+            // An unreadable checkpoint recovers nothing more than the saved
+            // thread already holds.
+            let base = if checkpoint.conversation.is_empty() {
+                resumed.history.clone()
+            } else {
+                checkpoint.conversation.clone()
+            };
+            let recovered = inflight::recovered_conversation(
+                &inflight::Checkpoint { conversation: base, ..checkpoint },
+                choice,
+            );
+            eprintln!(
+                "(recovered the interrupted turn of session {}: {})",
+                short_id(&resumed.thread_id),
+                match choice {
+                    inflight::InterruptedChoice::Continue => "kept the unfinished reply",
+                    inflight::InterruptedChoice::DiscardPartial => "discarded the unfinished reply",
+                }
+            );
+            inflight::clear(&thread_dir);
+            Ok(ResumedSession { thread_id: resumed.thread_id, history: recovered })
+        }
+    }
+}
+
 fn prepare_agent_run(
     project: &str,
     task: &str,
@@ -1115,6 +1175,7 @@ fn prepare_agent_run(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
 ) -> Result<PreparedRun, String> {
+    let interrupted_choice = flags.interrupted;
     // Non-interactive runs (`agent run`/`step`) have no plan-review handoff, so
     // plan mode stays a TUI-only startup option, and a run with no model has no
     // terminal to recover in, so it must fail rather than launch empty.
@@ -1137,22 +1198,23 @@ fn prepare_agent_run(
     };
 
     // A failed resume is not fatal: report it and run the prompt in a new session.
-    let resumed = resume.and_then(|target| {
-        match load_resume_history(&agent_dir_for(&project_root), &target) {
-            Ok(r) => {
-                eprintln!(
-                    "(resumed session {} with {} message(s))",
-                    short_id(&r.thread_id),
-                    r.history.len()
-                );
-                Some(r)
-            }
+    let resumed = match resume {
+        None => None,
+        Some(target) => match load_resume_history(&agent_dir_for(&project_root), &target) {
+            Ok(r) => Some(recover_interrupted(&agent_dir_for(&project_root), r, interrupted_choice)?),
             Err(e) => {
                 eprintln!("{e}; starting a new session");
                 None
             }
-        }
-    });
+        },
+    };
+    if let Some(r) = resumed.as_ref() {
+        eprintln!(
+            "(resumed session {} with {} message(s))",
+            short_id(&r.thread_id),
+            r.history.len()
+        );
+    }
 
     // AH-008: the record's session is the conversation the user sees, not the
     // process that happened to run this turn. Without this a `--resume` run
@@ -1322,6 +1384,25 @@ async fn run_agent_loop(
     let notify_for_prompts = notify.clone();
     let prompt_root = notify_root.clone();
     let prompt_session = notify_session.clone();
+    // AH-026: the turn in flight is on disk as it happens, so a run killed
+    // mid-turn can be resumed without losing it.
+    // The thread is written when the run starts, not only when it ends: a run
+    // killed mid-turn otherwise leaves a checkpoint in a thread that no
+    // listing knows, and `--resume` cannot name it.
+    if let Some(thread) = persist.thread_id.as_deref() {
+        if let Err(e) = cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
+            eprintln!("(could not save session before the run: {e})");
+        }
+    }
+    let checkpoint = std::sync::Arc::new(std::sync::Mutex::new(match persist.thread_id.as_deref() {
+        Some(thread) => Some(inflight::Writer::begin(
+            &get_thread_dir(&persist.agent_dir, thread),
+            &persist.model,
+            persist.history.clone(),
+        )?),
+        None => None,
+    }));
+    let checkpoint_for_printer = checkpoint.clone();
     let printer = tokio::spawn(async move {
         // The last conversation the loop published, kept for the save below.
         let mut conversation: Option<Vec<serde_json::Value>> = None;
@@ -1360,6 +1441,15 @@ async fn run_agent_loop(
             // turn continue the same run rather than re-enact a summary of it.
             if let StreamEvent::MessagesUpdated { messages } = &ev {
                 conversation = Some(messages.clone());
+            }
+            if let Ok(mut guard) = checkpoint_for_printer.lock() {
+                if let Some(writer) = guard.as_mut() {
+                    match &ev {
+                        StreamEvent::MessagesUpdated { messages } => writer.conversation(messages),
+                        StreamEvent::Token { text } => writer.text(text),
+                        _ => {}
+                    }
+                }
             }
             // A run that has stopped to wait for a person is the moment
             // worth interrupting somebody for: nothing else happens until
@@ -1430,6 +1520,14 @@ async fn run_agent_loop(
     let model = persist.model.clone();
     let persisted = persist_headless_run(persist, &result, conversation);
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
+    // Saved, so nothing is in flight any more. A run that failed before its
+    // thread could be written keeps its checkpoint: its completed steps are
+    // still the only copy.
+    if persisted.saved || result.is_ok() {
+        if let Some(writer) = checkpoint.lock().ok().and_then(|mut g| g.take()) {
+            writer.finish();
+        }
+    }
     if persisted.saved && !format.is_json() {
         if let Some(id) = session_id.as_deref() {
             eprintln!(

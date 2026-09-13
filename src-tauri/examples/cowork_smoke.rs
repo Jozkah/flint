@@ -1114,6 +1114,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_timeline_resources,
     },
     Scenario {
+        name: "cowork-run-killed-mid-turn",
+        run: scenario_cowork_killed_mid_turn,
+    },
+    Scenario {
         name: "context-diff",
         run: scenario_context_diff,
     },
@@ -1370,6 +1374,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "timeline-replay-after-a-restart",
         run: scenario_timeline_replay_after_restart,
+    },
+    Scenario {
+        name: "cowork-interrupted-turn-continues-after-restart",
+        run: scenario_cowork_interrupted_turn_continues,
     },
     Scenario {
         name: "context-diff-restart",
@@ -5359,6 +5367,154 @@ fn scenario_timeline_resources(ctx: &Ctx) -> ScenarioResult {
     } else {
         ensure!(detail["text"].as_str().is_some_and(|t| t.starts_with("Not measured")), "{detail}");
     }
+    Ok(())
+}
+
+const INTERRUPTED_HANDOFF: &str = "interrupted-turn";
+
+/// AH-026, first half: a Cowork run is left in the middle of a turn when this
+/// process exits. The run reads a file (a completed tool step) and then
+/// streams a reply that never ends. Once the session's persisted record holds
+/// that step and part of the reply, the scenario returns and the harness ends
+/// the process with `std::process::exit` -- the app is killed mid-turn, with
+/// nothing committed.
+fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
+    let read_call = format!("read:{}", serde_json::json!({ "path": "{{FOLDER}}/README.md" }));
+    let routes = serde_json::json!([
+        { "match": "INTERRUPTED-RUN", "tools": [read_call], "then": "slow" }
+    ]);
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'plain', tools: [], delay: 0.2, routes: {routes} }}),
+               }});
+               return res.ok;"#
+        ))?,
+        "could not script the run"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    let session = current_cowork_session(ctx)?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Read the README and summarise it. INTERRUPTED-RUN")?;
+    send_armed(ctx)?;
+    // The session's persisted record, not the screen: what a fresh process
+    // will read back.
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let checkpoint = loop {
+        let found = ctx.eval(&format!(
+            "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions' }}).catch(() => null);
+         let state; try {{ state = JSON.parse(raw); state = state.state ?? state; }} catch {{ return null; }}
+         const s = (state.sessions || []).find(x => x.id === {session:?});
+             const f = s && s.inFlight;
+             if (!f) return null;
+             const calls = f.turns.filter(t => t.role === 'tool' && (t.result || '').length > 0);
+             const last = f.turns[f.turns.length - 1];
+             const partial = last && last.role === 'assistant' ? last.content : '';
+             return calls.length > 0 && partial.includes('working') ? {{ runId: f.runId, turns: f.turns.length, partial: partial.length }} : null;"
+        ))?;
+        if found.is_object() {
+            break found;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the session never held the completed step and the unfinished reply: {}",
+            run_state_page(ctx)
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    println!("      checkpoint persisted: {checkpoint}");
+    write_handoff(ctx, INTERRUPTED_HANDOFF, &serde_json::json!({ "session": session, "runId": checkpoint["runId"] }))?;
+    // Returning ends this process while the run is still streaming.
+    Ok(())
+}
+
+/// AH-026, second half: the fresh process shows the killed run's turn as
+/// interrupted -- its completed step and its unfinished reply -- and offers to
+/// continue it or to discard the unfinished reply. Nothing runs until one is
+/// chosen. Continue sends the model the recovered turns with a note from Jan,
+/// the run finishes, and no checkpoint is left.
+fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, INTERRUPTED_HANDOFF, "cowork-run-killed-mid-turn")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'plain', tools: [], routes: [], summary: 'recovered run done' }}),
+               }});
+               return res.ok;"#
+        ))?,
+        "could not script the recovery"
+    );
+    ensure!(mock_requests(ctx)?.is_empty(), "a request went out before anything was chosen");
+    open_cowork_session(ctx, &session)?;
+    ctx.wait_until(
+        "the interrupted turn",
+        "const b = document.querySelector('[data-testid=\"cowork-interrupted-turn\"]');
+         return !!b && Number(b.dataset.calls) >= 1 && Number(b.dataset.partialChars) > 0;",
+        Duration::from_secs(30),
+    )?;
+    let banner = ctx.eval(
+        "const b = document.querySelector('[data-testid=\"cowork-interrupted-turn\"]');
+         return { run: b.dataset.run, calls: b.dataset.calls, partial: b.dataset.partialChars, text: b.innerText,
+                  discard: !!document.querySelector('[data-testid=\"cowork-interrupted-discard\"]') };",
+    )?;
+    println!("      banner: {banner}");
+    ensure!(banner["run"] == handoff["runId"], "the banner names another run: {banner}");
+    ensure!(banner["discard"] == true, "no choice to discard the unfinished reply: {banner}");
+    std::thread::sleep(Duration::from_secs(2));
+    ensure!(mock_requests(ctx)?.is_empty(), "the interrupted turn resumed without being asked");
+
+    ctx.eval("document.querySelector('[data-testid=\"cowork-interrupted-continue\"]').click(); return true;")?;
+    let deadline = Instant::now() + Duration::from_secs(90);
+    loop {
+        let done = ctx.eval_bool(
+            "return !document.querySelector('[data-testid=\"cowork-interrupted-turn\"]')
+               && /recovered run done/.test(document.body.innerText || '');",
+        )?;
+        if done {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the recovered run did not finish: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(600));
+    }
+    // What the model was sent: the recovered step, the unfinished reply, and
+    // the note from Jan -- the request itself, not the screen.
+    let requests = mock_requests(ctx)?;
+    let sent = requests
+        .iter()
+        .rev()
+        .find(|r| r.to_string().contains("Note from Jan"))
+        .cloned()
+        .unwrap_or_default();
+    ensure!(!sent.is_null(), "no request carried the recovery note: {requests:?}");
+    let text = sent.to_string();
+    ensure!(text.contains("README") || text.contains("fixture"), "the recovered read was not sent: {text}");
+    ensure!(text.contains("working"), "the unfinished reply was not sent: {text}");
+    ensure!(text.contains("may be incomplete"), "the note did not say the reply may be incomplete: {text}");
+    let left = ctx.eval(&format!(
+        "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions' }}).catch(() => null);
+         let state; try {{ state = JSON.parse(raw); state = state.state ?? state; }} catch {{ return null; }}
+         const s = (state.sessions || []).find(x => x.id === {session:?});
+         return s ? (s.inFlight ? 'still in flight' : 'clear') : 'no session';"
+    ))?;
+    ensure!(left == "clear", "the checkpoint outlived its recovery: {left}");
     Ok(())
 }
 

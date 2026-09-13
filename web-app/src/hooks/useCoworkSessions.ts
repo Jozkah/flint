@@ -130,6 +130,15 @@ export type CoworkSession = {
    */
   runBudget?: RunBudgetRecord
   /**
+   * The turn the run in progress is in the middle of (AH-026).
+   *
+   * Written while the run goes and cleared when its turns are committed, so a
+   * run the app was closed or killed under comes back as an interrupted turn
+   * -- its completed tool calls and its unfinished reply -- rather than as
+   * nothing. Absent on sessions with nothing in flight.
+   */
+  inFlight?: InFlightRecord
+  /**
    * Where this session came from, when it was forked from another. AH-201.
    *
    * Provenance only. It grants nothing: a fork carries no folder, no grant, no
@@ -225,6 +234,13 @@ type CoworkSessionsState = {
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
   /** Record, or clear, what the run in progress has spent. */
   setRunBudget: (id: string, budget: RunBudgetRecord | null) => void
+  /** Keep, or clear, the turn the session's run is in the middle of. AH-026. */
+  setInFlight: (id: string, record: InFlightRecord | null) => void
+  /**
+   * Take an interrupted turn back into the session, as the user chose, so the
+   * next run continues from it. AH-026.
+   */
+  recoverInFlight: (id: string, choice: InterruptedChoice) => boolean
   setAccess: (id: string, access: AccessMode) => void
   /** Record the user's confirmation to edit `folder` in this session. */
   grantEditConsent: (id: string, folder: string) => void
@@ -258,6 +274,11 @@ type CoworkSessionsState = {
 }
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
+import {
+  recover as recoverInterrupted,
+  type InFlightRecord,
+  type InterruptedChoice,
+} from '@/lib/coworkInflight'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -547,6 +568,40 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
+      setInFlight: (id, record) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, inFlight: record ?? undefined } : x
+          ),
+        })),
+
+      recoverInFlight: (id, choice) => {
+        const session = get().sessions.find((x) => x.id === id)
+        if (!session?.inFlight) return false
+        const { turns, messages } = recoverInterrupted(
+          session.messages ?? [],
+          session.inFlight,
+          choice,
+          id
+        )
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  turns: [...x.turns, ...turns],
+                  messages,
+                  inFlight: undefined,
+                  // The dead run's budget is not this one's.
+                  runBudget: undefined,
+                  updated: now(),
+                }
+              : x
+          ),
+        }))
+        return true
+      },
+
       setMode: (id, mode) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
@@ -598,6 +653,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                 ...subagents,
               ],
               lastUsage: usage ?? x.lastUsage,
+              // Committed, so nothing of this run is in flight any more.
+              inFlight: undefined,
               updated: now(),
             }
           }),

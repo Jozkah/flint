@@ -199,6 +199,8 @@ import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
+import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
+import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -1745,8 +1747,25 @@ function CoworkPage() {
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.
     let runTurns: CoworkTurn[] = text ? [{ role: 'user', content: text }] : []
-    const publish = () =>
+    // AH-026: the live lane is also kept with the session while the run goes,
+    // so a run the app is killed under comes back as an interrupted turn.
+    const runStartedAt = Date.now()
+    const runBaseCount = current?.messages?.length ?? 0
+    let lastCheckpointAt: number | undefined
+    const saveInFlight = (step = false) => {
+      const at = Date.now()
+      if (!checkpointDue(lastCheckpointAt, at, step)) return
+      lastCheckpointAt = at
+      // Only while this run still owns the session's live lane.
+      if (useCoworkRun.getState().runs[sid]?.runId !== runId) return
+      useCoworkSessions
+        .getState()
+        .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, runTurns, at))
+    }
+    const publish = () => {
       useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
+      saveInFlight()
+    }
     const pushLive = (
       turns: CoworkTurn[],
       snapshot: PromptSnapshotRef | undefined = lastSnapshotRef.current[sid]
@@ -3063,6 +3082,7 @@ function CoworkPage() {
           onStep: ({ step, result, turns, outcomes }) => {
             if (result.usage)
               useCoworkRun.getState().setUsage(sid, result.usage)
+            saveInFlight(true)
             // Persisted as it goes, not at the end: a run killed mid-flight
             // must not come back with its steps unspent. AH-018.
             useCoworkSessions.getState().setRunBudget(sid, {
@@ -3753,6 +3773,13 @@ function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkInterruptedTurn
+                      sessionId={session.id}
+                      running={running}
+                      onContinue={() => void runRequestRef.current(null)}
+                    />
+                  ) : null}
                   {session?.id ? (
                     <CoworkHeldInput sessionId={session.id} running={running} />
                   ) : null}

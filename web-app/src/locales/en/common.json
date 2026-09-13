@@ -790,7 +790,14 @@
     "tryAgain": "Try again",
     "deadline": "Stopped — this run reached its time limit.",
     "timeout": "Stopped — the model stopped responding.",
-    "loop": "Stopped — the run was repeating itself without making progress."
+    "loop": "Stopped — the run was repeating itself without making progress.",
+    "interrupted": "The last run was interrupted before it finished.",
+    "interruptedDetail_one": "{{calls}} completed step kept; an unfinished reply of {{chars}} characters.",
+    "interruptedDetail_other": "{{calls}} completed steps kept; an unfinished reply of {{chars}} characters.",
+    "interruptedNoReply_one": "{{calls}} completed step kept.",
+    "interruptedNoReply_other": "{{calls}} completed steps kept.",
+    "interruptedContinue": "Continue",
+    "interruptedDiscard": "Discard unfinished reply and continue"
   },
   "modelNoTools": "{{model}} can’t call tools, so it can’t act as an agent. Pick a tool-calling model.",
   "askContinue": "Continue",

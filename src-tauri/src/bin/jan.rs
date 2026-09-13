@@ -138,6 +138,11 @@ struct ResumeRunArgs {
     /// Resume the most recent session (alias for a bare --resume)
     #[arg(long = "continue", short = 'c', conflicts_with = "resume")]
     continue_session: bool,
+    /// When the resumed session's last run was cut off mid-turn: keep its
+    /// unfinished reply (continue) or drop it (discard-partial). Required for
+    /// such a session; completed tool calls are kept either way (AH-026)
+    #[arg(long, value_enum, value_name = "CHOICE")]
+    interrupted: Option<app_lib::core::cli::inflight::InterruptedChoice>,
 }
 
 impl ResumeRunArgs {
@@ -1322,6 +1327,7 @@ async fn handle_agent(cmd: AgentCommands) {
                         }
                         None => None,
                     },
+                    interrupted: resume.interrupted,
                     ..Default::default()
                 },
                 resume.into_target(),

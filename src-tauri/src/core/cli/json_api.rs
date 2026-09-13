@@ -422,6 +422,30 @@ async fn run_agent(
         *slot = Some(permission_requests.clone());
     }
 
+    // AH-026: the turn in flight is on disk as it happens.
+    // Written when the run starts, so a run killed mid-turn leaves a thread
+    // that can be listed and resumed, not a checkpoint nothing points at.
+    if let Some(thread) = persist.thread_id.as_deref() {
+        if let Err(e) = super::cli_save_thread(&persist.agent_dir, Some(thread), &persist.model, &persist.history, None) {
+            log::warn!("could not save session before the run: {e}");
+        }
+    }
+    let mut checkpoint = match persist.thread_id.as_deref() {
+        Some(thread) => match super::inflight::Writer::begin(
+            &super::get_thread_dir(&persist.agent_dir, thread),
+            &persist.model,
+            persist.history.clone(),
+        ) {
+            Ok(writer) => Some(writer),
+            Err(e) => {
+                return serde_json::to_value(
+                    RunReport::setup_failure(e.message()).finish(None, &persist.model, started.elapsed().as_millis(), None),
+                )
+                .unwrap_or_default()
+            }
+        },
+        None => None,
+    };
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     let forward_run = run.clone();
     let forwarder = tokio::spawn(async move {
@@ -432,9 +456,16 @@ async fn run_agent(
             if let StreamEvent::MessagesUpdated { messages } = &ev {
                 conversation = Some(messages.clone());
             }
+            if let Some(writer) = checkpoint.as_mut() {
+                match &ev {
+                    StreamEvent::MessagesUpdated { messages } => writer.conversation(messages),
+                    StreamEvent::Token { text } => writer.text(text),
+                    _ => {}
+                }
+            }
             let _ = emit.send(json!({ "type": "event", "run": forward_run, "event": ev }));
         }
-        (report, conversation)
+        (report, conversation, checkpoint)
     });
 
     let work = async {
@@ -452,7 +483,10 @@ async fn run_agent(
         _ = &mut cancel => None,
     };
     drop(tx);
-    let (mut report, conversation) = forwarder.await.unwrap_or_default();
+    let (mut report, conversation, checkpoint) = match forwarder.await {
+        Ok(done) => done,
+        Err(_) => (RunReport::default(), None, None),
+    };
 
     // Whatever happened, this run's servers, scratch space and pending
     // approvals end with it.
@@ -470,12 +504,22 @@ async fn run_agent(
     match outcome {
         // A cancelled run's partial conversation is not written: `--resume`
         // continues finished turns, not one cut off mid-request.
+        // A client's cancel is a decision, not an interruption: nothing is left
+        // in flight for a later resume to find.
         None => {
+            if let Some(writer) = checkpoint {
+                writer.finish();
+            }
             report.cancel("the run was cancelled by the client");
             serde_json::to_value(report.finish(None, &model, elapsed, None)).unwrap_or_default()
         }
         Some(result) => {
             let persisted = super::persist_headless_run(persist, &result, conversation);
+            if persisted.saved || result.is_ok() {
+                if let Some(writer) = checkpoint {
+                    writer.finish();
+                }
+            }
             serde_json::to_value(report.finish(
                 persisted.session_id.as_deref().map(super::short_id).as_deref(),
                 &model,

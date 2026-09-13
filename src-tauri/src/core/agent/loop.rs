@@ -4671,6 +4671,11 @@ async fn run_turn_cycle(
                     "content": content
                 }));
             }
+            // AH-026: published as soon as the step's results are in, like a
+            // completed step below.
+            let _ = events.send(StreamEvent::MessagesUpdated {
+                messages: conversation_messages.clone(),
+            });
             turn += 1;
             continue;
         }
@@ -4849,6 +4854,14 @@ async fn run_turn_cycle(
                 );
             }
         }
+        // AH-026: the step's calls and their results are published as soon as
+        // they are in the conversation, not only at a natural stop. A surface
+        // that keeps the turn in flight on disk then holds every completed
+        // step when the run dies before its next request -- which it could not
+        // when the conversation was first published at the end of the run.
+        let _ = events.send(StreamEvent::MessagesUpdated {
+            messages: conversation_messages.clone(),
+        });
         turn += 1;
     }
 
@@ -5315,6 +5328,60 @@ mod tests {
 
         assert_eq!(model.requests.lock().unwrap().len(), 3);
         assert!(result["choices"][0]["message"]["content"].is_null());
+    }
+
+    /// AH-026, found by the forced-kill exercise's first attempt: the loop
+    /// published its conversation only at a natural stop, so a run killed
+    /// between a completed tool step and its next request left no record of
+    /// that step for a checkpoint to keep. Every completed step is published
+    /// as soon as its results are in the conversation.
+    #[tokio::test]
+    async fn each_completed_tool_step_is_published_before_the_next_request() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion(),
+            json!({ "choices": [{ "message": { "content": "final" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let published: Vec<Vec<serde_json::Value>> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|ev| match ev {
+                StreamEvent::MessagesUpdated { messages } => Some(messages),
+                _ => None,
+            })
+            .collect();
+        let step = published
+            .iter()
+            .find(|messages| {
+                messages.iter().any(|m| m["role"] == "tool" && m["content"] == "MOCK_RESULT")
+                    && !messages.iter().any(|m| m["content"] == "final")
+            })
+            .expect("the tool step was published before the final answer existed");
+        assert!(
+            step.iter().any(|m| m["role"] == "assistant" && m.get("tool_calls").is_some()),
+            "the published step carries the call its result answers: {step:?}"
+        );
     }
 
     fn tool_call_completion() -> serde_json::Value {

@@ -5261,9 +5261,10 @@ impl App {
     /// paths cannot drift.
     fn halt_turn(&mut self) {
         // A run that died on an error rather than Esc is still an abnormal exit:
-        // it may well have run tools whose side effects exist on disk, but a
-        // mid-turn `MessagesUpdated` was never published (the stream errored
-        // before a natural stop), so those calls are absent from `history`.
+        // it may well have run tools whose side effects exist on disk, and the
+        // calls of a step still in progress when the stream errored were never
+        // published (the loop publishes after each completed step), so they
+        // are absent from `history`.
         // Fold them in exactly as a hard cancel does, so a later prompt or
         // /resume sees the tools it ran and what they returned. The overflow-
         // retry path deliberately avoids this (see `on_error`): that turn
@@ -7810,10 +7811,10 @@ async fn apply_stream_event(
             if app.status == Status::Running {
                 app.flush_assistant();
                 app.abort_tool_rows();
-                // The task was killed without a natural stop, so the
-                // mid-turn `MessagesUpdated` that would have folded the
-                // completed tool calls never fired -- fold them here,
-                // exactly as the cancel/error paths do.
+                // The task was killed without a natural stop, so calls of the
+                // step in progress were never published -- fold them here,
+                // exactly as the cancel/error paths do; calls already
+                // published are skipped by id.
                 app.append_cancelled_turn_tools();
                 app.status = Status::Idle;
                 app.run_started = None;
@@ -24172,8 +24173,8 @@ mod tests {
             diff: None,
         });
         // The run dies on an upstream error before the model emits any answer
-        // prose. The backend never publishes a mid-turn `MessagesUpdated`, so
-        // the completed call must be folded into history by the error path
+        // prose. This stub stream publishes no `MessagesUpdated` for the step,
+        // so the completed call must be folded into history by the error path
         // (the same guarantee the Esc-cancel path already provides).
         app.on_error("upstream".into(), "connection reset".into());
         let wire = app
