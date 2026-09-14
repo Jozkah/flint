@@ -80,6 +80,20 @@ describe('ToolApprovalDialog', () => {
     expect(document.activeElement).not.toHaveAttribute('data-scope', 'allow-always')
   })
 
+  it('tabs from Deny through the scopes, narrowest first', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitFor(() =>
+      expect(document.activeElement).toHaveTextContent('permissions:scope.deny')
+    )
+    const order: (string | undefined)[] = []
+    for (let i = 0; i < 3; i++) {
+      await user.tab()
+      order.push((document.activeElement as HTMLElement).dataset.scope)
+    }
+    expect(order).toEqual(['allow-once', 'allow-thread', 'allow-always'])
+  })
+
   it('opens the technical details from the keyboard, with secrets redacted', async () => {
     const user = userEvent.setup()
     renderDialog()
