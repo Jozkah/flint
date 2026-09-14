@@ -1133,7 +1133,7 @@ function MemorySettings() {
                               <dd data-testid="memory-provenance-uses">
                                 {(memory.uses?.length ?? 0) === 0
                                   ? 'no recorded request yet'
-                                  : memory.uses!.map((u, i) => (
+                                  : memory.uses!.map((u, i: number) => (
                                       <span
                                         key={`${u.at}-${i}`}
                                         className="block font-mono break-all"
