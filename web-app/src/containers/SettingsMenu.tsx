@@ -151,14 +151,16 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const activeLocalProviders = activeProviders.filter(
     (p) => locationOf(p) === 'local'
   )
-  // Anything still resolving stays out of REMOTE rather than being filed
-  // there and moved a moment later. A provider with no endpoint of its own is
-  // a hosted API on its built-in URL, which is remote by definition -- that is
-  // not the unresolved case.
-  const activeRemoteProviders = activeProviders.filter((p) => {
-    const location = locationOf(p)
-    return location === 'remote' || location === 'unknown'
-  })
+  // Everything not settled as local goes here, so the two groups partition the
+  // active providers and none can fall through both. `checking` is the case
+  // that made providers vanish: a single-label endpoint like `http://v100/v1`
+  // stays `checking` until the resolver has answered for the name, and while it
+  // did it was in neither list. It belongs with the hosted APIs until the
+  // resolver moves it to LOCAL -- a brief reflow is far better than a provider
+  // the user configured disappearing from the list entirely.
+  const activeRemoteProviders = activeProviders.filter(
+    (p) => locationOf(p) !== 'local'
+  )
 
   const hiddenProviders = providers.filter((provider) => {
     if (provider.active) return false
