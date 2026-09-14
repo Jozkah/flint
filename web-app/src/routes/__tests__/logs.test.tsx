@@ -130,6 +130,36 @@ describe('LogsViewer route', () => {
     expect(await screen.findByText('logs:copied')).toBeInTheDocument()
   })
 
+  it('narrows the shown and copied lines by text and by level', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    h.readLogs.mockResolvedValue([
+      { timestamp: '2024-01-01T00:00:00Z', level: 'error', message: 'boom' },
+      { timestamp: '2024-01-01T00:00:01Z', level: 'info', message: 'hello' },
+      { timestamp: '2024-01-01T00:00:02Z', level: 'warn', message: 'careful boom' },
+    ])
+    renderComponent()
+    await waitFor(() => {
+      expect(screen.getByText('hello')).toBeInTheDocument()
+    })
+    fireEvent.change(screen.getByLabelText('logs:search'), {
+      target: { value: 'BOOM' },
+    })
+    expect(screen.queryByText('hello')).not.toBeInTheDocument()
+    expect(screen.getByText('careful boom')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'logs:levelError' }))
+    expect(screen.queryByText('careful boom')).not.toBeInTheDocument()
+    expect(screen.getByText('boom')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('copy-logs'))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('[00:00:00] ERROR boom')
+    })
+    fireEvent.change(screen.getByLabelText('logs:search'), {
+      target: { value: 'nothing-like-this' },
+    })
+    expect(screen.getByText('logs:noMatch')).toBeInTheDocument()
+  })
+
   it('clears interval on unmount', async () => {
     const clearSpy = vi.spyOn(global, 'clearInterval')
     const { unmount } = renderComponent()
