@@ -85,9 +85,9 @@
   "recents": "Recents",
   "hub": "Hub",
   "helpSupport": "Help & Support",
-  "helpUsImproveJan": "Help Us Improve Jan",
+  "helpUsImproveJan": "Help Us Improve Flint",
   "analyticsConsentDetail": "We collect anonymous data to understand feature usage. Your chats and personal information are never tracked. You can change this anytime in Settings > Privacy.",
-  "analyticsConsentQuestion": "Would you like to help us to improve Jan?",
+  "analyticsConsentQuestion": "Would you like to help us to improve Flint?",
   "unstarAll": "Unstar All",
   "unstar": "Unstar",
   "deleteAll": "Delete All",
@@ -134,7 +134,7 @@
     "title": "Preview",
     "empty": "Open a generated artifact to preview it here.",
     "loading": "Opening…",
-    "unsupported": "Jan can't show this kind of file. Open it to see it in another app.",
+    "unsupported": "Flint can't show this kind of file. Open it to see it in another app.",
     "outside": "This file is no longer in the session workspace.",
     "tooLarge": "Too big to preview. Open it to see it in another app.",
     "reload": "Reload",
@@ -154,7 +154,7 @@
     "primaryAgent": "the primary agent",
     "namedAgent": "{{name}}",
     "roleAgent": "the {{name}} role",
-    "unknownAgent": "an unknown agent (recorded before Jan kept this)"
+    "unknownAgent": "an unknown agent (recorded before Flint kept this)"
   },
   "exportSession": "Export session…",
   "importSession": "Import session…",
@@ -287,7 +287,7 @@
   "noAssistant": "No assistant",
   "customAvatar": "Custom avatar",
   "editAssistant": "Edit Assistant",
-  "jan": "Jan",
+  "jan": "Flint",
   "metadata": "Metadata",
   "regenerate": "Regenerate",
   "threadImage": "Thread image",
@@ -321,7 +321,7 @@
   "confirm": "Confirm",
   "continue": "Continue",
   "loading": "Loading...",
-  "settingUpJan": "Booting up Jan…",
+  "settingUpJan": "Booting up Flint…",
   "registeringExtensions": "Registering extensions…",
   "loadingExtensions": "Loading extensions… ({{done}}/{{total}})",
   "error": "Error",
@@ -560,7 +560,7 @@
     "pathNameNotice": "This names a chat collection; it does not open that folder.",
     "openCodeFolderInCowork": "Open code folder in Cowork",
     "openCodeFolder": "Open code folder",
-    "openCodeFolderDescription": "Choose a folder on your computer for Jan to work in."
+    "openCodeFolderDescription": "Choose a folder on your computer for Flint to work in."
   },
   "attachmentsIngestion": {
     "title": "Choose how to ingest attachments",
@@ -685,7 +685,7 @@
       "pdfMalformedXref": "{{subject}} has a malformed PDF cross-reference table and could not be parsed. Try opening it in a PDF viewer and re-saving it (File → Print → Save as PDF), then upload again.",
       "pdfScanned": "{{subject}} appears to be a scanned or image-based PDF. OCR isn't supported yet — please upload a text-based PDF.",
       "pdfEncrypted": "{{subject}} is password-protected. Remove the password and try again.",
-      "pdfUnsupportedFeature": "{{subject}} uses a PDF feature Jan can't parse yet (e.g. PostScript color/shading functions). Try re-saving it (File → Print → Save as PDF) to flatten it, then upload again.",
+      "pdfUnsupportedFeature": "{{subject}} uses a PDF feature Flint can't parse yet (e.g. PostScript color/shading functions). Try re-saving it (File → Print → Save as PDF) to flatten it, then upload again.",
       "pdfGeneric": "{{subject}} could not be parsed as a PDF. The file may be corrupted or uses an unsupported PDF feature.",
       "fileTooLarge": "{{subject}} is too large. {{message}}.",
       "unsupportedType": "File type \"{{type}}\" is not supported.",
@@ -794,8 +794,8 @@
   },
   "coworkEmpty": {
     "title": "What are we working on?",
-    "subtitleSandbox": "Give Jan a task. It reads and writes files, runs commands, and works through the steps on its own.",
-    "subtitleFolder": "Give Jan a task. It reads {{folder}} without changing anything in it, and works on its own from there.",
+    "subtitleSandbox": "Give Flint a task. It reads and writes files, runs commands, and works through the steps on its own.",
+    "subtitleFolder": "Give Flint a task. It reads {{folder}} without changing anything in it, and works on its own from there.",
     "try": "Try",
     "sandbox": {
       "first": "Write a Python script that renames files by the date they were taken",
@@ -812,10 +812,10 @@
     "noTerminal": "No terminal",
     "a11y": "Running commands is turned off. Details.",
     "title": "Running commands is turned off",
-    "body": "Jan lets the agent run shell commands only when your system can confine them. No sandbox is available here, so the agent can read, write and edit files in its sandbox — but not run anything.",
-    "fixLinux": "Linux uses bubblewrap. Install it, then restart Jan.",
-    "fixMac": "macOS uses the built-in sandbox at /usr/bin/sandbox-exec. Restart Jan once it is available.",
-    "fixWindows": "Windows uses AppContainer. Restart Jan to try again.",
+    "body": "Flint lets the agent run shell commands only when your system can confine them. No sandbox is available here, so the agent can read, write and edit files in its sandbox — but not run anything.",
+    "fixLinux": "Linux uses bubblewrap. Install it, then restart Flint.",
+    "fixMac": "macOS uses the built-in sandbox at /usr/bin/sandbox-exec. Restart Flint once it is available.",
+    "fixWindows": "Windows uses AppContainer. Restart Flint to try again.",
     "recheck": "Check again"
   },
   "planMode": {
@@ -1065,7 +1065,7 @@
     "attachToMessage": "Drop to attach to your message"
   },
   "coworkMode": {
-    "label": "What Jan may do",
+    "label": "What Flint may do",
     "review": {
       "label": "Review first",
       "description": "Reads, searches and inspects. Cannot write files or run commands."
@@ -1083,9 +1083,9 @@
     "title": "Go back to an earlier point",
     "goBack": "Go back",
     "confirmTitle": "Go back to this point",
-    "willRestore": "This puts the worktree back as it was before \"{{label}}\". Everything Jan changed after that point is discarded.",
+    "willRestore": "This puts the worktree back as it was before \"{{label}}\". Everything Flint changed after that point is discarded.",
     "confirmRestore": "Put it back",
-    "patchOnly": "This is your own checkout, so Jan will not restore over it — it holds work Jan never saw. Here is the change to undo, for you to apply.",
+    "patchOnly": "This is your own checkout, so Flint will not restore over it — it holds work Flint never saw. Here is the change to undo, for you to apply.",
     "patchEmpty": "Nothing changed since that point.",
     "close": "Close",
     "cancel": "Cancel"
@@ -1184,9 +1184,9 @@
     },
     "evidence": {
       "label": "Change attribution",
-      "none": "Jan can tell its own changes from existing ones.",
-      "non-git": "Not a Git repository: Jan cannot tell its changes from existing ones.",
-      "git-unavailable": "Git could not be read: Jan cannot tell its changes from existing ones.",
+      "none": "Flint can tell its own changes from existing ones.",
+      "non-git": "Not a Git repository: Flint cannot tell its changes from existing ones.",
+      "git-unavailable": "Git could not be read: Flint cannot tell its changes from existing ones.",
       "incomplete": "The starting state was not fully captured: attribution will be incomplete.",
       "not-captured": "No starting state recorded yet."
     }
@@ -1202,15 +1202,15 @@
     "label": "Where changes go",
     "review-only": {
       "label": "Review only",
-      "description": "Jan can inspect this folder. Changes are created only in the session sandbox."
+      "description": "Flint can inspect this folder. Changes are created only in the session sandbox."
     },
     "managed-worktree": {
       "label": "Managed worktree",
-      "description": "Jan works in an isolated Git worktree. Your current checkout is not modified."
+      "description": "Flint works in an isolated Git worktree. Your current checkout is not modified."
     },
     "edit-folder": {
       "label": "Edit this folder",
-      "description": "Jan can modify files in this exact folder."
+      "description": "Flint can modify files in this exact folder."
     },
     "notBuiltYet": "Not available yet",
     "needsFolder": "Attach a folder first",
@@ -1231,12 +1231,12 @@
       "shell": "Wait for the running command to finish",
       "job": "Wait for background commands to finish"
     },
-    "folderHeld": "The folder can’t change while Jan is still working here",
+    "folderHeld": "The folder can’t change while Flint is still working here",
     "downgrade": {
-      "no-capability": "Editing this folder isn’t available here, so Jan is reading only.",
-      "no-grant": "Editing this folder needs confirming again, so Jan is reading only.",
-      "binding-changed": "The folder changed, so Jan is reading only.",
-      "capability-unknown": "Jan is reading only until it can check what this platform enforces."
+      "no-capability": "Editing this folder isn’t available here, so Flint is reading only.",
+      "no-grant": "Editing this folder needs confirming again, so Flint is reading only.",
+      "binding-changed": "The folder changed, so Flint is reading only.",
+      "capability-unknown": "Flint is reading only until it can check what this platform enforces."
     },
     "refusal": {
       "stale-binding": "the attached folder changed",
@@ -1246,8 +1246,8 @@
       "no-consent": "editing this folder has not been confirmed"
     },
     "confirm": {
-      "title": "Let Jan edit this folder?",
-      "description": "Jan can modify files in this exact folder.",
+      "title": "Let Flint edit this folder?",
+      "description": "Flint can modify files in this exact folder.",
       "folder": "Folder",
       "branch": "Branch",
       "gitClean": "No uncommitted changes",
@@ -1259,8 +1259,8 @@
       "shellYes": "run inside this folder",
       "shellNo": "not available",
       "backend": "Enforced by",
-      "duration": "This lasts for this app session and this folder only. Reopening Jan asks again.",
-      "existingChanges": "Existing uncommitted changes may not be Jan's. Jan will not commit, stash, reset, or discard them.",
+      "duration": "This lasts for this app session and this folder only. Reopening Flint asks again.",
+      "existingChanges": "Existing uncommitted changes may not be Flint's. Flint will not commit, stash, reset, or discard them.",
       "modeReview": "Review first still prevents every change.",
       "modeAsk": "Ask before changes asks you before each change.",
       "modeAuto": "Autonomous changes this folder without asking each time.",
@@ -1268,23 +1268,23 @@
       "confirm": "Allow editing",
       "working": "Authorizing…",
       "failed": "Couldn’t authorize: {{reason}}",
-      "granted": "Jan can now edit this folder",
-      "revokeFailed": "Access could not be withdrawn. Jan may still be able to edit this folder."
+      "granted": "Flint can now edit this folder",
+      "revokeFailed": "Access could not be withdrawn. Flint may still be able to edit this folder."
     }
   },
   "coworkOrigins": {
     "title": "What changed",
-    "subtitle": "Recorded by Jan, not written by the model.",
+    "subtitle": "Recorded by Flint, not written by the model.",
     "janWrites": {
-      "repository": "Jan changed in this folder",
-      "managed": "Jan changed in the worktree",
-      "sandbox": "Jan changed in the session workspace",
-      "external": "Jan changed outside the attached folder"
+      "repository": "Flint changed in this folder",
+      "managed": "Flint changed in the worktree",
+      "sandbox": "Flint changed in the session workspace",
+      "external": "Flint changed outside the attached folder"
     },
     "inTree": "These paths are in {{tree}}, not in the folder this session is attached to.",
-    "overExisting": "Already had uncommitted changes before this run, so only Jan’s edit is Jan’s:",
-    "preExisting": "Already changed before this run. Not Jan’s:",
-    "observed": "Appeared during this run. Nothing shows Jan caused these:",
+    "overExisting": "Already had uncommitted changes before this run, so only Flint’s edit is Flint’s:",
+    "preExisting": "Already changed before this run. Not Flint’s:",
+    "observed": "Appeared during this run. Nothing shows Flint caused these:",
     "unknown": "No Git evidence either way for these:",
     "baseline": {
       "clean": "Compared against a clean working tree.",
@@ -1294,10 +1294,10 @@
       "incomplete": "The starting state was never fully captured, so nothing could be compared.",
       "none": "No starting state was recorded, so nothing could be compared."
     },
-    "nothing": "Jan changed no files in this run.",
+    "nothing": "Flint changed no files in this run.",
     "row": {
-      "jan-write": "Jan changed this",
-      "jan-write-over": "Jan changed this, over existing changes",
+      "jan-write": "Flint changed this",
+      "jan-write-over": "Flint changed this, over existing changes",
       "pre-existing": "Already changed before this run",
       "observed-in-run": "Appeared during this run",
       "no-evidence": "No evidence either way"
@@ -1305,7 +1305,7 @@
   },
   "claudeCompat": {
     "title": "Claude Code compatibility",
-    "subtitle": "Jan reads the parts of this folder’s Claude configuration it can reproduce. It never runs commands, hooks or plugins.",
+    "subtitle": "Flint reads the parts of this folder’s Claude configuration it can reproduce. It never runs commands, hooks or plugins.",
     "enable": "Use this folder’s Claude configuration",
     "enabled": "On",
     "disabledAll": "Off",
@@ -1335,7 +1335,7 @@
       "consent-required": "Waiting for your approval",
       "init-failed": "Did not start",
       "unsupported-confinement": "Refused: cannot be confined on this platform",
-      "unsupported-scoping": "Applies to a subdirectory only, which Jan cannot reproduce"
+      "unsupported-scoping": "Applies to a subdirectory only, which Flint cannot reproduce"
     },
     "precedence": "Instruction precedence",
     "mcpAllow": "Allow",
@@ -1345,14 +1345,14 @@
     "inertNote": "Detected and never executed.",
     "roots": {
       "title": "Claude skill folders",
-      "description": "Jan can read Claude-compatible skills from folders you choose here. It reads SKILL.md files and their resources; it never runs scripts it finds, and this grants no access to any repository.",
+      "description": "Flint can read Claude-compatible skills from folders you choose here. It reads SKILL.md files and their resources; it never runs scripts it finds, and this grants no access to any repository.",
       "add": "Add folder…",
       "remove": "Remove",
       "rescan": "Rescan",
       "none": "No folders added.",
       "reject": {
         "too-broad": "Too broad to scan. Choose a folder, not a drive.",
-        "jan-data": "That is Jan’s own storage, not your skills.",
+        "jan-data": "That is Flint’s own storage, not your skills.",
         "duplicate": "Already covered by a folder you added.",
         "overlaps": "Contains a folder you already added.",
         "missing": "That folder is not there any more."
@@ -1380,7 +1380,7 @@
     "current": "Stop current task",
     "currentDescription": "Ends this response and everything under it. Other sessions keep running.",
     "all": "Stop all activity",
-    "allDescription": "Ends every run, tool, command and agent everywhere in Jan.",
+    "allDescription": "Ends every run, tool, command and agent everywhere in Flint.",
     "confirm": "Stop everything?",
     "allConfirm": "Stop all",
     "stopping": "Stopping…",

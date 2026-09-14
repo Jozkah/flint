@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Jan",
+  "productName": "Flint",
   "mainBinaryName": "Jan-Desktop",
   "version": "0.8.4",
   "identifier": "jan.ai.app",

@@ -15,9 +15,9 @@
   },
   "headline": {
     "running": "The run is still going.",
-    "completedWithChanges": "The run finished and Jan changed files.",
-    "completedNoChanges": "The run finished without Jan changing any files.",
-    "completedChecksFailed": "The run finished, but a check Jan ran did not pass.",
+    "completedWithChanges": "The run finished and Flint changed files.",
+    "completedNoChanges": "The run finished without Flint changing any files.",
+    "completedChecksFailed": "The run finished, but a check Flint ran did not pass.",
     "partial": "The run stopped before finishing. Some work was done first.",
     "failed": "The run stopped before finishing, and nothing was completed.",
     "cancelled": "The run was stopped before anything was completed."
@@ -28,14 +28,14 @@
   "kept": "These changes were kept. Stopping a run does not undo what it already did.",
   "location": {
     "sandbox": "In this session's sandbox, not in your repository.",
-    "worktree": "In a separate worktree Jan manages, not in your checkout.",
+    "worktree": "In a separate worktree Flint manages, not in your checkout.",
     "userCheckout": "Directly in your attached folder.",
     "none": "No working tree was attached to this run.",
-    "noFiles": "Jan did not write any files.",
+    "noFiles": "Flint did not write any files.",
     "open": "Open {{path}}"
   },
   "checks": {
-    "none": "No tests or checks were run by Jan.",
+    "none": "No tests or checks were run by Flint.",
     "kind": {
       "test": "Test",
       "build": "Build",
@@ -84,7 +84,7 @@
       "subset-selected": "Only part of the test suite was selected.",
       "no-exit-status": "No exit status was recorded."
     },
-    "claimsTitle": "Mentioned by the assistant, not verified by Jan:"
+    "claimsTitle": "Mentioned by the assistant, not verified by Flint:"
   },
   "unresolved": {
     "stop": {
@@ -115,10 +115,10 @@
     "scopeTree": "Worktree: {{tree}}",
     "filesHeading": "Files that will be put back ({{count}})",
     "noFiles": "No files differ from this point.",
-    "filesUnknown": "Jan could not list which files will change.",
-    "safetyNote": "Before restoring, Jan saves the current state as a new point, so this restore can be undone.",
+    "filesUnknown": "Flint could not list which files will change.",
+    "safetyNote": "Before restoring, Flint saves the current state as a new point, so this restore can be undone.",
     "boundaries": "Restoring files does not undo messages, remote pushes, published content, installed packages, or other effects outside this worktree. Commands that already ran are not reversed.",
-    "unrelatedTitle": "These files changed after the latest point and were not written by Jan. Restoring will overwrite them:",
+    "unrelatedTitle": "These files changed after the latest point and were not written by Flint. Restoring will overwrite them:",
     "unrelatedConfirm": "I understand these edits will be overwritten. They stay available in the saved point.",
     "safetyLabel": "Before restore {{time}}",
     "safetyFailed": "The current state could not be saved first, so nothing was restored: {{reason}}",

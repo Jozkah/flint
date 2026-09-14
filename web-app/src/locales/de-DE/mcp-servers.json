@@ -6,8 +6,8 @@
       "checking": "Erweiterungsstatus wird überprüft..."
     },
     "notInstalled": {
-      "title": "Jan erledigt Aufgaben in Ihrem Browser",
-      "description": "Installieren Sie die Erweiterung, um Jan Browserzugriff zu gewähren",
+      "title": "Flint erledigt Aufgaben in Ihrem Browser",
+      "description": "Installieren Sie die Erweiterung, um Flint Browserzugriff zu gewähren",
       "getExtension": "Erweiterung holen"
     }
   },
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Server {{serverKey}} erfolgreich deaktiviert",
   "runtimeSettings": {
     "title": "Laufzeiteinstellungen",
-    "description": "Konfiguriere, wie Jan MCP-Server verwaltet und erneut versucht.",
+    "description": "Konfiguriere, wie Flint MCP-Server verwaltet und erneut versucht.",
     "toolCallTimeout": "Zeitlimit für Tool-Aufruf (Sekunden)",
     "toolCallTimeoutDesc": "Maximale Wartezeit auf eine Antwort eines MCP-Tools, bevor abgebrochen wird.",
     "smartToolRouting": "Intelligente MCP-Tool-Weiterleitung",
-    "smartToolRoutingDesc": "Wenn aktiviert, wählt Jan vor dem Laden der Tools relevante MCP-Server aus. Deaktivieren, um immer die vollständige MCP-Toolliste zu laden.",
+    "smartToolRoutingDesc": "Wenn aktiviert, wählt Flint vor dem Laden der Tools relevante MCP-Server aus. Deaktivieren, um immer die vollständige MCP-Toolliste zu laden.",
     "useLightweightRouterModel": "Dediziertes Modell für die Weiterleitung verwenden",
     "useLightweightRouterModelDesc": "Bei aktivierter intelligenter Weiterleitung wird die Weiterleitung mit einem separaten (oft kleineren) Modell statt dem Chat-Modell ausgeführt. Deaktivieren, um immer das aktive Chat-Modell für die Weiterleitung zu nutzen.",
     "routerModel": "Weiterleitungsmodell",

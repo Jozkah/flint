@@ -6,8 +6,8 @@
       "checking": "Verifica dello stato dell'estensione..."
     },
     "notInstalled": {
-      "title": "Jan completa le attività nel tuo browser",
-      "description": "Installa l'estensione per consentire a Jan l'accesso al browser",
+      "title": "Flint completa le attività nel tuo browser",
+      "description": "Installa l'estensione per consentire a Flint l'accesso al browser",
       "getExtension": "Ottieni estensione"
     }
   },
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Server {{serverKey}} disattivato con successo",
   "runtimeSettings": {
     "title": "Impostazioni di runtime",
-    "description": "Configura il modo in cui Jan gestisce e tenta nuovamente la connessione ai server MCP.",
+    "description": "Configura il modo in cui Flint gestisce e tenta nuovamente la connessione ai server MCP.",
     "toolCallTimeout": "Timeout chiamata strumento (secondi)",
     "toolCallTimeoutDesc": "Tempo massimo di attesa per la risposta di uno strumento MCP prima del timeout.",
     "smartToolRouting": "Routing intelligente degli strumenti MCP",
-    "smartToolRoutingDesc": "Se abilitato, Jan seleziona i server MCP pertinenti prima di caricare gli strumenti. Disabilita per caricare sempre l'elenco completo degli strumenti MCP.",
+    "smartToolRoutingDesc": "Se abilitato, Flint seleziona i server MCP pertinenti prima di caricare gli strumenti. Disabilita per caricare sempre l'elenco completo degli strumenti MCP.",
     "useLightweightRouterModel": "Usa un modello dedicato per il routing",
     "useLightweightRouterModelDesc": "Quando il routing intelligente è attivo, esegui il passaggio di routing con un modello separato (spesso più piccolo) invece del modello di chat. Disattiva per utilizzare sempre il modello di chat attivo per il routing.",
     "routerModel": "Modello di routing",

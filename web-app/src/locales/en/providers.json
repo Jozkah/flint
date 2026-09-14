@@ -26,7 +26,7 @@
   "refresh": "Refresh",
   "import": "Import",
   "imported": "Imported",
-  "importedTooltip": "Imported from a local file. Removing it from Jan will not delete the file on disk.",
+  "importedTooltip": "Imported from a local file. Removing it from Flint will not delete the file on disk.",
   "importModelSuccess": "Model {{provider}} has been imported successfully.",
   "importModelError": "Failed to import model:",
   "stop": "Stop",
@@ -70,8 +70,8 @@
   "deleteModel": {
     "title": "Delete Model: {{modelId}}",
     "description": "Are you sure you want to delete this model? This action cannot be undone.",
-    "importedDescription": "Remove this imported model from Jan? Your local file on disk will not be deleted.",
-    "removeFromJan": "Remove from Jan",
+    "importedDescription": "Remove this imported model from Flint? Your local file on disk will not be deleted.",
+    "removeFromJan": "Remove from Flint",
     "success": "Model {{modelId}} has been permanently deleted.",
     "cancel": "Cancel",
     "delete": "Delete"
@@ -83,7 +83,7 @@
     "sizeLabel": "Disk space to be freed:",
     "calculating": "Calculating…",
     "warning": "This action cannot be undone.",
-    "importedExcluded": "{{count}} imported model(s) will be kept (their files were not downloaded by Jan).",
+    "importedExcluded": "{{count}} imported model(s) will be kept (their files were not downloaded by Flint).",
     "confirm": "Delete {{count}} model(s)",
     "deleting": "Deleting…",
     "success": "Deleted {{count}} model(s).",
@@ -128,7 +128,7 @@
   },
   "apiKeys": {
     "title": "API keys",
-    "description": "Enter your API key. You can add extra keys in Advanced, and Jan will try the next one automatically if a key fails.",
+    "description": "Enter your API key. You can add extra keys in Advanced, and Flint will try the next one automatically if a key fails.",
     "placeholder": "sk-…\nsk-…",
     "primaryPlaceholder": "Enter primary API key",
     "keyPlaceholder": "Enter API key",
@@ -142,7 +142,7 @@
     "addKey": "Add key",
     "removeKey": "Remove key"
   },
-  "dataFolderUnavailable": "The data folder {{path}} could not be used this run, so Jan is showing the models in its default folder. Models stored there are not deleted: they come back once that folder is available again. See Settings > General.",
+  "dataFolderUnavailable": "The data folder {{path}} could not be used this run, so Flint is showing the models in its default folder. Models stored there are not deleted: they come back once that folder is available again. See Settings > General.",
   "customHeaders": {
     "title": "Custom headers",
     "description": "Extra HTTP headers sent with every request to this provider, such as a gateway tenant or subscription key. They cannot replace the API key.",
@@ -158,7 +158,7 @@
     "errors": {
       "empty-name": "Enter a header name.",
       "invalid-name": "A header name can only use letters, digits and ! # $ % & ' * + - . ^ _ ` | ~, with no spaces.",
-      "reserved": "Jan sets this header itself; it cannot be replaced here.",
+      "reserved": "Flint sets this header itself; it cannot be replaced here.",
       "duplicate": "This header is already set above.",
       "empty-value": "Enter a value.",
       "invalid-value": "A value cannot contain line breaks or other control characters.",

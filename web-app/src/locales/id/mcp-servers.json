@@ -6,8 +6,8 @@
       "checking": "Memeriksa status ekstensi..."
     },
     "notInstalled": {
-      "title": "Jan menyelesaikan tugas di browser Anda",
-      "description": "Instal ekstensi untuk memberikan Jan akses browser",
+      "title": "Flint menyelesaikan tugas di browser Anda",
+      "description": "Instal ekstensi untuk memberikan Flint akses browser",
       "getExtension": "Dapatkan Ekstensi"
     }
   },
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Server {{serverKey}} berhasil dinonaktifkan",
   "runtimeSettings": {
     "title": "Pengaturan Runtime",
-    "description": "Atur bagaimana Jan mengelola dan mencoba ulang server MCP.",
+    "description": "Atur bagaimana Flint mengelola dan mencoba ulang server MCP.",
     "toolCallTimeout": "Batas waktu pemanggilan alat (detik)",
     "toolCallTimeoutDesc": "Waktu maksimum menunggu respons alat MCP sebelum waktu habis.",
     "smartToolRouting": "Perutean alat MCP cerdas",
-    "smartToolRoutingDesc": "Jika diaktifkan, Jan memilih server MCP yang relevan sebelum memuat alat. Nonaktifkan untuk selalu memuat daftar alat MCP lengkap.",
+    "smartToolRoutingDesc": "Jika diaktifkan, Flint memilih server MCP yang relevan sebelum memuat alat. Nonaktifkan untuk selalu memuat daftar alat MCP lengkap.",
     "useLightweightRouterModel": "Gunakan model khusus untuk perutean",
     "useLightweightRouterModelDesc": "Saat perutean cerdas aktif, langkah perutean dijalankan dengan model terpisah (biasanya lebih kecil), bukan model obrolan. Nonaktifkan untuk selalu memakai model obrolan aktif untuk perutean.",
     "routerModel": "Model perutean",

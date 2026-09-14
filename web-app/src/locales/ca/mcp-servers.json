@@ -6,8 +6,8 @@
       "checking": "S’està comprovant l’estat de l’extensió..."
     },
     "notInstalled": {
-      "title": "Jan completa tasques al teu navegador",
-      "description": "Instal·la l’extensió per donar accés al navegador a Jan",
+      "title": "Flint completa tasques al teu navegador",
+      "description": "Instal·la l’extensió per donar accés al navegador a Flint",
       "getExtension": "Instal·la l’extensió"
     }
   },
@@ -56,11 +56,11 @@
   "serverStatusInactive": "El servidor {{serverKey}} s’ha desactivat correctament",
   "runtimeSettings": {
     "title": "Configuració del temps d’execució",
-    "description": "Configura com gestiona i reintenta Jan els servidors MCP.",
+    "description": "Configura com gestiona i reintenta Flint els servidors MCP.",
     "toolCallTimeout": "Temps d’espera d’una trucada d’eina (segons)",
     "toolCallTimeoutDesc": "Temps màxim d’espera d’una resposta d’una eina MCP abans de donar temps excedit.",
     "smartToolRouting": "Encaminament intel·ligent d'eines MCP",
-    "smartToolRoutingDesc": "Si està activat, Jan selecciona els servidors MCP rellevants abans de carregar les eines. Desactiva-ho per carregar sempre la llista completa d'eines MCP.",
+    "smartToolRoutingDesc": "Si està activat, Flint selecciona els servidors MCP rellevants abans de carregar les eines. Desactiva-ho per carregar sempre la llista completa d'eines MCP.",
     "useLightweightRouterModel": "Utilitzar un model dedicat per a l'encaminament",
     "useLightweightRouterModelDesc": "Amb l'encaminament intel·ligent activat, el pas d'encaminament s'executa amb un model separat (sovint més petit) en lloc del model de xat. Desactiva-ho per utilitzar sempre el model de xat actiu per a l'encaminament.",
     "routerModel": "Model d'encaminament",
@@ -71,5 +71,5 @@
     "routerModelEmptySearch": "Cap coincidència per a «{{query}}»."
   },
   "proactiveMode": "Mode proactiu d’ús del navegador",
-  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Jan Browser amb visió i model d’ús d’eines."
+  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines."
 }

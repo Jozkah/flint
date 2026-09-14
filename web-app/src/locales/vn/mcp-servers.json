@@ -6,8 +6,8 @@
       "checking": "Đang kiểm tra trạng thái tiện ích..."
     },
     "notInstalled": {
-      "title": "Jan hoàn thành các tác vụ trong trình duyệt của bạn",
-      "description": "Cài đặt tiện ích để cho phép Jan truy cập trình duyệt",
+      "title": "Flint hoàn thành các tác vụ trong trình duyệt của bạn",
+      "description": "Cài đặt tiện ích để cho phép Flint truy cập trình duyệt",
       "getExtension": "Tải tiện ích"
     }
   },
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Máy chủ {{serverKey}} đã được hủy kích hoạt thành công",
   "runtimeSettings": {
     "title": "Cài đặt thời gian chạy",
-    "description": "Cấu hình cách Jan quản lý và thử lại các máy chủ MCP.",
+    "description": "Cấu hình cách Flint quản lý và thử lại các máy chủ MCP.",
     "toolCallTimeout": "Thời gian chờ lệnh (giây)",
     "toolCallTimeoutDesc": "Thời gian tối đa chờ phản hồi từ công cụ MCP trước khi hết thời gian.",
     "smartToolRouting": "Định tuyến công cụ MCP thông minh",
-    "smartToolRoutingDesc": "Khi bật, Jan chọn các máy chủ MCP liên quan trước khi tải công cụ. Tắt để luôn tải toàn bộ danh sách công cụ MCP.",
+    "smartToolRoutingDesc": "Khi bật, Flint chọn các máy chủ MCP liên quan trước khi tải công cụ. Tắt để luôn tải toàn bộ danh sách công cụ MCP.",
     "useLightweightRouterModel": "Dùng model riêng cho định tuyến",
     "useLightweightRouterModelDesc": "Khi định tuyến thông minh bật, bước định tuyến chạy bằng model riêng (thường nhỏ hơn) thay vì model trò chuyện. Tắt để luôn dùng model trò chuyện đang hoạt động cho định tuyến.",
     "routerModel": "Model định tuyến",

@@ -6,7 +6,7 @@
       "checking": "Kontrola stavu rozšíření..."
     },
     "notInstalled": {
-      "title": "Jan dokončuje úkoly ve vašem prohlížeči",
+      "title": "Flint dokončuje úkoly ve vašem prohlížeči",
       "description": "Nainstalujte rozšíření pro přístup Jana k prohlížeči",
       "getExtension": "Získat rozšíření"
     }
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Server {{serverKey}} byl úspěšně deaktivován",
   "runtimeSettings": {
     "title": "Nastavení běhového prostředí",
-    "description": "Nakonfigurujte, jak Jan spravuje a opakuje pokusy se servery MCP.",
+    "description": "Nakonfigurujte, jak Flint spravuje a opakuje pokusy se servery MCP.",
     "toolCallTimeout": "Časový limit volání nástroje (sekundy)",
     "toolCallTimeoutDesc": "Maximální doba čekání na odpověď nástroje MCP před vypršením časového limitu.",
     "smartToolRouting": "Chytré směrování nástrojů MCP",
-    "smartToolRoutingDesc": "Po zapnutí Jan před načtením nástrojů vybere relevantní servery MCP. Vypněte pro vždy načtení úplného seznamu nástrojů MCP.",
+    "smartToolRoutingDesc": "Po zapnutí Flint před načtením nástrojů vybere relevantní servery MCP. Vypněte pro vždy načtení úplného seznamu nástrojů MCP.",
     "useLightweightRouterModel": "Použít vyhrazený model pro směrování",
     "useLightweightRouterModelDesc": "Při zapnutém chytrém směrování proběhne směrování samostatným (často menším) modelem místo chatovacího modelu. Vypněte pro vždy použití aktivního chatovacího modelu ke směrování.",
     "routerModel": "Model pro směrování",

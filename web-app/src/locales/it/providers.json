@@ -15,7 +15,7 @@
   "refresh": "Aggiorna",
   "import": "Importa",
   "imported": "Importato",
-  "importedTooltip": "Importato da un file locale. La rimozione da Jan non eliminerà il file dal disco.",
+  "importedTooltip": "Importato da un file locale. La rimozione da Flint non eliminerà il file dal disco.",
   "importModelSuccess": "Il modello {{provider}} è stato importato con successo.",
   "importModelError": "Impossibile importare il modello:",
   "stop": "Interrompi",
@@ -39,8 +39,8 @@
   "deleteModel": {
     "title": "Elimina modello: {{modelId}}",
     "description": "Sei sicuro di voler eliminare questo modello? Questa azione non può essere annullata.",
-    "importedDescription": "Vuoi rimuovere questo modello importato da Jan? Il file locale sul disco non verrà eliminato.",
-    "removeFromJan": "Rimuovi da Jan",
+    "importedDescription": "Vuoi rimuovere questo modello importato da Flint? Il file locale sul disco non verrà eliminato.",
+    "removeFromJan": "Rimuovi da Flint",
     "success": "Il modello {{modelId}} è stato eliminato definitivamente.",
     "cancel": "Annulla",
     "delete": "Elimina"
@@ -52,7 +52,7 @@
     "sizeLabel": "Spazio su disco da liberare:",
     "calculating": "Calcolo in corso…",
     "warning": "Questa azione non può essere annullata.",
-    "importedExcluded": "{{count}} modello/i importato/i sarà/anno mantenuto/i (i relativi file non sono stati scaricati da Jan).",
+    "importedExcluded": "{{count}} modello/i importato/i sarà/anno mantenuto/i (i relativi file non sono stati scaricati da Flint).",
     "confirm": "Elimina {{count}} modello/i",
     "deleting": "Eliminazione in corso…",
     "success": "Eliminato/i {{count}} modello/i.",
@@ -87,7 +87,7 @@
   "enterNameForProvider": "Inserisci il nome del provider",
   "apiKeys": {
     "title": "Chiavi API",
-    "description": "Inserisci la tua chiave API. Puoi aggiungere chiavi extra nella sezione Avanzate; Jan proverà automaticamente quella successiva se una chiave dovesse fallire.",
+    "description": "Inserisci la tua chiave API. Puoi aggiungere chiavi extra nella sezione Avanzate; Flint proverà automaticamente quella successiva se una chiave dovesse fallire.",
     "placeholder": "sk-…\nsk-…",
     "primaryPlaceholder": "Inserisci la chiave API principale",
     "keyPlaceholder": "Inserisci la chiave API",

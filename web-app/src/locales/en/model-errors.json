@@ -17,7 +17,7 @@
     "OUT_OF_MEMORY": "There is not enough memory to run this model. A smaller model or a smaller context size usually helps.",
     "INVALID_ARGUMENT": "One of the model's settings is not valid.",
     "IO_ERROR": "A file could not be read or written while starting the model.",
-    "INTERNAL_ERROR": "Something went wrong inside Jan while starting the model."
+    "INTERNAL_ERROR": "Something went wrong inside Flint while starting the model."
   },
   "engineMissingLibraries": "Missing: {{libraries}}",
   "engineReportedDetail": "The engine reported: {{detail}}",

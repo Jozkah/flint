@@ -2,7 +2,7 @@
   "title": "Plugins",
   "navLabel": "Plugins",
   "whatIs": "A plugin is a package that can add skills, slash commands and agent profiles to this project. It is different from an MCP server (a running connection that provides tools, configured in Settings) and from a single skill.",
-  "whereApplies": "Plugins are installed per project folder, under .jan/agent/plugins. In Cowork, an enabled plugin's skills are added to this folder's skills: they appear in the skills list marked with the plugin's name, follow the same on/off switches, and the agent can read them. Cowork has no slash commands or project agent profiles, so a plugin's commands and agents are used only by the Jan CLI agent in this folder.",
+  "whereApplies": "Plugins are installed per project folder, under .jan/agent/plugins. In Cowork, an enabled plugin's skills are added to this folder's skills: they appear in the skills list marked with the plugin's name, follow the same on/off switches, and the agent can read them. Cowork has no slash commands or project agent profiles, so a plugin's commands and agents are used only by the Flint CLI agent in this folder.",
   "whenApplies": "Installing, enabling, disabling or removing a plugin updates the skills list right away. A run already in progress keeps its tools and sees the change the next time it lists or reads a skill.",
   "selectFolder": "Choose a project folder for this session to manage its plugins.",
   "loading": "Loading plugins…",
@@ -26,7 +26,7 @@
     "local": "Local folder",
     "git": "Git repository",
     "marketplace": "Marketplace",
-    "unknown": "Not recorded (added outside Jan)"
+    "unknown": "Not recorded (added outside Flint)"
   },
   "details": {
     "loading": "Loading details…",
@@ -42,8 +42,8 @@
     "none": "None",
     "access": "Access",
     "accessSkills": "Skills are instructions. A skill may include scripts; they only run if the agent runs them through the shell tool, which asks for permission as usual. Plugin skills are read-only in Cowork: edit them in the plugin's source and reinstall.",
-    "accessCommands": "Slash commands are prompt templates for the Jan CLI agent. Using one there sends its text as a message. Cowork does not offer slash commands.",
-    "accessAgents": "Agent profiles describe a subagent the Jan CLI agent can delegate to. A profile cannot grant tools the agent does not already have. Cowork uses only the subagents saved in Jan, not plugin profiles.",
+    "accessCommands": "Slash commands are prompt templates for the Flint CLI agent. Using one there sends its text as a message. Cowork does not offer slash commands.",
+    "accessAgents": "Agent profiles describe a subagent the Flint CLI agent can delegate to. A profile cannot grant tools the agent does not already have. Cowork uses only the subagents saved in Flint, not plugin profiles.",
     "accessNoPermissions": "Installing or enabling a plugin runs none of its files and grants no tool permissions.",
     "mcpPresent": "This plugin includes a .mcp.json file. JAN does not load it: plugins add no MCP servers. Configure MCP servers in Settings.",
     "executables": "Script files ({{count}})",
@@ -64,7 +64,7 @@
     "localPathLabel": "Folder path",
     "localPathPlaceholder": "Choose or paste a folder path",
     "chooseFolder": "Choose folder…",
-    "localNotice": "Jan copies this folder into the project. Nothing is downloaded, and nothing in the folder is run.",
+    "localNotice": "Flint copies this folder into the project. Nothing is downloaded, and nothing in the folder is run.",
     "gitUrlLabel": "Repository URL",
     "gitUrlPlaceholder": "https://host/owner/repository",
     "gitNotice": "Installing runs git clone, which contacts {{host}}. Nothing in the repository is run.",

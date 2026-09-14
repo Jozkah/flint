@@ -6,7 +6,7 @@
       "checking": "Sprawdzanie statusu rozszerzenia..."
     },
     "notInstalled": {
-      "title": "Jan wykonuje zadania w Twojej przeglądarce",
+      "title": "Flint wykonuje zadania w Twojej przeglądarce",
       "description": "Zainstaluj rozszerzenie, aby dać Janowi dostęp do przeglądarki",
       "getExtension": "Pobierz rozszerzenie"
     }
@@ -56,11 +56,11 @@
   "serverStatusInactive": "Pomyślnie dezaktywowano serwer {{serverKey}}",
   "runtimeSettings": {
     "title": "Ustawienia środowiska uruchomieniowego",
-    "description": "Skonfiguruj, jak Jan zarządza i ponawia próby połączenia z serwerami MCP.",
+    "description": "Skonfiguruj, jak Flint zarządza i ponawia próby połączenia z serwerami MCP.",
     "toolCallTimeout": "Limit czasu wywołania narzędzia (sekundy)",
     "toolCallTimeoutDesc": "Maksymalny czas oczekiwania na odpowiedź narzędzia MCP przed przekroczeniem limitu czasu.",
     "smartToolRouting": "Inteligentne routowanie narzędzi MCP",
-    "smartToolRoutingDesc": "Po włączeniu Jan wybiera odpowiednie serwery MCP przed załadowaniem narzędzi. Wyłącz, aby zawsze ładować pełną listę narzędzi MCP.",
+    "smartToolRoutingDesc": "Po włączeniu Flint wybiera odpowiednie serwery MCP przed załadowaniem narzędzi. Wyłącz, aby zawsze ładować pełną listę narzędzi MCP.",
     "useLightweightRouterModel": "Użyj dedykowanego modelu do routowania",
     "useLightweightRouterModelDesc": "Gdy inteligentne routowanie jest włączone, krok routowania jest wykonywany przez osobny (często mniejszy) model zamiast modelu czatu. Wyłącz, aby zawsze używać aktywnego modelu czatu do routowania.",
     "routerModel": "Model routowania",

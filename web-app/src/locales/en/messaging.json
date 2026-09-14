@@ -39,7 +39,7 @@
     "invalid_arguments": "The request was not valid.",
     "not_available": "Messaging is not available here.",
     "io": "The mailbox could not be read or written.",
-    "no_data_folder": "Jan's data folder is unavailable.",
+    "no_data_folder": "Flint's data folder is unavailable.",
     "unknown": "The reply could not be sent."
   }
 }
