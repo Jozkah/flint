@@ -24,23 +24,32 @@ missing output: when output is cut it always carries an explicit `[output trunca
 its absence means you have everything. A command's `[exit N]` line is the authoritative result -- \
 `[exit 0]` is success even if there is text on stderr (many tools write normal status there).";
 
-/// The one instructions file Jan reads, discovered by walking from the project
-/// root up to the filesystem root. Another agent's file (`AGENTS.md`,
-/// `CLAUDE.md`) is deliberately not ingested: only what a user wrote for Jan --
-/// by hand or through `/init` -- becomes authoritative project context.
-const CONTEXT_FILE_NAME: &str = "JAN.md";
+/// The instructions file Flint reads, discovered by walking from the project
+/// root up to the filesystem root. `FLINT.md` is the current name; `JAN.md` is
+/// the legacy name and is still read for projects created before the rename.
+/// Within one directory `FLINT.md` wins over a `JAN.md`. Another agent's file
+/// (`AGENTS.md`, `CLAUDE.md`) is deliberately not ingested: only what a user
+/// wrote for Flint -- by hand or through `/init` -- becomes authoritative
+/// project context.
+const CONTEXT_FILE_NAME: &str = "FLINT.md";
+const LEGACY_CONTEXT_FILE_NAME: &str = "JAN.md";
 
-/// Ingest `JAN.md` from the project root and its ancestors, wrapped in a
-/// `<project_context>` block so the model treats them as authoritative project
-/// instructions. Returns None when none exist.
+/// Ingest the project instructions file (`FLINT.md`, or a legacy `JAN.md`) from
+/// the project root and its ancestors, wrapped in a `<project_context>` block so
+/// the model treats them as authoritative project instructions. Returns None
+/// when none exist.
 pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
     let mut files: Vec<(std::path::PathBuf, String)> = Vec::new();
     let mut dir = Some(project_root);
     while let Some(current) = dir {
-        let path = current.join(CONTEXT_FILE_NAME);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if !content.trim().is_empty() {
-                files.push((path, content));
+        // FLINT.md takes precedence over a legacy JAN.md in the same directory.
+        for name in [CONTEXT_FILE_NAME, LEGACY_CONTEXT_FILE_NAME] {
+            let path = current.join(name);
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if !content.trim().is_empty() {
+                    files.push((path, content));
+                    break;
+                }
             }
         }
         dir = current.parent();
