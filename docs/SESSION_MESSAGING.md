@@ -191,6 +191,28 @@ Module: `src-tauri/plugins/tauri-plugin-agent-tools/src/session_mailbox.rs`
   manual: restore or delete the file.
 - Process epoch: `"<start-ms hex>-<pid hex>"`, fixed for the process lifetime.
 
+#### Corrupt delivery-state recovery
+
+`<id>.state.json` never reads as an authoritative empty map when it is damaged.
+A missing (or genuinely unreadable) file is still an empty state, but a file
+that exists and does **not** parse is recovered in `Mailbox::read_delivery_state`
+(under the mailbox lock, so `pending` now takes the lock too):
+
+- the corrupt file is renamed aside to `<id>.state.corrupt-<epoch_ms>.json`
+  (best-effort) so its bytes survive for inspection, and a warning is logged;
+- the delivery state is rebuilt conservatively from the inbox JSONL — every
+  known envelope is marked `delivered`. Nothing is dropped (the envelopes still
+  exist and are still surfaced by `pending`/`read_messages`) and nothing is
+  silently re-injected as freshly `queued` (`take_for_delivery` returns only
+  `queued` envelopes, so a rebuilt inbox delivers nothing new into a running
+  conversation);
+- the rebuilt state is persisted, so the corrupt bytes are read only once and
+  recovery does not repeat on every read.
+
+This mirrors the torn-JSONL recovery (a damaged file self-heals rather than
+failing the operation), and unlike the registry it does not fail closed: an
+empty inbox with a corrupt state simply becomes an empty rebuilt state.
+
 ### Behaviour details the table above leaves open
 
 - `mailbox_session_register` on a deleted id is refused with `session_deleted`
@@ -316,8 +338,10 @@ and its four tools are offered only to session-scoped Cowork calls.
   by `mailbox_pending` and still shown).
 - The renderer's drained/dismissed id set is in memory; if `mark_read` (or a
   failed `mailbox_claim`) did not persist, a message can reappear after restart.
-- Only a corrupt `sessions.json` fails closed; a corrupt `<id>.state.json`
-  still reads as empty, so its envelopes become queued again.
+- A corrupt `sessions.json` fails closed (an `io` error for every operation
+  that needs the registry). A corrupt `<id>.state.json` no longer reads as an
+  authoritative empty map: it is quarantined and the delivery state is rebuilt
+  from the inbox (see "Corrupt delivery-state recovery" below).
 - Ordinary chat threads do not participate.
 - No end-to-end run of the desktop app against the real backend yet.
 

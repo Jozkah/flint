@@ -6542,8 +6542,47 @@ fn scenario_external_edit_diff(ctx: &Ctx) -> ScenarioResult {
 }
 
 /// A new session starts with no project of its own.
-fn scenario_session_isolation(ctx: &Ctx) -> ScenarioResult {
+/// Make sure the Cowork session in view has this fixture's project attached,
+/// attaching it through the real pill picker when it is not already. This is
+/// what makes a scenario self-contained instead of depending on
+/// `project-attachment` having attached a folder earlier in the run. Mirrors
+/// the attach flow in `scenario_attach`.
+fn ensure_project_attached(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/cowork")?;
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    // Already attached (e.g. project-attachment ran earlier in this run):
+    // the project name shows and there is no "attach a folder" pill.
+    let already = ctx.eval_bool(&format!(
+        "return document.body.textContent.includes({name:?}) && !{PILL_JS};"
+    ))?;
+    if already {
+        return Ok(());
+    }
+    ctx.script_dialog(Some(&ctx.project));
+    let opened = open_picker_through_the_pill(ctx);
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the project to attach",
+            &format!(
+                "return document.body.innerText.includes({name:?})
+                     && !{PILL_JS};"
+            ),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed
+}
+
+fn scenario_session_isolation(ctx: &Ctx) -> ScenarioResult {
+    // Self-contained: attach our own project rather than relying on a folder a
+    // prior scenario left attached, so `--only session-isolation` passes from a
+    // fresh profile.
+    ensure_project_attached(ctx)?;
     let name = ctx
         .project
         .file_name()

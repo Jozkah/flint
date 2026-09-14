@@ -123,9 +123,76 @@ fn torn_lines_and_corrupt_state_are_tolerated() {
         ["one", "two"]
     );
 
-    // A corrupt state file reads as "everything queued" rather than failing.
+    // A corrupt state file is not silently treated as "everything queued".
+    // It is quarantined and the state is rebuilt with both known envelopes
+    // marked `delivered`, so nothing is re-injected as freshly queued...
     std::fs::write(fx.data.join("mailbox/inbox/b.state.json"), "{not json").unwrap();
+    assert_eq!(mb.take_for_delivery("b").unwrap().len(), 0);
+    // ...but nothing is dropped either: both are still surfaced as pending.
+    assert_eq!(mb.pending("b").unwrap().len(), 2);
+}
+
+#[test]
+fn a_corrupt_state_file_is_quarantined_and_the_state_is_rebuilt() {
+    let fx = Fixture::new("corrupt_state");
+    let clk = clock(1_000);
+    let mb = Mailbox::open(&fx.data).with_clock(clk.clone());
+    pair(&fx, &mb);
+    let one = mb.send("a", "b", "one", None, Origin::Agent).unwrap();
+    let two = mb.send("a", "b", "two", None, Origin::Agent).unwrap();
+
+    // b delivered and read the first message; the second is still delivered.
     assert_eq!(mb.take_for_delivery("b").unwrap().len(), 2);
+    assert_eq!(mb.mark_read("b", &[one.message_id.clone()]).unwrap(), 1);
+
+    // The delivery-state file is corrupted (e.g. a torn atomic write on crash).
+    let state_path = fx.data.join("mailbox/inbox/b.state.json");
+    assert!(state_path.is_file());
+    std::fs::write(&state_path, b"{ this is not json").unwrap();
+
+    // Any read now recovers instead of reading an empty map. Move the clock so
+    // the quarantine name is predictable-ish and distinct from the entries.
+    clk.store(2_000, Ordering::SeqCst);
+    let pending = mb.pending("b").unwrap();
+
+    // The corrupt file is renamed aside; the original path is rebuilt, not gone.
+    let inbox_dir = fx.data.join("mailbox/inbox");
+    let quarantined: Vec<_> = std::fs::read_dir(&inbox_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("b.state.corrupt-") && n.ends_with(".json"))
+        .collect();
+    assert_eq!(quarantined.len(), 1, "exactly one quarantine file: {quarantined:?}");
+    assert_eq!(
+        std::fs::read_to_string(inbox_dir.join(&quarantined[0])).unwrap(),
+        "{ this is not json",
+        "the corrupt bytes are preserved for inspection"
+    );
+    assert!(state_path.is_file(), "the state file is rebuilt, not left missing");
+
+    // Nothing is dropped: both envelopes are still visible...
+    assert_eq!(pending.len(), 2);
+    // ...and nothing is silently re-injected: the rebuilt state marks every
+    // known envelope `delivered`, so a fresh take returns nothing queued.
+    assert_eq!(mb.take_for_delivery("b").unwrap().len(), 0);
+
+    // The rebuilt state persisted, so a second read does not quarantine again.
+    let _ = mb.pending("b").unwrap();
+    let quarantined_again = std::fs::read_dir(&inbox_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            n.starts_with("b.state.corrupt-") && n.ends_with(".json")
+        })
+        .count();
+    assert_eq!(quarantined_again, 1, "recovery is not repeated on every read");
+
+    // A reply still correlates: the rebuilt `delivered` state does not block
+    // marking read or the healthy path.
+    assert_eq!(mb.read_messages("b", true).unwrap().len(), 2);
+    let _ = two;
 }
 
 #[test]
