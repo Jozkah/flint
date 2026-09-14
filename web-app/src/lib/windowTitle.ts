@@ -9,7 +9,7 @@
  * segment too, since chat titles are generated from what the user typed.
  */
 
-export const APP_NAME = 'Jan'
+export const APP_NAME = 'Flint'
 
 /** Longest segment the title carries before it is ellipsised. */
 const MAX_SEGMENT = 60

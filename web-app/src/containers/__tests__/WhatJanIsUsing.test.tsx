@@ -104,7 +104,7 @@ function seed() {
   })
   useThreads.setState({
     threads: {
-      t1: { id: 't1', assistants: [{ name: 'Jan', instructions: 'Be brief.' }] } as never,
+      t1: { id: 't1', assistants: [{ name: 'Flint', instructions: 'Be brief.' }] } as never,
     },
   })
   useAppState.setState({

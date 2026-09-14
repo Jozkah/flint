@@ -1,8 +1,10 @@
-# JAN
+# Flint
 
 A private, local-first AI workspace for your desktop: chat with models on your own computer, let an agent work on files and projects with your approval, and see exactly what it used and changed.
 
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="JAN Cowork with parallel agents and a live timeline" width="100%">
+> **Flint** is a rebranded distribution based on the [Jan](https://github.com/menloresearch/jan) project by Menlo Research, licensed under Apache 2.0. The Jan name is retained where it identifies the upstream project, data compatibility, or legal attribution.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="Flint Cowork with parallel agents and a live timeline" width="100%">
 
 <p align="center">
   <a href="#install">Install</a> ·
@@ -14,9 +16,9 @@ A private, local-first AI workspace for your desktop: chat with models on your o
 
 ---
 
-## What JAN is
+## What Flint is
 
-JAN puts two ways of working side by side:
+Flint puts two ways of working side by side:
 
 - **Chat** for questions, writing and documents. Conversations stay on your computer, can be grouped into projects, and can run side by side in a split view.
 - **Cowork** for tasks that touch files. An agent reads, writes and runs commands in a sandbox or a managed copy of your project, asks before it does anything you have not allowed, and ends every run with a plain summary of what happened, what it checked and what is left to review.
@@ -37,16 +39,16 @@ This build does not phone home. There is no telemetry, no analytics, no update c
 
 ## Install
 
-This repository does not publish installers. Build JAN from source (below); the result is a normal desktop app for Windows, macOS or Linux.
+This repository does not publish installers. Build Flint from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
 **You bring your own models.** Use a GGUF model file you already have (Settings → Model Providers → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
 ## Getting started
 
-1. **Open JAN.** The first-run guide asks what you want to do — ask a question, work with documents, or build or change a project — and explains the difference between local and cloud processing. You can skip the guide at any time and reopen it from Settings → General.
+1. **Open Flint.** The first-run guide asks what you want to do — ask a question, work with documents, or build or change a project — and explains the difference between local and cloud processing. You can skip the guide at any time and reopen it from Settings → General.
 2. **Choose a model.** Import a local model or add a provider in **Models**. Each model shows whether it is loaded, and the fit indicator separates what was *measured on this device* from what is only *estimated*. Estimates never block you from trying a model.
-3. **Start a chat.** Type in the composer and press Enter. Attach files with **+**. Open **What JAN is using** in the conversation header to see the model, instructions, attachments, memory and tools that apply to the conversation.
-4. **Try Cowork for file work.** Open **Cowork** from the Workspace sidebar, attach a project folder or work in the session sandbox, and describe the task. When the agent wants to change a file or run a command you have not allowed, JAN shows what it wants to do, the files involved, the scope of the permission and what happens if you deny it.
+3. **Start a chat.** Type in the composer and press Enter. Attach files with **+**. Open **What Flint is using** in the conversation header to see the model, instructions, attachments, memory and tools that apply to the conversation.
+4. **Try Cowork for file work.** Open **Cowork** from the Workspace sidebar, attach a project folder or work in the session sandbox, and describe the task. When the agent wants to change a file or run a command you have not allowed, Flint shows what it wants to do, the files involved, the scope of the permission and what happens if you deny it.
 5. **Review the result.** The run summary explains what happened, where the result is, which commands were actually run and checked, and what is still unresolved. The **Changes** panel shows real diffs; checkpoints let you restore earlier states.
 
 ## A visual tour
@@ -74,8 +76,8 @@ Screenshots of the real app with demo content. Phone layouts are the same app in
 
 ### Context and token usage
 
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What JAN is using panel" width="100%">
-<sub>**What JAN is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.</sub>
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What Flint is using panel" width="100%">
+<sub>**What Flint is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.</sub>
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-message-token-usage.png" alt="Token usage for one message" width="100%">
 <sub>**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.</sub>
@@ -96,7 +98,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 <details>
 <summary><strong>Workspace and design</strong></summary>
 
-- **JAN Atelier design:** ivory and graphite themes in light and dark, IBM Plex Sans and Mono with Newsreader (bundled, never fetched), and Lucide icons throughout.
+- **Flint Atelier design:** ivory and graphite themes in light and dark, IBM Plex Sans and Mono with Newsreader (bundled, never fetched), and Lucide icons throughout.
 - **Accent colour:** choose Vermilion, Ink, Moss or any hex value. Colours are derived per theme and checked for contrast, invalid hex is refused, there is a reset, and older accent settings migrate. Success, warning and error colours never change.
 - **One layout for every screen:** a rail for Workspace, Library, Models, Tools, Search, System and Settings; a resizable sidebar; a context bar for the current page; and a status bar showing loaded models, runs, waiting approvals and the Local API server.
 - **Any window size:** below 1024px navigation moves into a sheet; on phones dialogs become bottom sheets, touch targets are at least 44px, and the layout follows the on-screen keyboard.
@@ -117,9 +119,9 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 - **Temporary chats** that you can keep or discard, with a warning before you leave.
 - Per-chat model and reasoning settings.
 - **Text and code attachments** also work with models that have no vision.
-- **What JAN is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
+- **What Flint is using:** for each reply, the model, instructions, memory, tools and attachments that applied, and whether each was actually present in the request that was sent.
 - **Collection memory** follows a chat's collection; temporary chats use no memory.
-- **Sensible default model:** your preferred default, then the last model used, then the first local model. Jan never switches to a cloud provider on its own.
+- **Sensible default model:** your preferred default, then the last model used, then the first local model. Flint never switches to a cloud provider on its own.
 - **Safer editing:** deleting a message keeps later replies, "Delete all" cannot be triggered by Enter, and interrupted writes cannot leave a damaged thread.
 
 </details>
@@ -129,9 +131,9 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 
 - **Run modes:** Auto, Ask before changes, and Review (a repository starts in Review).
 - **Plan mode:** read-only exploration; leaving it requires approving the plan.
-- **Write scope** is granted separately from how freely Jan acts, and shell commands are held to the same folders.
+- **Write scope** is granted separately from how freely Flint acts, and shell commands are held to the same folders.
 - **Readiness check** of each part of the setup before tools are allowed.
-- **Describe this project:** a read-only survey of a new folder that proposes a JAN.md.
+- **Describe this project:** a read-only survey of a new folder that proposes a Flint.md.
 - **Todo list** that survives restarts, and a **shared task board** where tasks start only when their dependencies are done.
 - **One @ menu** for files, folders, skills, agents and saved aliases, including line ranges.
 - **Steering:** redirect, answer or interrupt a run while it works.
@@ -146,7 +148,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 - **Per-hunk review:** apply only the hunks you choose; applying over changed content fails loudly and merge conflicts are shown.
 - **Risky changes flagged:** dependency, lock file and migration changes need an explicit acknowledgement.
 - **Secret scan** blocks diffs that contain credentials, and new dependencies are checked against allowed licences.
-- **Changes panel** with the working tree, line-numbered diffs and a count of Jan's own changes.
+- **Changes panel** with the working tree, line-numbered diffs and a count of Flint's own changes.
 - **Change attribution:** every change records which agent and run made it.
 - **Format on edit** with the project's own formatter.
 - **Worktree bundles:** export a reviewable patch bundle and import it through the same review.
@@ -206,7 +208,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 - **Memory scopes:** project, session and user memory with the source of every line, a stated precedence and conflict detection.
 - **Memory settings:** scope tabs, a collection picker, conflict resolution, export and import, and forgetting that also reaches saved requests.
 - **Memory proposals** that you review before saving; sensitive content is refused.
-- **Instruction files:** JAN.md, CLAUDE.md and AGENTS.md, nearest file wins.
+- **Instruction files:** Flint.md, CLAUDE.md and AGENTS.md, nearest file wins.
 - **Retention limits** for saved requests, removed together with their thread.
 
 </details>
@@ -228,7 +230,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 <details>
 <summary><strong>Tools, MCP, skills and plugins</strong></summary>
 
-- **MCP servers:** tools, resources and prompts, protocol health checks, per-server logs, restart without restarting Jan, cancellation, pagination and per-server size limits.
+- **MCP servers:** tools, resources and prompts, protocol health checks, per-server logs, restart without restarting Flint, cancellation, pagination and per-server size limits.
 - **MCP sign-in (OAuth)** with tokens in the OS keychain, refreshed automatically, and requested scopes shown and enforced.
 - **Trust bound to a server's configuration:** changing, renaming or deleting a server invalidates its approvals with a stated reason.
 - **Validated MCP setup** with clear connection states and a per-server auto-approve switch.

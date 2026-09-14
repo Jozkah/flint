@@ -295,7 +295,7 @@ export const TokenCounter = memo(function TokenCounter({
                   {formatExact(totalTokens)} of {formatExact(tokenData.maxTokens)} tokens,{' '}
                   {breakdown.reported
                     ? 'counted by the provider'
-                    : "Jan's estimate"}
+                    : "Flint's estimate"}
                 </span>
               </p>
             )}

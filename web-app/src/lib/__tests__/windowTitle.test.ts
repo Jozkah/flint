@@ -9,12 +9,12 @@ describe('composeWindowTitle', () => {
   it('names the open chat', () => {
     expect(
       composeWindowTitle({ section: 'chat', threadTitle: 'Fix the login bug' })
-    ).toBe('Fix the login bug - Jan')
+    ).toBe('Fix the login bug - Flint')
   })
 
   it('falls back to the app name for an untitled chat', () => {
-    expect(composeWindowTitle({ section: 'chat', threadTitle: '' })).toBe('Jan')
-    expect(composeWindowTitle({ section: 'chat' })).toBe('Jan')
+    expect(composeWindowTitle({ section: 'chat', threadTitle: '' })).toBe('Flint')
+    expect(composeWindowTitle({ section: 'chat' })).toBe('Flint')
   })
 
   it('names a Cowork session by its title and project folder name only', () => {
@@ -23,7 +23,7 @@ describe('composeWindowTitle', () => {
       sessionTitle: 'Refactor parser',
       projectFolder: 'C:\\Users\\alice\\secret-client\\acme-api',
     })
-    expect(title).toBe('Refactor parser · acme-api - Jan Cowork')
+    expect(title).toBe('Refactor parser · acme-api - Flint Cowork')
     expect(title).not.toContain('alice')
     expect(title).not.toContain('secret-client')
   })
@@ -31,13 +31,13 @@ describe('composeWindowTitle', () => {
   it('names a Cowork session with no project', () => {
     expect(
       composeWindowTitle({ section: 'cowork', sessionTitle: 'Plan', projectFolder: null })
-    ).toBe('Plan - Jan Cowork')
-    expect(composeWindowTitle({ section: 'cowork' })).toBe('Jan Cowork')
+    ).toBe('Plan - Flint Cowork')
+    expect(composeWindowTitle({ section: 'cowork' })).toBe('Flint Cowork')
   })
 
   it('names settings and anything else plainly', () => {
-    expect(composeWindowTitle({ section: 'settings' })).toBe('Settings - Jan')
-    expect(composeWindowTitle({ section: 'other' })).toBe('Jan')
+    expect(composeWindowTitle({ section: 'settings' })).toBe('Settings - Flint')
+    expect(composeWindowTitle({ section: 'other' })).toBe('Flint')
   })
 })
 

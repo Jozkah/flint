@@ -114,7 +114,7 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
         onClick={() => onNavigate?.()}
         className="relative mb-1 flex h-(--ctx-h) shrink-0 items-center justify-center gap-px pl-[0.16em] text-[14.5px] font-bold leading-none tracking-[0.16em] text-rail-foreground outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-brand-rail [@media(max-height:620px)]:h-10"
       >
-        JAN
+        Flint
         <span aria-hidden className="mb-2 size-[5px] shrink-0 self-center bg-brand-rail" />
         {working && (
           <span
