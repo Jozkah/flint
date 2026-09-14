@@ -8,7 +8,7 @@ describe('GlobalError Component', () => {
     const error = new Error('Test error message')
     render(<GlobalError error={error} />)
 
-    expect(screen.getByText('Oops! Unexpected error occurred.')).toBeDefined()
+    expect(screen.getByText('Something went wrong')).toBeDefined()
     expect(screen.getByText('Test error message')).toBeDefined()
   })
 
@@ -16,7 +16,7 @@ describe('GlobalError Component', () => {
     const error = 'String error message'
     render(<GlobalError error={error} />)
 
-    expect(screen.getByText('Oops! Unexpected error occurred.')).toBeDefined()
+    expect(screen.getByText('Something went wrong')).toBeDefined()
     expect(screen.getAllByText('String error message')).toHaveLength(2)
   })
 
@@ -90,16 +90,12 @@ describe('GlobalError Component', () => {
 
     const errorContainer = screen.getByRole('alert')
     expect(errorContainer).toHaveClass(
-      'mt-5',
+      'mt-4',
       'w-full',
-      'md:w-4/5',
-      'mx-auto',
       'rounded-lg',
       'border',
       'border-destructive/40',
       'bg-destructive-tint',
-      'px-4',
-      'py-3',
       'text-destructive'
     )
   })

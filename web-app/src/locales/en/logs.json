@@ -1,7 +1,16 @@
 {
   "noLogs": "No logs available",
+  "noMatch": "No lines match the filter",
   "title": "App logs",
   "serverTitle": "Local API server logs",
   "copy": "Copy logs",
-  "copied": "Copied"
+  "copied": "Copied",
+  "search": "Search logs",
+  "filterLabel": "Filter by level",
+  "levelAll": "All",
+  "levelError": "Errors",
+  "levelWarn": "Warnings",
+  "levelInfo": "Info",
+  "levelDebug": "Debug",
+  "shown": "{{shown}} of {{total}} lines"
 }

@@ -2,22 +2,29 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FolderOpen,
-  MessagesSquare,
-  MoreHorizontal,
+  Info,
   Search,
   SquareArrowOutUpRight,
+  Trash2,
+  Workflow,
+  X,
 } from 'lucide-react'
+import { fs } from '@janhq/core'
+import { toast } from 'sonner'
 import HeaderPage from '@/containers/HeaderPage'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -31,6 +38,7 @@ import {
   type CoworkArtifact,
 } from '@/lib/coworkArtifacts'
 import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
+import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute(route.artifacts as any)({
   component: ArtifactsPage,
@@ -47,17 +55,20 @@ type Row = CoworkArtifact & {
   root: string | null
 }
 
-/** The last path segment, for naming a project folder on a card. */
+const rowKey = (row: Pick<Row, 'sessionId' | 'path'>) =>
+  `${row.sessionId}:${row.path}`
+
+/** The last path segment, for naming a project folder on a row. */
 function folderName(folder: string): string {
   const parts = folder.split(/[\\/]/).filter(Boolean)
   return parts[parts.length - 1] ?? folder
 }
 
-function formatUpdated(updated: number): string {
+function formatUpdated(updated: number, style: 'short' | 'medium'): string {
   if (!updated) return ''
   try {
     return new Date(updated).toLocaleString(undefined, {
-      dateStyle: 'medium',
+      dateStyle: style,
       timeStyle: 'short',
     })
   } catch {
@@ -107,6 +118,28 @@ function useSessionWorkspaces(sessionIds: string[]): Record<string, string> {
   return paths
 }
 
+/**
+ * Whether the selected file is still on disk. `undefined` while unknown, or
+ * when the check is unavailable: only a definite "no" shows the notice.
+ */
+function useFileExists(abs: string | null, version: number) {
+  const [exists, setExists] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    setExists(undefined)
+    if (!abs) return
+    let alive = true
+    Promise.resolve(fs.existsSync(abs))
+      .then((value) => {
+        if (alive && typeof value === 'boolean') setExists(value)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [abs, version])
+  return exists
+}
+
 function ArtifactsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -114,6 +147,7 @@ function ArtifactsPage() {
   const sessions = useCoworkSessions((s) => s.sessions)
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<CoworkArtifact['group'] | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   // ponytail: a render cap with "show more" rather than paging or a virtual
   // list. Search and the kind filter already narrow the set, and DOM size was
   // the only real cost. Swap for virtualization if this hits thousands.
@@ -157,6 +191,11 @@ function ArtifactsPage() {
   // Narrowing the set should start from the top again.
   useEffect(() => setLimit(PAGE), [query, group])
 
+  const selected = useMemo(
+    () => rows.find((r) => rowKey(r) === selectedKey) ?? null,
+    [rows, selectedKey]
+  )
+
   const open = (row: Row) => {
     useCoworkSessions.getState().selectSession(row.sessionId)
     useCoworkRun.getState().requestPreview(row.sessionId, row.path)
@@ -169,14 +208,19 @@ function ArtifactsPage() {
     navigate({ to: route.cowork })
   }
 
+  const filters: Array<CoworkArtifact['group'] | null> = [
+    null,
+    ...ARTIFACT_GROUP_NAMES,
+  ]
+
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       <HeaderPage>
         <div className="relative z-20 flex w-full min-w-0 items-center gap-2 sm:gap-3">
-          <h1 className="font-semibold hidden shrink-0 text-lg leading-none text-foreground sm:block">
+          <h1 className="hidden shrink-0 text-sm font-semibold text-foreground sm:block">
             {t('common:appRail.library')}
           </h1>
-          <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-sunken px-2.5 focus-within:outline-2 focus-within:outline-ring sm:max-w-sm pointer-coarse:h-11">
+          <label className="ml-auto flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-sunken px-2.5 focus-within:outline-2 focus-within:outline-ring sm:max-w-xs pointer-coarse:h-11">
             <Search className="size-3.5 shrink-0 text-muted-foreground" />
             <input
               value={query}
@@ -186,231 +230,466 @@ function ArtifactsPage() {
               className="w-full min-w-0 bg-transparent text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
             />
           </label>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 pointer-coarse:h-11"
-              >
-                {group ?? t('common:artifactsAll')}
-                <ChevronDown className="size-3.5 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="end">
-              <DropdownMenuItem onClick={() => setGroup(null)}>
-                {t('common:artifactsAll')}
-              </DropdownMenuItem>
-              {ARTIFACT_GROUP_NAMES.map((g) => (
-                <DropdownMenuItem key={g} onClick={() => setGroup(g)}>
-                  {g}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </HeaderPage>
 
-      <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
-        <div className="mx-auto w-full max-w-6xl">
-          {shown.length === 0 ? (
-            rows.length === 0 ? (
-              // Distinct: nothing made yet vs nothing matching the filter.
-              <div
-                className="mx-auto mt-10 flex max-w-md flex-col items-start gap-3 rounded-lg border border-border bg-card p-6"
-                data-testid="artifacts-empty"
-              >
-                <h2 className="font-semibold  text-lg leading-tight text-foreground">
-                  {t('common:artifactsEmptyTitle')}
-                </h2>
-                <p className="text-sm leading-relaxed text-ink-2">
-                  {t('common:artifactsEmpty')}
-                </p>
-                <Button
-                  className="pointer-coarse:h-11"
-                  onClick={() => navigate({ to: route.cowork })}
+      <div className="flex min-h-0 w-full min-w-0 flex-1">
+        {/* The list. On phones it gives way to the details of a selection. */}
+        <div
+          className={cn(
+            'min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-6 md:py-4',
+            selected && 'max-md:hidden'
+          )}
+        >
+          <div className="mx-auto w-full max-w-[1400px]">
+            {rows.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div
+                  role="group"
+                  aria-label={t('common:artifactsFilterLabel')}
+                  className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md bg-sunken p-0.5"
                 >
-                  {t('common:artifactsOpenCowork')}
+                  {filters.map((g) => {
+                    const pressed = group === g
+                    return (
+                      <button
+                        key={g ?? 'all'}
+                        type="button"
+                        aria-pressed={pressed}
+                        onClick={() => setGroup(g)}
+                        className={cn(
+                          'h-7 shrink-0 cursor-pointer rounded-[5px] px-2.5 text-[13px] font-medium transition-colors pointer-coarse:h-10',
+                          pressed
+                            ? 'bg-card text-foreground shadow-[0_0_0_1px_var(--border)]'
+                            : 'text-ink-2 hover:text-foreground'
+                        )}
+                      >
+                        {g ?? t('common:artifactsAll')}
+                      </button>
+                    )
+                  })}
+                </div>
+                <span
+                  className="text-xs tabular-nums text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {t('common:artifactsCount', { count: shown.length })}
+                </span>
+              </div>
+            )}
+
+            {shown.length === 0 ? (
+              rows.length === 0 ? (
+                // Distinct: nothing made yet vs nothing matching the filter.
+                <div
+                  className="mx-auto mt-10 flex max-w-md flex-col items-start gap-2 rounded-lg border border-border bg-card p-5"
+                  data-testid="artifacts-empty"
+                >
+                  <h2 className="text-[13px] font-semibold text-foreground">
+                    {t('common:artifactsEmptyTitle')}
+                  </h2>
+                  <p className="text-sm leading-relaxed text-ink-2">
+                    {t('common:artifactsEmpty')}
+                  </p>
+                  <Button
+                    className="mt-1 pointer-coarse:h-11"
+                    onClick={() => navigate({ to: route.cowork })}
+                  >
+                    {t('common:artifactsOpenCowork')}
+                  </Button>
+                </div>
+              ) : (
+                <p className="py-6 text-sm text-muted-foreground">
+                  {t('common:artifactsNoMatch')}
+                </p>
+              )
+            ) : (
+              <ul
+                className="border-t border-border"
+                data-testid="artifacts-gallery"
+              >
+                {shown.slice(0, limit).map((row) => (
+                  <LibraryRow
+                    key={rowKey(row)}
+                    row={row}
+                    selected={rowKey(row) === selectedKey}
+                    onSelect={() => setSelectedKey(rowKey(row))}
+                  />
+                ))}
+              </ul>
+            )}
+            {shown.length > limit && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  onClick={() => setLimit((n) => n + PAGE)}
+                >
+                  {t('common:artifactsShowMore', {
+                    count: shown.length - limit,
+                  })}
                 </Button>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {t('common:artifactsNoMatch')}
-              </p>
-            )
-          ) : (
-            <ul
-              className="grid auto-rows-min grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
-              data-testid="artifacts-gallery"
-            >
-              {shown.slice(0, limit).map((row) => {
-                const Icon = ARTIFACT_ICON[row.group]
-                const kind = previewKindFor(row.path)
-                const abs = row.root ? resolveInRoot(row.root, row.path) : null
-                // A real thumbnail only where the browser renders the file on
-                // its own; HTML would need executing the page.
-                const thumb =
-                  abs && (kind === 'image' || kind === 'svg')
-                    ? serviceHub.core().convertFileSrc(abs)
-                    : null
-                const project = row.folder
-                  ? folderName(row.folder)
-                  : t('common:artifactSandbox')
-                const updated = formatUpdated(row.updated)
-                return (
-                  <li
-                    key={`${row.sessionId}:${row.path}`}
-                    data-testid="artifact-card"
-                    className="flex min-w-0 flex-col rounded-lg border border-border bg-card transition-colors hover:border-line-strong"
-                  >
-                    <div className="flex min-w-0 items-start gap-3 p-3.5">
-                      {thumb ? (
-                        <img
-                          src={thumb}
-                          alt=""
-                          className="size-12 shrink-0 rounded-md border border-border bg-sunken object-contain"
-                        />
-                      ) : (
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-border bg-sunken">
-                          <Icon className="size-5 text-muted-foreground" />
-                        </div>
-                      )}
-                      {/* min-w-0 on a block box: `truncate` is inert otherwise. */}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                          {row.group} · {row.label}
-                        </p>
-                        <h2
-                          className="mt-0.5 truncate text-sm font-semibold text-foreground"
-                          title={row.title}
-                        >
-                          {row.title}
-                        </h2>
-                        <p
-                          className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
-                          title={row.path}
-                        >
-                          {row.path}
-                        </p>
-                      </div>
-                    </div>
-                    <dl className="mx-3.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border py-2.5 text-xs">
-                      <dt className="text-muted-foreground">
-                        {t('common:artifactSession')}
-                      </dt>
-                      <dd
-                        className="min-w-0 truncate text-ink-2"
-                        title={row.sessionTitle}
-                      >
-                        {row.sessionTitle}
-                      </dd>
-                      <dt className="text-muted-foreground">
-                        {t('common:artifactProject')}
-                      </dt>
-                      <dd
-                        className="min-w-0 truncate text-ink-2"
-                        title={row.folder ?? project}
-                      >
-                        {project}
-                      </dd>
-                      {updated && (
-                        <>
-                          <dt className="text-muted-foreground">
-                            {t('common:artifactUpdated')}
-                          </dt>
-                          <dd className="min-w-0 truncate tabular-nums text-ink-2">
-                            {updated}
-                          </dd>
-                        </>
-                      )}
-                    </dl>
-                    <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-border p-2.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="pointer-coarse:h-11"
-                        onClick={() => open(row)}
-                        data-testid="artifact-open"
-                      >
-                        <Eye />
-                        {t('common:artifactOpenPreview')}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="pointer-coarse:h-11"
-                        onClick={() => goToSession(row)}
-                        data-testid="artifact-go-to-session"
-                      >
-                        <MessagesSquare />
-                        {t('common:artifactGoToSession')}
-                      </Button>
-                      {abs && (
-                        <div className="ml-auto flex items-center">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="pointer-coarse:size-11"
-                            onClick={() =>
-                              void serviceHub.opener().openPath(abs)
-                            }
-                            title={t('common:artifactOpenExternal')}
-                            aria-label={t('common:artifactOpenExternal')}
-                          >
-                            <SquareArrowOutUpRight className="text-muted-foreground" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="pointer-coarse:size-11"
-                                aria-label={t('common:artifactMoreActions')}
-                              >
-                                <MoreHorizontal className="text-muted-foreground" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  void serviceHub.opener().openPath(abs)
-                                }
-                              >
-                                <SquareArrowOutUpRight />
-                                {t('common:artifactOpenExternal')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  void serviceHub.opener().revealItemInDir(abs)
-                                }
-                              >
-                                <FolderOpen />
-                                {t('common:artifactShowInFolder')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {shown.length > limit && (
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                className="pointer-coarse:h-11"
-                onClick={() => setLimit((n) => n + PAGE)}
-              >
-                {t('common:artifactsShowMore', { count: shown.length - limit })}
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        {selected && (
+          <ArtifactInspector
+            key={rowKey(selected)}
+            row={selected}
+            onClose={() => setSelectedKey(null)}
+            onOpen={() => open(selected)}
+            onGoToSession={() => goToSession(selected)}
+            convertFileSrc={(p) => serviceHub.core().convertFileSrc(p)}
+            openPath={(p) => void serviceHub.opener().openPath(p)}
+            revealItemInDir={(p) => void serviceHub.opener().revealItemInDir(p)}
+          />
+        )}
       </div>
     </div>
+  )
+}
+
+function LibraryRow({
+  row,
+  selected,
+  onSelect,
+}: {
+  row: Row
+  selected: boolean
+  onSelect: () => void
+}) {
+  const { t } = useTranslation()
+  const Icon = ARTIFACT_ICON[row.group]
+  const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
+  const updated = formatUpdated(row.updated, 'medium')
+  return (
+    <li
+      data-testid="artifact-card"
+      className="relative border-b border-border"
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected || undefined}
+        className={cn(
+          'grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-2 py-2 text-left transition-colors hover:bg-accent pointer-coarse:min-h-14 md:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_auto_auto] lg:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_auto_auto]',
+          selected &&
+            'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
+        )}
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-sunken">
+          <Icon className="size-4 text-muted-foreground" aria-hidden />
+        </span>
+        {/* min-w-0 on a grid child: `truncate` is inert otherwise. */}
+        <span className="min-w-0">
+          <span
+            className="block truncate text-sm font-medium text-foreground"
+            title={row.title}
+          >
+            {row.title}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {row.group} · {row.label}
+            <span className="font-mono"> · {row.path}</span>
+          </span>
+        </span>
+        <span
+          className="hidden min-w-0 items-center gap-1.5 text-[13px] text-ink-2 md:flex"
+          title={row.sessionTitle}
+        >
+          <Workflow className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="truncate">{row.sessionTitle}</span>
+        </span>
+        <span
+          className="hidden min-w-0 truncate text-[13px] text-muted-foreground lg:block"
+          title={row.folder ?? project}
+        >
+          {project}
+        </span>
+        <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:block">
+          {updated}
+        </span>
+        <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+        {/* Phones: the source under the name, since its column is hidden. */}
+        <span className="col-start-2 col-end-3 -mt-1.5 truncate text-xs text-ink-2 md:hidden">
+          {row.sessionTitle}
+        </span>
+      </button>
+    </li>
+  )
+}
+
+function ArtifactInspector({
+  row,
+  onClose,
+  onOpen,
+  onGoToSession,
+  convertFileSrc,
+  openPath,
+  revealItemInDir,
+}: {
+  row: Row
+  onClose: () => void
+  onOpen: () => void
+  onGoToSession: () => void
+  convertFileSrc: (path: string) => string
+  openPath: (path: string) => void
+  revealItemInDir: (path: string) => void
+}) {
+  const { t } = useTranslation()
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [checkVersion, setCheckVersion] = useState(0)
+  const Icon = ARTIFACT_ICON[row.group]
+  const kind = previewKindFor(row.path)
+  const abs = row.root ? resolveInRoot(row.root, row.path) : null
+  const exists = useFileExists(abs, checkVersion)
+  const missing = exists === false
+  // A real thumbnail only where the browser renders the file on its own; HTML
+  // would need executing the page.
+  const thumb =
+    abs && !missing && (kind === 'image' || kind === 'svg')
+      ? convertFileSrc(abs)
+      : null
+  const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
+  const updated = formatUpdated(row.updated, 'medium')
+
+  const remove = async () => {
+    if (!abs) return
+    setDeleting(true)
+    try {
+      await fs.rm(abs)
+      toast.success(t('common:artifactDeleted'), { id: 'artifact-delete' })
+      setConfirming(false)
+      setCheckVersion((v) => v + 1)
+    } catch (error) {
+      toast.error(t('common:artifactDeleteFailed'), {
+        id: 'artifact-delete',
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <aside
+      aria-label={t('common:artifactDetails')}
+      data-testid="artifact-inspector"
+      className="flex min-h-0 w-full shrink-0 flex-col border-border bg-sunken md:w-(--inspector-w) md:border-l"
+    >
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border pl-1 pr-1.5 md:pl-4">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden pointer-coarse:size-11"
+          onClick={onClose}
+          aria-label={t('common:artifactBack')}
+        >
+          <ChevronLeft />
+        </Button>
+        <h2
+          className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground"
+          title={row.title}
+        >
+          {row.title}
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden md:inline-flex"
+          onClick={onClose}
+          aria-label={t('common:artifactClose')}
+        >
+          <X />
+        </Button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+        {/* Preview. The file itself keeps its own look; only the frame is ours. */}
+        <section className="border-b border-border p-4">
+          {thumb ? (
+            <img
+              src={thumb}
+              alt=""
+              className="max-h-56 w-full rounded-md border border-border bg-card object-contain"
+            />
+          ) : (
+            <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-sunken">
+                <Icon className="size-5 text-muted-foreground" aria-hidden />
+              </span>
+              <p className="min-w-0 text-xs leading-relaxed text-ink-2">
+                {t('common:artifactNoPreview')}
+              </p>
+            </div>
+          )}
+          {missing && (
+            <div
+              role="status"
+              data-testid="artifact-missing"
+              className="mt-3 flex items-start gap-2 rounded-md border border-warning/40 bg-warning-tint px-3 py-2.5"
+            >
+              <Info className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold text-foreground">
+                  {t('common:artifactFileMissingTitle')}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-ink-2">
+                  {t('common:artifactFileMissing')}
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Where it came from, and the way back there. */}
+        <section className="border-b border-border p-4">
+          <h3 className="mb-2 text-xs font-medium text-muted-foreground">
+            {t('common:artifactSource')}
+          </h3>
+          <div className="flex min-w-0 items-start gap-2">
+            <Workflow className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="min-w-0">
+              <p className="truncate text-sm text-foreground" title={row.sessionTitle}>
+                {row.sessionTitle}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {t('common:artifactCoworkSession')}
+                {updated ? ` · ${updated}` : ''}
+              </p>
+            </div>
+          </div>
+          <Button
+            className="mt-3 pointer-coarse:h-11"
+            onClick={onGoToSession}
+            data-testid="artifact-go-to-session"
+          >
+            <ChevronRight />
+            {t('common:artifactGoToSession')}
+          </Button>
+        </section>
+
+        <section className="p-4">
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
+            <dt className="text-muted-foreground">{t('common:artifactType')}</dt>
+            <dd className="min-w-0 truncate text-right text-foreground">
+              {row.group} · {row.label}
+            </dd>
+            <dt className="text-muted-foreground">{t('common:artifactProject')}</dt>
+            <dd
+              className="min-w-0 truncate text-right text-foreground"
+              title={row.folder ?? project}
+            >
+              {project}
+            </dd>
+            <dt className="text-muted-foreground">{t('common:artifactPath')}</dt>
+            <dd
+              className="min-w-0 truncate text-right font-mono text-xs leading-5 text-ink-2"
+              title={row.path}
+            >
+              {row.path}
+            </dd>
+            {updated && (
+              <>
+                <dt className="text-muted-foreground">
+                  {t('common:artifactUpdated')}
+                </dt>
+                <dd className="min-w-0 truncate text-right tabular-nums text-foreground">
+                  {updated}
+                </dd>
+              </>
+            )}
+          </dl>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              className="pointer-coarse:h-11"
+              onClick={onOpen}
+              disabled={missing}
+              data-testid="artifact-open"
+            >
+              <Eye />
+              {t('common:artifactOpenPreview')}
+            </Button>
+            {abs && !missing && (
+              <>
+                <Button
+                  variant="outline"
+                  className="pointer-coarse:h-11"
+                  onClick={() => openPath(abs)}
+                  title={t('common:artifactOpenExternal')}
+                >
+                  <SquareArrowOutUpRight />
+                  {t('common:artifactOpenExternal')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="pointer-coarse:h-11"
+                  onClick={() => revealItemInDir(abs)}
+                >
+                  <FolderOpen />
+                  {t('common:artifactShowInFolder')}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="pointer-coarse:h-11"
+                  onClick={() => setConfirming(true)}
+                  data-testid="artifact-delete"
+                >
+                  <Trash2 />
+                  {t('common:artifactDelete')}
+                </Button>
+              </>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <Dialog open={confirming} onOpenChange={(o) => !deleting && setConfirming(o)}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <div className="flex items-start gap-3 text-left">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive-tint text-destructive">
+                <Trash2 className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="break-words">
+                  {t('common:artifactDeleteTitle', { name: row.title })}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-ink-2">
+                  {t('common:artifactDeleteBody')}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="pointer-coarse:h-11"
+              onClick={() => setConfirming(false)}
+              disabled={deleting}
+              autoFocus
+            >
+              {t('common:cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              className="pointer-coarse:h-11"
+              onClick={() => void remove()}
+              disabled={deleting}
+              data-testid="artifact-delete-confirm"
+            >
+              <Trash2 />
+              {t('common:artifactDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </aside>
   )
 }

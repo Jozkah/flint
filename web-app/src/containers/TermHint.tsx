@@ -48,7 +48,7 @@ export function TermHint({
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-72 max-w-[90vw] rounded-lg border-border bg-card text-sm"
+        className="w-72 max-w-[90vw] rounded-lg border-border bg-popover p-3 text-sm"
         align="start"
       >
         <p className="font-semibold text-foreground">{name}</p>

@@ -288,7 +288,7 @@ function SetupScreen() {
         <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-6 sm:px-6">
 
           <div
-            className="m-auto w-full min-w-0 max-w-[520px] rounded-lg border border-border bg-card p-5 shadow-overlay pointer-events-auto sm:p-8"
+            className="m-auto w-full min-w-0 max-w-[480px] rounded-lg border border-border bg-card p-5 pointer-events-auto sm:p-6"
             data-testid="setup-wizard"
             data-page={currentPage?.id ?? 'done'}
           >
@@ -296,7 +296,7 @@ function SetupScreen() {
               <>
                 <div className="flex items-center justify-between gap-4">
                   <span
-                    className="text-xs font-medium uppercase tracking-wider tabular-nums text-muted-foreground"
+                    className="text-xs font-medium tabular-nums text-muted-foreground"
                     data-testid="setup-step-counter"
                   >
                     {t('setup:stepCounter', {
@@ -311,7 +311,7 @@ function SetupScreen() {
                       <span
                         key={page.id}
                         className={cn(
-                          'h-1 w-8 rounded-full transition-colors',
+                          'h-1 w-6 rounded-full motion-safe:transition-colors',
                           index === currentIndex
                             ? 'bg-brand'
                             : index < currentIndex
@@ -323,7 +323,7 @@ function SetupScreen() {
                   </span>
                 </div>
 
-                <div className="mt-6">
+                <div className="mt-4">
                   {isSetupPage && (
                     <span
                       className={cn(
@@ -340,11 +340,11 @@ function SetupScreen() {
                       ) : isSetupComplete ? (
                         <Check className="size-[18px]" />
                       ) : (
-                        <Loader2 className="size-[18px] animate-spin" />
+                        <Loader2 className="size-[18px] motion-safe:animate-spin" />
                       )}
                     </span>
                   )}
-                  <h1 className=" text-xl font-semibold leading-tight tracking-[-0.01em] text-foreground">
+                  <h1 className="text-base font-semibold leading-snug text-foreground">
                     {isSetupPage && isSetupComplete
                       ? t('setup:stageSetupDone')
                       : t(currentPage.labelKey)}
@@ -362,14 +362,14 @@ function SetupScreen() {
                     className="mt-4 flex items-start gap-2 rounded-md border border-border bg-sunken px-3 py-2 text-xs text-ink-2"
                     data-testid="setup-resumed"
                   >
-                    <Info className="mt-px size-3.5 shrink-0 text-brand-text" />
+                    <Info className="mt-px size-3.5 shrink-0 text-muted-foreground" />
                     <span>{t('onboarding:resumeNotice')}</span>
                   </p>
                 )}
 
                 {currentPage.id === 'welcome' && (
                   <>
-                    <fieldset className="mt-6" data-testid="setup-intents">
+                    <fieldset className="mt-5" data-testid="setup-intents">
                       <legend className="text-sm font-semibold text-foreground">
                         {t('onboarding:intentHeading')}
                       </legend>
@@ -421,7 +421,7 @@ function SetupScreen() {
                               className={cn(
                                 'flex min-h-11 items-start gap-3 rounded-md border px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-brand bg-brand-tint'
+                                  ? 'border-brand bg-accent'
                                   : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
                               )}
                             >
@@ -452,7 +452,7 @@ function SetupScreen() {
                     </fieldset>
                     <Button
                       size="lg"
-                      className="mt-6 w-full pointer-coarse:h-11"
+                      className="mt-5 w-full pointer-coarse:h-11"
                       onClick={beginSetup}
                     >
                       {t('setup:startSetup')}
@@ -487,7 +487,7 @@ function SetupScreen() {
                       )}
                     >
                       {gpu.willUse === undefined ? (
-                        <Loader2 className="size-[15px] animate-spin" />
+                        <Loader2 className="size-[15px] motion-safe:animate-spin" />
                       ) : gpu.willUse ? (
                         <Check className="size-[15px]" />
                       ) : (
@@ -643,7 +643,7 @@ function SetupScreen() {
                               className={cn(
                                 'flex min-h-11 items-center justify-between gap-2 rounded-md border px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-brand bg-brand-tint'
+                                  ? 'border-brand bg-accent'
                                   : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
                               )}
                             >

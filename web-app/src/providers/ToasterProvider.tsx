@@ -32,20 +32,20 @@ export function ToasterProvider() {
       visibleToasts={5}
       toastOptions={{
         style: {
-          padding: '0.875rem 0.875rem',
+          padding: '0.75rem',
           alignItems: 'start',
           userSelect: 'none',
           WebkitUserSelect: 'none',
           MozUserSelect: 'none',
           msUserSelect: 'none',
         },
-        // Paper surfaces with a semantic icon. Neutral toasts keep the accent
-        // tint from `.toaster` in index.css; typed ones say what they are
-        // through the icon colour, not a coloured slab.
+        // One neutral surface for every toast. Typed ones say what they are
+        // through a semantic icon beside the words, never a coloured slab and
+        // never the accent: an error must not look like a selection.
         classNames: {
           toast: 'toast select-none rounded-lg! shadow-overlay! font-sans!',
-          title: 'text-foreground! font-medium! select-none',
-          description: 'text-muted-foreground! select-none',
+          title: 'text-[13px]! leading-snug! text-foreground! font-medium! select-none',
+          description: 'text-xs! leading-relaxed! text-ink-2! select-none',
           closeButton:
             'bg-card! border-border! text-muted-foreground! hover:text-foreground!',
           actionButton: 'bg-brand-fill! text-brand-foreground!',
@@ -56,8 +56,9 @@ export function ToasterProvider() {
             'bg-card! border-border! [&_[data-icon]]:text-destructive!',
           warning:
             'bg-card! border-border! [&_[data-icon]]:text-warning!',
-          info: 'bg-card! border-border! [&_[data-icon]]:text-brand-text!',
-          loading: '[&_[data-icon]]:text-muted-foreground!',
+          info: 'bg-card! border-border! [&_[data-icon]]:text-ink-2!',
+          loading:
+            'bg-card! border-border! [&_[data-icon]]:text-muted-foreground!',
         },
       }}
     />
