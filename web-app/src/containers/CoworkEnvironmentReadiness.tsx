@@ -112,7 +112,7 @@ function lastChecked(checkedAtMs: number | null, now: number): string {
  * separate "verbose" mode that would need auditing on its own.
  */
 export function diagnosticsText(readiness: EnvironmentReadiness): string {
-  const lines = [`Jan environment readiness (${new Date().toISOString()})`]
+  const lines = [`Flint environment readiness (${new Date().toISOString()})`]
   for (const report of readiness.components) {
     lines.push(
       `${ROW_LABEL[report.component] ?? report.component}: ${report.state} [${report.reason}]`

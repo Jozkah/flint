@@ -70,7 +70,7 @@ export type PromptSnapshotViewProps = {
 
 const STATE_LABEL: Record<ReplayView['state'], string> = {
   running: 'Replaying…',
-  interrupted: 'Interrupted: Jan stopped while it ran',
+  interrupted: 'Interrupted: Flint stopped while it ran',
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Stopped',

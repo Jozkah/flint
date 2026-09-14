@@ -89,7 +89,7 @@ function General() {
       const s = await invoke<{ installed: boolean; path: string | null }>('install_jan_cli')
       setCliInstalled(s.installed)
       setCliPath(s.path)
-      toast.success(`Jan CLI installed to ${s.path}`)
+      toast.success(`Flint CLI installed to ${s.path}`)
     } catch (e) {
       toast.error('Install failed', { description: String(e) })
     } finally {
@@ -103,7 +103,7 @@ function General() {
       await invoke('uninstall_jan_cli')
       setCliInstalled(false)
       setCliPath(null)
-      toast.success('Jan CLI uninstalled')
+      toast.success('Flint CLI uninstalled')
     } catch (e) {
       toast.error('Uninstall failed', { description: String(e) })
     } finally {
@@ -383,7 +383,7 @@ function General() {
         <Card title="Advanced">
           {IS_TAURI && (
             <CardItem
-              title="Jan CLI"
+              title="Flint CLI"
               description={
                 cliInstalled && cliPath
                   ? `Installed at ${cliPath} — use jan from your terminal to serve models.`

@@ -35,7 +35,7 @@ import {
 
 const STATE: Record<ChildState, string> = {
   running: 'Running',
-  interrupted: 'Interrupted when Jan stopped',
+  interrupted: 'Interrupted when Flint stopped',
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',

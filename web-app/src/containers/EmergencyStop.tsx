@@ -78,7 +78,7 @@ function describeScope(scope: StopScope, props: EmergencyStopProps): string {
     case 'session':
       return `Every run in this session (${props.sessionId}). Other sessions are untouched.`
     case 'application':
-      return 'All work everywhere in Jan, in every session. Nothing running is spared.'
+      return 'All work everywhere in Flint, in every session. Nothing running is spared.'
   }
 }
 
@@ -87,7 +87,7 @@ const SCOPE_NAME: Record<StopScope, string> = {
   call: 'This tool call',
   run: 'This run',
   session: 'This session',
-  application: 'Everything in Jan',
+  application: 'Everything in Flint',
 }
 
 /** The arguments an empty field turns into: empty means "all at this level". */

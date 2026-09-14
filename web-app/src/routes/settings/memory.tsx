@@ -206,7 +206,7 @@ function MemorySettings() {
   }, [conversations, sessionId, projectRoot])
 
   /**
-   * The Jan project whose memories the Project tab shows, for a project with
+   * The Flint project whose memories the Project tab shows, for a project with
    * no folder. The backend scopes it (`jan-project:<id>`) and shows that
    * project's records and no other's. A folder, when one is picked, is the
    * identity instead, so choosing one of these clears the other.
@@ -536,7 +536,7 @@ function MemorySettings() {
       .dialog()
       .save({
         defaultPath: `jan-memory-${scope}.json`,
-        filters: [{ name: 'Jan memory export', extensions: ['json'] }],
+        filters: [{ name: 'Flint memory export', extensions: ['json'] }],
       })
     if (!path) return
     setBusy(true)
@@ -560,7 +560,7 @@ function MemorySettings() {
       .dialog()
       .open({
         multiple: false,
-        filters: [{ name: 'Jan memory export', extensions: ['json'] }],
+        filters: [{ name: 'Flint memory export', extensions: ['json'] }],
       })
     const path = Array.isArray(picked) ? picked[0] : picked
     if (!path) return
@@ -620,7 +620,7 @@ function MemorySettings() {
             <Card title="Memory">
               <CardItem
                 title="Use saved memory in conversations"
-                description="When this is off, Jan adds no saved memory to any request. Your memories are kept and can still be managed here."
+                description="When this is off, Flint adds no saved memory to any request. Your memories are kept and can still be managed here."
                 actions={
                   <Switch
                     checked={memoryOn}
@@ -634,7 +634,7 @@ function MemorySettings() {
               <CardItem
                 anchor={MEMORY_AUTOSAVE_ANCHOR}
                 title="Automatically save local memories"
-                description="When this is off, anything Jan infers is offered for your approval before it is kept. Explicit saves always work. Memories never leave this machine."
+                description="When this is off, anything Flint infers is offered for your approval before it is kept. Explicit saves always work. Memories never leave this machine."
                 actions={
                   <Switch
                     checked={autoSave}
@@ -708,7 +708,7 @@ function MemorySettings() {
                 aside={<span className="tabular-nums">{proposalsPending.length}</span>}
               >
                 <CardItem
-                  title="Memories Jan has offered"
+                  title="Memories Flint has offered"
                   description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
                 />
                 <div className="pb-3">
@@ -731,7 +731,7 @@ function MemorySettings() {
               <Card title="Memories that disagree">
                 <CardItem
                   title="Neither side is being used"
-                  description="These remembered facts contradict each other, so Jan leaves both out of every request here until you keep one."
+                  description="These remembered facts contradict each other, so Flint leaves both out of every request here until you keep one."
                 />
                 <ul className="flex flex-col gap-3 pb-3" data-testid="memory-conflicts">
                   {conflicts.map((conflict) => (
@@ -783,7 +783,7 @@ function MemorySettings() {
             <Card title="Remembered">
               <CardItem
                 anchor={MEMORY_LIST_ANCHOR}
-                title="What Jan remembers"
+                title="What Flint remembers"
                 description="Search, edit, pin and forget what is remembered for this chat, this project, or across chats."
               />
               <div className="flex flex-col gap-3 pb-3">
@@ -832,7 +832,7 @@ function MemorySettings() {
                     value={newMemory}
                     aria-label={`New memory for ${activeTab.label.toLowerCase()}`}
                     data-testid="memory-new-content"
-                    placeholder="Something Jan should remember"
+                    placeholder="Something Flint should remember"
                     onChange={(e) => setNewMemory(e.target.value)}
                   />
                   <div className="flex flex-wrap items-center gap-2">
@@ -947,7 +947,7 @@ function MemorySettings() {
                         // `''` rather than undefined: "no folder" was chosen,
                         // so the first folder is not picked again for them.
                         setProjectRoot(e.target.value)
-                        // A folder is the identity; a Jan project would be
+                        // A folder is the identity; a Flint project would be
                         // ignored beside it, so it is not left looking chosen.
                         if (e.target.value) setProjectId('')
                         setOffset(0)
@@ -975,7 +975,7 @@ function MemorySettings() {
                       value={projectId}
                       onChange={(e) => {
                         setProjectId(e.target.value)
-                        // A Jan project has no folder: a folder left selected
+                        // A Flint project has no folder: a folder left selected
                         // would win in the backend and show its records instead.
                         if (e.target.value) setProjectRoot('')
                         setOffset(0)
@@ -1036,7 +1036,7 @@ function MemorySettings() {
                           </p>
                           <details className="mt-1 text-xs" data-testid="memory-provenance">
                             <summary className="cursor-pointer rounded-sm text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
-                              Why Jan remembers this
+                              Why Flint remembers this
                             </summary>
                             <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-sunken p-2 text-ink-2 sm:grid-cols-[auto_1fr]">
                               <dt>ID</dt>
