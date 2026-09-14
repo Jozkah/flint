@@ -405,13 +405,6 @@ fn write_json_atomically<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     })
 }
 
-fn read_json_or_default<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
-}
-
 // ---------------------------------------------------------------------------
 // The mailbox
 // ---------------------------------------------------------------------------
@@ -890,10 +883,90 @@ impl Mailbox {
     }
 
     fn inbox_with_state(&self, session_id: &str) -> (Vec<MailEnvelope>, DeliveryState) {
-        (
-            read_jsonl(&self.inbox_path(session_id)),
-            read_json_or_default(&self.state_path(session_id)),
-        )
+        let inbox = read_jsonl(&self.inbox_path(session_id));
+        let state = self.read_delivery_state(session_id, &inbox);
+        (inbox, state)
+    }
+
+    /// Read the per-recipient delivery state.
+    ///
+    /// A missing (or unreadable) file is an empty state, as before. But a file
+    /// that exists and does **not** parse is never treated as an authoritative
+    /// empty map: silently doing that made every already-delivered/read
+    /// envelope look `queued` again, so delivery behaved as if nothing had ever
+    /// happened. Instead the corrupt file is quarantined -- renamed aside to
+    /// `<id>.state.corrupt-<epoch_ms>.json` so the bytes survive for
+    /// inspection -- a warning is logged, and the state is rebuilt
+    /// conservatively from the inbox: every known envelope is marked
+    /// `delivered`. Nothing is dropped (the envelopes still exist and are still
+    /// surfaced by `pending`/`read_messages`), and nothing is silently
+    /// re-injected as if freshly `queued` (`take_for_delivery` returns only
+    /// `queued` envelopes). This mirrors the torn-JSONL recovery: a damaged
+    /// file self-heals rather than failing an operation. Callers hold the
+    /// mailbox lock, so the rebuilt state is persisted under it.
+    fn read_delivery_state(&self, session_id: &str, inbox: &[MailEnvelope]) -> DeliveryState {
+        let path = self.state_path(session_id);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            // Missing is an empty state; a genuine read error (e.g. a transient
+            // permission problem) is treated the same as before rather than
+            // destroying a file we could not even read.
+            Err(_) => return DeliveryState::new(),
+        };
+        match serde_json::from_slice::<DeliveryState>(&bytes) {
+            Ok(state) => state,
+            Err(err) => self.recover_corrupt_state(session_id, &path, inbox, &err),
+        }
+    }
+
+    /// Quarantine a corrupt `<id>.state.json` and rebuild it from the inbox.
+    /// Best-effort throughout: whatever cannot be renamed or rewritten still
+    /// yields the rebuilt in-memory state for this call.
+    fn recover_corrupt_state(
+        &self,
+        session_id: &str,
+        path: &Path,
+        inbox: &[MailEnvelope],
+        err: &serde_json::Error,
+    ) -> DeliveryState {
+        let quarantine =
+            path.with_file_name(format!("{session_id}.state.corrupt-{}.json", self.now()));
+        match std::fs::rename(path, &quarantine) {
+            Ok(()) => eprintln!(
+                "session mailbox: {} did not parse ({err}); quarantined to {} and rebuilding delivery state from the inbox",
+                path.display(),
+                quarantine.display(),
+            ),
+            Err(e) => eprintln!(
+                "session mailbox: {} did not parse ({err}) and could not be quarantined ({e}); rebuilding delivery state from the inbox",
+                path.display(),
+            ),
+        }
+        // Conservative rebuild: mark every known envelope `delivered`. Not
+        // `queued` (that would re-inject them into a running conversation) and
+        // not `read` (that would hide them); `delivered` keeps them visible and
+        // recoverable while dropping nothing.
+        let now = self.now();
+        let mut state = DeliveryState::new();
+        for e in inbox {
+            state.insert(
+                e.id.clone(),
+                DeliveryEntry {
+                    status: DeliveryStatus::Delivered,
+                    at: now,
+                },
+            );
+        }
+        // Persist the rebuilt state so the recovery sticks and the corrupt
+        // bytes are not read again. Best-effort: on failure the in-memory state
+        // still makes this call behave correctly.
+        if let Err(e) = write_json_atomically(path, &state) {
+            eprintln!(
+                "session mailbox: could not persist the rebuilt delivery state for {session_id}: {}",
+                e.message
+            );
+        }
+        state
     }
 
     fn status_in(state: &DeliveryState, id: &str) -> DeliveryStatus {
@@ -929,9 +1002,12 @@ impl Mailbox {
         Ok(taken)
     }
 
-    /// Queued and delivered (not yet read) envelopes, oldest first. No change.
+    /// Queued and delivered (not yet read) envelopes, oldest first. No delivery
+    /// state change, but the lock is held because reading the state may quarantine
+    /// and rebuild a corrupt `<id>.state.json` (see [`Mailbox::read_delivery_state`]).
     pub fn pending(&self, session_id: &str) -> Result<Vec<MailEnvelope>> {
         check_session_id(session_id)?;
+        let _guard = lock();
         let (inbox, state) = self.inbox_with_state(session_id);
         Ok(inbox
             .into_iter()
