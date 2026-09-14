@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Loader2, RefreshCw } from 'lucide-react'
+import { ChevronDown, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
@@ -66,18 +66,19 @@ const ErrorSection = ({
   t: (key: string) => string
 }) => (
   <div className="px-3 py-2 text-sm text-destructive">
-    <div className="flex items-center justify-between">
+    <div className="flex items-center gap-1.5">
+      <TriangleAlert className="size-4 shrink-0" aria-hidden />
       <span className="text-destructive font-medium">
         {t('common:failedToLoadModels')}
       </span>
     </div>
-    <div className="text-xs text-muted-foreground mt-0">{error}</div>
+    <div className="mt-0.5 break-words text-xs text-ink-2">{error}</div>
   </div>
 )
 
 const LoadingSection = ({ t }: { t: (key: string) => string }) => (
   <div className="flex items-center justify-center px-3 py-3 text-sm text-muted-foreground">
-    <Loader2 className="h-4 w-4 animate-spin mr-2 text-muted-foreground" />
+    <Loader2 className="mr-2 size-4 text-muted-foreground motion-safe:animate-spin" />
     <span className="text-sm text-muted-foreground">{t('common:loading')}</span>
   </div>
 )
@@ -128,12 +129,15 @@ const ModelsList = ({
         }}
         onMouseEnter={() => onHighlight(index)}
         className={cn(
-          'cursor-pointer mx-3 px-2 rounded-md py-2 bg-background z-20 transition-all duration-200',
-          value === model && 'bg-secondary shadow-sm',
-          highlightedIndex === index && ' bg-secondary'
+          'relative mx-1.5 flex min-h-8 cursor-pointer items-center rounded-md px-2 py-1 pointer-coarse:min-h-11',
+          // Keyboard or pointer position: a neutral fill.
+          highlightedIndex === index && 'bg-accent',
+          // The chosen model: the same fill and the 2px accent rail.
+          value === model &&
+            'bg-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
         )}
       >
-        <span className="text-sm truncate text-foreground">{model}</span>
+        <span className="truncate text-sm text-foreground">{model}</span>
       </div>
     ))}
   </>
@@ -427,9 +431,9 @@ export function ModelCombobox({
               aria-label="Refresh models"
             >
               {loading ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-4 motion-safe:animate-spin" />
               ) : (
-                <RefreshCw className="size-4 opacity-70" />
+                <RefreshCw className="size-4 text-muted-foreground" />
               )}
             </Button>
           )}
@@ -440,7 +444,7 @@ export function ModelCombobox({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleDropdownToggle}
           >
-            <ChevronDown className="size-4 opacity-50" />
+            <ChevronDown className="size-4 text-muted-foreground" />
           </Button>
         </div>
 
@@ -450,7 +454,7 @@ export function ModelCombobox({
           createPortal(
             <div
               ref={dropdownRef}
-              className="fixed z-9999 py-2 bg-background border rounded-md shadow-lg max-h-[300px] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200 "
+              className="fixed z-9999 max-h-[300px] overflow-y-auto rounded-md border border-line-strong bg-popover py-1 shadow-overlay motion-safe:animate-in motion-safe:fade-in-0"
               style={{
                 top: dropdownPosition.top,
                 left: dropdownPosition.left,

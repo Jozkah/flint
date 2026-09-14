@@ -126,7 +126,13 @@ export const DialogDeleteModel = ({
 
         <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <DialogClose asChild>
-            <Button variant="ghost" size="sm" className="pointer-coarse:h-11">
+            {/* Focus starts on the answer that deletes nothing. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="pointer-coarse:h-11"
+              autoFocus
+            >
               {t('providers:deleteModel.cancel')}
             </Button>
           </DialogClose>
@@ -136,7 +142,6 @@ export const DialogDeleteModel = ({
               size="sm"
               className="pointer-coarse:h-11"
               onClick={removeModel}
-              autoFocus
             >
               {selectedModel.imported
                 ? t('providers:deleteModel.removeFromJan')

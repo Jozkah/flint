@@ -224,7 +224,7 @@ export const DialogEditModel = ({
         <div className="py-1">
           <label
             htmlFor="display-name"
-            className="text-sm font-medium mb-3 block"
+            className="mb-1.5 block text-xs font-medium text-ink-2"
           >
             {t('providers:editModel.displayName')}
           </label>
@@ -246,7 +246,9 @@ export const DialogEditModel = ({
                 })}
               </span>
             ) : (
-              <span className="text-destructive">
+              // An error carries an icon as well as its colour and words.
+              <span className="inline-flex items-start gap-1 text-destructive">
+                <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
                 {validation.error === 'empty'
                   ? t('providers:editModel.displayNameEmpty')
                   : t('providers:editModel.displayNameDuplicate')}
@@ -259,7 +261,7 @@ export const DialogEditModel = ({
         <div className="rounded-md border border-border bg-warning-tint p-3">
           <div className="flex items-start gap-3">
             <TriangleAlert
-              className="mt-0.5 size-5 shrink-0 text-warning"
+              className="mt-0.5 size-4 shrink-0 text-warning"
               aria-hidden
             />
             <div className="text-sm">
@@ -274,7 +276,7 @@ export const DialogEditModel = ({
         </div>
 
         <div className="py-1">
-          <h3 className="text-sm font-medium mb-3">
+          <h3 className="mb-2 text-[13px] font-semibold text-foreground">
             {t('providers:editModel.capabilities')}
           </h3>
           <div className="space-y-4">
@@ -358,7 +360,7 @@ export const DialogEditModel = ({
           >
             {isLoading ? (
               <>
-                <LoaderCircle className="animate-spin" aria-hidden />
+                <LoaderCircle className="motion-safe:animate-spin" aria-hidden />
                 Saving...
               </>
             ) : (

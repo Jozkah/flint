@@ -223,6 +223,7 @@ function ModelProviders() {
             description={t('provider:stripReasoningDesc')}
             actions={
               <Switch
+                aria-label={t('provider:stripReasoning')}
                 checked={stripReasoningFromContext}
                 onCheckedChange={setStripReasoningFromContext}
               />

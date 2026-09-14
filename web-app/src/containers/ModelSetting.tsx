@@ -270,8 +270,8 @@ export function ModelSetting({
       {/* The Atelier inspector: paper, 360px beside the page on desktop, the
           whole screen on a phone. */}
       <SheetContent className="w-full max-w-none gap-0 border-l border-border bg-card sm:w-[var(--inspector-w)] sm:max-w-[var(--inspector-w)]">
-        <SheetHeader className="border-b border-border px-5 py-4">
-          <SheetTitle className=" text-xl font-semibold leading-tight">
+        <SheetHeader className="border-b border-border px-4 py-3">
+          <SheetTitle className="pr-8 text-sm font-semibold leading-snug">
             {t('common:modelSettings.title', {
               modelId: getModelDisplayName(model),
             })}
@@ -281,7 +281,7 @@ export function ModelSetting({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 min-h-0 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {provider.provider === 'llamacpp' && (
             <SpecDraftPanel modelId={model.id} />
           )}

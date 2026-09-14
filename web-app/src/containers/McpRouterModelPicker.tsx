@@ -140,7 +140,7 @@ export function McpRouterModelPicker({
               <>
                 <span
                   className={cn(
-                    'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
+                    'text-[11px] font-medium leading-5 px-1.5 rounded-md shrink-0',
                     current.isLocal
                       ? 'bg-success-tint text-success'
                       : 'bg-sunken text-ink-2'
@@ -203,11 +203,11 @@ export function McpRouterModelPicker({
                   return (
                     <div
                       key={providerKey}
-                      className="mx-1.5 my-1.5 rounded-md bg-sunken/50 py-1 first:mt-1"
+                      className="py-0.5"
                     >
-                      <div className="flex items-center gap-1.5 px-2 py-1">
+                      <div className="flex items-center gap-1.5 px-3 py-1">
                         <ProvidersAvatar provider={providerInfo} />
-                        <span className="capitalize text-sm font-medium text-muted-foreground">
+                        <span className="capitalize text-xs font-medium text-ink-2">
                           {providerKey}
                         </span>
                       </div>
@@ -224,10 +224,11 @@ export function McpRouterModelPicker({
                             title={e.model.id}
                             onClick={() => handleSelect(e)}
                             className={cn(
-                              'mx-1 mb-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors pointer-coarse:min-h-11',
-                              'hover:bg-card',
+                              'relative mx-1 flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 py-1 transition-colors pointer-coarse:min-h-11',
+                              'hover:bg-accent',
+                              // Selected: neutral fill and the 2px accent rail.
                               isSelected &&
-                                'bg-brand-tint shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand-tint'
+                                'bg-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">
