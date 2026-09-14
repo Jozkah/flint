@@ -1,12 +1,12 @@
-# Flint 0.9
+﻿# Flint 0.9
 
 ## Migration
 
 **Flint detects an existing JAN installation on first launch.**
 
-Because Flint keeps JAN's bundle identifier (`jan.ai.app`) and data path, an existing JAN install is found automatically, and the first-launch assistant offers four choices. **Copy to Flint** duplicates the selected data and preserves your original JAN installation and data untouched. **Reuse JAN data** shares the selected existing data in place, with concurrency protection so both apps do not corrupt it. **Move to Flint** copies into Flint and then removes the JAN source once every item succeeds, keeping a recoverable backup and supporting rollback. **Start fresh** begins with an empty Flint profile and leaves JAN untouched. You can also migrate later from **Settings → General → Migrate from JAN**.
+Because Flint keeps JAN's bundle identifier (`jan.ai.app`) and data path, an existing JAN install is found automatically, and the first-launch assistant offers four choices. **Copy to Flint** duplicates the selected data and preserves your original JAN installation and data untouched. **Reuse JAN data** shares the selected existing data in place, with concurrency protection so both apps do not corrupt it. **Move to Flint** copies into Flint and then removes the JAN source once every item succeeds, keeping a recoverable backup and supporting rollback. **Start fresh** begins with an empty Flint profile and leaves JAN untouched. You can also migrate later from **Settings â†’ General â†’ Migrate from JAN**.
 
-You choose which categories to bring — conversations and assistants, models, settings and provider credentials, configuration, extensions and logs, and the agent workspace and rooms — and how to resolve items that already exist in Flint. A newer item already in Flint is never silently overwritten. A failed migration rolls back to the previous state, an interrupted migration resumes idempotently, partial data is quarantined, and every run records a manifest. Your existing JAN data is never deleted automatically.
+You choose which categories to bring â€” conversations and assistants, models, settings and provider credentials, configuration, extensions and logs, and the agent workspace and rooms â€” and how to resolve items that already exist in Flint. A newer item already in Flint is never silently overwritten. A failed migration rolls back to the previous state, an interrupted migration resumes idempotently, partial data is quarantined, and every run records a manifest. Your existing JAN data is never deleted automatically.
 
 Your existing settings, credentials, providers, models, threads, projects, rooms, mailboxes, and extensions are preserved where compatible. Secrets continue through the protected keychain/backend-store path and are never copied into plaintext or logs. Legacy compatibility is kept throughout: `JAN_*` environment variables (with `FLINT_*` preferred), the `jan://` protocol (alongside `flint://`), `JAN.md` project files (alongside `FLINT.md`), the legacy data locations, and the persisted identifiers all continue to work.
 
@@ -15,31 +15,33 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 ---
 
 ## What's Changed
-* feat(app): local-only build — no telemetry, no catalog, no downloads by @Jozkah in https://github.com/Jozkah/jan/pull/10
+* fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing Expected 'function.name' to be a string generation failures
+* perf(inference): keep GPU-capable Vulkan as the default engine build and document throughput tuning for Flash Attention, batching, offload, and parallel sequences
+* feat(app): local-only build â€” no telemetry, no catalog, no downloads by @Jozkah in https://github.com/Jozkah/jan/pull/10
 * feat(local-only): finish removing telemetry, update checking and model discovery, and guard the whole repo
 * refactor(privacy): remove telemetry build vars, the analytics injection, the catalogue URLs and the update feed
 * refactor(core): remove the updater, the CLI's telemetry, and the mirror
 * fix(local-only): guard the shipped bundle, and stop downloading an embedding model at startup
 * fix(privacy): stop telling Google what the web search returned
-* rebrand(ui): present the product as Flint — app name, window title, rail wordmark, default assistant, and every locale
+* rebrand(ui): present the product as Flint â€” app name, window title, rail wordmark, default assistant, and every locale
 * rebrand(ui): Flint in the agent identity and the remaining visible strings
 * rebrand(agent): the default persona says Flint agent harness
 * rebrand(packaging): rename the desktop binary to Flint-Desktop and register the `flint://` deep link, keeping `jan://`
 * rebrand(docs): Flint navigation labels, keeping the research model names
 * docs(rebrand): add an original Flint logo and replace the JAN logo in the favicon, boot splash, window title, and in-app badges
-* docs(readme): rewrite the README as "Flint — a fork of Jan" with provenance, migration and feature sections by @Jozkah in https://github.com/Jozkah/jan/pull/12
+* docs(readme): rewrite the README as "Flint â€” a fork of Jan" with provenance, migration and feature sections by @Jozkah in https://github.com/Jozkah/jan/pull/12
 * docs(readme): fix the model-import path and the local-only guard claim by @Jozkah in https://github.com/Jozkah/jan/pull/13
 * docs(readme): make the screenshot captions read as captions by @Jozkah in https://github.com/Jozkah/jan/pull/14
 * docs(license): retain Apache-2.0, the Menlo Research copyright, acknowledgements and upstream provenance
-* feat(migration): first-launch JAN → Flint data-migration core and the six Tauri commands
+* feat(migration): first-launch JAN â†’ Flint data-migration core and the six Tauri commands
 * feat(migration): register the six migration Tauri commands
 * feat(migration): a guided first-launch migration assistant UI
 * feat(migration): Copy, Reuse, Move and Start-fresh modes, with per-category selection
-* feat(migration): conflict policies — keep the newer Flint item, use the JAN item, or keep both under a suffix
+* feat(migration): conflict policies â€” keep the newer Flint item, use the JAN item, or keep both under a suffix
 * feat(migration): a recoverable backup for Move, with rollback and retry on failure
 * feat(migration): idempotent resume of an interrupted migration, and quarantine of partial data
 * feat(migration): a migration manifest recording mode, categories, results and status
-* feat(migration): reopen the assistant any time from Settings → General → Migrate from JAN
+* feat(migration): reopen the assistant any time from Settings â†’ General â†’ Migrate from JAN
 * feat(env): prefer `FLINT_*` environment variables, with a `JAN_*` fallback
 * feat(project-init): write `FLINT.md` and keep discovering legacy `JAN.md` (Rust)
 * feat(cowork): discover `FLINT.md`, still reading legacy `JAN.md` (web)
@@ -61,16 +63,16 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 * fix(cowork): Stop ends a run whatever it is waiting on (#8905)
 * fix(cowork): give every file an explicit origin, and stop project reads crossing projects
 * feat(rooms): the Discussion Room engine, store and controller
-* feat(rooms): the Discussion Rooms UI — list, room page, editor, transcript and controls
+* feat(rooms): the Discussion Rooms UI â€” list, room page, editor, transcript and controls
 * feat(rooms): persistence commands and a typed service
 * feat(design): rooms and agent messages in Graphite
 * fix(rooms): frame transcript text, cap dissent, classify storage errors, and redact
 * fix(rooms): refuse ids Windows would alias (trailing dot, device names)
-* feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats by @Jozkah in https://github.com/Jozkah/jan/pull/4
+* feat(cowork): complete Cowork workspace â€” Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats by @Jozkah in https://github.com/Jozkah/jan/pull/4
 * feat(cowork): a read-only code workspace, an Activity rail, and global settings search by @Jozkah in https://github.com/Jozkah/jan/pull/1
 * feat(cowork): make the declared coding-harness modes real by @Jozkah in https://github.com/Jozkah/jan/pull/6
-* feat(cowork): report the real context — a repository map and the payload actually sent — with a harness feature registry by @Jozkah in https://github.com/Jozkah/jan/pull/7
-* feat(agent): core execution — a run that can be reconstructed by @Jozkah in https://github.com/Jozkah/jan/pull/8
+* feat(cowork): report the real context â€” a repository map and the payload actually sent â€” with a harness feature registry by @Jozkah in https://github.com/Jozkah/jan/pull/7
+* feat(agent): core execution â€” a run that can be reconstructed by @Jozkah in https://github.com/Jozkah/jan/pull/8
 * feat(agent): repository intelligence by @Jozkah in https://github.com/Jozkah/jan/pull/9
 * feat(harness): the feature registry and Phase 0 foundation, and one versioned event log per session exported through the UI
 * feat(agent): the Rust agent loop writes its calls and runs to the session's execution record (AH-004, AH-050)
@@ -88,7 +90,7 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 * feat(cowork): give an isolated team task a checkout of its own, and isolate Rust subagents
 * feat(cowork): fork a session without forking its authority (AH-201)
 * feat(agent): consensus gates decided by independent read-only reviewers (AH-112)
-* feat(cowork): the managed worktree — make it real, use the tree the run actually uses, and finish its lifecycle including recovery
+* feat(cowork): the managed worktree â€” make it real, use the tree the run actually uses, and finish its lifecycle including recovery
 * feat(cowork): checkpoints and two meanings of rewind, wired into Cowork with a safety point on restore
 * feat(cowork): answer an opening request with a proposal, not an edit; review it by hunk and apply only what was chosen
 * feat(proposals): a proposed change is stored, bound and applied by the backend
@@ -173,7 +175,7 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 * fix(llamacpp): let an explicit GPU Layers setting reach the router
 * feat(chat): warn before sending images to a model without vision
 * feat(chat): per-chat model settings and a reasoning-effort bar by @Jozkah in https://github.com/Jozkah/jan/pull/2
-* feat(chat): temporary chat lifecycle — keep, discard, and a leave guard by @Jozkah in https://github.com/Jozkah/jan/pull/3
+* feat(chat): temporary chat lifecycle â€” keep, discard, and a leave guard by @Jozkah in https://github.com/Jozkah/jan/pull/3
 * feat(chat): split a conversation into two independent panes, with a Details inspector
 * feat(chat): attach text and code without asking the model to see it
 * feat(composer): one @ menu for files, skills, agents and aliases, and name a selection as an alias
@@ -181,7 +183,7 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 * feat(design): the Graphite Studio redesign with a neutral charcoal dark theme by @Jozkah in https://github.com/Jozkah/jan/pull/15
 * feat(design): the JAN Atelier redesign, integrated with the agent phases and beginner workflows by @Jozkah in https://github.com/Jozkah/jan/pull/11
 * feat(design): one Atelier shell with a rail, contextual sidebar, context bar and status bar
-* feat(design): Atelier and Graphite components — buttons, dialogs, menus, sheets, switches, inputs, model dialogs and pickers
+* feat(design): Atelier and Graphite components â€” buttons, dialogs, menus, sheets, switches, inputs, model dialogs and pickers
 * feat(design): bundled typefaces and a derived, contrast-checked accent
 * feat(onboarding): an intention-led first run that resumes, skips and can be reopened
 * feat(settings): global settings search with focusable, structural targets grouped by section
