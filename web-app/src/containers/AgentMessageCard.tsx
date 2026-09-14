@@ -46,7 +46,7 @@ export function AgentMessageCard({
           {t('messaging:messageFrom', { name })}
         </h3>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {t('messaging:untrustedNote')}
       </p>
       <p

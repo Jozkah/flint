@@ -1,15 +1,17 @@
 import type { RoomStatus } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn } from '@/lib/utils'
+import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 
-const TONE: Record<RoomStatus, string> = {
-  draft: 'bg-muted text-muted-foreground',
-  running: 'bg-brand-fill text-foreground',
-  'awaiting-user': 'bg-brand-fill text-foreground',
-  paused: 'bg-secondary text-secondary-foreground',
-  stopped: 'bg-muted text-muted-foreground',
-  completed: 'bg-secondary text-secondary-foreground',
-  failed: 'bg-destructive/10 text-destructive',
+// A room's state as work status: icon and word, and never the accent, which
+// marks selection and the primary action rather than activity.
+const STATE: Record<RoomStatus, WorkState> = {
+  draft: 'queued',
+  running: 'running',
+  'awaiting-user': 'needs-you',
+  paused: 'waiting',
+  stopped: 'cancelled',
+  completed: 'done',
+  failed: 'failed',
 }
 
 export function RoomStatusBadge({
@@ -21,16 +23,13 @@ export function RoomStatusBadge({
 }) {
   const { t } = useTranslation()
   return (
-    <span
+    <WorkStatus
+      state={STATE[status]}
       data-testid="room-status"
       data-status={status}
-      className={cn(
-        'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        TONE[status],
-        className
-      )}
+      className={className}
     >
       {t(`rooms:status.${status}`)}
-    </span>
+    </WorkStatus>
   )
 }

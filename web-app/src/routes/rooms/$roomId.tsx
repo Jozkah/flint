@@ -41,7 +41,7 @@ function RoomPage() {
     <Link
       to={route.rooms}
       aria-label={t('rooms:back')}
-      className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"
+      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent pointer-coarse:size-11"
     >
       <ArrowLeft className="size-4" aria-hidden />
     </Link>

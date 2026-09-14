@@ -34,7 +34,7 @@ const decode = (value: string): RoomModelRef | null => {
 const modelLabel = (m: Model) => m.displayName || m.name || m.id
 
 export const selectClassName =
-  'border-input h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive'
+  'border-input h-8 pointer-coarse:h-11 w-full min-w-0 rounded-md border bg-card px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive'
 
 type RoomModelSelectProps = {
   id: string

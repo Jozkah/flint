@@ -52,7 +52,7 @@ export function AgentMessageHeader({
   if (!message) return null
 
   return (
-    <div data-testid="agent-message-header" className="mb-1 text-[11px]">
+    <div data-testid="agent-message-header" className="mb-1 text-xs">
       <div className="flex items-center gap-2 opacity-80">
         <Mail size={12} aria-hidden className="shrink-0" />
         <span>{t('messaging:messageFrom', { name: message.displayName })}</span>
@@ -60,7 +60,7 @@ export function AgentMessageHeader({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-xs pointer-coarse:h-11"
             data-testid="agent-message-reply"
             aria-label={t('messaging:replyLabel', { name: message.displayName })}
             onClick={() => {

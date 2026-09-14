@@ -44,9 +44,9 @@ function Badge({ tone, children }: { tone: 'warn' | 'error' | 'info'; children: 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium',
         tone === 'error' && 'bg-destructive/10 text-destructive',
-        tone === 'warn' && 'bg-secondary text-secondary-foreground',
+        tone === 'warn' && 'bg-warning-tint text-warning',
         tone === 'info' && 'bg-muted text-muted-foreground'
       )}
     >
@@ -114,9 +114,9 @@ function MessageBody({
         <section
           aria-label={t('rooms:transcript.dissent')}
           data-testid="synthesis-dissent"
-          className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3"
+          className="mt-3 rounded-md border border-warning/40 bg-warning-tint p-3"
         >
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-destructive">
+          <h4 className="mb-1 text-xs font-semibold text-warning">
             {t('rooms:transcript.dissent')}
           </h4>
           {message.dissent.length === 0 ? (
@@ -208,7 +208,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                   {authorLabel(m.author, room, t)}
                 </span>
                 {chip && (
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">
                     {chip}
                   </span>
                 )}
