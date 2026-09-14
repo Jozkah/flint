@@ -33,17 +33,17 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
     <div className="absolute inset-0 flex flex-col justify-end px-3 pb-2">
       <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
         <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-500">
-          <Handshake size={20} className="text-brand-text" aria-hidden />
-          <h1 className="mt-3 text-xl font-semibold tracking-[-0.01em] text-foreground">
+          <Handshake size={18} className="text-ink-2" aria-hidden />
+          <h1 className="mt-2 text-[15px] font-semibold text-foreground">
             {t('common:coworkEmpty.title')}
           </h1>
-          <p className="mt-1.5 max-w-lg text-sm text-muted-foreground">
+          <p className="mt-1 max-w-lg text-sm text-ink-2">
             {name
               ? t('common:coworkEmpty.subtitleFolder', { folder: name })
               : t('common:coworkEmpty.subtitleSandbox')}
           </p>
 
-          <p className="mt-6 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="mt-4 text-xs font-medium text-muted-foreground">
             {t('common:coworkEmpty.try')}
           </p>
           <div className="mt-1 flex flex-col items-start gap-0.5">

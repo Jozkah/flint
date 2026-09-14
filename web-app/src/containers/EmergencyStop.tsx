@@ -1,5 +1,6 @@
 import { useCallback, useId, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -79,6 +80,14 @@ function describeScope(scope: StopScope, props: EmergencyStopProps): string {
     case 'application':
       return 'All work everywhere in Jan, in every session. Nothing running is spared.'
   }
+}
+
+/** A short name for a scope, used as the option title and in the button. */
+const SCOPE_NAME: Record<StopScope, string> = {
+  call: 'This tool call',
+  run: 'This run',
+  session: 'This session',
+  application: 'Everything in Jan',
 }
 
 /** The arguments an empty field turns into: empty means "all at this level". */
@@ -176,12 +185,19 @@ export function EmergencyStop(props: EmergencyStopProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <fieldset className="flex flex-col gap-2" disabled={stopping}>
+          <fieldset
+            className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border"
+            disabled={stopping}
+          >
             <legend className="sr-only">What to stop</legend>
             {scopes.map((option) => (
               <label
                 key={option}
-                className="flex items-start gap-2 text-sm"
+                className={
+                  chosen === option
+                    ? 'flex min-h-11 cursor-pointer items-start gap-2 bg-accent px-3 py-2 text-sm'
+                    : 'flex min-h-11 cursor-pointer items-start gap-2 px-3 py-2 text-sm'
+                }
                 data-testid={`emergency-stop-scope-${option}`}
               >
                 <input
@@ -190,11 +206,13 @@ export function EmergencyStop(props: EmergencyStopProps) {
                   value={option}
                   checked={chosen === option}
                   onChange={() => setScope(option)}
-                  className="mt-1"
+                  className="mt-1 accent-[var(--brand-fill)]"
                 />
-                <span>
-                  <span className="font-medium capitalize">{option}</span>
-                  <span className="block text-muted-foreground">
+                <span className="min-w-0">
+                  <span className="font-medium text-foreground">
+                    {SCOPE_NAME[option]}
+                  </span>
+                  <span className="block break-words text-xs text-ink-2">
                     {describeScope(option, props)}
                   </span>
                 </span>
@@ -224,10 +242,13 @@ export function EmergencyStop(props: EmergencyStopProps) {
             )}
             {!stopping && error && (
               <span
-                className="text-destructive"
+                className="inline-flex items-start gap-1.5 text-destructive"
                 data-testid="emergency-stop-error"
               >
-                Could not stop: {error}
+                <OctagonAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0 break-words">
+                  Could not stop: {error}
+                </span>
               </span>
             )}
           </div>
@@ -235,7 +256,8 @@ export function EmergencyStop(props: EmergencyStopProps) {
           <DialogFooter>
             <Button
               type="button"
-              variant="link"
+              variant="ghost"
+              className="pointer-coarse:h-11"
               onClick={close}
               disabled={stopping}
             >
@@ -244,6 +266,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
             <Button
               type="button"
               variant="destructive"
+              className="pointer-coarse:h-11"
               onClick={run}
               disabled={stopping}
               aria-describedby={statusId}

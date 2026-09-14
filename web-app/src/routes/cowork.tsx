@@ -140,6 +140,7 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
@@ -3816,7 +3817,7 @@ function CoworkPage() {
         <PageHeaderRow>
           {!phone && session?.title ? (
             <h1
-              className="font-semibold hidden min-w-0 max-w-[18rem] shrink truncate text-lg leading-tight text-foreground lg:block"
+              className="hidden min-w-0 max-w-[18rem] shrink truncate text-sm font-semibold leading-tight text-foreground lg:block"
               title={session.title}
               data-testid="cowork-session-title"
             >
@@ -3848,7 +3849,7 @@ function CoworkPage() {
                     'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
                     index > 0 && 'border-l border-line-strong',
                     view === option
-                      ? 'bg-brand-tint text-foreground'
+                      ? 'bg-accent text-foreground shadow-[inset_0_-2px_0_var(--brand-fill)]'
                       : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
                   )}
                 >
@@ -3873,7 +3874,18 @@ function CoworkPage() {
             </Button>
           ) : null}
           {!phone && (
-            <div className="ml-auto flex shrink-0 items-center">
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* The one primary action in the context bar, once there is
+                  something to review. */}
+              {changeCounts.fileCount > 0 ? (
+                <Button
+                  size="sm"
+                  onClick={() => openRail({ kind: 'diff' })}
+                  data-testid="cowork-header-review"
+                >
+                  {t('common:coworkReview.open')}
+                </Button>
+              ) : null}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
                 {detailsBody}
@@ -3892,6 +3904,7 @@ function CoworkPage() {
           )}
           data-testid="cowork-content-view"
         >
+          <CoworkPlanStrip todos={session?.todos} />
           <div className="flex-1 relative">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState

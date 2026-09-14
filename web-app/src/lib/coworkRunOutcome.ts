@@ -94,6 +94,8 @@ export type ObservedCheck = {
   exitCode: number | null
   limitations: CheckLimitation[]
   callId?: string
+  /** An end-to-end or visual runner: a browser drove what was built. */
+  visual?: boolean
 }
 
 /** Every shell command in the run, whether or not it was a check. */
@@ -196,6 +198,11 @@ export type RunOutcome = {
   nextActions: NextAction[]
   /** At least one successful Jan write or completed tool step. */
   progress: boolean
+  /**
+   * Whether anything looked at what was built: an end-to-end or visual runner
+   * that finished with an exit status, or a rendered screenshot.
+   */
+  visualEvidence?: boolean
 }
 
 export type RunOutcomeInput = {
@@ -495,6 +502,7 @@ function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | nul
     exitCode: code,
     limitations: limitationsOf(turn, command, kind, code, signaled),
     callId: turn.callId,
+    visual: isVisualCheck(command),
   }
 }
 
@@ -637,6 +645,18 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
   })
   const progress = paths.length > 0 || completedStep
 
+  const screenshotTaken = toolTurns.some((turn) => {
+    if (turn.name !== 'screenshot') return false
+    const phase = phaseOf(turn)
+    return phase === 'succeeded' || phase === 'done-ok'
+  })
+  const visualEvidence =
+    screenshotTaken ||
+    checks.some((check) => {
+      const verdict = checkVerdict(check)
+      return check.visual && (verdict === 'passed' || verdict === 'failed')
+    })
+
   let status: RunStatus
   if (input.running) status = 'running'
   else if (!stopReason) status = 'completed'
@@ -711,6 +731,7 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     unresolved,
     nextActions,
     progress,
+    visualEvidence,
   }
 }
 
@@ -738,3 +759,122 @@ export const verifiedChecks = (outcome: RunOutcome): ObservedCheck[] =>
   outcome.checks.filter(
     (check) => check.outcome === 'passed' || check.outcome === 'failed'
   )
+
+// ---------------------------------------------------------------------------
+// Verification summary
+// ---------------------------------------------------------------------------
+
+/** Runners that drive a browser or compare rendered output. */
+const VISUAL_RULE =
+  /^(?:playwright\s+test|cypress\s+run|wdio|testcafe|nightwatch|backstop(?:js)?\s+test|chromatic|percy\s+exec|loki\s+test)(?:\s|$)|^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test:)?(?:e2e|visual|playwright|cypress)(?::\S+)?(?:\s|$)/i
+
+/** Whether a command runs end-to-end or visual checks. */
+export function isVisualCheck(command: string): boolean {
+  return command
+    .split(/&&|\|\||;|\||\n/)
+    .map(normalizeSegment)
+    .some((segment) => segment && VISUAL_RULE.test(segment))
+}
+
+/**
+ * What can honestly be said about one check, from its completion and exit
+ * status alone.
+ *
+ * `passed` needs both: the command ran to completion *and* reported exit 0. A
+ * check cancelled or timed out after printing an exit code did not finish, and
+ * one with no recorded exit status is unknown, whatever its output says.
+ */
+export type CheckVerdict =
+  | 'passed'
+  | 'failed'
+  | 'did-not-finish'
+  | 'not-run'
+  | 'running'
+  | 'unknown'
+
+export function checkVerdict(check: ObservedCheck): CheckVerdict {
+  switch (check.completion) {
+    case 'not-started':
+      return 'not-run'
+    case 'running':
+      return 'running'
+    case 'cancelled':
+    case 'timed-out':
+    case 'interrupted':
+      return 'did-not-finish'
+    case 'completed':
+      if (check.exitCode === 0 && check.outcome === 'passed') return 'passed'
+      if (check.exitCode !== null || check.outcome === 'failed') return 'failed'
+      return 'unknown'
+  }
+}
+
+export type VerificationSummary = {
+  total: number
+  passed: number
+  failed: number
+  didNotFinish: number
+  notRun: number
+  running: number
+  unknown: number
+  /** Every check completed with exit 0. False when there are no checks. */
+  allPassed: boolean
+  /** Of the passed checks, whether any ran tests (not only a build or lint). */
+  testsPassed: boolean
+  /** The failed checks, each with the exit code it reported, if any. */
+  failures: { command: string; exitCode: number | null }[]
+  /**
+   * Say that visual and end-to-end behaviour were not checked: something
+   * passed, and nothing looked at what was built.
+   */
+  visualNotChecked: boolean
+  /** Shell commands that were not verification checks. */
+  otherCommands: number
+}
+
+/**
+ * The evidence-based sentences a run summary is built from.
+ *
+ * Counts only recorded results. Nothing is reported as passed without a
+ * completed run and exit status 0, and ordinary commands are counted apart
+ * from checks, so "a command ran" never reads as "a check passed".
+ */
+export function summarizeVerification(outcome: RunOutcome): VerificationSummary {
+  const verdicts = outcome.checks.map((check) => ({
+    check,
+    verdict: checkVerdict(check),
+  }))
+  const count = (verdict: CheckVerdict) =>
+    verdicts.filter((one) => one.verdict === verdict).length
+  const passed = count('passed')
+  const visualEvidence =
+    outcome.visualEvidence ??
+    verdicts.some(
+      (one) =>
+        one.check.visual &&
+        (one.verdict === 'passed' || one.verdict === 'failed')
+    )
+  return {
+    total: verdicts.length,
+    passed,
+    failed: count('failed'),
+    didNotFinish: count('did-not-finish'),
+    notRun: count('not-run'),
+    running: count('running'),
+    unknown: count('unknown'),
+    allPassed: verdicts.length > 0 && passed === verdicts.length,
+    testsPassed: verdicts.some(
+      (one) => one.verdict === 'passed' && one.check.kind === 'test'
+    ),
+    failures: verdicts
+      .filter((one) => one.verdict === 'failed')
+      .map((one) => ({
+        command: one.check.command,
+        exitCode: one.check.exitCode,
+      })),
+    visualNotChecked: passed > 0 && !visualEvidence,
+    otherCommands: (outcome.commands ?? []).filter(
+      (command) => command.verification === null
+    ).length,
+  }
+}

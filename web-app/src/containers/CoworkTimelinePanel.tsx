@@ -614,7 +614,12 @@ function TimelineItem({
       data-row-id={row.id}
       data-current={current}
       aria-current={current ? 'step' : undefined}
-      className={cn('border-b', linked && 'bg-brand-tint', current && 'bg-warning-tint')}
+      className={cn(
+        'border-b border-border',
+        // Linked is a selection: neutral fill and the 2px accent edge.
+        linked && 'bg-accent shadow-[inset_2px_0_0_var(--brand-fill)]',
+        current && 'bg-warning-tint'
+      )}
     >
       <div className="flex items-start gap-1 px-2 py-1.5">
         <button

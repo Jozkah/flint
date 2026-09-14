@@ -157,7 +157,7 @@ function FileRow({
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
+        className="flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent pointer-coarse:min-h-11"
       >
         <ChevronDown
           size={14}
@@ -178,9 +178,11 @@ function FileRow({
           </span>
         ) : null}
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-xs font-medium">{path}</span>
+          <span className="truncate font-mono text-xs font-medium text-foreground">
+            {path}
+          </span>
           {subtitle ? (
-            <span className="truncate text-[10px] text-muted-foreground">
+            <span className="truncate text-[11px] text-muted-foreground">
               {subtitle}
             </span>
           ) : null}
@@ -396,7 +398,7 @@ export function CoworkDiffPanel({
           {showProject ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="sticky top-0 z-[1] border-b border-border bg-sunken px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   {t('common:changes.projectWorkingTree')}
                 </h3>
               ) : null}
@@ -485,7 +487,7 @@ export function CoworkDiffPanel({
           {showSandbox ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="sticky top-0 z-[1] border-b border-border bg-sunken px-3 py-1.5 text-xs font-medium text-muted-foreground">
                   {t('common:changes.sandboxOutput')}
                 </h3>
               ) : null}

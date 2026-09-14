@@ -72,7 +72,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
     <section
       data-testid="cowork-worktree-recovery"
       aria-label={t('common:worktreeRecovery.title')}
-      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-sunken px-3 py-2 text-xs"
     >
       <p className="mb-1 flex items-center gap-1.5 text-ink-2">
         <GitBranch aria-hidden className="size-3.5 shrink-0" />
@@ -88,7 +88,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => props.onAdopt(record)}
             >
@@ -97,7 +97,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => void ask(record)}
             >
@@ -132,7 +132,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="destructive"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => void remove()}
             >
@@ -141,7 +141,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => setConfirming(null)}
             >
