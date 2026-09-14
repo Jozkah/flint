@@ -8,6 +8,7 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Plus } from 'lucide-react'
 import { getProviderTitle } from '@/lib/utils'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { AddProviderDialog } from '@/containers/dialogs'
 import { Switch } from '@/components/ui/switch'
@@ -19,15 +20,17 @@ import {
 import cloneDeep from 'lodash/cloneDeep'
 import { toast } from 'sonner'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import {
-  SettingsPageBody,
-  SettingsPageHeader,
-} from '@/containers/SettingsPageHeader'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import { WidePageBody } from '@/containers/WidePageBody'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.model_providers as any)({
   component: ModelProviders,
 })
+
+/** Columns of the provider list once its container is wide enough. */
+const PROVIDER_GRID =
+  '@2xl:grid-cols-[minmax(0,1.4fr)_7rem_minmax(0,1.2fr)_auto]'
 
 function ModelProviders() {
   const { t } = useTranslation()
@@ -88,6 +91,12 @@ function ModelProviders() {
     [providers, addProvider, t, navigate]
   )
 
+  const openProvider = (providerName: string) =>
+    navigate({
+      to: route.settings.providers,
+      params: { providerName },
+    })
+
   return (
     <div className="flex flex-col h-full w-full">
       <SettingsPageHeader>
@@ -98,11 +107,113 @@ function ModelProviders() {
           </Button>
         </AddProviderDialog>
       </SettingsPageHeader>
-      <SettingsPageBody>
+      <WidePageBody>
+        {/* Model Providers: a table that grows with the pane. */}
+        <Card
+          header={
+            <h2 className="mb-3 text-[13px] font-semibold text-foreground">
+              {t('common:modelProviders')}
+            </h2>
+          }
+        >
+          <ul className="@container flex min-w-0 flex-col border-t border-border">
+            {providers
+              .filter((provider) => IS_MACOS || provider.provider !== 'mlx')
+              .map((provider) => {
+                const title = getProviderTitle(provider.provider)
+                const engine =
+                  provider.provider === 'llamacpp' ||
+                  provider.provider === 'mlx'
+                const location = classifyModelLocation({
+                  baseUrl: provider.base_url,
+                  builtInEngine: engine,
+                })
+                const where =
+                  location === 'local' || location === 'remote'
+                    ? t(`model-fit:location.${location}`)
+                    : ''
+                const count = `${provider.models.length} Models`
+                return (
+                  <li
+                    key={provider.provider}
+                    data-testid={`provider-row-${provider.provider}`}
+                    className={`grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-border py-2 last:border-b-0 ${PROVIDER_GRID}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-sunken">
+                        <ProvidersAvatar provider={provider} />
+                      </span>
+                      <div className="min-w-0">
+                        {provider.active ? (
+                          <button
+                            type="button"
+                            onClick={() => openProvider(provider.provider)}
+                            className="block max-w-full truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
+                          >
+                            {title}
+                          </button>
+                        ) : (
+                          <h3 className="truncate text-sm font-medium text-foreground">
+                            {title}
+                          </h3>
+                        )}
+                        {/* On a narrow pane the columns fold under the name. */}
+                        <p className="truncate text-xs tabular-nums text-muted-foreground @2xl:hidden">
+                          {where ? `${count} · ${where}` : count}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="hidden text-sm tabular-nums text-ink-2 @2xl:block">
+                      {count}
+                    </span>
+                    <span
+                      className="hidden truncate text-xs text-muted-foreground @2xl:block"
+                      title={where}
+                    >
+                      {where}
+                    </span>
+                    <div className="flex items-center justify-end gap-2">
+                      {provider.active && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="pointer-coarse:size-11"
+                          aria-label={t('providers:openProvider', {
+                            provider: title,
+                          })}
+                          onClick={() => openProvider(provider.provider)}
+                        >
+                          <ChevronRight className="text-muted-foreground" />
+                        </Button>
+                      )}
+                      <Switch
+                        checked={provider.active}
+                        aria-label={t('providers:useProvider', {
+                          provider: title,
+                        })}
+                        onCheckedChange={async (e) => {
+                          if (
+                            !e &&
+                            provider.provider.toLowerCase() === 'llamacpp'
+                          ) {
+                            await serviceHub.models().stopAllModels()
+                          }
+                          updateProvider(provider.provider, {
+                            ...provider,
+                            active: e,
+                          })
+                        }}
+                      />
+                    </div>
+                  </li>
+                )
+              })}
+          </ul>
+        </Card>
         {/* Global settings */}
         <Card
           header={
-            <h2 className="mb-4 text-xl font-semibold text-foreground">
+            <h2 className="mb-3 text-[13px] font-semibold text-foreground">
               {t('provider:globalSettings')}
             </h2>
           }
@@ -118,80 +229,7 @@ function ModelProviders() {
             }
           />
         </Card>
-        {/* Model Providers */}
-        <Card
-          header={
-            <h2 className="mb-4 text-xl font-semibold text-foreground">
-              {t('common:modelProviders')}
-            </h2>
-          }
-        >
-          {providers
-            .filter((provider) => IS_MACOS || provider.provider !== 'mlx')
-            .map((provider, index) => (
-              <CardItem
-                key={index}
-                title={
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-md border border-border bg-sunken">
-                      <ProvidersAvatar provider={provider} />
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="truncate font-medium text-foreground">
-                        {getProviderTitle(provider.provider)}
-                      </h3>
-                      <p className="mt-0.5 text-xs font-normal tabular-nums text-muted-foreground">
-                        {provider.models.length} Models
-                      </p>
-                    </div>
-                  </div>
-                }
-                actions={
-                  <div className="flex items-center justify-end gap-2">
-                    {provider.active && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="pointer-coarse:size-11"
-                        aria-label={t('providers:openProvider', {
-                          provider: getProviderTitle(provider.provider),
-                        })}
-                        onClick={() => {
-                          navigate({
-                            to: route.settings.providers,
-                            params: {
-                              providerName: provider.provider,
-                            },
-                          })
-                        }}
-                      >
-                        <ChevronRight className="text-muted-foreground" />
-                      </Button>
-                    )}
-                    <Switch
-                      checked={provider.active}
-                      aria-label={t('providers:useProvider', {
-                        provider: getProviderTitle(provider.provider),
-                      })}
-                      onCheckedChange={async (e) => {
-                        if (
-                          !e &&
-                          provider.provider.toLowerCase() === 'llamacpp'
-                        ) {
-                          await serviceHub.models().stopAllModels()
-                        }
-                        updateProvider(provider.provider, {
-                          ...provider,
-                          active: e,
-                        })
-                      }}
-                    />
-                  </div>
-                }
-              />
-            ))}
-        </Card>
-      </SettingsPageBody>
+      </WidePageBody>
     </div>
   )
 }

@@ -198,6 +198,30 @@ describe('the order models are listed in', () => {
   })
 })
 
+describe('what this conversation uses, apart from what it could use', () => {
+  it('names the model in use below the list', () => {
+    render(<DropdownModelProvider />)
+    expect(screen.getByTestId('model-picker-in-use')).toHaveTextContent(
+      'model-fit:picker.inUse'
+    )
+  })
+
+  it('leaves it out while searching, where only matches belong', () => {
+    render(<DropdownModelProvider />)
+    searchFor('mmm')
+    expect(screen.queryByTestId('model-picker-in-use')).toBeNull()
+  })
+
+  it('heads local providers as local when grouped by provider', () => {
+    useModelOrder.setState({ sort: 'provider' })
+    render(<DropdownModelProvider />)
+    expect(screen.getByTestId('model-group-local')).toHaveTextContent(
+      'model-fit:picker.local'
+    )
+    expect(screen.queryByTestId('model-group-remote')).toBeNull()
+  })
+})
+
 describe('finding a renamed model', () => {
   it('finds it by the name the user gave it', () => {
     render(<DropdownModelProvider />)

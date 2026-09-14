@@ -97,7 +97,7 @@ const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
  */
 const OfflineBadge = ({ label, tooltip }: { label: string; tooltip: string }) => (
   <span
-    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/30 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
     title={tooltip}
   >
     <span className={cn('size-1.5 rounded-full', OFFLINE_DOT_CLASS)} aria-hidden />
@@ -136,6 +136,15 @@ const OriginalModelId = ({ model }: { model: Model }) =>
       {model.id}
     </span>
   ) : null
+
+/** Whether a provider's requests stay on this device or network. */
+const locationKind = (provider: ModelProvider): 'local' | 'remote' =>
+  classifyModelLocation({
+    baseUrl: provider.base_url,
+    builtInEngine: Boolean(isLocalProvider(provider.provider)),
+  }) === 'remote'
+    ? 'remote'
+    : 'local'
 
 // Helper functions for localStorage
 const setLastUsedModel = (provider: string, model: string) => {
@@ -830,7 +839,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           </div>
 
           {/* Model list */}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 min-h-0 flex-1 overflow-y-auto">
             {Object.keys(groupedItems).length === 0 && searchValue ? (
               <div className="py-3 px-4 text-sm ">
                 {t('common:noModelsFoundFor', { searchValue })}
@@ -839,10 +848,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               <div className="py-1">
                 {/* Favorites section - only show when not searching */}
                 {!searchValue && favoriteItems.length > 0 && (
-                  <div className="bg-sunken/60 rounded-md m-2 py-1">
+                  <div className="py-1">
                     {/* Favorites header */}
-                    <div className="flex items-center gap-1.5 px-2 py-1">
-                      <span className="text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center gap-1.5 px-3 pb-1 pt-1.5">
+                      <span className="text-xs font-medium text-muted-foreground">
                         {t('common:favorites')}
                       </span>
                     </div>
@@ -860,12 +869,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           key={`fav-${searchableModel.value}`}
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
-                            'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                            'mx-1 min-h-9 px-2 py-1 rounded-md cursor-pointer flex items-center gap-2',
+                            'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             // Selected state needs stronger contrast than the surrounding secondary tint.
                             isSelected &&
-                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
+                              'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand-rail'
                           )}
                         >
                           <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -920,7 +929,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
                 {/* One ordered list, or a section per provider */}
                 {!isGrouped ? (
-                  <div className="bg-sunken/60 rounded-md my-1.5 mx-1.5 py-1">
+                  <div className="py-1">
                     {flatItems.map((searchableModel) => {
                       const isSelected =
                         selectedModel?.id === searchableModel.model.id &&
@@ -936,11 +945,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           key={searchableModel.value}
                           {...selectableRow(searchableModel, isSelected)}
                           className={cn(
-                            'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                            'mx-1 min-h-9 px-2 py-1 rounded-md cursor-pointer flex items-center gap-2',
+                            'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             isSelected &&
-                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
+                              'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand-rail'
                           )}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -993,23 +1002,44 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                     })}
                   </div>
                 ) : (
-                  Object.entries(groupedItems).map(([providerKey, models]) => {
+                  Object.entries(groupedItems).map(([providerKey, models], groupIndex, entries) => {
                   const providerInfo = providers.find(
                     (p) => p.provider === providerKey
                   )
 
                   if (!providerInfo) return null
 
+                  // Local and cloud models are two groups: a heading goes
+                  // above the first provider of each kind, so choosing a
+                  // model also says whether messages leave this computer.
+                  const kind = locationKind(providerInfo)
+                  const previous = entries
+                    .slice(0, groupIndex)
+                    .map(([key]) => providers.find((p) => p.provider === key))
+                    .filter((p): p is ModelProvider => Boolean(p))
+                    .pop()
+                  const startsKind =
+                    !searchValue &&
+                    (!previous || locationKind(previous) !== kind)
+
                   return (
-                    <div
-                      key={providerKey}
-                      className="bg-sunken/60 first:mt-0 rounded-md my-1.5 mx-1.5 first:mb-0 py-1"
-                    >
+                    <div key={providerKey}>
+                    {startsKind && (
+                      <p
+                        className="px-3 pb-0.5 pt-2 text-xs font-medium text-muted-foreground"
+                        data-testid={`model-group-${kind}`}
+                      >
+                        {kind === 'local'
+                          ? t('model-fit:picker.local')
+                          : `${t('model-fit:picker.remote')} · ${t('model-fit:picker.remoteHint')}`}
+                      </p>
+                    )}
+                    <div className="py-0.5">
                       {/* Provider header */}
-                      <div className="flex items-center justify-between px-2 py-1">
+                      <div className="flex items-center justify-between px-3 py-1">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <ProvidersAvatar provider={providerInfo} />
-                          <span className="capitalize text-sm font-medium text-muted-foreground">
+                          <span className="text-xs font-medium text-ink-2">
                             {getProviderTitle(providerInfo.provider)}
                           </span>
                           <ProcessingLocationLabel provider={providerInfo} />
@@ -1052,11 +1082,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                               key={searchableModel.value}
                               {...selectableRow(searchableModel, isSelected)}
                               className={cn(
-                                'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                                'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+                                'mx-1 min-h-9 px-2 py-1 rounded-md cursor-pointer flex items-center gap-2',
+                                'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                 modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                                 isSelected &&
-                                  'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
+                                  'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand-rail'
                               )}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1102,12 +1132,28 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                         })
                       )}
                     </div>
+                    </div>
                   )
                   })
                 )}
               </div>
             )}
           </div>
+          {/* What this conversation uses, apart from what it could use.
+              Hidden while searching, where only matches belong. */}
+          {!searchValue && selectedModel?.id && provider && (
+            <div
+              className="shrink-0 border-t border-border px-3 py-2 text-xs text-ink-2"
+              data-testid="model-picker-in-use"
+            >
+              <span className="block truncate">
+                {t('model-fit:picker.inUse', {
+                  model: getModelDisplayName(selectedModel),
+                  provider: getProviderTitle(provider.provider),
+                })}
+              </span>
+            </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>

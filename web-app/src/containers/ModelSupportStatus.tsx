@@ -59,7 +59,7 @@ const DOT_CLASS: Record<FitTier, string> = {
   green: 'bg-success',
   yellow: 'bg-warning',
   red: 'bg-destructive',
-  unknown: 'bg-muted-foreground/50',
+  unknown: 'bg-line-strong',
 }
 
 /** A measured result outranks the estimate for the colour of the dot. */
@@ -373,7 +373,7 @@ export const ModelSupportStatus = ({
           className="w-96 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto overscroll-contain bg-card text-sm space-y-3"
         >
           <div>
-            <h3 className=" text-lg font-semibold leading-tight text-foreground">
+            <h3 className="text-sm font-semibold text-foreground">
               {t('model-fit:title')}
             </h3>
             <p className="text-muted-foreground text-xs mt-0.5">
@@ -388,7 +388,7 @@ export const ModelSupportStatus = ({
             aria-labelledby="model-fit-measured"
             className="space-y-1 rounded-md border border-border bg-card p-2.5"
           >
-            <h4 id="model-fit-measured" className="text-xs font-semibold uppercase tracking-wide text-ink-2">
+            <h4 id="model-fit-measured" className="text-[13px] font-semibold text-foreground">
               {t('model-fit:measuredHeading')}
             </h4>
             <p>{headline}</p>
@@ -425,7 +425,7 @@ export const ModelSupportStatus = ({
             aria-labelledby="model-fit-estimate"
             className="space-y-1 rounded-md border border-dashed border-line-strong bg-sunken p-2.5"
           >
-            <h4 id="model-fit-estimate" className="text-xs font-semibold uppercase tracking-wide text-ink-2">
+            <h4 id="model-fit-estimate" className="text-[13px] font-semibold text-foreground">
               {t('model-fit:estimateHeading')}
             </h4>
             <p>{estimate}</p>
@@ -435,6 +435,15 @@ export const ModelSupportStatus = ({
                 vram: bytes(assessment.budgets.dedicatedVram),
                 gpu: bytes(assessment.budgets.gpu),
               })}
+            </p>
+            <MemoryBars
+              need={assessment.required.total}
+              available={assessment.budgets.total}
+            />
+            {/* Confidence is part of the estimate, not a detail behind a
+                disclosure: it says how much weight the verdict can bear. */}
+            <p className="text-xs text-ink-2">
+              {t(`model-fit:uncertainty.${assessment.uncertainty}`)}
             </p>
             <Collapsible>
               <CollapsibleTrigger className="text-xs text-brand-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring">
@@ -474,9 +483,6 @@ export const ModelSupportStatus = ({
                     <li key={a}>{t(`model-fit:assumption.${a}`)}</li>
                   ))}
                 </ul>
-                <p className="text-muted-foreground">
-                  {t(`model-fit:uncertainty.${assessment.uncertainty}`)}
-                </p>
               </CollapsibleContent>
             </Collapsible>
           </section>
@@ -493,9 +499,12 @@ export const ModelSupportStatus = ({
                 })}
               </p>
               <div className="flex flex-wrap gap-2">
+                {/* Focus starts on the answer that changes nothing. */}
                 <Button
                   size="sm"
                   variant="outline"
+                  autoFocus
+                  className="pointer-coarse:h-11"
                   onClick={() => {
                     setTestState({ phase: 'idle' })
                     setNotice('')
@@ -503,8 +512,12 @@ export const ModelSupportStatus = ({
                 >
                   {t('model-fit:test.dontTest')}
                 </Button>
+                {/* Unloading stops whatever that model is writing: outlined
+                    destructive, never the accent fill. */}
                 <Button
                   size="sm"
+                  variant="destructive"
+                  className="pointer-coarse:h-11"
                   onClick={() => runTest(testState.plan.willUnload)}
                 >
                   {t('model-fit:test.unloadAndTest')}
@@ -578,6 +591,49 @@ export const ModelSupportStatus = ({
 }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
+
+/**
+ * The estimate's two totals as bars on one scale: what the model is estimated
+ * to need beside what is estimated to be available. An estimate above the
+ * budget is drawn in the warning colour, never the destructive one: it is
+ * advice, and selecting or testing the model stays possible.
+ */
+function MemoryBars({ need, available }: { need: number; available: number }) {
+  const { t } = useTranslation()
+  if (!(need > 0) || !(available > 0)) return null
+  const scale = Math.max(need, available)
+  const rows = [
+    {
+      label: t('model-fit:breakdown.total'),
+      value: need,
+      fill: need > available ? 'bg-warning' : 'bg-ink-2',
+    },
+    {
+      label: t('model-fit:breakdown.budget'),
+      value: available,
+      fill: 'bg-muted-foreground',
+    },
+  ]
+  return (
+    <dl
+      aria-label={t('model-fit:memoryBars')}
+      className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs tabular-nums"
+    >
+      {rows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="text-ink-2">{row.label}</dt>
+          <dd aria-hidden className="h-1.5 overflow-hidden rounded-full bg-border">
+            <span
+              className={cn('block h-full rounded-full', row.fill)}
+              style={{ width: `${Math.round((row.value / scale) * 100)}%` }}
+            />
+          </dd>
+          <dd className="text-right text-foreground">{bytes(row.value)}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
 
 function evidenceHeadline(state: EvidenceState, t: Translate): string {
   return t(`model-fit:evidence.${state}`)

@@ -14,7 +14,7 @@
  * request it is for, and the buttons pause after the list changes, so a click
  * meant for one request cannot land on the one that takes its place.
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ShieldAlertIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,17 @@ import {
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
+
+/** Is the person typing somewhere? Focus is never pulled out of a field. */
+function isTyping(element: Element | null): boolean {
+  if (!(element instanceof HTMLElement)) return false
+  return (
+    element.isContentEditable ||
+    element.tagName === 'INPUT' ||
+    element.tagName === 'TEXTAREA' ||
+    element.tagName === 'SELECT'
+  )
+}
 
 export function CoworkChildApprovals({
   sessionId,
@@ -45,6 +56,18 @@ export function CoworkChildApprovals({
   )
   const shown = mine.map((entry) => entry.requestId).join('|')
   const armed = useArmedAfterChange(shown || undefined)
+  const firstDeny = useRef<HTMLButtonElement | null>(null)
+
+  // Focus starts on Deny, the answer that changes nothing, whenever a new
+  // request takes the first place -- unless the person is typing, whose
+  // keystrokes must never land on an approval.
+  const firstId = mine[0]?.requestId
+  useEffect(() => {
+    if (!firstId || !armed) return
+    if (isTyping(document.activeElement)) return
+    firstDeny.current?.focus({ preventScroll: true })
+  }, [firstId, armed])
+
   if (!sessionId || mine.length === 0) return null
   return (
     <section
@@ -52,90 +75,97 @@ export function CoworkChildApprovals({
       aria-label="Changes waiting for your approval"
       data-testid="child-approvals"
     >
-      {mine.map((entry) => (
+      {mine.map((entry, index) => (
         <div
           key={entry.requestId}
-          // Paper, with the warning colour carried by the side marker only:
-          // the request is waiting on a person, not failing.
-          className="space-y-3 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 text-xs"
+          // A separate object that waits on a person: a bordered card whose
+          // warning header says so, not a failure colour on the whole block.
+          className="overflow-hidden rounded-lg border border-warning/50 bg-card text-xs"
           data-testid="child-approval"
           data-origin={entry.origin}
           data-tool={entry.toolName}
         >
-          <div className="flex items-start gap-2 font-medium text-foreground">
+          <div className="flex items-start gap-2 bg-warning-tint px-3 py-2 text-[13px] font-medium text-foreground">
             <ShieldAlertIcon
               className="mt-0.5 size-4 shrink-0 text-warning"
               aria-hidden
             />
-            <span>
+            <span className="min-w-0">
               {entry.origin}: <span className="font-mono">{entry.toolName}</span>{' '}
               {t('tools:toolApproval.needsApproval')}
             </span>
           </div>
-          {/* What answering does, in plain words, before the buttons. */}
-          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-            <dt className="text-muted-foreground">
-              {t('tools:toolApproval.childActionLabel')}
-            </dt>
-            <dd className="text-foreground">
-              {t('tools:toolApproval.childAction', {
-                origin: entry.origin,
-                tool: entry.toolName,
-              })}
-            </dd>
-            {entry.serverName ? (
-              <>
-                <dt className="text-muted-foreground">
-                  {t('tools:toolApproval.childResourcesLabel')}
-                </dt>
-                <dd className="break-all font-mono text-foreground">
-                  {entry.serverName}
-                </dd>
-              </>
-            ) : null}
-            <dt className="text-muted-foreground">
-              {t('tools:toolApproval.childScopeLabel')}
-            </dt>
-            <dd className="text-foreground">
-              {t('tools:toolApproval.childScope')}
-            </dd>
-            <dt className="text-muted-foreground">
-              {t('tools:toolApproval.childDenyLabel')}
-            </dt>
-            <dd className="text-foreground">
-              {t('tools:toolApproval.childDeny')}
-            </dd>
-          </dl>
-          {entry.preview && (
-            <ChangeDiff
-              diff={entry.preview}
-              label={t('tools:toolApproval.proposedChange')}
-              testId="approval-preview"
-            />
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              className="pointer-coarse:h-11"
-              disabled={!armed}
-              onClick={() =>
-                resolveApproval(entry.toolCallId, 'deny', entry.requestId)
-              }
-            >
-              {t('tools:toolApproval.deny')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="pointer-coarse:h-11"
-              disabled={!armed}
-              onClick={() =>
-                resolveApproval(entry.toolCallId, 'allow-once', entry.requestId)
-              }
-            >
-              {t('tools:toolApproval.allowOnce')}
-            </Button>
+          <div className="space-y-3 p-3">
+            {/* What answering does, in plain words, before the buttons. */}
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">
+                {t('tools:toolApproval.childActionLabel')}
+              </dt>
+              <dd className="text-foreground">
+                {t('tools:toolApproval.childAction', {
+                  origin: entry.origin,
+                  tool: entry.toolName,
+                })}
+              </dd>
+              {entry.serverName ? (
+                <>
+                  <dt className="text-muted-foreground">
+                    {t('tools:toolApproval.childResourcesLabel')}
+                  </dt>
+                  <dd className="break-all font-mono text-foreground">
+                    {entry.serverName}
+                  </dd>
+                </>
+              ) : null}
+              <dt className="text-muted-foreground">
+                {t('tools:toolApproval.childScopeLabel')}
+              </dt>
+              <dd className="text-foreground">
+                {t('tools:toolApproval.childScope')}
+              </dd>
+              <dt className="text-muted-foreground">
+                {t('tools:toolApproval.childDenyLabel')}
+              </dt>
+              <dd className="text-foreground">
+                {t('tools:toolApproval.childDeny')}
+              </dd>
+            </dl>
+            {entry.preview && (
+              <ChangeDiff
+                diff={entry.preview}
+                label={t('tools:toolApproval.proposedChange')}
+                testId="approval-preview"
+              />
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                ref={index === 0 ? firstDeny : undefined}
+                size="sm"
+                variant="destructive"
+                className="pointer-coarse:h-11"
+                disabled={!armed}
+                onClick={() =>
+                  resolveApproval(entry.toolCallId, 'deny', entry.requestId)
+                }
+              >
+                {t('tools:toolApproval.deny')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="pointer-coarse:h-11"
+                disabled={!armed}
+                onClick={() =>
+                  resolveApproval(
+                    entry.toolCallId,
+                    'allow-once',
+                    entry.requestId
+                  )
+                }
+              >
+                {t('tools:toolApproval.allowOnce')}
+              </Button>
+            </div>
           </div>
         </div>
       ))}
