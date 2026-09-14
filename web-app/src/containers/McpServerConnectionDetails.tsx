@@ -1,3 +1,4 @@
+import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { StatusChip, type StatusTone } from '@/containers/StatusChip'
@@ -118,9 +119,12 @@ export function McpServerStatus({
         <div
           role="alert"
           id={mcpServerErrorId(serverName)}
-          className="rounded-md border border-destructive/40 bg-destructive-tint p-3 text-sm"
+          className="rounded-md bg-destructive-tint p-3 text-sm"
         >
-          <p className="break-words text-destructive">{failure.message}</p>
+          <p className="flex items-start gap-2 break-words text-destructive">
+            <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span className="min-w-0">{failure.message}</span>
+          </p>
           {nextStep && (
             <p className="mt-1 text-ink-2">
               {nextStepLabel(nextStep)}
@@ -250,17 +254,17 @@ export function McpServerDetails({
           ? t('mcp-servers:details.runsWhereRemoteService', { host })
           : t('mcp-servers:details.runsWhereUnresolved', { host })
 
-  const heading = 'text-xs font-semibold uppercase tracking-wide text-ink-2'
+  const heading = 'text-xs font-semibold text-foreground'
 
   return (
     // Native <details>: keyboard operable (Enter/Space on the summary) and
     // announces expanded state without extra wiring. Nothing here is
     // reachable only by hovering.
     <details className="mt-2 group">
-      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring sm:min-h-0">
+      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm text-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:min-h-0">
         {t('mcp-servers:details.toggle')}
       </summary>
-      <div className="mt-2 flex flex-col gap-3 rounded-md bg-sunken p-3 text-ink-2">
+      <div className="mt-2 flex flex-col gap-3 rounded-md bg-sunken p-3 text-[13px] text-ink-2">
         <section>
           <h3 className={heading}>{t('mcp-servers:details.whatItDoes')}</h3>
           <p>{profile.description ?? t('mcp-servers:details.noDescription')}</p>

@@ -12,8 +12,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Braces,
   GripVertical,
+  OctagonAlert,
   Plus,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { MCPServerConfig } from '@/hooks/useMCPServers'
@@ -55,17 +57,19 @@ function FieldMessage({
 }) {
   const { t } = useTranslation()
   if (!issue) return null
+  const Icon = issue.severity === 'error' ? OctagonAlert : TriangleAlert
   return (
     <p
       id={id}
       className={cn(
-        'text-xs',
+        'flex items-start gap-1.5 text-xs',
         issue.severity === 'error'
           ? 'text-destructive'
           : 'text-warning'
       )}
     >
-      {t(`mcp-servers:validation.${issue.code}`)}
+      <Icon className="mt-px size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0">{t(`mcp-servers:validation.${issue.code}`)}</span>
     </p>
   )
 }
@@ -512,7 +516,7 @@ export default function AddEditMCPServer({
               type="button"
               className={cn(
                 'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
-                isToggled && 'bg-brand-tint text-brand-text'
+                isToggled && 'bg-accent text-foreground ring-1 ring-border'
               )}
               title="Add server by JSON"
               aria-label="Add server by JSON"
@@ -557,8 +561,9 @@ export default function AddEditMCPServer({
                 />
               </div>
               {error && (
-                <div role="alert" className="text-destructive text-sm">
-                  {error}
+                <div role="alert" className="flex items-start gap-2 text-destructive text-sm">
+                  <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 break-words">{error}</span>
                 </div>
               )}
             </div>

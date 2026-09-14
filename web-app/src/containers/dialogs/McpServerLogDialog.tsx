@@ -8,6 +8,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { OctagonAlert } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -55,8 +56,9 @@ export default function McpServerLogDialog({
           <DialogDescription>{t('mcp-servers:serverLog.description')}</DialogDescription>
         </DialogHeader>
         {error ? (
-          <p role="alert" className="text-destructive text-sm">
-            {error}
+          <p role="alert" className="flex items-start gap-2 text-destructive text-sm">
+            <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 break-words">{error}</span>
           </p>
         ) : lines === null ? null : lines.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('mcp-servers:serverLog.empty')}</p>
