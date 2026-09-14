@@ -206,6 +206,22 @@ export function PermissionScopeChoices({
       aria-label={t('permissions:request.chooseScope')}
       className={cn('flex flex-col gap-2', className)}
     >
+      {/* Deny comes first in the tab order: focus starts here, and Tab then
+          walks the scopes from the narrowest to the broadest. */}
+      <div className="flex">
+        <Button
+          ref={denyRef}
+          size="sm"
+          variant="destructive"
+          type="button"
+          autoFocus={autoFocusDeny}
+          disabled={disabled}
+          className="pointer-coarse:h-11"
+          onClick={() => onDecision('deny')}
+        >
+          {t('permissions:scope.deny')}
+        </Button>
+      </div>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {offered.map((scope, index) => {
           const info = request.scopeExplanations[scope]!
@@ -244,20 +260,6 @@ export function PermissionScopeChoices({
           )
         })}
       </ul>
-      <div className="flex">
-        <Button
-          ref={denyRef}
-          size="sm"
-          variant="destructive"
-          type="button"
-          autoFocus={autoFocusDeny}
-          disabled={disabled}
-          className="pointer-coarse:h-11"
-          onClick={() => onDecision('deny')}
-        >
-          {t('permissions:scope.deny')}
-        </Button>
-      </div>
     </div>
   )
 }

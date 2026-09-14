@@ -11,6 +11,31 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { ShortcutRebind } from '@/containers/ShortcutRebind'
 import { useKeybindings } from '@/hooks/useKeybindings'
+import { Button } from '@/components/ui/button'
+
+/**
+ * A binding that cannot be changed, laid out like one that can: an invisible,
+ * unfocusable copy of the Change button keeps its keys in the same column as
+ * the rebindable rows above and below. Phones stack the control under the
+ * text, so the placeholder is only reserved from `sm` up.
+ */
+function FixedKeys({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      {children}
+      <Button
+        aria-hidden
+        tabIndex={-1}
+        size="sm"
+        variant="ghost"
+        className="invisible hidden pointer-events-none sm:inline-flex"
+      >
+        {t('settings:shortcuts.change')}
+      </Button>
+    </div>
+  )
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.shortcuts as any)({
@@ -136,13 +161,21 @@ function Shortcuts() {
             anchor="settings-shortcuts-zoom-in"
             title={t('settings:shortcuts.zoomIn')}
             description={t('settings:shortcuts.zoomInDesc')}
-            actions={<ShortcutLabel action={ShortcutAction.ZOOM_IN} />}
+            actions={
+              <FixedKeys>
+                <ShortcutLabel action={ShortcutAction.ZOOM_IN} />
+              </FixedKeys>
+            }
           />
           <CardItem
             anchor="settings-shortcuts-zoom-out"
             title={t('settings:shortcuts.zoomOut')}
             description={t('settings:shortcuts.zoomOutDesc')}
-            actions={<ShortcutLabel action={ShortcutAction.ZOOM_OUT} />}
+            actions={
+              <FixedKeys>
+                <ShortcutLabel action={ShortcutAction.ZOOM_OUT} />
+              </FixedKeys>
+            }
           />
         </Card>
 
@@ -153,9 +186,11 @@ function Shortcuts() {
             title={t('settings:shortcuts.sendMessage')}
             description={t('settings:shortcuts.sendMessageDesc')}
             actions={
-              <KbdGroup>
-                <Kbd>Enter</Kbd>
-              </KbdGroup>
+              <FixedKeys>
+                <KbdGroup>
+                  <Kbd>Enter</Kbd>
+                </KbdGroup>
+              </FixedKeys>
             }
           />
           <CardItem
@@ -163,10 +198,12 @@ function Shortcuts() {
             title={t('settings:shortcuts.newLine')}
             description={t('settings:shortcuts.newLineDesc')}
             actions={
-              <KbdGroup>
-                <Kbd>Shift</Kbd>
-                <Kbd>Enter</Kbd>
-              </KbdGroup>
+              <FixedKeys>
+                <KbdGroup>
+                  <Kbd>Shift</Kbd>
+                  <Kbd>Enter</Kbd>
+                </KbdGroup>
+              </FixedKeys>
             }
           />
           <CardItem
