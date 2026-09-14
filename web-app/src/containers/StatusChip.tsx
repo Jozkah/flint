@@ -41,6 +41,7 @@ export function StatusChip({
   children,
   className,
   pulse,
+  wrap,
   ...rest
 }: {
   tone: StatusTone
@@ -48,13 +49,16 @@ export function StatusChip({
   className?: string
   /** Animate the dot, for a state that is still changing. */
   pulse?: boolean
+  /** Let a long label wrap instead of truncating (narrow panes). */
+  wrap?: boolean
 } & Omit<React.HTMLAttributes<HTMLSpanElement>, 'children' | 'className'>) {
   const classes = TONE_CLASSES[tone]
   return (
     <span
       {...rest}
       className={cn(
-        'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium leading-5 whitespace-nowrap',
+        'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium leading-5',
+        wrap ? 'items-baseline text-left' : 'whitespace-nowrap',
         classes.chip,
         className
       )}
@@ -63,11 +67,14 @@ export function StatusChip({
         aria-hidden
         className={cn(
           'size-1.5 shrink-0 rounded-full',
+          wrap && '-translate-y-px',
           classes.dot,
           pulse && 'motion-safe:animate-pulse'
         )}
       />
-      <span className="truncate">{children}</span>
+      <span className={wrap ? 'min-w-0 break-words' : 'truncate'}>
+        {children}
+      </span>
     </span>
   )
 }
@@ -109,11 +116,14 @@ export function WorkStatus({
   state,
   children,
   className,
+  wrap,
   ...rest
 }: {
   state: WorkState
   children: ReactNode
   className?: string
+  /** Let a long label wrap instead of truncating (narrow panes). */
+  wrap?: boolean
 } & Omit<React.HTMLAttributes<HTMLSpanElement>, 'children' | 'className'>) {
   const s = WORK_STATES[state]
   const Icon = s.icon
@@ -122,16 +132,23 @@ export function WorkStatus({
       data-state={state}
       {...rest}
       className={cn(
-        'inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium leading-5 whitespace-nowrap',
+        'inline-flex max-w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium leading-5',
+        wrap ? 'items-start text-left' : 'whitespace-nowrap',
         s.className,
         className
       )}
     >
       <Icon
         aria-hidden
-        className={cn('size-3.5! shrink-0', s.spin && 'motion-safe:animate-spin')}
+        className={cn(
+          'size-3.5! shrink-0',
+          wrap && 'mt-0.75',
+          s.spin && 'motion-safe:animate-spin'
+        )}
       />
-      <span className="truncate">{children}</span>
+      <span className={wrap ? 'min-w-0 break-words' : 'truncate'}>
+        {children}
+      </span>
     </span>
   )
 }

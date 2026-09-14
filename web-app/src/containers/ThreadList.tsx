@@ -186,15 +186,15 @@ const ThreadItem = memo(
         onKeyDown={onRowKeyDown}
       >
         {currentProjectId ?
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative mb-2 block max-w-full overflow-hidden rounded-lg border border-border bg-card px-4 py-3.5 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring", isSelected && "border-brand-soft bg-brand-tint before:absolute before:left-0 before:inset-y-3 before:w-0.5 before:rounded-full before:bg-brand")}>
-              <div className="flex items-center gap-1.5 min-w-0 pr-10">
+          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11", isSelected && "bg-accent before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail")}>
+              <div className="flex items-center gap-1.5 min-w-0 pr-9">
                 {isActive && (
-                  <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />
+                  <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-ink-2" />
                 )}
-                <span className={cn("block truncate", isSelected && "font-medium text-foreground")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
+                <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
               </div>
               {currentProjectId && lastUserMessageText && (
-                <div className="text-muted-foreground text-xs mt-1 line-clamp-1 pr-10">
+                <div className="text-muted-foreground text-xs mt-0.5 line-clamp-1 pr-9">
                   {lastUserMessageText}
                 </div>
               )}
@@ -217,7 +217,7 @@ const ThreadItem = memo(
               showOnHover
               className={cn(
                 "hover:bg-sunken pointer-coarse:opacity-100 pointer-coarse:size-9 pointer-coarse:top-0.5",
-                currentProjectId && 'mt-3 mr-2'
+                currentProjectId && 'top-1.5 right-1.5'
               )}
             >
               <MoreHorizontal />

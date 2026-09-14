@@ -14,9 +14,10 @@ describe('QueuedMessageChip', () => {
     expect(screen.getByText('This is a queued message')).toBeInTheDocument()
   })
 
-  it('renders the pulsing clock icon', () => {
+  it('renders a still clock icon: queued is waiting, not activity', () => {
     const { container } = render(<QueuedMessageChip message={baseMessage} />)
-    expect(container.querySelector('.animate-pulse')).toBeInTheDocument()
+    expect(container.querySelector('svg')).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
   })
 
   it('calls onRemove with the message id when X is clicked', () => {

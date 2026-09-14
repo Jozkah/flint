@@ -86,26 +86,21 @@ function ProjectPageContent() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="flex flex-col h-full w-full bg-background">
       <HeaderPage>
-        <div className="flex min-w-0 items-center justify-between gap-2 w-full">
-          <DropdownModelProvider />
-        </div>
-      </HeaderPage>
-
-      <div className="h-full min-w-0 relative flex flex-col px-4 md:px-8 py-4 overflow-y-auto overflow-x-hidden">
-        <div className="mx-auto w-full max-w-[720px]">
-          {/* Project Name with Dropdown */}
-          <div className="flex min-w-0 items-center justify-between gap-2 mb-4">
+        {/* The collection's name is the page title; its actions sit beside
+            it, the model on the right. */}
+        <div className="flex min-w-0 items-center gap-1.5 w-full md:pr-1">
+          <div className="flex min-w-0 flex-1 items-center gap-0.5">
             <h1
-              className="font-semibold min-w-0 truncate text-xl leading-tight text-foreground"
+              className="min-w-0 truncate text-sm font-semibold text-foreground"
               title={project.name}
             >
               {project.name}
             </h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="shrink-0 pointer-coarse:size-11">
+                <Button variant="ghost" size="icon-sm" className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:size-11">
                   <MoreHorizontal className="size-4" />
                   <span className="sr-only">More options</span>
                 </Button>
@@ -126,9 +121,16 @@ function ProjectPageContent() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          <div className="min-w-0 shrink">
+            <DropdownModelProvider />
+          </div>
+        </div>
+      </HeaderPage>
 
+      <div className="min-h-0 flex-1 min-w-0 relative flex flex-col px-3 md:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto overflow-x-hidden">
+        <div className="mx-auto w-full max-w-[calc(var(--read-w)+3rem)]">
           {/* Chat Input */}
-          <div className="mb-6">
+          <div className="mb-5">
             <ChatInput
               showSpeedToken={false}
               initialMessage={true}
@@ -139,9 +141,9 @@ function ProjectPageContent() {
 
           {/* Conversation Section */}
           {projectThreads.length > 0 && (
-            <div className="flex flex-col mb-6">
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <h2 className="text-sm font-semibold text-foreground">
+            <div className="flex flex-col mb-5">
+              <div className="flex items-center justify-between gap-2 mb-1 px-1">
+                <h2 className="text-[13px] font-semibold text-foreground">
                   {t('projects.conversation')}
                 </h2>
                 <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
@@ -172,9 +174,9 @@ function ProjectPageContent() {
 
           {/* Empty State */}
           {projectThreads.length === 0 && (
-            <div className="flex flex-col items-center justify-center px-4 pt-8 pb-12 text-center bg-card rounded-lg border border-border mb-6">
-              <MessageCircle className="size-8 text-muted-foreground mb-3" />
-              <h3 className="font-semibold  text-xl text-foreground mb-1">
+            <div className="flex flex-col items-center justify-center px-4 py-6 text-center mb-5">
+              <MessageCircle className="size-5 text-muted-foreground mb-2" />
+              <h3 className="text-sm font-semibold text-foreground mb-0.5">
                 {t('projects.noConversationsIn', { projectName: project.name })}
               </h3>
               <p className="text-sm text-muted-foreground">

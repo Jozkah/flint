@@ -17,7 +17,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
 }: QueuedMessageChipProps) {
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-sunken border border-border text-sm max-w-full">
-      <Clock className="size-3.5 shrink-0 text-muted-foreground animate-pulse motion-reduce:animate-none" aria-hidden />
+      <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <span
         className="min-w-0 truncate text-ink-2 cursor-pointer hover:text-foreground transition-colors"
         onClick={() => onEdit?.(message)}

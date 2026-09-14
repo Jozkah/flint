@@ -202,7 +202,11 @@ vi.mock('@/components/ui/button', () => ({
     </button>
   ),
 }))
-vi.mock('@/containers/WhatJanIsUsing', () => ({ WhatJanIsUsing: () => null }))
+vi.mock('@/containers/WhatJanIsUsing', () => ({
+  WhatJanIsUsing: () => null,
+  WhatJanIsUsingToggle: () => null,
+  WhatJanIsUsingPanel: () => null,
+}))
 vi.mock('@/containers/TemporaryChatBanner', () => ({
   TemporaryChatBanner: () => null,
 }))

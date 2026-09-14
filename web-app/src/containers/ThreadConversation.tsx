@@ -1,6 +1,6 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { addSnapshotSink } from '@/lib/providerFetch'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -86,7 +86,7 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { CircleAlert, Folder, Loader2, RefreshCw } from 'lucide-react'
+import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
@@ -103,7 +103,10 @@ import {
 } from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
-import { WhatJanIsUsing } from '@/containers/WhatJanIsUsing'
+import {
+  WhatJanIsUsingPanel,
+  WhatJanIsUsingToggle,
+} from '@/containers/WhatJanIsUsing'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { redactDeep, redactText } from '@/lib/redactToolOutput'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
@@ -2039,14 +2042,32 @@ export function ThreadConversation({
     ''
   )
 
-  // Who this conversation is: title, project, model.
+  // The Details inspector ("What JAN is using"). On a narrow pane it takes the
+  // whole width and a switch moves between it and the conversation; the
+  // conversation stays mounted, so its draft and scroll survive.
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [narrowView, setNarrowView] = useState<'conversation' | 'details'>(
+    'conversation'
+  )
+  const detailsPanelId = useId()
+  const toggleDetails = useCallback(() => {
+    const next = !detailsOpen
+    setDetailsOpen(next)
+    setNarrowView(next ? 'details' : 'conversation')
+  }, [detailsOpen])
+  const closeDetails = useCallback(() => {
+    setDetailsOpen(false)
+    setNarrowView('conversation')
+  }, [])
+
+  // Who this conversation is: title and collection.
   const identity = (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
       <h1
         data-testid="conversation-title"
         className={cn(
-          'min-w-0 truncate text-sm font-semibold text-foreground',
-          isSplit ? 'block max-w-[45%]' : 'hidden max-w-[40%] sm:block'
+          'min-w-0 truncate font-semibold text-foreground',
+          isSplit ? 'text-[13px]' : 'text-sm'
         )}
         title={plainThreadTitle}
       >
@@ -2054,26 +2075,34 @@ export function ThreadConversation({
       </h1>
       {thread?.metadata?.project?.name && !isSplit && (
         <span
-          className="hidden min-w-0 max-w-40 items-center gap-1 truncate text-xs text-ink-2 lg:inline-flex"
+          className="hidden min-w-0 max-w-48 truncate text-sm text-muted-foreground md:inline"
           title={thread.metadata.project.name}
         >
-          <Folder className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">{thread.metadata.project.name}</span>
+          <span aria-hidden>· </span>
+          {thread.metadata.project.name}
         </span>
       )}
-      <div className="min-w-0 shrink">
-        <DropdownModelProvider model={threadModel} />
-      </div>
     </div>
   )
 
-  // What acts on it, plus whatever the surrounding layout adds.
+  // The model, then what acts on the conversation, plus whatever the
+  // surrounding layout adds.
   const controlsWith = (extra: ReactNode) => (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <WhatJanIsUsing threadId={threadId} messages={chatMessages} />
+    <>
       <TemporaryChatBanner threadId={threadId} />
-      {extra}
-    </div>
+      <div className="min-w-0 shrink">
+        <DropdownModelProvider model={threadModel} />
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        {extra}
+        <WhatJanIsUsingToggle
+          open={detailsOpen}
+          onToggle={toggleDetails}
+          controls={detailsPanelId}
+          className={isSplit ? '[&>span]:sr-only' : undefined}
+        />
+      </div>
+    </>
   )
 
   // Per-message version counts for the `< n/m >` navigation control.
@@ -2091,13 +2120,14 @@ export function ThreadConversation({
     <div className="flex flex-col h-full min-h-0">
       {isSplit ? (
         // A pane's own header: the same identity and controls, sized for a
-        // pane, with the accent on the pane the user is working in.
+        // pane, with a thin accent edge on the pane the user is working in.
         <div
           data-testid={`conversation-pane-header-${paneId}`}
           data-active={isActive}
           className={cn(
-            'flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-2 md:px-3',
-            isActive && 'shadow-[inset_0_2px_0_0_var(--brand)]'
+            'relative flex h-10 shrink-0 items-center gap-1.5 border-b border-border bg-sunken pr-1 pl-3 pointer-coarse:h-12',
+            isActive &&
+              'before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-brand-fill'
           )}
         >
           {identity}
@@ -2105,16 +2135,52 @@ export function ThreadConversation({
         </div>
       ) : (
         <HeaderPage>
-          {/* Conversation identity first -- title, project, model -- then
-              the controls that act on it. The title gives way first on a
-              phone. */}
-          <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-2">
+          {/* Conversation identity first -- title and collection -- then the
+              model and the controls that act on it. */}
+          <div className="flex w-full min-w-0 items-center gap-1.5 md:pr-1">
             {identity}
             {controlsWith(contextControls)}
           </div>
         </HeaderPage>
       )}
-      <div className="flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden">
+      <div className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {detailsOpen && (
+          // Narrow panes show one of the two at a time.
+          <div className="shrink-0 border-b border-border bg-background px-3 py-2 @3xl/conv:hidden">
+            <div
+              role="group"
+              aria-label={t('context:views.label')}
+              data-testid="conversation-view-switch"
+              className="grid grid-cols-2 gap-0.5 rounded-md bg-sunken p-0.5"
+            >
+              {(['conversation', 'details'] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  aria-pressed={narrowView === view}
+                  onClick={() => setNarrowView(view)}
+                  className={cn(
+                    'flex h-8 min-w-0 items-center justify-center rounded-sm px-2 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
+                    narrowView === view
+                      ? 'bg-card text-foreground ring-1 ring-border'
+                      : 'text-ink-2 hover:text-foreground'
+                  )}
+                >
+                  <span className="truncate">{t(`context:views.${view}`)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div
+          className={cn(
+            'flex h-full min-h-0 min-w-0 flex-1 flex-col',
+            detailsOpen &&
+              narrowView === 'details' &&
+              '@max-3xl/conv:invisible'
+          )}
+        >
         {/* Messages Area */}
         <div
           className="message-zoom flex-1 relative min-w-0"
@@ -2124,10 +2190,11 @@ export function ThreadConversation({
             } as CSSProperties
           }
         >
-          <Conversation className="absolute inset-0 text-start">
+          <Conversation className="absolute inset-0 text-start text-base">
             <ConversationContent
               className={cn(
-                'mx-auto w-full min-w-0 max-w-[720px] px-3 pt-6 pb-4 md:px-4'
+                'mx-auto w-full min-w-0 max-w-[calc(var(--read-w)+3rem)] pt-6 pb-4',
+                isSplit ? 'px-4' : 'px-4 md:px-6'
               )}
             >
               {chatMessages.map((message, index) => {
@@ -2198,7 +2265,7 @@ export function ThreadConversation({
                   role="status"
                   className="flex items-start gap-3 px-4 py-3 my-2 rounded-lg border border-border bg-card"
                 >
-                  <Loader2 className="size-4 text-brand shrink-0 mt-0.5 motion-safe:animate-spin" />
+                  <Loader2 className="size-4 text-ink-2 shrink-0 mt-0.5 motion-safe:animate-spin" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground mb-0.5">
                       {t('chat:embeddings.title')}
@@ -2326,8 +2393,12 @@ export function ThreadConversation({
 
         {/* Chat Input - Fixed at bottom. The shell sizes the page to the
             visual viewport, so this stays above a phone keyboard. */}
-        <div className="mx-auto w-full min-w-0 max-w-[752px] px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4 md:pb-4">
-
+        <div
+          className={cn(
+            'mx-auto w-full min-w-0 max-w-[calc(var(--read-w)+3rem)] pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4',
+            isSplit ? 'px-3' : 'px-3 md:px-6'
+          )}
+        >
           <ChatInput
             model={threadModel}
             onSubmit={handleSubmit}
@@ -2341,6 +2412,20 @@ export function ThreadConversation({
             }
             takeFocus={isActive}
           />
+        </div>
+        </div>
+        <WhatJanIsUsingPanel
+          id={detailsPanelId}
+          threadId={threadId}
+          messages={chatMessages}
+          open={detailsOpen}
+          onClose={closeDetails}
+          className={cn(
+            'w-(--inspector-w) shrink-0',
+            '@max-3xl/conv:absolute @max-3xl/conv:inset-0 @max-3xl/conv:z-10 @max-3xl/conv:w-full @max-3xl/conv:border-l-0',
+            narrowView === 'conversation' && '@max-3xl/conv:hidden'
+          )}
+        />
         </div>
       </div>
     </div>
