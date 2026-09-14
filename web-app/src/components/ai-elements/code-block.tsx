@@ -102,19 +102,19 @@ export const CodeBlock = ({
       <div
         dir="ltr"
         className={cn(
-          "group relative w-full overflow-hidden bg-background text-foreground",
+          "group relative w-full overflow-hidden bg-code text-foreground",
           className,
         )}
         {...props}
       >
         <div className="relative">
           <div
-            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-code! [&>pre]:px-3 [&>pre]:py-2.5 [&>pre]:text-foreground! [&>pre]:text-[13px] [&_code]:font-mono [&_code]:text-[13px]"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: html }}
           />
           <div
-            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-code! [&>pre]:px-3 [&>pre]:py-2.5 [&>pre]:text-foreground! [&>pre]:text-[13px] [&_code]:font-mono [&_code]:text-[13px]"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />

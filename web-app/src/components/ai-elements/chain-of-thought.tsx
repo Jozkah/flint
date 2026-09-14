@@ -12,8 +12,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CheckCircle2Icon,
-  CircleDotIcon,
   CircleIcon,
+  Loader2Icon,
   SearchIcon,
   ExternalLinkIcon,
 } from 'lucide-react'
@@ -140,9 +140,9 @@ export const ChainOfThought = memo(
       <ChainOfThoughtContext.Provider value={contextValue}>
         <Collapsible
           className={cn(
-            'not-prose rounded-lg transition-colors',
-            // Card frame only while expanded; collapsed shows a bare summary row.
-            'data-[state=open]:border data-[state=open]:border-border data-[state=open]:bg-card data-[state=open]:p-3',
+            // Integrated with the message, not a floating card: the summary
+            // row, and when open the steps hang off a thin line below it.
+            'not-prose min-w-0',
             className
           )}
           onOpenChange={handleOpenChange}
@@ -207,7 +207,7 @@ export const ChainOfThoughtHeader = memo(
         : t(keys.withDuration, { duration: formatCompactDuration(duration, t) })
 
     const rowClassName = cn(
-      'flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground',
+      'flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-sm text-ink-2 transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&>svg]:shrink-0',
       className
     )
 
@@ -279,13 +279,15 @@ export const ChainOfThoughtContent = memo(
   ({ className, children, ...props }: ChainOfThoughtContentProps) => (
     <CollapsibleContent
       className={cn(
-        'mt-4 text-sm relative',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        'mt-1.5 text-sm relative',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="space-y-3">{children}</div>
+      <div className="ml-3.5 min-w-0 space-y-2 border-l border-border pl-3">
+        {children}
+      </div>
     </CollapsibleContent>
   )
 )
@@ -302,13 +304,13 @@ export const ChainOfThoughtText = memo(
   ({ className, children, ...props }: ChainOfThoughtTextProps) => (
     <CollapsibleContent
       className={cn(
-        'mt-4 text-sm relative',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        'mt-1.5 text-sm relative',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="ml-2 pl-4 border-l-2 border-dotted">
+      <div className="ml-3.5 min-w-0 border-l border-border pl-3">
         <Streamdown animate={true} animationDuration={500}>
           {children}
         </Streamdown>
@@ -327,8 +329,9 @@ export type ChainOfThoughtStepProps = ComponentProps<'div'> & {
 
 const statusIcons: Record<ChainOfThoughtStepStatus, ReactNode> = {
   complete: <CheckCircle2Icon className="size-4 text-success shrink-0" />,
+  // The step in progress is activity: ink and a spinner, never the accent.
   active: (
-    <CircleDotIcon className="size-4 text-brand motion-safe:animate-pulse shrink-0" />
+    <Loader2Icon className="size-4 text-ink-2 motion-safe:animate-spin shrink-0" />
   ),
   pending: <CircleIcon className="size-4 text-muted-foreground shrink-0" />,
 }
@@ -374,7 +377,7 @@ export const ChainOfThoughtSearchResults = memo(
   }: ChainOfThoughtSearchResultsProps) => (
     <div className={cn('space-y-1.5', className)} {...props}>
       {title && (
-        <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        <h4 className="text-xs font-medium text-muted-foreground">
           {title}
         </h4>
       )}
@@ -394,14 +397,14 @@ export const ChainOfThoughtSearchResult = memo(
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground',
+        'inline-flex h-6 max-w-full items-center gap-1 rounded-md bg-sunken px-2 text-xs text-ink-2 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
         className
       )}
       {...props}
     >
       <SearchIcon className="size-3 shrink-0" />
       <span className="truncate max-w-[200px]">{children}</span>
-      <ExternalLinkIcon className="size-3 shrink-0 opacity-50" />
+      <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
     </a>
   )
 )

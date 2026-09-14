@@ -93,7 +93,8 @@ export const ToolProgressRow = memo(
             className="h-1 w-full overflow-hidden rounded-full bg-sunken"
           >
             <div
-              className="h-full rounded-full bg-brand motion-safe:transition-[width] duration-300 ease-out"
+              // Progress is activity, not selection: ink, never the accent.
+              className="h-full rounded-full bg-ink-2 motion-safe:transition-[width] duration-300 ease-out"
               style={{ width: `${update.percent}%` }}
             />
           </div>
