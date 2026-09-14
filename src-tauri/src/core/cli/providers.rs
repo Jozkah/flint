@@ -38,7 +38,7 @@ impl ProviderOverrides {
     /// `OPENAI_API_KEY`, ...) when a provider is targeted.
     pub fn with_env(mut self) -> Self {
         if self.api_key.is_none() {
-            if let Ok(k) = std::env::var("JAN_API_KEY") {
+            if let Ok(k) = crate::core::compat_env::var("API_KEY") {
                 if !k.is_empty() {
                     self.api_key = Some(k);
                 }

@@ -1085,7 +1085,7 @@ pub async fn agent_bundle_import(
         // A test seam, compiled only into the smoke harness: slow each piece
         // down so a scenario can stop an import part-way.
         #[cfg(feature = "cowork-smoke")]
-        let pause = std::env::var("JAN_SMOKE_IMPORT_DELAY_MS")
+        let pause = crate::core::compat_env::var("SMOKE_IMPORT_DELAY_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok());
         let out = bi::import(

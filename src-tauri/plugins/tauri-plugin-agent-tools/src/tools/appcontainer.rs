@@ -935,7 +935,7 @@ mod win {
                 format!("the sandbox environment block is malformed: {e}"),
             )
         })?;
-        if std::env::var_os("JAN_SANDBOX_DEBUG").is_some() {
+        if crate::compat_env::var_os("SANDBOX_DEBUG").is_some() {
             // Names and lengths only: see `SandboxEnv::redacted`.
             eprintln!("sandbox: stage=environment {}", env.redacted().join(" "));
         }

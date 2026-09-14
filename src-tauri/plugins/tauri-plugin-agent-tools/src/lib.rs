@@ -11,6 +11,7 @@
 
 pub mod activity;
 pub mod audit;
+pub mod compat_env;
 pub mod format;
 pub mod event_export;
 pub mod event_log;

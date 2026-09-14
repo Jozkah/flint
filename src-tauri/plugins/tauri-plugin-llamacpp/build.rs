@@ -65,6 +65,23 @@ mod engine {
 
     use super::{LLAMA_CPP_BUILD_NUMBER, LLAMA_CPP_COMMIT, LLAMA_CPP_TAG};
 
+    /// `FLINT_<suffix>`, falling back to the legacy `JAN_<suffix>` when the new
+    /// name is unset; when both are set the `FLINT_` value wins. The build
+    /// script is compiled separately from the crate, so it cannot reach the
+    /// runtime `compat_env` module and repeats the same precedence rule here.
+    fn compat_var(suffix: &str) -> Result<String, env::VarError> {
+        match env::var(format!("FLINT_{suffix}")) {
+            Ok(v) => Ok(v),
+            Err(env::VarError::NotPresent) => env::var(format!("JAN_{suffix}")),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The `OsString` counterpart to [`compat_var`], same precedence.
+    fn compat_var_os(suffix: &str) -> Option<std::ffi::OsString> {
+        env::var_os(format!("FLINT_{suffix}")).or_else(|| env::var_os(format!("JAN_{suffix}")))
+    }
+
     /// Static archives from stage 2, in the order the linker group needs them
     /// declared. server-context <-> llama-common <-> mtmd have circular
     /// references, so on GNU ld they go inside one --start-group rather than
@@ -199,7 +216,7 @@ mod engine {
         // `include/` (llama.cpp's *generated* headers, e.g. build-info.h) and
         // `backends/` (the runtime-loaded ggml modules).
         let (mut search_dirs, generated_include, backend_dir) =
-            if let Ok(dir) = env::var("JAN_LLAMA_PREBUILT_DIR") {
+            if let Ok(dir) = compat_var("LLAMA_PREBUILT_DIR") {
                 let dir = PathBuf::from(dir);
                 let lib = dir.join("lib");
                 let inc = dir.join("include");
@@ -278,7 +295,7 @@ mod engine {
     }
 
     fn resolve_build_root(out: &Path) -> PathBuf {
-        if let Ok(dir) = env::var("JAN_ENGINE_BUILD_DIR") {
+        if let Ok(dir) = compat_var("ENGINE_BUILD_DIR") {
             let dir = dir.trim();
             if !dir.is_empty() {
                 let root = PathBuf::from(dir).join(out_dir_key(out));
@@ -447,7 +464,7 @@ mod engine {
         // arch is 75, which cannot JIT down to 72. So an ARM/Jetson build needs
         // to say what it targets -- and trimming to a single known arch is also
         // how you cut a CUDA worker's size for a fixed fleet.
-        if let Ok(archs) = env::var("JAN_ENGINE_CUDA_ARCHS") {
+        if let Ok(archs) = compat_var("ENGINE_CUDA_ARCHS") {
             let archs = archs.trim();
             if !archs.is_empty() {
                 println!("cargo:rerun-if-env-changed=JAN_ENGINE_CUDA_ARCHS");
@@ -664,7 +681,7 @@ mod engine {
     /// `JAN_LLAMA_CPP_DIR` overrides the vendored clone, which is what a
     /// llama.cpp contributor working against a local tree wants.
     fn source_dir() -> PathBuf {
-        if let Ok(dir) = env::var("JAN_LLAMA_CPP_DIR") {
+        if let Ok(dir) = compat_var("LLAMA_CPP_DIR") {
             return PathBuf::from(dir);
         }
         let vendored = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vendor/llama.cpp");
@@ -772,7 +789,7 @@ mod engine {
     /// reaches cargo's own error output, which is the one place a developer is
     /// guaranteed to look.
     fn run(cmd: &mut Command, what: &str) {
-        let log_path = env::var_os("JAN_ENGINE_BUILD_LOG").map(PathBuf::from);
+        let log_path = compat_var_os("ENGINE_BUILD_LOG").map(PathBuf::from);
 
         // The directory is the caller's to name and need not exist yet -- the
         // Makefile points this at src-tauri/target, which the plugin's own

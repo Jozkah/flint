@@ -547,6 +547,13 @@ async fn execute(
             // What a hook is told, and all it is told. Not the prompt, not the
             // tool's arguments, not a provider key: a hook is a trigger, not a
             // window into the conversation.
+            //
+            // Both the new `FLINT_` names and the legacy `JAN_` names carry the
+            // same values, so hook scripts written against either keep working
+            // through the rebrand.
+            .env("FLINT_HOOK_EVENT", event_name)
+            .env("FLINT_HOOK_TOOL", &tool_name)
+            .env("FLINT_PROJECT_ROOT", &root)
             .env("JAN_HOOK_EVENT", event_name)
             .env("JAN_HOOK_TOOL", &tool_name)
             .env("JAN_PROJECT_ROOT", &root)

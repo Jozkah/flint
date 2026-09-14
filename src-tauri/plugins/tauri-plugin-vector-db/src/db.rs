@@ -159,7 +159,7 @@ const SQLITE_VEC_SYSTEM_DIRS: &[&str] = if cfg!(target_os = "macos") {
 
 pub fn possible_sqlite_vec_paths() -> Vec<String> {
     build_sqlite_vec_paths(
-        std::env::var("JAN_SQLITE_VEC_PATH").ok(),
+        crate::compat_env::var("SQLITE_VEC_PATH").ok(),
         std::env::current_exe().ok(),
     )
 }

@@ -1147,7 +1147,7 @@ mod tests {
         if tauri_plugin_agent_tools::tools::owned::find_on_path("gopls").is_some() {
             return true;
         }
-        if std::env::var("JAN_SKIP_LSP_TESTS").as_deref() == Ok("1") {
+        if crate::core::compat_env::var("SKIP_LSP_TESTS").as_deref() == Ok("1") {
             eprintln!("gopls is not on PATH and JAN_SKIP_LSP_TESTS=1: skipping");
             return false;
         }

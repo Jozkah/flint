@@ -109,7 +109,7 @@ fn at(
 /// the tool's command strings are written in. A user pointing it at
 /// `powershell.exe` gets PowerShell, and the flavor says so.
 fn configured_shell() -> Option<ShellConfig> {
-    let path = PathBuf::from(std::env::var_os("JAN_AGENT_SHELL")?);
+    let path = PathBuf::from(crate::compat_env::var_os("AGENT_SHELL")?);
     if !path.exists() {
         return None;
     }

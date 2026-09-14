@@ -7,6 +7,7 @@ use tauri::{
 
 pub mod cleanup;
 mod commands;
+mod compat_env;
 pub mod engine;
 mod error;
 mod gguf;
