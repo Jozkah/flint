@@ -928,7 +928,17 @@
       "binary": "This is not a text file, whatever its extension says"
     },
     "addFiles": "Add files",
-    "addFilesOrImages": "Add files or images"
+    "addFilesOrImages": "Add files or images",
+    "visionDisabled": {
+      "title_one": "This model can't read images",
+      "title_other": "This model can't read images",
+      "description_one": "{{model}} has no vision capability, so the image can't be sent with your message.",
+      "description_other": "{{model}} has no vision capability, so these images can't be sent with your message.",
+      "proceed_one": "Send without the image",
+      "proceed_other": "Send without the images",
+      "enable": "Turn on vision",
+      "needsMmproj": "This local model needs an mmproj file before it can see. Add one from the model's settings, then attach the image again."
+    }
   },
   "drop": {
     "openInCode": "Drop to open — read-only",

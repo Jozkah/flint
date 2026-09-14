@@ -6,6 +6,7 @@ import {
   extensionOf,
   isTextual,
   validateAttachment,
+  visionBlockedFiles,
 } from '@/lib/attachmentSupport'
 
 const file = (name: string, over: { size?: number; type?: string } = {}) => ({
@@ -185,5 +186,33 @@ describe('what the picker offers', () => {
     expect(acceptAttribute({})).not.toContain('.mp3')
     expect(acceptAttribute({ audio: true })).toContain('.mp3')
     expect(acceptAttribute({ video: true })).toContain('.mp4')
+  })
+})
+
+describe('images a missing vision capability is holding back', () => {
+  it('names the images, so the user can be asked about them', () => {
+    const files = [file('shot.png'), file('notes.md')]
+    expect(visionBlockedFiles(files, ctx()).map((f) => f.name)).toEqual([
+      'shot.png',
+    ])
+  })
+
+  it('holds nothing back once the model can see', () => {
+    expect(
+      visionBlockedFiles([file('shot.png')], ctx({ capabilities: { vision: true } }))
+    ).toEqual([])
+  })
+
+  /**
+   * Turning vision on would not rescue a file that is too large or of a type
+   * nothing reads, so offering the choice over one would be a lie.
+   */
+  it('leaves out files that fail for some other reason', () => {
+    const files = [
+      file('huge.png', { size: DEFAULT_ATTACHMENT_LIMITS.maxBytes + 1 }),
+      file('clip.mp3'),
+      file('mystery.qqq'),
+    ]
+    expect(visionBlockedFiles(files, ctx())).toEqual([])
   })
 })
