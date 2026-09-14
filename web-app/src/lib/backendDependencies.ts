@@ -54,7 +54,7 @@ export function getInstallRecommendations(
     recommendations.push({
       label: 'Re-download the backend',
       description:
-        'Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Jan settings.',
+        'Some core backend files are missing or corrupted — this usually means the download was interrupted or the archive was only partially extracted. Delete the backend and re-download it from Flint settings.',
       libs: bundledLibs,
     })
   }

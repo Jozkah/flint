@@ -387,7 +387,7 @@ impl Connection {
                     },
                     "workspace": { "configuration": true, "workspaceFolders": true }
                 },
-                "clientInfo": { "name": "Jan" }
+                "clientInfo": { "name": "Flint" }
             }),
             INITIALIZE_DEADLINE,
             cancel,

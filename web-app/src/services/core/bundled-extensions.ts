@@ -27,7 +27,7 @@ const ENTRIES: BundledEntry[] = [
   {
     load: () => import('@janhq/assistant-extension'),
     name: '@janhq/assistant-extension',
-    productName: 'Jan Assistant',
+    productName: 'Flint Assistant',
     version: '1.0.2',
     description:
       'Powers the default AI assistant that works with all your installed models.',

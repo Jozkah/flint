@@ -117,7 +117,7 @@ export async function startImportedMcp(
   if (!config) {
     const record: McpRuntimeRecord = {
       state: 'unsupported',
-      reason: 'no transport Jan can represent',
+      reason: 'no transport Flint can represent',
       tools: [],
       fingerprint,
     }

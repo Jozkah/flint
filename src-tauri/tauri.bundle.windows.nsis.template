@@ -702,7 +702,7 @@ Section Install
     SetOutPath "$INSTDIR\resources\pre-install"
     File /nonfatal /a /r "D:\a\jan\jan\src-tauri\resources\pre-install\"
     SetOutPath "$INSTDIR\resources\bin"
-    File /a "/oname=jan.exe" "D:\a\jan\jan\src-tauri\resources\bin\jan.exe"
+    File /a "/oname=flint.exe" "D:\a\jan\jan\src-tauri\resources\bin\flint.exe"
     ; The engine. This block is a hand-maintained snapshot of
     ; tauri.windows.conf.json's `bundle.resources`, which the NSIS bundler does
     ; not read once CI points it at this template, so anything added there has

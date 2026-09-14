@@ -70,7 +70,7 @@ export function checkModel(
   if (!provider) {
     return {
       reason: 'provider-missing',
-      message: `The provider "${ref.provider}" is not configured in Jan.`,
+      message: `The provider "${ref.provider}" is not configured in Flint.`,
     }
   }
   if (!isProviderUsable(provider)) {

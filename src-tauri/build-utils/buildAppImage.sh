@@ -12,9 +12,9 @@ wget https://github.com/AppImage/appimagetool/releases/download/continuous/appim
 chmod +x "${APPIMAGETOOL}"
 
 if [ "${RELEASE_CHANNEL}" != "stable" ]; then
-    APP_DIR=./src-tauri/target/release/bundle/appimage/Jan-${RELEASE_CHANNEL}.AppDir
+    APP_DIR=./src-tauri/target/release/bundle/appimage/Flint-${RELEASE_CHANNEL}.AppDir
 else
-    APP_DIR=./src-tauri/target/release/bundle/appimage/Jan.AppDir
+    APP_DIR=./src-tauri/target/release/bundle/appimage/Flint.AppDir
 fi
 
 # bundle additional resources in the AppDir without pulling in their dependencies

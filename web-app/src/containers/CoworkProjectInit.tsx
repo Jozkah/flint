@@ -143,7 +143,7 @@ export function CoworkProjectInit({
           <DialogHeader>
             <DialogTitle>Describe this project</DialogTitle>
             <DialogDescription>
-              Jan read the folder's manifests and layout and ran nothing. Edit
+              Flint read the folder's manifests and layout and ran nothing. Edit
               the description; it becomes the folder's FLINT.md only when you
               accept it.
             </DialogDescription>

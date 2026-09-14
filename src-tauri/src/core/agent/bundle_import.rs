@@ -622,7 +622,7 @@ pub fn import(
             Some(v) => {
                 return Err(ImportError::new(
                     ImportErrorKind::UnsupportedVersion,
-                    format!("bundle schema {v} is not one this version of Jan reads"),
+                    format!("bundle schema {v} is not one this version of Flint reads"),
                 ))
             }
             None => return Err(ImportError::new(ImportErrorKind::ManifestInvalid, "the manifest has no schema version")),

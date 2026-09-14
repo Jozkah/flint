@@ -170,7 +170,7 @@ export function toMailboxError(raw: unknown): MailboxError {
 async function dataFolder(): Promise<string> {
   const folder = await getServiceHub().app().getJanDataFolder()
   if (!folder) {
-    throw new MailboxError('no_data_folder', 'Jan data folder is unavailable')
+    throw new MailboxError('no_data_folder', 'Flint data folder is unavailable')
   }
   return folder
 }

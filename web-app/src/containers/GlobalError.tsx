@@ -25,7 +25,7 @@ export default function GlobalError({ error }: GlobalErrorProps) {
               Something went wrong
             </h1>
             <p className="mt-1 text-sm leading-relaxed text-ink-2">
-              JAN hit an error it could not recover from. Try to{' '}
+              Flint hit an error it could not recover from. Try to{' '}
               <button
                 rel="noopener noreferrer"
                 className="cursor-pointer rounded-sm font-medium text-brand-text hover:underline"

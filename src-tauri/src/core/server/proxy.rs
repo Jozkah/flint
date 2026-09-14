@@ -2368,7 +2368,7 @@ fn map_bind_error(
 ) -> Box<dyn std::error::Error + Send + Sync> {
     if err.kind() == std::io::ErrorKind::AddrInUse {
         let msg = format!(
-            "Port {port} ({addr}) is already in use. A previous Jan process may still be \
+            "Port {port} ({addr}) is already in use. A previous Flint process may still be \
              running or another application may be using the port. Close the leftover \
              process and try again, or pick a different port in Settings > Local API Server.",
             port = addr.port()
@@ -2519,7 +2519,7 @@ async fn start_server_internal(
             return Err(map_bind_error(addr, e));
         }
     };
-    log::info!("Jan API server started on http://{addr}");
+    log::info!("Flint API server started on http://{addr}");
 
     // Security: binding to a non-loopback interface exposes the OpenAI-compatible
     // API on the network. With no API key set, any reachable host can call it
@@ -2528,7 +2528,7 @@ async fn start_server_internal(
     // trusted-LAN setups keep working, but the operator is told.
     if insecure_public_bind {
         log::warn!(
-            "Jan API server is bound to a non-loopback address ({host}) with no API key set. \
+            "Flint API server is bound to a non-loopback address ({host}) with no API key set. \
              The local API is reachable UNAUTHENTICATED by any host that can reach this machine. \
              Set an API key in Settings > Local API Server to require authentication."
         );
@@ -2592,7 +2592,7 @@ async fn start_server_internal(
 
     *handle_guard = Some(server_task);
     let actual_port = addr.port();
-    log::info!("Jan API server started successfully on port {actual_port}");
+    log::info!("Flint API server started successfully on port {actual_port}");
     Ok(actual_port)
 }
 
@@ -2604,7 +2604,7 @@ pub async fn stop_server(
     if let Some(handle) = handle_guard.take() {
         handle.abort();
         *handle_guard = None;
-        log::info!("Jan API server stopped");
+        log::info!("Flint API server stopped");
     } else {
         log::debug!("Server was not running");
     }

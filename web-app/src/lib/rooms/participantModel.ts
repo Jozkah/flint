@@ -90,7 +90,7 @@ export async function streamParticipantReply(
     throw new RoomCallError(
       'unavailable',
       'provider-missing',
-      `The provider "${input.model.provider}" is not configured in Jan.`
+      `The provider "${input.model.provider}" is not configured in Flint.`
     )
   }
 

@@ -1,13 +1,13 @@
 {
-  "open": "What JAN is using",
-  "title": "What JAN is using in this conversation",
-  "description": "What is available to JAN, what was chosen for a request, and what is verified in the sanitized copy of the last request. Changes here affect future messages, not a reply already being written.",
+  "open": "What Flint is using",
+  "title": "What Flint is using in this conversation",
+  "description": "What is available to Flint, what was chosen for a request, and what is verified in the sanitized copy of the last request. Changes here affect future messages, not a reply already being written.",
   "refresh": "Refresh",
   "details": "Details",
   "closeDetails": "Close details",
   "tabs": {
     "label": "Details sections",
-    "using": "What JAN is using",
+    "using": "What Flint is using",
     "files": "Files"
   },
   "views": {
@@ -38,8 +38,8 @@
     "retrieved": "Matched, not chosen",
     "attached-to-message": "Attached to its message",
     "pending-next-message": "Will be sent with your next message",
-    "available-on-search": "Available when JAN searches",
-    "available": "Available to JAN",
+    "available-on-search": "Available when Flint searches",
+    "available": "Available to Flint",
     "not-offered": "Not used",
     "not-recorded": "Not recorded",
     "request-assembled": "Assembled, not sent yet",
@@ -62,14 +62,14 @@
     },
     "assistantInstructions": "The assistant's instructions are sent as the system prompt.",
     "pendingInline": "Its text will be placed into your next message.",
-    "pendingEmbeddings": "It will be indexed; JAN reads the relevant parts only when it searches.",
-    "retrievalNotRecorded": "Indexed for search. Which parts JAN read is not recorded; only files it searched could have been used.",
+    "pendingEmbeddings": "It will be indexed; Flint reads the relevant parts only when it searches.",
+    "retrievalNotRecorded": "Indexed for search. Which parts Flint read is not recorded; only files it searched could have been used.",
     "temporaryChat": "Temporary chats neither read nor save memory.",
-    "memoryNotSentYet": "No message has been sent from this window yet, so no memory selection is known. Saved memories are not all sent: JAN picks the ones that apply.",
+    "memoryNotSentYet": "No message has been sent from this window yet, so no memory selection is known. Saved memories are not all sent: Flint picks the ones that apply.",
     "memoryConflicts": "Memories that contradict each other are withheld until you resolve them.",
     "memoryDropped": "Applicable memories that did not fit in the budget were left out.",
     "modelWithoutTools": "The selected model does not support tools, so none are offered.",
-    "toolFromServer": "Offered to the model from this connection. JAN asks before using tools that need permission.",
+    "toolFromServer": "Offered to the model from this connection. Flint asks before using tools that need permission.",
     "toolBuiltIn": "A built-in tool offered to the model.",
     "toolsTurnedOff": "Tools you turned off are not offered in any conversation.",
     "inlineSent": "Its text was placed into the message that attached it. Whether that message was still in the last request is not verified.",
@@ -82,10 +82,10 @@
     "memoryUnavailable": "Memory could not be read for the last request, so none was sent.",
     "toolInRequest": "Declared to the model in the sanitized copy of the last request.",
     "toolNotInLastRequest": "Not declared in the last request.",
-    "toolAdvertisedUnverified": "JAN offered it with the last request. The sanitized copy has not been checked.",
+    "toolAdvertisedUnverified": "Flint offered it with the last request. The sanitized copy has not been checked.",
     "noRequestYet": "No message has been sent from this conversation in this session, so there is no request to describe.",
     "requestFailed": "The request did not get a response from the provider.",
-    "snapshotPending": "JAN has not yet received the reference to the sanitized copy of this request.",
+    "snapshotPending": "Flint has not yet received the reference to the sanitized copy of this request.",
     "snapshotRecorded": "A sanitized copy of this request was recorded.",
     "snapshotVerified": "The sanitized copy of this request was read back and used to check the items above.",
     "snapshotUnavailable": {
@@ -113,7 +113,7 @@
   },
   "empty": {
     "noModel": "No model is selected.",
-    "noInstructions": "No assistant instructions. Normal conversations do not read project instruction files such as JAN.md; Cowork does.",
+    "noInstructions": "No assistant instructions. Normal conversations do not read project instruction files such as Flint.md; Cowork does.",
     "noAttachments": "No files are attached to this conversation.",
     "indexUnavailable": "Indexed files could not be listed.",
     "noMemory": "No saved memory applied to the last message.",
@@ -129,7 +129,7 @@
   "memoryScopeNote": "Editing or forgetting a memory affects future messages only.",
   "notice": {
     "projectChanged": "The last request used memory from {{previous}}. This conversation now uses {{current}}, which applies from your next message.",
-    "adapterBoundary": "Verified means present in the sanitized request JAN sent. The provider or local engine may still change it after that, for example by applying the model's chat template.",
+    "adapterBoundary": "Verified means present in the sanitized request Flint sent. The provider or local engine may still change it after that, for example by applying the model's chat template.",
     "noProject": "no project"
   },
   "inspect": "Inspect the sanitized request (advanced)"

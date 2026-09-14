@@ -7,7 +7,7 @@
   "evidence": {
     "ran-successfully": "Ran successfully on this device with these settings.",
     "failed-with-settings": "Failed on this device with these settings. Other settings may work.",
-    "unsupported": "Unsupported by this runtime: the llama.cpp engine in this version of JAN does not recognise the model's architecture. Changing settings will not help; an app update might.",
+    "unsupported": "Unsupported by this runtime: the llama.cpp engine in this version of Flint does not recognise the model's architecture. Changing settings will not help; an app update might.",
     "stale": "Tested before, but something has changed since, so that result may not apply.",
     "not-tested": "Not tested on this device."
   },
@@ -86,7 +86,7 @@
     "restored": "{{models}} was loaded again.",
     "notRestored": "{{models}} could not be loaded again; load it from the model settings.",
     "needsConfirmation": "Testing needs to unload another model first.",
-    "confirmUnload": "To test, JAN has to unload {{models}}. Any reply it is generating will stop. It is not reloaded automatically.",
+    "confirmUnload": "To test, Flint has to unload {{models}}. Any reply it is generating will stop. It is not reloaded automatically.",
     "unloadAndTest": "Unload and test",
     "dontTest": "Don't test"
   },

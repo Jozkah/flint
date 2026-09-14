@@ -33,7 +33,7 @@ export const defaultAssistant: Assistant = {
   name: 'Flint',
   created_at: 1747029866.542,
   parameters: {},
-  avatar: '👋',
+  avatar: '/images/flint-logo.png',
   description:
     "Flint is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user's behalf.",
   instructions: `You must output your response in the exact language used in the latest user message. Do not provide translations or switch languages unless explicitly instructed to do so. If the input is mostly English, respond in English.
@@ -74,11 +74,13 @@ export const migrateLegacyDefaultAssistant = (a: Assistant): Assistant => {
   if (a.id !== defaultAssistant.id) return a
   const renamed = a.name === LEGACY_DEFAULT_ASSISTANT_NAME
   const redescribed = a.description === LEGACY_DEFAULT_ASSISTANT_DESCRIPTION
-  if (!renamed && !redescribed) return a
+  const reavatar = !a.avatar || a.avatar === '👋'
+  if (!renamed && !redescribed && !reavatar) return a
   return {
     ...a,
     name: renamed ? defaultAssistant.name : a.name,
     description: redescribed ? defaultAssistant.description : a.description,
+    avatar: reavatar ? defaultAssistant.avatar : a.avatar,
   }
 }
 

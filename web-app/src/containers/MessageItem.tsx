@@ -634,7 +634,7 @@ export const MessageItem = memo(
             data-testid="assistant-message-header"
             className="mb-1 flex min-w-0 items-center gap-1.5 text-xs leading-5 text-muted-foreground"
           >
-            <span className="shrink-0 font-semibold text-ink-2">JAN</span>
+            <span className="shrink-0 font-semibold text-ink-2">Flint</span>
             {answeredBy && (
               <>
                 <span aria-hidden>·</span>

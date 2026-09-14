@@ -2357,7 +2357,7 @@ export function ThreadConversation({
                           <div className="mt-3 space-y-2">
                             <p className="text-sm text-ink-2">
                               This model's context window is set by its server,
-                              so Jan cannot enlarge it. Start a new chat, shorten
+                              so Flint cannot enlarge it. Start a new chat, shorten
                               the conversation, or raise the limit on the server.
                             </p>
                             <Button

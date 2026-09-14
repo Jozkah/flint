@@ -108,9 +108,9 @@ export type ImportRefusal =
  */
 export function checkBundle(value: unknown): string | null {
   const b = value as Partial<SessionBundle> | null
-  if (!b || b.format !== BUNDLE_FORMAT) return 'not a Jan session export'
+  if (!b || b.format !== BUNDLE_FORMAT) return 'not a Flint session export'
   if (b.schemaVersion !== BUNDLE_SCHEMA_VERSION) {
-    return `schema version ${String(b.schemaVersion)} is not one this version of Jan understands`
+    return `schema version ${String(b.schemaVersion)} is not one this version of Flint understands`
   }
   if (!b.exportId) return 'the export has no id'
   if (!b.session || !Array.isArray(b.session.turns)) {

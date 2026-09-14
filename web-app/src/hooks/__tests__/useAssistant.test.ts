@@ -193,7 +193,7 @@ describe('useAssistant', () => {
 
     expect(result.current.currentAssistant.id).toBe('jan')
     expect(result.current.currentAssistant.name).toBe('Flint')
-    expect(result.current.currentAssistant.avatar).toBe('👋')
+    expect(result.current.currentAssistant.avatar).toBe('/images/flint-logo.png')
     expect(result.current.currentAssistant.instructions).toContain(
       'Before engaging any tools, articulate your complete thought process in natural language'
     )

@@ -60,7 +60,7 @@ describe('describePermissionRequest', () => {
     })
     expect(d.category).toBe('file-change')
     expect(text(d.categoryLabel)).toBe('File change')
-    expect(text(d.action)).toBe('JAN wants to change src/app.ts in Forma')
+    expect(text(d.action)).toBe('Flint wants to change src/app.ts in Forma')
     expect(d.resources).toEqual(['src/app.ts'])
     expect(d.consequences.map(text)).toEqual([
       'It can create, overwrite or change the contents of files.',
@@ -81,7 +81,7 @@ describe('describePermissionRequest', () => {
       workspaceLabel: '/home/me/Forma',
     })
     expect(d.resources).toEqual(['a.ts', 'b.ts', 'c.ts'])
-    expect(text(d.action)).toBe('JAN wants to change 3 files in Forma')
+    expect(text(d.action)).toBe('Flint wants to change 3 files in Forma')
   })
 
   it('describes a command with its consequence and a redacted command line', () => {
@@ -90,7 +90,7 @@ describe('describePermissionRequest', () => {
       input: { command: 'PGPASSWORD=hunter2 psql -h db' },
     })
     expect(d.category).toBe('command')
-    expect(text(d.action)).toBe('JAN wants to run a command')
+    expect(text(d.action)).toBe('Flint wants to run a command')
     expect(d.resources).toEqual([`PGPASSWORD=${REDACTED} psql -h db`])
     expect(d.consequences.map(text)).toEqual([
       'It can change files and run programs on this computer.',
@@ -104,7 +104,7 @@ describe('describePermissionRequest', () => {
       input: { url: 'https://api.example.com/v1?token=abc123&q=1' },
     })
     expect(d.category).toBe('network')
-    expect(text(d.action)).toBe('JAN wants to open api.example.com')
+    expect(text(d.action)).toBe('Flint wants to open api.example.com')
     expect(d.resources[0]).toBe(
       `https://api.example.com/v1?token=${REDACTED}&q=1`
     )
@@ -117,7 +117,7 @@ describe('describePermissionRequest', () => {
       input: { title: 'x' },
     })
     expect(d.category).toBe('external-tool')
-    expect(text(d.action)).toBe('JAN wants to use create_issue from github')
+    expect(text(d.action)).toBe('Flint wants to use create_issue from github')
     expect(d.resources).toContain('github')
     const always = d.scopeExplanations['allow-always']!
     expect(text(always.label)).toBe('Always allow github')
@@ -170,7 +170,7 @@ describe('describePermissionRequest', () => {
   it('does not guess at an unknown tool', () => {
     const d = describePermissionRequest({ toolName: 'mystery' })
     expect(d.category).toBe('other')
-    expect(text(d.action)).toBe('JAN wants to use mystery')
+    expect(text(d.action)).toBe('Flint wants to use mystery')
     expect(d.consequences.map(text)[0]).toMatch(/cannot tell what this tool does/)
     expect(d.resources).toEqual([])
     expect(d.technicalDetails.argumentsJson).toBe('')
@@ -178,13 +178,13 @@ describe('describePermissionRequest', () => {
 
   it('describes helpers and memory saves in their own words', () => {
     expect(text(describePermissionRequest({ toolName: 'task' }).action)).toBe(
-      'JAN wants to start a helper agent'
+      'Flint wants to start a helper agent'
     )
     const memory = describePermissionRequest({
       toolName: 'memory_write',
       input: { name: 'prefs', content: 'x' },
     })
-    expect(text(memory.action)).toBe('JAN wants to save something it will remember')
+    expect(text(memory.action)).toBe('Flint wants to save something it will remember')
     expect(memory.consequences).toHaveLength(2)
   })
 

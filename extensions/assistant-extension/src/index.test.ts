@@ -71,7 +71,8 @@ describe('getAssistants', () => {
     const result = await ext.getAssistants()
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('jan')
-    expect(result[0].name).toBe('Jan')
+    expect(result[0].name).toBe('Flint')
+    expect(result[0].avatar).toBe('/images/flint-logo.png')
   })
 
   it('falls back to the default assistant when the dir exists but is empty', async () => {
@@ -222,7 +223,7 @@ describe('migrations', () => {
   it('migration v3 strips the identity preamble when instructions match the verbatim v2 default', async () => {
     const ext = makeExt()
     const identityLine =
-      'You are Jan, a helpful AI assistant who assists users with their requests. Jan is trained by Menlo Research (https://www.menlo.ai).'
+      'You are Flint, a helpful AI assistant who assists users with their requests. Flint is trained by Menlo Research (https://www.menlo.ai).'
     const defaultInstructions = (ext as any).defaultAssistant.instructions
     seedAssistant('c', {
       id: 'c',

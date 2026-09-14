@@ -458,7 +458,7 @@ pub fn agent_worktree_discard(
     let record: worktree::WorktreeRecord = record.into();
     if !std::path::Path::new(&record.path).starts_with(&roots) {
         return Err(format!(
-            "{} is not a worktree Jan manages, so Jan will not remove it",
+            "{} is not a worktree Flint manages, so Flint will not remove it",
             record.path
         ));
     }

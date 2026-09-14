@@ -136,7 +136,7 @@ fn remove_exa_server(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Install/update the bundled `jan` CLI binary on launch.
+/// Install/update the bundled `flint` CLI binary on launch.
 ///
 /// Only ever touches a `jan` this app installed. A standalone agent CLI at the
 /// same path, or earlier on PATH, is left exactly as it is; the settings
@@ -157,14 +157,14 @@ pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_change
         {
             Ok(paths) => paths,
             Err(e) => {
-                log::warn!("jan CLI auto-install skipped: {e}");
+                log::warn!("flint CLI auto-install skipped: {e}");
                 return;
             }
         };
 
         let which_cmd = if cfg!(windows) { "where" } else { "which" };
         let mut cmd = std::process::Command::new(which_cmd);
-        cmd.arg("jan");
+        cmd.arg("flint");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -184,12 +184,12 @@ pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_change
         );
         match &action {
             AutoAction::UpToDate => {
-                log::debug!("jan CLI already installed and current — skipping reinstall");
+                log::debug!("flint CLI already installed and current — skipping reinstall");
                 return;
             }
             AutoAction::LeaveForeign(path) => {
                 log::info!(
-                    "jan CLI at {} was not installed by Jan Desktop; leaving it alone \
+                    "flint CLI at {} was not installed by Flint Desktop; leaving it alone \
                      (Settings > General can replace it on request)",
                     path.display()
                 );
@@ -201,7 +201,7 @@ pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_change
         match crate::core::system::commands::install_jan_cli_sync(&app_handle) {
             Ok(status) => {
                 log::info!(
-                    "jan CLI {} to {}",
+                    "flint CLI {} to {}",
                     if action == AutoAction::Update {
                         "updated"
                     } else {
@@ -211,7 +211,7 @@ pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_change
                 );
             }
             Err(e) => {
-                log::warn!("jan CLI auto-install skipped: {e}");
+                log::warn!("flint CLI auto-install skipped: {e}");
             }
         }
     });
@@ -301,7 +301,7 @@ pub fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(feature = "desktop")]
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<TrayIcon<R>> {
-    let show_i = MenuItem::with_id(app, "open", "Open Jan", true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "open", "Open Flint", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let separator_i = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&show_i, &separator_i, &quit_i])?;

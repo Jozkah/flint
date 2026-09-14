@@ -13018,7 +13018,7 @@ fn warn_on_claude_login(app: &mut App, provider: &str) {
     if provider == "anthropic" {
         app.system(
             Level::Warn,
-            "Claude sign-in: Jan is a third-party client. Using the Claude Code \
+            "Claude sign-in: Flint is a third-party client. Using the Claude Code \
              quota through Jan may not be sanctioned by Anthropic; proceed at \
              your own risk and review Anthropic's Terms of Service.",
         );

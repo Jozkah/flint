@@ -570,7 +570,11 @@ pub struct CliInstallStatus {
     pub path: Option<String>,
 }
 
-/// Check if the `jan` CLI binary is accessible on PATH, or — failing that —
+fn cli_binary_name() -> &'static str {
+    if cfg!(windows) { "flint.exe" } else { "flint" }
+}
+
+/// Check if the `flint` CLI binary is accessible on PATH, or — failing that —
 /// at one of the known install destinations.
 ///
 /// `which`/`where` only sees what the Tauri process's PATH sees. Linux GUI
@@ -582,7 +586,7 @@ pub struct CliInstallStatus {
 pub async fn check_jan_cli_installed() -> CliInstallStatus {
     let which_cmd = if cfg!(windows) { "where" } else { "which" };
     let mut cmd = std::process::Command::new(which_cmd);
-    cmd.arg("jan");
+    cmd.arg(cli_binary_name());
 
     #[cfg(windows)]
     {
@@ -644,9 +648,9 @@ pub async fn check_jan_cli_installed() -> CliInstallStatus {
     }
 }
 
-/// Paths where `install_jan_cli_sync` may have placed the `jan` binary.
+/// Paths where `install_jan_cli_sync` may have placed the `flint` binary.
 fn jan_cli_install_candidates() -> Vec<PathBuf> {
-    let bin = if cfg!(windows) { "jan.exe" } else { "jan" };
+    let bin = cli_binary_name();
     let mut out: Vec<PathBuf> = Vec::new();
 
     #[cfg(unix)]
@@ -672,7 +676,7 @@ fn jan_cli_install_candidates() -> Vec<PathBuf> {
 pub fn cli_install_target<R: Runtime>(
     app_handle: &AppHandle<R>,
 ) -> Result<(PathBuf, PathBuf), String> {
-    let bin_name = if cfg!(windows) { "jan.exe" } else { "jan" };
+    let bin_name = cli_binary_name();
     // `resource_dir()` hands back a verbatim `\\?\C:\...` path on Windows. That
     // is fine to open a file with and wrong to persist: written into the user's
     // PATH it produced an entry most shells and tools will not resolve, and it
@@ -708,7 +712,7 @@ pub fn install_jan_cli_sync<R: Runtime>(
         .ok_or_else(|| "bundled CLI has no parent directory".to_string())?;
 
     if !bundled.exists() {
-        return Err("Flint CLI binary not bundled with this version of Jan.".to_string());
+        return Err("Flint CLI binary not bundled with this version of Flint.".to_string());
     }
 
     #[cfg(windows)]
@@ -724,10 +728,10 @@ pub fn install_jan_cli_sync<R: Runtime>(
     {
         let install_dir = jan_cli_install_dir()?;
         std::fs::create_dir_all(&install_dir).map_err(|e| e.to_string())?;
-        let dest = install_dir.join("jan");
+        let dest = install_dir.join(cli_binary_name());
 
         std::fs::copy(&bundled, &dest)
-            .map_err(|e| format!("Failed to copy jan to {}: {}", dest.display(), e))?;
+            .map_err(|e| format!("Failed to copy flint to {}: {}", dest.display(), e))?;
 
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
@@ -745,7 +749,7 @@ pub fn install_jan_cli_sync<R: Runtime>(
     }
 }
 
-/// Copy the bundled `jan` binary to the system PATH (Tauri command wrapper).
+/// Copy the bundled `flint` binary to the system PATH (Tauri command wrapper).
 #[tauri::command]
 pub async fn install_jan_cli<R: Runtime>(
     app_handle: AppHandle<R>,
@@ -753,7 +757,7 @@ pub async fn install_jan_cli<R: Runtime>(
     install_jan_cli_sync(&app_handle)
 }
 
-/// Remove the installed `jan` CLI binary.
+/// Remove the installed `flint` CLI binary.
 #[tauri::command]
 pub fn uninstall_jan_cli() -> Result<(), String> {
     #[cfg(windows)]
@@ -765,7 +769,7 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
 
     #[cfg(unix)]
     {
-        let dest = jan_cli_install_dir()?.join("jan");
+        let dest = jan_cli_install_dir()?.join(cli_binary_name());
         if dest.exists() {
             std::fs::remove_file(&dest)
                 .map_err(|e| format!("Failed to remove Flint CLI from {}: {}", dest.display(), e))?;
@@ -1068,6 +1072,14 @@ mod tests {
     use crate::core::app::constants::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn bundled_cli_uses_flint_executable_name() {
+        assert_eq!(cli_binary_name(), if cfg!(windows) { "flint.exe" } else { "flint" });
+        assert!(jan_cli_install_candidates()
+            .iter()
+            .all(|path| path.file_name().and_then(|name| name.to_str()) == Some(cli_binary_name())));
+    }
 
     fn create_all_data(dir: &std::path::Path) {
         for subdir in JAN_DATA_SUBDIRS {

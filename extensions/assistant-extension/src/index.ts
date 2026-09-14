@@ -1,7 +1,7 @@
 import { Assistant, AssistantExtension, fs, joinPath, logger } from '@janhq/core'
 
 const V2_IDENTITY_LINE =
-  'You are Jan, a helpful AI assistant who assists users with their requests. Jan is trained by Menlo Research (https://www.menlo.ai).'
+  'You are Flint, a helpful AI assistant who assists users with their requests. Flint is trained by Menlo Research (https://www.menlo.ai).'
 
 /**
  * JanAssistantExtension is an AssistantExtension implementation that provides
@@ -303,14 +303,14 @@ Current date: {{current_date}}`
   }
 
   private defaultAssistant: Assistant = {
-    avatar: '👋',
+    avatar: '/images/flint-logo.png',
     thread_location: undefined,
     id: 'jan',
     object: 'assistant',
     created_at: Date.now() / 1000,
-    name: 'Jan',
+    name: 'Flint',
     description:
-      'Jan is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user’s behalf.',
+      'Flint is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user’s behalf.',
     model: '*',
     instructions: `You must output your response in the exact language used in the latest user message. Do not provide translations or switch languages unless explicitly instructed to do so. If the input is mostly English, respond in English.
 

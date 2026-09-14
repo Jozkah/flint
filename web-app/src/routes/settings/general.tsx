@@ -403,8 +403,8 @@ function General() {
               title="Flint CLI"
               description={
                 cliInstalled && cliPath
-                  ? `Installed at ${cliPath} — use jan from your terminal to serve models.`
-                  : 'Use jan from your terminal to serve models without opening the app.'
+                  ? `Installed at ${cliPath} — use flint from your terminal to serve models.`
+                  : 'Use flint from your terminal to serve models without opening the app.'
               }
               actions={
                 cliInstalled ? (

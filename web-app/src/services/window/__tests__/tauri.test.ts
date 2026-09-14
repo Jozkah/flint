@@ -219,7 +219,7 @@ describe('TauriWindowService', () => {
       await svc.openLogsWindow()
       expect(mockConstructor).toHaveBeenCalledWith(
         'logs-app-window',
-        expect.objectContaining({ url: '/logs', title: 'App Logs - Jan' })
+        expect.objectContaining({ url: '/logs', title: 'App Logs - Flint' })
       )
     })
 
@@ -241,7 +241,7 @@ describe('TauriWindowService', () => {
         'system-monitor-window',
         expect.objectContaining({
           url: '/system-monitor',
-          title: 'System Monitor - Jan',
+          title: 'System Monitor - Flint',
           width: 1000,
           height: 700,
         })
@@ -266,7 +266,7 @@ describe('TauriWindowService', () => {
         'logs-window-local-api-server',
         expect.objectContaining({
           url: '/local-api-server/logs',
-          title: 'Local API Server Logs - Jan',
+          title: 'Local API Server Logs - Flint',
         })
       )
     })

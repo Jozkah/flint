@@ -25,13 +25,23 @@ describe('migrateLegacyDefaultAssistant', () => {
   it('renames the untouched legacy default from Jan to Flint', () => {
     const out = migrateLegacyDefaultAssistant(legacyDefault())
     expect(out.name).toBe('Flint')
+    expect(out.avatar).toBe('/images/flint-logo.png')
     expect(out.description).toBe(defaultAssistant.description)
     expect(out.description).not.toContain('Jan is a helpful')
   })
 
   it('is idempotent — an already-migrated Flint default is returned unchanged', () => {
-    const flint = legacyDefault({ name: 'Flint', description: defaultAssistant.description })
+    const flint = legacyDefault({
+      name: 'Flint',
+      description: defaultAssistant.description,
+      avatar: defaultAssistant.avatar,
+    })
     expect(migrateLegacyDefaultAssistant(flint)).toBe(flint)
+  })
+
+  it('preserves a custom avatar while migrating legacy copy', () => {
+    const out = migrateLegacyDefaultAssistant(legacyDefault({ avatar: '🦊' }))
+    expect(out.avatar).toBe('🦊')
   })
 
   it('never overwrites a deliberately renamed assistant', () => {

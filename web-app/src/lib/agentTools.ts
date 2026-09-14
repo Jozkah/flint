@@ -272,7 +272,7 @@ export async function executeAgentTool(
 ): Promise<AgentToolResult> {
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
-    if (!dataFolder) return { error: 'Jan data folder is unavailable' }
+    if (!dataFolder) return { error: 'Flint data folder is unavailable' }
     const args =
       input && typeof input === 'object'
         ? (input as Record<string, unknown>)

@@ -172,7 +172,7 @@ pub fn declared_scopes(config: &Value) -> Result<Vec<String>, HarnessError> {
         .as_object()
         .ok_or_else(|| refuse("'oauth' must be an object such as {\"scopes\": [\"read\"]}".to_string()))?;
     if let Some(unknown) = settings.keys().find(|k| k.as_str() != "scopes") {
-        return Err(refuse(format!("'oauth.{unknown}' is not a setting Jan reads (only 'scopes' is)")));
+        return Err(refuse(format!("'oauth.{unknown}' is not a setting Flint reads (only 'scopes' is)")));
     }
     let Some(list) = settings.get("scopes") else {
         return Ok(Vec::new());

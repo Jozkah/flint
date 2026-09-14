@@ -26,17 +26,17 @@
   "disconnected": "Disconnected",
   "deleteServer": {
     "title": "Delete MCP Server",
-    "description": "Delete the MCP server {{serverName}}? JAN stops it and removes its configuration. This action cannot be undone.",
+    "description": "Delete the MCP server {{serverName}}? Flint stops it and removes its configuration. This action cannot be undone.",
     "approvalsRemoved": "Every approval you gave this server is removed, along with its stored sign-in. A server you add later with the same name starts with no approvals. Your record of past decisions is kept.",
     "disableInstead": "To keep the configuration and its approvals but stop using the server, turn it off instead.",
     "delete": "Delete",
     "success": "MCP server {{serverName}} deleted successfully",
-    "forgetFailed": "{{serverName}} was deleted, but JAN could not remove its approvals or sign-in"
+    "forgetFailed": "{{serverName}} was deleted, but Flint could not remove its approvals or sign-in"
   },
   "renameServer": {
     "approvalsReset": "Approvals for {{oldName}} do not carry over to {{newName}}",
-    "approvalsResetDesc": "Its stored sign-in was also cleared. JAN asks again before using its tools.",
-    "forgetFailed": "{{oldName}} was renamed, but JAN could not remove the approvals or sign-in stored under the old name"
+    "approvalsResetDesc": "Its stored sign-in was also cleared. Flint asks again before using its tools.",
+    "forgetFailed": "{{oldName}} was renamed, but Flint could not remove the approvals or sign-in stored under the old name"
   },
   "approval": {
     "changedSinceApproval": "Configuration changed since you approved it. Turn auto-approve on again to renew.",
@@ -98,7 +98,7 @@
     "runsWhereRemoteService": "Contacts an external service at {{host}}.",
     "runsWhereUnresolved": "Connects to {{host}}. Whether that is on your network depends on how the name resolves.",
     "externalYes": "Tool requests, including what you ask it to act on, are sent to that service.",
-    "externalDepends": "JAN cannot see what the server does, so the server itself may contact other services.",
+    "externalDepends": "Flint cannot see what the server does, so the server itself may contact other services.",
     "access": "What it is given",
     "accessCommand": "Runs: {{command}}",
     "accessEnv": "Environment variables (names only): {{names}}",
@@ -113,7 +113,7 @@
     "setupMissingCommand": "Add the command to run.",
     "setupMissingUrl": "Add the server URL.",
     "usage": "How to use it",
-    "usageExample": "Once it is connected, ask in a chat for something its tools can do. JAN asks before calling a tool unless you have allowed it.",
+    "usageExample": "Once it is connected, ask in a chat for something its tools can do. Flint asks before calling a tool unless you have allowed it.",
     "toolNames": "Tools: {{names}}",
     "effects": "Turn off, clear sign-in, or delete",
     "effectDisable": "Turn off: stays configured but is not started, so its tools are unavailable in every chat. Approvals are kept.",

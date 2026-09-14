@@ -31,7 +31,7 @@ export type InterruptedChoice = 'continue' | 'discard-partial'
 export const CHECKPOINT_EVERY_MS = 500
 
 /** How a recovery note begins, so nobody mistakes it for the user's words. */
-export const RECOVERY_NOTE_PREFIX = 'Note from Jan (not typed by the user): '
+export const RECOVERY_NOTE_PREFIX = 'Note from Flint (not typed by the user): '
 
 /**
  * Whether a checkpoint is due. A step always is; a stream delta only once the

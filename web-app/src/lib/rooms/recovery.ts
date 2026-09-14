@@ -146,7 +146,7 @@ export async function recoverRoomsOnLoad(
             author: { kind: 'system' },
             to: { kind: 'room' },
             kind: 'system',
-            text: 'Jan restarted while this room was running. The room is paused.',
+            text: 'Flint restarted while this room was running. The room is paused.',
             round: room.round,
             createdAt: at,
             status: 'complete',
