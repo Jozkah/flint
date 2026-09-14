@@ -223,6 +223,11 @@ Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by M
 * fix(hooks): make the pre-commit gate one Git for Windows can start, and keep it on LF
 * fix(ci): validate workflow inputs before any script sees them, and stop running upstream's template (#7871)
 
+* feat(providers): Anthropic API-key support, and Claude account OAuth (device flow) in the Flint CLI
+* feat(agent): reuse an existing Claude Code login, and the Claude Code integration that points Claude Code at Flint's local API
+* feat(providers): OpenAI API-key support, and ChatGPT/Codex account OAuth through the ChatGPT backend
+* feat(providers): native Gemini/Google API-key support (Gemini has no consumer-account OAuth or dedicated CLI bridge)
+
 **Full Changelog**: https://github.com/Jozkah/jan/compare/1c70d7288a5811d72e5cec8bd61f052e40981bca...v0.9.0
 
 ### Contributors
