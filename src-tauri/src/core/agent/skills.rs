@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use tauri_plugin_agent_tools::skills as tool_skills;
-use tauri_plugin_agent_tools::skills::{DEFAULT_JAN_SKILL, DEFAULT_JAN_SKILL_NAME};
+use tauri_plugin_agent_tools::skills::{
+    DEFAULT_JAN_SKILL, DEFAULT_JAN_SKILL_NAME, LEGACY_DEFAULT_SKILL_NAME,
+};
 use tauri_plugin_agent_tools::workspace::{project_store, workspace_filename};
 
 /// `<project_root>/.jan/agent/skills`.
@@ -378,7 +380,10 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
 /// Whether a name refers to the built-in Flint skill (aliased `jan`), which is
 /// always available even with no project skills installed.
 fn is_default_jan_skill(name: &str) -> bool {
-    safe_stem(name).ok().as_deref() == Some(DEFAULT_JAN_SKILL_NAME)
+    matches!(
+        safe_stem(name).ok().as_deref(),
+        Some(DEFAULT_JAN_SKILL_NAME) | Some(LEGACY_DEFAULT_SKILL_NAME)
+    )
 }
 
 /// The built-in Flint skill's metadata: the plugin-embedded onboarding skill is
@@ -440,7 +445,10 @@ fn side_catalog(
     // an empty project (mirrors the plugin's side_catalog). It honors the
     // enabled whitelist and side filter, and is skipped if a project or plugin
     // skill named "jan" already shadows it.
-    if (enabled.is_empty() || enabled.iter().any(|n| n == DEFAULT_JAN_SKILL_NAME))
+    if (enabled.is_empty()
+        || enabled
+            .iter()
+            .any(|n| n == DEFAULT_JAN_SKILL_NAME || n == LEGACY_DEFAULT_SKILL_NAME))
         && side(&parse(DEFAULT_JAN_SKILL))
         && !skills.iter().any(|m| m.name == DEFAULT_JAN_SKILL_NAME)
     {

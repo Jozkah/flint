@@ -797,13 +797,19 @@ fn describe(parsed: &ParsedSkill) -> String {
 /// invoke it to load the body. `core::agent::skills` mirrors this injection
 /// for the system-prompt catalog and `/skill:` dispatch, which resolve
 /// project + plugin skills but never see this plugin-embedded one.
-pub const DEFAULT_JAN_SKILL_NAME: &str = "jan";
+pub const DEFAULT_JAN_SKILL_NAME: &str = "flint";
+/// Legacy name for the built-in skill, still recognised so existing references
+/// (agent.toml entries, `/skill:jan`) keep resolving after the Flint rebrand.
+pub const LEGACY_DEFAULT_SKILL_NAME: &str = "jan";
 pub const DEFAULT_JAN_SKILL: &str = include_str!("default_jan_skill.md");
 
-/// Whether a name refers to the built-in Jan skill (aliased `jan`), which is
-/// always available even with no project skills installed.
+/// Whether a name refers to the built-in Flint skill (primary `flint`, legacy
+/// alias `jan`), which is always available even with no project skills installed.
 fn is_default_jan_skill(name: &str) -> bool {
-    safe_stem(name).ok().as_deref() == Some(DEFAULT_JAN_SKILL_NAME)
+    matches!(
+        safe_stem(name).ok().as_deref(),
+        Some(DEFAULT_JAN_SKILL_NAME) | Some(LEGACY_DEFAULT_SKILL_NAME)
+    )
 }
 fn default_jan_skill_meta() -> SkillMeta {
     let parsed = parse(DEFAULT_JAN_SKILL);
@@ -886,7 +892,8 @@ fn entries_catalog(
         })
         .collect::<Vec<_>>();
     if include_default
-        && is_enabled(enabled, DEFAULT_JAN_SKILL_NAME)
+        && (is_enabled(enabled, DEFAULT_JAN_SKILL_NAME)
+            || is_enabled(enabled, LEGACY_DEFAULT_SKILL_NAME))
         && side(&parse(DEFAULT_JAN_SKILL))
         && !skills
             .iter()

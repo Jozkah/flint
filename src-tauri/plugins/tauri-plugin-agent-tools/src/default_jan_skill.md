@@ -31,7 +31,7 @@ wins over a `JAN.md` in the same folder. Flint creates this separate state tree 
 
 `agent.toml` has `[agent]`, `[provider]`, `[budget]`, `[tools]`, and `[skills]` sections.
 A simple skill can be `skills/<name>.md`. Commit `FLINT.md` (or a legacy `JAN.md`), `agent.toml`,
-`skills/`, and `subagents/`; gitignore `threads/`. Run `jan cli agent status --project .` to
+`skills/`, and `subagents/`; gitignore `threads/`. Run `flint cli agent status --project .` to
 scaffold the tree. The `.jan/` directory name is kept unchanged so existing projects keep working.
 
 ## User-global files
