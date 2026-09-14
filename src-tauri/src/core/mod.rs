@@ -10,6 +10,7 @@ pub mod downloads;
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
 pub mod mcp;
+pub mod migration;
 pub mod net;
 pub mod openai_schema;
 // Discussion room files; the commands are desktop-only like filesystem.
