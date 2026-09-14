@@ -50,7 +50,7 @@ fn generate_worker_key() -> String {
 fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
-    if let Some(p) = std::env::var_os("JAN_LLAMA_WORKER_BIN") {
+    if let Some(p) = crate::compat_env::var_os("LLAMA_WORKER_BIN") {
         let p = PathBuf::from(p);
         if p.is_file() {
             return Ok(p);

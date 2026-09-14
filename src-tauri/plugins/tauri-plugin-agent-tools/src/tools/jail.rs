@@ -263,7 +263,7 @@ fn detect() -> Backend {
     // Escape hatch for CI and for users on kernels where the probe is wrong.
     // Only ever loosens to `None`, which withholds the tool: it cannot be used
     // to run commands unconfined.
-    if let Some(forced) = std::env::var_os("JAN_AGENT_SANDBOX") {
+    if let Some(forced) = crate::compat_env::var_os("AGENT_SANDBOX") {
         if forced.eq_ignore_ascii_case("none") || forced.eq_ignore_ascii_case("off") {
             return Backend::None;
         }
@@ -776,7 +776,7 @@ pub fn denial_hint(policy: &Policy) -> String {
 /// the knob to exist, because libtest owns `main` there and rejects the helper
 /// argv before any of this crate runs.
 fn helper_exe() -> Option<PathBuf> {
-    if let Some(explicit) = std::env::var_os("JAN_SANDBOX_HELPER_EXE") {
+    if let Some(explicit) = crate::compat_env::var_os("SANDBOX_HELPER_EXE") {
         let path = PathBuf::from(explicit);
         if path.is_file() {
             return Some(path);
@@ -1053,7 +1053,7 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> (ProbeOutcome, Verdict)
 /// list is to pick one, not to inventory the machine.
 pub fn shell_reports(policy: &Policy) -> Vec<ShellReport> {
     let roots = OriginRoots::from_host();
-    let configured = std::env::var_os("JAN_AGENT_SHELL").map(PathBuf::from);
+    let configured = crate::compat_env::var_os("AGENT_SHELL").map(PathBuf::from);
     let mut out = Vec::new();
     let mut settled = false;
     for cfg in proc::candidates() {

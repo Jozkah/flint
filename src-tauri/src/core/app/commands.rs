@@ -31,7 +31,7 @@ pub const JAN_HOME_ENV: &str = "JAN_HOME";
 /// Tests fail closed, and they get a root each, so parallel tests cannot see
 /// one another's writes.
 pub fn jan_home_dir() -> Option<PathBuf> {
-    if let Some(explicit) = std::env::var_os(JAN_HOME_ENV) {
+    if let Some(explicit) = crate::core::compat_env::var_os("HOME") {
         if !explicit.is_empty() {
             return Some(PathBuf::from(explicit));
         }
@@ -223,7 +223,7 @@ pub fn resolve_jan_data_folder() -> PathBuf {
     // the secret store writes through `spawn_blocking`, the store ran on a pool
     // thread and the load ran on the test thread, giving each a different folder
     // and turning "read back what I just wrote" into `None`.
-    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+    if let Ok(folder) = crate::core::compat_env::var("DATA_FOLDER") {
         if !folder.is_empty() {
             return PathBuf::from(folder);
         }
@@ -333,7 +333,7 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
     // so the user's configured providers -- resolved to the real folder. A
     // harness run then loaded the developer's real provider list and tried to
     // connect to their machines.
-    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+    if let Ok(folder) = crate::core::compat_env::var("DATA_FOLDER") {
         if !folder.is_empty() {
             app_default_configuration.data_folder = folder;
             return app_default_configuration;
