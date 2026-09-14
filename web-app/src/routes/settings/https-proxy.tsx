@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -68,146 +71,135 @@ function HTTPSProxyContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
-            {/* Proxy Configuration */}
-            <Card
-              header={
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h1 className=" text-xl font-semibold text-foreground">
-                    {t('settings:httpsProxy.proxy')}
-                  </h1>
-                  <Switch
-                    aria-label={t('settings:httpsProxy.proxy')}
-                    checked={proxyEnabled}
-                    onCheckedChange={toggleProxy}
+      <SettingsPageHeader title={t('common:https_proxy')} />
+      <SettingsPageBody
+        title={t('common:https_proxy')}
+        description={t('settings:pageDesc.httpsProxy')}
+      >
+        {/* Proxy Configuration */}
+        <Card
+          title={t('settings:httpsProxy.proxy')}
+          aside={
+            <Switch
+              aria-label={t('settings:httpsProxy.proxy')}
+              checked={proxyEnabled}
+              onCheckedChange={toggleProxy}
+            />
+          }
+        >
+          <CardItem
+            anchor="settings-https-proxy-proxy-url"
+            title={t('settings:httpsProxy.proxyUrl')}
+            className="block"
+            description={
+              <div className="space-y-2">
+                <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
+                <Input
+                  className="w-full font-mono"
+                  placeholder={t(
+                    'settings:httpsProxy.proxyUrlPlaceholder'
+                  )}
+                  value={proxyUrl}
+                  onChange={(e) => setProxyUrl(e.target.value)}
+                />
+              </div>
+            }
+          />
+          <CardItem
+            title={t('settings:httpsProxy.authentication')}
+            className="block"
+            description={
+              <div className="space-y-2">
+                <p>{t('settings:httpsProxy.authenticationDesc')}</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    placeholder={t('settings:httpsProxy.username')}
+                    value={proxyUsername}
+                    onChange={(e) => setProxyUsername(e.target.value)}
                   />
-                </div>
-              }
-            >
-              <CardItem
-                anchor="settings-https-proxy-proxy-url"
-                title={t('settings:httpsProxy.proxyUrl')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
+                  <div className="relative w-full shrink-0 sm:w-1/2">
                     <Input
-                      className="w-full font-mono"
-                      placeholder={t(
-                        'settings:httpsProxy.proxyUrlPlaceholder'
-                      )}
-                      value={proxyUrl}
-                      onChange={(e) => setProxyUrl(e.target.value)}
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder={t('settings:httpsProxy.password')}
+                      className="pr-12"
+                      value={proxyPassword}
+                      onChange={(e) => setProxyPassword(e.target.value)}
                     />
-                  </div>
-                }
-              />
-              <CardItem
-                title={t('settings:httpsProxy.authentication')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.authenticationDesc')}</p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input
-                        placeholder={t('settings:httpsProxy.username')}
-                        value={proxyUsername}
-                        onChange={(e) => setProxyUsername(e.target.value)}
-                      />
-                      <div className="relative w-full shrink-0 sm:w-1/2">
-                        <Input
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder={t('settings:httpsProxy.password')}
-                          className="pr-12"
-                          value={proxyPassword}
-                          onChange={(e) => setProxyPassword(e.target.value)}
-                        />
-                        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                          <button
-                            type="button"
-                            aria-label={
-                              showPassword
-                                ? t('settings:httpsProxy.hidePassword')
-                                : t('settings:httpsProxy.showPassword')
-                            }
-                            aria-pressed={showPassword}
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
-                          >
-                            {showPassword ? (
-                              <EyeOff size={16} />
-                            ) : (
-                              <Eye size={16} />
-                            )}
-                          </button>
-                        </div>
-                      </div>
+                    <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label={
+                          showPassword
+                            ? t('settings:httpsProxy.hidePassword')
+                            : t('settings:httpsProxy.showPassword')
+                        }
+                        aria-pressed={showPassword}
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
+                      >
+                        {showPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
+                      </button>
                     </div>
                   </div>
-                }
+                </div>
+              </div>
+            }
+          />
+          <CardItem
+            anchor="settings-https-proxy-no-proxy"
+            title={t('settings:httpsProxy.noProxy')}
+            className="block"
+            description={
+              <div className="space-y-2">
+                <p>{t('settings:httpsProxy.noProxyDesc')}</p>
+                <Input
+                  className="font-mono"
+                  placeholder={t(
+                    'settings:httpsProxy.noProxyPlaceholder'
+                  )}
+                  value={noProxy}
+                  onChange={(e) => setNoProxy(e.target.value)}
+                />
+              </div>
+            }
+          />
+          <CardItem
+            anchor="settings-https-proxy-ignore-ssl"
+            title={t('settings:httpsProxy.ignoreSsl')}
+            description={t('settings:httpsProxy.ignoreSslDesc')}
+            actions={
+              <Switch
+                checked={proxyIgnoreSSL}
+                onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
               />
-              <CardItem
-                anchor="settings-https-proxy-no-proxy"
-                title={t('settings:httpsProxy.noProxy')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.noProxyDesc')}</p>
-                    <Input
-                      className="font-mono"
-                      placeholder={t(
-                        'settings:httpsProxy.noProxyPlaceholder'
-                      )}
-                      value={noProxy}
-                      onChange={(e) => setNoProxy(e.target.value)}
-                    />
-                  </div>
-                }
-              />
-              <CardItem
-                anchor="settings-https-proxy-ignore-ssl"
-                title={t('settings:httpsProxy.ignoreSsl')}
-                description={t('settings:httpsProxy.ignoreSslDesc')}
-                actions={
-                  <Switch
-                    checked={proxyIgnoreSSL}
-                    onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
-                  />
-                }
-              />
-            </Card>
-            <Card
-              header={
-                <h1 className="mb-4 text-xl font-semibold text-foreground">
-                  {t('settings:httpsProxy.caBundle')}
-                </h1>
-              }
-            >
-              <CardItem
-                anchor="settings-https-proxy-ca-bundle"
-                title={t('settings:httpsProxy.caBundlePath')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.caBundleDesc')}</p>
-                    <Input
-                      className="w-full font-mono"
-                      data-testid="ca-bundle-path"
-                      placeholder={t('settings:httpsProxy.caBundlePlaceholder')}
-                      value={caBundlePath}
-                      onChange={(e) => setCaBundlePath(e.target.value)}
-                    />
-                    <CaBundleStatus status={caStatus} />
-                  </div>
-                }
-              />
-            </Card>
-          </div>
-        </div>
-      </div>
+            }
+          />
+        </Card>
+        <Card title={t('settings:httpsProxy.caBundle')}>
+          <CardItem
+            anchor="settings-https-proxy-ca-bundle"
+            title={t('settings:httpsProxy.caBundlePath')}
+            className="block"
+            description={
+              <div className="space-y-2">
+                <p>{t('settings:httpsProxy.caBundleDesc')}</p>
+                <Input
+                  className="w-full font-mono"
+                  data-testid="ca-bundle-path"
+                  placeholder={t('settings:httpsProxy.caBundlePlaceholder')}
+                  value={caBundlePath}
+                  onChange={(e) => setCaBundlePath(e.target.value)}
+                />
+                <CaBundleStatus status={caStatus} />
+              </div>
+            }
+          />
+        </Card>
+      </SettingsPageBody>
     </div>
   )
 }

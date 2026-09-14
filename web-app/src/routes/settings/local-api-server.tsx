@@ -257,7 +257,7 @@ function LocalAPIServerContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader>
+      <SettingsPageHeader title={t('common:local_api_server')}>
           <Popover>
             <PopoverTrigger asChild>
               <Button size="sm" variant="outline" className="pointer-coarse:h-11">
@@ -407,32 +407,30 @@ function LocalAPIServerContent() {
       </SettingsPageHeader>
       <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
+          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-5 pb-8 md:px-7 md:pt-6">
+            <div className="mx-auto flex w-full max-w-[50rem] min-w-0 flex-col gap-4">
+              <div className="min-w-0 space-y-0.5">
+                <h2 className="text-base font-semibold text-foreground">
+                  {t('common:local_api_server')}
+                </h2>
+                <p className="text-[13px] leading-normal text-ink-2">
+                  {t('settings:pageDesc.localApiServer')}
+                </p>
+              </div>
               {/* General Settings */}
               <Card
-                header={
-                  <div className="mb-4 flex w-full flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start">
-                    <div className="w-full min-w-0 space-y-1">
-                      <h1 className=" text-xl font-semibold text-foreground">
-                        {t('settings:localApiServer.title')}
-                      </h1>
-                      <p className="text-muted-foreground mb-2">
-                        {t('settings:localApiServer.description')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={toggleAPIServer}
-                        variant={isServerRunning ? 'destructive' : 'default'}
-                        size="sm"
-                        className="pointer-coarse:h-11"
-                        disabled={serverStatus === 'pending' || isModelLoading}
-                      >
-                        {getButtonContent()}
-                      </Button>
-                    </div>
-                  </div>
+                title={t('settings:localApiServer.title')}
+                description={t('settings:localApiServer.description')}
+                aside={
+                  <Button
+                    onClick={toggleAPIServer}
+                    variant={isServerRunning ? 'destructive' : 'default'}
+                    size="sm"
+                    className="pointer-coarse:h-11"
+                    disabled={serverStatus === 'pending' || isModelLoading}
+                  >
+                    {getButtonContent()}
+                  </Button>
                 }
               >
                 <CardItem
@@ -553,8 +551,8 @@ function LocalAPIServerContent() {
               </Card>
             </div>
           </div>
-          <div className="shrink-0 border-t border-border bg-background px-3 py-3 md:px-6">
-            <div className="mx-auto w-full max-w-4xl">
+          <div className="shrink-0 border-t border-border bg-sunken px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:px-7">
+            <div className="mx-auto w-full max-w-[50rem]">
             <Card>
               <Collapsible defaultOpen={false}>
                 <div className="flex items-center justify-between">

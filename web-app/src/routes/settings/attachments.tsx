@@ -1,5 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { useAttachments } from '@/hooks/useAttachments'
 import type { SettingComponentProps } from '@janhq/core'
@@ -189,102 +192,101 @@ function AttachmentsSettings() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
-            <Card title={t('common:attachments') || 'Attachments'}>
-              {defs.map((d) => {
-                // Use local value if typing, else use store value
-                const storeValue = (() => {
-                  switch (d.key) {
-                    case 'enabled':
-                      return sel.enabled
-                    case 'max_file_size_mb':
-                      return sel.maxFileSizeMB
-                    case 'retrieval_limit':
-                      return sel.retrievalLimit
-                    case 'retrieval_threshold':
-                      return sel.retrievalThreshold
-                    case 'chunk_size_chars':
-                      return sel.chunkSizeChars
-                    case 'overlap_chars':
-                      return sel.overlapChars
-                    case 'search_mode':
-                      return sel.searchMode
-                    case 'parse_mode':
-                      return sel.parseMode
-                    case 'auto_inline_context_ratio':
-                      return sel.autoInlineContextRatio
-                    default:
-                      return d?.controllerProps?.value
-                  }
-                })()
+      <SettingsPageHeader title={t('common:attachments')} />
+      <SettingsPageBody
+        title={t('common:attachments')}
+        description={t('settings:pageDesc.attachments')}
+      >
+        <Card title={t('common:attachments') || 'Attachments'}>
+          {defs.map((d) => {
+            // Use local value if typing, else use store value
+            const storeValue = (() => {
+              switch (d.key) {
+                case 'enabled':
+                  return sel.enabled
+                case 'max_file_size_mb':
+                  return sel.maxFileSizeMB
+                case 'retrieval_limit':
+                  return sel.retrievalLimit
+                case 'retrieval_threshold':
+                  return sel.retrievalThreshold
+                case 'chunk_size_chars':
+                  return sel.chunkSizeChars
+                case 'overlap_chars':
+                  return sel.overlapChars
+                case 'search_mode':
+                  return sel.searchMode
+                case 'parse_mode':
+                  return sel.parseMode
+                case 'auto_inline_context_ratio':
+                  return sel.autoInlineContextRatio
+                default:
+                  return d?.controllerProps?.value
+              }
+            })()
 
-                const currentValue =
-                  localValues[d.key] !== undefined
-                    ? localValues[d.key]
-                    : storeValue
+            const currentValue =
+              localValues[d.key] !== undefined
+                ? localValues[d.key]
+                : storeValue
 
-                // Convert to DynamicControllerSetting compatible props
-                const baseProps = d.controllerProps
-                const normalizedValue: string | number | boolean = (() => {
-                  if (Array.isArray(currentValue)) {
-                    return currentValue.join(',')
-                  }
-                  return currentValue as string | number | boolean
-                })()
+            // Convert to DynamicControllerSetting compatible props
+            const baseProps = d.controllerProps
+            const normalizedValue: string | number | boolean = (() => {
+              if (Array.isArray(currentValue)) {
+                return currentValue.join(',')
+              }
+              return currentValue as string | number | boolean
+            })()
 
-                const props = {
-                  value: normalizedValue,
-                  placeholder:
-                    'placeholder' in baseProps
-                      ? baseProps.placeholder
-                      : undefined,
-                  type: 'type' in baseProps ? baseProps.type : undefined,
-                  options:
-                    'options' in baseProps ? baseProps.options : undefined,
-                  input_actions:
-                    'inputActions' in baseProps
-                      ? baseProps.inputActions
-                      : undefined,
-                  rows: undefined,
-                  min: 'min' in baseProps ? baseProps.min : undefined,
-                  max: 'max' in baseProps ? baseProps.max : undefined,
-                  step: 'step' in baseProps ? baseProps.step : undefined,
-                  recommended:
-                    'recommended' in baseProps
-                      ? baseProps.recommended
-                      : undefined,
-                }
+            const props = {
+              value: normalizedValue,
+              placeholder:
+                'placeholder' in baseProps
+                  ? baseProps.placeholder
+                  : undefined,
+              type: 'type' in baseProps ? baseProps.type : undefined,
+              options:
+                'options' in baseProps ? baseProps.options : undefined,
+              input_actions:
+                'inputActions' in baseProps
+                  ? baseProps.inputActions
+                  : undefined,
+              rows: undefined,
+              min: 'min' in baseProps ? baseProps.min : undefined,
+              max: 'max' in baseProps ? baseProps.max : undefined,
+              step: 'step' in baseProps ? baseProps.step : undefined,
+              recommended:
+                'recommended' in baseProps
+                  ? baseProps.recommended
+                  : undefined,
+            }
 
-                const title = d.titleKey ? t(d.titleKey) : d.title
-                const description = d.descriptionKey
-                  ? t(d.descriptionKey)
-                  : d.description
+            const title = d.titleKey ? t(d.titleKey) : d.title
+            const description = d.descriptionKey
+              ? t(d.descriptionKey)
+              : d.description
 
-                const card = (
-                  <CardItem
-                    key={d.key}
-                    anchor={SETTING_ANCHORS[d.key]}
-                    title={title}
-                    description={description}
-                    actions={
-                      <DynamicControllerSetting
-                        controllerType={d.controllerType}
-                        controllerProps={props}
-                        onChange={(val) => debouncedSet(d.key, val, d)}
-                      />
-                    }
+            const card = (
+              <CardItem
+                key={d.key}
+                anchor={SETTING_ANCHORS[d.key]}
+                title={title}
+                description={description}
+                actions={
+                  <DynamicControllerSetting
+                    controllerType={d.controllerType}
+                    controllerProps={props}
+                    onChange={(val) => debouncedSet(d.key, val, d)}
                   />
-                )
+                }
+              />
+            )
 
-                return card
-              })}
-            </Card>
-          </div>
-        </div>
-      </div>
+            return card
+          })}
+        </Card>
+      </SettingsPageBody>
     </div>
   )
 }
