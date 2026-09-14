@@ -9,6 +9,7 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
+import { useMigrationAssistant } from '@/stores/migration-assistant-store'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -33,6 +34,7 @@ export const Route = createFileRoute(route.settings.general as any)({
 
 function General() {
   const { t } = useTranslation()
+  const openMigrationAssistant = useMigrationAssistant((s) => s.openAssistant)
   const {
     spellCheckChatInput,
     setSpellCheckChatInput,
@@ -236,6 +238,21 @@ function General() {
 
         {/* Data folder - Desktop only */}
         <Card title={t('common:dataFolder')}>
+          <CardItem
+            anchor="settings-general-migrate-from-jan"
+            title="Migrate from JAN"
+            description="Bring data from an existing JAN installation into Flint — copy, reuse in place, move, or start fresh."
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="open-migration-assistant"
+                onClick={() => openMigrationAssistant()}
+              >
+                Open migration assistant
+              </Button>
+            }
+          />
           <CardItem
             anchor="settings-general-data-folder"
             title={t('settings:dataFolder.appData', {

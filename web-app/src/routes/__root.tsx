@@ -30,6 +30,7 @@ import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
+import { MigrationAssistant } from '@/containers/MigrationAssistant'
 import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 import { useWindowTitle } from '@/hooks/useWindowTitle'
 import { useAppViewport } from '@/hooks/useAppViewport'
@@ -148,6 +149,7 @@ function RootLayout() {
           <LlamacppBusyOnExitDialog />
           <LlamacppOomListener />
           <MissingDependenciesDialog />
+          <MigrationAssistant />
           <OutOfContextPromiseModal />
         </TranslationProvider>
       </ServiceHubProvider>
