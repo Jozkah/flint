@@ -842,6 +842,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
+  private toolsCacheKey: string | null = null
   // Smart tool routing selects tools from the latest user message, which would
   // change the tool set (and thus the cached prompt prefix) every turn. Freeze
   // the routed set for the thread's lifetime so the prefix stays stable;
@@ -1170,9 +1171,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return this.memorySelection
   }
 
-  async refreshTools(abortSignal?: AbortSignal) {
+  async refreshTools(abortSignal?: AbortSignal, force = false) {
     if (!this.serviceHub) {
       this.tools = {}
+      this.toolsCacheKey = null
       return
     }
 
@@ -1187,6 +1189,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
+    const cacheKey = JSON.stringify({
+      model: selectedModel?.id ?? '',
+      modelSupportsTools,
+      hasDocuments: this.hasDocuments,
+      ragFeatureAvailable: this.ragFeatureAvailable,
+      disabledToolKeys,
+      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
+      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+    })
+    if (!force && this.toolsCacheKey === cacheKey) return
 
     // Only load tools if model supports them
     if (modelSupportsTools) {
@@ -1353,6 +1365,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     this.tools = toolsRecord
+    this.toolsCacheKey = cacheKey
   }
 
   private async resolveRouterModel(settings: {
