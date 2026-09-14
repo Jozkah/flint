@@ -1171,7 +1171,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return this.memorySelection
   }
 
-  async refreshTools(abortSignal?: AbortSignal, force = false) {
+  async refreshTools(abortSignal?: AbortSignal, useCache = false) {
     if (!this.serviceHub) {
       this.tools = {}
       this.toolsCacheKey = null
@@ -1198,7 +1198,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
     })
-    if (!force && this.toolsCacheKey === cacheKey) return
+    if (useCache && this.toolsCacheKey === cacheKey) return
 
     // Only load tools if model supports them
     if (modelSupportsTools) {
@@ -1640,7 +1640,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       throw engineFailure('model-errors:createModelFailed', error)
     }
 
-    await this.refreshTools(options.abortSignal)
+    await this.refreshTools(options.abortSignal, true)
 
     // Split assistant turns that place text after tool calls into separate
     // messages. Required by the Claude API (tool_use / tool_result pairing) and

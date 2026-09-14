@@ -139,7 +139,7 @@ export function useChat(
     if (transportRef.current) {
       // Use forceRefreshTools to update the transport's tool cache
       // This ensures the transport has the latest tools when MCP server status changes
-      transportRef.current.refreshTools(undefined, true)
+      transportRef.current.refreshTools()
     }
   }, [mcpToolNames, ragToolNames])
 
