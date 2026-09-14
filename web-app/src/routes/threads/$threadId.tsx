@@ -136,12 +136,12 @@ function ThreadDetail() {
     <div className="flex h-full min-h-0 flex-col">
       {open && (
         <HeaderPage>
-          <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-2">
-            <div className="flex min-w-0 items-center gap-2">
+          <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-1">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               {sideBySide ? (
-                <span className="truncate text-sm font-semibold text-foreground">
+                <h1 className="truncate text-sm font-semibold text-foreground">
                   {t('chat:split.label')}
-                </span>
+                </h1>
               ) : (
                 <SplitPaneSwitch
                   primaryThreadId={threadId}

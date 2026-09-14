@@ -2,9 +2,10 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react'
 import {
   Columns2,
+  List,
+  Loader2,
   MessageCircle,
   MessageSquarePlus,
-  Replace,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -34,14 +35,15 @@ export function SplitToggleButton() {
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
-      className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
+      size="sm"
+      className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:h-11"
       onClick={openSplit}
       aria-label={t('chat:split.open')}
       title={t('chat:split.openHint')}
       data-testid="split-conversation-open"
     >
-      <Columns2 className="size-4" />
+      <Columns2 className="size-4" aria-hidden />
+      <span className="hidden lg:inline">{t('chat:split.open')}</span>
     </Button>
   )
 }
@@ -52,14 +54,14 @@ export function CloseSplitButton() {
   const closeSplit = useSplitConversation((s) => s.closeSplit)
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
-      className="shrink-0 pointer-coarse:h-11"
+      className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:h-11"
       onClick={closeSplit}
       aria-label={t('chat:split.close')}
       data-testid="split-conversation-close"
     >
-      <X className="size-4" />
+      <X className="size-4" aria-hidden />
       <span className="hidden sm:inline">{t('chat:split.close')}</span>
     </Button>
   )
@@ -81,7 +83,7 @@ export function SecondaryPaneControls() {
         title={t('chat:split.change')}
         data-testid="split-pane-change"
       >
-        <Replace className="size-4" />
+        <List className="size-4" />
       </Button>
       <Button
         variant="ghost"
@@ -119,6 +121,7 @@ function PaneTab({
   const selected = activePane === pane
   const label =
     pane === 'primary' ? t('chat:split.primary') : t('chat:split.secondary')
+  const shownTitle = threadId ? plainTitle(title, t('common:newThread')) : label
   return (
     <button
       type="button"
@@ -129,21 +132,24 @@ function PaneTab({
       tabIndex={selected ? 0 : -1}
       data-testid={`split-pane-tab-${pane}`}
       data-streaming={streaming}
-      title={threadId ? plainTitle(title, t('common:newThread')) : undefined}
+      title={threadId ? shownTitle : undefined}
       onClick={() => setActivePane(pane)}
       className={cn(
-        'relative flex h-8 min-w-0 items-center gap-1.5 rounded-sm px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-10',
+        'relative flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm px-3 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
         selected
-          ? 'bg-card text-foreground shadow-sm'
+          ? 'bg-card text-foreground ring-1 ring-border'
           : 'text-ink-2 hover:text-foreground'
       )}
     >
-      <span className="truncate">{label}</span>
+      {/* Which pane, for a screen reader; the title for everyone. */}
+      {threadId && <span className="sr-only">{label}: </span>}
+      <span className="truncate">{shownTitle}</span>
       {streaming && (
         <>
-          <span
+          {/* Replying is activity, not selection: an icon, never the accent. */}
+          <Loader2
             aria-hidden
-            className="size-1.5 shrink-0 rounded-full bg-brand motion-safe:animate-pulse"
+            className="size-3.5 shrink-0 text-ink-2 motion-safe:animate-spin"
           />
           <span className="sr-only">{t('chat:split.streaming')}</span>
         </>
@@ -188,7 +194,7 @@ export function SplitPaneSwitch({
       aria-label={t('chat:split.panes')}
       onKeyDown={onKeyDown}
       data-testid="split-pane-switch"
-      className="flex min-w-0 items-center gap-0.5 rounded-md bg-sunken p-0.5"
+      className="grid w-full min-w-0 max-w-md grid-cols-2 gap-0.5 rounded-md bg-sunken p-0.5"
     >
       <PaneTab
         pane="primary"
@@ -340,8 +346,8 @@ export function SecondaryPanePicker({
       className="flex h-full min-h-0 flex-col bg-background"
       data-testid="split-pane-picker"
     >
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3">
-        <span className="truncate text-sm font-semibold text-foreground">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-sunken pr-1 pl-3 pointer-coarse:h-12">
+        <span className="truncate text-[13px] font-semibold text-foreground">
           {t('chat:split.secondary')}
         </span>
         <Button
@@ -355,31 +361,31 @@ export function SecondaryPanePicker({
           <X className="size-4" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-8">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5">
         <div className="mx-auto w-full max-w-md">
-          <h2 className="font-semibold  text-lg leading-tight text-foreground">
+          <h2 className="text-sm font-semibold text-foreground">
             {t('chat:split.pickTitle')}
           </h2>
-          <p className="mt-2 text-sm text-ink-2">
+          <p className="mt-1 text-sm text-ink-2">
             {t('chat:split.pickDescription')}
           </p>
           <Button
-            className="mt-5 pointer-coarse:h-11"
+            className="mt-4 pointer-coarse:h-11"
             onClick={() => void startNewChat()}
             data-testid="split-new-chat"
           >
             <MessageSquarePlus className="size-4" />
             {t('chat:split.newChat')}
           </Button>
-          <h3 className="mt-8 mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h3 className="mt-6 mb-1 px-1 text-xs font-medium text-muted-foreground">
             {t('chat:split.recent')}
           </h3>
           {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-1 text-sm text-muted-foreground">
               {t('chat:split.noRecent')}
             </p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            <ul className="flex flex-col">
               {recent.map((th) => {
                 const title = plainTitle(th.title, t('common:newThread'))
                 return (
@@ -388,7 +394,7 @@ export function SecondaryPanePicker({
                       type="button"
                       onClick={() => choose(th.id)}
                       data-testid={`split-pick-${th.id}`}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11"
                     >
                       <MessageCircle className="size-4 shrink-0 text-ink-2" />
                       <span className="min-w-0 truncate" title={title}>
