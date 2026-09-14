@@ -768,11 +768,7 @@
   "artifactCoworkSession": "Cowork session",
   "artifactType": "Type",
   "artifactPath": "Path",
-  "artifactDelete": "Delete",
-  "artifactDeleteTitle": "Delete “{{name}}”?",
-  "artifactDeleteBody": "The file is removed from the session sandbox and cannot be restored. The session it came from is not changed.",
-  "artifactDeleted": "File deleted",
-  "artifactDeleteFailed": "Could not delete the file",
+  "artifactShowDetails": "Show details for {{name}}",
   "workspace": {
     "readsFrom": "Reads from",
     "readOnly": "read-only",

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import React from 'react'
 
@@ -11,9 +11,6 @@ const h = vi.hoisted(() => ({
   openPath: vi.fn(),
   revealItemInDir: vi.fn(),
   existsSync: vi.fn(),
-  rm: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
   sessions: [] as any[],
 }))
 
@@ -62,11 +59,7 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
 }))
 
 vi.mock('@janhq/core', () => ({
-  fs: { existsSync: h.existsSync, rm: h.rm },
-}))
-
-vi.mock('sonner', () => ({
-  toast: { success: h.toastSuccess, error: h.toastError },
+  fs: { existsSync: h.existsSync },
 }))
 
 import { Route } from '../artifacts'
@@ -80,9 +73,7 @@ const renderPage = async () => {
 }
 
 const selectFirst = async () => {
-  fireEvent.click(
-    screen.getByTestId('artifact-card').querySelector('button')!
-  )
+  fireEvent.click(screen.getByTestId('artifact-row'))
   await act(async () => {})
 }
 
@@ -107,7 +98,6 @@ describe('Library route (/artifacts)', () => {
     vi.clearAllMocks()
     h.sessions = [session]
     h.existsSync.mockResolvedValue(true)
-    h.rm.mockResolvedValue(undefined)
   })
 
   it('lists each artifact as a row with its kind, session and project', async () => {
@@ -121,36 +111,64 @@ describe('Library route (/artifacts)', () => {
     expect(screen.getByText('common:artifactsCount')).toBeInTheDocument()
   })
 
-  it('opens the details of a row without leaving the library', async () => {
+  it('opens the artifact in the Cowork preview straight from the list', async () => {
     await renderPage()
-    expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
-    await selectFirst()
-    expect(screen.getByTestId('artifact-inspector')).toHaveTextContent(
-      'common:artifactSource'
-    )
-    expect(
-      screen.getByTestId('artifact-card').querySelector('button')
-    ).toHaveAttribute('aria-current', 'true')
-    fireEvent.click(screen.getByLabelText('common:artifactClose'))
-    expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
-  })
-
-  it('opens the artifact in the Cowork preview', async () => {
-    await renderPage()
-    await selectFirst()
     fireEvent.click(screen.getByTestId('artifact-open'))
     expect(h.selectSession).toHaveBeenCalledWith('s1')
     expect(h.requestPreview).toHaveBeenCalledWith('s1', 'index.html')
     expect(h.navigate).toHaveBeenCalledWith({ to: '/cowork' })
   })
 
-  it('goes to the source session without opening a preview', async () => {
+  it('goes to the source session straight from the list, without a preview', async () => {
     await renderPage()
-    await selectFirst()
     fireEvent.click(screen.getByTestId('artifact-go-to-session'))
     expect(h.selectSession).toHaveBeenCalledWith('s1')
     expect(h.navigate).toHaveBeenCalledWith({ to: '/cowork' })
     expect(h.requestPreview).not.toHaveBeenCalled()
+  })
+
+  it('opens the preview when a row is double-clicked', async () => {
+    await renderPage()
+    fireEvent.doubleClick(screen.getByTestId('artifact-row'))
+    expect(h.requestPreview).toHaveBeenCalledWith('s1', 'index.html')
+  })
+
+  it('shows details beside the list, with the same two actions', async () => {
+    await renderPage()
+    expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
+    await selectFirst()
+    expect(screen.getByTestId('artifact-inspector')).toHaveTextContent(
+      'common:artifactSource'
+    )
+    expect(screen.getByTestId('artifact-row')).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    fireEvent.click(screen.getByTestId('artifact-inspector-go-to-session'))
+    expect(h.selectSession).toHaveBeenCalledWith('s1')
+    expect(h.requestPreview).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('artifact-inspector-open'))
+    expect(h.requestPreview).toHaveBeenCalledWith('s1', 'index.html')
+    fireEvent.click(screen.getByLabelText('common:artifactClose'))
+    expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
+  })
+
+  it('offers no way to delete a file', async () => {
+    await renderPage()
+    await selectFirst()
+    expect(screen.queryByText('common:artifactDelete')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('artifact-delete')).not.toBeInTheDocument()
+  })
+
+  it('says when the file is no longer on disk and keeps the way back', async () => {
+    h.existsSync.mockResolvedValue(false)
+    await renderPage()
+    await selectFirst()
+    expect(await screen.findByTestId('artifact-missing')).toBeInTheDocument()
+    expect(screen.getByTestId('artifact-inspector-open')).toBeDisabled()
+    expect(
+      screen.getByTestId('artifact-inspector-go-to-session')
+    ).toBeEnabled()
   })
 
   it('narrows the list with the search box', async () => {
@@ -168,33 +186,6 @@ describe('Library route (/artifacts)', () => {
     expect(screen.queryByTestId('artifact-card')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'common:artifactsAll' }))
     expect(screen.getByTestId('artifact-card')).toBeInTheDocument()
-  })
-
-  it('deletes the file only after confirmation, then says it is gone', async () => {
-    await renderPage()
-    await selectFirst()
-    fireEvent.click(screen.getByTestId('artifact-delete'))
-    expect(h.rm).not.toHaveBeenCalled()
-    h.existsSync.mockResolvedValue(false)
-    fireEvent.click(screen.getByTestId('artifact-delete-confirm'))
-    await waitFor(() =>
-      expect(h.rm).toHaveBeenCalledWith('/data/ws/s1/index.html')
-    )
-    expect(h.toastSuccess).toHaveBeenCalled()
-    expect(await screen.findByTestId('artifact-missing')).toBeInTheDocument()
-    expect(screen.queryByTestId('artifact-delete')).not.toBeInTheDocument()
-    // The way back to the session stays.
-    expect(screen.getByTestId('artifact-go-to-session')).toBeInTheDocument()
-  })
-
-  it('reports a failed delete as an error', async () => {
-    h.rm.mockRejectedValue(new Error('denied'))
-    await renderPage()
-    await selectFirst()
-    fireEvent.click(screen.getByTestId('artifact-delete'))
-    fireEvent.click(screen.getByTestId('artifact-delete-confirm'))
-    await waitFor(() => expect(h.toastError).toHaveBeenCalled())
-    expect(screen.queryByTestId('artifact-missing')).not.toBeInTheDocument()
   })
 
   it('shows a headline and a next step when nothing has been made', async () => {
