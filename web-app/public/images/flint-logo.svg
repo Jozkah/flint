@@ -1,0 +1,10 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flint">
+  <rect width="128" height="128" rx="28" fill="#1E1F22"/>
+  <!-- flint shard -->
+  <path d="M34 82 L52 40 L86 34 L74 66 L92 74 L54 100 Z" fill="#2E3033" stroke="#4A4D52" stroke-width="2" stroke-linejoin="round"/>
+  <!-- struck edge highlight -->
+  <path d="M52 40 L86 34 L74 66 Z" fill="#3A3D42"/>
+  <!-- spark -->
+  <path d="M84 44 l10 -12 M96 46 l14 -4 M92 58 l14 6" stroke="#F5A623" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="90" cy="50" r="5" fill="#FFC65C"/>
+</svg>

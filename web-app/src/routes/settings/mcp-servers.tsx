@@ -915,8 +915,8 @@ function MCPServersDesktop() {
                       {config.official && (
                         <div className="flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-0.5 text-xs text-ink-2">
                           <img
-                            src="/images/jan-logo.png"
-                            alt="Jan"
+                            src="/images/flint-logo.svg"
+                            alt="Flint"
                             className="w-3 h-3 object-contain"
                           />
                           <span>Official</span>
