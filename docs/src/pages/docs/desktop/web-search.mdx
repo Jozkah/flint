@@ -20,7 +20,7 @@ import { Callout } from 'nextra/components'
 
 # Web Search
 
-Jan has **built-in web search**. When enabled, Jan advertises two tools - `web_search` and
+Flint has **built-in web search**. When enabled, Flint advertises two tools - `web_search` and
 `web_fetch` - to any model that supports tool use, so the model can look up current information and
 read web pages on its own. It works out of the box with **no API key** and **no MCP server** required.
 
@@ -70,7 +70,7 @@ Choose the backend that answers `web_search` and `web_fetch`. Three providers ar
 |----------|---------|-------|
 | **Exa** (default) | Optional | Uses a free, keyless endpoint out of the box. Add a key for higher rate limits and structured results. |
 | **Tavily** | Required | Needs a [Tavily](https://tavily.com) API key to return results. |
-| **SearXNG** | Optional | Self-hosted. Point Jan at your own [SearXNG](https://searxng.org) instance URL (with the JSON API enabled). |
+| **SearXNG** | Optional | Self-hosted. Point Flint at your own [SearXNG](https://searxng.org) instance URL (with the JSON API enabled). |
 
 ### Exa API Key (optional)
 
@@ -85,6 +85,6 @@ of a key. The settings panel shows the right field for whichever provider you pi
 ## How it relates to MCP search
 
 This built-in web search is **native** - it does not use the [Model Context Protocol](/docs/desktop/mcp).
-Earlier versions of Jan relied on an Exa (or Serper) MCP server for web search; that's no longer
+Earlier versions of Flint relied on an Exa (or Serper) MCP server for web search; that's no longer
 necessary. You can still connect an MCP-based search server if you want a specific provider or extra
 control, but for most users the built-in Web Search is all you need.

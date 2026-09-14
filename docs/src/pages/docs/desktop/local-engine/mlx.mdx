@@ -19,7 +19,7 @@ import { Callout } from 'nextra/components'
 MLX is an inference engine for Apple Silicon (M1 and later). It uses Metal GPU acceleration for fast, efficient local inference — available on macOS 14+.
 
 <Callout type="warning">
-MLX support in Jan is **experimental** and will improve over time. Current limitations:
+MLX support in Flint is **experimental** and will improve over time. Current limitations:
 - **Embeddings are unavailable** — use llama.cpp for embedding/RAG workflows.
 - **Reasoning is not yet wired** — reasoning-style output isn't surfaced separately.
 - **Some newer model architectures fail to load** — if a model won't start, try its llama.cpp (GGUF) version instead.
@@ -51,7 +51,7 @@ model that won't load.
 
 ## Model Management
 
-MLX supports models in MLX-Swift format. Jan ships with MLX-compatible versions of its foundation models.
+MLX supports models in MLX-Swift format. Flint ships with MLX-compatible versions of its foundation models.
 
 ### Download from Hub
 
@@ -59,7 +59,7 @@ Browse and download MLX-compatible models directly from the [Hub](/docs/desktop/
 
 ### Import Local Files
 
-Click **Import** to link an MLX model file already on your computer. This is useful for models downloaded via your browser from Hugging Face, or models shared with other apps — Jan links to the file in place without copying it.
+Click **Import** to link an MLX model file already on your computer. This is useful for models downloaded via your browser from Hugging Face, or models shared with other apps — Flint links to the file in place without copying it.
 
 ### Delete a Model
 

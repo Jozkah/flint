@@ -11,7 +11,7 @@ import { Callout } from 'nextra/components'
 Model Context Protocol servers extend the agent with tools it doesn't have built in - a private
 wiki, a database, a browser that holds a login, an internal API.
 
-Jan Agent reads the same `mcp_config.json` as Jan Desktop, so servers you configured in the app are
+Flint Agent reads the same `mcp_config.json` as Flint Desktop, so servers you configured in the app are
 available in the terminal with nothing further to do. For what MCP is and how to add servers, see
 [Model Context Protocol](/docs/desktop/mcp).
 
@@ -61,7 +61,7 @@ steer between fields as they did in earlier releases.
 A newly added server defaults to inactive, so it is persisted but not connected until you toggle
 it on.
 
-The change is written back to `mcp_config.json`, so it persists - and applies to Jan Desktop too.
+The change is written back to `mcp_config.json`, so it persists - and applies to Flint Desktop too.
 
 ### The server detail screen
 
@@ -83,20 +83,20 @@ for a stdio server, no `View tools` while it is disconnected, no `Reconnect` whi
 
 ### Signing in to a remote server
 
-Remote (`http` / `sse`) servers that require OAuth are handled for you: Jan discovers the provider's
+Remote (`http` / `sse`) servers that require OAuth are handled for you: Flint discovers the provider's
 metadata, registers itself dynamically, and runs the authorization-code flow with PKCE against a
 loopback redirect. `Authenticate` prints the consent URL into the conversation *before* it starts
 waiting, and opens it in your browser - so a remote or headless session can still finish the sign-in
 by opening the URL by hand. The wait times out after five minutes.
 
 A server that fails to connect purely for want of a sign-in says so, rather than reporting a
-transport error: Jan asks the server whether it advertises OAuth instead of guessing from the
+transport error: Flint asks the server whether it advertises OAuth instead of guessing from the
 failure.
 
-Tokens are written to `mcp_oauth.json`, next to `mcp_config.json` in the Jan data folder, with
+Tokens are written to `mcp_oauth.json`, next to `mcp_config.json` in the Flint data folder, with
 `0600` permissions:
 
-- **not in `mcp_config.json`**, which is hand-edited, copied between machines and shared with Jan
+- **not in `mcp_config.json`**, which is hand-edited, copied between machines and shared with Flint
   Desktop; bearer tokens have no business travelling with it
 - Access tokens are refreshed automatically, a minute before they expire, when the provider issued a
   refresh token

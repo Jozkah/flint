@@ -19,7 +19,7 @@ keywords:
 ---
 import { Callout, Steps } from 'nextra/components'
 
-# Using the Model Context Protocol (MCP) in Jan
+# Using the Model Context Protocol (MCP) in Flint
 
 ```mermaid
 graph TD
@@ -64,7 +64,7 @@ graph TD
 ```
 
 
-Jan now supports the **Model Context Protocol (MCP)**, an open standard designed to allow language models to
+Flint now supports the **Model Context Protocol (MCP)**, an open standard designed to allow language models to
 interact with external tools and data sources.
 
 MCPs act as a common interface, standardizing the way an AI model can interact with external tools and data
@@ -75,13 +75,13 @@ to different data sources to accomplish a task, for example, notion, google shee
 applications will be connected to a server with prompts, tools, and data sources which will be used to complete
 the task.
 
-Jan is an MCP host that allows you to download different clients and servers and use them to accomplish a task.
+Flint is an MCP host that allows you to download different clients and servers and use them to accomplish a task.
 
-This document outlines the benefits, risks, and implementation of MCPs within Jan.
+This document outlines the benefits, risks, and implementation of MCPs within Flint.
 
 ## Core Benefits of MCP
 
-Integrating MCP provides a structured way to extend the capabilities of the models you use in Jan. Here are the three
+Integrating MCP provides a structured way to extend the capabilities of the models you use in Flint. Here are the three
 
 * **Standardization:** MCP aims to solve the "M x N" integration problem, where every model (M) needs a
 unique connector for every tool (N). By adapting to a single standard, any compliant model can interface with any compliant tool.
@@ -91,7 +91,7 @@ access to search your local codebase, query a database, or interact with web API
 making your workflows more modular and adaptable over time.
 
 <Callout type="warning">
-  Please note that not all models that you can download and use, whether in Jan or other tools, may be good at
+  Please note that not all models that you can download and use, whether in Flint or other tools, may be good at
   tool calling or compatible with MCP. Make sure that the model you choose is MCP-compliant before integrating
   it into your workflows. This might be available in the model card or you may need to implement it yourself to
   test the capabilities of the model.
@@ -99,7 +99,7 @@ making your workflows more modular and adaptable over time.
 
 <Callout type="info">
   To use MCP effectively, ensure your AI model supports tool calling capabilities:
-  - For cloud models (like Claude or GPT-4): Choose a model in Jan that includes **tools** capability. For built-in providers like Anthropic, Jan reads the provider's model capabilities automatically after you add your API key.
+  - For cloud models (like Claude or GPT-4): Choose a model in Flint that includes **tools** capability. For built-in providers like Anthropic, Flint reads the provider's model capabilities automatically after you add your API key.
   - For local models: Enable tool calling in the model parameters [click the edit button in Model Capabilities](/docs/desktop/model-parameters#model-capabilities-edit-button)
   - Check the model's documentation to confirm MCP compatibility
 </Callout>
@@ -109,7 +109,7 @@ making your workflows more modular and adaptable over time.
 While powerful, MCP is an evolving standard, and its use requires careful consideration of the following points:
 
 * **Security:** Granting a model access to external tools is a significant security consideration. A compromised
-tool or a malicious prompt could potentially lead to unintended actions or data exposure. Jan's implementation
+tool or a malicious prompt could potentially lead to unintended actions or data exposure. Flint's implementation
 focuses on user-managed permissions to mitigate this risk — you must approve each tool call individually. Approval
 panels appear **inline inside the tool card** in the chat, showing the exact arguments the model wants to pass
 before you accept or deny. You can also enable **Allow All MCP Tool Permission** in Settings to pre-approve all
@@ -122,9 +122,9 @@ affect performance (i.e., the more tools the model and the larger the context of
 you will need to wait for a response). Efficient management of tools and their outputs is important.
 
 
-## Configure and Use MCPs within Jan
+## Configure and Use MCPs within Flint
 
-To illustrate how MCPs can be used within Jan, we will walk through an example using the [Browser MCP](https://browsermcp.io/).
+To illustrate how MCPs can be used within Flint, we will walk through an example using the [Browser MCP](https://browsermcp.io/).
 
 Before we begin, go to `Settings` > `MCP Servers` and toggle the `Allow All MCP Tool Permissions` switch ON if you want to pre-approve tool calls.
 
@@ -168,7 +168,7 @@ already logged into in your regular browser session, it is best to give it a cle
 
 ![Browser MCP Extension](./_assets/mcp-setup-8.png)
 
-- Go back to Jan and pick a model with strong tool-use capabilities, such as a Claude Sonnet or Opus model. After you enter your API key in **Model Providers > Anthropic**, Jan will list the available Anthropic models automatically. Choose one that shows **tools** capability in the model picker. No separate Anthropic tool toggle is required.
+- Go back to Flint and pick a model with strong tool-use capabilities, such as a Claude Sonnet or Opus model. After you enter your API key in **Model Providers > Anthropic**, Flint will list the available Anthropic models automatically. Choose one that shows **tools** capability in the model picker. No separate Anthropic tool toggle is required.
 
 ![Browser MCP Extension](./_assets/mcp-setup-9.png)
 
@@ -183,7 +183,7 @@ You can check and see if this was accurate below.
   - Make sure you have NodeJS and Python installed
   - Make sure you typed the commands correctly in the MCP Server form
   - Make sure the model you are using has tools enabled
-  - Restart Jan
+  - Restart Flint
 - The open source model I picked won't use the MCPs I enabled.
   - Make sure the model you are using has tools enabled
   - Lots of open source models are not designed to use tools or simply don't work well with them, so you may need to try a different model
@@ -191,10 +191,10 @@ You can check and see if this was accurate below.
 
 ## Future Potential
 
-This integration is the foundation for creating more capable and context-aware AI assistants within Jan. The
+This integration is the foundation for creating more capable and context-aware AI assistants within Flint. The
 long-term goal is to enable more sophisticated workflows that make use of your local environment securely as
 well as your favorite tools.
 
 For example, an AI could cross-reference information between a local document and a remote API, or use a
-local script to analyze data and then summarize the findings, all orchestrated through Jan's interface. As
-the MCP ecosystem grows, so will the potential applications within Jan.
+local script to analyze data and then summarize the findings, all orchestrated through Flint's interface. As
+the MCP ecosystem grows, so will the potential applications within Flint.

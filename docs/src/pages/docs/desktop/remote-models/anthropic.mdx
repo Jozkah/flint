@@ -20,10 +20,10 @@ import { Settings, Plus } from 'lucide-react'
 
 # Anthropic
 
-Jan supports all of [Anthropic's models](https://anthropic.com/) via API integration, allowing
+Flint supports all of [Anthropic's models](https://anthropic.com/) via API integration, allowing
 you to chat with Claude's latest Opus, Sonnet and Haiku models.
 
-## Integrate Anthropic API with Jan
+## Integrate Anthropic API with Flint
 
 <Steps>
 
@@ -35,7 +35,7 @@ you to chat with Claude's latest Opus, Sonnet and Haiku models.
 Ensure your API key has sufficient credits
 </Callout>
 
-### Step 2: Configure Jan
+### Step 2: Configure Flint
 
 1. Navigate to **Settings** (<Settings width={16} height={16} style={{display:"inline"}}/>)
 2. Under **Model Providers**, select **Anthropic**
@@ -53,8 +53,8 @@ Ensure your API key has sufficient credits
 
 ## Available Anthropic Models
 
-Jan automatically includes Anthropic's available models. In case you want to use a specific Anthropic model
-that you cannot find in **Jan**, follow instructions in [Add Cloud Models](/docs/desktop/manage-models#add-models-1):
+Flint automatically includes Anthropic's available models. In case you want to use a specific Anthropic model
+that you cannot find in **Flint**, follow instructions in [Add Cloud Models](/docs/desktop/manage-models#add-models-1):
 - See list of available models in [Anthropic Models](https://docs.anthropic.com/claude/docs/models-overview).
 - The `id` property must match the model name in the list. For example, `claude-opus-4-20250514`, `claude-sonnet-4-20250514`, or `claude-3-5-haiku-20241022`.
 
@@ -70,7 +70,7 @@ Common issues and solutions:
 **2. Connection Problems**
 - Check your internet connection
 - Verify Anthropic's system status
-- Look for error messages in [Jan's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
+- Look for error messages in [Flint's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
 
 **3. Model Unavailable**
 - Confirm your API key has access to the model

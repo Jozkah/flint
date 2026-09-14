@@ -5,7 +5,7 @@ verification results are appended at the end as work lands.
 
 ## Scope of the initial version
 
-- **Participants are Cowork sessions.** They are JAN's agent sessions: each has
+- **Participants are Cowork sessions.** They are Flint's agent sessions: each has
   a persisted id, a title and, when attached, a project folder. Ordinary chat
   threads have no mid-run boundary and no project folder, so they cannot send or
   receive in this version (the tools are not advertised to them).
@@ -545,8 +545,8 @@ Evidence from the real-app runs:
 - B's transcript showed `[data-testid="agent-message-header"]` "Message from
   New session" with Reply. A second message to idle B was held with Reply, Let
   the agent respond and Dismiss, started no run and did not reach B's model.
-- The approval card in A read "JAN wants to stop the run in session messaging
-  task B stop … Why: we both own src/x.ts … JAN asks every time." with buttons
+- The approval card in A read "Flint wants to stop the run in session messaging
+  task B stop … Why: we both own src/x.ts … Flint asks every time." with buttons
   `Deny`, `Allow once` only.
 - A's tool results: `stop_session` on C was
   `ERROR: {"error":{"code":"unknown_session","message":"no session with that id in this project"}}`

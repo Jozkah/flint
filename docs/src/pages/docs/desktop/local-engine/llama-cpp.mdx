@@ -58,13 +58,13 @@ Browse and download models directly from the [Hub](/docs/desktop/manage-models) 
 
 ### Import Local Files
 
-Click **Import** to link a GGUF model file already on your computer. This is useful for models downloaded via your browser from Hugging Face, or models shared with other apps — Jan links to the file in place without copying it.
+Click **Import** to link a GGUF model file already on your computer. This is useful for models downloaded via your browser from Hugging Face, or models shared with other apps — Flint links to the file in place without copying it.
 
 ![llama.cpp Import](../_assets/llama-cpp-import.png)
 
 ### Delete a Model
 
-Click the trash icon next to any model to remove it. This deletes the model file from Jan's data folder (linked files leave the original intact).
+Click the trash icon next to any model to remove it. This deletes the model file from Flint's data folder (linked files leave the original intact).
 
 <Callout type="info">
 These are advanced settings. You typically only need to adjust them if models aren't working properly or you want to optimize performance for your specific hardware.
@@ -81,12 +81,12 @@ These are advanced settings. You typically only need to adjust them if models ar
 | **Max Concurrent Models** | Maximum models the router keeps loaded at once | Set to 1 if you want strict single-model operation; 0 means unlimited |
 
 <Callout type="info">
-Jan v0.8.0 switched llama.cpp from launching a separate server for each model to a single **router process** (`llama-server --models-preset <router.preset.ini> --models-max <N> --no-webui`) that loads and unloads models on demand via the upstream `POST /models/load` and `POST /models/unload` endpoints. You no longer need to manually start or stop individual models — the router handles scheduling automatically. After installing a backend, Jan checks for required system libraries (CUDA, Vulkan, cuDNN) and shows you what to install if anything is missing.
+Flint v0.8.0 switched llama.cpp from launching a separate server for each model to a single **router process** (`llama-server --models-preset <router.preset.ini> --models-max <N> --no-webui`) that loads and unloads models on demand via the upstream `POST /models/load` and `POST /models/unload` endpoints. You no longer need to manually start or stop individual models — the router handles scheduling automatically. After installing a backend, Flint checks for required system libraries (CUDA, Vulkan, cuDNN) and shows you what to install if anything is missing.
 </Callout>
 
 ## Hardware Backends
 
-Jan offers different backend versions optimized for your specific hardware. Think of these as different "drivers" - each one is tuned for particular processors or graphics cards.
+Flint offers different backend versions optimized for your specific hardware. Think of these as different "drivers" - each one is tuned for particular processors or graphics cards.
 
 <Callout type="warning">
 Using the wrong backend can make models run slowly or fail to load. Pick the one that matches your hardware.
@@ -296,7 +296,7 @@ These settings are for fine-tuning model behavior and advanced use cases.
 ## Quick Setup Guide
 
 **For most users:**
-1. Use the default backend that Jan installs
+1. Use the default backend that Flint installs
 2. Enable Auto Update Engine for automatic compatibility
 3. Leave all performance settings at defaults
 4. Only adjust if you experience problems
@@ -327,5 +327,5 @@ These settings are for fine-tuning model behavior and advanced use cases.
 4. Fine-tune thread counts based on your CPU
 
 <Callout type="info">
-Most users can run Jan successfully without changing any of these settings. The defaults are chosen to work well on typical hardware.
+Most users can run Flint successfully without changing any of these settings. The defaults are chosen to work well on typical hardware.
 </Callout>

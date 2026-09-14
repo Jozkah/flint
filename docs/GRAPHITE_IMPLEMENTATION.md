@@ -1,6 +1,6 @@
-# JAN Graphite Studio: implementation handoff
+# Flint Graphite Studio: implementation handoff
 
-This document records the production implementation of the JAN Graphite Studio
+This document records the production implementation of the Flint Graphite Studio
 design. It supersedes the visual direction described in
 `docs/ATELIER_IMPLEMENTATION.md` (ivory surfaces, Newsreader headings); that
 document's feature-preservation map and contracts still apply. Functional
@@ -10,7 +10,7 @@ behaviour is defined by `docs/IMPLEMENTATION_BASELINE.md`,
 
 ## Design reference
 
-- Approved reference: JAN Graphite Studio artifact
+- Approved reference: Flint Graphite Studio artifact
   `https://claude.ai/code/artifact/96229b22-48ea-4257-b729-3cd24fb15b6c`,
   published version `1789377038-712e` (the latest version when implementation
   started on 2026-09-14).
@@ -76,7 +76,7 @@ merged after review:
 | Lane | Branch | Scope |
 | --- | --- | --- |
 | Foundation | `feat/graphite-integration` | Tokens, fonts, rail, header, status bar, primitives, accent presets, work status |
-| Chat | `lane/graphite-chat` | Conversation, composer, message actions, tool rows and reasoning trace, Details inspector ("What JAN is using"), split conversations, home, collections, workspace sidebar |
+| Chat | `lane/graphite-chat` | Conversation, composer, message actions, tool rows and reasoning trace, Details inspector ("What Flint is using"), split conversations, home, collections, workspace sidebar |
 | Cowork | `lane/graphite-cowork` | Session header, plan strip, output and changes, per-hunk review bar, checkpoints and recovery dialogs, emergency stop, evidence-based verification summaries |
 | Agents and models | `lane/graphite-agents-models` | Tasks, team reviews, child approvals, providers, model fit and compatibility, model picker and model dialogs, wide data views |
 | Library and system | `lane/graphite-library-system` | Library list and inspector, system monitor, log viewer, search and command palette, onboarding, status bar, toasts, global error |

@@ -30,12 +30,12 @@ import { Tabs, Callout, Steps } from 'nextra/components'
 import { Settings } from 'lucide-react'
 
 # Linux Installation
-Instructions for installing Jan on Linux.
+Instructions for installing Flint on Linux.
 
-## Install Jan
+## Install Flint
 
 <Callout type="info">
-**Flatpak is the recommended way to install Jan on Linux.** It runs on any distribution and updates automatically through Flathub. Use the `.deb` or AppImage only if you can't use Flatpak.
+**Flatpak is the recommended way to install Flint on Linux.** It runs on any distribution and updates automatically through Flathub. Use the `.deb` or AppImage only if you can't use Flatpak.
 </Callout>
 
 <Tabs items={['Flatpak (recommended)', '.deb (Ubuntu/Debian)', 'AppImage']}>
@@ -89,9 +89,9 @@ chmod +x jan-linux-x86_64-{version}.AppImage
 </Tabs.Tab>
 </Tabs>
 
-## Updating Jan
+## Updating Flint
 
-How Jan updates depends on which package you installed:
+How Flint updates depends on which package you installed:
 
 <Tabs items={['Flatpak (recommended)', 'AppImage', '.deb (Ubuntu/Debian)']}>
 <Tabs.Tab>
@@ -105,7 +105,7 @@ flatpak update ai.jan.Jan
 </Tabs.Tab>
 <Tabs.Tab>
 
-The AppImage supports Jan's **built-in auto-updater**. When a new release is available, Jan downloads and applies it in place, then restarts.
+The AppImage supports Flint's **built-in auto-updater**. When a new release is available, Flint downloads and applies it in place, then restarts.
 
 </Tabs.Tab>
 <Tabs.Tab>
@@ -129,9 +129,9 @@ Your data folder (`~/.local/share/Jan`) and configuration (`~/.config/Jan`) are 
 - **GPU:** 6GB VRAM minimum
 - **Storage:** 10GB free space minimum
 
-## Jan Data Folder
+## Flint Data Folder
 
-Jan stores all your data locally — downloaded models, conversation threads, settings, and logs generated from using the app. Nothing is sent to the cloud.
+Flint stores all your data locally — downloaded models, conversation threads, settings, and logs generated from using the app. Nothing is sent to the cloud.
 
 Default location (resolves via `XDG_DATA_HOME`):
 
@@ -139,9 +139,9 @@ Default location (resolves via `XDG_DATA_HOME`):
 ~/.local/share/Jan/data
 ```
 
-The path to Jan's per-user configuration file (which records the data folder location) lives at `~/.config/Jan/`.
+The path to Flint's per-user configuration file (which records the data folder location) lives at `~/.config/Jan/`.
 
-See [Jan Data Folder](/docs/desktop/data-folder) for details.
+See [Flint Data Folder](/docs/desktop/data-folder) for details.
 
 
 ## GPU Acceleration
@@ -219,7 +219,7 @@ Requires Vulkan support.
 
 </Tabs>
 
-## Uninstall Jan
+## Uninstall Flint
 
 Removal commands:
 <Tabs items={['Flatpak', '.deb (Ubuntu/Debian)', 'AppImage']}>

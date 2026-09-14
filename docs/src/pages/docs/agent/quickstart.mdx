@@ -21,7 +21,7 @@ import { SquareTerminal, Wrench, Settings, Users } from 'lucide-react'
 
 # QuickStart
 
-Get Jan Agent running and finish a real task in a few minutes. You need a terminal and an API key
+Get Flint Agent running and finish a real task in a few minutes. You need a terminal and an API key
 for one model provider.
 
 <Steps>
@@ -29,7 +29,7 @@ for one model provider.
 ### Install Nightly
 
 <Callout type="warning">
-Jan Agent is a preview. The installer on `dev` pulls from the `agent-nightly` channel - expect
+Flint Agent is a preview. The installer on `dev` pulls from the `agent-nightly` channel - expect
 nightly-quality builds.
 </Callout>
 
@@ -56,14 +56,14 @@ jan --version
 ```
 
 <Callout type="info">
-Already have the Jan repo checked out? `scripts/install-jan-agent.sh --source` builds from your
+Already have the Flint repo checked out? `scripts/install-jan-agent.sh --source` builds from your
 checkout instead of downloading. Source builds don't self-update, because the update channel is
 stamped in by CI.
 </Callout>
 
 ### Connect a provider
 
-Jan Agent has no local inference engine - it calls a remote provider. Point it at one:
+Flint Agent has no local inference engine - it calls a remote provider. Point it at one:
 
 ```bash
 jan config set --provider anthropic --api-key sk-ant-...
@@ -82,7 +82,7 @@ jan config list
 ```
 
 <Callout type="info">
-Already using Jan Desktop? Jan Agent picks up the providers you configured there, so you can skip
+Already using Flint Desktop? Flint Agent picks up the providers you configured there, so you can skip
 this step entirely.
 </Callout>
 

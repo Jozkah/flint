@@ -8,7 +8,7 @@ import { Steps, Callout } from 'nextra/components'
 
 # MCP Servers
 
-Jan supports the [Model Context Protocol](https://modelcontextprotocol.io), letting you connect any MCP-compatible server to extend what your AI can do — web search, browser control, code execution, databases, and more.
+Flint supports the [Model Context Protocol](https://modelcontextprotocol.io), letting you connect any MCP-compatible server to extend what your AI can do — web search, browser control, code execution, databases, and more.
 
 ![MCP Servers Settings](../_assets/mcp-server-settings.png)
 
@@ -16,7 +16,7 @@ Jan supports the [Model Context Protocol](https://modelcontextprotocol.io), lett
 
 - **Allow All MCP Tool Permissions** — When enabled, all MCP tool calls are automatically approved without showing permission dialogs. Applies globally to all conversations.
 - **Tool call timeout** — Maximum time (in seconds) to wait for an MCP tool response before timing out. Default is 30 seconds.
-- **Smart MCP tool routing** — When enabled, Jan narrows which MCP servers are queried for tools on each turn when you have more than a small number of connected servers, reducing context size. You can optionally use a **dedicated lightweight model** for that routing step.
+- **Smart MCP tool routing** — When enabled, Flint narrows which MCP servers are queried for tools on each turn when you have more than a small number of connected servers, reducing context size. You can optionally use a **dedicated lightweight model** for that routing step.
 - **Routing model** — Single picker for provider + model; only lightweight models are listed. Requires smart routing and “Use a dedicated model for routing” to be on.
 
 For developers tuning routing behavior (latency, fallbacks, token usage), see [MCP routing](../mcp-routing-telemetry).
@@ -52,7 +52,7 @@ Toggle the server on. It will appear in the list with a green indicator when act
 Each remote (`HTTP` / `SSE`) server shows an **Auth** line with its current state and the actions
 that state allows.
 
-- **Sign in** runs OAuth against the server: Jan discovers the provider's metadata, registers itself
+- **Sign in** runs OAuth against the server: Flint discovers the provider's metadata, registers itself
   dynamically, and completes the authorization-code flow with PKCE against a loopback redirect. Your
   browser opens automatically; if it does not, use the **Open the sign-in page** link that appears
   while the flow is pending. The wait times out after five minutes.
@@ -61,9 +61,9 @@ that state allows.
   again.
 
 A server that fails to connect purely for want of a sign-in says so, instead of showing a transport
-error - Jan asks the server whether it advertises OAuth rather than guessing from the failure.
+error - Flint asks the server whether it advertises OAuth rather than guessing from the failure.
 
-Tokens are stored in `mcp_oauth.json` in the Jan data folder, next to `mcp_config.json` and never
+Tokens are stored in `mcp_oauth.json` in the Flint data folder, next to `mcp_config.json` and never
 inside it, with owner-only permissions. They are refreshed automatically shortly before they expire
 when the provider issued a refresh token. Changing a server's URL invalidates its tokens rather than
 sending credentials issued for a different endpoint, and removing a server clears them too.

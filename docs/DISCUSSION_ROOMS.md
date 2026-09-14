@@ -12,7 +12,7 @@ moderator model directs the discussion. The user is always present and in
 control. A room has an objective, a speaking mode, limits, usage counters, a
 status and an append-only transcript.
 
-Rooms are orchestrated in the renderer, one model call at a time, through JAN's
+Rooms are orchestrated in the renderer, one model call at a time, through Flint's
 existing model abstraction:
 
 - `useModelProvider.getState().getProviderByName(provider)`
@@ -386,7 +386,7 @@ limits (no pricing entered) and more than eight participants.
 ## Current limitations
 
 - `toolAccess: 'read'` is accepted but runs without tools, with a system note.
-- The context window for OpenAI-compatible servers comes from JAN's existing
+- The context window for OpenAI-compatible servers comes from Flint's existing
   capability resolution; a server-reported `max_model_len` is not used.
 - The Rooms rail entry (`lib/shellNavigation.ts` `RAIL_ITEMS`, icon in
   `components/shell/AppRail.tsx`, `common:appRail.rooms`) is applied on top of

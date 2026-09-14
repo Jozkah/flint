@@ -30,9 +30,9 @@ import { Callout, Steps } from 'nextra/components'
 
 ## How to Get Error Logs
 
-Error logs are essential for troubleshooting issues and getting help from Jan team. To get error logs from Jan, follow the steps below:
+Error logs are essential for troubleshooting issues and getting help from Flint team. To get error logs from Flint, follow the steps below:
 
-#### Through Jan Interface
+#### Through Flint Interface
 
 1. Open **System Monitor** in the footer
 2. Choose **App Log**
@@ -49,46 +49,46 @@ tail -n 50 ~/Library/Application\ Support/Jan/data/logs/app.log
 
 App, server, and engine messages are all written to the same `logs/app.log` file (look for the `[APP]` / `[SERVER]` / `[SPECS]` tags). Local model output from llama.cpp appears prefixed with `[llamacpp-router]` and `[llamacpp-router stdout]` — these lines are the best source when a model fails to load or crashes.
 
-The `logs/app.log` file lives inside your Jan data folder:
+The `logs/app.log` file lives inside your Flint data folder:
 
 - **macOS:** `~/Library/Application Support/Jan/data/logs/app.log`
-- **Windows:** `%APPDATA%\Jan\data\logs\app.log`
+- **Windows:** `%APPDATA%\Flint\data\logs\app.log`
 - **Linux:** `~/.local/share/Jan/data/logs/app.log`
 
 <Callout type="warning">
 Ensure to redact any private or sensitive information when sharing logs or error details. We retain your logs for only 24 hours.
 </Callout>
 
-## Jan Won't Start or Crashes on Launch
+## Flint Won't Start or Crashes on Launch
 
-If Jan fails to open, closes immediately, or hangs on a blank window:
+If Flint fails to open, closes immediately, or hangs on a blank window:
 
 **1. Corrupt settings/store file**
 
-A damaged `store.json` in the data folder can prevent Jan from starting. Fully quit Jan, then rename or delete `store.json` (Jan regenerates it on next launch):
+A damaged `store.json` in the data folder can prevent Flint from starting. Fully quit Flint, then rename or delete `store.json` (Flint regenerates it on next launch):
 
 - **macOS:** `~/Library/Application Support/Jan/data/store.json`
-- **Windows:** `%APPDATA%\Jan\data\store.json`
+- **Windows:** `%APPDATA%\Flint\data\store.json`
 - **Linux:** `~/.local/share/Jan/data/store.json`
 
 This resets app preferences but keeps your models and chat history. If it still won't start, try a [clean reinstall](#broken-build).
 
-**2. Another Jan instance is already running**
+**2. Another Flint instance is already running**
 
-Jan is single-instance — launching it again just focuses the existing window. If you see no window at all, check for a stale process (system tray icon, or `ps aux | grep -i jan` / Task Manager) and quit it before relaunching.
+Flint is single-instance — launching it again just focuses the existing window. If you see no window at all, check for a stale process (system tray icon, or `ps aux | grep -i jan` / Task Manager) and quit it before relaunching.
 
 **3. Port 1337 already in use**
 
-Jan's Local API Server binds to `127.0.0.1:1337` and does **not** fall back to another port automatically. If that port is taken (often by a previous Jan process that didn't exit cleanly), the server fails to bind. See [Port Conflicts](#failed-to-fetch-or-somethings-amiss-errors) below to find and free the port, or change it in **Settings** > **Local API Server**.
+Flint's Local API Server binds to `127.0.0.1:1337` and does **not** fall back to another port automatically. If that port is taken (often by a previous Flint process that didn't exit cleanly), the server fails to bind. See [Port Conflicts](#failed-to-fetch-or-somethings-amiss-errors) below to find and free the port, or change it in **Settings** > **Local API Server**.
 
 
 ## Broken Build
 
-To resolve the issue where Jan is stuck in a broken build after installation:
+To resolve the issue where Flint is stuck in a broken build after installation:
 
 <Tabs items={['Mac', 'Windows', 'Linux']}>
   <Tabs.Tab>
-      1. **Uninstall** Jan
+      1. **Uninstall** Flint
 
       2. **Delete** Application Data, Cache, and User Data:
 
@@ -96,11 +96,11 @@ To resolve the issue where Jan is stuck in a broken build after installation:
       rm -rf ~/Library/Application\ Support/Jan
       ```
 
-      3. **Download** the [latest version of Jan](/download)
+      3. **Download** the [latest version of Flint](/download)
   </Tabs.Tab>
 
   <Tabs.Tab>
-      1. **Uninstall** Jan, using the [Windows Control Panel](https://support.microsoft.com/en-us/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98)
+      1. **Uninstall** Flint, using the [Windows Control Panel](https://support.microsoft.com/en-us/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98)
 
       2. **Delete** Application Data, Cache, and User Data:
 
@@ -109,11 +109,11 @@ To resolve the issue where Jan is stuck in a broken build after installation:
       rmdir /S Jan
       ```
 
-      3. **Download** the [latest version of Jan](/download)
+      3. **Download** the [latest version of Flint](/download)
   </Tabs.Tab>
 
   <Tabs.Tab>
-      1. **Uninstall** Jan
+      1. **Uninstall** Flint
 
       Choose the appropriate method based on how you installed Jan:
 
@@ -121,7 +121,7 @@ To resolve the issue where Jan is stuck in a broken build after installation:
       ```
       sudo apt-get remove Jan
       ```
-      **For Others:** Delete the Jan `.AppImage` file from your system
+      **For Others:** Delete the Flint `.AppImage` file from your system
 
       2. Delete Application Data, Cache, and User Data:
 
@@ -132,22 +132,22 @@ To resolve the issue where Jan is stuck in a broken build after installation:
       ~/.config/Jan
       ```
 
-      3. **Download** the [latest version of Jan](/download)
+      3. **Download** the [latest version of Flint](/download)
   </Tabs.Tab>
 
 </Tabs>
 
-Following these steps, you can cleanly uninstall and reinstall Jan, ensuring a smooth and error-free experience with the latest version.
+Following these steps, you can cleanly uninstall and reinstall Flint, ensuring a smooth and error-free experience with the latest version.
 
 <Callout type="info">
-  Before reinstalling Jan, ensure it's completely removed from all shared spaces if installed on multiple user accounts on your device.
+  Before reinstalling Flint, ensure it's completely removed from all shared spaces if installed on multiple user accounts on your device.
 </Callout>
 
 ## Cannot Relocate Data Folder on Windows
 
-If you are unable to change the data folder location through Jan's interface on Windows, you can manually update it by editing the settings file:
+If you are unable to change the data folder location through Flint's interface on Windows, you can manually update it by editing the settings file:
 
-1. Fully **quit Jan** (right-click the system tray icon → Quit)
+1. Fully **quit Flint** (right-click the system tray icon → Quit)
 
 2. Open File Explorer and navigate to:
    ```
@@ -165,16 +165,16 @@ If you are unable to change the data folder location through Jan's interface on 
 
 5. Optionally, **copy your data** from the old folder to the new folder to preserve your models, chat history, and settings
 
-6. **Save** the file and **restart Jan**
+6. **Save** the file and **restart Flint**
 
-Jan will now use the new data folder location.
+Flint will now use the new data folder location.
 
 <Callout type="info">
-  Use double backslashes (`\\`) for path separators in the JSON file, e.g. `"D:\\Jan\\data"`.
+  Use double backslashes (`\\`) for path separators in the JSON file, e.g. `"D:\\Flint\\data"`.
 </Callout>
 
 ## Troubleshooting NVIDIA GPU
-To resolve issues when Jan does not utilize the NVIDIA GPU on Windows and Linux systems.
+To resolve issues when Flint does not utilize the NVIDIA GPU on Windows and Linux systems.
 
 <Steps>
 
@@ -226,28 +226,28 @@ Ensure your (V)RAM is accessible; some users with virtual RAM may require additi
 
 ### Step 2: Turn on GPU acceleration
 
-Jan manages GPU usage automatically:
+Flint manages GPU usage automatically:
 - Switches to GPU mode when supported
 - Automatically selects GPU with highest VRAM
 
 To verify GPU acceleration is turned on:
 1. Open **Settings** > **Hardware**
 2. Verify that **GPU Acceleration** is turned on
-3. Verify your selected GPU(s) are visible in **System Monitor** from Jan's footer
+3. Verify your selected GPU(s) are visible in **System Monitor** from Flint's footer
 
 <br/>
 ![Hardware](./_assets/hardware-settings.png)
 <br/>
 
 
-### Step 3: Restart Jan
+### Step 3: Restart Flint
 
-Restart Jan to make sure it works.
+Restart Flint to make sure it works.
 
 </Steps>
 
 ### Tested Configurations
-These configurations have been verified to work with Jan's GPU acceleration. You can use them as reference points for your setup.
+These configurations have been verified to work with Flint's GPU acceleration. You can use them as reference points for your setup.
 
 **Bare Metal Installations**
 
@@ -287,8 +287,8 @@ Ubuntu on Proxmox VM
 
 ## AMD and Apple GPUs
 
-Jan isn't limited to NVIDIA. It detects your hardware and picks a backend automatically, but a GPU
-backend is only preferred when a GPU reports **at least 6 GB of VRAM** — below that, Jan runs on CPU.
+Flint isn't limited to NVIDIA. It detects your hardware and picks a backend automatically, but a GPU
+backend is only preferred when a GPU reports **at least 6 GB of VRAM** — below that, Flint runs on CPU.
 
 **AMD / Intel (Vulkan):**
 - Requires up-to-date GPU drivers with Vulkan support.
@@ -306,12 +306,12 @@ backend is only preferred when a GPU reports **at least 6 GB of VRAM** — below
   backend build; otherwise the model process will fail to start.
 
 **GPU not detected after sleep (Linux):**
-- After suspend/resume the driver state can go stale and Jan may report "No GPU detected." Restart
-  Jan to re-probe the hardware.
+- After suspend/resume the driver state can go stale and Flint may report "No GPU detected." Restart
+  Flint to re-probe the hardware.
 
 ## Model Won't Load or Crashes (llama.cpp)
 
-When a local model fails to load or crashes mid-generation, Jan surfaces the error in the chat (as a
+When a local model fails to load or crashes mid-generation, Flint surfaces the error in the chat (as a
 model error banner) and writes the underlying cause to [the logs](#how-to-get-error-logs). The most
 common causes:
 
@@ -385,7 +385,7 @@ See the [Custom Endpoints](/docs/desktop/remote-models/custom-endpoint#troublesh
 
 ## Permission Denied
 
-When running Jan, you might encounter the following error message:
+When running Flint, you might encounter the following error message:
 
 ```
 Uncaught (in promise) Error: Error invoking remote method 'installExtension':
@@ -403,7 +403,7 @@ Permission problems mainly cause this error during installation. To resolve this
 sudo chown -R $(whoami) ~/.npm
 ```
 
-This command ensures that the necessary permissions are granted for Jan's installation.
+This command ensures that the necessary permissions are granted for Flint's installation.
 
 
 ## "Failed to fetch" or "Something's Amiss" errors
@@ -423,7 +423,7 @@ When you start a chat with a model and encounter a **Failed to Fetch** or **Some
 
 **3. Port Conflicts**
 
-If you check your [app logs](/docs/desktop/troubleshooting#how-to-get-error-logs) & see "Address already in use" or a bind failure on `127.0.0.1:1337` (Jan's default Local API Server port), check port availability:
+If you check your [app logs](/docs/desktop/troubleshooting#how-to-get-error-logs) & see "Address already in use" or a bind failure on `127.0.0.1:1337` (Flint's default Local API Server port), check port availability:
 ```
 # Mac
 netstat -an | grep 1337
@@ -441,13 +441,13 @@ If port `1337` is occupied, change it under **Settings** > **Local API Server** 
   `Netstat` displays the contents of various network-related data structures for active connections.
 </Callout>
 
-Default Jan ports:
-- Jan Local API Server: `1337`
-- Jan Documentation: `3001`
+Default Flint ports:
+- Flint Local API Server: `1337`
+- Flint Documentation: `3001`
 
 **4. Factory Reset**
 
-A factory reset can resolve persistent issues by returning Jan to its original state. This will remove all custom settings, downloaded models, and chat history.
+A factory reset can resolve persistent issues by returning Flint to its original state. This will remove all custom settings, downloaded models, and chat history.
 1. Go to **Settings** > **General**
 2. At **Reset To Factory Settings**, click **Reset**
 
@@ -456,11 +456,11 @@ This will delete all chat history, models, and settings.
 </Callout>
 
 **5. Try a clean installation**
-- Uninstall Jan & clean Jan data folders ([Mac](/docs/desktop/install/mac#uninstall-jan), [Windows](/docs/desktop/install/windows#uninstall-jan), [Linux](/docs/desktop/install/linux#uninstall-jan))
+- Uninstall Flint & clean Flint data folders ([Mac](/docs/desktop/install/mac#uninstall-jan), [Windows](/docs/desktop/install/windows#uninstall-jan), [Linux](/docs/desktop/install/linux#uninstall-jan))
 - Install the latest [stable release](/download)
 
 <Callout type="warning">
-This will delete all your Jan data.
+This will delete all your Flint data.
 </Callout>
 
 ## OpenAI Unexpected Token Issue
@@ -494,11 +494,11 @@ The "Unexpected token" error usually relates to OpenAI API authentication or reg
 - Reduce GPU layers if using GPU acceleration
 - Verify adequate power supply (desktop systems)
 
-## Jan CLI
+## Flint CLI
 
-### Windows: running `jan` opens the Jan application window
+### Windows: running `jan` opens the Flint application window
 
-If typing `jan` in a terminal opens the Jan desktop app instead of the CLI, your system is resolving the `jan` command to the app launcher rather than the CLI binary.
+If typing `jan` in a terminal opens the Flint desktop app instead of the CLI, your system is resolving the `jan` command to the app launcher rather than the CLI binary.
 
 To fix this, add the CLI binary directory to your `Path` environment variable:
 

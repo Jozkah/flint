@@ -1,18 +1,18 @@
-# JAN Atelier: implementation and feature-preservation map
+# Flint Atelier: implementation and feature-preservation map
 
 > **Superseded visual direction.** The Atelier look described here (ivory
-> surfaces, Newsreader headings, 80px graphite rail) was replaced by JAN
+> surfaces, Newsreader headings, 80px graphite rail) was replaced by Flint
 > Graphite Studio; see `docs/GRAPHITE_IMPLEMENTATION.md`. The
 > feature-preservation map and contracts below still apply.
 
-This document tracks the production implementation of the approved JAN Atelier
+This document tracks the production implementation of the approved Flint Atelier
 design. It sits beside `docs/IMPLEMENTATION_BASELINE.md` (backend contracts a
 redesign must preserve) and `docs/BEGINNER_WORKFLOWS_HANDOFF.md` (beginner
 workflow behaviour).
 
 ## Design reference
 
-- Approved reference: JAN Atelier artifact
+- Approved reference: Flint Atelier artifact
   `https://claude.ai/code/artifact/fcb87849-b092-4145-8ab7-190a332de30e`,
   published version `1789318543-eeeb`, shown as V4 in the version picker, build
   label `r6 · 2026-09-13`. The mirror
