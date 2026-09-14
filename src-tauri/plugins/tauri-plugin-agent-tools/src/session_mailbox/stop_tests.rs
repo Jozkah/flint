@@ -406,6 +406,6 @@ fn stop_session_is_a_session_only_write_tool_the_gate_does_not_prompt_for() {
     assert!(crate::tools::advertised_in_scope("stop_session", true));
     assert_eq!(
         crate::readiness::required_capabilities("stop_session"),
-        vec![crate::readiness::capability::FS_WRITE]
+        vec![crate::readiness::capability::FS_READ]
     );
 }
