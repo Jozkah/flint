@@ -1287,6 +1287,14 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_steering,
     },
     Scenario {
+        name: "session-messaging-overlap-request-reaches-running-peer",
+        run: scenario_session_messaging,
+    },
+    Scenario {
+        name: "stop-session-stops-a-same-project-peer-after-approval",
+        run: scenario_stop_session,
+    },
+    Scenario {
         name: "stopping-a-run-withdraws-its-approval-prompt",
         run: scenario_stop_withdraws_approval,
     },
@@ -7612,6 +7620,502 @@ fn scenario_steering(ctx: &Ctx) -> ScenarioResult {
         ensure!(!b.contains("steer one") && !b.contains("steer two"), "session B's request carried A's steering");
         Ok(())
     })();
+    let _ = ctx.script_model("plain", &[]);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Cross-session messaging and stop_session (docs/SESSION_MESSAGING.md)
+// ---------------------------------------------------------------------------
+
+/// Re-script the fixture's per-conversation routes (default script `plain`).
+fn script_routes(ctx: &Ctx, routes: &Value, fresh_turns: bool) -> ScenarioResult {
+    let port = ctx.mock_port;
+    let body = serde_json::json!({
+        "script": "plain",
+        "tools": [],
+        "routes": routes,
+        "fresh_turns": fresh_turns,
+        "delay": 0.4,
+    })
+    .to_string();
+    let ok = ctx.eval_bool(&format!(
+        r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+             method: 'POST',
+             headers: {{ 'Content-Type': 'application/json' }},
+             body: {body:?},
+           }});
+           return res.ok;"#
+    ))?;
+    ensure!(ok, "could not script the fixture's routes");
+    Ok(())
+}
+
+/// `mailbox_list_sessions` for `session`, straight from the backend.
+fn mailbox_peers(ctx: &Ctx, session: &str) -> Result<Vec<Value>, Failure> {
+    let raw = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const r = await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|mailbox_list_sessions',
+             {{ dataFolder: c.data_folder, sessionId: {session:?} }});
+           return JSON.stringify(r);"#
+    ))?;
+    serde_json::from_str(&raw).map_err(|e| Failure(format!("{e}: {raw}")))
+}
+
+fn content_text(message: &Value) -> String {
+    match &message["content"] {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p["text"].as_str())
+            .collect::<Vec<_>>()
+            .join(""),
+        _ => String::new(),
+    }
+}
+
+fn first_user_text(body: &Value) -> String {
+    body["messages"]
+        .as_array()
+        .and_then(|m| m.iter().find(|m| m["role"] == "user"))
+        .map(content_text)
+        .unwrap_or_default()
+}
+
+/// A request's tool results as `(tool name, text)`, in order, quotes unescaped.
+fn tool_results(body: &Value) -> Vec<(String, String)> {
+    let messages = body["messages"].as_array().cloned().unwrap_or_default();
+    let mut names = std::collections::HashMap::new();
+    for m in &messages {
+        for call in m["tool_calls"].as_array().into_iter().flatten() {
+            if let (Some(id), Some(name)) = (call["id"].as_str(), call["function"]["name"].as_str()) {
+                names.insert(id.to_string(), name.to_string());
+            }
+        }
+    }
+    messages
+        .iter()
+        .filter(|m| m["role"] == "tool")
+        .map(|m| {
+            let name = names
+                .get(m["tool_call_id"].as_str().unwrap_or_default())
+                .cloned()
+                .unwrap_or_default();
+            (name, content_text(m).replace("\\\"", "\""))
+        })
+        .collect()
+}
+
+/// The newest fixture request `pick` accepts, waiting up to `timeout`.
+fn wait_for_request(
+    ctx: &Ctx,
+    what: &str,
+    pick: impl Fn(&Value) -> bool,
+    timeout: Duration,
+) -> Result<Value, Failure> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(found) = model_requests(ctx)?.into_iter().rev().find(|b| pick(b)) {
+            return Ok(found);
+        }
+        ensure!(Instant::now() < deadline, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}
+
+/// Stop every Cowork run still going, through each session's own Stop.
+fn stop_every_run(ctx: &Ctx) {
+    for _ in 0..4 {
+        let Ok(running) = running_sessions(ctx) else { return };
+        let Some(sid) = running.first() else { return };
+        let _ = open_cowork_session(ctx, sid).and_then(|()| stop_current(ctx));
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Session messaging between two ordinary Cowork sessions, real app.
+///
+/// App, IPC, the Rust mailbox and the renderer are real; the *model's* turns
+/// are scripted by the mock provider (routes keyed by each session's first
+/// message). Sessions A and B share the fixture project; C is in another
+/// folder. B streams for a while, then calls a tool; A lists sessions and
+/// messages B meanwhile. B's next model request carries the fenced mail after
+/// its intact tool round, B's transcript attributes it to A, and a later
+/// message to an idle B is held for its user.
+fn scenario_session_messaging(ctx: &Ctx) -> ScenarioResult {
+    messaging_between_sessions(ctx, false)
+}
+
+/// As above, then A calls `stop_session` on C (refused: another project) and
+/// on B; A's user approves the prompt in A; B's run stops, B's transcript
+/// records who stopped it and why, and A's tool result says `applied`.
+fn scenario_stop_session(ctx: &Ctx) -> ScenarioResult {
+    messaging_between_sessions(ctx, true)
+}
+
+fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
+    let other = ctx.workspace.join("messaging-other-project");
+    std::fs::create_dir_all(&other).map_err(|e| Failure(e.to_string()))?;
+    std::fs::write(other.join("README.md"), "# another project\n")
+        .map_err(|e| Failure(e.to_string()))?;
+    let tag = if stop { "stop" } else { "msg" };
+    let task_a = format!("messaging task A {tag}");
+    let task_b = format!("messaging task B {tag}");
+    let reason = "we both own src/x.ts";
+    let mail = "Please stop/pause: we both own src/x.ts";
+    const WRAPPER: &str = "[Coordination message from session";
+
+    let result = (|| -> ScenarioResult {
+        ctx.script_model("plain", &[])?;
+        new_cowork_session(ctx)?;
+        attach_folder(ctx, &other)?;
+        let c = current_cowork_session(ctx)?;
+        new_cowork_session(ctx)?;
+        attach_folder(ctx, &ctx.project)?;
+        let b = current_cowork_session(ctx)?;
+        new_cowork_session(ctx)?;
+        attach_folder(ctx, &ctx.project)?;
+        let a = current_cowork_session(ctx)?;
+        ensure!(a != b && b != c && a != c, "sessions were not distinct: A={a} B={b} C={c}");
+        // A folder starts a session in Review, which offers no stop_session.
+        choose_mode(ctx, "Ask before changes")?;
+        println!("messaging sessions: A={a} B={b} C={c} (C in {})", other.display());
+
+        // Presence reached the backend: A's project holds B, not C.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let peers = mailbox_peers(ctx, &a)?;
+            if peers.iter().any(|p| p["id"] == b.as_str()) {
+                ensure!(
+                    !peers.iter().any(|p| p["id"] == c.as_str()),
+                    "A's project lists C from another folder: {peers:?}"
+                );
+                break;
+            }
+            ensure!(Instant::now() < deadline, "A never saw B in its project: {peers:?}");
+            std::thread::sleep(Duration::from_millis(500));
+        }
+
+        let mut a_tools = vec![
+            "list_sessions:{}".to_string(),
+            format!("send_message:{}", serde_json::json!({ "session_id": b, "text": mail })),
+        ];
+        if stop {
+            a_tools.push(format!(
+                "stop_session:{}",
+                serde_json::json!({ "session_id": c, "reason": reason })
+            ));
+            a_tools.push(format!(
+                "stop_session:{}",
+                serde_json::json!({ "session_id": b, "reason": reason })
+            ));
+        }
+        let todo = r#"todo:{"op":"init","list":[{"phase":"Work","items":["Edit src/x.ts"]}]}"#;
+        script_routes(
+            ctx,
+            &serde_json::json!([
+                { "match": task_b, "lead": 25, "tools": [todo],
+                  "then": if stop { "slow" } else { "summary" },
+                  "summary": "B finished after reading the message." },
+                { "match": task_a, "tools": a_tools, "summary": "A coordinated with B." }
+            ]),
+            false,
+        )?;
+
+        // B first, and mid-stream before A says anything.
+        open_cowork_session(ctx, &b)?;
+        send_without_waiting(ctx, &task_b)?;
+        wait_for_request(
+            ctx,
+            "B's first request",
+            |r| first_user_text(r).contains(&task_b),
+            Duration::from_secs(60),
+        )?;
+        open_cowork_session(ctx, &a)?;
+        // The first turn of a folder-bound session runs read-only unless it is
+        // an explicit instruction (`decideOpening`), and read-only runs do not
+        // offer stop_session. The route still matches on `task_a`.
+        let a_text = if stop {
+            format!("Fix src/x.ts for {task_a}")
+        } else {
+            task_a.clone()
+        };
+        send_without_waiting(ctx, &a_text)?;
+
+        // B's next request carries the mail, after its intact tool round.
+        let carrying = wait_for_request(
+            ctx,
+            "B's request carrying the coordination message",
+            |r| {
+                first_user_text(r).contains(&task_b)
+                    && user_texts(r).iter().any(|t| t.contains(WRAPPER))
+            },
+            Duration::from_secs(120),
+        )?;
+        let requests = model_requests(ctx)?;
+        let b_first = requests
+            .iter()
+            .find(|r| {
+                first_user_text(r).contains(&task_b)
+                    && !r["messages"].as_array().is_some_and(|m| m.iter().any(|m| m["role"] == "tool"))
+            })
+            .ok_or_else(|| Failure("B's first request is no longer in the log".into()))?;
+        ensure!(
+            !b_first.to_string().contains(WRAPPER),
+            "the mail was already in B's first (streaming) request"
+        );
+        let msgs = carrying["messages"].as_array().cloned().unwrap_or_default();
+        let roles: Vec<String> = msgs.iter().map(|m| m["role"].as_str().unwrap_or("").to_string()).collect();
+        let call_at = msgs
+            .iter()
+            .position(|m| m["role"] == "assistant" && m["tool_calls"].as_array().is_some_and(|c| !c.is_empty()))
+            .ok_or_else(|| Failure(format!("B's request has no tool call: {roles:?}")))?;
+        ensure!(
+            msgs.get(call_at + 1).is_some_and(|m| m["role"] == "tool"),
+            "B's tool call is not immediately followed by its result: {roles:?}"
+        );
+        let mail_at = msgs
+            .iter()
+            .position(|m| m["role"] == "user" && content_text(m).contains(WRAPPER))
+            .unwrap();
+        ensure!(mail_at > call_at + 1, "the mail was put inside B's tool round: {roles:?}");
+        let text = content_text(&msgs[mail_at]);
+        ensure!(text.contains(&format!("({a}), message msg-")), "the mail is not attributed to A ({a}): {text}");
+        let mid = text
+            .split("<<<MAIL-")
+            .nth(1)
+            .and_then(|rest| rest.split('\n').next())
+            .ok_or_else(|| Failure(format!("the mail has no fence: {text}")))?
+            .to_string();
+        ensure!(text.contains(&format!("MAIL-{mid}>>>")), "the mail fence is not closed: {text}");
+        ensure!(text.contains(mail), "the mail body did not arrive: {text}");
+        println!("B request roles: {roles:?}; mail id {mid}; header: {}", text.lines().next().unwrap_or(""));
+
+        if stop {
+            // The prompt in A names B's session and the reason, and offers
+            // nothing broader than this once.
+            let card_js = "[...document.querySelectorAll('[data-testid=\"inline-approval-card\"]')]
+                 .find(c => /stop the run in session/i.test(c.textContent || ''))";
+            let prompt = ctx.wait_until(
+                "the stop_session approval prompt in A",
+                &format!("return !!({card_js});"),
+                Duration::from_secs(60),
+            );
+            if prompt.is_err() {
+                // Say why: what A's model got back, and what A's page shows.
+                if let Ok(requests) = model_requests(ctx) {
+                    for r in requests.iter().filter(|r| first_user_text(r).contains(&task_a)) {
+                        let tools: Vec<&str> = r["tools"]
+                            .as_array()
+                            .map(|t| t.iter().filter_map(|x| x["function"]["name"].as_str()).collect())
+                            .unwrap_or_default();
+                        println!(
+                            "A request: advertised stop_session={} results={:?}",
+                            tools.contains(&"stop_session"),
+                            tool_results(r)
+                        );
+                    }
+                }
+                let page = ctx.eval_string(
+                    "return JSON.stringify({
+                       cards: [...document.querySelectorAll('[data-testid=\"inline-approval-card\"]')].map(c => c.textContent),
+                       allowOnce: [...document.querySelectorAll('button')].filter(b => /allow once/i.test(b.textContent || '')).length,
+                       mode: [...document.querySelectorAll('button')].filter(b => b.getAttribute('aria-label') === 'What Jan may do').map(b => b.textContent),
+                       running: [...document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]')].map(e => e.getAttribute('data-testid')),
+                       text: (document.body.innerText || '').slice(-1500) });",
+                )
+                .unwrap_or_default();
+                println!("A page at timeout: {page}");
+            }
+            prompt?;
+            let card = ctx.eval_string(&format!(
+                "const c = {card_js};
+                 return JSON.stringify({{ text: c.textContent,
+                   buttons: [...c.querySelectorAll('button')].map(b => (b.textContent || '').trim()) }});"
+            ))?;
+            println!("A approval card: {card}");
+            ensure!(card.contains(reason), "the prompt does not show the reason: {card}");
+            ensure!(
+                !card.to_lowercase().contains("always allow") && !card.contains("Allow in this conversation"),
+                "the prompt offers a standing grant: {card}"
+            );
+            ensure!(!running_sessions(ctx)?.is_empty(), "nothing is running before approval");
+            ensure!(running_sessions(ctx)?.contains(&b), "B stopped before it was approved");
+            let allow = format!(
+                "const c = {card_js}; const b = c && [...c.querySelectorAll('button')]
+                   .find(x => /^allow once$/i.test((x.textContent || '').trim()));"
+            );
+            ctx.wait_until(
+                "Allow once to arm",
+                &format!("{allow} return !!b && !b.disabled;"),
+                Duration::from_secs(20),
+            )?;
+            ctx.eval(&format!("{allow} b.click(); return true;"))?;
+
+            ctx.wait_until(
+                "B's run to stop",
+                &format!("return !document.querySelector('[data-testid=\"cowork-session-running-{b}\"]');"),
+                Duration::from_secs(40),
+            )?;
+        }
+        ctx.wait_until(
+            "A's run to finish",
+            &format!("return !document.querySelector('[data-testid=\"cowork-session-running-{a}\"]');"),
+            Duration::from_secs(90),
+        )?;
+
+        // A's tool results, as the model received them.
+        let a_follow = wait_for_request(
+            ctx,
+            "A's follow-up request",
+            |r| first_user_text(r).contains(&task_a) && !tool_results(r).is_empty(),
+            Duration::from_secs(30),
+        )?;
+        let results = tool_results(&a_follow);
+        println!("A tool results: {results:?}");
+        let listed = results.iter().find(|(n, _)| n == "list_sessions").map(|(_, t)| t.clone()).unwrap_or_default();
+        ensure!(listed.contains(&b), "list_sessions did not return B: {listed}");
+        ensure!(!listed.contains(&c), "list_sessions returned C from another project: {listed}");
+        let sent = results.iter().find(|(n, _)| n == "send_message").map(|(_, t)| t.clone()).unwrap_or_default();
+        ensure!(
+            sent.contains("\"delivered_to_status\":\"running\""),
+            "send_message did not report a running target: {sent}"
+        );
+        if stop {
+            let stops: Vec<&String> = results.iter().filter(|(n, _)| n == "stop_session").map(|(_, t)| t).collect();
+            ensure!(stops.len() == 2, "expected two stop_session results: {results:?}");
+            ensure!(
+                stops[0].contains("unknown_session") && !stops[0].contains("Gamma"),
+                "stopping C in another project was not refused as unknown: {}",
+                stops[0]
+            );
+            ensure!(stops[1].contains("\"status\":\"applied\""), "stopping B was not applied: {}", stops[1]);
+
+            let raw = std::fs::read_to_string(data_folder()?.join("mailbox").join("stops.json"))
+                .map_err(|e| Failure(format!("stops.json: {e}")))?;
+            let stops_file: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+            let record = stops_file
+                .as_object()
+                .and_then(|m| m.values().find(|r| r["to"]["sessionId"] == b.as_str()))
+                .ok_or_else(|| Failure(format!("no stop record for B: {raw}")))?;
+            ensure!(
+                record["status"] == "applied"
+                    && record["from"]["sessionId"] == a.as_str()
+                    && record["reason"] == reason
+                    && record["targetRunId"].as_str().is_some_and(|r| !r.is_empty()),
+                "the stop record is not what happened: {record}"
+            );
+            ensure!(
+                !stops_file.as_object().unwrap().values().any(|r| r["to"]["sessionId"] == c.as_str()),
+                "a stop request for C was recorded: {raw}"
+            );
+            println!("stop record: {record}");
+        }
+
+        // B's transcript: the mail attributed to A, with Reply.
+        open_cowork_session(ctx, &b)?;
+        ctx.wait_until(
+            "the attributed message in B",
+            "const h = document.querySelector('[data-testid=\"agent-message-header\"]');
+             return !!h && /Message from/.test(h.textContent || '')
+               && !!h.querySelector('[data-testid=\"agent-message-reply\"]');",
+            Duration::from_secs(40),
+        )?;
+        let header = ctx.eval_string(
+            "return document.querySelector('[data-testid=\"agent-message-header\"]').textContent;",
+        )?;
+        println!("B header: {header}");
+        if stop {
+            ctx.wait_until(
+                "the stop attribution row in B",
+                "return !!document.querySelector('[data-testid=\"session-stop-notice\"]');",
+                Duration::from_secs(30),
+            )?;
+            let notice = ctx.eval_string(&format!(
+                "const n = document.querySelector('[data-testid=\"session-stop-notice\"]');
+                 return JSON.stringify({{ text: n.textContent, from: n.getAttribute('data-from-session'),
+                   markup: n.querySelectorAll('strong,em,a,img,code').length,
+                   stop: !!document.querySelector('[data-testid=\"cowork-stop\"]'),
+                   send: !!document.querySelector('[data-test-id=\"send-message-button\"]') }});"
+            ))?;
+            println!("B stop notice: {notice}");
+            let n: Value = serde_json::from_str(&notice).map_err(|e| Failure(e.to_string()))?;
+            let t = n["text"].as_str().unwrap_or_default();
+            ensure!(
+                t.starts_with("Stopped by ") && t.contains(&format!("reason: {reason}")) && t.contains("(approved in "),
+                "the attribution row reads {t:?}"
+            );
+            ensure!(n["from"] == a.as_str(), "the row names another session: {notice}");
+            ensure!(n["markup"] == 0, "the reason was rendered as markup: {notice}");
+            ensure!(n["stop"] == false && n["send"] == true, "B's composer still shows a run: {notice}");
+            let by = Instant::now() + Duration::from_secs(20);
+            loop {
+                let persisted = persisted_session(&b)?.map(Value::Object).unwrap_or(Value::Null);
+                let turns = persisted["turns"].as_array().cloned().unwrap_or_default();
+                if turns.iter().any(|t| t["stopNotice"]["fromSessionId"] == a.as_str() && t["stopNotice"]["reason"] == reason) {
+                    break;
+                }
+                ensure!(Instant::now() < by, "the attribution row never reached disk");
+                std::thread::sleep(Duration::from_millis(400));
+            }
+        } else {
+            // Idle delivery: A messages B again once B is idle; it is held.
+            ctx.wait_until(
+                "B to be idle",
+                &format!("return !document.querySelector('[data-testid=\"cowork-session-running-{b}\"]');"),
+                Duration::from_secs(60),
+            )?;
+            script_routes(
+                ctx,
+                &serde_json::json!([
+                    { "match": task_a,
+                      "tools": [format!("send_message:{}", serde_json::json!({ "session_id": b, "text": "idle ping from A" }))],
+                      "summary": "Sent." }
+                ]),
+                true,
+            )?;
+            open_cowork_session(ctx, &a)?;
+            let before = model_requests(ctx)?.len();
+            send_without_waiting(ctx, &format!("second message {tag}"))?;
+            ctx.wait_until(
+                "A's second run to finish",
+                &format!("return !document.querySelector('[data-testid=\"cowork-session-running-{a}\"]');"),
+                Duration::from_secs(60),
+            )?;
+            let after = model_requests(ctx)?;
+            ensure!(after.len() > before, "A's second run sent nothing");
+            open_cowork_session(ctx, &b)?;
+            ctx.wait_until(
+                "the held message in idle B",
+                "return [...document.querySelectorAll('[data-testid=\"agent-message-text\"]')]
+                   .some(e => (e.textContent || '').includes('idle ping from A'));",
+                Duration::from_secs(40),
+            )?;
+            let buttons = ctx.eval_string(
+                "return JSON.stringify([...document.querySelectorAll('button')].map(b => (b.textContent || '').trim()));",
+            )?;
+            for label in ["Reply", "Let the agent respond", "Dismiss"] {
+                ensure!(buttons.contains(label), "the held card has no {label}: {buttons}");
+            }
+            std::thread::sleep(Duration::from_secs(3));
+            ensure!(!running_sessions(ctx)?.contains(&b), "idle B started a run by itself");
+            let woke = model_requests(ctx)?
+                .iter()
+                .any(|r| first_user_text(r).contains(&task_b) && r.to_string().contains("idle ping from A"));
+            ensure!(!woke, "the held message reached B's model without its user");
+            println!("idle B holds the message with Reply / Let the agent respond / Dismiss");
+        }
+
+        // No discussion room was involved anywhere.
+        ensure!(!data_folder()?.join("rooms").exists(), "a rooms folder exists in the data folder");
+        let rooms_ui = ctx.eval_bool(
+            "return location.pathname.includes('room') || !!document.querySelector('a[href*=\"/room\"]');",
+        )?;
+        ensure!(!rooms_ui, "a rooms route is present in the app");
+        Ok(())
+    })();
+    stop_every_run(ctx);
+    let _ = script_routes(ctx, &serde_json::json!([]), false);
     let _ = ctx.script_model("plain", &[]);
     result
 }
