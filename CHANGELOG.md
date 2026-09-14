@@ -79,7 +79,13 @@ removed.
 ### Migration and compatibility infrastructure
 - **First-launch JAN migration assistant**: a migration engine (Rust core) and
   six registered Tauri commands supporting the Copy, Reuse, Move, and
-  Start-fresh paths against a legacy Jan data folder.
+  Start-fresh paths against a legacy Jan data folder, driven by a guided
+  first-launch UI (mode choice, per-category selection, conflict resolution,
+  plan review, and rollback/retry on failure). Reopen it any time from
+  **Settings → General → Migrate from JAN** for a later import.
+- **Flint logo**: an original Flint mark (`flint-logo.svg`) replaces the JAN
+  logo in the favicon, boot splash, and in-app uses; the boot caption and window
+  title read Flint.
 - **`FLINT.md` project files** discovered by the web app, the Rust project-init,
   and the CLI/agent context, with **legacy `JAN.md`** still read as a fallback.
 - **`FLINT_*` environment variables** preferred, with **`JAN_*`** honored as a
@@ -215,15 +221,15 @@ removed.
 
 ## Known Limitations
 
-- **Migration assistant UI is pending.** The migration engine (Rust core) and
-  its six Tauri commands are complete and tested; the guided first-launch UI is
-  not built yet.
-- **Flint logo image pending.** `jan-logo.png` still carries the previous
-  wordmark; a Flint logo image has not yet been produced. Text branding is Flint
-  throughout.
 - **Release artifacts are built by CI.** See **Downloads** — at tag time the
   fork's GitHub Actions billing is unavailable and no signing secrets are
   configured on the fork, so signed native installers are not yet attached.
+- **Local GGUF inference smoke** was not run in the release environment because
+  no local `.gguf` model was present (Flint downloads no models for you). The
+  llama.cpp b10809 engine upgrade and the migration/messaging/rooms suites are
+  verified; a real local-inference smoke should be run on a machine that has a
+  GGUF model, or via the CI build. Remote OpenAI-compatible inference was smoke-
+  tested against every model on the reference endpoint.
 
 ---
 
