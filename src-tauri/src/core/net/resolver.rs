@@ -528,7 +528,7 @@ mod tests {
     fn the_case_of_a_hostname_does_not_split_the_cache() {
         let probe = Fixed(vec![sock("100.86.12.4", 8080)]);
         let cache = ResolverCache::new();
-        cache.resolve(&probe, "V100", 8080).unwrap();
+        cache.resolve(&probe, "LLM-Host", 8080).unwrap();
         assert!(cache.peek("llm-host", 8080).is_some());
     }
 
