@@ -99,6 +99,16 @@ export function coworkTurnsToUIMessages(
   }
 
   turns.forEach((turn, i) => {
+    // Another session stopped this run: a row of its own, display only.
+    if (turn.stopNotice) {
+      flushAssistant()
+      messages.push({
+        id: `${idPrefix}-stop-${i}`,
+        role: 'assistant',
+        parts: [{ type: 'data-session-stop', data: turn.stopNotice }],
+      } as any)
+      return
+    }
     if (turn.role === 'user') {
       flushAssistant()
       const metadata: Record<string, unknown> = {}

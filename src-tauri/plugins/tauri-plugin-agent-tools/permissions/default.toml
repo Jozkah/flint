@@ -80,4 +80,7 @@ permissions = [
     "allow-mailbox-claim",
     "allow-mailbox-reply",
     "allow-mailbox-list-sessions",
+    "allow-mailbox-stop-approve",
+    "allow-mailbox-stop-pending",
+    "allow-mailbox-stop-resolve",
 ]

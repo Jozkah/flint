@@ -216,6 +216,8 @@ import {
 } from '@/lib/coworkRunOutcome'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
+import { SessionStopNotice } from '@/containers/SessionStopNotice'
+import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
@@ -4014,6 +4016,19 @@ function CoworkPage() {
                                 record={record}
                                 running={running}
                                 onRespond={respondAsk}
+                              />
+                            )
+                          })}
+                        {/* Another session stopped this run, with its user's
+                        approval: who, and the reason it gave. */}
+                        {(message.parts as { type: string; data?: unknown }[])
+                          .filter((p) => p.type === 'data-session-stop')
+                          .map((p) => {
+                            const notice = p.data as SessionStopNoticeData
+                            return (
+                              <SessionStopNotice
+                                key={notice.requestId}
+                                notice={notice}
                               />
                             )
                           })}

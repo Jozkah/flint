@@ -24,6 +24,7 @@
     "readTarget": "JAN wants to read {{target}}",
     "readFiles": "JAN wants to look at files",
     "startHelper": "JAN wants to start a helper agent",
+    "stopSession": "JAN wants to stop the run in session {{session}}",
     "useTool": "JAN wants to use {{tool}}"
   },
   "consequence": {
@@ -34,6 +35,7 @@
     "externalTool": "The server receives these arguments and can act on whatever it is connected to.",
     "read": "The contents it reads become part of the conversation.",
     "helper": "The helper works on its own with the tools this session has.",
+    "stopSession": "That session's current run stops at once, as if its Stop button were pressed. Its transcript records that this session stopped it and why. JAN asks every time.",
     "unknown": "JAN cannot tell what this tool does. Check the technical details before allowing it."
   },
   "scope": {

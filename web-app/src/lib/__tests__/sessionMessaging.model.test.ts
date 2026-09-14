@@ -36,7 +36,8 @@ describe('messaging tools', () => {
     expect(parentToolNames(parent)).toEqual(['read'])
   })
 
-  it('stay available in plan mode: they are read-only', () => {
+  it('stay available in plan mode, except stop_session, which changes something', () => {
+    const readOnly = SESSION_MESSAGING_TOOL_NAMES.filter((n) => n !== 'stop_session')
     for (const name of SESSION_MESSAGING_TOOL_NAMES) {
       expect(PLAN_DENIED_TOOLS.has(name)).toBe(false)
     }
@@ -45,7 +46,7 @@ describe('messaging tools', () => {
         planMode: true,
         allowSubagents: false,
       } as never)
-    ).toEqual([...SESSION_MESSAGING_TOOL_NAMES])
+    ).toEqual(readOnly)
   })
 })
 

@@ -4,6 +4,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
+import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -245,12 +246,15 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           settings.noteServerFingerprint(serverName, serverFingerprint)
         }
         // A standing grant answers without a prompt: allow-all, a server the
-        // user trusts, the tool everywhere, or the tool in this thread.
-        if (settings.allowAllMCPPermissions) {
+        // user trusts, the tool everywhere, or the tool in this thread --
+        // except for a tool that must be asked about every time.
+        const alwaysAsk = ALWAYS_ASK_TOOLS.has(toolName)
+        if (!alwaysAsk && settings.allowAllMCPPermissions) {
           approve()
           return
         }
         if (
+          !alwaysAsk &&
           useToolApproval
             .getState()
             .isToolApproved(threadId, toolName, serverName, serverFingerprint)
@@ -317,7 +321,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       if (!entry) return
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
-      if (decision === 'allow-thread') {
+      if (ALWAYS_ASK_TOOLS.has(entry.toolName)) {
+        // Allowed this once whatever was clicked: no grant is ever recorded
+        // for a tool that must be asked about every time.
+      } else if (decision === 'allow-thread') {
         if (!serverName) {
           approval.approveToolForThread(entry.threadId, entry.toolName)
         } else if (serverFingerprint) {
