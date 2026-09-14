@@ -91,10 +91,16 @@ function RoomPage() {
       <div className="flex h-[calc(100%-var(--ctx-h,52px))] min-h-0 flex-col">
         <RoomUsageBar room={room} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-          <main className="flex min-h-80 min-w-0 flex-1 flex-col lg:min-h-0">
-            <div className="flex-1 lg:overflow-y-auto">
-              <RoomTranscript room={room} journal={state.journal} liveTurn={state.liveTurn} />
-            </div>
+          {/*
+            The transcript owns its own vertical scroll (see RoomTranscript), so
+            `main` only has to bound its height and pin the composer beneath it.
+            Narrow: a fixed 70vh block scrolls its messages while the page scroll
+            still reaches the side panel below. Wide: main fills the row and the
+            transcript scrolls within it. `overflow-hidden` keeps the composer
+            from scrolling away with the messages.
+          */}
+          <main className="flex h-[70vh] min-w-0 flex-col overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1">
+            <RoomTranscript room={room} journal={state.journal} liveTurn={state.liveTurn} />
             <RoomComposer room={room} />
           </main>
           <aside

@@ -154,7 +154,8 @@
     "dissent": "Dissent",
     "noDissent": "No dissent recorded.",
     "moderatorNote": "Moderator note",
-    "disagreements": "Disagreements"
+    "disagreements": "Disagreements",
+    "jumpToLatest": "Jump to latest"
   },
   "controls": {
     "label": "Room controls",

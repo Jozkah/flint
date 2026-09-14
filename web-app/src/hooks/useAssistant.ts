@@ -56,6 +56,32 @@ You have tools to search for and access real-time, up-to-date data. Use them. Se
 Current date: {{current_date}}`,
 }
 
+/**
+ * The built-in assistant used to ship as "Jan"; it is now "Flint". Its stable
+ * id never changed, so an install from before the rename still holds a saved
+ * assistant with id `jan` and the old name and description. We migrate that one
+ * record to the new branding, but ONLY when it still matches the old default
+ * verbatim — a user who renamed or re-described their assistant kept a
+ * deliberate choice we must not overwrite. Gating on the exact legacy strings
+ * makes the migration idempotent and safe to run on every load.
+ */
+const LEGACY_DEFAULT_ASSISTANT_NAME = 'Jan'
+const LEGACY_DEFAULT_ASSISTANT_DESCRIPTION =
+  "Jan is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user's behalf."
+
+/** Returns a rebranded copy when `a` is the untouched legacy default, else `a`. */
+export const migrateLegacyDefaultAssistant = (a: Assistant): Assistant => {
+  if (a.id !== defaultAssistant.id) return a
+  const renamed = a.name === LEGACY_DEFAULT_ASSISTANT_NAME
+  const redescribed = a.description === LEGACY_DEFAULT_ASSISTANT_DESCRIPTION
+  if (!renamed && !redescribed) return a
+  return {
+    ...a,
+    name: renamed ? defaultAssistant.name : a.name,
+    description: redescribed ? defaultAssistant.description : a.description,
+  }
+}
+
 const getLastUsedAssistantId = (assistants: Assistant[]): string => {
   let lastUsedId
   try {
@@ -206,6 +232,18 @@ export const useAssistant = create<AssistantState>((set, get) => ({
   setAssistants: (assistants) => {
     if (assistants) {
       assistants.forEach((a) => (a.id = a.id?.toString())) // new String("id") !== "id"
+      // Rebrand the untouched legacy "Jan" default to "Flint" on load, and
+      // persist the migrated record so the rename survives the next start.
+      assistants = assistants.map((a) => {
+        const migrated = migrateLegacyDefaultAssistant(a)
+        if (migrated !== a) {
+          getServiceHub()
+            .assistants()
+            .createAssistant(migrated as unknown as CoreAssistant)
+            .catch((error) => console.error('Failed to persist assistant migration:', error))
+        }
+        return migrated
+      })
       const lastUsedId = getLastUsedAssistantId(assistants)
       const lastUsedAssist = assistants.find((a) => a.id === lastUsedId)
       const defaultAssistantId = getDefaultAssistantId() || ''

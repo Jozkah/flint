@@ -55,17 +55,25 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
     const label = t(item.labelKey)
     const isCurrent = item.id === current
     const itemClass = cn(
-      'relative flex w-full flex-col items-center justify-center gap-1 rounded-md text-[11px] font-medium leading-none outline-hidden',
-      'h-[52px] shrink-0 text-rail-muted hover:bg-rail-hover hover:text-rail-foreground',
+      'relative flex w-full flex-col items-center justify-center gap-1 rounded-md px-0.5 py-1 text-[11px] font-medium leading-none outline-hidden',
+      'min-h-[52px] shrink-0 text-rail-muted hover:bg-rail-hover hover:text-rail-foreground',
       'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-brand-rail',
-      '[@media(max-height:620px)]:h-11 [@media(max-height:620px)]:gap-0.5',
+      '[@media(max-height:620px)]:min-h-11 [@media(max-height:620px)]:gap-0.5',
       isCurrent &&
         'bg-rail-active text-rail-foreground before:absolute before:inset-y-2.5 before:-left-1.5 before:w-[2px] before:rounded-r-sm before:bg-brand-rail'
     )
     const content = (
       <>
-        <Icon className="size-[18px]!" strokeWidth={1.75} aria-hidden />
-        <span>{label}</span>
+        <Icon className="size-[18px]! shrink-0" strokeWidth={1.75} aria-hidden />
+        {/*
+          The rail is a fixed 64px column, so a label wider than the tile (the
+          longest English label, or any longer localized string) must wrap
+          inside the tile instead of spilling past its edge. `w-full` bounds it
+          to the tile, centered wrapping keeps it readable, and breaking a word
+          that is itself wider than the tile guarantees nothing ever overflows —
+          without truncating, so no label text is hidden.
+        */}
+        <span className="w-full text-center leading-[1.1] [overflow-wrap:anywhere]">{label}</span>
       </>
     )
     const testId = LEGACY_TEST_IDS[item.id] ?? `rail-${item.id}`

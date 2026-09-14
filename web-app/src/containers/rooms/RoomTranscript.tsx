@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import type { LiveTurn, Room, RoomAuthor, RoomJournalRecord, RoomMessage } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -148,19 +149,69 @@ type RoomTranscriptProps = {
   liveTurn: LiveTurn | null
 }
 
+/**
+ * How close to the bottom (px) still counts as "following the conversation".
+ * Wide enough to survive sub-pixel rounding and the growth of a single
+ * streamed line, narrow enough that a deliberate scroll up drops follow at once.
+ */
+const NEAR_BOTTOM_PX = 64
+
 export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps) {
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
   const tallies = useMemo(() => voteTallies(messages), [messages])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
-  const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: 'end' })
-  }, [messages.length, live?.text])
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // Whether new content should pull the viewport down. True only while the user
+  // is at (or near) the bottom; a scroll upward turns it off so streaming tokens
+  // never yank the reader back down, and returning to the bottom turns it on.
+  const [follow, setFollow] = useState(true)
+  const followRef = useRef(follow)
+  followRef.current = follow
+
+  const isNearBottom = useCallback((el: HTMLElement) => {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    setFollow(true)
+  }, [])
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    // React to where the *user* is, not to programmatic jumps: both update
+    // scrollTop, but a programmatic jump lands near the bottom and keeps follow.
+    setFollow(isNearBottom(el))
+  }, [isNearBottom])
+
+  // Follow new messages and streamed tokens only while the user is at the
+  // bottom. useLayoutEffect pins to the bottom before paint so appended content
+  // never flashes a mid-scroll frame. When not following, do nothing: the
+  // browser keeps scrollTop measured from the top, so appended content below
+  // leaves the reader's position untouched.
+  useLayoutEffect(() => {
+    if (!followRef.current) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [messages.length, live?.text, live?.author])
+
+  const showJump = !follow
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-4">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      tabIndex={0}
+      data-testid="room-transcript-scroll"
+      className="relative flex-1 min-h-0 overflow-y-auto outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
+    >
+      <div className="flex flex-col gap-3 px-4 py-4">
       <div
         role="log"
         aria-live="polite"
@@ -245,7 +296,27 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           <PlainText text={live.text} />
         </article>
       )}
-      <div ref={endRef} />
+      </div>
+      {/*
+        Sticky within the scroll port, so it hovers over the newest messages
+        only while the reader has scrolled away from the bottom. Selecting it
+        returns to the latest and re-arms auto-follow. `pointer-events-none` on
+        the centering row lets clicks fall through to the transcript except on
+        the button itself.
+      */}
+      {showJump && (
+        <div className="pointer-events-none sticky bottom-3 flex justify-center">
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            data-testid="room-jump-latest"
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md outline-hidden hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+          >
+            <ArrowDown className="size-3.5" aria-hidden />
+            {t('rooms:transcript.jumpToLatest')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
