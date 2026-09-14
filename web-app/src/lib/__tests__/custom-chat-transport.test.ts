@@ -8,6 +8,7 @@ import {
   hasGenuineUserQuery,
   extractContextInfoFromError,
   normalizeToolInputSchema,
+  isValidToolName,
   resolveOrphanToolCalls,
   stripRetryErrorWrapper,
   stripUnsupportedImageParts,
@@ -30,6 +31,15 @@ const assistantMsg = (
     role: 'assistant',
     parts,
   }) as UIMessage
+
+describe('isValidToolName', () => {
+  it('rejects malformed tool names before provider serialization', () => {
+    expect(isValidToolName('read')).toBe(true)
+    expect(isValidToolName('')).toBe(false)
+    expect(isValidToolName(undefined)).toBe(false)
+    expect(isValidToolName({})).toBe(false)
+  })
+})
 
 describe('effectiveContextWindow', () => {
   it('uses the live llama.cpp context only when context shift is enabled', () => {

@@ -724,6 +724,11 @@ export function normalizeToolInputSchema(
   return normalizeToolInputSchemaValue(schema) as ToolInputSchema
 }
 
+/** Provider tool names must be non-empty strings; reject malformed discovery data. */
+export function isValidToolName(name: unknown): name is string {
+  return typeof name === 'string' && name.trim().length > 0
+}
+
 /** Text from the most recent user message (for MCP server routing). */
 type ChatTemplateKwargs = Record<string, boolean | number | string>
 
@@ -1222,6 +1227,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           if (Array.isArray(ragTools) && ragTools.length > 0) {
             // Convert RAG tools to AI SDK format, filtering out disabled tools
             ragTools.forEach((tool) => {
+              if (!isValidToolName(tool.name)) return
               // RAG tools use MCPTool interface with server field
               const serverName =
                 (tool as { server?: string }).server || 'unknown'
@@ -1291,6 +1297,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         if (Array.isArray(mcpTools) && mcpTools.length > 0) {
           const seenBy = new Map<string, string>()
           mcpTools.forEach((tool) => {
+            if (!isValidToolName(tool.name)) return
             const serverName = tool.server || 'unknown'
             if (isToolDisabled(serverName, tool.name)) return
             const prevServer = seenBy.get(tool.name)
@@ -1331,6 +1338,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (useAgentToolsConfig.getState().agentToolsEnabled) {
         try {
           for (const schema of await getAgentToolSchemas()) {
+            if (!isValidToolName(schema.function?.name)) continue
             // Session-scope tools: a chat thread has no mailbox identity.
             if (SESSION_MESSAGING_TOOLS.has(schema.function.name)) continue
             toolsRecord[schema.function.name] = {
