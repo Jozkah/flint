@@ -222,9 +222,71 @@ describe('the outcome of a run', () => {
     expect(checks).toHaveTextContent('npm test')
     expect(checks).toHaveTextContent('results:checks.outcome.failed')
     expect(checks).toHaveTextContent('cargo build')
-    expect(checks).toHaveTextContent('results:checks.observedNote')
     expect(checks).not.toHaveTextContent('results:checks.none')
     expect(region()).toHaveTextContent('results:unresolved.checkFailed')
+    // Summarised from the record: one of two passed, the other failed with
+    // its exit code. Nothing claims the whole set passed.
+    const summary = screen.getByTestId('cowork-verification-summary')
+    expect(summary).toHaveTextContent('results:checks.summary.somePassed')
+    expect(summary).toHaveTextContent('results:checks.summary.failedWithCode')
+    expect(summary).not.toHaveTextContent('results:checks.summary.allTestsPassed')
+  })
+
+  it('says automated tests passed, and that nothing looked at the result', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(
+          base({ turns: [user, bash('npm test', '[exit 0]'), bash('ls', '[exit 0]')] })
+        )}
+      />
+    )
+    const summary = screen.getByTestId('cowork-verification-summary')
+    expect(summary).toHaveTextContent('results:checks.summary.allTestsPassed')
+    expect(summary).toHaveTextContent('results:checks.summary.visualNotChecked')
+    expect(region()).not.toHaveTextContent('passNotProof')
+    // The ordinary command is counted apart from the checks.
+    expect(screen.getByTestId('cowork-other-commands')).toHaveTextContent(
+      'results:checks.otherCommands'
+    )
+  })
+
+  it('leaves out the visual sentence when an end-to-end run was recorded', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(
+          base({
+            turns: [
+              user,
+              bash('npm test', '[exit 0]'),
+              bash('npx playwright test', '[exit 0]'),
+            ],
+          })
+        )}
+      />
+    )
+    const summary = screen.getByTestId('cowork-verification-summary')
+    expect(summary).toHaveTextContent('results:checks.summary.allTestsPassed')
+    expect(summary).not.toHaveTextContent(
+      'results:checks.summary.visualNotChecked'
+    )
+  })
+
+  it('never labels a cancelled check as passed, even with exit 0 in its output', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(
+          base({
+            turns: [user, { ...bash('npm test', '[exit 0]'), toolState: 'cancelled' }],
+          })
+        )}
+      />
+    )
+    const checks = screen.getByTestId('cowork-run-checks')
+    expect(checks).toHaveTextContent('results:checks.outcome.didNotFinish')
+    expect(checks).not.toHaveTextContent('results:checks.outcome.passed')
+    const summary = screen.getByTestId('cowork-verification-summary')
+    expect(summary).toHaveTextContent('results:checks.summary.didNotFinish')
+    expect(summary).not.toHaveTextContent('results:checks.summary.visualNotChecked')
   })
 
   it('shows what the assistant said about checks as unverified, not as a check', () => {

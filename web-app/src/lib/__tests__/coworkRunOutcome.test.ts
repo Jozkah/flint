@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  checkVerdict,
   classifyCommand,
   claimsFromText,
   deriveRunOutcome,
+  isVisualCheck,
   lastRunTurns,
   shouldShowRunOutcome,
+  summarizeVerification,
   verifiedChecks,
   type RunOutcomeInput,
 } from '../coworkRunOutcome'
@@ -487,6 +490,144 @@ describe('commands versus verification checks', () => {
     )
     expect(outcome.checks[0].outcome).toBe('unknown')
     expect(outcome.checks[0].limitations).toContain('no-exit-status')
+  })
+})
+
+describe('summarising verification from recorded results', () => {
+  const summarize = (turns: CoworkTurn[], over: Partial<RunOutcomeInput> = {}) =>
+    summarizeVerification(deriveRunOutcome(input({ turns: [user(), ...turns], ...over })))
+
+  it('says tests passed only when every check completed with exit 0', () => {
+    const s = summarize([
+      bash('npx vitest run', { exitCode: 0 }),
+      bash('npm run build', { exitCode: 0 }),
+    ])
+    expect(s).toMatchObject({ total: 2, passed: 2, allPassed: true, testsPassed: true, failures: [] })
+  })
+
+  it('does not call a build or lint pass a test pass', () => {
+    const s = summarize([bash('npm run lint', { exitCode: 0 })])
+    expect(s).toMatchObject({ allPassed: true, testsPassed: false })
+  })
+
+  it('reports each failure with the exit code it recorded', () => {
+    const s = summarize([
+      bash('npm test', { exitCode: 0 }),
+      bash('cargo test', { toolState: 'failed', exitCode: 101 }),
+    ])
+    expect(s).toMatchObject({ passed: 1, failed: 1, allPassed: false })
+    expect(s.failures).toEqual([{ command: 'cargo test', exitCode: 101 }])
+  })
+
+  it.each([
+    ['cancelled', { toolState: 'cancelled', exitCode: 0 }],
+    ['timed out', { toolState: 'timed-out', exitCode: 0 }],
+  ] as const)('counts a %s check as did not finish, never passed', (_, over) => {
+    const outcome = deriveRunOutcome(input({ turns: [user(), bash('npm test', over)] }))
+    expect(checkVerdict(outcome.checks[0])).toBe('did-not-finish')
+    const s = summarizeVerification(outcome)
+    expect(s).toMatchObject({ passed: 0, didNotFinish: 1, allPassed: false, visualNotChecked: false })
+  })
+
+  it('counts a check left running when the run ended as did not finish', () => {
+    const s = summarize(
+      [bash('go test ./...', { toolState: 'running', status: 'running' })],
+      { stoppedBy: 'aborted' }
+    )
+    expect(s).toMatchObject({ didNotFinish: 1, passed: 0 })
+  })
+
+  it('counts a check still going while the run is live as running', () => {
+    const s = summarize(
+      [bash('go test ./...', { toolState: 'running', status: 'running' })],
+      { running: true }
+    )
+    expect(s).toMatchObject({ running: 1, passed: 0, allPassed: false })
+  })
+
+  it('counts a refused check as not run', () => {
+    const s = summarize([bash('npm test', { permission: 'denied', toolState: 'refused' })])
+    expect(s).toMatchObject({ notRun: 1, passed: 0, allPassed: false })
+  })
+
+  it('counts a check with no exit status as unknown, not passed', () => {
+    const s = summarize([bash('pytest', { toolState: 'succeeded' })])
+    expect(s).toMatchObject({ unknown: 1, passed: 0, allPassed: false, visualNotChecked: false })
+  })
+
+  it('counts ordinary commands apart from checks', () => {
+    const s = summarize([
+      bash('ls -la', { exitCode: 0 }),
+      bash('cat package.json', { exitCode: 0 }),
+      bash('npm test', { exitCode: 0 }),
+    ])
+    expect(s).toMatchObject({ total: 1, passed: 1, otherCommands: 2 })
+  })
+
+  it('says visual behaviour was not checked when only unit checks passed', () => {
+    expect(summarize([bash('npm test', { exitCode: 0 })]).visualNotChecked).toBe(true)
+  })
+
+  it('omits the visual sentence when an end-to-end run was recorded', () => {
+    expect(
+      summarize([
+        bash('npm test', { exitCode: 0 }),
+        bash('npx playwright test', { exitCode: 0 }),
+      ]).visualNotChecked
+    ).toBe(false)
+    // A recorded failure is still a check that looked.
+    expect(
+      summarize([
+        bash('npm test', { exitCode: 0 }),
+        bash('npm run test:e2e', { toolState: 'failed', exitCode: 1 }),
+      ]).visualNotChecked
+    ).toBe(false)
+  })
+
+  it('omits the visual sentence when a screenshot was taken', () => {
+    const screenshot: CoworkTurn = {
+      role: 'tool',
+      content: '',
+      name: 'screenshot',
+      callId: 'shot',
+      args: { path: 'index.html' },
+      status: 'done',
+      toolState: 'succeeded',
+    }
+    expect(
+      summarize([bash('npm test', { exitCode: 0 }), screenshot]).visualNotChecked
+    ).toBe(false)
+  })
+
+  it('keeps the visual sentence when the end-to-end run did not finish', () => {
+    expect(
+      summarize([
+        bash('npm test', { exitCode: 0 }),
+        bash('npx cypress run', { toolState: 'cancelled', exitCode: 0 }),
+      ]).visualNotChecked
+    ).toBe(true)
+  })
+
+  it('has nothing to summarise when no checks ran', () => {
+    expect(summarize([bash('ls', { exitCode: 0 })])).toMatchObject({
+      total: 0,
+      allPassed: false,
+      visualNotChecked: false,
+      otherCommands: 1,
+    })
+  })
+
+  it.each([
+    ['npx playwright test', true],
+    ['cd web && CI=1 pnpm exec playwright test --project chromium', true],
+    ['npm run test:e2e', true],
+    ['yarn e2e', true],
+    ['npx cypress run', true],
+    ['npx vitest run', false],
+    ['npm test', false],
+    ['echo playwright test', false],
+  ])('%s is a visual check: %s', (command, expected) => {
+    expect(isVisualCheck(command)).toBe(expected)
   })
 })
 

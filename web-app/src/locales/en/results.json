@@ -33,7 +33,6 @@
   },
   "checks": {
     "none": "No tests or checks were run by Jan.",
-    "noneVerified": "No test or check run by Jan produced a result.",
     "kind": {
       "test": "Test",
       "build": "Build",
@@ -43,11 +42,28 @@
     "outcome": {
       "passed": "Passed",
       "failed": "Failed",
+      "didNotFinish": "Did not finish",
+      "running": "Running",
       "notRun": "Not run",
       "unknown": "Result unknown"
     },
     "exit": "exit {{code}}",
-    "passNotProof": "A passing check means the command reported success. It does not prove the task is correct or that everything relevant was checked.",
+    "summary": {
+      "allTestsPassed": "Automated tests passed.",
+      "allChecksPassed": "Automated checks passed. No tests were run.",
+      "somePassed": "{{passed}} of {{total}} checks passed.",
+      "failedWithCode": "{{command}} failed with exit code {{code}}.",
+      "failedNoCode": "{{command}} failed without an exit code.",
+      "didNotFinish_one": "{{count}} check did not finish: it was cancelled, timed out or interrupted.",
+      "didNotFinish_other": "{{count}} checks did not finish: they were cancelled, timed out or interrupted.",
+      "notRun_one": "{{count}} check was not run.",
+      "notRun_other": "{{count}} checks were not run.",
+      "unknown_one": "{{count}} check has no recorded exit status, so its result is unknown.",
+      "unknown_other": "{{count}} checks have no recorded exit status, so their results are unknown.",
+      "running_one": "{{count}} check is still running.",
+      "running_other": "{{count}} checks are still running.",
+      "visualNotChecked": "Visual and end-to-end behaviour have not been checked."
+    },
     "otherCommands": "{{count}} other command(s) also ran. They are not counted as checks.",
     "completion": {
       "not-started": "not started",
@@ -65,7 +81,6 @@
       "subset-selected": "Only part of the test suite was selected.",
       "no-exit-status": "No exit status was recorded."
     },
-    "observedNote": "Observed by Jan from the command's own exit status.",
     "claimsTitle": "Mentioned by the assistant, not verified by Jan:"
   },
   "unresolved": {
