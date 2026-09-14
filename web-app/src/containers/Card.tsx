@@ -6,9 +6,20 @@ import {
 } from '@/hooks/useSettingTarget'
 
 type CardProps = {
-  title?: string
+  title?: string | ReactNode
+  /** One line under the group title, for groups that need a sentence. */
+  description?: string | ReactNode
+  /** Rendered at the end of the title row: a count, a link, a small action. */
+  aside?: ReactNode
   children?: ReactNode
+  /** Free-form content above the rows, kept for callers that build their own header. */
   header?: ReactNode
+  className?: string
+  /** Classes for the body that holds the rows. */
+  bodyClassName?: string
+  'data-testid'?: string
+  /** Stable settings-search id for the whole group. */
+  anchor?: string
 }
 
 type CardItemProps = {
@@ -23,17 +34,18 @@ type CardItemProps = {
   /**
    * Stable settings-search id for this row, e.g. `settings-appearance-theme`.
    *
-   * Applied to the row's own element rather than a wrapper: the row is styled
-   * with `first:mt-0` and `last:border-none`, which are relative to its parent,
-   * so wrapping it would make every row both first and last and strip the
-   * dividers from the whole card.
+   * Applied to the row's own element rather than a wrapper: the row draws its
+   * divider with `last:border-none`, which is relative to its parent, so
+   * wrapping it would make every row the last one and strip the dividers from
+   * the whole group.
    */
   anchor?: string
 }
 
 /**
- * One setting: a label and explanation on the left, its control on the right.
- * On narrow screens the control drops below the text instead of squeezing it.
+ * One setting inside a group: the label and a readable explanation on the
+ * left, its control on the right. On narrow screens the control wraps below
+ * the text instead of squeezing it.
  */
 export function CardItem({
   title,
@@ -55,7 +67,7 @@ export function CardItem({
         data-setting-anchor={anchor}
         tabIndex={anchor ? -1 : undefined}
         className={cn(
-          'flex flex-col gap-3 border-b border-border py-3.5 first:pt-0 last:border-none last:pb-0 sm:flex-row sm:justify-between sm:gap-8',
+          'flex flex-col gap-2.5 border-b border-border py-3 last:border-none sm:flex-row sm:justify-between sm:gap-6',
           descriptionOutside && 'border-0',
           align === 'start' && 'sm:items-start',
           align === 'center' && 'sm:items-center',
@@ -65,14 +77,20 @@ export function CardItem({
           className
         )}
       >
-        <div className="min-w-0 space-y-1">
-          <h1 className="font-medium text-foreground">{title}</h1>
-          {description && (
-            <span className="block text-muted-foreground leading-normal">
-              {description}
-            </span>
-          )}
-        </div>
+        {(title || description) && (
+          <div className="min-w-0 space-y-0.5">
+            {title && (
+              <div className="text-sm font-medium leading-5 text-foreground">
+                {title}
+              </div>
+            )}
+            {description && (
+              <div className="text-[13px] leading-normal text-muted-foreground">
+                {description}
+              </div>
+            )}
+          </div>
+        )}
         {actions && (
           <div
             className={cn(
@@ -86,25 +104,68 @@ export function CardItem({
         )}
       </div>
       {descriptionOutside && (
-        <span className="text-muted-foreground leading-normal">
+        <div className="pb-3 text-[13px] leading-normal text-muted-foreground">
           {descriptionOutside}
-        </span>
+        </div>
       )}
     </>
   )
 }
 
-/** A group of settings on a paper surface with a hairline border. */
-export function Card({ title, children, header }: CardProps) {
+/**
+ * A settings group (JAN Graphite Studio): a bordered `rounded-lg` object with
+ * a compact title row and integrated rows separated by hairlines. No shadow,
+ * no oversized heading.
+ */
+export function Card({
+  title,
+  description,
+  aside,
+  children,
+  header,
+  className,
+  bodyClassName,
+  'data-testid': testId,
+  anchor,
+}: CardProps) {
+  const targetRef = useSettingTarget(anchor ?? '')
   return (
-    <section className="w-full rounded-lg border border-border bg-card p-4 text-muted-foreground md:p-5">
-      {title && (
-        <h1 className="mb-4 font-display text-xl font-normal text-foreground">
-          {title}
-        </h1>
+    <section
+      ref={anchor ? targetRef : undefined}
+      id={anchor}
+      data-setting-anchor={anchor}
+      tabIndex={anchor ? -1 : undefined}
+      data-testid={testId}
+      className={cn(
+        'w-full min-w-0 rounded-lg border border-border bg-card text-ink-2',
+        anchor && settingTargetClasses,
+        anchor && 'rounded-lg',
+        className
       )}
-      {header && header}
-      {children}
+    >
+      {(title || aside) && (
+        <div className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
+          {title && (
+            <h2 className="min-w-0 text-[13px] font-semibold text-foreground">
+              {title}
+            </h2>
+          )}
+          {aside && (
+            <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+              {aside}
+            </div>
+          )}
+          {description && (
+            <p className="basis-full text-[13px] leading-normal text-muted-foreground">
+              {description}
+            </p>
+          )}
+        </div>
+      )}
+      <div className={cn('px-4 py-1', bodyClassName)}>
+        {header && header}
+        {children}
+      </div>
     </section>
   )
 }

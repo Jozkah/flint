@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { OctagonAlert } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -109,7 +110,7 @@ export function DirectEditConfirmDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <dl className="grid gap-1 text-xs">
+        <dl className="grid gap-1 rounded-md border border-border bg-sunken px-3 py-2 text-xs">
           <Fact
             label={t('common:coworkAccess.confirm.folder')}
             value={facts.folder}
@@ -146,16 +147,31 @@ export function DirectEditConfirmDialog({
         </div>
 
         {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
+          <p
+            role="alert"
+            className="flex items-start gap-1.5 text-xs text-destructive"
+          >
+            <OctagonAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+            <span className="min-w-0 break-words">{error}</span>
           </p>
         )}
 
         <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="pointer-coarse:h-11"
+            onClick={onCancel}
+            disabled={busy}
+          >
             {t('common:coworkAccess.confirm.cancel')}
           </Button>
-          <Button size="sm" onClick={() => void confirm()} disabled={busy}>
+          <Button
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => void confirm()}
+            disabled={busy}
+          >
             {busy
               ? t('common:coworkAccess.confirm.working')
               : t('common:coworkAccess.confirm.confirm')}

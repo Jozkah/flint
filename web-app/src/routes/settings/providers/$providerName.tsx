@@ -62,10 +62,8 @@ import {
   modelStatusTone,
 } from '@/lib/modelStatus'
 import { StatusChip } from '@/containers/StatusChip'
-import {
-  SettingsPageBody,
-  SettingsPageHeader,
-} from '@/containers/SettingsPageHeader'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import { WidePageBody } from '@/containers/WidePageBody'
 
 // as route.threadsDetail
 export const Route = createFileRoute('/settings/providers/$providerName')({
@@ -774,7 +772,7 @@ function ProviderDetail() {
           'relative grid min-h-11 grid-cols-1 gap-x-4 gap-y-2 border-b border-border px-2 py-3 last:border-b-0 @3xl:items-center',
           isEngineProvider ? LOCAL_GRID : REMOTE_GRID,
           options.selected &&
-            'bg-brand-tint before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+            'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
         )}
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -796,7 +794,7 @@ function ProviderDetail() {
           {options.badges}
           {model.imported && (
             <span
-              className="shrink-0 rounded-sm bg-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-2"
+              className="shrink-0 rounded-md bg-sunken px-1.5 text-[11px] font-medium leading-5 text-ink-2"
               title={t('providers:importedTooltip')}
             >
               {t('providers:imported')}
@@ -864,7 +862,7 @@ function ProviderDetail() {
       aria-label={label}
       className={cn('flex items-center gap-3', className)}
     >
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="text-xs font-medium text-muted-foreground">
         {label}
       </span>
       <span className="h-px flex-1 bg-border" />
@@ -874,9 +872,9 @@ function ProviderDetail() {
   return (
     <div className="flex flex-col h-full w-full">
       <SettingsPageHeader />
-      <SettingsPageBody>
+      <WidePageBody>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <h2 className="min-w-0 truncate font-display text-2xl font-normal text-foreground">
+          <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">
             {getProviderTitle(providerName)}
           </h2>
           <Switch
@@ -1058,7 +1056,7 @@ function ProviderDetail() {
                 {provider.provider === 'azure' && (
                   <div className="mb-5 space-y-2">
                     <div className="space-y-1">
-                      <h3 className="font-display text-lg font-normal text-foreground">
+                      <h3 className="text-[13px] font-semibold text-foreground">
                         {t('providers:baseUrl.title')}
                       </h3>
                       <p className="text-sm leading-normal text-muted-foreground">
@@ -1078,7 +1076,7 @@ function ProviderDetail() {
                 )}
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <h3 className="font-display text-lg font-normal text-foreground">
+                    <h3 className="text-[13px] font-semibold text-foreground">
                       {t('providers:apiKeys.title')}
                     </h3>
                     <p className="text-sm leading-normal text-muted-foreground">
@@ -1145,7 +1143,7 @@ function ProviderDetail() {
                             {isTestingKeys ? (
                               <>
                                 <LoaderCircle
-                                  className="animate-spin"
+                                  className="motion-safe:animate-spin"
                                   aria-hidden
                                 />
                                 {t('providers:apiKeys.testing')}
@@ -1271,8 +1269,8 @@ function ProviderDetail() {
           {/* Models */}
           <Card
             header={
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-xl font-normal text-foreground">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[13px] font-semibold text-foreground">
                   {t('providers:models')}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1295,7 +1293,7 @@ function ProviderDetail() {
                       >
                         {refreshingModels ? (
                           <LoaderCircle
-                            className="animate-spin text-muted-foreground"
+                            className="motion-safe:animate-spin text-muted-foreground"
                             aria-hidden
                           />
                         ) : (
@@ -1389,7 +1387,7 @@ function ProviderDetail() {
                                 >
                                   {loadingModels.includes(model.id) ? (
                                     <LoaderCircle
-                                      className="animate-spin"
+                                      className="motion-safe:animate-spin"
                                       aria-label={t('providers:status.loading')}
                                     />
                                   ) : (
@@ -1429,7 +1427,7 @@ function ProviderDetail() {
                 </ul>
                 </>
               ) : (
-                <div className="rounded-md border border-dashed border-line-strong bg-sunken/50 px-4 py-6 text-center">
+                <div className="rounded-md border border-dashed border-line-strong bg-sunken px-4 py-6 text-center">
                   <h3 className="font-medium text-foreground">
                     {t('providers:noModelFound')}
                   </h3>
@@ -1501,7 +1499,7 @@ function ProviderDetail() {
                         </button>
                       ),
                       badges: isDefault && (
-                        <span className="shrink-0 rounded-sm bg-brand-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+                        <span className="shrink-0 rounded-md border border-border bg-sunken px-1.5 text-[11px] font-medium leading-5 text-ink-2">
                           {t('providers:embeddingModelDefault')}
                         </span>
                       ),
@@ -1531,7 +1529,7 @@ function ProviderDetail() {
             </div>
           </Card>
         </div>
-      </SettingsPageBody>
+      </WidePageBody>
     </div>
   )
 }

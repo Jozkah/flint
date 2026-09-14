@@ -4,17 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   ChevronDown,
-  CircleAlert,
-  CircleCheck,
-  CircleOff,
-  CircleSlash,
-  Clock,
   Copy,
   Loader2,
   Square,
   Terminal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
@@ -264,7 +260,7 @@ export function CoworkTasksPanel({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {running.length > 0 && (
               <>
-                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">
                   {t('common:tasks.running', { count: running.length })}
                 </p>
                 {running.map(section)}
@@ -287,7 +283,7 @@ export function CoworkTasksPanel({
                         !showFinished && '-rotate-90'
                       )}
                     />
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    <span className="text-xs font-medium text-muted-foreground">
                       {t('common:tasks.finished', { count: finished.length })}
                     </span>
                   </button>
@@ -362,6 +358,8 @@ function WorkflowSection({
   const stoppable = cancellableTasks(view.tasks, { agentReachable })
   const stopping = cancelling.has(workflow.id)
   const isFocus = focusWorkflowId === workflow.id
+  const agentCount = view.tasks.filter((one) => one.kind === 'agent').length
+  const shellCount = view.tasks.length - agentCount
 
   const titles = new Map(view.tasks.map((one) => [one.id, one.title]))
   const byCall = new Map(view.tasks.map((one) => [one.callId, one.id]))
@@ -392,19 +390,27 @@ function WorkflowSection({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left hover:bg-muted/50"
+        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left hover:bg-accent"
       >
-        <span className="pt-0.5">
-          <StatusIcon status={view.status} />
-        </span>
         <span className="min-w-0 flex-1">
-          <span
-            className="block truncate text-xs font-medium"
-            title={workflow.title}
-          >
-            {workflow.title}
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
+              title={workflow.title}
+            >
+              {workflow.title}
+            </span>
+            <StatusIcon status={view.status} />
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            {/* Who is doing the work, before how far along it is: the agents
+                and the commands are the rows under this header. */}
+            {agentCount > 0 && (
+              <span>{t('common:tasks.agentCount', { count: agentCount })}</span>
+            )}
+            {shellCount > 0 && (
+              <span>{t('common:tasks.shellCount', { count: shellCount })}</span>
+            )}
             <span className="tabular-nums">
               {t('common:tasks.progress', {
                 finished: progress.finished,
@@ -456,7 +462,7 @@ function WorkflowSection({
         <div className="pb-1">
           {view.phases.map(({ phase, tasks }) => (
             <div key={phase.id}>
-              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
                 {t('common:tasks.phase', { name: phase.name })}
               </p>
               {tasks.map(taskRow)}
@@ -465,7 +471,7 @@ function WorkflowSection({
           {view.unphased.length > 0 && (
             <div>
               {view.phases.length > 0 && (
-                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
                   {t('common:tasks.unphased')}
                 </p>
               )}
@@ -488,12 +494,13 @@ function ProgressBar({ progress }: { progress: ActivityProgress }) {
       aria-valuemin={0}
       aria-valuemax={progress.total}
       aria-valuenow={progress.finished}
-      className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+      className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-sunken"
     >
+      {/* Neutral: progress is not selection, so it never takes the accent. */}
       <span
         className={cn(
-          'block h-full rounded-full transition-[width]',
-          progress.error > 0 ? 'bg-destructive' : 'bg-primary'
+          'block h-full rounded-full motion-safe:transition-[width]',
+          progress.error > 0 ? 'bg-destructive' : 'bg-ink-2'
         )}
         style={{ width: `${Math.round(progress.fraction * 100)}%` }}
       />
@@ -501,72 +508,39 @@ function ProgressBar({ progress }: { progress: ActivityProgress }) {
   )
 }
 
+/** How each activity status is shown: the shared work state and its word. */
+const STATUS: Record<ActivityStatus, { state: WorkState; label: string }> = {
+  running: { state: 'running', label: 'statusRunning' },
+  queued: { state: 'queued', label: 'statusQueued' },
+  error: { state: 'failed', label: 'statusError' },
+  cancelled: { state: 'cancelled', label: 'statusCancelled' },
+  // Stopped by something other than the work or the user: worth a look.
+  interrupted: { state: 'blocked', label: 'statusInterrupted' },
+  done: { state: 'done', label: 'statusDone' },
+}
+
 /**
- * The row's status, as an icon.
+ * The row's status, as an icon and a word (JAN Graphite Studio): running spins
+ * in a neutral ink, never in the accent, which means "selected".
  *
  * Labelled, not decorative: the status is the one thing a row says that its
- * text does not, so a screen reader has to be able to read it. The test ids
+ * title does not, so a screen reader has to be able to read it. The test ids
  * stay for the tests that assert on shape rather than wording.
  */
 function StatusIcon({ status }: { status: ActivityStatus }) {
   const { t } = useTranslation()
-  const shared = 'shrink-0'
-  switch (status) {
-    case 'running':
-      return (
-        <Loader2
-          size={13}
-          aria-label={t('common:tasks.statusRunning')}
-          className={cn(shared, 'motion-safe:animate-spin text-brand-text')}
-          data-testid="task-status-running"
-        />
-      )
-    case 'queued':
-      return (
-        <Clock
-          size={13}
-          aria-label={t('common:tasks.statusQueued')}
-          className={cn(shared, 'text-muted-foreground')}
-          data-testid="task-status-queued"
-        />
-      )
-    case 'error':
-      return (
-        <CircleAlert
-          size={13}
-          aria-label={t('common:tasks.statusError')}
-          className={cn(shared, 'text-destructive')}
-          data-testid="task-status-error"
-        />
-      )
-    case 'cancelled':
-      return (
-        <CircleSlash
-          size={13}
-          aria-label={t('common:tasks.statusCancelled')}
-          className={cn(shared, 'text-muted-foreground')}
-          data-testid="task-status-cancelled"
-        />
-      )
-    case 'interrupted':
-      return (
-        <CircleOff
-          size={13}
-          aria-label={t('common:tasks.statusInterrupted')}
-          className={cn(shared, 'text-warning')}
-          data-testid="task-status-interrupted"
-        />
-      )
-    default:
-      return (
-        <CircleCheck
-          size={13}
-          aria-label={t('common:tasks.statusDone')}
-          className={cn(shared, 'text-muted-foreground')}
-          data-testid="task-status-done"
-        />
-      )
-  }
+  const known = STATUS[status] ? status : 'done'
+  const { state, label } = STATUS[known]
+  const text = t(`common:tasks.${label}`)
+  return (
+    <WorkStatus
+      state={state}
+      aria-label={text}
+      data-testid={`task-status-${known}`}
+    >
+      {text}
+    </WorkStatus>
+  )
 }
 
 /** A wall-clock time, short: what a row shows for when work began and ended. */
@@ -700,20 +674,23 @@ function TaskItem({
     <div
       ref={containerRef}
       tabIndex={containerRef ? -1 : undefined}
-      className="border-t"
+      // The open row is the selected one: a neutral fill and the 2px accent
+      // marker, never the accent as a fill.
+      className={cn(
+        'relative border-t',
+        expanded &&
+          'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
+      )}
     >
       <div className="flex items-start">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-start gap-2 py-2 pl-5 pr-2 text-left hover:bg-muted/50"
+          className="flex min-w-0 flex-1 items-start gap-2 py-2 pl-5 pr-2 text-left hover:bg-accent"
         >
-          <span className="pt-0.5">
-            <StatusIcon status={task.status} />
-          </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
               {task.kind === 'shell' ? (
                 <Terminal size={12} className="shrink-0 text-muted-foreground" />
               ) : (
@@ -721,22 +698,30 @@ function TaskItem({
               )}
               <span
                 className={cn(
-                  'min-w-0 flex-1 truncate text-xs',
-                  task.kind === 'shell' && 'font-mono'
+                  'min-w-0 flex-1 truncate text-[13px] text-foreground',
+                  task.kind === 'shell' && 'font-mono text-xs'
                 )}
                 title={task.title}
               >
                 {task.title}
               </span>
+              <StatusIcon status={task.status} />
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
               {/* Kind in words as well as the icon, so it is read out and
                 does not rest on telling two glyphs apart. */}
-              <span className="uppercase tracking-wider">
+              <span className="text-ink-2">
                 {task.kind === 'shell'
                   ? t('common:tasks.kindShell')
                   : t('common:tasks.kindAgent')}
               </span>
+              {/* Who: the subagent definition doing the work, when the row's
+                title is something else (a team member's task, say). */}
+              {task.kind === 'agent' &&
+                task.agentName &&
+                task.agentName !== task.title && (
+                  <span className="truncate text-ink-2">{task.agentName}</span>
+                )}
               {task.status === 'queued' && task.waiting != null && (
                 <span>
                   {t('common:tasks.queuePosition', { position: task.waiting })}
@@ -772,7 +757,7 @@ function TaskItem({
                 </span>
               )}
               {task.jobId && (
-                <span className="rounded-sm bg-secondary px-1 font-mono">
+                <span className="rounded-sm bg-sunken px-1 font-mono text-ink-2">
                   {t('common:tasks.background', { jobId: task.jobId })}
                 </span>
               )}
@@ -857,7 +842,7 @@ function TaskItem({
           )}
           {task.transcript && task.transcript.length > 0 && (
             <>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">
                 {t('common:tasks.transcript')}
               </p>
               <ol className="mb-2 space-y-1">
@@ -942,7 +927,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
           </span>
         </Button>
       </div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px]">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-code p-2 font-mono text-[11px]">
         {shown.join('\n')}
       </pre>
     </>

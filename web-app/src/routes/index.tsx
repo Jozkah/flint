@@ -56,7 +56,7 @@ function Index() {
   }
 
   return (
-    <div className="flex h-full flex-col justify-center">
+    <div className="flex h-full min-h-0 flex-col bg-background">
       <HeaderPage>
         <PageHeaderRow>
           {/* A new chat with no model chosen starts from the last-used model,
@@ -72,23 +72,13 @@ function Index() {
       </HeaderPage>
       <div
         className={cn(
-          'h-full min-w-0 overflow-y-auto overflow-x-hidden inline-flex flex-col gap-2 justify-center px-3 md:px-6'
+          'min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col justify-center px-3 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:px-6'
         )}
       >
-        <div
-          className={cn(
-            'mx-auto w-full max-w-[720px] md:-mt-20',
-          )}
-        >
-          <div className={cn('text-center mb-5')}>
-            <h1
-              className={cn(
-                'mt-2 font-display text-[28px] leading-tight font-normal text-foreground md:text-[32px]',
-              )}
-            >
-              {t('chat:description')}
-            </h1>
-          </div>
+        <div className={cn('mx-auto w-full max-w-[calc(var(--read-w)+3rem)]')}>
+          <h1 className="mb-3 text-[15px] font-semibold text-foreground">
+            {t('chat:description')}
+          </h1>
           <GettingStartedCard />
           <div className="flex-1 shrink-0">
             <ChatInput

@@ -76,7 +76,11 @@ const DeleteProvider = ({ provider }: Props) => {
       actions={
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="destructive" size="sm">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="pointer-coarse:h-11"
+            >
               {t('providers:deleteProvider.delete')}
             </Button>
           </DialogTrigger>
@@ -94,7 +98,13 @@ const DeleteProvider = ({ provider }: Props) => {
 
             <DialogFooter className="mt-2">
               <DialogClose asChild>
-                <Button variant="ghost" size="sm" className="hover:no-underline">
+                {/* Focus starts on the answer that removes nothing. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  autoFocus
+                  className="pointer-coarse:h-11"
+                >
                   {t('providers:deleteProvider.cancel')}
                 </Button>
               </DialogClose>
@@ -102,6 +112,7 @@ const DeleteProvider = ({ provider }: Props) => {
                 <Button
                   variant="destructive"
                   size="sm"
+                  className="pointer-coarse:h-11"
                   onClick={removeProvider}
                 >
                   {t('providers:deleteProvider.delete')}

@@ -122,6 +122,22 @@ describe('approvalFor', () => {
 })
 
 describe('the review', () => {
+  it('counts the chosen changes in the review bar, leaving out a credential file', async () => {
+    invoke.mockImplementation(async (cmd: string) =>
+      cmd === 'agent_proposal_list' ? [record()] : null
+    )
+    render(<CoworkProposalReview worktree={worktree} session="s1" />)
+    await screen.findAllByTestId('proposal-hunk')
+    const count = screen.getByTestId('proposal-selected-count')
+    expect(count).toHaveTextContent('2 of 2 changes selected')
+    await userEvent.click(screen.getAllByTestId('proposal-hunk-toggle')[0])
+    expect(count).toHaveTextContent('1 of 2 changes selected')
+    // Reject and apply sit together in the bar.
+    const bar = screen.getByTestId('proposal-review-bar')
+    expect(bar).toContainElement(screen.getByTestId('proposal-reject'))
+    expect(bar).toContainElement(screen.getByTestId('proposal-apply'))
+  })
+
   it('applies only the hunks left checked', async () => {
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'agent_proposal_list') return [record()]

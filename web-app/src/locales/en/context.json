@@ -3,6 +3,26 @@
   "title": "What JAN is using in this conversation",
   "description": "What is available to JAN, what was chosen for a request, and what is verified in the sanitized copy of the last request. Changes here affect future messages, not a reply already being written.",
   "refresh": "Refresh",
+  "details": "Details",
+  "closeDetails": "Close details",
+  "tabs": {
+    "label": "Details sections",
+    "using": "What JAN is using",
+    "files": "Files"
+  },
+  "views": {
+    "label": "Show",
+    "conversation": "Conversation",
+    "details": "Details"
+  },
+  "contextWindow": {
+    "title": "Context window",
+    "usedOf": "{{used}} of {{max}}",
+    "used": "{{used}} used",
+    "unknown": "Not reported yet",
+    "meter": "About {{percent}} percent of the context window used"
+  },
+  "included": "Included",
   "section": {
     "model": "Model",
     "instructions": "Instructions",

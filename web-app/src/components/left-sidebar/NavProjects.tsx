@@ -23,7 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useThreadManagement } from "@/hooks/useThreadManagement"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
 
 import { useState } from "react"
@@ -45,10 +45,14 @@ function ProjectItem({
 }) {
 
   const navigate = useNavigate()
+  const currentProjectId = useParams({
+    strict: false,
+    select: (params) => params.projectId,
+  })
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild>
+      <SidebarMenuButton asChild isActive={currentProjectId === item.id}>
         <Link
           to="/project/$projectId"
           params={{ projectId: item.id }}

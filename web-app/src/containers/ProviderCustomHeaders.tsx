@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -117,11 +117,11 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
 
   return (
     <div
-      className="mt-6 space-y-3 border-t border-border pt-5"
+      className="mt-4 space-y-3 border-t border-border pt-4"
       data-testid="custom-headers"
     >
       <div className="space-y-1">
-        <h3 className="font-display text-lg font-normal text-foreground">
+        <h3 className="text-[13px] font-semibold text-foreground">
           {t('providers:customHeaders.title')}
         </h3>
         <p className="text-sm text-muted-foreground leading-normal">
@@ -136,7 +136,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         return (
           <div key={i} className="space-y-1">
             {/* Phone: switch, name and remove on one line, value below. */}
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-sunken/40 p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-sunken p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
               <Switch
                 data-testid={`custom-header-enabled-${i}`}
                 aria-label={t('providers:customHeaders.enabled')}
@@ -213,9 +213,10 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
               <p
                 id={errorId}
                 role="alert"
-                className="text-xs text-destructive"
+                className="flex items-start gap-1.5 text-xs text-destructive"
                 data-testid={errorId}
               >
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                 {t(`providers:customHeaders.errors.${error}`)}
               </p>
             )}

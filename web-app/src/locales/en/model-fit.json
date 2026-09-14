@@ -105,5 +105,12 @@
     "local": "Runs on this device or your network",
     "remote": "Remote: messages are sent to this provider"
   },
-  "providerSettings": "{{provider}} settings"
+  "providerSettings": "{{provider}} settings",
+  "memoryBars": "Estimated memory need compared with what is available",
+  "picker": {
+    "local": "On this computer or your network",
+    "remote": "Cloud providers",
+    "remoteHint": "messages leave this computer",
+    "inUse": "In use here: {{model}} · {{provider}}"
+  }
 }

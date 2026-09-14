@@ -10,6 +10,7 @@ import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
+import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -316,6 +317,7 @@ export function allowedToolNames(
 ): string[] {
   return names.filter((name) => {
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) return false
+    if (opts.planMode && name === STOP_SESSION_TOOL_NAME) return false
     if (name === TASK_TOOL_NAME && !opts.allowSubagents) return false
     return true
   })
@@ -324,12 +326,21 @@ export function allowedToolNames(
 export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
-  const schemas = await getAgentToolSchemas(opts.projectRoot, opts.reported)
+  // `session` scope: Cowork is the surface the backend offers the
+  // session-messaging tools to. Without it they are never advertised.
+  const schemas = await getAgentToolSchemas(
+    opts.projectRoot,
+    opts.reported,
+    'session'
+  )
   const tools: Record<string, Tool> = {}
 
   for (const s of schemas) {
     const name = s.function.name
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) continue
+    // Review (plan) mode changes nothing, and stopping another session's run
+    // is a change. Withheld here and refused by the dispatcher too.
+    if (opts.planMode && name === STOP_SESSION_TOOL_NAME) continue
     tools[name] = {
       description: s.function.description,
       inputSchema: jsonSchema(s.function.parameters as Record<string, unknown>),

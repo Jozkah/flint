@@ -91,7 +91,7 @@ export type CoworkSession = {
    * brings it back -- held, for the user to send or discard -- rather than
    * losing it. janhq/jan#8864.
    */
-  pendingInput?: { id: string; text: string; createdAt: number }[]
+  pendingInput?: PendingInputRecord[]
   /**
    * What this session is allowed to do. Absent on sessions from before modes
    * existed, which `modeOf` reads from `planMode` instead.
@@ -162,6 +162,18 @@ export type CoworkSession = {
   updated: number
 }
 
+/**
+ * One queued input as persisted. `from` is present when it is mail from another
+ * agent session (docs/SESSION_MESSAGING.md); it is additive, so sessions saved
+ * before it existed load unchanged and need no migration step.
+ */
+export type PendingInputRecord = {
+  id: string
+  text: string
+  createdAt: number
+  from?: QueuedMessageSender
+}
+
 /** The session a fork came from, and where it diverged. */
 export type ForkOrigin = {
   sessionId: string
@@ -225,10 +237,7 @@ type CoworkSessionsState = {
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
   /** Record the input still pending for the session; empty clears it. */
-  setPendingInput: (
-    id: string,
-    pending: { id: string; text: string; createdAt: number }[]
-  ) => void
+  setPendingInput: (id: string, pending: PendingInputRecord[]) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
@@ -269,6 +278,11 @@ type CoworkSessionsState = {
   /** Drop everything the agent produced since the last question, so the run can
    * be taken again. Both lists are rewound together or the transcript and the
    * history the model sees would disagree. */
+  /**
+   * Add display-only rows to a session's transcript without touching the
+   * model history (e.g. "Stopped by <session>"). Nothing is sent to a model.
+   */
+  appendTurns: (id: string, turns: CoworkTurn[]) => void
   rewindToLastUser: (id: string) => void
   clearSession: (id: string) => void
 }
@@ -282,6 +296,7 @@ import {
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
+import type { QueuedMessageSender } from '@/stores/message-queue-store'
 import {
   checkBundle,
   importedFileActivity,
@@ -301,6 +316,17 @@ function importedUsage(raw: unknown): Usage | undefined {
     raw && typeof raw === 'object' ? (raw as Usage) : undefined
   )
   return usage && Object.keys(usage).length > 0 ? toCoworkUsage(usage) : undefined
+}
+
+/** Only the sender fields the queue defines are persisted. */
+function sanitizeSender(from: QueuedMessageSender): QueuedMessageSender {
+  return {
+    sessionId: from.sessionId,
+    displayName: from.displayName,
+    messageId: from.messageId,
+    replyTo: from.replyTo ?? null,
+    depth: from.depth,
+  }
 }
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
@@ -463,7 +489,12 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         set((s) => {
           const current = s.sessions.find((x) => x.id === id)
           if (!current) return s
-          const next = pending.map(({ id, text, createdAt }) => ({ id, text, createdAt }))
+          const next: PendingInputRecord[] = pending.map(
+            ({ id, text, createdAt, from }) =>
+              from
+                ? { id, text, createdAt, from: sanitizeSender(from) }
+                : { id, text, createdAt }
+          )
           if (JSON.stringify(current.pendingInput ?? []) === JSON.stringify(next)) {
             return s
           }
@@ -658,6 +689,15 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               updated: now(),
             }
           }),
+        })),
+
+      appendTurns: (id, turns) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? { ...x, turns: [...x.turns, ...turns], updated: now() }
+              : x
+          ),
         })),
 
       rewindToLastUser: (id) =>

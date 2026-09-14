@@ -20,7 +20,7 @@ function MermaidErrorComponent({
       <p className="text-sm text-muted-foreground text-center">
         Diagram error detected
       </p>
-      <p className="text-xs text-muted-foreground/60 text-center mt-1">
+      <p className="text-xs text-muted-foreground text-center mt-1">
         {error}
       </p>
     </div>

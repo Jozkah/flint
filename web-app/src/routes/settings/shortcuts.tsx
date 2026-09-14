@@ -5,9 +5,37 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ShortcutAction, PlatformShortcuts, type ShortcutSpec } from '@/lib/shortcuts'
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { ShortcutRebind } from '@/containers/ShortcutRebind'
 import { useKeybindings } from '@/hooks/useKeybindings'
+import { Button } from '@/components/ui/button'
+
+/**
+ * A binding that cannot be changed, laid out like one that can: an invisible,
+ * unfocusable copy of the Change button keeps its keys in the same column as
+ * the rebindable rows above and below. Phones stack the control under the
+ * text, so the placeholder is only reserved from `sm` up.
+ */
+function FixedKeys({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+      {children}
+      <Button
+        aria-hidden
+        tabIndex={-1}
+        size="sm"
+        variant="ghost"
+        className="invisible hidden pointer-events-none sm:inline-flex"
+      >
+        {t('settings:shortcuts.change')}
+      </Button>
+    </div>
+  )
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.shortcuts as any)({
@@ -92,127 +120,138 @@ function Shortcuts() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
-            {/* Application */}
-            <Card title={t('settings:shortcuts.application')}>
-              <CardItem
-                anchor="settings-shortcuts-new-chat"
-                title={t('settings:shortcuts.newChat')}
-                description={t('settings:shortcuts.newChatDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.NEW_CHAT} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.NEW_CHAT} />
-                  </ShortcutRebind>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-new-project"
-                title={t('settings:shortcuts.newProject')}
-                description={t('settings:shortcuts.newProjectDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.NEW_PROJECT} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.NEW_PROJECT} />
-                  </ShortcutRebind>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-toggle-sidebar"
-                title={t('settings:shortcuts.toggleSidebar')}
-                description={t('settings:shortcuts.toggleSidebarDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.TOGGLE_SIDEBAR} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.TOGGLE_SIDEBAR} />
-                  </ShortcutRebind>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-zoom-in"
-                title={t('settings:shortcuts.zoomIn')}
-                description={t('settings:shortcuts.zoomInDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.ZOOM_IN} />}
-              />
-              <CardItem
-                anchor="settings-shortcuts-zoom-out"
-                title={t('settings:shortcuts.zoomOut')}
-                description={t('settings:shortcuts.zoomOutDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.ZOOM_OUT} />}
-              />
-            </Card>
+      <SettingsPageHeader title={t('common:keyboardShortcuts')} />
+      <SettingsPageBody
+        title={t('common:keyboardShortcuts')}
+        description={t('settings:pageDesc.shortcuts')}
+      >
+        {/* Application */}
+        <Card title={t('settings:shortcuts.application')}>
+          <CardItem
+            anchor="settings-shortcuts-new-chat"
+            title={t('settings:shortcuts.newChat')}
+            description={t('settings:shortcuts.newChatDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.NEW_CHAT} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.NEW_CHAT} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-new-project"
+            title={t('settings:shortcuts.newProject')}
+            description={t('settings:shortcuts.newProjectDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.NEW_PROJECT} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.NEW_PROJECT} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-toggle-sidebar"
+            title={t('settings:shortcuts.toggleSidebar')}
+            description={t('settings:shortcuts.toggleSidebarDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.TOGGLE_SIDEBAR} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.TOGGLE_SIDEBAR} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-zoom-in"
+            title={t('settings:shortcuts.zoomIn')}
+            description={t('settings:shortcuts.zoomInDesc')}
+            actions={
+              <FixedKeys>
+                <ShortcutLabel action={ShortcutAction.ZOOM_IN} />
+              </FixedKeys>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-zoom-out"
+            title={t('settings:shortcuts.zoomOut')}
+            description={t('settings:shortcuts.zoomOutDesc')}
+            actions={
+              <FixedKeys>
+                <ShortcutLabel action={ShortcutAction.ZOOM_OUT} />
+              </FixedKeys>
+            }
+          />
+        </Card>
 
-            {/* Chat */}
-            <Card title={t('settings:shortcuts.chat')}>
-              <CardItem
-                anchor="settings-shortcuts-send-message"
-                title={t('settings:shortcuts.sendMessage')}
-                description={t('settings:shortcuts.sendMessageDesc')}
-                actions={
-                  <KbdGroup>
-                    <Kbd>Enter</Kbd>
-                  </KbdGroup>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-new-line"
-                title={t('settings:shortcuts.newLine')}
-                description={t('settings:shortcuts.newLineDesc')}
-                actions={
-                  <KbdGroup>
-                    <Kbd>Shift</Kbd>
-                    <Kbd>Enter</Kbd>
-                  </KbdGroup>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-switch-assistant"
-                title={t('settings:shortcuts.switchAssistant')}
-                description={t('settings:shortcuts.switchAssistantDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.SWITCH_ASSISTANT} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.SWITCH_ASSISTANT} />
-                  </ShortcutRebind>
-                }
-              />
-            </Card>
+        {/* Chat */}
+        <Card title={t('settings:shortcuts.chat')}>
+          <CardItem
+            anchor="settings-shortcuts-send-message"
+            title={t('settings:shortcuts.sendMessage')}
+            description={t('settings:shortcuts.sendMessageDesc')}
+            actions={
+              <FixedKeys>
+                <KbdGroup>
+                  <Kbd>Enter</Kbd>
+                </KbdGroup>
+              </FixedKeys>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-new-line"
+            title={t('settings:shortcuts.newLine')}
+            description={t('settings:shortcuts.newLineDesc')}
+            actions={
+              <FixedKeys>
+                <KbdGroup>
+                  <Kbd>Shift</Kbd>
+                  <Kbd>Enter</Kbd>
+                </KbdGroup>
+              </FixedKeys>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-switch-assistant"
+            title={t('settings:shortcuts.switchAssistant')}
+            description={t('settings:shortcuts.switchAssistantDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.SWITCH_ASSISTANT} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.SWITCH_ASSISTANT} />
+              </ShortcutRebind>
+            }
+          />
+        </Card>
 
-            {/* Navigation */}
-            <Card title={t('settings:shortcuts.navigation')}>
-              <CardItem
-                anchor="settings-shortcuts-command-palette"
-                title={t('settings:shortcuts.commandPalette')}
-                description={t('settings:shortcuts.commandPaletteDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.COMMAND_PALETTE} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.COMMAND_PALETTE} />
-                  </ShortcutRebind>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-search"
-                title={t('settings:shortcuts.search')}
-                description={t('settings:shortcuts.searchDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.SEARCH} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.SEARCH} />
-                  </ShortcutRebind>
-                }
-              />
-              <CardItem
-                anchor="settings-shortcuts-go-to-settings"
-                title={t('settings:shortcuts.goToSettings')}
-                description={t('settings:shortcuts.goToSettingsDesc')}
-                actions={
-                  <ShortcutRebind action={ShortcutAction.GO_TO_SETTINGS} label={commandName}>
-                    <ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />
-                  </ShortcutRebind>
-                }
-              />
-            </Card>
-          </div>
-        </div>
-      </div>
+        {/* Navigation */}
+        <Card title={t('settings:shortcuts.navigation')}>
+          <CardItem
+            anchor="settings-shortcuts-command-palette"
+            title={t('settings:shortcuts.commandPalette')}
+            description={t('settings:shortcuts.commandPaletteDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.COMMAND_PALETTE} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.COMMAND_PALETTE} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-search"
+            title={t('settings:shortcuts.search')}
+            description={t('settings:shortcuts.searchDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.SEARCH} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.SEARCH} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-go-to-settings"
+            title={t('settings:shortcuts.goToSettings')}
+            description={t('settings:shortcuts.goToSettingsDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.GO_TO_SETTINGS} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />
+              </ShortcutRebind>
+            }
+          />
+        </Card>
+      </SettingsPageBody>
     </div>
   )
 }

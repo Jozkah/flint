@@ -155,10 +155,10 @@ export const ImportMlxModelDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Model Name Input */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-ink-2">
               Model Name
             </label>
             <input
@@ -174,9 +174,9 @@ export const ImportMlxModelDialog = ({
           </div>
 
           {/* File Selection Area */}
-          <div className="border border-border rounded-lg p-4 space-y-3">
+          <div className="border border-border rounded-lg p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <h3 className="font-medium">
+              <h3 className="text-[13px] font-semibold text-foreground">
                 Model Folder
               </h3>
               <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
@@ -186,15 +186,15 @@ export const ImportMlxModelDialog = ({
 
             {displayPath ? (
               <div className="bg-sunken border border-border rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Check size={16} className="text-success" />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Check size={16} className="shrink-0 text-success" />
                     <span className="min-w-0 truncate font-mono text-sm">
                       {displayPath}
                     </span>
                   </div>
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={handleFileSelect}
                     disabled={importing}
@@ -218,9 +218,9 @@ export const ImportMlxModelDialog = ({
 
           {/* Preview */}
           {modelName && (
-            <div className="rounded-lg p-3">
+            <div className="rounded-md bg-sunken px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">
+                <span className="text-xs font-medium text-muted-foreground">
                   Model will be saved as:
                 </span>
               </div>
@@ -245,7 +245,7 @@ export const ImportMlxModelDialog = ({
             size="sm"
             disabled={importing || !selectedPath || !modelName}
           >
-            {importing && <LoaderCircle className="mr-2 size-4 animate-spin" />}
+            {importing && <LoaderCircle className="size-4 motion-safe:animate-spin" />}
             {importing ? 'Importing...' : 'Import Model'}
           </Button>
         </div>

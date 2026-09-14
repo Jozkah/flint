@@ -72,7 +72,6 @@ import {
 import { useReconcileVideoCapability } from '@/hooks/useReconcileVideoCapability'
 
 import { useAppState } from '@/hooks/useAppState'
-import { MovingBorder } from './MovingBorder'
 import type { ChatStatus } from 'ai'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
@@ -2221,26 +2220,10 @@ const ChatInput = memo(function ChatInput({
   return (
     <div className="relative">
       <div className="relative">
-        <div
-          className={cn(
-            'relative overflow-hidden p-px rounded-lg'
-          )}
-        >
-          {isStreaming && (
-            // The accent travelling round the edge says a reply is streaming.
-            // Hidden when the reader asked for less motion; the Stop button
-            // still says the same thing.
-            <div className="absolute inset-0 motion-reduce:hidden" aria-hidden>
-              <MovingBorder rx="2%" ry="2%">
-                <div
-                  className={cn(
-                    'h-100 w-100 bg-[radial-gradient(var(--brand),transparent_60%)]'
-                  )}
-                />
-              </MovingBorder>
-            </div>
-          )}
-
+        {/* A reply in progress is said by the Stop button in the send slot,
+            not by the accent: the accent marks selection and the primary
+            action (Graphite), never activity. */}
+        <div className="relative rounded-lg">
           <div
             // The control row below is absolutely positioned at the bottom of
             // this box, so the box has to reserve its height. That used to be a
@@ -2249,9 +2232,10 @@ const ChatInput = memo(function ChatInput({
             // reserve now follows the row's measured height.
             style={{ paddingBottom: `${footerHeight}px` }}
             className={cn(
-              'relative z-20 px-0 border rounded-lg border-line-strong bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[outline-color]',
-              isFocused && 'outline-2 outline-offset-0 outline-ring/50',
-              isDragOver && 'outline-2 outline-ring border-brand bg-brand-tint'
+              'relative z-20 px-0 border rounded-lg border-line-strong bg-card motion-safe:transition-[border-color,box-shadow]',
+              // A clear focus: a stronger edge and a soft ring.
+              isFocused && 'border-ring ring-3 ring-ring/20',
+              isDragOver && 'border-brand ring-3 ring-ring/30 bg-brand-tint'
             )}
             data-drop-zone={dropAcceptsAnything ? 'true' : undefined}
             onDragEnter={dropAcceptsAnything ? handleDragEnter : undefined}

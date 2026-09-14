@@ -46,6 +46,9 @@ describe('deriveAccentTokens', () => {
       expect(contrastRatio(t.indicator, S.paper)).toBeGreaterThanOrEqual(3)
       expect(contrastRatio(t.text, S.ground)).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(t.text, S.paper)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t.text, S.sidebar)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t.text, S.sunken)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t.indicator, S.sidebar)).toBeGreaterThanOrEqual(3)
       expect(contrastRatio(t.rail, S.rail)).toBeGreaterThanOrEqual(3)
       // The better of white and near-black is always at least 4.5:1 on a fill.
       expect(contrastRatio(t.onFill, base)).toBeGreaterThanOrEqual(4.5)
@@ -73,6 +76,7 @@ describe('sanitizeAccentSelection', () => {
   })
   it('keeps valid selections', () => {
     expect(sanitizeAccentSelection({ preset: 'moss' })).toEqual({ preset: 'moss' })
+    expect(sanitizeAccentSelection({ preset: 'slate' })).toEqual({ preset: 'slate' })
     expect(sanitizeAccentSelection({ custom: '#abc' })).toEqual({ custom: '#AABBCC' })
   })
   it('migrates the previous accent presets without changing the colour', () => {
@@ -87,6 +91,8 @@ describe('sanitizeAccentSelection', () => {
 describe('accentBase and semanticProximity', () => {
   it('uses the preset value for the theme and one value for a custom colour', () => {
     expect(accentBase({ preset: 'ink' }, 'dark').hex).toBe('#7FA8D1')
+    expect(accentBase({ preset: 'slate' }, 'light').hex).toBe('#46618A')
+    expect(accentBase({ preset: 'slate' }, 'dark').name).toBe('Slate blue')
     expect(accentBase({ custom: '#123456' }, 'light').hex).toBe('#123456')
   })
   it('warns near success and danger hues only', () => {
@@ -118,6 +124,10 @@ describe('stylesheet surfaces', () => {
     expect(read(light, 'background')).toBe(ACCENT_SURFACES.light.ground)
     expect(read(light, 'card')).toBe(ACCENT_SURFACES.light.paper)
     expect(read(light, 'rail')).toBe(ACCENT_SURFACES.light.rail)
+    expect(read(light, 'sidebar')).toBe(ACCENT_SURFACES.light.sidebar)
+    expect(read(light, 'sunken')).toBe(ACCENT_SURFACES.light.sunken)
+    expect(read(dark, 'sidebar')).toBe(ACCENT_SURFACES.dark.sidebar)
+    expect(read(dark, 'sunken')).toBe(ACCENT_SURFACES.dark.sunken)
     expect(read(dark, 'background')).toBe(ACCENT_SURFACES.dark.ground)
     expect(read(dark, 'card')).toBe(ACCENT_SURFACES.dark.paper)
     expect(read(dark, 'rail')).toBe(ACCENT_SURFACES.dark.rail)

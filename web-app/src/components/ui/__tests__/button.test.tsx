@@ -28,7 +28,7 @@ describe('Button', () => {
 
     const button = screen.getByRole('button')
     expect(button).toHaveClass(
-      'border-destructive/70',
+      'border-destructive/60',
       'text-destructive',
       'hover:bg-destructive-tint'
     )
@@ -45,28 +45,28 @@ describe('Button', () => {
     render(<Button>Default Size</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-9', 'px-3.5', 'py-2')
+    expect(button).toHaveClass('h-8', 'px-3')
   })
 
   it('applies small size classes', () => {
     render(<Button size="sm">Small Button</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-8', 'px-3')
+    expect(button).toHaveClass('h-7', 'px-2.5')
   })
 
   it('applies large size classes', () => {
     render(<Button size="lg">Large Button</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('h-10', 'px-5')
+    expect(button).toHaveClass('h-9', 'px-4')
   })
 
   it('applies icon size classes', () => {
     render(<Button size="icon">Icon</Button>)
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('size-9')
+    expect(button).toHaveClass('size-8')
   })
 
   it('handles click events', async () => {
@@ -152,8 +152,8 @@ describe('Button', () => {
     )
 
     const button = screen.getByRole('button')
-    expect(button).toHaveClass('border-destructive/70', 'text-destructive') // destructive variant
-    expect(button).toHaveClass('h-10', 'px-5') // large size
+    expect(button).toHaveClass('border-destructive/60', 'text-destructive') // destructive variant
+    expect(button).toHaveClass('h-9', 'px-4') // large size
   })
 
   it('handles keyboard events', () => {

@@ -38,6 +38,7 @@ import {
   MoreHorizontal,
   Puzzle,
   Trash2,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -136,13 +137,19 @@ const SessionItem = memo(function SessionItem({
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
-          // session in view being treated as busy (janhq/jan#8905).
+          // session in view being treated as busy (janhq/jan#8905). A neutral
+          // spinner, not the accent: the accent marks the selected row.
           <span
             role="status"
             aria-label={t('common:tasks.running', { count: 1 })}
             data-testid={`cowork-session-running-${session.id}`}
-            className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-primary"
-          />
+            className="ml-auto flex shrink-0 items-center text-ink-2"
+          >
+            <Loader2
+              aria-hidden
+              className="size-3.5! motion-safe:animate-spin"
+            />
+          </span>
         )}
       </SidebarMenuButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -431,7 +438,7 @@ export function NavCowork() {
           >
             <SearchIcon
               ref={searchIconRef}
-              className="text-foreground/70"
+              className="text-ink-2"
               size={16}
             />
             <span>{t('common:search')}</span>
@@ -446,7 +453,7 @@ export function NavCowork() {
           >
             <MessageCircleIcon
               ref={newSessionIconRef}
-              className="text-foreground/70"
+              className="text-ink-2"
               size={16}
             />
             <span>{t('common:newSession')}</span>
@@ -457,7 +464,7 @@ export function NavCowork() {
           return (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton onClick={item.onClick}>
-                <Icon className="text-foreground/70" size={16} />
+                <Icon className="text-ink-2" size={16} />
                 <span>{item.title}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

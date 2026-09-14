@@ -82,7 +82,7 @@ export function ReasoningEffortSlider({
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       <div className="flex items-baseline justify-between gap-2">
-        <span id={labelId} className="text-xs text-main-view-fg/70">
+        <span id={labelId} className="text-xs text-muted-foreground">
           {t('common:reasoningEffort.label')}
         </span>
         <span className="flex items-center gap-1.5">
@@ -96,7 +96,7 @@ export function ReasoningEffortSlider({
             <button
               type="button"
               onClick={onReset}
-              className="text-[11px] text-main-view-fg/50 underline-offset-2 hover:underline"
+              className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
             >
               {t('common:reasoningEffort.reset')}
             </button>

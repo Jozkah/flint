@@ -34,9 +34,9 @@ export function NavTabs() {
   return (
     <div
       role="group"
-      className="flex h-9 items-stretch overflow-hidden rounded-md border border-line-strong bg-card pointer-coarse:h-11"
+      className="grid h-8 grid-cols-2 gap-0.5 rounded-md bg-sunken p-0.5 pointer-coarse:h-12"
     >
-      {tabs.map((tab, i) => {
+      {tabs.map((tab) => {
         const Icon = tab.icon
         return (
           <Link
@@ -44,11 +44,12 @@ export function NavTabs() {
             to={tab.to}
             aria-current={tab.isActive ? 'page' : undefined}
             className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 px-2 text-sm font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
-              i > 0 && 'border-l border-line-strong',
+              // Selected is a raised neutral segment, not the accent: the
+              // accent is kept for the current row and the primary action.
+              'flex min-w-0 items-center justify-center gap-1.5 rounded-sm px-2 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
               tab.isActive
-                ? 'bg-brand-tint text-foreground'
-                : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
+                ? 'bg-card text-foreground ring-1 ring-border'
+                : 'text-ink-2 hover:text-foreground'
             )}
           >
             <Icon className="size-4" aria-hidden />

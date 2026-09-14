@@ -62,7 +62,7 @@ export const RagToolWidget = memo(
           typing={running}
           trailing={
             scopeLabel ? (
-              <span className="shrink-0 text-xs text-muted-foreground/70">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {scopeLabel}
               </span>
             ) : undefined
@@ -92,7 +92,7 @@ export const RagToolWidget = memo(
               indexOffset={citationOffset}
             />
           ) : (
-            <p className="px-2 text-sm text-muted-foreground/70">
+            <p className="px-2 text-sm text-muted-foreground">
               {t('tools:toolCall.noMatches')}
             </p>
           ))}

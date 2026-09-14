@@ -196,7 +196,7 @@ describe('Dialog Components', () => {
     await user.click(screen.getByText('Open Dialog'))
     
     const dialogTitle = screen.getByText('Dialog Title')
-    expect(dialogTitle).toHaveClass('text-lg', 'leading-snug', 'font-semibold')
+    expect(dialogTitle).toHaveClass('text-base', 'leading-snug', 'font-semibold')
   })
 
   it('applies proper classes to dialog description', async () => {

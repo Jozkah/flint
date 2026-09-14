@@ -1,7 +1,7 @@
 /**
- * Accent colour engine for the JAN Atelier design.
+ * Accent colour engine for the JAN Graphite Studio design.
  *
- * The user picks one base colour: a preset (Vermilion, Ink, Moss) or any
+ * The user picks one base colour: a preset (Vermilion, Ink, Moss, Slate blue) or any
  * custom hex value. That base stays the fill of primary actions. Everything
  * that must stay readable against the app's own surfaces is derived from it
  * per theme and checked with WCAG contrast: focus rings and selection markers
@@ -13,7 +13,7 @@
  * separate tokens and are never derived from the accent.
  */
 
-export type AccentPresetId = 'vermilion' | 'ink' | 'moss'
+export type AccentPresetId = 'vermilion' | 'ink' | 'moss' | 'slate'
 export type AccentSelection = { preset: AccentPresetId } | { custom: string }
 export type AccentTheme = 'light' | 'dark'
 
@@ -28,18 +28,21 @@ export const ACCENT_PRESETS: readonly AccentPreset[] = [
   { id: 'vermilion', name: 'Vermilion', light: '#C0412B', dark: '#E0654D' },
   { id: 'ink', name: 'Ink', light: '#2F5D8A', dark: '#7FA8D1' },
   { id: 'moss', name: 'Moss', light: '#4E6E3A', dark: '#97B77F' },
+  { id: 'slate', name: 'Slate blue', light: '#46618A', dark: '#94AACB' },
 ]
 
 export const DEFAULT_ACCENT: AccentSelection = { preset: 'vermilion' }
 
-/** The surfaces the derived tokens must stay readable on, per theme. These
- * mirror `index.css`; a test keeps the two in step. */
+/** The surfaces the derived tokens must stay readable on, per theme: the
+ * working pane (ground), raised content (paper), the navigation sidebar, the
+ * secondary pane (sunken) and the rail. These mirror `index.css`; a test keeps
+ * the two in step. */
 export const ACCENT_SURFACES: Record<
   AccentTheme,
-  { ground: string; paper: string; rail: string }
+  { ground: string; paper: string; sidebar: string; sunken: string; rail: string }
 > = {
-  light: { ground: '#F5F1EA', paper: '#FBF9F5', rail: '#1D1E1D' },
-  dark: { ground: '#1A1917', paper: '#211F1C', rail: '#121211' },
+  light: { ground: '#F7F8F9', paper: '#FFFFFF', sidebar: '#ECEEF1', sunken: '#EFF1F3', rail: '#E3E6EA' },
+  dark: { ground: '#191919', paper: '#1F1F1F', sidebar: '#141414', sunken: '#161616', rail: '#0F0F0F' },
 }
 
 const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
@@ -191,8 +194,8 @@ export function deriveAccentTokens(base: string, theme: AccentTheme): AccentToke
     fillHover: step(0.07),
     fillPressed: step(0.13),
     onFill,
-    indicator: adjustForContrast(base, [T.ground, T.paper], 3),
-    text: adjustForContrast(base, [T.ground, T.paper], 4.5),
+    indicator: adjustForContrast(base, [T.ground, T.paper, T.sidebar, T.sunken], 3),
+    text: adjustForContrast(base, [T.ground, T.paper, T.sidebar, T.sunken], 4.5),
     rail: adjustForContrast(base, [T.rail], 3),
     tint: mix(base, T.paper, theme === 'light' ? 0.13 : 0.22),
     soft: mix(base, T.paper, theme === 'light' ? 0.3 : 0.4),
@@ -308,7 +311,7 @@ export function applyAccentToDocument(
     deriveAccentTokens(accentBase(selection, theme).hex, theme)
   )
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v)
-  // Earlier versions wrote a tinted sidebar inline; the Atelier sidebar is a
+  // Earlier versions wrote a tinted sidebar inline; the Graphite sidebar is a
   // neutral surface from the stylesheet.
   root.style.removeProperty('--sidebar')
 }

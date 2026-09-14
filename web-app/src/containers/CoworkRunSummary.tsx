@@ -2,15 +2,17 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ChangeDestination, CompletionSummary } from '@/lib/coworkOrigins'
 import {
+  checkVerdict,
   deriveRunOutcome,
-  verifiedChecks,
+  summarizeVerification,
   type CheckKind,
-  type CheckOutcome,
+  type CheckVerdict,
   type HeadlineCode,
   type RunOutcome,
   type RunStatus,
   type TreeKind,
   type UnresolvedItem,
+  type VerificationSummary,
 } from '@/lib/coworkRunOutcome'
 
 type TFn = ReturnType<typeof useTranslation>['t']
@@ -120,17 +122,80 @@ function kindLabel(t: TFn, kind: CheckKind): string {
   }
 }
 
-function outcomeLabel(t: TFn, outcome: CheckOutcome): string {
-  switch (outcome) {
+function verdictLabel(t: TFn, verdict: CheckVerdict): string {
+  switch (verdict) {
     case 'passed':
       return t('results:checks.outcome.passed')
     case 'failed':
       return t('results:checks.outcome.failed')
+    case 'did-not-finish':
+      return t('results:checks.outcome.didNotFinish')
+    case 'running':
+      return t('results:checks.outcome.running')
     case 'not-run':
       return t('results:checks.outcome.notRun')
     case 'unknown':
       return t('results:checks.outcome.unknown')
   }
+}
+
+/**
+ * The checks, summarised in plain sentences from what was recorded: passes
+ * only where a check completed with exit 0, each failure with its exit code,
+ * and every check that did not finish, was not run or left no exit status.
+ */
+function verificationLines(
+  t: TFn,
+  summary: VerificationSummary
+): { key: string; text: string }[] {
+  const lines: { key: string; text: string }[] = []
+  if (summary.allPassed) {
+    lines.push({
+      key: 'passed',
+      text: summary.testsPassed
+        ? t('results:checks.summary.allTestsPassed')
+        : t('results:checks.summary.allChecksPassed'),
+    })
+  } else if (summary.passed > 0) {
+    lines.push({
+      key: 'passed',
+      text: t('results:checks.summary.somePassed', {
+        passed: summary.passed,
+        total: summary.total,
+      }),
+    })
+  }
+  summary.failures.forEach((failure, index) =>
+    lines.push({
+      key: `failed-${index}`,
+      text:
+        failure.exitCode !== null
+          ? t('results:checks.summary.failedWithCode', {
+              command: failure.command,
+              code: failure.exitCode,
+            })
+          : t('results:checks.summary.failedNoCode', {
+              command: failure.command,
+            }),
+    })
+  )
+  const counted = [
+    ['didNotFinish', summary.didNotFinish],
+    ['notRun', summary.notRun],
+    ['unknown', summary.unknown],
+    ['running', summary.running],
+  ] as const
+  for (const [key, count] of counted) {
+    if (count > 0)
+      lines.push({ key, text: t(`results:checks.summary.${key}`, { count }) })
+  }
+  if (summary.visualNotChecked) {
+    lines.push({
+      key: 'visual',
+      text: t('results:checks.summary.visualNotChecked'),
+    })
+  }
+  return lines
 }
 
 function unresolvedText(t: TFn, item: UnresolvedItem): string {
@@ -182,9 +247,11 @@ function unresolvedText(t: TFn, item: UnresolvedItem): string {
 const CHIP =
   'inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-none'
 
-const OUTCOME_TONE: Record<CheckOutcome, string> = {
+const VERDICT_TONE: Record<CheckVerdict, string> = {
   passed: 'border-success/30 bg-success-tint text-success',
   failed: 'border-destructive/30 bg-destructive-tint text-destructive',
+  'did-not-finish': 'border-warning/30 bg-warning-tint text-warning',
+  running: 'border-border bg-sunken text-ink-2',
   'not-run': 'border-border bg-sunken text-ink-2',
   unknown: 'border-border bg-sunken text-ink-2',
 }
@@ -256,7 +323,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
     changes.observed.length === 0 &&
     changes.unknown.length === 0
 
-  const verdicts = verifiedChecks(outcome)
+  const verification = summarizeVerification(outcome)
   const firstOpenable = resultLocation.paths.find(openable)
   const interrupted =
     outcome.status === 'partial' ||
@@ -316,7 +383,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
     outcome.nextActions.includes('retry') && Boolean(props.onRetry)
 
   const heading = (text: string) => (
-    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <h4 className="text-xs font-medium text-muted-foreground">
       {text}
     </h4>
   )
@@ -426,8 +493,10 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                       key={`${check.callId ?? check.command}-${index}`}
                       className="flex min-w-0 flex-wrap items-center gap-2 px-2 py-1.5"
                     >
-                      <span className={`${CHIP} ${OUTCOME_TONE[check.outcome]}`}>
-                        {outcomeLabel(t, check.outcome)}
+                      <span
+                        className={`${CHIP} ${VERDICT_TONE[checkVerdict(check)]}`}
+                      >
+                        {verdictLabel(t, checkVerdict(check))}
                       </span>
                       <span className="shrink-0 text-ink-2">
                         {kindLabel(t, check.kind)}
@@ -458,27 +527,25 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-muted-foreground">
-                  {verdicts.length === 0
-                    ? t('results:checks.noneVerified')
-                    : t('results:checks.observedNote')}
-                </p>
-                {verdicts.some((check) => check.outcome === 'passed') ? (
-                  <p className="text-muted-foreground">
-                    {t('results:checks.passNotProof')}
-                  </p>
-                ) : null}
+                <ul
+                  className="flex flex-col gap-0.5 text-foreground"
+                  data-testid="cowork-verification-summary"
+                >
+                  {verificationLines(t, verification).map((line) => (
+                    <li key={line.key} className="break-words">
+                      {line.text}
+                    </li>
+                  ))}
+                </ul>
               </>
             )}
-            {(outcome.commands ?? []).some((c) => c.verification === null) ? (
+            {verification.otherCommands > 0 ? (
               <p
                 className="text-muted-foreground"
                 data-testid="cowork-other-commands"
               >
                 {t('results:checks.otherCommands', {
-                  count: (outcome.commands ?? []).filter(
-                    (c) => c.verification === null
-                  ).length,
+                  count: verification.otherCommands,
                 })}
               </p>
             ) : null}

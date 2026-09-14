@@ -161,6 +161,31 @@ describe('CoworkTasksPanel', () => {
     expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
   })
 
+  it('says a status in words, with running never in the accent', () => {
+    render(
+      <Panel
+        state={stateWith([task({ id: 'b', status: 'running', endedAt: undefined })])}
+      />
+    )
+    const status = screen.getByTestId('task-status-running')
+    expect(status).toHaveTextContent('common:tasks.statusRunning')
+    expect(status).toHaveAttribute('data-state', 'running')
+    expect(status.className).not.toMatch(/brand/)
+  })
+
+  it('says how many agents and commands a workflow has', () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ id: 'a' }),
+          task({ id: 'b', kind: 'shell', title: 'pnpm test' }),
+        ])}
+      />
+    )
+    expect(screen.getByText('common:tasks.agentCount count=1')).toBeInTheDocument()
+    expect(screen.getByText('common:tasks.shellCount count=1')).toBeInTheDocument()
+  })
+
   it('reports progress on a bar screen readers can read', () => {
     render(
       <Panel

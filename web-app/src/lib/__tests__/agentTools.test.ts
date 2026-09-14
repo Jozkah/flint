@@ -15,6 +15,11 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   sandboxStatus: () => sandboxStatus(),
 }))
 
+const invoke = vi.fn()
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (...args: unknown[]) => invoke(...args),
+}))
+
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({ app: () => ({ getJanDataFolder }) }),
 }))
@@ -86,6 +91,30 @@ describe('agentTools', () => {
     // And the same question twice is still answered from the cache.
     await getAgentToolSchemas('/proj')
     expect(advertisedToolSchemas).toHaveBeenCalledTimes(2)
+  })
+
+  /// The messaging tools are offered only to the session scope, which the
+  /// generated binding cannot pass, so a scoped request calls the plugin
+  /// command itself -- and is cached apart from the thread list.
+  it('passes the session scope to the backend and caches it apart from threads', async () => {
+    const messaging = ['list_sessions', 'send_message', 'read_messages', 'wait_for_reply']
+    advertisedToolSchemas.mockResolvedValue(advertising(['read']))
+    invoke.mockReset().mockResolvedValue(advertising(['read', ...messaging]))
+    const { getAgentToolSchemas } = await import('../agentTools')
+
+    const thread = (await getAgentToolSchemas('/p')).map((s) => s.function.name)
+    expect(thread).toEqual(['read'])
+    expect(invoke).not.toHaveBeenCalled()
+
+    const session = (await getAgentToolSchemas('/p', undefined, 'session' as never)).map(
+      (s) => s.function.name
+    )
+    expect(session).toEqual(['read', ...messaging])
+    expect(invoke).toHaveBeenCalledWith('plugin:agent-tools|advertised_tool_schemas', {
+      projectRoot: '/p',
+      reported: undefined,
+      scope: 'session',
+    })
   })
 
   it('advertises the workspace tools including writes and bash', async () => {

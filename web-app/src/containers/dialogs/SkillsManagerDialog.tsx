@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, FileText, DownloadCloud, Loader2, Check } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  FileText,
+  DownloadCloud,
+  Loader2,
+  Check,
+  OctagonAlert,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -179,30 +187,33 @@ export default function SkillsManagerDialog({
             {t('common:skillsSelectFolder')}
           </div>
         ) : (
-          <div className="flex gap-4 h-[60vh] overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-3 sm:h-[60vh] sm:flex-row sm:gap-4 sm:overflow-hidden">
             {/* Skill list */}
-            <div className="w-1/3 min-h-0 flex flex-col gap-2 border-r pr-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 justify-start"
-                onClick={startNew}
-              >
-                <Plus size={14} />
-                {t('common:skillNew')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  'gap-1.5 justify-start',
-                  hubMode && 'bg-accent'
-                )}
-                onClick={openHub}
-              >
-                <DownloadCloud size={14} />
-                {t('common:skillHubImport')}
-              </Button>
+            <div className="flex max-h-[40vh] min-h-0 flex-col gap-2 border-b border-border pb-3 sm:max-h-none sm:w-1/3 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0">
+              <div className="flex flex-wrap gap-2 sm:flex-col">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 justify-start pointer-coarse:h-11"
+                  onClick={startNew}
+                >
+                  <Plus size={14} aria-hidden />
+                  {t('common:skillNew')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={hubMode}
+                  className={cn(
+                    'gap-1.5 justify-start pointer-coarse:h-11',
+                    hubMode && 'bg-accent text-foreground'
+                  )}
+                  onClick={openHub}
+                >
+                  <DownloadCloud size={14} aria-hidden />
+                  {t('common:skillHubImport')}
+                </Button>
+              </div>
               {skills.length > 0 && (
                 <div className="px-1 text-xs text-muted-foreground">
                   <p>
@@ -225,9 +236,14 @@ export default function SkillsManagerDialog({
                       key={s.name}
                       role="button"
                       tabIndex={0}
+                      aria-current={
+                        !hubMode && selected === s.name ? 'true' : undefined
+                      }
                       className={cn(
-                        'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        !hubMode && selected === s.name && 'bg-accent'
+                        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                        !hubMode &&
+                          selected === s.name &&
+                          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
                       )}
                       onClick={() => openSkill(s.name)}
                       onKeyDown={(e) => {
@@ -238,9 +254,9 @@ export default function SkillsManagerDialog({
                         }
                       }}
                     >
-                      <FileText size={14} className="shrink-0 text-muted-foreground" />
+                      <FileText size={14} className="shrink-0 text-muted-foreground" aria-hidden />
                       <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium">{s.name}</div>
+                        <div className="truncate font-medium text-foreground">{s.name}</div>
                         {isPluginSkill(s) && (
                           <div className="truncate text-xs text-muted-foreground">
                             {t('connections:skills.fromPlugin', {
@@ -261,7 +277,8 @@ export default function SkillsManagerDialog({
                       </div>
                       {!isPluginSkill(s) && (
                       <button
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 text-muted-foreground hover:text-destructive"
+                        type="button"
+                        className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive-tint hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:group-focus-within:opacity-100 pointer-coarse:size-11"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDelete(s.name)
@@ -271,7 +288,7 @@ export default function SkillsManagerDialog({
                           name: s.name,
                         })}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={14} aria-hidden />
                       </button>
                       )}
                     </div>
@@ -284,11 +301,12 @@ export default function SkillsManagerDialog({
             <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
               {hubMode ? (
                 <>
-                  <div className="text-sm font-medium">
+                  <div className="text-[13px] font-semibold text-foreground">
                     {t('common:skillHubTitle')}
                   </div>
                   {importError && (
-                    <p role="alert" className="text-xs text-destructive break-words">
+                    <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive break-words">
+                      <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
                       {t('connections:skills.importFailed', {
                         name: importError.name,
                         error: importError.message,
@@ -296,11 +314,12 @@ export default function SkillsManagerDialog({
                     </p>
                   )}
                   {hubLoading ? (
-                    <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                      <Loader2 className="animate-spin" size={18} />
+                    <div className="flex-1 flex items-center justify-center py-6 text-ink-2">
+                      <Loader2 className="motion-safe:animate-spin" size={18} aria-hidden />
                     </div>
                   ) : hubError ? (
-                    <p role="alert" className="text-sm text-destructive break-words">
+                    <p role="alert" className="flex items-start gap-1.5 text-sm text-destructive break-words">
+                      <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
                       {t('connections:skills.loadHubFailed', { error: hubError })}
                     </p>
                   ) : hubSkills.length === 0 ? (
@@ -329,12 +348,12 @@ export default function SkillsManagerDialog({
                             <Button
                               variant="outline"
                               size="xs"
-                              className="gap-1 shrink-0"
+                              className="gap-1 shrink-0 pointer-coarse:h-11"
                               disabled={importing !== null}
                               onClick={() => handleImport(s.name)}
                             >
                               {importing === s.name ? (
-                                <Loader2 className="animate-spin" size={12} />
+                                <Loader2 className="motion-safe:animate-spin" size={12} aria-hidden />
                               ) : imported ? (
                                 <Check size={12} />
                               ) : (
@@ -369,7 +388,7 @@ export default function SkillsManagerDialog({
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder={t('common:skillContentPlaceholder')}
-                    className="flex-1 font-mono text-xs resize-none"
+                    className="min-h-48 flex-1 font-mono text-base md:text-xs resize-none"
                     readOnly={readOnlyPlugin !== null}
                     aria-readonly={readOnlyPlugin !== null ? true : undefined}
                   />

@@ -292,7 +292,7 @@ function Row({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 text-muted-foreground/70 hover:text-foreground focus-visible:text-foreground"
+                className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:text-foreground"
                 aria-label={note}
                 data-testid={`${testId}-note`}
               >
@@ -313,7 +313,7 @@ function Row({
         {kind && kind !== 'reported' && (
           <span
             className={cn(
-              'text-[10px] uppercase tracking-wide',
+              'text-xs font-medium',
               kind === 'clamped' ? 'text-warning' : 'text-muted-foreground'
             )}
             aria-hidden="true"

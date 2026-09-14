@@ -65,7 +65,7 @@ const TRIGGER_STYLES: Record<FitTier, TriggerStyle> = {
     label: 'Fit unknown',
     detail: 'Could not estimate memory requirements',
     pill: 'bg-sunken text-ink-2',
-    dot: 'bg-muted-foreground/60',
+    dot: 'bg-line-strong',
   },
 }
 
@@ -97,7 +97,7 @@ export const ModelInfoHoverCard = ({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1 rounded font-medium cursor-pointer transition-colors',
+        'inline-flex items-center gap-1 rounded-md font-medium cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring',
         isDefaultVariant ? 'text-xs px-2 py-1' : 'text-[11px] px-1.5 py-0.5',
         style.pill
       )}
@@ -111,8 +111,8 @@ export const ModelInfoHoverCard = ({
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
-      <HoverCardContent className="w-80 max-w-[calc(100vw-1.5rem)] bg-card p-4" side="left">
-        <div className="space-y-4">
+      <HoverCardContent className="w-80 max-w-[calc(100vw-1.5rem)] bg-card p-3" side="left">
+        <div className="space-y-3">
           <div className="border-b border-border pb-3">
             <h4 className="text-sm font-semibold">
               {!isDefaultVariant ? variant?.model_id : model?.model_name}
@@ -152,7 +152,7 @@ export const ModelInfoHoverCard = ({
                   <p className="text-muted-foreground mt-0.5">{style.detail}</p>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-2 italic">
+              <p className="text-xs text-muted-foreground mt-2">
                 Estimated from file size and your hardware. Actual performance
                 depends on quantization and context length.
               </p>
@@ -166,12 +166,12 @@ export const ModelInfoHoverCard = ({
               </h5>
               <div className="flex flex-wrap gap-2">
                 {model.tools && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-sm">
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-sunken text-ink-2 rounded-md">
                     <span className="text-xs font-medium">Tools</span>
                   </div>
                 )}
                 {(model.num_mmproj ?? 0) > 0 && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-sm">
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-sunken text-ink-2 rounded-md">
                     <span className="text-xs font-medium">Vision</span>
                   </div>
                 )}

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { FolderOpen, Loader2, Plus, Puzzle, Trash2 } from 'lucide-react'
+import {
+  FolderOpen,
+  Loader2,
+  OctagonAlert,
+  Plus,
+  Puzzle,
+  Trash2,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +51,9 @@ type InstallState = {
   host: string | null
   cancelling: boolean
 }
+
+/** An inline error: always an icon and words, next to what failed. */
+const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
 
 const newOperationId = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -354,20 +364,27 @@ export default function PluginsManagerDialog({
   const gitDisabled = sources !== null && !sources.gitAvailable
 
   const renderList = () => (
-    <div className="w-1/3 min-h-0 flex flex-col gap-2 border-r pr-3">
+    <div className="flex max-h-[40vh] min-h-0 flex-col gap-2 border-b border-border pb-3 sm:max-h-none sm:w-1/3 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0">
       <Button
         variant="outline"
         size="sm"
-        className={cn('gap-1.5 justify-start', mode === 'install' && 'bg-accent')}
+        aria-pressed={mode === 'install'}
+        className={cn(
+          'gap-1.5 justify-start pointer-coarse:h-11',
+          mode === 'install' && 'bg-accent text-foreground'
+        )}
         onClick={openInstall}
         disabled={installing !== null}
       >
-        <Plus size={14} />
+        <Plus size={14} aria-hidden />
         {t('plugins:installButton')}
       </Button>
       {loadError && (
         <div role="alert" className="text-xs text-destructive break-words">
-          <p>{loadError}</p>
+          <p className="flex items-start gap-1.5">
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{loadError}</span>
+          </p>
           <Button variant="link" size="sm" className="px-0" onClick={() => void refresh()}>
             {t('plugins:retry')}
           </Button>
@@ -388,15 +405,17 @@ export default function PluginsManagerDialog({
                 type="button"
                 aria-current={selectedId === p.id ? 'true' : undefined}
                 className={cn(
-                  'w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  selectedId === p.id && mode === 'browse' && 'bg-accent'
+                  'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                  selectedId === p.id &&
+                    mode === 'browse' &&
+                    'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
                 )}
                 onClick={() => select(p.id)}
               >
-                <Puzzle size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
+                <Puzzle size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="flex-1 min-w-0">
                   <span className="flex items-baseline gap-1.5">
-                    <span className="truncate font-medium">{p.name}</span>
+                    <span className="truncate font-medium text-foreground">{p.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {t('plugins:version', { version: p.version })}
                     </span>
@@ -459,7 +478,7 @@ export default function PluginsManagerDialog({
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-base font-medium break-words">
+            <div className="text-sm font-semibold text-foreground break-words">
               {plugin.name}{' '}
               <span className="text-xs text-muted-foreground">
                 {t('plugins:version', { version: plugin.version })}
@@ -483,22 +502,27 @@ export default function PluginsManagerDialog({
           </div>
         </div>
         {toggleError && (
-          <p role="alert" className="text-xs text-destructive break-words">
-            {toggleError}
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{toggleError}</span>
           </p>
         )}
         {removeError && (
-          <p role="alert" className="text-xs text-destructive break-words">
-            {removeError}
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{removeError}</span>
           </p>
         )}
         {detailsError ? (
-          <p role="alert" className="text-xs text-destructive break-words">
-            {t('plugins:details.failed', { error: detailsError })}
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">
+              {t('plugins:details.failed', { error: detailsError })}
+            </span>
           </p>
         ) : !details || details.id !== plugin.id ? (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <Loader2 className="animate-spin" size={12} />
+            <Loader2 className="motion-safe:animate-spin" size={12} aria-hidden />
             {t('plugins:details.loading')}
           </p>
         ) : (
@@ -572,15 +596,15 @@ export default function PluginsManagerDialog({
 
             <div>
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
-                className="gap-1.5 text-destructive"
+                className="gap-1.5 pointer-coarse:h-11"
                 onClick={() => {
                   setRemoveError(null)
                   setConfirmRemove(details)
                 }}
               >
-                <Trash2 size={14} />
+                <Trash2 size={14} aria-hidden />
                 {t('plugins:remove.button')}
               </Button>
             </div>
@@ -724,13 +748,15 @@ export default function PluginsManagerDialog({
         )}
 
         {fieldError && (
-          <p id={fieldErrorId} role="alert" className="text-xs text-destructive">
-            {fieldError}
+          <p id={fieldErrorId} role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{fieldError}</span>
           </p>
         )}
         {installError && (
-          <p role="alert" className="text-xs text-destructive break-words">
-            {installError}
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{installError}</span>
           </p>
         )}
         {installNotice && (
@@ -743,7 +769,7 @@ export default function PluginsManagerDialog({
           {installing ? (
             <>
               <span role="status" className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="animate-spin" size={12} />
+                <Loader2 className="motion-safe:animate-spin" size={12} aria-hidden />
                 {installProgress(installing)}
               </span>
               <Button
@@ -808,7 +834,7 @@ export default function PluginsManagerDialog({
               {t('plugins:selectFolder')}
             </div>
           ) : (
-            <div className="flex gap-4 h-[60vh] overflow-hidden">
+            <div className="flex min-h-0 flex-col gap-3 sm:h-[60vh] sm:flex-row sm:gap-4 sm:overflow-hidden">
               {renderList()}
               <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
                 {mode === 'install'
@@ -856,7 +882,9 @@ export default function PluginsManagerDialog({
               disabled={removing}
               onClick={() => void confirmRemoval()}
             >
-              {removing && <Loader2 className="animate-spin" size={14} />}
+              {removing && (
+                <Loader2 className="motion-safe:animate-spin" size={14} aria-hidden />
+              )}
               {t('plugins:remove.confirm')}
             </Button>
           </DialogFooter>

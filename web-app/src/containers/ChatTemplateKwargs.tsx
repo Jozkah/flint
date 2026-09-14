@@ -61,12 +61,12 @@ export function ChatTemplateKwargs({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <div className="font-medium">
+    <div className="space-y-3">
+      <div className="space-y-0.5">
+        <div className="text-[13px] font-semibold text-foreground">
           {t('common:modelSettings.templateKwargs.section')}
         </div>
-        <p className="text-muted-foreground leading-normal text-xs">
+        <p className="text-muted-foreground leading-normal text-[13px]">
           {t('common:modelSettings.templateKwargs.description')}
         </p>
       </div>
@@ -117,11 +117,13 @@ export function ChatTemplateKwargs({
           />
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
+            className="pointer-coarse:size-11"
             onClick={() => removeValue(key)}
             title={t('common:modelSettings.templateKwargs.remove')}
+            aria-label={`${t('common:modelSettings.templateKwargs.remove')} ${key}`}
           >
-            <Trash2 size={16} className="text-muted-foreground" />
+            <Trash2 size={16} className="text-muted-foreground" aria-hidden />
           </Button>
         </div>
       ))}

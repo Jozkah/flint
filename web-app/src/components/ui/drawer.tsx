@@ -36,7 +36,7 @@ function DrawerOverlay({
       data-slot="drawer-overlay"
       className={cn(
         // See the note on the dialog overlay: same element shape, same fix.
-        "data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        "data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-scrim",
         className
       )}
       {...props}

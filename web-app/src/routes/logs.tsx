@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { ScrollText } from 'lucide-react'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
-import { CopyLogsButton, LogViewer } from '@/containers/LogViewer'
+import { CopyLogsButton, LogToolbar, LogViewer } from '@/containers/LogViewer'
+import { filterLogs, type LogLevelFilter } from '@/lib/logFilter'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.appLogs as any)({
@@ -16,6 +17,8 @@ export const Route = createFileRoute(route.appLogs as any)({
 function LogsViewer() {
   const { t } = useTranslation()
   const [logs, setLogs] = useState<LogEntry[]>([])
+  const [query, setQuery] = useState('')
+  const [level, setLevel] = useState<LogLevelFilter>('all')
   const logsContainerRef = useRef<HTMLDivElement>(null)
   const serviceHub = useServiceHub()
 
@@ -55,18 +58,33 @@ function LogsViewer() {
     }
   }
 
+  const shown = useMemo(
+    () => filterLogs(logs, query, level),
+    [logs, query, level]
+  )
+
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
       <SystemPageHeader
         title={t('logs:title')}
         icon={<ScrollText className="size-4" />}
-        actions={<CopyLogsButton logs={logs} />}
+        actions={<CopyLogsButton logs={shown} />}
       />
-      <div className="flex min-h-0 flex-1 flex-col p-3 md:p-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 md:p-4">
+        {logs.length > 0 && (
+          <LogToolbar
+            query={query}
+            onQueryChange={setQuery}
+            level={level}
+            onLevelChange={setLevel}
+            shown={shown.length}
+            total={logs.length}
+          />
+        )}
         <LogViewer
           ref={logsContainerRef}
-          logs={logs}
-          emptyText={t('logs:noLogs')}
+          logs={shown}
+          emptyText={logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')}
         />
       </div>
     </div>

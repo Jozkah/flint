@@ -528,6 +528,13 @@ class Handler(BaseHTTPRequestHandler):
         if not carries_results:
             folder = folder_of(body)
             self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+            # `lead`: stream this many "working" tokens, `delay` apart, before
+            # the tool calls, so a session is visibly mid-stream for a while
+            # (input or mail sent meanwhile has a boundary to arrive at).
+            for _ in range(int(route.get("lead", 0) or 0)):
+                self.wfile.write(sse(chunk({"content": "working "})))
+                self.wfile.flush()
+                time.sleep(ARGS.delay)
             for index, spec in enumerate(route.get("tools", [])):
                 name, _, raw_args = spec.partition(":")
                 raw_args = raw_args.replace(

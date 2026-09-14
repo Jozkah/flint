@@ -495,7 +495,7 @@ export function SecurityConfigDialog({
           >
             {isGeneratingToken ? (
               <>
-                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="motion-safe:animate-spin mr-2 h-4 w-4" />
                 Generating...
               </>
             ) : (
@@ -564,7 +564,7 @@ export function SecurityConfigDialog({
           >
             {isSettingPassword ? (
               <>
-                <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="motion-safe:animate-spin mr-2 h-4 w-4" />
                 Setting...
               </>
             ) : (
@@ -607,18 +607,18 @@ export function SecurityConfigDialog({
           >
             <RefreshCw
               size={16}
-              className={cn(isLoadingDevices && 'animate-spin')}
+              className={cn(isLoadingDevices && 'motion-safe:animate-spin')}
             />
           </Button>
         </div>
 
         {isLoadingDevices ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
+            <Loader2 className="motion-safe:animate-spin h-6 w-6 text-muted-foreground" />
           </div>
         ) : devices.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            <MonitorSmartphone size={32} className="mx-auto mb-2 opacity-50" />
+            <MonitorSmartphone size={32} className="mx-auto mb-2 text-muted-foreground" aria-hidden />
             <p>No approved devices</p>
           </div>
         ) : (
@@ -633,7 +633,7 @@ export function SecurityConfigDialog({
                     <span className="font-medium text-foreground truncate">
                       {device.name}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-sunken text-ink-2">
                       {device.channel}
                     </span>
                   </div>
@@ -659,7 +659,7 @@ export function SecurityConfigDialog({
                   className="shrink-0 text-destructive hover:text-destructive"
                 >
                   {revokingDeviceId === device.id ? (
-                    <Loader2 className="animate-spin h-4 w-4" />
+                    <Loader2 className="motion-safe:animate-spin h-4 w-4" />
                   ) : (
                     <Trash2 size={16} />
                   )}
@@ -687,7 +687,7 @@ export function SecurityConfigDialog({
           >
             <RefreshCw
               size={16}
-              className={cn(isLoadingLogs && 'animate-spin')}
+              className={cn(isLoadingLogs && 'motion-safe:animate-spin')}
             />
           </Button>
           <Button
@@ -706,11 +706,11 @@ export function SecurityConfigDialog({
       {/* Logs list */}
       {isLoadingLogs ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
+          <Loader2 className="motion-safe:animate-spin h-6 w-6 text-muted-foreground" />
         </div>
       ) : logs.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          <History size={32} className="mx-auto mb-2 opacity-50" />
+          <History size={32} className="mx-auto mb-2 text-muted-foreground" aria-hidden />
           <p>No access logs</p>
         </div>
       ) : (
@@ -734,7 +734,7 @@ export function SecurityConfigDialog({
                   <span className="font-medium text-foreground">
                     {log.action}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-sunken text-ink-2">
                     {log.channel}
                   </span>
                 </div>
@@ -833,7 +833,7 @@ export function SecurityConfigDialog({
 
           {isLoadingStatus ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+              <Loader2 className="motion-safe:animate-spin h-8 w-8 text-muted-foreground" />
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">

@@ -85,7 +85,7 @@ function SheetContent({
         {children}
         {showCloseButton && (
           <SheetPrimitive.Close className={cn(
-            "ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none",
+            "ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-3 right-3 grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground pointer-coarse:size-11 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none",
             offsetForTitlebar && "top-15"
           )}>
             <XIcon className="size-4" />

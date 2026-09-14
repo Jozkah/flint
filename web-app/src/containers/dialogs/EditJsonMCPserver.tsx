@@ -7,6 +7,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { OctagonAlert } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 import CodeEditor from '@uiw/react-textarea-code-editor'
@@ -111,8 +112,9 @@ export default function EditJsonMCPserver({
             />
           </div>
           {error && (
-            <div role="alert" className="text-destructive text-sm">
-              {error}
+            <div role="alert" className="flex items-start gap-2 text-destructive text-sm">
+              <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 break-words">{error}</span>
             </div>
           )}
         </div>

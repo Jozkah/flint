@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { addRoot, removeRoot, type RootRejection } from '@/lib/claudeSkillRoots'
 
@@ -112,13 +113,20 @@ export function ClaudeSkillRootsSettings({
       )}
 
       {rejected ? (
-        <p role="alert" className="text-destructive">
+        <p role="alert" className="flex items-start gap-1.5 text-destructive">
+          <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
           {t(`common:claudeCompat.roots.reject.${rejected}`)}
         </p>
       ) : null}
 
-      <div className="flex gap-2">
-        <Button size="sm" disabled={busy} onClick={() => void add()}>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="pointer-coarse:h-11"
+          disabled={busy}
+          onClick={() => void add()}
+        >
           {t('common:claudeCompat.roots.add')}
         </Button>
         {onRescan ? (

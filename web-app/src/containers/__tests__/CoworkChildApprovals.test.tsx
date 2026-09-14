@@ -88,6 +88,35 @@ describe('CoworkChildApprovals', () => {
     expect(useToolApprovalRequests.getState().pending.call_0.threadId).toBe('s2')
   })
 
+  it('starts focus on Deny, the answer that changes nothing', async () => {
+    render(<CoworkChildApprovals sessionId="s1" />)
+    act(() => {
+      void useToolApprovalRequests
+        .getState()
+        .requestApproval('call_f', 'write', 's1', undefined, { origin: 'worker' })
+    })
+    const card = await screen.findByTestId('child-approval')
+    expect(within(card).getByRole('button', { name: /deny/i })).toHaveFocus()
+  })
+
+  it('never pulls focus out of a field the person is typing in', async () => {
+    render(
+      <>
+        <textarea aria-label="composer" />
+        <CoworkChildApprovals sessionId="s1" />
+      </>
+    )
+    const composer = screen.getByLabelText('composer')
+    composer.focus()
+    act(() => {
+      void useToolApprovalRequests
+        .getState()
+        .requestApproval('call_t', 'write', 's1', undefined, { origin: 'worker' })
+    })
+    await screen.findByTestId('child-approval')
+    expect(composer).toHaveFocus()
+  })
+
   it('leaves the conversation’s own requests to their tool cards, and other sessions’ alone', async () => {
     render(<CoworkChildApprovals sessionId="s1" />)
     act(() => {

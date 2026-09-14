@@ -14,9 +14,25 @@ vi.mock('@/containers/HeaderPage', () => ({
 }))
 
 vi.mock('@/containers/Card', () => ({
-  Card: ({ header, children }: { header?: React.ReactNode; children: React.ReactNode }) => (
+  Card: ({
+    title,
+    aside,
+    header,
+    children,
+  }: {
+    title?: React.ReactNode
+    aside?: React.ReactNode
+    header?: React.ReactNode
+    children: React.ReactNode
+  }) => (
     <div data-testid="card">
-      {header && <div data-testid="card-header">{header}</div>}
+      {(title || aside || header) && (
+        <div data-testid="card-header">
+          {title}
+          {aside}
+          {header}
+        </div>
+      )}
       {children}
     </div>
   ),

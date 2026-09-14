@@ -627,7 +627,7 @@ export type RunDeps = {
    * messages taken, in the order they were typed; they are no longer pending
    * once returned. janhq/jan#8864.
    */
-  takeSteering?: () => UIMessage[]
+  takeSteering?: () => UIMessage[] | Promise<UIMessage[]>
 }
 
 export type RunOutcome = {
@@ -719,7 +719,7 @@ export async function runTurn(opts: {
     // in and no model call is under way, so input typed meanwhile reaches the
     // model now rather than after the run ends. Plain user messages, in the
     // order typed -- never folded into the model's own turn.
-    const steered = deps.takeSteering?.() ?? []
+    const steered = (await deps.takeSteering?.()) ?? []
     if (steered.length > 0) messages.push(...steered)
 
     // A snapshot, not the live array: the loop pushes to `messages` after the
@@ -946,7 +946,7 @@ export async function runTurn(opts: {
       // Input that arrived while that answer was written continues this run:
       // the answer is already in the history, the input follows it, and the
       // model replies to both. The caps are checked again at the top.
-      const late = deps.takeSteering?.() ?? []
+      const late = (await deps.takeSteering?.()) ?? []
       if (late.length > 0) {
         messages.push(...late)
         continue

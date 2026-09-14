@@ -4,6 +4,7 @@ import {
   BookOpen,
   Box,
   Folder,
+  MessagesSquare,
   Search,
   Settings,
   Wrench,
@@ -17,6 +18,7 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 
 const ICONS: Record<RailArea, LucideIcon> = {
   workspace: Folder,
+  rooms: MessagesSquare,
   library: BookOpen,
   models: Box,
   tools: Wrench,
@@ -37,8 +39,9 @@ type AppRailProps = {
 }
 
 /**
- * The 80px graphite rail: one wordmark, a separate activity indicator, the
- * four work areas on top and Search, System and Settings at the bottom.
+ * The 64px rail: the JAN wordmark, a separate activity indicator, the four work
+ * areas on top and Search, System and Settings at the bottom. The current area
+ * is marked with the accent (selection); activity has its own indicator.
  */
 export function AppRail({ onNavigate, className }: AppRailProps) {
   const { t } = useTranslation()
@@ -52,16 +55,16 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
     const label = t(item.labelKey)
     const isCurrent = item.id === current
     const itemClass = cn(
-      'relative flex w-full flex-col items-center justify-center gap-1.5 text-[12px] font-medium leading-none outline-hidden',
-      'h-[72px] shrink-0 text-rail-muted hover:bg-rail-hover hover:text-rail-foreground',
-      'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-brand-rail',
-      '[@media(max-height:620px)]:h-14 [@media(max-height:620px)]:gap-1',
+      'relative flex w-full flex-col items-center justify-center gap-1 rounded-md text-[11px] font-medium leading-none outline-hidden',
+      'h-[52px] shrink-0 text-rail-muted hover:bg-rail-hover hover:text-rail-foreground',
+      'focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-brand-rail',
+      '[@media(max-height:620px)]:h-11 [@media(max-height:620px)]:gap-0.5',
       isCurrent &&
-        'bg-rail-active text-rail-foreground before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-brand-rail'
+        'bg-rail-active text-rail-foreground before:absolute before:inset-y-2.5 before:-left-1.5 before:w-[2px] before:rounded-r-sm before:bg-brand-rail'
     )
     const content = (
       <>
-        <Icon className="size-[22px]!" strokeWidth={1.5} aria-hidden />
+        <Icon className="size-[18px]!" strokeWidth={1.75} aria-hidden />
         <span>{label}</span>
       </>
     )
@@ -101,7 +104,7 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
       aria-label={t('common:appRail.label')}
       data-testid="app-rail"
       className={cn(
-        'flex h-full w-(--rail-w) shrink-0 flex-col overflow-y-auto overflow-x-hidden bg-rail text-rail-foreground [scrollbar-width:none]',
+        'flex h-full w-(--rail-w) shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-hidden border-r border-border bg-rail px-1.5 pb-1.5 text-rail-foreground [scrollbar-width:none]',
         className
       )}
     >
@@ -109,15 +112,16 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
         to="/"
         aria-label={t('common:appRail.home')}
         onClick={() => onNavigate?.()}
-        className="relative flex h-[72px] shrink-0 items-center justify-center font-display text-[26px] leading-none tracking-tight text-rail-foreground outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-brand-rail [@media(max-height:620px)]:h-12"
+        className="relative mb-1 flex h-(--ctx-h) shrink-0 items-center justify-center gap-px pl-[0.16em] text-[14.5px] font-bold leading-none tracking-[0.16em] text-rail-foreground outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-brand-rail [@media(max-height:620px)]:h-10"
       >
         JAN
+        <span aria-hidden className="mb-2 size-[5px] shrink-0 self-center bg-brand-rail" />
         {working && (
           <span
             role="status"
             aria-label={t('common:appRail.working')}
             title={t('common:appRail.working')}
-            className="absolute right-4 top-6 size-1.5 rounded-full bg-brand-rail motion-safe:animate-pulse"
+            className="absolute right-2 top-2 size-1.5 rounded-full bg-rail-foreground/70 motion-safe:animate-pulse"
           />
         )}
       </Link>

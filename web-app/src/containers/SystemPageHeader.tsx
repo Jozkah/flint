@@ -27,7 +27,7 @@ export function SystemPageHeader({ title, icon, actions }: SystemPageHeaderProps
           {icon}
         </span>
       )}
-      <h1 className="min-w-0 truncate font-display text-lg leading-none text-foreground">
+      <h1 className="min-w-0 truncate text-sm font-semibold text-foreground">
         {title}
       </h1>
       {actions && (

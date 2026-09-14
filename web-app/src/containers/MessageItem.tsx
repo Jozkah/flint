@@ -48,6 +48,7 @@ import { useConversationModel } from '@/hooks/useConversationPane'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
+import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
@@ -61,6 +62,7 @@ import { useGroundingStore } from '@/stores/grounding-store'
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { WebSourcesRow } from '@/components/WebSourcesRow'
 import { injectCitationMarkers } from '@/lib/grounding'
+import { attributionOf } from '@/lib/requestAttribution'
 
 export type MessageItemProps = {
   message: UIMessage
@@ -373,13 +375,13 @@ export const MessageItem = memo(
             <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
               <div
                 className={cn(
-                  'relative inline-block max-w-[85%] rounded-lg border px-3.5 py-2.5 text-foreground',
+                  'relative inline-block max-w-[min(85%,36rem)] rounded-lg rounded-br-sm px-3.5 py-2.5 text-foreground',
                   coloredUserBubble
                     ? // The accent tint, only when the setting asks for it.
-                      'border-brand-soft bg-brand-tint'
-                    : // Neutral paper otherwise: the right-aligned column and
-                      // the border are enough to find the user's own turns.
-                      'border-border bg-card'
+                      'bg-brand-tint'
+                    : // A neutral block otherwise: the right-aligned column
+                      // and the tone are enough to find the user's own turns.
+                      'bg-accent'
                 )}
               >
                 {/* janhq/jan#8864: typed while the agent worked and handed to
@@ -392,6 +394,7 @@ export const MessageItem = memo(
                     {t('common:steering.delivered')}
                   </div>
                 )}
+                {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -592,7 +595,7 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
@@ -604,7 +607,7 @@ export const MessageItem = memo(
           </span>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"
@@ -614,13 +617,42 @@ export const MessageItem = memo(
         </div>
       ) : null
 
+    // The model that answered, when the request recorded it.
+    const answeredBy =
+      message.role === 'assistant' ? attributionOf(message)?.model : undefined
+
     return (
       <div
         className={cn(
-          'w-full mb-4 group/message',
-          message.role === 'user' && !isFirstMessage && 'mt-8'
+          'w-full mb-5 group/message',
+          message.role === 'user' && !isFirstMessage && 'mt-6'
         )}
       >
+        {/* A small, quiet line naming who answered and when. */}
+        {message.role === 'assistant' && (
+          <div
+            data-testid="assistant-message-header"
+            className="mb-1 flex min-w-0 items-center gap-1.5 text-xs leading-5 text-muted-foreground"
+          >
+            <span className="shrink-0 font-semibold text-ink-2">JAN</span>
+            {answeredBy && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="min-w-0 truncate" title={answeredBy}>
+                  {answeredBy}
+                </span>
+              </>
+            )}
+            {!isStreaming && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="shrink-0 tabular-nums">
+                  {formatDate(createdAt)}
+                </span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Render message parts */}
         {renderedParts}
@@ -632,7 +664,7 @@ export const MessageItem = memo(
         {message.role === 'assistant' && !isStreaming && usedSkills.length > 0 && (
           <div
             aria-label={t('common:skillsUsedLabel')}
-            className="mt-2 inline-flex max-w-full rounded-full border border-border bg-sunken px-2.5 py-1 text-xs font-medium text-ink-2"
+            className="mt-2 inline-flex max-w-full rounded-md bg-sunken px-2 py-0.5 text-xs font-medium text-ink-2"
           >
             {t('common:skillsUsed', { skills: usedSkills.join(', ') })}
           </div>
@@ -649,7 +681,7 @@ export const MessageItem = memo(
                   aria-live="polite"
                   className="flex items-center gap-2 text-xs"
                 >
-                  <Loader className="motion-safe:animate-spin size-3.5 text-brand shrink-0" />
+                  <Loader className="motion-safe:animate-spin size-3.5 text-ink-2 shrink-0" />
                   <span className="font-medium text-foreground">
                     {activityLabel.text}
                   </span>
@@ -734,12 +766,8 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
-              {!isStreaming && (
-                <span className="text-muted-foreground tabular-nums">
-                  {formatDate(createdAt)}
-                </span>
-              )}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+              {/* The time is on the header line above. */}
               <div
                 className={cn(
                   'flex items-center gap-0.5',

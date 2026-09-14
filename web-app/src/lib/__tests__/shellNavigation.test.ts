@@ -7,6 +7,8 @@ describe('areaForPath', () => {
     ['/threads/abc', 'workspace'],
     ['/project/p1', 'workspace'],
     ['/cowork', 'workspace'],
+    ['/rooms', 'rooms'],
+    ['/rooms/room-1', 'rooms'],
     ['/artifacts', 'library'],
     ['/settings/providers', 'models'],
     ['/settings/providers/llama.cpp', 'models'],
@@ -30,13 +32,15 @@ describe('areaForPath', () => {
   it('does not treat a prefix of another word as the same page', () => {
     expect(areaForPath('/settings/providers-extra')).toBe('settings')
     expect(areaForPath('/artifactsx')).toBe('workspace')
+    expect(areaForPath('/roomsx')).toBe('workspace')
   })
 })
 
 describe('RAIL_ITEMS', () => {
-  it('has the four work areas on top and search, system and settings below', () => {
+  it('has the work areas on top and search, system and settings below', () => {
     expect(RAIL_ITEMS.filter((i) => i.group === 'top').map((i) => i.id)).toEqual([
       'workspace',
+      'rooms',
       'library',
       'models',
       'tools',
@@ -64,5 +68,6 @@ describe('RAIL_ITEMS', () => {
     expect(isSettingsArea('settings')).toBe(true)
     expect(isSettingsArea('workspace')).toBe(false)
     expect(isSettingsArea('library')).toBe(false)
+    expect(isSettingsArea('rooms')).toBe(false)
   })
 })

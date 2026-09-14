@@ -55,7 +55,7 @@ describe('Progress', () => {
     render(<Progress value={50} />)
 
     const indicator = document.querySelector('[data-slot="progress-indicator"]')
-    expect(indicator).toHaveClass('bg-primary')
+    expect(indicator).toHaveClass('bg-ink-2')
     expect(indicator).toHaveClass('h-full')
     expect(indicator).toHaveClass('w-full')
     expect(indicator).toHaveClass('flex-1')

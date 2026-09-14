@@ -40,7 +40,7 @@ const ResultRow = ({
     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
       {title || hostOf(url)}
     </span>
-    <span className="shrink-0 text-xs text-muted-foreground/70">
+    <span className="shrink-0 text-xs text-muted-foreground">
       {hostOf(url)}
     </span>
   </a>
@@ -84,7 +84,7 @@ export const WebToolWidget = memo(
             typing={running}
             trailing={
               bar.count !== undefined && (
-                <span className="shrink-0 text-xs text-muted-foreground/70">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {t('tools:toolCall.resultLimit', { count: bar.count })}
                 </span>
               )
@@ -129,7 +129,7 @@ export const WebToolWidget = memo(
               ))}
             </div>
           ) : (
-            <p className="px-2 text-sm text-muted-foreground/70">
+            <p className="px-2 text-sm text-muted-foreground">
               {t('tools:toolCall.noResults')}
             </p>
           )
@@ -142,7 +142,7 @@ export const WebToolWidget = memo(
               {page.content}
             </div>
             {page.truncated && (
-              <p className="px-2 text-xs text-muted-foreground/70">
+              <p className="px-2 text-xs text-muted-foreground">
                 {t('tools:toolCall.contentTruncated')}
               </p>
             )}

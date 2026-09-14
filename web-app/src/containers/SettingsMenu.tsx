@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import {
   SlidersHorizontal,
   Network,
@@ -54,9 +54,32 @@ const ADVANCED_PAGE_IDS: ReadonlySet<string> = new Set([
   'agent-tools',
 ])
 
+/** Core pages that belong with models and tools rather than with general. */
+const MODELS_AND_TOOLS_CORE_IDS: ReadonlySet<string> = new Set(['web-search'])
+
 type SettingsMenuProps = {
   /** `sidebar`: rendered by the shell's contextual sidebar, full width. */
   variant?: 'column' | 'sidebar'
+}
+
+/** Sentence-case group label, as every other contextual list in the shell. */
+function GroupLabel({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'flex h-7 items-center px-2 text-xs font-medium text-muted-foreground',
+        className
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
@@ -143,7 +166,12 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
     return true
   })
 
-  const renderActiveProvider = (provider: ProviderObject) => {
+  // Selected rows use a neutral background and a 2px accent marker: the
+  // accent means "selected" here, never "running".
+  const menuLinkClass =
+    'relative flex h-8 pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-md px-2 text-sm text-ink-2 outline-hidden hover:bg-sidebar-accent/70 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring [&.active]:bg-sidebar-accent [&.active]:font-medium [&.active]:text-foreground [&.active]:before:absolute [&.active]:before:left-0 [&.active]:before:inset-y-2 [&.active]:before:w-0.5 [&.active]:before:rounded-full [&.active]:before:bg-brand-rail'
+
+  const renderProvider = (provider: ProviderObject, hidden: boolean) => {
     const isRouteActive = matches.some(
       (match) =>
         match.routeId === '/settings/providers/$providerName' &&
@@ -157,9 +185,11 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         aria-current={isRouteActive ? 'page' : undefined}
         className={cn(
           menuLinkClass,
-          'flex items-center gap-2.5 text-left',
+          'text-left',
+          hidden && 'text-muted-foreground',
           isRouteActive && 'active',
-          provider.provider === 'llama.cpp' &&
+          !hidden &&
+            provider.provider === 'llama.cpp' &&
             stepSetupRemoteProvider &&
             'hidden'
         )}
@@ -167,7 +197,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
           navigate({
             to: route.settings.providers,
             params: { providerName: provider.provider },
-            ...(stepSetupRemoteProvider
+            ...(!hidden && stepSetupRemoteProvider
               ? { search: { step: 'setup_remote_provider' } }
               : {}),
           })
@@ -234,29 +264,33 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         src="/images/code-claude.svg"
         width={size}
         height={size}
-        className={cn(className, 'dark:invert opacity-60')}
+        alt=""
+        className={cn(className, 'dark:invert')}
       />
     ),
   }
-
-  // Selected rows use the accent tint and a side marker, like every other
-  // contextual list in the shell.
-  const menuLinkClass =
-    'relative block px-2 py-1.5 pointer-coarse:py-2.5 w-full cursor-pointer rounded-md text-ink-2 hover:bg-sunken hover:text-foreground [&.active]:bg-brand-tint [&.active]:text-foreground [&.active]:before:absolute [&.active]:before:left-0 [&.active]:before:inset-y-1.5 [&.active]:before:w-0.5 [&.active]:before:rounded-full [&.active]:before:bg-brand'
 
   const withIcon = (page: SettingsPage) => ({
     ...page,
     title: page.titleKey,
     icon: pageIcons[page.id as SettingsPageId],
   })
-  const coreSettings = SETTINGS_PAGES.filter(
-    (p) => p.group === 'core' && !ADVANCED_PAGE_IDS.has(p.id)
+  // General: everyday preferences. Models and tools: providers, integrations
+  // and web search. Advanced: grouped behind a disclosure, never removed.
+  const generalSettings = SETTINGS_PAGES.filter(
+    (p) =>
+      p.group === 'core' &&
+      !ADVANCED_PAGE_IDS.has(p.id) &&
+      !MODELS_AND_TOOLS_CORE_IDS.has(p.id)
   ).map(withIcon)
+  const toolSettings = [
+    ...SETTINGS_PAGES.filter(
+      (p) => p.group === 'core' && MODELS_AND_TOOLS_CORE_IDS.has(p.id)
+    ),
+    ...SETTINGS_PAGES.filter((p) => p.group === 'integrations'),
+  ].map(withIcon)
   const advancedSettings = SETTINGS_PAGES.filter(
     (p) => p.group === 'core' && ADVANCED_PAGE_IDS.has(p.id)
-  ).map(withIcon)
-  const integrationSettings = SETTINGS_PAGES.filter(
-    (p) => p.group === 'integrations'
   ).map(withIcon)
 
   // Advanced pages are grouped, never removed: the group opens by itself when
@@ -270,14 +304,15 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   }, [onAdvancedPage])
 
   const renderPageLink = (menu: ReturnType<typeof withIcon>) => (
-    <div key={menu.title}>
-      <Link to={menu.route} className={menuLinkClass}>
-        <div className="flex items-center gap-2.5">
-          <menu.icon size={18} className="shrink-0 text-muted-foreground" />
-          <span>{t(menu.title)}</span>
-        </div>
-      </Link>
-    </div>
+    <Link key={menu.title} to={menu.route} className={menuLinkClass}>
+      <menu.icon size={16} className="shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate">{t(menu.title)}</span>
+      {menu.group === 'integrations' && (
+        <span className="shrink-0 text-[11px] font-normal text-muted-foreground">
+          {t('common:experimental')}
+        </span>
+      )}
+    </Link>
   )
 
   return (
@@ -290,156 +325,116 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         )}
       >
         <SettingsSearch />
-        <div className="flex flex-col gap-0.5 w-full px-1.5 font-medium">
-          {/* Core settings */}
-          {coreSettings.map(renderPageLink)}
+        <nav
+          aria-label={t('common:settings')}
+          className="flex flex-col gap-0.5 w-full px-1.5 pb-3"
+        >
+          {/* General */}
+          <GroupLabel>{t('navigation:groupGeneral')}</GroupLabel>
+          {generalSettings.map(renderPageLink)}
+
+          {/* Models and tools */}
+          <GroupLabel className="mt-3">
+            {t('navigation:groupModelsAndTools')}
+          </GroupLabel>
+          <div className="flex items-center justify-between gap-1">
+            <span className="flex h-8 min-w-0 items-center px-2 text-sm font-medium text-ink-2">
+              <span className="truncate">{t('common:modelProviders')}</span>
+            </span>
+            <AddProviderDialog onCreateProvider={createProvider}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="pointer-coarse:size-11"
+                aria-label={t('provider:addProvider')}
+              >
+                <Plus size={14} />
+              </Button>
+            </AddProviderDialog>
+          </div>
+          <div className="flex flex-col gap-0.5 pl-2">
+            {activeLocalProviders.length > 0 && (
+              <>
+                <span className="px-2 pt-0.5 text-[11px] font-medium text-muted-foreground">
+                  {t('common:localProviders')}
+                </span>
+                {activeLocalProviders.map((p) => renderProvider(p, false))}
+              </>
+            )}
+
+            {activeRemoteProviders.length > 0 && (
+              <>
+                <span
+                  className={cn(
+                    'px-2 pt-0.5 text-[11px] font-medium text-muted-foreground',
+                    activeLocalProviders.length > 0 && 'mt-1.5'
+                  )}
+                >
+                  {t('common:remoteProviders')}
+                </span>
+                {activeRemoteProviders.map((p) => renderProvider(p, false))}
+              </>
+            )}
+
+            {hiddenProviders.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  aria-expanded={expandedProviders}
+                  aria-controls="settings-hidden-providers"
+                  className="mt-1 flex h-7 pointer-coarse:h-11 w-full items-center justify-between rounded-md px-2 text-muted-foreground hover:bg-sidebar-accent/70 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                  onClick={() => setExpandedProviders(!expandedProviders)}
+                >
+                  <span className="text-xs font-medium">
+                    {t('common:hiddenProviders', {
+                      count: hiddenProviders.length,
+                    })}
+                  </span>
+                  {expandedProviders ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
+                  )}
+                </button>
+                {expandedProviders && (
+                  <div id="settings-hidden-providers" className="contents">
+                    {hiddenProviders.map((p) => renderProvider(p, true))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {toolSettings.map(renderPageLink)}
 
           {/* Advanced core settings, grouped rather than hidden */}
-          <div className="mt-1">
+          <div className="mt-3">
             <button
               type="button"
               aria-expanded={advancedOpen}
               aria-controls="settings-advanced-pages"
               onClick={() => setAdvancedOpen((open) => !open)}
-              className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 pointer-coarse:py-2.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+              className="flex h-7 pointer-coarse:h-11 w-full items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent/70 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
             >
               {advancedOpen ? (
-                <ChevronDown size={14} />
+                <ChevronDown size={14} aria-hidden />
               ) : (
-                <ChevronRight size={14} />
+                <ChevronRight size={14} aria-hidden />
               )}
               {t('navigation:advancedSettings')}
             </button>
             {advancedOpen && (
-              <div id="settings-advanced-pages" className="mt-1 flex flex-col gap-1">
-                <p className="px-2 text-[11px] font-normal text-muted-foreground">
+              <div
+                id="settings-advanced-pages"
+                className="mt-0.5 flex flex-col gap-0.5"
+              >
+                <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
                   {t('navigation:advancedSettingsHint')}
                 </p>
                 {advancedSettings.map(renderPageLink)}
               </div>
             )}
           </div>
-
-          {/* Integrations section */}
-          <div className="mt-4">
-            <span className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {t('common:integrations')}
-              <span className="text-[11px] normal-case tracking-normal ml-2 font-medium px-2 py-0.5 rounded-full bg-sunken text-ink-2">
-                {t('common:experimental')}
-              </span>
-            </span>
-            <div className="mt-1 flex flex-col gap-0.5">
-              {integrationSettings.map((menu) => (
-                <Link
-                  key={menu.title}
-                  to={menu.route}
-                  className={cn(menuLinkClass, 'flex items-center gap-2.5')}
-                >
-                  <menu.icon size={18} className="shrink-0 text-muted-foreground" />
-                  <span>{t(menu.title)}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Model Providers section */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between pl-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t('common:modelProviders')}
-              </span>
-              <AddProviderDialog onCreateProvider={createProvider}>
-                <Button variant="ghost" size="icon-xs">
-                  <Plus size={12} />
-                </Button>
-              </AddProviderDialog>
-            </div>
-            <div className="mt-1 flex flex-col gap-0.5">
-              {activeLocalProviders.length > 0 && (
-                <>
-                  <span className="px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                    {t('common:localProviders')}
-                  </span>
-                  {activeLocalProviders.map(renderActiveProvider)}
-                </>
-              )}
-
-              {activeRemoteProviders.length > 0 && (
-                <>
-                  <span
-                    className={cn(
-                      'px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70',
-                      activeLocalProviders.length > 0 && 'mt-2'
-                    )}
-                  >
-                    {t('common:remoteProviders')}
-                  </span>
-                  {activeRemoteProviders.map(renderActiveProvider)}
-                </>
-              )}
-
-              {hiddenProviders.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    aria-expanded={expandedProviders}
-                    aria-controls="settings-hidden-providers"
-                    className="flex items-center justify-between px-2 py-1 w-full rounded-sm text-muted-foreground hover:bg-secondary/60"
-                    onClick={() => setExpandedProviders(!expandedProviders)}
-                  >
-                    <span className="text-sm">
-                      {t('common:hiddenProviders', {
-                        count: hiddenProviders.length,
-                      })}
-                    </span>
-                    {expandedProviders ? (
-                      <ChevronDown size={14} />
-                    ) : (
-                      <ChevronRight size={14} />
-                    )}
-                  </button>
-                  {expandedProviders && (
-                    <div id="settings-hidden-providers" className="contents">
-                      {hiddenProviders.map((provider) => {
-                        const isRouteActive = matches.some(
-                          (match) =>
-                            match.routeId ===
-                              '/settings/providers/$providerName' &&
-                            'providerName' in match.params &&
-                            match.params.providerName === provider.provider
-                        )
-                        return (
-                          <button
-                            key={provider.provider}
-                            type="button"
-                            aria-current={isRouteActive ? 'page' : undefined}
-                            className={cn(
-                              menuLinkClass,
-                              'flex items-center gap-2.5 text-left text-muted-foreground',
-                              isRouteActive && 'active'
-                            )}
-                            onClick={() =>
-                              navigate({
-                                to: route.settings.providers,
-                                params: { providerName: provider.provider },
-                              })
-                            }
-                          >
-                            <ProvidersAvatar provider={provider} />
-                            <span className="truncate flex-1">
-                              {getProviderTitle(provider.provider)}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="m-3" />
-          </div>
-        </div>
+        </nav>
       </div>
     </>
   )

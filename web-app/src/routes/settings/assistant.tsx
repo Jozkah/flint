@@ -4,7 +4,10 @@ import { useState } from 'react'
 
 import { useAssistant } from '@/hooks/useAssistant'
 
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import AddEditAssistant from '@/containers/dialogs/AddEditAssistant'
 import { DeleteAssistantDialog } from '@/containers/dialogs'
@@ -29,13 +32,13 @@ export const Route = createFileRoute(route.settings.assistant as any)({
 
 function AssistantContent() {
   const { t } = useTranslation()
-  const { 
+  const {
     assistants,
     addAssistant,
     updateAssistant,
     deleteAssistant,
     defaultAssistantId,
-    setDefaultAssistant
+    setDefaultAssistant,
   } = useAssistant()
   const [open, setOpen] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
@@ -65,12 +68,16 @@ function AssistantContent() {
     setEditingKey(null)
   }
 
-  const sortedAssistants = assistants.slice().sort((a, b) => a.created_at - b.created_at)
-  const defaultAssistant = sortedAssistants.find((a) => a.id === defaultAssistantId)
+  const sortedAssistants = assistants
+    .slice()
+    .sort((a, b) => a.created_at - b.created_at)
+  const defaultAssistant = sortedAssistants.find(
+    (a) => a.id === defaultAssistantId
+  )
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader>
+      <SettingsPageHeader title={t('common:assistants')}>
         <Button
           onClick={() => {
             setEditingKey(null)
@@ -83,132 +90,141 @@ function AssistantContent() {
           {t('assistants:addAssistant')}
         </Button>
       </SettingsPageHeader>
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="flex size-full min-w-0">
-          <div className="flex w-full min-w-0 flex-col gap-4 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6 [&>*]:mx-auto [&>*]:max-w-4xl">
-            {/* Default Assistant */}
-            <Card>
-              <CardItem
-                anchor="settings-assistants-default"
-                title={t('assistants:defaultAssistantSection')}
-                description={t('assistants:defaultAssistantDesc')}
-                actions={
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="max-w-full justify-between pointer-coarse:h-11">
-                        <span className={cn('truncate')}>
-                          {defaultAssistant?.name ?? t('assistants:lastUsed')}
-                        </span>
-                        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-40 max-h-80">
-                      <DropdownMenuItem
-                        key="none"
-                        className={cn(
-                          'cursor-pointer my-0.5',
-                          !defaultAssistantId && 'bg-brand-tint'
-                        )}
-                        onClick={() => setDefaultAssistant('')}
-                      >
-                        {t('assistants:lastUsed')}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {sortedAssistants.map((a) => (
-                        <DropdownMenuItem
-                          key={a.id}
-                          className={cn(
-                            'cursor-pointer my-0.5',
-                            defaultAssistantId === a.id && 'bg-brand-tint'
-                          )}
-                          onClick={() => setDefaultAssistant(a.id)}
-                        >
-                          {a.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                }
-              />
-              <h1 className="mt-5 mb-3 font-display text-lg font-normal text-foreground">{t('assistants:allAssistants')}</h1>
-              {sortedAssistants.map((assistant) => (
-                <div
-                  className="group my-1.5 flex min-h-11 items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 transition-colors hover:bg-sunken"
-                  key={assistant.id}
-                >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
-                    {assistant?.avatar && (
-                      <AvatarEmoji
-                        avatar={assistant?.avatar}
-                        imageClassName="size-6 object-contain"
-                        textClassName="text-2xl"
-                      />
+      <SettingsPageBody
+        title={t('common:assistants')}
+        description={t('settings:pageDesc.assistants')}
+      >
+        {/* Default Assistant */}
+        <Card>
+          <CardItem
+            anchor="settings-assistants-default"
+            title={t('assistants:defaultAssistantSection')}
+            description={t('assistants:defaultAssistantDesc')}
+            actions={
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="max-w-full justify-between pointer-coarse:h-11"
+                  >
+                    <span className={cn('truncate')}>
+                      {defaultAssistant?.name ?? t('assistants:lastUsed')}
+                    </span>
+                    <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40 max-h-80">
+                  <DropdownMenuItem
+                    key="none"
+                    className={cn(
+                      'cursor-pointer my-0.5',
+                      !defaultAssistantId && 'bg-accent'
                     )}
-                  </div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {assistant.name}
-                      </span>
-                      {defaultAssistantId === assistant.id && (
-                        <span className="shrink-0 rounded-full bg-brand-tint px-1.5 py-0.5 text-[10px] font-medium leading-none text-brand-text">
-                          {t('assistants:isDefault')}
-                        </span>
+                    onClick={() => setDefaultAssistant('')}
+                  >
+                    {t('assistants:lastUsed')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {sortedAssistants.map((a) => (
+                    <DropdownMenuItem
+                      key={a.id}
+                      className={cn(
+                        'cursor-pointer my-0.5',
+                        defaultAssistantId === a.id && 'bg-accent'
                       )}
-                    </div>
-                    {assistant.description && (
-                      <p className="mt-0.5 line-clamp-1 pr-2 text-xs text-muted-foreground">
-                        {assistant.description}
-                      </p>
+                      onClick={() => setDefaultAssistant(a.id)}
+                    >
+                      {a.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />
+        </Card>
+
+        <Card
+          title={t('assistants:allAssistants')}
+          aside={<span className="tabular-nums">{sortedAssistants.length}</span>}
+          bodyClassName="px-0 py-0"
+        >
+          <ul className="divide-y divide-border">
+            {sortedAssistants.map((assistant) => (
+              <li
+                className="group flex min-h-11 items-center gap-3 px-4 py-2.5 hover:bg-sunken"
+                key={assistant.id}
+              >
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sunken">
+                  {assistant?.avatar && (
+                    <AvatarEmoji
+                      avatar={assistant?.avatar}
+                      imageClassName="size-5 object-contain"
+                      textClassName="text-xl"
+                    />
+                  )}
+                </div>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {assistant.name}
+                    </span>
+                    {defaultAssistantId === assistant.id && (
+                      <span className="shrink-0 rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-medium leading-none text-ink-2">
+                        {t('assistants:isDefault')}
+                      </span>
                     )}
                   </div>
-                  <div className="flex items-center shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="pointer-coarse:size-11"
-                      aria-label={`${t('assistants:editAssistant')}: ${assistant.name}`}
-                      title={t('assistants:editAssistant')}
-                      onClick={() => {
-                        setEditingKey(assistant.id)
-                        setOpen(true)
-                      }}
-                    >
-                      <Pencil className="text-muted-foreground" aria-hidden />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="pointer-coarse:size-11"
-                      aria-label={`${t('assistants:deleteAssistant')}: ${assistant.name}`}
-                      title={t('assistants:deleteAssistant')}
-                      onClick={() => handleDelete(assistant.id)}
-                    >
-                      <Trash2 className="text-destructive" aria-hidden />
-                    </Button>
-                  </div>
+                  {assistant.description && (
+                    <p className="mt-0.5 line-clamp-1 pr-2 text-[13px] text-muted-foreground">
+                      {assistant.description}
+                    </p>
+                  )}
                 </div>
-              ))}
-            </Card>
-          </div>
-          <AddEditAssistant
-            open={open}
-            onOpenChange={setOpen}
-            editingKey={editingKey}
-            initialData={
-              editingKey
-                ? assistants.find((a) => a.id === editingKey)
-                : undefined
-            }
-            onSave={handleSave}
-          />
-          <DeleteAssistantDialog
-            open={deleteConfirmOpen}
-            onOpenChange={setDeleteConfirmOpen}
-            onConfirm={confirmDelete}
-          />
-        </div>
-      </div>
+                <div className="flex items-center shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="pointer-coarse:size-11"
+                    aria-label={`${t('assistants:editAssistant')}: ${assistant.name}`}
+                    title={t('assistants:editAssistant')}
+                    onClick={() => {
+                      setEditingKey(assistant.id)
+                      setOpen(true)
+                    }}
+                  >
+                    <Pencil className="text-muted-foreground" aria-hidden />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
+                    aria-label={`${t('assistants:deleteAssistant')}: ${assistant.name}`}
+                    title={t('assistants:deleteAssistant')}
+                    onClick={() => handleDelete(assistant.id)}
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </SettingsPageBody>
+      <AddEditAssistant
+        open={open}
+        onOpenChange={setOpen}
+        editingKey={editingKey}
+        initialData={
+          editingKey ? assistants.find((a) => a.id === editingKey) : undefined
+        }
+        onSave={handleSave}
+      />
+      <DeleteAssistantDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

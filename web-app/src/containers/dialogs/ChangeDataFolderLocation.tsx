@@ -51,7 +51,7 @@ export default function ChangeDataFolderLocation({
               {t('settings:dialogs.changeDataFolder.currentLocation')}
             </h4>
             <div className="rounded-md border border-border bg-sunken p-2">
-              <code className="text-xs text-muted-foreground break-all">
+              <code className="font-mono text-xs text-ink-2 break-all">
                 {currentPath}
               </code>
             </div>
@@ -61,8 +61,8 @@ export default function ChangeDataFolderLocation({
             <h4 className="text-sm font-medium mb-2">
               {t('settings:dialogs.changeDataFolder.newLocation')}
             </h4>
-            <div className="rounded-md border border-brand/40 bg-brand-tint p-2">
-              <code className="text-xs text-foreground break-all">{newPath}</code>
+            <div className="rounded-md border border-line-strong bg-card p-2">
+              <code className="font-mono text-xs text-foreground break-all">{newPath}</code>
             </div>
           </div>
         </div>

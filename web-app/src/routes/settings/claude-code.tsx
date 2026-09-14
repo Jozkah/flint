@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -213,137 +216,135 @@ function ClaudeCodeIntegration() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
-            <Card
-              header={
-                <div className="mb-4 flex w-full items-center gap-3">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 99 72"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="shrink-0"
-                  >
-                    <path d="M9 0H90V54H9V0Z" fill="#D77757" />
-                    <path d="M0 18H9V36H0V18Z" fill="#D77757" />
-                    <path d="M18 18H27V27H18V18Z" fill="black" />
-                    <path d="M72 18H81V27H72V18Z" fill="black" />
-                    <path d="M90 18H99V36H90V18Z" fill="#D77757" />
-                    <path d="M9 54H18V72H9V54Z" fill="#D77757" />
-                    <path d="M63 54H72V72H63V54Z" fill="#D77757" />
-                    <path d="M27 54H36V72H27V54Z" fill="#D77757" />
-                    <path d="M81 54H90V72H81V54Z" fill="#D77757" />
-                  </svg>
-                  <h1 className="font-display text-xl font-normal text-foreground">
-                    Claude Code integration
-                  </h1>
-                </div>
-              }
+      <SettingsPageHeader title={t('common:claude_code')} />
+      <SettingsPageBody
+        title={t('common:claude_code')}
+        description={t('settings:pageDesc.claudeCode')}
+      >
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <svg
+                aria-hidden
+                width="16"
+                height="16"
+                viewBox="0 0 99 72"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="shrink-0"
+              >
+                <path d="M9 0H90V54H9V0Z" fill="#D77757" />
+                <path d="M0 18H9V36H0V18Z" fill="#D77757" />
+                <path d="M18 18H27V27H18V18Z" fill="black" />
+                <path d="M72 18H81V27H72V18Z" fill="black" />
+                <path d="M90 18H99V36H90V18Z" fill="#D77757" />
+                <path d="M9 54H18V72H9V54Z" fill="#D77757" />
+                <path d="M63 54H72V72H63V54Z" fill="#D77757" />
+                <path d="M27 54H36V72H27V54Z" fill="#D77757" />
+                <path d="M81 54H90V72H81V54Z" fill="#D77757" />
+              </svg>
+              Claude Code integration
+            </span>
+          }
+        >
+          <CardItem
+            anchor="settings-claude-code-large-model"
+            title={t('settings:claudeCode.largeModel')}
+            description={t('settings:claudeCode.largeModelDesc')}
+            actions={
+              <HelperModelSelector
+                providers={providers}
+                selectedModel={helperModels.big}
+                onSelect={(model) => setHelperModel('big', model)}
+                placeholder="Select Big Model"
+              />
+            }
+          />
+          <CardItem
+            anchor="settings-claude-code-medium-model"
+            title={t('settings:claudeCode.mediumModel')}
+            description={t('settings:claudeCode.mediumModelDesc')}
+            actions={
+              <HelperModelSelector
+                providers={providers}
+                selectedModel={helperModels.medium}
+                onSelect={(model) => setHelperModel('medium', model)}
+                placeholder="Select Medium Model"
+              />
+            }
+          />
+          <CardItem
+            anchor="settings-claude-code-small-model"
+            title={t('settings:claudeCode.smallModel')}
+            description={t('settings:claudeCode.smallModelDesc')}
+            actions={
+              <HelperModelSelector
+                providers={providers}
+                selectedModel={helperModels.small}
+                onSelect={(model) => setHelperModel('small', model)}
+                placeholder="Select Small Model"
+              />
+            }
+          />
+
+          <div className="flex flex-col-reverse gap-2 border-t border-border py-3 sm:flex-row sm:justify-between">
+            <Button
+              size="sm"
+              variant="outline"
+              className="pointer-coarse:h-11"
+              onClick={() => setIsCustomCliDialogOpen(true)}
             >
-              <CardItem
-                anchor="settings-claude-code-large-model"
-                title={t('settings:claudeCode.largeModel')}
-                description={t('settings:claudeCode.largeModelDesc')}
-                actions={
-                  <HelperModelSelector
-                    providers={providers}
-                    selectedModel={helperModels.big}
-                    onSelect={(model) => setHelperModel('big', model)}
-                    placeholder="Select Big Model"
-                  />
-                }
-              />
-              <CardItem
-                anchor="settings-claude-code-medium-model"
-                title={t('settings:claudeCode.mediumModel')}
-                description={t('settings:claudeCode.mediumModelDesc')}
-                actions={
-                  <HelperModelSelector
-                    providers={providers}
-                    selectedModel={helperModels.medium}
-                    onSelect={(model) => setHelperModel('medium', model)}
-                    placeholder="Select Medium Model"
-                  />
-                }
-              />
-              <CardItem
-                anchor="settings-claude-code-small-model"
-                title={t('settings:claudeCode.smallModel')}
-                description={t('settings:claudeCode.smallModelDesc')}
-                actions={
-                  <HelperModelSelector
-                    providers={providers}
-                    selectedModel={helperModels.small}
-                    onSelect={(model) => setHelperModel('small', model)}
-                    placeholder="Select Small Model"
-                  />
-                }
-              />
+              <Plus className="text-muted-foreground" aria-hidden />
+              Environment Variables
+            </Button>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="pointer-coarse:h-11"
+                onClick={async () => {
+                  clearModels()
+                  try {
+                    await invoke('clear_claude_code_env')
+                    toast.success('Claude Code settings cleared')
+                  } catch (e) {
+                    toast.error(`Failed to clear env file: ${e}`)
+                  }
+                }}
+              >
+                Reset
+              </Button>
+              <Button
+                size="sm"
+                className="pointer-coarse:h-11"
+                onClick={handleLaunchClaudeCode}
+                disabled={isModelLoading}
+              >
+                {isModelLoading ? 'Loading models...' : 'Save & Enable'}
+              </Button>
+            </div>
+          </div>
 
-              <div className="mt-4 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-between">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="pointer-coarse:h-11"
-                  onClick={() => setIsCustomCliDialogOpen(true)}
-                >
-                  <Plus className="text-muted-foreground" aria-hidden />
-                  Environment Variables
-                </Button>
-                <div className="flex flex-wrap gap-2 sm:justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="pointer-coarse:h-11"
-                    onClick={async () => {
-                      clearModels()
-                      try {
-                        await invoke('clear_claude_code_env')
-                        toast.success('Claude Code settings cleared')
-                      } catch (e) {
-                        toast.error(`Failed to clear env file: ${e}`)
-                      }
-                    }}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="pointer-coarse:h-11"
-                    onClick={handleLaunchClaudeCode}
-                    disabled={isModelLoading}
-                  >
-                    {isModelLoading ? 'Loading models...' : 'Save & Enable'}
-                  </Button>
-                </div>
-              </div>
-
-              {(helperModels.customCli || helperModels.envVars.length > 0) && (
-                <div className="mt-3 space-y-1 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
-                  {helperModels.customCli && (
-                    <div className="break-all">
-                      Command:{' '}
-                      <span className="font-mono">{helperModels.customCli}</span>
-                    </div>
-                  )}
-                  {helperModels.envVars.length > 0 && (
-                    <div className="break-all">
-                      Env:{' '}
-                      {helperModels.envVars
-                        .map((env) => `${env.key}=******`)
-                        .join(', ')}
-                    </div>
-                  )}
+          {(helperModels.customCli || helperModels.envVars.length > 0) && (
+            <div className="mt-3 space-y-1 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
+              {helperModels.customCli && (
+                <div className="break-all">
+                  Command:{' '}
+                  <span className="font-mono">{helperModels.customCli}</span>
                 </div>
               )}
-            </Card>
-          </div>
-        </div>
-      </div>
+              {helperModels.envVars.length > 0 && (
+                <div className="break-all">
+                  Env:{' '}
+                  {helperModels.envVars
+                    .map((env) => `${env.key}=******`)
+                    .join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </SettingsPageBody>
       <AddEditCustomCliDialog
         open={isCustomCliDialogOpen}
         onOpenChange={setIsCustomCliDialogOpen}

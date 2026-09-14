@@ -17,6 +17,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { createUsageCollector } from '@/lib/tokenUsage'
 import {
   runTurn,
@@ -73,11 +74,14 @@ const SUBAGENT_SKILL_TOOLS = ['skill_list', 'skill_read']
  * Withholding is only half of it: the dispatcher refuses these by name as well,
  * because a model can emit a call to a tool that was never advertised.
  */
-const WITHHELD_FROM_SUBAGENTS = new Set([
+const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
+  // Cross-session messaging speaks for the session, not for an errand: a child
+  // must not discover, message or wait on other sessions.
+  ...SESSION_MESSAGING_TOOL_NAMES,
 ])
 
 export type SubagentRequest = {

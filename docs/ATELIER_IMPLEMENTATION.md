@@ -1,5 +1,10 @@
 # JAN Atelier: implementation and feature-preservation map
 
+> **Superseded visual direction.** The Atelier look described here (ivory
+> surfaces, Newsreader headings, 80px graphite rail) was replaced by JAN
+> Graphite Studio; see `docs/GRAPHITE_IMPLEMENTATION.md`. The
+> feature-preservation map and contracts below still apply.
+
 This document tracks the production implementation of the approved JAN Atelier
 design. It sits beside `docs/IMPLEMENTATION_BASELINE.md` (backend contracts a
 redesign must preserve) and `docs/BEGINNER_WORKFLOWS_HANDOFF.md` (beginner
