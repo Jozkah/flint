@@ -206,7 +206,7 @@ function MemorySettings() {
   }, [conversations, sessionId, projectRoot])
 
   /**
-   * The Jan project whose memories the Project tab shows, for a project with
+   * The Flint project whose memories the Project tab shows, for a project with
    * no folder. The backend scopes it (`jan-project:<id>`) and shows that
    * project's records and no other's. A folder, when one is picked, is the
    * identity instead, so choosing one of these clears the other.
@@ -947,7 +947,7 @@ function MemorySettings() {
                         // `''` rather than undefined: "no folder" was chosen,
                         // so the first folder is not picked again for them.
                         setProjectRoot(e.target.value)
-                        // A folder is the identity; a Jan project would be
+                        // A folder is the identity; a Flint project would be
                         // ignored beside it, so it is not left looking chosen.
                         if (e.target.value) setProjectId('')
                         setOffset(0)
@@ -975,7 +975,7 @@ function MemorySettings() {
                       value={projectId}
                       onChange={(e) => {
                         setProjectId(e.target.value)
-                        // A Jan project has no folder: a folder left selected
+                        // A Flint project has no folder: a folder left selected
                         // would win in the backend and show its records instead.
                         if (e.target.value) setProjectRoot('')
                         setOffset(0)

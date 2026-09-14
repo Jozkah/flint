@@ -11,14 +11,14 @@ import { pathsMatch } from '@/lib/coworkChangeSummary'
  * Rewind is two operations wearing one word, and this component's whole job is
  * to keep them apart on screen the way the backend keeps them apart in types.
  *
- * **In a tree Jan owns** — a managed worktree — everything in it got there
- * because Jan put it there, so it can be put back. That is a button, behind a
+ * **In a tree Flint owns** — a managed worktree — everything in it got there
+ * because Flint put it there, so it can be put back. That is a button, behind a
  * confirmation that says what it will do: which tree, which files, and what a
  * restore cannot undo. Before anything is overwritten the current state is
  * saved as a point of its own, so the restore can itself be undone; if that
  * save fails, nothing is restored.
  *
- * **In the user's own checkout** there is work Jan never saw: edits made in
+ * **In the user's own checkout** there is work Flint never saw: edits made in
  * their editor while the run was going, a half-finished change in a file the
  * run never touched. Restoring over that would delete work whose only sin was
  * being in the same directory. So there is no button — there is a patch, shown
@@ -52,7 +52,7 @@ export type RewindProps = {
     sha: string
   ) => Promise<{ ok: true } | { ok: false; reason: string }>
   /**
-   * Paths Jan wrote in the latest run, relative to the tree.
+   * Paths Flint wrote in the latest run, relative to the tree.
    *
    * Edits since the latest point that are not among these are someone
    * else's, and restoring over them needs an explicit acknowledgement.
@@ -307,7 +307,7 @@ export function CoworkRewind(props: RewindProps) {
             </>
           ) : (
             <>
-              {/* No button, because there is no such operation here. Jan does
+              {/* No button, because there is no such operation here. Flint does
                   not own this tree, so the only honest offer is the change
                   itself. */}
               <p className="text-sm text-foreground">

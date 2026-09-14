@@ -18,7 +18,7 @@ type ProviderLike = {
 const KEYLESS_PREDEFINED_PROVIDERS = ['llamacpp', 'jan']
 
 /**
- * An embedding model cannot answer a message. Jan installs one on its own during
+ * An embedding model cannot answer a message. Flint installs one on its own during
  * first-run setup, so counting it would end onboarding before the user has any
  * model to chat with.
  */

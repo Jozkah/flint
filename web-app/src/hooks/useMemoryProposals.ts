@@ -34,7 +34,7 @@ export function useMemoryProposals({
 }: {
   sessionId?: string
   /**
-   * The Jan project the chat (or the Settings page's project picker) is in, so
+   * The Flint project the chat (or the Settings page's project picker) is in, so
    * project-scoped proposals are listed and can be answered. Without it the
    * backend has no project and refuses project scope.
    */

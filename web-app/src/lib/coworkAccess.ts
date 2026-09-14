@@ -2,7 +2,7 @@
  * Where a Cowork run may write, kept separate from how freely it may act.
  *
  * These are two questions that kept being answered as one. "Autonomous" said
- * how often Jan stops to ask; it never said whether the thing it was about to
+ * how often Flint stops to ask; it never said whether the thing it was about to
  * change was the user's checkout, and conflating them means granting one
  * grants the other. So the run mode stays what it was, and the access mode is
  * its own choice with its own default.
@@ -40,14 +40,14 @@ export const accessDescriptionKey = (access: AccessMode): string =>
  * What the backend can actually enforce right now.
  *
  * A mode is only offered when the layer beneath it can hold the line. Showing
- * "Jan can modify files in this exact folder" while the write gate still
+ * "Flint can modify files in this exact folder" while the write gate still
  * refuses every path outside the sandbox would be a promise the product does
  * not keep — the precise class of claim this rework exists to remove.
  *
  * Both write modes rest on the same thing: an authorized writable root the tool
  * gate confines to. That is why they move together rather than separately —
  * `directEdit` authorizes the user's own checkout, `managedWorktree` authorizes
- * a Jan-owned worktree, and neither can be honoured on a platform that cannot
+ * a Flint-owned worktree, and neither can be honoured on a platform that cannot
  * confine a shell to a directory.
  *
  * A worktree additionally needs Git, since there is nothing to branch from

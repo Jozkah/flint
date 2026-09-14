@@ -47,7 +47,7 @@ type CompatState = {
   mcpFingerprints: Record<string, Record<string, string>>
   setMcpFingerprint: (folder: string, server: string, fp: string) => void
   /**
-   * What Jan's MCP subsystem is actually doing with each imported server.
+   * What Flint's MCP subsystem is actually doing with each imported server.
    *
    * Runtime state, never configuration: readiness renders this so it cannot
    * show a server as running that never came up.
@@ -64,7 +64,7 @@ type CompatState = {
   /**
    * Directories the user approved as user-level skill sources.
    *
-   * Persisted, because approving one grants nothing: Jan reads `SKILL.md`
+   * Persisted, because approving one grants nothing: Flint reads `SKILL.md`
    * files and their resources, and never executes anything it finds. A
    * repository cannot add one — these arrive only from the native picker, by
    * the user's own hand.

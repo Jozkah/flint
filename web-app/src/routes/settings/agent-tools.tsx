@@ -231,7 +231,7 @@ function AgentToolsContent() {
           title={t('settings:agentTools.title')}
           description={t('settings:agentTools.description')}
           aside={
-            // The path is a tooltip, not a row: it derives from the Jan data
+            // The path is a tooltip, not a row: it derives from the Flint data
             // folder that Settings > General already owns.
             <Button
               variant="outline"

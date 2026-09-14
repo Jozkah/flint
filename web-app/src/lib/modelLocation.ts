@@ -21,7 +21,7 @@ export type ModelLocation = 'local' | 'remote' | 'checking' | 'unknown'
 export type LocationInput = {
   /** The endpoint as the user configured it. Never modified. */
   baseUrl?: string | null
-  /** True for Jan's own bundled inference engine. */
+  /** True for Flint's own bundled inference engine. */
   builtInEngine?: boolean
   /**
    * What the canonical resolver decided for this endpoint, when it has run.
@@ -41,7 +41,7 @@ const LOCAL_CLASSES = new Set([
 ])
 
 export function classifyModelLocation(input: LocationInput): ModelLocation {
-  // Jan's own runtime: inference is this process, whatever the URL looks like.
+  // Flint's own runtime: inference is this process, whatever the URL looks like.
   if (input.builtInEngine) return 'local'
 
   const url = input.baseUrl?.trim()

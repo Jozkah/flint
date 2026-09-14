@@ -858,7 +858,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
     Ok(())
 }
 
-/// Route an MCP server's stderr line through Jan's logger at the level the
+/// Route an MCP server's stderr line through Flint's logger at the level the
 /// server itself reported, defaulting to info when no level tag is present.
 fn log_mcp_stderr_line(server_name: &str, line: &str) {
     let (level, text) = stderr_log_record(server_name, line);
@@ -1169,7 +1169,7 @@ async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
-/// Tear down a Jan Browser MCP child and confirm its `port` is released.
+/// Tear down a Flint Browser MCP child and confirm its `port` is released.
 /// Kills the recorded child's process group (Phase 1 makes children group
 /// leaders, so this reaps forked grandchildren that hold the port), then polls;
 /// if some straggler still binds the port it is found and group-killed too.

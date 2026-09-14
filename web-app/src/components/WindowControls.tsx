@@ -31,7 +31,7 @@ export const WindowControls = () => {
       .catch(() => setLayout(DEFAULT_TITLEBAR_LAYOUT))
   }, [setLayout])
 
-  // Refetch on focus so changes made in the DE's settings (KDE/GNOME) while Jan
+  // Refetch on focus so changes made in the DE's settings (KDE/GNOME) while Flint
   // was unfocused are picked up without a restart.
   useEffect(() => {
     refresh()

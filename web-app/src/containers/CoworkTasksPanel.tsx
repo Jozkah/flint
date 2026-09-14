@@ -520,7 +520,7 @@ const STATUS: Record<ActivityStatus, { state: WorkState; label: string }> = {
 }
 
 /**
- * The row's status, as an icon and a word (JAN Graphite Studio): running spins
+ * The row's status, as an icon and a word (Flint Graphite Studio): running spins
  * in a neutral ink, never in the accent, which means "selected".
  *
  * Labelled, not decorative: the status is the one thing a row says that its

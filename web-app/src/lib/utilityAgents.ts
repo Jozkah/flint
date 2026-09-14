@@ -2,7 +2,7 @@
  * Hidden internal utility agents. AH-208.
  *
  * Titling a conversation and summarising one for compaction are model calls
- * Jan makes for itself. They run through here so that three things hold for
+ * Flint makes for itself. They run through here so that three things hold for
  * every one of them:
  *
  * - **No authority.** The call is made with no tools and `toolChoice: 'none'`,

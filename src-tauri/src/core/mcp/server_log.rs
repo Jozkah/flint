@@ -1,7 +1,7 @@
 //! Each MCP server's own log, kept apart from the application's (AH-140).
 //!
 //! A server's stderr used to go to the application logger, interleaved with
-//! everything else Jan does. Answering "why did that server stop" meant
+//! everything else Flint does. Answering "why did that server stop" meant
 //! searching one file for a prefix. Each server now has its own bounded log
 //! under `<data folder>/mcp-logs/`, written by both the desktop and the CLI,
 //! and readable from either.

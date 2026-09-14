@@ -6,7 +6,7 @@
 //! provides a focused connector: it reads the same `<jan_data>/mcp_config.json`,
 //! reuses the shared `extract_command_args`/`extract_active_status` parsers, and
 //! connects http/sse/stdio transports directly into a `SharedMcpServers` map that
-//! the agent loop already consumes. No bundled-runtime rewriting, no Jan Browser
+//! the agent loop already consumes. No bundled-runtime rewriting, no Flint Browser
 //! MCP bridge, no auto-reconnect monitor -- the CLI relies on the user's PATH.
 
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ use crate::core::mcp::models::{extract_active_status, extract_command_args};
 use crate::core::mcp::oauth;
 use crate::core::state::{RunningServiceEnum, SharedMcpServers};
 
-/// The Jan Browser MCP needs the desktop bridge/lockfile machinery, so it is
+/// The Flint Browser MCP needs the desktop bridge/lockfile machinery, so it is
 /// never offered or connected from the CLI.
 const BROWSER_MCP_NAME: &str = "Jan Browser MCP";
 
@@ -43,13 +43,13 @@ pub struct McpServerEntry {
 
 /// Resolve the config path under a data folder. `data_folder` is threaded
 /// through the internal helpers so tests can point at a tempdir without a global
-/// override; the public API uses the real Jan data folder via
+/// override; the public API uses the real Flint data folder via
 /// `resolve_jan_data_folder()`.
 fn config_path(data_folder: &std::path::Path) -> PathBuf {
     data_folder.join("mcp_config.json")
 }
 
-/// The real Jan data folder (the env override in `resolve_jan_data_folder`
+/// The real Flint data folder (the env override in `resolve_jan_data_folder`
 /// applies, so a `JAN_DATA_FOLDER` redirect still works end to end).
 fn default_data_folder() -> PathBuf {
     resolve_jan_data_folder()

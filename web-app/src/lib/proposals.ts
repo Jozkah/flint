@@ -252,7 +252,7 @@ export type ExportOutcome =
   | { ok: true; path: string; files: number }
   | { ok: false; kind: ExportErrorKind; message: string }
 
-/** Write the worktree's changes as a patch bundle under Jan's data folder. */
+/** Write the worktree's changes as a patch bundle under Flint's data folder. */
 export async function exportWorktree(
   record: WorktreeRecord
 ): Promise<ExportOutcome> {

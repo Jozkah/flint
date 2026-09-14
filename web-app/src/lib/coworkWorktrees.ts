@@ -1,5 +1,5 @@
 /**
- * Making sense of the worktrees Jan left behind.
+ * Making sense of the worktrees Flint left behind.
  *
  * A run's worktree is recorded in memory and nowhere else, deliberately: a
  * record restored from disk would assert that a checkout exists without anyone

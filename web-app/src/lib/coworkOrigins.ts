@@ -13,10 +13,10 @@ import type { AccessMode } from '@/lib/coworkAccess'
  *
  * A file being inside the selected repository says nothing about who changed
  * it. Someone's editor, a build, a script they ran an hour ago and a shell
- * command Jan issued all leave the same mark on disk. So origin is never
+ * command Flint issued all leave the same mark on disk. So origin is never
  * inferred from location: every claim here is backed by evidence, and where
- * there is no evidence the honest answer — "this appeared while Jan was
- * running, and nothing proves Jan caused it" — is a first-class outcome
+ * there is no evidence the honest answer — "this appeared while Flint was
+ * running, and nothing proves Flint caused it" — is a first-class outcome
  * rather than a gap to be filled in with a guess.
  *
  * One ledger, consumed by every surface that talks about changes, so the
@@ -37,9 +37,9 @@ export type ChangeDestination = WriteDestination | 'external'
 
 /** What is actually known about a change. */
 export type ChangeEvidence =
-  /** A Jan file-tool call that succeeded. The only thing Jan claims. */
+  /** A Flint file-tool call that succeeded. The only thing Flint claims. */
   | 'jan-write'
-  /** Already different before the run started. Never Jan's. */
+  /** Already different before the run started. Never Flint's. */
   | 'pre-existing'
   /** First seen during the run, with nothing proving causation. */
   | 'observed-in-run'
@@ -71,7 +71,7 @@ export type GitBaseline = {
   untracked: readonly string[]
 }
 
-/** A Jan file-tool call, as the transcript recorded it. */
+/** A Flint file-tool call, as the transcript recorded it. */
 export type JanFileCall = {
   path: string
   /** The run's destination at the time of the call. */
@@ -86,22 +86,22 @@ export type OriginEntry = {
   destination: ChangeDestination
   evidence: ChangeEvidence
   /**
-   * Jan wrote here, and the file was already modified before the run.
+   * Flint wrote here, and the file was already modified before the run.
    *
-   * Both facts are true and both are reported: Jan's write is real, and the
-   * rest of that file's diff is not Jan's to claim.
+   * Both facts are true and both are reported: Flint's write is real, and the
+   * rest of that file's diff is not Flint's to claim.
    */
   alsoPreExisting: boolean
 }
 
 /**
- * Where a Jan write actually landed.
+ * Where a Flint write actually landed.
  *
  * Taken from the run's own frozen destination rather than from the path: a
  * project path under a review-only run cannot have been written at all, and a
  * run that was authorized to edit the folder wrote to the folder. The sandbox
  * and the artifacts directory are the same destination as far as the user is
- * concerned — both are Jan's own space, not their repository.
+ * concerned — both are Flint's own space, not their repository.
  */
 export function destinationOfOrigin(
   origin: FileOrigin,
@@ -208,7 +208,7 @@ const hasEvidence = (baseline: GitBaseline | null): boolean =>
 /**
  * Build the ledger for one run.
  *
- * The order matters. A successful Jan call is direct evidence and outranks
+ * The order matters. A successful Flint call is direct evidence and outranks
  * everything else, but it never swallows the pre-existing flag. Everything
  * else is a difference we merely *found*, and the only question is whether the
  * baseline proves it was already there.
@@ -216,7 +216,7 @@ const hasEvidence = (baseline: GitBaseline | null): boolean =>
 export function buildOriginLedger(input: {
   /** The baseline taken at run start, or null when none was usable. */
   baseline: GitBaseline | null
-  /** Every Jan file-tool call this run made, successful or not. */
+  /** Every Flint file-tool call this run made, successful or not. */
   janCalls: readonly JanFileCall[]
   /** Repo-relative paths differing when the run ended. */
   endDifferences: readonly string[]
@@ -345,13 +345,13 @@ export const evidenceLimit = (
 
 /** The counted shape of a run's changes. Generated, never written by a model. */
 export type CompletionSummary = {
-  /** Files Jan changed itself, by where they went. */
+  /** Files Flint changed itself, by where they went. */
   janWrites: { destination: ChangeDestination; paths: string[] }[]
-  /** Jan wrote to these, and they were already modified beforehand. */
+  /** Flint wrote to these, and they were already modified beforehand. */
   janWritesOverExisting: string[]
-  /** Already different before the run. Not Jan's. */
+  /** Already different before the run. Not Flint's. */
   preExisting: string[]
-  /** Appeared during the run with nothing proving Jan caused them. */
+  /** Appeared during the run with nothing proving Flint caused them. */
   observed: string[]
   /** Differences with no Git evidence either way. */
   unknown: string[]
@@ -359,7 +359,7 @@ export type CompletionSummary = {
   /**
    * The tree these paths are relative to, when it is not the attached folder.
    *
-   * A managed run's "Jan changed in the worktree" is true of a specific
+   * A managed run's "Flint changed in the worktree" is true of a specific
    * worktree, and someone reading the summary has to be able to go and look at
    * it. Null for a run whose changes are in the folder the session is attached
    * to, where naming it again would add nothing.
@@ -418,11 +418,11 @@ export function summarizeRun(
 
 /** Does this summary have anything to report at all? */
 /**
- * The files Jan itself wrote, across every destination.
+ * The files Flint itself wrote, across every destination.
  *
  * Distinct from "files that are different": a working tree that was already
  * dirty when the run started is not the run's work, and a summary built from
- * that would be Jan taking credit for the user's edits.
+ * that would be Flint taking credit for the user's edits.
  */
 export const janAuthoredPaths = (summary: CompletionSummary): string[] =>
   summary.janWrites.flatMap((group) => group.paths)

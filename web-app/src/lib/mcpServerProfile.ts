@@ -34,7 +34,7 @@ export type McpRunsWhere =
 
 /**
  * Whether using this server can involve services beyond this computer and
- * network. `depends` whenever JAN cannot see what the server itself does.
+ * network. `depends` whenever Flint cannot see what the server itself does.
  */
 export type McpContactsExternal = 'yes' | 'depends'
 
@@ -128,7 +128,7 @@ export function deriveMcpServerProfile(
       runsWhere: 'local-process',
       host: null,
       // The program runs with the user's permissions and may open any
-      // connection it likes; JAN has no way to see or limit that.
+      // connection it likes; Flint has no way to see or limit that.
       contactsExternalServices: 'depends',
       requiredAccess,
       appliesTo: 'chats-with-tool-capable-models',

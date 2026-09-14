@@ -362,11 +362,11 @@ pub struct SubagentDefinitionDto {
     /// it never widens. `None` inherits the parent's set.
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
-    /// `builtin` for a role Jan ships, `user` for one saved on this machine.
+    /// `builtin` for a role Flint ships, `user` for one saved on this machine.
     pub scope: subagent::SubagentScope,
 }
 
-/// The roles Jan ships (AH-094..099), then every subagent saved for the
+/// The roles Flint ships (AH-094..099), then every subagent saved for the
 /// desktop, from the single `<jan_data>/agent-workspace/subagents/` directory.
 /// A saved definition replaces a built-in role of the same name, and only the
 /// winner is listed, because the renderer resolves a name to its first match.
@@ -411,7 +411,7 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
 /// back rather than a second branch beside its work. Every refusal — a branch
 /// that is already someone else's, a directory in our place that is not a
 /// worktree, a repository with no commits — comes back as a message the UI can
-/// show, because each of them means something happened outside Jan that a
+/// show, because each of them means something happened outside Flint that a
 /// silently chosen alternative would hide.
 #[tauri::command]
 pub fn agent_worktree_ensure(
@@ -423,7 +423,7 @@ pub fn agent_worktree_ensure(
     worktree::ensure(std::path::Path::new(&project), &roots, &session_id)
 }
 
-/// Jan's worktree folder, absolute. See [`worktree::absolute`]: a relative
+/// Flint's worktree folder, absolute. See [`worktree::absolute`]: a relative
 /// data folder -- the configured default is `./data` -- would otherwise be
 /// resolved one way by git and another by everything else.
 fn owned_worktrees_root(data_folder: &str) -> Result<std::path::PathBuf, String> {
@@ -444,7 +444,7 @@ pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeSt
 /// Only ever called because someone asked: this is the one operation here that
 /// destroys work, so it is never cleanup on a path doing something else.
 ///
-/// The record arrives over IPC, so the path is checked against the folder Jan
+/// The record arrives over IPC, so the path is checked against the folder Flint
 /// owns before anything is removed. Without that, a wrong record — a bug, a
 /// stale value, anything — would be a request to delete an arbitrary directory
 /// and its branch.
@@ -474,7 +474,7 @@ pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
     worktree::pending(&record.into())
 }
 
-/// Every Jan-owned worktree of this repository that is on disk.
+/// Every Flint-owned worktree of this repository that is on disk.
 ///
 /// The recovery surface. A session's own record dies with the process, so
 /// after a crash this is the only truthful answer to "where is the work that
@@ -567,7 +567,7 @@ async fn off_the_main_thread<T: Send + 'static>(
 /// Store what a run changed in its worktree as a proposal. AH-146/AH-109.
 ///
 /// Nothing is applied. The record arrives over IPC, so it is checked the way
-/// discard checks it -- inside the folder Jan owns, and still the worktree it
+/// discard checks it -- inside the folder Flint owns, and still the worktree it
 /// says it is -- before anything in it is read.
 #[tauri::command]
 pub async fn agent_proposal_from_worktree(
@@ -598,10 +598,10 @@ fn proposal_from_worktree(
     let roots = worktree::absolute(&workspace::worktrees_dir(&data_folder))
         .map_err(proposal_failure)?;
     let record: worktree::WorktreeRecord = record.into();
-    // Compared canonically: the data folder Jan resolves and the one the
+    // Compared canonically: the data folder Flint resolves and the one the
     // renderer was handed can differ in form (a verbatim `\\?\` prefix, case)
     // while naming the same directory, and a lexical comparison refused a
-    // worktree Jan had just made.
+    // worktree Flint had just made.
     let inside = match (
         std::fs::canonicalize(&record.path),
         std::fs::canonicalize(&roots),
@@ -694,7 +694,7 @@ pub async fn agent_proposal_reject(
     .await
 }
 
-/// Jan's worktree folder under the data folder the backend itself resolves.
+/// Flint's worktree folder under the data folder the backend itself resolves.
 fn team_roots(data_folder: &std::path::Path) -> Result<std::path::PathBuf, ProposalFailure> {
     worktree::absolute(&workspace::worktrees_dir(data_folder)).map_err(proposal_failure)
 }
@@ -829,7 +829,7 @@ pub fn agent_checkpoint_plan(
     checkpoint::plan(&checkpoint, &latest)
 }
 
-/// Roll a Jan-owned tree back to a checkpoint.
+/// Roll a Flint-owned tree back to a checkpoint.
 ///
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller
 /// says: that path leads to deleting work whose only sin was being in the same
@@ -866,7 +866,7 @@ pub fn agent_checkpoint_forget(root: String, thread_id: String) {
 /// A record as it comes back from the renderer.
 ///
 /// Deserialized into its own type rather than reusing the serialize-only record:
-/// what the frontend stores is state Jan wrote, but it arrives over IPC and is
+/// what the frontend stores is state Flint wrote, but it arrives over IPC and is
 /// treated as input like anything else that does.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1030,7 +1030,7 @@ pub async fn agent_prompt_snapshots_delete(
 /// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.
 ///
 /// The record arrives over IPC and is checked the way a proposal checks it:
-/// inside the folder Jan owns, and still the worktree it says it is. Nothing
+/// inside the folder Flint owns, and still the worktree it says it is. Nothing
 /// in the worktree or the user's checkout is written.
 #[tauri::command]
 pub async fn agent_worktree_export(
@@ -1682,7 +1682,7 @@ pub async fn audit_export(app: tauri::AppHandle, session: String) -> Result<Stri
 /// Record what one dispatched payload cost. AH-073.
 ///
 /// The count comes from the provider that tokenized the payload, so it is the
-/// only exact number available; Jan's own measurement is an estimate and is
+/// only exact number available; Flint's own measurement is an estimate and is
 /// recorded as one. Both are bound to the invocation and to the snapshot of
 /// the payload they describe, because a run makes many model calls and a count
 /// shown beside the wrong one looks authoritative while being wrong.
@@ -1834,7 +1834,7 @@ pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> 
 
 /// Record one hidden utility-agent invocation. AH-208.
 ///
-/// Titling and summarising are model calls Jan makes for itself; they are not
+/// Titling and summarising are model calls Flint makes for itself; they are not
 /// shown as agents, so this record is how they stay accountable. The plugin
 /// sanitizes every field, because the record arrives over IPC and a free-text
 /// field is where conversation content would otherwise leak in.

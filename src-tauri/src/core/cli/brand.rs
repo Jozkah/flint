@@ -1,7 +1,7 @@
 //! The `jan` wordmark, shared by `jan --help` and the TUI splash so the two
 //! can't drift.
 
-/// "JAN" in ANSI Shadow block letters. Each glyph cell is one terminal column,
+/// "Flint" in ANSI Shadow block letters. Each glyph cell is one terminal column,
 /// so `LOGO_WIDTH` is the rendered width.
 pub const LOGO: [&str; 6] = [
     r"     ██╗ █████╗ ███╗  ██╗",

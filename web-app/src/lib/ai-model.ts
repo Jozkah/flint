@@ -67,7 +67,7 @@ const llamaCppMetadataExtractor = {
 
 /**
  * Creates a LanguageModel instance for the AI SDK based on the provider configuration.
- * This allows using Jan's model providers with the AI SDK's useChat hook.
+ * This allows using Flint's model providers with the AI SDK's useChat hook.
  *
  * Note: This function is synchronous and does not load the model or construct URLs.
  * URL construction should happen elsewhere after the model is ready.

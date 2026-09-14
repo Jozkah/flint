@@ -35,8 +35,8 @@ export type CapabilityState =
       /** The sandbox can hold a run to the user's own folder. */
       directEdit: boolean
       /**
-       * The sandbox can hold a run to a worktree Jan owns. True on Windows,
-       * where `directEdit` is not: AppContainer grants Jan's own folders but
+       * The sandbox can hold a run to a worktree Flint owns. True on Windows,
+       * where `directEdit` is not: AppContainer grants Flint's own folders but
        * will not write an ACE onto the user's.
        */
       managedWorktree: boolean

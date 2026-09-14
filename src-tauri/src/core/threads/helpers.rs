@@ -37,7 +37,7 @@ pub async fn get_lock_for_thread(thread_id: &str) -> Arc<Mutex<()>> {
 ///
 /// The new content is written to a staging file beside the real one, flushed to
 /// disk, and renamed over it. A rename within one directory is atomic on every
-/// platform Jan ships on, so a reader sees either the old file or the new one,
+/// platform Flint ships on, so a reader sees either the old file or the new one,
 /// never a torn mixture. This used to `File::create` the real path -- truncate
 /// first, write second -- and an interruption in between left a thread that
 /// could not be read at all (janhq/jan#8019).

@@ -35,7 +35,7 @@ export const PlatformFeatures: Record<PlatformFeature, boolean> = {
   [PlatformFeature.HTTPS_PROXY]:
     isPlatformTauri() && !isPlatformIOS() && !isPlatformAndroid(),
 
-  // Default model providers (OpenAI, Anthropic, etc.) - disabled for web-only Jan builds
+  // Default model providers (OpenAI, Anthropic, etc.) - disabled for web-only Flint builds
   [PlatformFeature.DEFAULT_PROVIDERS]: isPlatformTauri(),
 
   // Projects management

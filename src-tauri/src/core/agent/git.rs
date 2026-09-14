@@ -71,8 +71,8 @@ fn exec(
     // Snapshot and restore must round-trip the working tree byte for byte.
     // `core.autocrlf` is on by default in Git for Windows, which converts on
     // the way into the index and back out again -- so a file snapshotted as
-    // "one\n" was restored as "one\r\n", and Jan silently rewrote the line
-    // endings of every file it put back. These are Jan's own private objects,
+    // "one\n" was restored as "one\r\n", and Flint silently rewrote the line
+    // endings of every file it put back. These are Flint's own private objects,
     // not the user's commits, so the conversion has nothing to gain here and a
     // fidelity guarantee to lose.
     cmd.arg("-c").arg("core.autocrlf=false");
@@ -81,7 +81,7 @@ fn exec(
     // The same fidelity argument covers the repository's own `.gitattributes`:
     // `text`, `eol=crlf` or a filter there converts on the way in and out
     // regardless of `core.autocrlf`, so a CRLF file under `text=auto` came back
-    // as LF. Reading attributes from the empty tree turns that off for Jan's
+    // as LF. Reading attributes from the empty tree turns that off for Flint's
     // private objects. Git older than 2.40 ignores the variable and keeps the
     // previous behaviour.
     cmd.env("GIT_ATTR_SOURCE", EMPTY_TREE);
@@ -328,7 +328,7 @@ pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), 
 
 /// A unified diff from `from` to `to`, both snapshot commits.
 ///
-/// Used to show what a rewind *would* do in a tree Jan does not own, where the
+/// Used to show what a rewind *would* do in a tree Flint does not own, where the
 /// answer has to be reviewable rather than applied. `--no-index` is not wanted
 /// here: these are real commit objects, and diffing them is what makes the
 /// patch exact rather than reconstructed from the working tree.
@@ -355,7 +355,7 @@ fn stage_worktree(repo: &Path, idx: &Path, base: &str) -> Result<(), String> {
 /// Unlike [`snapshot`], this scans the tree rather than staging a list of
 /// paths, so it cannot miss an edit nobody reported — a file changed in an
 /// editor, by a build, or by a shell command. That costs a full scan, which is
-/// why it is used only where Jan owns the tree and completeness is what makes
+/// why it is used only where Flint owns the tree and completeness is what makes
 /// a rewind safe to offer. Branch, HEAD and the real index are untouched.
 pub(crate) fn snapshot_worktree(
     repo: &Path,
@@ -583,7 +583,7 @@ pub(crate) struct RestoreOutcome {
     pub removed: Vec<String>,
 }
 
-/// Make a Jan-owned working tree match snapshot `target` exactly.
+/// Make a Flint-owned working tree match snapshot `target` exactly.
 ///
 /// Scope is the working tree under `repo` as `git add -A` sees it: tracked and
 /// untracked files alike, ignored files excluded. Only paths that differ are

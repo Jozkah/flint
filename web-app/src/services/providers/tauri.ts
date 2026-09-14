@@ -268,7 +268,7 @@ export class TauriProvidersService extends DefaultProvidersService {
        * wrong machine. Both branches below used to bury that sentence: one
        * threw it away for a generic "Cannot connect", the other wrapped it in
        * "Unexpected error while fetching models from X", which reads as a
-       * fault in Jan rather than an endpoint that is not listening.
+       * fault in Flint rather than an endpoint that is not listening.
        */
       throw new EndpointError(
         describeEndpointFailure({

@@ -188,7 +188,7 @@ fn scrub_paths(value: &mut Value, places: &[(String, &str)]) {
 ///
 /// Everything [`prepare_export`] does, and then: every absolute path that only
 /// means something on this machine is replaced by what it means -- the
-/// session's folder becomes `<folder>`, Jan's data folder `<jan-data>`, the
+/// session's folder becomes `<folder>`, Flint's data folder `<jan-data>`, the
 /// home folder `~` -- and a `handoff` block says which folder that was (by
 /// name, branch and commit) and which model the session used (provider and
 /// id only; nothing else the renderer sent under `handoff` survives).

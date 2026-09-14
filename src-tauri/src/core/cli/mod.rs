@@ -39,7 +39,7 @@ use crate::core::threads::{
 
 // ── Thread operations ──────────────────────────────────────────────────────
 
-/// List thread metadata under `<base>/threads/`. `base` is the Jan data folder
+/// List thread metadata under `<base>/threads/`. `base` is the Flint data folder
 /// (desktop store) or a project's `.jan/agent` dir (TUI store).
 pub fn list_threads_in(base: &std::path::Path) -> Result<Vec<serde_json::Value>, String> {
     use std::fs;
@@ -64,7 +64,7 @@ pub fn list_threads_in(base: &std::path::Path) -> Result<Vec<serde_json::Value>,
     Ok(threads)
 }
 
-/// List all threads from the Jan data folder (desktop store).
+/// List all threads from the Flint data folder (desktop store).
 pub async fn cli_list_threads() -> Result<Vec<serde_json::Value>, String> {
     let data_folder = resolve_jan_data_folder();
     ensure_data_dirs(&data_folder)?;

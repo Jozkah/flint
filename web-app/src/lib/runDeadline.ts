@@ -11,7 +11,7 @@
  * Both are wall-clock, and both count the waiting. A run stuck for ten minutes
  * on a permission prompt nobody is going to answer has spent ten minutes,
  * whatever it was waiting for -- excluding waits would make the deadline a
- * measure of Jan's activity rather than of the user's time.
+ * measure of Flint's activity rather than of the user's time.
  */
 
 /** A whole run. Generous: real work runs long. */

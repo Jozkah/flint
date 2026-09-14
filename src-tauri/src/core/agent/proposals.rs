@@ -1,6 +1,6 @@
 //! Turning a run's worktree into a proposal. AH-146/147/148/109.
 //!
-//! A run in isolated mode edits a Jan-owned worktree, never the user's
+//! A run in isolated mode edits a Flint-owned worktree, never the user's
 //! checkout. What it changed there only reaches the user's files through a
 //! proposal: the changes are read here, stored as an immutable record by
 //! `tauri_plugin_agent_tools::proposal`, shown, and applied only as approved.
@@ -16,7 +16,7 @@ use tauri_plugin_agent_tools::proposal::FileInput;
 
 use crate::core::agent::worktree::WorktreeRecord;
 
-/// Jan's own state and Git's are never part of a proposal, at any depth: a
+/// Flint's own state and Git's are never part of a proposal, at any depth: a
 /// nested `.git` is another repository's hooks and config. Short names such as
 /// `GIT~1` count, since Windows opens `.git` by them.
 fn is_jan_state(path: &str) -> bool {
@@ -197,7 +197,7 @@ pub(crate) mod tests {
     }
 
     /// Edits, deletions, new files and commits on the worktree's branch are all
-    /// in the proposal; Jan's own state is not; and the user's checkout is not
+    /// in the proposal; Flint's own state is not; and the user's checkout is not
     /// touched by reading any of it.
     #[test]
     fn a_worktree_becomes_the_files_it_changed() {

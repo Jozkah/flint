@@ -3,17 +3,17 @@
  * janhq/jan#8208.
  *
  * One place decides which headers are acceptable and how they combine with
- * the ones Jan sets, so the chat request, model discovery and a key test all
+ * the ones Flint sets, so the chat request, model discovery and a key test all
  * send the same thing:
  *
- * - A header Jan owns -- authentication, framing, the dispatch identity -- is
+ * - A header Flint owns -- authentication, framing, the dispatch identity -- is
  *   refused. Letting a custom `Authorization` through meant it silently
  *   replaced the configured key on some providers and was sent twice on
  *   others.
  * - Any other header of the same name, whatever its case, is replaced by the
  *   custom one: a user who sets `Anthropic-Version` means it.
  * - A value that is a credential is marked `secret`. It lives in the OS
- *   credential store, never in settings, and is redacted from any text Jan
+ *   credential store, never in settings, and is redacted from any text Flint
  *   shows or records.
  */
 
@@ -39,7 +39,7 @@ type WithHeaders = { custom_header?: ProviderCustomHeader[] | null }
 const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
 /**
- * Headers Jan sets itself. Authentication is chosen from the configured keys;
+ * Headers Flint sets itself. Authentication is chosen from the configured keys;
  * the rest frame the request or name it, and a wrong one breaks every call.
  */
 const RESERVED = new Set([
@@ -63,7 +63,7 @@ const RESERVED = new Set([
   'origin',
 ])
 
-/** Prefixes Jan or the platform owns. `x-jan-*` carries the dispatch identity. */
+/** Prefixes Flint or the platform owns. `x-jan-*` carries the dispatch identity. */
 const RESERVED_PREFIXES = ['x-jan-', 'proxy-', 'sec-']
 
 export function isReservedHeader(name: string): boolean {

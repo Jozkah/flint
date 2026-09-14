@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { addRoot, removeRoot, type RootRejection } from '@/lib/claudeSkillRoots'
 
 /**
- * Choosing which of your own folders Jan may read Claude skills from.
+ * Choosing which of your own folders Flint may read Claude skills from.
  *
  * The list arrives through the native directory picker, one folder at a time.
  * There is deliberately no text field: a path someone can type is a path
@@ -13,7 +13,7 @@ import { addRoot, removeRoot, type RootRejection } from '@/lib/claudeSkillRoots'
  * that every entry was chosen by the person sitting there. A repository can
  * never add one.
  *
- * Approving a folder grants nothing beyond reading it. Jan parses `SKILL.md`
+ * Approving a folder grants nothing beyond reading it. Flint parses `SKILL.md`
  * and the resources beside it; a script bundled in a skill is listed, never
  * run. That is said here, next to the button, rather than in documentation
  * nobody opens.

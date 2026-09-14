@@ -161,7 +161,7 @@ fn keep_refresh_token(mut tokens: OAuthTokenResponse, previous: &OAuthTokenRespo
 /// These are what a consent request asks for and the most a stored token may
 /// carry. Sorted and de-duplicated, so two spellings of the same list compare
 /// equal. Refused, by kind, when the entry cannot be read as a list of RFC 6749
-/// scope tokens, or names an `oauth` setting Jan does not read -- a typo there
+/// scope tokens, or names an `oauth` setting Flint does not read -- a typo there
 /// must not quietly mean "no scopes".
 pub fn declared_scopes(config: &Value) -> Result<Vec<String>, HarnessError> {
     let refuse = |message: String| HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup);
@@ -221,7 +221,7 @@ fn granted_scopes(tokens: &OAuthTokenResponse, fallback: &[String]) -> Vec<Strin
 }
 
 /// Refuse a grant carrying any scope that was not asked for. A provider that
-/// widens a grant is handing out authority nobody consented to on Jan's side,
+/// widens a grant is handing out authority nobody consented to on Flint's side,
 /// so the token is not kept rather than kept and trusted.
 fn check_grant(name: &str, allowed: &[String], granted: &[String]) -> Result<(), HarnessError> {
     let extra: Vec<&str> = granted
@@ -508,7 +508,7 @@ fn write_legacy(
 }
 
 /// The secret-store record for one server in one data folder. The folder is
-/// part of the key because the OS keyring belongs to the user, not to a Jan
+/// part of the key because the OS keyring belongs to the user, not to a Flint
 /// profile: two profiles that each configure a server called `github` must not
 /// read or overwrite each other's tokens.
 fn secret_key(data_folder: &Path, name: &str) -> String {

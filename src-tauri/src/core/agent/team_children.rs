@@ -1,7 +1,7 @@
 //! What each isolated child of a team did, kept until someone has reviewed it.
 //! AH-109.
 //!
-//! A team task that asks for isolation writes a Jan-owned worktree of its own.
+//! A team task that asks for isolation writes a Flint-owned worktree of its own.
 //! Its work reaches the user's checkout only through a proposal, like any
 //! isolated run -- but a team has several children, they finish at different
 //! times, some of them fail, and the app may be restarted before anyone looks.

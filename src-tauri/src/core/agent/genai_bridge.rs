@@ -1,6 +1,6 @@
 //! The agent's upstream chat client, built on `genai`.
 //!
-//! Every provider the agent talks to routes through here: cloud providers, a Jan
+//! Every provider the agent talks to routes through here: cloud providers, a Flint
 //! desktop API server, a local llama.cpp router, an MLX session. The wire format
 //! stays OpenAI `/chat/completions` -- `genai` is used for its provider handling
 //! (field-name variance, SSE correctness, tool-call merging), not to change the

@@ -4,7 +4,7 @@
 //! arguments through `resolve_app_path_within_jan_data_folder`. `mkdir`, `mv`
 //! and `write_file_sync` did not, so any caller reaching the IPC surface — a
 //! compromised renderer, an extension, a crafted payload — could create
-//! directories, move files and overwrite files anywhere the Jan process could
+//! directories, move files and overwrite files anywhere the Flint process could
 //! write. These tests pin the guard in place.
 //!
 //! Reported upstream as janhq/jan#8067.

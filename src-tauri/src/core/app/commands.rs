@@ -12,12 +12,12 @@ use super::models::AppConfiguration;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
-/// The environment variable that redirects Jan's *home* root, the directory
+/// The environment variable that redirects Flint's *home* root, the directory
 /// `~/.jan` hangs off. The portable counterpart to `JAN_DATA_FOLDER`, which
 /// already redirects the data folder.
 pub const JAN_HOME_ENV: &str = "JAN_HOME";
 
-/// The root Jan resolves `~/.jan` against.
+/// The root Flint resolves `~/.jan` against.
 ///
 /// `HOME` is not an isolation mechanism on Windows. `dirs::home_dir()` calls
 /// `SHGetKnownFolderPath(FOLDERID_Profile)`, which reads neither `HOME` nor
@@ -55,7 +55,7 @@ pub fn jan_home_dir() -> Option<PathBuf> {
 /// `Path::canonicalize` returns a verbatim path on Windows -- the same
 /// directory comes back as `\\?\C:\Users\...` rather than `C:\Users\...`.
 /// That form is correct for the filesystem APIs and wrong for everything else:
-/// compared against a path Jan built itself it is unequal, and written
+/// compared against a path Flint built itself it is unequal, and written
 /// somewhere a human or another program reads it -- the user's `PATH`, a
 /// stored record -- it is a path most tools will not accept.
 ///
@@ -79,7 +79,7 @@ pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
-/// Canonical Jan app support directory (`%APPDATA%/Jan` on Windows).
+/// Canonical Flint app support directory (`%APPDATA%/Jan` on Windows).
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
 }
@@ -167,7 +167,7 @@ fn app_data_dir_with_fallback<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> P
         .join(package_name)
 }
 
-/// Resolve the Jan config file path without an AppHandle (for CLI use).
+/// Resolve the Flint config file path without an AppHandle (for CLI use).
 /// Canonical location is `%APPDATA%/Jan/settings.json` (or OS equivalent),
 /// with fallback recovery from bundle-id location when needed.
 pub fn resolve_config_file_path() -> PathBuf {
@@ -210,7 +210,7 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
     result
 }
 
-/// Resolve the Jan data folder path without an AppHandle (for CLI use).
+/// Resolve the Flint data folder path without an AppHandle (for CLI use).
 /// Reads AppConfiguration from the config file; falls back to the default location.
 pub fn resolve_jan_data_folder() -> PathBuf {
     // Explicit override wins on every platform, tests included. `dirs::data_dir()`
@@ -229,7 +229,7 @@ pub fn resolve_jan_data_folder() -> PathBuf {
         }
     }
 
-    // Never the developer's real Jan folder under `cargo test`. This function
+    // Never the developer's real Flint folder under `cargo test`. This function
     // is reached from the agent dispatcher (the cancellation audit record), and
     // without this a test run would append to the data of whoever ran it --
     // the same mistake `get_jan_data_folder_path` already guards against. Tests
@@ -284,7 +284,7 @@ static UNAVAILABLE_DATA_FOLDER: std::sync::Mutex<Option<String>> = std::sync::Mu
 /// Whether a saved data folder can be used as it stands (janhq/jan#8855).
 ///
 /// One on a drive that is not connected, or renamed away with the user's
-/// profile, cannot: starting against it showed an empty Jan, or -- where the
+/// profile, cannot: starting against it showed an empty Flint, or -- where the
 /// parent still existed -- created a fresh, empty folder in its place. A
 /// relative folder is anchored at the working directory later, so it is not
 /// judged here.

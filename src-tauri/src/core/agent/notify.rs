@@ -8,7 +8,7 @@
 //! ```toml
 //! [notify]
 //! # A command run locally (AH-185). Argument-vector form only: no shell.
-//! command = ["notify-send", "Jan"]
+//! command = ["notify-send", "Flint"]
 //! # An endpoint to POST to (AH-184).
 //! webhook = "https://example.invalid/hooks/jan"
 //! # Which moments. Default: the run ending, and a run waiting for a person.

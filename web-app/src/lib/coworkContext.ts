@@ -1,7 +1,7 @@
 /**
  * What the run actually sends, measured by category.
  *
- * The complaint this answers is "Jan starts with too little context" — which
+ * The complaint this answers is "Flint starts with too little context" — which
  * nobody could confirm or refute, because no number existed anywhere. The
  * readiness card had the categories and the vocabulary for this from the start
  * and was handed `measured(null)` for every one of them.

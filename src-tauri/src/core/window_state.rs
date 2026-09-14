@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Name of the file under the Jan data folder.
+/// Name of the file under the Flint data folder.
 pub const STATE_FILE: &str = "window-state.json";
 
 /// One window's remembered placement.

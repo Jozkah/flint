@@ -148,8 +148,8 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 /// - `Host` and `Authorization` are set for the upstream, not inherited.
 /// - `Content-Length` and `Transfer-Encoding` go stale when the body is
 ///   re-buffered or rewritten; reqwest derives them again.
-/// - `Origin` and `Referer` describe the page that called Jan's local API, not
-///   Jan. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
+/// - `Origin` and `Referer` describe the page that called Flint's local API, not
+///   Flint. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
 ///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
 ///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
 pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
@@ -2359,7 +2359,7 @@ fn is_insecure_public_bind(host: &str, api_key: &str) -> bool {
 
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
 /// (Windows error 10048 / WSAEADDRINUSE, Unix EADDRINUSE) almost always means
-/// a leftover Jan process or another service still owns the port after a
+/// a leftover Flint process or another service still owns the port after a
 /// restart, so name the port and the remedy instead of surfacing a bare OS
 /// errno. Any other error is passed through unchanged.
 fn map_bind_error(

@@ -32,7 +32,7 @@ export default memo(function DropdownToolsAvailable({
   onOpenChange,
 }: DropdownToolsAvailableProps) {
   const allTools = useAppState((state) => state.tools)
-  // Filter out Jan Browser MCP tools
+  // Filter out Flint Browser MCP tools
   const tools = allTools.filter((tool) => tool.server !== 'Jan Browser MCP')
   const [isOpen, setIsOpen] = useState(false)
   const { t } = useTranslation()

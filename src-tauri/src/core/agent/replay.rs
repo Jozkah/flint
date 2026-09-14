@@ -710,7 +710,7 @@ pub fn settle(
         record.replay_snapshot_id = Some(snap.id.clone());
         record.matched = Some(snap.hash == record.snapshot_hash);
     }
-    // The reply is written to disk, so it is redacted like anything else Jan
+    // The reply is written to disk, so it is redacted like anything else Flint
     // persists. Cut at a character boundary.
     let mut text = tauri_plugin_agent_tools::audit::redact(&input.text);
     if text.len() > MAX_TEXT {

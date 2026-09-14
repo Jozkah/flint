@@ -1,7 +1,7 @@
 import { route } from '@/constants/routes'
 
 /**
- * The global rail of the JAN Atelier shell. Every destination is an existing
+ * The global rail of the Flint Atelier shell. Every destination is an existing
  * route (or, for Search, the existing search dialog); the rail only groups
  * them. `areaForPath` decides which rail item is current, so the rail, the
  * sidebar title and the phone navigation sheet cannot disagree.

@@ -884,7 +884,7 @@ struct CompositeToolInvoker {
     /// forged `write` reached the gate and, under the CLI's auto-approval,
     /// ran. `None` = no allowlist. AH-094..099.
     allowed_tools: Option<std::collections::HashSet<String>>,
-    /// Jan's data folder, when this run's calls go into the session's
+    /// Flint's data folder, when this run's calls go into the session's
     /// canonical execution record (AH-004/AH-050). The CLI and the desktop's
     /// own agent runs write every call here, the same record the renderer
     /// writes for Cowork and Chat. `None` records nothing (tests, proxies).
@@ -971,7 +971,7 @@ fn resolve_allow_network(configured: Option<bool>) -> bool {
 ///
 /// The CLI needs it for `git`/`ssh` credential helpers, so its shell binds
 /// `$HOME` read-only. The desktop keeps the full isolation and masks the home
-/// (the Jan data folder lives inside `$HOME`, so exposing it read-only would
+/// (the Flint data folder lives inside `$HOME`, so exposing it read-only would
 /// leak `settings.json` API keys, thread workspaces, and the memory store).
 #[cfg(feature = "cli")]
 const DEFAULT_ALLOW_HOME_READ: bool = true;
@@ -8956,7 +8956,7 @@ mod tests {
     }
 
     /// The desktop keeps the full isolation: the sandbox masks `$HOME` rather
-    /// than binding it read-only, so the Jan data folder (which lives inside
+    /// than binding it read-only, so the Flint data folder (which lives inside
     /// `$HOME`) stays unreadable.
     #[test]
     #[cfg(not(feature = "cli"))]

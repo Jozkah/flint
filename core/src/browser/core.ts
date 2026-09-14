@@ -1,9 +1,9 @@
 import { SystemInformation } from '../types'
 
 /**
- * Gets Jan's data folder path.
+ * Gets Flint's data folder path.
  *
- * @returns {Promise<string>} A Promise that resolves with Jan's data folder path.
+ * @returns {Promise<string>} A Promise that resolves with Flint's data folder path.
  */
 const getJanDataFolderPath = (): Promise<string> => globalThis.core.api?.getJanDataFolderPath()
 

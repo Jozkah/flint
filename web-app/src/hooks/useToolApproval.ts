@@ -23,7 +23,7 @@ import type { MCPForgetReason } from '@/services/mcp/types'
  *   matching and are moved to {@link invalidatedServers} with a reason
  * - add a server with a name used before: it inherits nothing
  *
- * Grants for tools with no server (Jan's own tools) keep their original
+ * Grants for tools with no server (Flint's own tools) keep their original
  * name-keyed semantics.
  */
 
@@ -173,7 +173,7 @@ const isInvalidated = (value: unknown): value is InvalidatedApproval =>
  * `invalidatedServers` so the Permissions page can say they need renewing.
  * Conversation and every-conversation tool names are kept as they were; they
  * no longer answer for any MCP server's tool (see `isToolApproved`), which is
- * what invalidates the ones that were really MCP grants, while Jan's own tools
+ * what invalidates the ones that were really MCP grants, while Flint's own tools
  * keep working unchanged.
  */
 export function migrateToolApproval(

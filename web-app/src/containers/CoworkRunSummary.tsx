@@ -24,11 +24,11 @@ type TFn = ReturnType<typeof useTranslation>['t']
  * that cannot be trusted to report on its own run: it writes the transcript
  * this is derived from, and "I updated three files" costs it nothing to say
  * whether or not it happened. So this is counted from the ledger and the tool
- * record, rendered in its own frame, and labelled as Jan's record rather than
+ * record, rendered in its own frame, and labelled as Flint's record rather than
  * the model's account.
  *
- * Each group says exactly what is known. "Jan changed" is claimed only where a
- * file tool succeeded; a check is "passed" only where Jan ran it and saw it
+ * Each group says exactly what is known. "Flint changed" is claimed only where a
+ * file tool succeeded; a check is "passed" only where Flint ran it and saw it
  * exit cleanly; anything the assistant merely said is shown as unverified.
  *
  * The outcome is derived once, by `deriveRunOutcome`, and this component only
@@ -40,7 +40,7 @@ export type CoworkRunSummaryProps = {
   outcome?: RunOutcome
   /** The ledger's counted summary, for callers that have nothing else. */
   summary?: CompletionSummary | null
-  /** Opens a Jan-written file. Offered only where it resolves. */
+  /** Opens a Flint-written file. Offered only where it resolves. */
   onOpenPath?: (path: string) => void
   /** Whether `onOpenPath` can open this path. */
   canOpenPath?: (path: string) => boolean
@@ -399,7 +399,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       data-run-id={outcome.source.runId ?? undefined}
       className="my-3 rounded-lg border border-border bg-card text-xs"
     >
-      {/* Collapsed by default after a clean finish: Jan's record of a run is
+      {/* Collapsed by default after a clean finish: Flint's record of a run is
           worth keeping, but it was opening in full under every single
           message. A run that did not finish opens, because what it left
           behind is the thing to read. */}

@@ -13,7 +13,7 @@
 
 export const ROOM_SCHEMA_VERSION = 1 as const
 
-/** A model reference resolved through JAN's provider store and ModelFactory. */
+/** A model reference resolved through Flint's provider store and ModelFactory. */
 export type RoomModelRef = {
   /** `ProviderObject.provider` */
   provider: string
@@ -33,7 +33,7 @@ export type RoomStatus =
 export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected'
 
 /**
- * Tool access per participant. Only the user sets it. `read` runs JAN's Cowork
+ * Tool access per participant. Only the user sets it. `read` runs Flint's Cowork
  * tools in Plan mode (mutations refused by the existing gate) with no approval
  * callback, so nothing that needs approval can ever execute inside a room.
  * Models without the `tools` capability are forced to `none`.

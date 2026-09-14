@@ -83,7 +83,7 @@ const getGgufFiles: (paths: string[]) => Promise<any> = (paths) =>
  * Gets the file's stats.
  *
  * @param path - The path to the file.
- * @param outsideJanDataFolder - Whether the file is outside the Jan data folder.
+ * @param outsideJanDataFolder - Whether the file is outside the Flint data folder.
  * @returns {Promise<FileStat>} - A promise that resolves with the file's stats.
  */
 const fileStat: (path: string) => Promise<FileStat | undefined> = (path) =>
@@ -93,7 +93,7 @@ const fileStat: (path: string) => Promise<FileStat | undefined> = (path) =>
  * Reads a YAML file and returns it parsed.
  *
  * The Rust side (`core::filesystem::commands::read_yaml`) resolves the path
- * within the Jan data folder, so a path escaping it is rejected there.
+ * within the Flint data folder, so a path escaping it is rejected there.
  *
  * @param path - The path to the YAML file.
  */
@@ -103,7 +103,7 @@ const readYaml: <T = unknown>(path: string) => Promise<T> = (path) =>
 /**
  * Serializes `data` as YAML to `savePath`.
  *
- * @param savePath - Destination path, resolved within the Jan data folder.
+ * @param savePath - Destination path, resolved within the Flint data folder.
  * @param data - The value to serialize.
  */
 const writeYaml: (savePath: string, data: unknown) => Promise<void> = (savePath, data) =>
@@ -113,7 +113,7 @@ const writeYaml: (savePath: string, data: unknown) => Promise<void> = (savePath,
  * Unpacks an archive into `outputDir`.
  *
  * @param path - The archive to unpack.
- * @param outputDir - Destination directory, resolved within the Jan data folder.
+ * @param outputDir - Destination directory, resolved within the Flint data folder.
  */
 const decompress: (path: string, outputDir: string) => Promise<void> = (path, outputDir) =>
   globalThis.core.api?.decompress({ path, outputDir })

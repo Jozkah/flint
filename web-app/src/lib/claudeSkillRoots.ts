@@ -1,12 +1,12 @@
 /**
- * Deciding which of the user's own directories Jan may read skills from.
+ * Deciding which of the user's own directories Flint may read skills from.
  *
  * A user-level skill directory sits outside every repository, so none of the
  * containment that protects the attached folder applies to it. What protects
  * the user here is that the list is theirs: a root arrives from the native
  * directory picker, one at a time, and a repository can never name one. A
  * `CLAUDE.md` that could add a discovery root would be a file in a repository
- * choosing which of the user's directories Jan reads — which is the whole
+ * choosing which of the user's directories Flint reads — which is the whole
  * attack this module exists to make impossible.
  *
  * The rules below are about the second question: given that the user picked
@@ -17,7 +17,7 @@
 export type RootRejection =
   /** A filesystem root or a drive letter: far too broad to scan. */
   | 'too-broad'
-  /** Jan's own storage. Not the user's skills, and not ours to expose. */
+  /** Flint's own storage. Not the user's skills, and not ours to expose. */
   | 'jan-data'
   /** Already approved, or inside a root that is. */
   | 'duplicate'
@@ -63,7 +63,7 @@ export function checkRoot(
   candidate: string,
   opts: {
     approved: readonly string[]
-    /** Jan's data folder, when known. */
+    /** Flint's data folder, when known. */
     janData?: string | null
     /** Did the backend confirm this is a directory that exists? */
     exists: boolean

@@ -14,7 +14,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
  *
  * Silently dropping it was the old answer, and it was the wrong one twice
  * over: the user had already decided the picture mattered, and the model may
- * well be able to see -- Jan only knows a model's capabilities from its
+ * well be able to see -- Flint only knows a model's capabilities from its
  * metadata, which for a manually added provider or an OpenAI-compatible
  * endpoint is routinely incomplete. So this asks rather than decides.
  */

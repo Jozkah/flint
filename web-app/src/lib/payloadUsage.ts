@@ -1,7 +1,7 @@
 /**
  * What the payload that was actually dispatched cost. AH-073.
  *
- * Jan's own measurement runs before a request exists and is bytes over four:
+ * Flint's own measurement runs before a request exists and is bytes over four:
  * useful for planning, never a count. The exact number comes back from the
  * server that tokenized the payload, and this is where it is bound to the
  * invocation and the snapshot it belongs to -- a run makes many model calls,

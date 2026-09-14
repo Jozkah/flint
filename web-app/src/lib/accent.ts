@@ -1,5 +1,5 @@
 /**
- * Accent colour engine for the JAN Graphite Studio design.
+ * Accent colour engine for the Flint Graphite Studio design.
  *
  * The user picks one base colour: a preset (Vermilion, Ink, Moss, Slate blue) or any
  * custom hex value. That base stays the fill of primary actions. Everything

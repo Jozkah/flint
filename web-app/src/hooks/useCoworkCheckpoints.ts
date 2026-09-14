@@ -195,7 +195,7 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
         },
 
         captureSafety: (input) =>
-          // Only ever before a restore, and restores only happen where Jan
+          // Only ever before a restore, and restores only happen where Flint
           // owns the tree — which is also where the backend records the whole
           // working tree rather than a list of reported paths.
           take(

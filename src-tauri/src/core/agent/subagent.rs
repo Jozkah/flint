@@ -25,7 +25,7 @@ pub enum SubagentScope {
     /// Claude Code convention). Read-only: managed via plugin install/remove,
     /// never via `create_subagent`.
     Plugin,
-    /// A role Jan ships (`roles.rs`, AH-094..099). Lowest precedence and
+    /// A role Flint ships (`roles.rs`, AH-094..099). Lowest precedence and
     /// read-only: a saved definition of the same name replaces it, and nothing
     /// can rewrite it.
     Builtin,
@@ -281,7 +281,7 @@ impl SubagentRegistry {
 /// first so user/project TOML definitions shadow them by name. Frontmatter
 /// `name` and `description` are used; `model` and `color` are Claude-runtime
 /// metadata and ignored (the parent's model runs the child); `tools` maps
-/// Claude tool names onto Jan tool names, dropping names with no equivalent.
+/// Claude tool names onto Flint tool names, dropping names with no equivalent.
 fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
     let dir = crate::core::agent::skills::plugins_dir(project_root);
     let Ok(rd) = std::fs::read_dir(&dir) else {
@@ -376,7 +376,7 @@ fn parse_plugin_agent(raw: &str) -> Option<(String, String, Option<Vec<String>>,
     Some((name, description, map_claude_tools(&fm.tools), body))
 }
 
-/// Claude Code tool names with a Jan equivalent, 1:1 where one exists. Unknown
+/// Claude Code tool names with a Flint equivalent, 1:1 where one exists. Unknown
 /// names are dropped — the author's runtime differs. Returns `None` when
 /// nothing maps, so the child inherits the parent's full tool policy (an empty
 /// list would mean "no tools" to the dispatcher).
@@ -534,7 +534,7 @@ pub struct SubagentRequest {
     pub description: String,
     pub allowed_tools: Option<Vec<String>>,
     pub system_prompt: Option<String>,
-    /// Whether the child works in a Jan-owned worktree of its own. `None`
+    /// Whether the child works in a Flint-owned worktree of its own. `None`
     /// means the default: yes, when the project is a git repository and the
     /// child can change files. See [`isolation_for`].
     pub isolate: Option<bool>,
@@ -776,7 +776,7 @@ fn can_change_files(allowed: Option<&[String]>) -> bool {
     }
 }
 
-/// Give a child a Jan-owned worktree of its own, when it should have one.
+/// Give a child a Flint-owned worktree of its own, when it should have one.
 /// AH-107.
 ///
 /// The default is isolation whenever it is possible and matters: the project
@@ -2515,7 +2515,7 @@ mod tests {
     }
 
     /// AH-107: two writing children dispatched at once each get a worktree of
-    /// their own under Jan's folder, recorded for review before they start.
+    /// their own under Flint's folder, recorded for review before they start.
     #[test]
     fn concurrent_writing_children_each_get_their_own_worktree() {
         let root = git_repo("iso-write");
@@ -3595,7 +3595,7 @@ mod tests {
             "---\nname: reader\ndescription: Reads\n---\nYou are a reader.",
         )
         .unwrap();
-        // tools is a Claude Code frontmatter list; NotebookRead has no Jan
+        // tools is a Claude Code frontmatter list; NotebookRead has no Flint
         // equivalent and must be dropped, not fatal.
         std::fs::write(
             plugin_agents_dir(&root).join("scout.md"),

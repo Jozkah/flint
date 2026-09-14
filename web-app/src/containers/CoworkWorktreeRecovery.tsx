@@ -8,7 +8,7 @@ import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 /**
  * Work a previous run left in a checkout nothing points at any more.
  *
- * Jan does not persist which worktree belonged to which session — a record
+ * Flint does not persist which worktree belonged to which session — a record
  * restored from disk would claim a checkout exists without anyone having
  * looked. So after a crash the work is still there and the session has
  * forgotten it. This is how it comes back.
@@ -26,7 +26,7 @@ import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
  */
 
 export type WorktreeRecoveryProps = {
-  /** Jan-owned worktrees of this project that this session is not using. */
+  /** Flint-owned worktrees of this project that this session is not using. */
   orphans: readonly WorktreeRecord[]
   /** Told to the session, so it knows where the work is. */
   onAdopt: (record: WorktreeRecord) => void

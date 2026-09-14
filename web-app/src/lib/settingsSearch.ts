@@ -1,4 +1,4 @@
-// The settings-search registry: one typed, static description of Jan's
+// The settings-search registry: one typed, static description of Flint's
 // settings surface, driving both the Settings sidebar and the search field.
 //
 // Only stable metadata lives here — routes, i18n keys, anchors and keyword

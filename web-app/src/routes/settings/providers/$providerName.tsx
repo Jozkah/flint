@@ -600,7 +600,7 @@ function ProviderDetail() {
     }
     // Only an endpoint that is *definitely* public is asked for a key up
     // front. A local one needs no credential, and a single-label hostname like
-    // `llm-host` is not yet known to be either -- refusing those meant Jan told
+    // `llm-host` is not yet known to be either -- refusing those meant Flint told
     // the user to "configure an API key" for a server that never asked for
     // one, and never sent the request that would have said what was actually
     // wrong. Where it is not certain, make the request and report the answer.

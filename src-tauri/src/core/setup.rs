@@ -30,7 +30,7 @@ pub fn migrate_mcp_servers(
     // that ran v3 -- or ran v1 through v4 in one launch -- was left with an
     // active remote MCP server that dialled mcp.exa.ai on every start, offline
     // included (janhq/jan#8911). Both steps are superseded: neither adds
-    // anything now, and v5 removes whatever Jan itself put there.
+    // anything now, and v5 removes whatever Flint itself put there.
     if mcp_version < 1 {
         log::info!("MCP schema version 1 (default Exa server) is superseded; nothing to add");
     }
@@ -86,7 +86,7 @@ fn env_has_no_real_key(env: Option<&serde_json::Value>) -> bool {
     }
 }
 
-/// Drop the Exa entry Jan's own migrations created, if it is still theirs.
+/// Drop the Exa entry Flint's own migrations created, if it is still theirs.
 ///
 /// Theirs means one of the two shapes those migrations wrote, with no real key
 /// anywhere: the hosted HTTP entry (whatever its `active` flag -- the v3
@@ -116,7 +116,7 @@ pub(crate) fn remove_default_exa(config: &mut serde_json::Value) -> bool {
 }
 
 /// Native web search owns web search now: remove the default Exa MCP server
-/// Jan's earlier migrations added, leaving any entry the user made their own.
+/// Flint's earlier migrations added, leaving any entry the user made their own.
 fn remove_exa_server(app_handle: tauri::AppHandle) -> Result<(), String> {
     let config_path = get_jan_data_folder_path(app_handle).join("mcp_config.json");
     if !config_path.exists() {

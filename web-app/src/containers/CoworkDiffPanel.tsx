@@ -259,9 +259,9 @@ export function CoworkDiffPanel({
   /**
    * What is known about how each of these files came to differ.
    *
-   * A file being here means Git sees it as changed — not that Jan changed it.
+   * A file being here means Git sees it as changed — not that Flint changed it.
    * Without the ledger every row reads as the agent's work, which is exactly
-   * how someone's own uncommitted changes get handed back to them as Jan's.
+   * how someone's own uncommitted changes get handed back to them as Flint's.
    * Absent for a session that has not run yet: then nothing is labelled,
    * rather than everything being labelled wrongly.
    */

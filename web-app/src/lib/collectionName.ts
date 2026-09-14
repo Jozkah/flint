@@ -5,7 +5,7 @@
  * attached: typing a path here has never opened that folder and never will.
  * But the old label said "Project", and a person who types
  * `D:\Code\obs-forwarder` into something called New Project has every reason
- * to believe they just pointed Jan at a repository — which is how a session
+ * to believe they just pointed Flint at a repository — which is how a session
  * ends up talking about a folder nobody selected.
  *
  * So the name is inspected, and when it reads as a path the UI says plainly

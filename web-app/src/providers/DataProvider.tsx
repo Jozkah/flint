@@ -164,7 +164,7 @@ const syncRemoteProviders = () => {
   registeredProviderNames = currentActive
 }
 
-// MLX honors only these samplers; map Jan's setting keys to MLX request-body
+// MLX honors only these samplers; map Flint's setting keys to MLX request-body
 // keys (note repeat_penalty → repetition_penalty). llamacpp uses the router
 // preset and remote providers are intentionally excluded.
 const MLX_SAMPLING_KEY_MAP: Record<string, string> = {

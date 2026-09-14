@@ -6,7 +6,7 @@ import type { ModelQuant } from '@/services/models/types'
 // DFlash, and DSpark (DFlash plus a Markov head). Upstream publishes them as
 // siblings named with an `mtp-` / `eagle3-` / `dflash-` / `dspark-` prefix and
 // excludes all four from its own "is this a model?" test
-// (common/download.cpp: gguf_filename_is_model); in the Jan catalog they are
+// (common/download.cpp: gguf_filename_is_model); in the Flint catalog they are
 // mixed into the main model's quant list, sometimes under an `MTP/` model_id.
 // They are NOT standalone models -- each pairs with a real quant as its draft.
 

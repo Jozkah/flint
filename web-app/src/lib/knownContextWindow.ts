@@ -1,5 +1,5 @@
 /**
- * The context window Jan actually knows for a model, or null.
+ * The context window Flint actually knows for a model, or null.
  *
  * A generation that stops with `finishReason === 'length'` is either a context
  * overflow or an output cap. Telling them apart needs the window, and the chat
@@ -50,11 +50,11 @@ export function knownContextWindow(
 }
 
 /**
- * Providers whose context window Jan itself sets when it loads the model.
+ * Providers whose context window Flint itself sets when it loads the model.
  *
  * For these, raising the model's context size and reloading gives the next
  * request a bigger window. For every other provider the window belongs to the
- * server: raising a number in Jan's settings changes nothing that is sent, so
+ * server: raising a number in Flint's settings changes nothing that is sent, so
  * offering "Increase Context Size" there promised a fix that could not work
  * (janhq/jan#8760).
  */

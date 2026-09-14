@@ -364,7 +364,7 @@ export const Route = createFileRoute(route.cowork as any)({
  *
  * Resolved by `useModelCapabilities` (AH-195) rather than read from one
  * settings field: an OpenAI-compatible server reports its window under any of
- * several names, and reading only Jan's own `ctx_len` left every such endpoint
+ * several names, and reading only Flint's own `ctx_len` left every such endpoint
  * permanently "not known". When a local runtime has answered this is its
  * effective `n_ctx`, which `--fit` may have set well below the model's
  * training size -- the smaller number is the real limit.
@@ -464,7 +464,7 @@ function CoworkPage() {
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
-  // Bumped when Jan itself writes the folder's JAN.md, so it is read again.
+  // Bumped when Flint itself writes the folder's JAN.md, so it is read again.
   const [instructionsVersion, setInstructionsVersion] = useState(0)
   const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>(
     []
@@ -489,7 +489,7 @@ function CoworkPage() {
    */
   const [advertisedToolNames, setAdvertisedToolNames] = useState<string[]>([])
   /**
-   * Jan-owned worktrees of this project that are on disk right now.
+   * Flint-owned worktrees of this project that are on disk right now.
    *
    * Read from Git, not from anything persisted: the session's own record dies
    * with the process, so after a crash this is the only truthful answer to
@@ -533,7 +533,7 @@ function CoworkPage() {
     capability: {
       // Both write modes rest on an authorized writable root the tool gate
       // holds to, but not on the same confinement: on Windows the sandbox can
-      // hold a run to a Jan-owned worktree and not to the user's folder. A
+      // hold a run to a Flint-owned worktree and not to the user's folder. A
       // worktree needs Git as well, which the lifecycle reports by refusing
       // to produce one.
       managedWorktree: capabilityState.known && capabilityState.managedWorktree,
@@ -582,7 +582,7 @@ function CoworkPage() {
    *
    * Keyed by session, so switching sessions shows that session's record and
    * never the last run's. Withdrawing access does not touch it: a grant handed
-   * back changes what Jan may do next, not what already happened.
+   * back changes what Flint may do next, not what already happened.
    */
   const runOrigins = useCoworkOrigins((s) =>
     session?.id ? (s.bySession[session.id] ?? null) : null
@@ -597,7 +597,7 @@ function CoworkPage() {
    */
   const skillRoots = useClaudeCompat((s) => s.skillRoots)
   /**
-   * The subagents saved in Jan.
+   * The subagents saved in Flint.
    *
    * Declared before the compatibility scan because the scan needs them: an
    * imported agent that reuses one of these names is a duplicate, and it is
@@ -755,7 +755,7 @@ function CoworkPage() {
   const workspacePath = useSessionWorkspacePath(session?.id)
 
   /**
-   * Jan's own data folder, so an imported MCP server can be kept out of it.
+   * Flint's own data folder, so an imported MCP server can be kept out of it.
    *
    * Read once: it does not change while the app is running, and an imported
    * server has no business in the app's storage whatever the repository that
@@ -880,7 +880,7 @@ function CoworkPage() {
   /**
    * Write the run's origin ledger, from evidence rather than from the model.
    *
-   * Successful Jan file calls are the only thing claimed outright. Everything
+   * Successful Flint file calls are the only thing claimed outright. Everything
    * else found differing at the end is either proved pre-existing by the
    * baseline, reported as merely observed during the run, or — with no usable
    * baseline — reported as unknown. A file being inside the repository is
@@ -919,7 +919,7 @@ function CoworkPage() {
           endDifferences = (status?.files ?? []).map((file) => file.path)
         } catch {
           // Nothing found is nothing claimed: a failed read leaves the ledger
-          // with Jan's own calls and no assertions about anything else.
+          // with Flint's own calls and no assertions about anything else.
         }
       }
 
@@ -1033,7 +1033,7 @@ function CoworkPage() {
 
   // Every instruction file at the attached root, in one pass.
   //
-  // `JAN.md` is Jan's own and the only one whose text reaches the model.
+  // `JAN.md` is Flint's own and the only one whose text reaches the model.
   // `AGENTS.md` and `CLAUDE.md` are recognised and reported so a repository
   // written for another harness does not look instruction-less — detected is
   // not the same as ingested, and nothing here reads them into the prompt.
@@ -1152,7 +1152,7 @@ function CoworkPage() {
 
   const attachFolder = useCallback(async () => {
     // Checked before the dialog and again after it: the picker is modal to
-    // Jan, but a run started before it opened is still going behind it.
+    // Flint, but a run started before it opened is still going behind it.
     if (folderHeld(session?.id)) return
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
@@ -1463,7 +1463,7 @@ function CoworkPage() {
    * What this session changed, and only that.
    *
    * The counts used to include the attached repository's whole dirty working
-   * tree, so a branch someone left half-finished was reported as Jan having
+   * tree, so a branch someone left half-finished was reported as Flint having
    * written forty files. That is a false claim about authorship, not a
    * generous count.
    */
@@ -1722,7 +1722,7 @@ function CoworkPage() {
      * null) keeps the previous turn's answer rather than deciding that the
      * request was withdrawn because there is no new message to find it in.
      */
-    // Jan's own skills and this folder's compatible ones, resolved as one
+    // Flint's own skills and this folder's compatible ones, resolved as one
     // registry: a request names a skill, not a source, and a name claimed by
     // both lands as ambiguous rather than one silently winning.
     const runRegistry = mergeSkillRegistry(compat, {
@@ -1760,7 +1760,7 @@ function CoworkPage() {
      * A managed worktree still being the thing this session recorded.
      *
      * Checked before the run rather than trusted from the record, because
-     * everything that invalidates one happens outside Jan: the directory
+     * everything that invalidates one happens outside Flint: the directory
      * deleted, the branch moved by someone working in it, the repository
      * re-cloned at the same path. Writing into a stale binding is how a run
      * edits a checkout nobody thinks it is editing, so a worktree that is not
@@ -1980,7 +1980,7 @@ function CoworkPage() {
      * Taken here, before the first tool call, because it is the only moment
      * that can answer "was this already different?" — and that question is
      * what stops the run's own report from handing the user their existing
-     * uncommitted work back as something Jan did. Bound to the session and
+     * uncommitted work back as something Flint did. Bound to the session and
      * folder it describes, and discarded outright if the user has moved on by
      * the time it arrives.
      */
@@ -2041,7 +2041,7 @@ function CoworkPage() {
     /**
      * A point this run can be taken back to.
      *
-     * Only where Jan is about to change something: a review run writes
+     * Only where Flint is about to change something: a review run writes
      * nothing, so there would be nothing to undo, and a checkpoint of the
      * user's checkout taken for a run that cannot touch it is a promise with
      * no work behind it.
@@ -2078,10 +2078,10 @@ function CoworkPage() {
       : emptyCompatManifest(baselineBinding)
 
     /**
-     * The agents this run can dispatch: Jan's own, plus the repository's.
+     * The agents this run can dispatch: Flint's own, plus the repository's.
      *
      * Frozen with the manifest, so an agent file edited mid-run applies to the
-     * next one. Jan's saved definitions win a name collision — a repository
+     * next one. Flint's saved definitions win a name collision — a repository
      * must not be able to redefine an agent the user configured by choosing
      * its name — and the shadowed ones are named in the prompt rather than
      * silently dropped.
@@ -2443,7 +2443,7 @@ function CoworkPage() {
             session: sid,
             run: runId,
             agent: resolved.name,
-            // AH-110: what a change it makes is attributed to. A role Jan
+            // AH-110: what a change it makes is attributed to. A role Flint
             // ships is a role; anything else is an agent by that name.
             agentId: subagentActorId(resolved),
             parentAgent: 'agent',
@@ -2653,7 +2653,7 @@ function CoworkPage() {
      * some providers respond to that by silently dropping the front of the
      * conversation -- so the run continues, having quietly forgotten what it
      * was asked. Refusing here keeps the failure visible and the transcript
-     * intact. An unknown window is never a refusal: it is a limit Jan could
+     * intact. An unknown window is never a refusal: it is a limit Flint could
      * not discover, not a limit that was exceeded.
      */
     const accounted = accountedTotal(measured)
@@ -3814,7 +3814,7 @@ function CoworkPage() {
         onToggle={(on) =>
           folder && useClaudeCompat.getState().setEnabled(folder, on)
         }
-        // Drives Jan's own MCP subsystem, against the definition as it
+        // Drives Flint's own MCP subsystem, against the definition as it
         // stands on disk: consent is permission to run *this* server,
         // not whatever the file says later.
         onMcpConsent={(server, allowed) => {
@@ -4416,7 +4416,7 @@ function CoworkPage() {
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
                 }
-                // Newer edits Jan made itself are not someone else's work, so
+                // Newer edits Flint made itself are not someone else's work, so
                 // only the rest need an explicit acknowledgement.
                 janAuthored={
                   runOrigins?.summary ? janAuthoredPaths(runOrigins.summary) : []

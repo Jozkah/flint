@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { errorText } from '@/lib/errorText'
 
 /**
- * The Jan-owned worktrees this renderer knows about.
+ * The Flint-owned worktrees this renderer knows about.
  *
  * Not persisted, for the same reason grants are not: the record describes
  * something on disk, and a record restored from storage would assert a worktree
@@ -73,7 +73,7 @@ type WorktreesState = {
   /** What a worktree holds that removing it would destroy. */
   pending: (record: WorktreeRecord) => Promise<string[]>
   /**
-   * Every Jan-owned worktree of this project that is on disk.
+   * Every Flint-owned worktree of this project that is on disk.
    *
    * The recovery surface, and only that: a listed worktree is a place work
    * might be sitting. Nothing here authorizes writing to one — that still
@@ -115,7 +115,7 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     } catch (e) {
       const reason = messageOf(e)
       // Kept rather than swallowed: every refusal from the backend names
-      // something that happened outside Jan — a branch someone else made, a
+      // something that happened outside Flint — a branch someone else made, a
       // directory in our place — and the user can only act on what they see.
       set((s) => ({
         errorBySession: { ...s.errorBySession, [sessionId]: reason },

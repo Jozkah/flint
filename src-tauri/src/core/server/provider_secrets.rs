@@ -36,7 +36,7 @@ const NONCE_LEN: usize = 12;
 /// Serializes read-modify-write on the fallback file.
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
-/// The one lock for tests that change the process environment Jan resolves
+/// The one lock for tests that change the process environment Flint resolves
 /// its folders and keys from (`JAN_DATA_FOLDER`, `JAN_HOME`, the provider key
 /// variables). The environment is one per process and tests run on threads,
 /// so every mutator of these variables takes this lock: two locks for one

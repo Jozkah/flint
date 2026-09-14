@@ -207,7 +207,7 @@ const messageOf = errorText
  * files from one conversation are invisible to the next; memory and skill tools
  * reach the permanent store instead and persist. No project path is passed --
  * the desktop has no project picker yet, so the plugin uses the permanent store
- * in the Jan data folder.
+ * in the Flint data folder.
  *
  * `bash` additionally runs under an OS sandbox, whose network access follows the
  * `bashNetworkEnabled` setting. It is read here, per call, rather than captured
@@ -227,7 +227,7 @@ const messageOf = errorText
 export type AgentToolOptions = {
   /**
    * A project folder to attach read-only. Rust validates it and refuses one
-   * that overlaps the workspace or the Jan data folder, rather than silently
+   * that overlaps the workspace or the Flint data folder, rather than silently
    * dropping it, so an unusable attachment surfaces as a tool error.
    */
   readOnlyProject?: string | null

@@ -1,4 +1,4 @@
-//! Jan-owned Git worktrees: an isolated checkout a run can edit without
+//! Flint-owned Git worktrees: an isolated checkout a run can edit without
 //! touching the one the user is working in.
 //!
 //! The access mode existed before this did, declared and deliberately inert:
@@ -227,7 +227,7 @@ pub fn branch_name(session_id: &str) -> String {
     format!("{BRANCH_PREFIX}{}", slug(session_id))
 }
 
-/// Where a session's worktree lives, under Jan's own data directory.
+/// Where a session's worktree lives, under Flint's own data directory.
 ///
 /// Outside the user's checkout on purpose: inside it, the worktree would show
 /// up in their editor, their search results and — but for `.git` bookkeeping —
@@ -275,7 +275,7 @@ fn is_worktree_of(path: &Path, repo: &Path) -> bool {
 /// Whether `path` really sits inside `root`, after both are resolved.
 ///
 /// Resolved rather than compared as strings, because the interesting cases are
-/// the ones a string comparison gets wrong: a symlink in Jan's worktrees
+/// the ones a string comparison gets wrong: a symlink in Flint's worktrees
 /// directory pointing at the user's home, a path with `..` in it, a directory
 /// that was replaced between the check and the use. A path that cannot be
 /// resolved is not contained — an answer nobody can verify is not a yes.
@@ -379,7 +379,7 @@ pub fn existing(repo: &Path, worktrees_root: &Path, session_id: &str) -> Option<
 /// Refuses rather than improvises in the two cases where improvising loses
 /// work: a branch of the right name that is not ours, and a directory in our
 /// own location that is not a worktree of this repository. Both mean something
-/// happened outside Jan, and picking a different name to get past it would
+/// happened outside Flint, and picking a different name to get past it would
 /// leave the user with two branches and no explanation.
 pub fn ensure(
     repo: &Path,
@@ -389,7 +389,7 @@ pub fn ensure(
     // A relative root would be resolved twice, differently: by `git -C repo`
     // against the repository -- putting the worktree inside the checkout it
     // exists to protect -- and by everything else against this process's
-    // working directory, where it then cannot be found. Jan's configured data
+    // working directory, where it then cannot be found. Flint's configured data
     // folder defaults to the relative `./data`, so this is not hypothetical.
     let worktrees_root = &absolute(worktrees_root)?;
     let identity = identity(repo)?;
@@ -397,7 +397,7 @@ pub fn ensure(
     let branch = branch_name(session_id);
 
     // Where the worktree will actually be, not where the name says. A symlink
-    // in Jan's own worktrees directory — or one someone put there — would
+    // in Flint's own worktrees directory — or one someone put there — would
     // otherwise make "under the data folder" a statement about the string
     // rather than about the disk, and the run would be editing whatever it
     // points at.
@@ -523,9 +523,9 @@ pub fn discard(record: &WorktreeRecord, force: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Every Jan-owned worktree of this repository that is actually on disk.
+/// Every Flint-owned worktree of this repository that is actually on disk.
 ///
-/// Read from Git rather than from anything Jan persisted, and that is the
+/// Read from Git rather than from anything Flint persisted, and that is the
 /// point: the renderer's record of its worktrees dies with the process, so
 /// after a crash the only truthful source is the repository itself. What comes
 /// back is a list of places work might be sitting — never authority. Nothing
@@ -551,12 +551,12 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
             return;
         };
         // Ours, and where we put them: a worktree the user made themselves is
-        // not Jan's to list, offer to delete, or reason about.
+        // not Flint's to list, offer to delete, or reason about.
         if !b.starts_with(BRANCH_PREFIX) || !contained(Path::new(&p), worktrees_root) {
             return;
         }
         // `git worktree list --porcelain` reports `C:/Users/...` on Windows,
-        // while every record Jan creates holds a native `C:\Users\...`. Left
+        // while every record Flint creates holds a native `C:\Users\...`. Left
         // as git printed it, the same worktree compared unequal to itself --
         // so a listed worktree could not be matched to the one that made it.
         // Resolved the same way `contained` resolves, so both sides of any
@@ -593,7 +593,7 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
     found
 }
 
-/// The namespace every branch Jan creates lives under.
+/// The namespace every branch Flint creates lives under.
 pub const BRANCH_PREFIX: &str = "jan/cowork/";
 
 /// Drop the bookkeeping for worktrees whose directories are gone.
@@ -914,14 +914,14 @@ mod tests {
         let f = fixture();
         let id = identity(&f.repo).unwrap();
         // Session ids reach this from persisted state; a crafted one must not
-        // be able to climb out of the directory Jan owns.
+        // be able to climb out of the directory Flint owns.
         let path = worktree_path(&f.worktrees, &id, "../../etc/passwd");
         assert!(path.starts_with(&f.worktrees), "{}", path.display());
     }
 
     #[test]
     fn a_branch_name_cannot_be_forged_from_a_session_id() {
-        // Same concern, on the ref namespace: everything Jan creates is under
+        // Same concern, on the ref namespace: everything Flint creates is under
         // `jan/cowork/`, whatever the id contains.
         assert!(branch_name("../../main").starts_with("jan/cowork/"));
         assert!(branch_name("").starts_with("jan/cowork/"));
@@ -951,7 +951,7 @@ mod tests {
         assert_eq!(found[0].path, mine.path);
         assert_eq!(found[0].branch, mine.branch);
         assert_eq!(found[0].base_sha, mine.base_sha);
-        // A worktree Jan did not make is not Jan's to list, offer to delete, or
+        // A worktree Flint did not make is not Flint's to list, offer to delete, or
         // reason about.
         assert!(!found.iter().any(|one| one.branch == "their-branch"));
     }
@@ -999,7 +999,7 @@ mod tests {
 
     #[test]
     fn refuses_a_worktrees_root_that_leads_somewhere_else() {
-        // The check has to be on the disk, not the string: a symlink where Jan
+        // The check has to be on the disk, not the string: a symlink where Flint
         // keeps its worktrees would otherwise make "under the data folder"
         // true of the name and false of the place.
         let f = fixture();
@@ -1012,7 +1012,7 @@ mod tests {
         return;
 
         // The root itself resolving elsewhere is fine — it is still one place
-        // Jan owns. What must not happen is a *child* escaping it.
+        // Flint owns. What must not happen is a *child* escaping it.
         let inside = linked.join("sub");
         assert!(contained(&inside, &linked));
         assert!(!contained(&elsewhere.join(".."), &linked));

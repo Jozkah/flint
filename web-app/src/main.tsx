@@ -8,7 +8,7 @@ import {
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 
-// JAN Graphite Studio typefaces, bundled with the app so nothing is fetched at runtime.
+// Flint Graphite Studio typefaces, bundled with the app so nothing is fetched at runtime.
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import './index.css'

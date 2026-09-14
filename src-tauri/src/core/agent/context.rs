@@ -24,9 +24,9 @@ missing output: when output is cut it always carries an explicit `[output trunca
 its absence means you have everything. A command's `[exit N]` line is the authoritative result -- \
 `[exit 0]` is success even if there is text on stderr (many tools write normal status there).";
 
-/// The one instructions file Jan reads, discovered by walking from the project
+/// The one instructions file Flint reads, discovered by walking from the project
 /// root up to the filesystem root. Another agent's file (`AGENTS.md`,
-/// `CLAUDE.md`) is deliberately not ingested: only what a user wrote for Jan --
+/// `CLAUDE.md`) is deliberately not ingested: only what a user wrote for Flint --
 /// by hand or through `/init` -- becomes authoritative project context.
 const CONTEXT_FILE_NAME: &str = "JAN.md";
 
@@ -466,7 +466,7 @@ mod tests {
     }
 
     /// Point the permanent store (user and session memory) at a scratch tree,
-    /// so a test never reads or writes the developer's real Jan data folder.
+    /// so a test never reads or writes the developer's real Flint data folder.
     fn with_temp_data_folder<T>(f: impl FnOnce(&Path) -> T) -> T {
         // The shared environment lock: a private one excluded only the other
         // callers of this helper, not the tests that point the same variable
