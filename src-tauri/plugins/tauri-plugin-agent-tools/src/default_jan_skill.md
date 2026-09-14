@@ -1,9 +1,9 @@
 ---
 name: jan
-description: Use when onboarding users to Jan Agent or explaining project and global configuration, skills, memory, providers, and MCP servers.
+description: Use when onboarding users to Flint Agent or explaining project and global configuration, skills, memory, providers, and MCP servers.
 ---
-# Jan Agent
-When enabled, Jan lists this skill's name and purpose. The model loads its body with `skill_read`
+# Flint Agent
+When enabled, Flint lists this skill's name and purpose. The model loads its body with `skill_read`
 only when the task needs it.
 
 
@@ -11,12 +11,13 @@ Run `jan` in a folder. That CWD is the project root; `--project DIR` selects ano
 
 ## Project files
 
-Jan reads non-empty `JAN.md` files from the project root and its ancestors. The nearest file wins.
-Jan creates this separate state tree on first use:
+Flint reads non-empty `FLINT.md` files (and legacy `JAN.md` files, for projects created before
+the rename) from the project root and its ancestors. The nearest file wins, and a `FLINT.md`
+wins over a `JAN.md` in the same folder. Flint creates this separate state tree on first use:
 
 ```text
 <project>/
-|-- JAN.md                 # always-loaded project instructions
+|-- FLINT.md               # always-loaded project instructions (legacy name: JAN.md)
 `-- .jan/
     `-- agent/
         |-- agent.toml       # model, provider, budget, tools, skills
@@ -29,19 +30,20 @@ Jan creates this separate state tree on first use:
 ```
 
 `agent.toml` has `[agent]`, `[provider]`, `[budget]`, `[tools]`, and `[skills]` sections.
-A simple skill can be `skills/<name>.md`. Commit `JAN.md`, `agent.toml`, `skills/`, and
-`subagents/`; gitignore `threads/`. Run `jan cli agent status --project .` to scaffold the tree.
+A simple skill can be `skills/<name>.md`. Commit `FLINT.md` (or a legacy `JAN.md`), `agent.toml`,
+`skills/`, and `subagents/`; gitignore `threads/`. Run `jan cli agent status --project .` to
+scaffold the tree. The `.jan/` directory name is kept unchanged so existing projects keep working.
 
 ## User-global files
 
-`~/.jan/` is separate from a project's `.jan/`:
+`~/.jan/` is separate from a project's `.jan/` (the directory name is retained for compatibility):
 
 ```text
 ~/.jan/
 `-- config.toml              # CLI provider configuration and credentials
 ```
 
-Jan Desktop stores its settings and shared MCP configuration under the platform support folder:
+Flint Desktop stores its settings and shared MCP configuration under the platform support folder:
 
 ```text
 <support-folder>/Jan/
@@ -62,7 +64,8 @@ Linux:   $XDG_DATA_HOME, or ~/.local/share
 Windows: %APPDATA%
 ```
 
-`JAN_DATA_FOLDER` overrides the `data/` location. Otherwise Jan uses
-`settings.json`'s `data_folder`, then `<support-folder>/Jan/data`.
-Add MCP servers in Desktop at `Settings > MCP Servers`; Jan writes
-`<JAN_DATA_FOLDER>/mcp_config.json`.
+`FLINT_DATA_FOLDER` (or the legacy `JAN_DATA_FOLDER`, still honoured) overrides the `data/`
+location; `FLINT_DATA_FOLDER` takes precedence when both are set. Otherwise Flint uses
+`settings.json`'s `data_folder`, then `<support-folder>/Jan/data`. The `Jan` support-folder name
+is retained so existing installations keep loading. Add MCP servers in Desktop at
+`Settings > MCP Servers`; Flint writes `<data folder>/mcp_config.json`.

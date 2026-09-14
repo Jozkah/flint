@@ -5,7 +5,7 @@
 //! 1. System and security constraints.
 //! 2. The current user request.
 //! 3. Active workspace and permission state.
-//! 4. `JAN.md`.
+//! 4. The project instructions file (`FLINT.md`, or a legacy `JAN.md`).
 //! 5. Approved compatibility instructions.
 //! 6. Skills.
 //! 7. User memory.
@@ -16,7 +16,7 @@
 //! Levels 1-3 are not text this module sees: they are the gate, the sandbox,
 //! the tool list and the message the user just sent, all decided before and
 //! without memory. What this module enforces is the part that is text: a
-//! remembered fact that contradicts `JAN.md`, an approved compatibility file or
+//! remembered fact that contradicts the project instructions file, an approved compatibility file or
 //! a skill is withheld, and the disagreement is reported with both values, both
 //! sources and the winner, rather than both being sent and the model left to
 //! pick. A memory that tries to claim authority it cannot have -- grant a tool,
@@ -33,6 +33,9 @@ pub enum Source {
     System,
     CurrentRequest,
     Workspace,
+    /// The project instructions file: `FLINT.md`, or a legacy `JAN.md` for
+    /// projects created before the rename. The serialized name stays `jan-md`
+    /// so records written before the rename still deserialize.
     JanMd,
     Compat,
     Skill,
@@ -64,7 +67,7 @@ impl Source {
             Source::System => "system and security constraints",
             Source::CurrentRequest => "the current request",
             Source::Workspace => "workspace and permission state",
-            Source::JanMd => "JAN.md",
+            Source::JanMd => "the project instructions file",
             Source::Compat => "an approved compatibility instruction",
             Source::Skill => "a skill",
             Source::UserMemory => "user memory",
@@ -90,7 +93,7 @@ When instructions disagree, follow the higher one:\n\n\
 1. System and security constraints.\n\
 2. The user's current request.\n\
 3. The active workspace and permission state.\n\
-4. JAN.md.\n\
+4. The project instructions file (FLINT.md, or a legacy JAN.md).\n\
 5. Approved compatibility instructions.\n\
 6. Skills.\n\
 7. User memory.\n\
@@ -280,7 +283,7 @@ mod tests {
         for (i, s) in order.iter().enumerate() {
             assert_eq!(s.rank() as usize, i + 1, "{s:?}");
         }
-        for line in ["1. System", "4. JAN.md", "6. Skills", "7. User memory", "9. Session memory"] {
+        for line in ["1. System", "4. The project instructions file", "6. Skills", "7. User memory", "9. Session memory"] {
             assert!(STATEMENT.contains(line), "{line}");
         }
     }

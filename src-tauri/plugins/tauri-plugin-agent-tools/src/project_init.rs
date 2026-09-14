@@ -25,9 +25,12 @@ pub const MAX_DIRS: usize = 200;
 pub const MAX_ENTRIES: usize = 4000;
 /// Folder depth below the root that is listed.
 pub const MAX_DEPTH: usize = 4;
-/// The largest `JAN.md` that can be accepted.
+/// The largest instructions file that can be accepted.
 pub const MAX_JAN_MD_BYTES: usize = 64 * 1024;
-/// Jan's own instructions file.
+/// Flint's own instructions file (the one new projects get).
+pub const FLINT_MD: &str = "FLINT.md";
+/// The legacy instructions file, still discovered and honoured for projects
+/// created before the Flint rename.
 pub const JAN_MD: &str = "JAN.md";
 
 /// What a survey found, and what it did not read.
@@ -389,17 +392,19 @@ pub fn survey(root: &str) -> Result<Survey, String> {
         read,
         not_read,
         files_seen: files.len(),
-        has_instructions: has(JAN_MD),
+        // Either name counts: a project created before the rename has JAN.md,
+        // a new one gets FLINT.md. FLINT.md takes precedence when both exist.
+        has_instructions: has(FLINT_MD) || has(JAN_MD),
     })
 }
 
-/// Write the accepted text as `<root>/JAN.md`. `root` is canonical.
+/// Write the accepted text as `<root>/FLINT.md`. `root` is canonical.
 ///
-/// Refuses, writing nothing: empty or oversized text; an existing `JAN.md`
-/// unless `overwrite` was asked for; a `JAN.md` that is a link or a folder,
-/// since writing through a link could land anywhere. The write goes to a
-/// temporary file in the same folder first and is then renamed into place, so
-/// an interrupted write never leaves a half-written `JAN.md`.
+/// Refuses, writing nothing: empty or oversized text; an existing `FLINT.md`
+/// or a legacy `JAN.md` unless `overwrite` was asked for; a `FLINT.md` that is
+/// a link or a folder, since writing through a link could land anywhere. The
+/// write goes to a temporary file in the same folder first and is then renamed
+/// into place, so an interrupted write never leaves a half-written `FLINT.md`.
 pub fn accept(root: &Path, content: &str, overwrite: bool) -> Result<PathBuf, String> {
     if content.trim().is_empty() {
         return Err("the description is empty, so nothing was written".to_string());
@@ -409,26 +414,33 @@ pub fn accept(root: &Path, content: &str, overwrite: bool) -> Result<PathBuf, St
             "the description is larger than {MAX_JAN_MD_BYTES} bytes, so nothing was written"
         ));
     }
-    let target = root.join(JAN_MD);
+    // New projects get FLINT.md. A legacy JAN.md still counts as "already has
+    // instructions", so we do not silently add a second file beside it.
+    let target = root.join(FLINT_MD);
+    if !overwrite && root.join(JAN_MD).exists() {
+        return Err(
+            "this folder already has a JAN.md, so nothing was written".to_string(),
+        );
+    }
     match std::fs::symlink_metadata(&target) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            return Err("JAN.md is a link, and Jan will not write through it; nothing was written".to_string())
+            return Err("FLINT.md is a link, and Flint will not write through it; nothing was written".to_string())
         }
         Ok(meta) if meta.is_dir() => {
-            return Err("JAN.md is a folder, so nothing was written".to_string())
+            return Err("FLINT.md is a folder, so nothing was written".to_string())
         }
         Ok(_) if !overwrite => {
-            return Err("this folder already has a JAN.md, so nothing was written".to_string())
+            return Err("this folder already has a FLINT.md, so nothing was written".to_string())
         }
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("JAN.md could not be checked: {e}")),
+        Err(e) => return Err(format!("FLINT.md could not be checked: {e}")),
     }
-    let temp = root.join(format!(".JAN.md.jan-{}.tmp", std::process::id()));
-    std::fs::write(&temp, content).map_err(|e| format!("JAN.md could not be written: {e}"))?;
+    let temp = root.join(format!(".FLINT.md.flint-{}.tmp", std::process::id()));
+    std::fs::write(&temp, content).map_err(|e| format!("FLINT.md could not be written: {e}"))?;
     if let Err(e) = std::fs::rename(&temp, &target) {
         let _ = std::fs::remove_file(&temp);
-        return Err(format!("JAN.md could not be written: {e}"));
+        return Err(format!("FLINT.md could not be written: {e}"));
     }
     Ok(target)
 }
@@ -536,9 +548,11 @@ mod tests {
     fn accepting_writes_exactly_the_text_and_refuses_to_overwrite() {
         let root = dir("accept");
         let path = accept(&root, "# Mine\n", false).unwrap();
+        // New projects get FLINT.md.
+        assert_eq!(path, root.join(FLINT_MD));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Mine\n");
         let err = accept(&root, "# Other\n", false).unwrap_err();
-        assert!(err.contains("already has a JAN.md"), "{err}");
+        assert!(err.contains("already has a FLINT.md"), "{err}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Mine\n");
         accept(&root, "# Replaced\n", true).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Replaced\n");
@@ -552,23 +566,41 @@ mod tests {
     }
 
     #[test]
+    fn a_legacy_jan_md_blocks_a_new_flint_md_and_still_counts_as_instructions() {
+        let root = dir("legacy-jan");
+        put(&root, JAN_MD, "# legacy\n");
+        // A folder with only JAN.md is already "initialised": no offer.
+        assert!(survey(&s(&root)).unwrap().has_instructions);
+        // Without overwrite, we do not add a second (FLINT.md) file beside it.
+        let err = accept(&root, "# new\n", false).unwrap_err();
+        assert!(err.contains("already has a JAN.md"), "{err}");
+        assert!(!root.join(FLINT_MD).exists());
+        // With overwrite the user is explicitly opting in to FLINT.md, which
+        // then takes precedence; the legacy JAN.md is left untouched.
+        let path = accept(&root, "# new\n", true).unwrap();
+        assert_eq!(path, root.join(FLINT_MD));
+        assert_eq!(std::fs::read_to_string(root.join(JAN_MD)).unwrap(), "# legacy\n");
+    }
+
+    #[test]
     fn empty_or_oversized_text_writes_nothing() {
         let root = dir("empty");
         assert!(accept(&root, "  \n", false).is_err());
         assert!(accept(&root, &"x".repeat(MAX_JAN_MD_BYTES + 1), false).is_err());
+        assert!(!root.join(FLINT_MD).exists());
         assert!(!root.join(JAN_MD).exists());
     }
 
     #[test]
-    fn a_jan_md_that_is_a_link_is_never_written_through() {
-        let root = dir("jan-link");
-        let outside = dir("jan-link-outside");
+    fn a_flint_md_that_is_a_link_is_never_written_through() {
+        let root = dir("flint-link");
+        let outside = dir("flint-link-outside");
         let victim = outside.join("victim.txt");
         std::fs::write(&victim, "original").unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&victim, root.join(JAN_MD)).unwrap();
+        std::os::unix::fs::symlink(&victim, root.join(FLINT_MD)).unwrap();
         #[cfg(windows)]
-        if std::os::windows::fs::symlink_file(&victim, root.join(JAN_MD)).is_err() {
+        if std::os::windows::fs::symlink_file(&victim, root.join(FLINT_MD)).is_err() {
             return;
         }
         let err = accept(&root, "# Hijack\n", true).unwrap_err();

@@ -32,7 +32,7 @@ use serde_json::Value;
 pub enum Category {
     /// The harness's own instructions: role, guidelines, environment.
     SystemPrompt,
-    /// Project context files (`JAN.md` and its parents).
+    /// Project context files (`FLINT.md` and its parents).
     ProjectContext,
     /// The skills catalog offered in the prompt.
     Skills,

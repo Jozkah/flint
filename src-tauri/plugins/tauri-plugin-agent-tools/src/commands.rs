@@ -1498,7 +1498,7 @@ pub async fn project_read_file(
     .map_err(AgentToolsError::from)
 }
 
-/// Survey the attached folder for a starting `JAN.md`. AH-209.
+/// Survey the attached folder for a starting `FLINT.md`. AH-209.
 ///
 /// Reads only inside the folder, through the same confined listing and reader
 /// as the Code panel; runs nothing; bounded, and says what it did not read.
@@ -1521,12 +1521,12 @@ pub async fn project_survey(
     .map_err(AgentToolsError::from)
 }
 
-/// Write the description the user accepted as the folder's `JAN.md`. AH-209.
+/// Write the description the user accepted as the folder's `FLINT.md`. AH-209.
 ///
 /// The only write the initialization assistant makes, made because the user
 /// accepted this text. The folder is validated the way a read of it is, so the
 /// Jan data folder and anything overlapping the workspace are refused; an
-/// existing `JAN.md` is replaced only when `overwrite` says so.
+/// existing `FLINT.md` is replaced only when `overwrite` says so.
 #[tauri::command]
 pub async fn project_init_accept(
     data_folder: String,
