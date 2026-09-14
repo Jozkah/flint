@@ -8145,12 +8145,12 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
             println!("idle B holds the message with Reply / Let the agent respond / Dismiss");
         }
 
-        // No discussion room was involved anywhere.
+        // Messaging itself involves no discussion room: the feature must not
+        // create any room data. The Rooms route ships on this branch (merged
+        // from feature/discussion-rooms), so the presence of a `/rooms` link in
+        // the app is expected and is no longer asserted against here; only the
+        // absence of any room data written by a messaging run is checked.
         ensure!(!data_folder()?.join("rooms").exists(), "a rooms folder exists in the data folder");
-        let rooms_ui = ctx.eval_bool(
-            "return location.pathname.includes('room') || !!document.querySelector('a[href*=\"/room\"]');",
-        )?;
-        ensure!(!rooms_ui, "a rooms route is present in the app");
         Ok(())
     })();
     stop_every_run(ctx);

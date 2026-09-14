@@ -443,3 +443,41 @@ compatible, none incompatible.
 | `cargo check -j 4 --example cowork-smoke --features cowork-smoke` | ok; the rooms lane's dissent checks (verbatim position, appendix heading) still hold for positions under 4,000 chars |
 
 The real-provider rooms lane was not re-run.
+
+### Release gate on commit 3a369ae39 (normal install, no temporary links)
+
+This gate ran with a **normal** workspace install into the gate worktree
+(`yarn install` at the repo root; Yarn Berry 4.5.3, `node-modules` linker),
+not a shared or junctioned `node_modules`. `@fontsource/ibm-plex-sans/400.css`
+is a real 2,548-byte file in `web-app/node_modules`, and the
+`@janhq/tauri-plugin-*-api` workspace symlinks resolve into this worktree's
+own plugin crates. The normal build prerequisites were then produced the usual
+way (`yarn build:tauri:plugin:api`, `yarn workspace @janhq/core build`, the
+`@janhq/*-extension` builds) before the checks below.
+
+| Check | Result |
+| --- | --- |
+| `node node_modules/typescript/bin/tsc -b` (web-app) | exit 0 |
+| `node ../scripts/local-only-guard.mjs` | clean |
+| Full `npx vitest run` | 542 files passed, 2 failed; 6922 passed, 1 failed, 7 skipped. `src/__tests__/main.test.tsx` now passes because `@fontsource` is really installed. The two failures were environment-only build outputs missing at first run — `services/core/__tests__/tauri.test.ts` (unbuilt `@janhq/assistant-extension`) and `tauriResources.test.ts` (gitignored resource sidecars, icons and `web-app/dist` absent); both pass (15/15) once the extensions are built and the resources/dist are staged |
+| Plugin `cargo test -j 4 --lib` with `JAN_SANDBOX_HELPER_EXE` set (helper built first via `cargo build -j 4 --bin jan-sandbox-helper`) | 1136 passed, 0 failed, 1 ignored; all 7 Windows bash-sandbox tests pass with the helper, and the `session_mailbox` + `stop_tests` suites pass |
+| App crate `cargo test -j 4 --lib --no-default-features --features test-tauri -- rooms mailbox` | 16 passed, 0 failed (15 `core::rooms::tests`, plus `mailbox_tools_are_never_advertised_by_the_rust_loop`) |
+| Real-app mock lane, built with the real installed `node_modules` (`VITE_JAN_E2E_HOOKS=1` dist; `__janRoomsE2E` confirmed present in the bundle) | `session-messaging-overlap-request-reaches-running-peer`, `stop-session-stops-a-same-project-peer-after-approval` and `session-isolation` all PASS as a set; `project-attachment,session-isolation` both PASS (isolation passes alone and paired) |
+
+While running the mock messaging lane on this branch, the shared
+`messaging_between_sessions` scenario in `src-tauri/examples/cowork_smoke.rs`
+still asserted that no `/rooms` route exists in the app — an assertion written
+on `feature/session-messaging`, before rooms shipped. On this merged branch the
+Rooms route legitimately ships, so the assertion was stale and was removed (the
+scenario still checks that a messaging run writes no room data). This is a
+harness-test staleness, not a product defect: the messaging and `stop_session`
+behaviour itself succeeded in full (correct `list_sessions`, delivered
+`send_message`, the untrusted coordination fence, the held idle card, the
+approval card, `status: applied`, the persisted stop record and the plain-text
+stop notice).
+
+The real-provider rooms lane against `http://v100:8555/v1` (item 3) could not be
+run in this gate: the host `v100` did not resolve from the gate machine
+(`Non-existent domain`, no `hosts` entry, `curl` returns HTTP 000). No network
+configuration was changed. That lane remains to be run from a machine where
+`v100` resolves.
