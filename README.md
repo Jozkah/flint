@@ -1,8 +1,12 @@
 # Flint
 
+**Flint — a fork of Jan**
+
 A private, local-first AI workspace for your desktop: chat with models on your own computer, let an agent work on files and projects with your approval, and see exactly what it used and changed.
 
-> **Flint** is a rebranded distribution based on the [Jan](https://github.com/menloresearch/jan) project by Menlo Research, licensed under Apache 2.0. The Jan name is retained where it identifies the upstream project, data compatibility, or legal attribution.
+> Flint is an independent fork of the open-source [Jan](https://github.com/menloresearch/jan) project by Menlo Research. It preserves Jan's licensing, copyright notices, contributor attribution, acknowledgements, and upstream history while developing its own product identity and features.
+
+The Jan name and identifiers are retained wherever they carry legal attribution or keep your existing data compatible (see [Migration from JAN](#migration-from-jan) and [License](#license)). Features below are Flint's own unless the text says they are inherited from Jan.
 
 <img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="Flint Cowork with parallel agents and a live timeline" width="100%">
 
@@ -39,7 +43,7 @@ This build does not phone home. There is no telemetry, no analytics, no update c
 
 ## Install
 
-This repository does not publish installers. Build Flint from source (below); the result is a normal desktop app for Windows, macOS or Linux.
+Signed native installers for Windows, macOS, and Linux are attached to each release on the [Releases](https://github.com/Jozkah/jan/releases) page once a release build has run. If no installer is attached yet (the Flint 0.9 release is prepared but its signed artifacts are produced by CI), build Flint from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
 **You bring your own models.** Use a GGUF model file you already have (Settings → Model Providers → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
@@ -50,6 +54,30 @@ This repository does not publish installers. Build Flint from source (below); th
 3. **Start a chat.** Type in the composer and press Enter. Attach files with **+**. Open **What Flint is using** in the conversation header to see the model, instructions, attachments, memory and tools that apply to the conversation.
 4. **Try Cowork for file work.** Open **Cowork** from the Workspace sidebar, attach a project folder or work in the session sandbox, and describe the task. When the agent wants to change a file or run a command you have not allowed, Flint shows what it wants to do, the files involved, the scope of the permission and what happens if you deny it.
 5. **Review the result.** The run summary explains what happened, where the result is, which commands were actually run and checked, and what is still unresolved. The **Changes** panel shows real diffs; checkpoints let you restore earlier states.
+
+## Migration from JAN
+
+If you already use Jan, Flint brings your data across. Because Flint keeps Jan's
+bundle identifier (`jan.ai.app`) and data path, an existing install is detected
+automatically, and on first launch a migration assistant offers four paths:
+
+- **Copy to Flint** — duplicate the selected Jan data into Flint; Jan is left untouched.
+- **Reuse JAN data** — point Flint at your existing Jan data in place, without copying.
+- **Move to Flint** — copy into Flint, then remove the Jan source once every item succeeds (a backup is kept).
+- **Start fresh** — begin with an empty Flint profile; nothing in Jan is read or changed.
+
+You choose which categories to bring (conversations & assistants, models,
+settings & credentials, configs, extensions/logs, agent workspace & rooms) and
+how to resolve items that already exist in Flint. A newer Flint item is never
+silently overwritten. A failed migration rolls back to the previous state, and
+you can re-run it or open the assistant again later from **Settings → General →
+Migrate from JAN**.
+
+Legacy Jan compatibility is preserved throughout: the `jan.ai.app` identifier,
+existing data paths, `JAN_*` environment variables (with `FLINT_*` preferred),
+the `jan://` protocol (alongside `flint://`), and `JAN.md` project files
+(alongside `FLINT.md`) all continue to work. Provider API keys stay in the OS
+keyring and are not copied into plaintext.
 
 ## A visual tour
 
@@ -94,6 +122,25 @@ Screenshots of the real app with demo content. Phone layouts are the same app in
 ## Features
 
 Everything below is implemented in this fork, on top of upstream Jan. Each agent capability maps to an item in the [agent harness feature registry](docs/AGENT_HARNESS_FEATURE_REGISTRY.md) (208 of its 211 items are implemented). Open a section to see the full list.
+
+<details>
+<summary><strong>Multi-agent collaboration</strong> (Flint)</summary>
+
+- **Session-to-session messaging:** agent sessions in the same project can message one another through a backend mailbox. Messages are attributed to the sender, replies are addressed back, and delivery is project-scoped and fenced against prompt injection.
+- **`stop_session`:** a permission-safe way to stop a running peer session in the same project, gated by explicit user approval, with protection against acting on a run that already ended.
+- **Multi-model Discussion Rooms:** put several providers and models in one room with moderator and speaking policies, a shared transcript with addressed replies, per-room budgets and limits, persistence, restart recovery, termination, and synthesis.
+- **First-launch JAN migration assistant:** see [Migration from JAN](#migration-from-jan).
+
+</details>
+
+<details>
+<summary><strong>Local inference and providers</strong> (inherited from Jan, extended)</summary>
+
+- **Local inference:** run GGUF models on your own machine via the bundled llama.cpp engine (upgraded to b10809 in this release), or MLX models on Apple silicon. You bring your own model files; nothing is downloaded for you.
+- **Providers:** add cloud providers (OpenAI-compatible and Anthropic-style endpoints) with your own key, or point Flint at a LAN / self-hosted OpenAI-compatible server. Keys live in the OS keyring.
+- **Token & prompt-cache accounting:** provider-reported usage and prompt-cache reuse are tracked per request, turn, and session.
+
+</details>
 
 <details>
 <summary><strong>Workspace and design</strong></summary>
@@ -373,8 +420,16 @@ On Windows, if an engine build fails with an nvcc "Could not open output file" e
 
 ## License
 
-Apache 2.0.
+Flint is licensed under the [Apache License 2.0](LICENSE) — the same license as
+upstream Jan. The copyright and attribution notices, including "Copyright 2025
+Menlo Research" and the acknowledgement that this product includes software
+developed by Menlo Research, are retained in [`LICENSE`](LICENSE) and throughout
+the source. Flint does not claim authorship of upstream Jan work.
 
 ## Acknowledgements
 
-Built on [llama.cpp](https://github.com/ggerganov/llama.cpp), [Tauri](https://tauri.app/) and [Scalar](https://github.com/scalar/scalar).
+Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by
+[Menlo Research](https://menlo.ai); the upstream project, its contributors, and
+its history are gratefully acknowledged. Also built on
+[llama.cpp](https://github.com/ggerganov/llama.cpp),
+[Tauri](https://tauri.app/) and [Scalar](https://github.com/scalar/scalar).
