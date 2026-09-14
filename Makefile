@@ -254,8 +254,8 @@ ifeq ($(DETECTED_OS),Darwin)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target aarch64-apple-darwin
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target x86_64-apple-darwin
 	lipo -create \
-		src-tauri/target/aarch64-apple-darwin/release/jan \
-		src-tauri/target/x86_64-apple-darwin/release/jan \
+		src-tauri/target/aarch64-apple-darwin/release/flint \
+		src-tauri/target/x86_64-apple-darwin/release/flint \
 		-output src-tauri/resources/bin/flint
 	chmod +x src-tauri/resources/bin/flint
 	$(call MKDIR,'src-tauri/target/universal-apple-darwin/release')
@@ -270,10 +270,10 @@ ifeq ($(DETECTED_OS),Darwin)
 		echo "Warning: No Developer ID Application identity found. Skipping code signing (notarization will fail)."; \
 	fi
 
-	cp src-tauri/resources/bin/flint src-tauri/target/universal-apple-darwin/release/jan
+	cp src-tauri/resources/bin/flint src-tauri/target/universal-apple-darwin/release/flint
 else ifeq ($(DETECTED_OS),Windows)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
-	copy src-tauri\target\release\jan.exe src-tauri\resources\bin\jan.exe
+	copy src-tauri\target\release\flint.exe src-tauri\resources\bin\flint.exe
 else
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
 	cp src-tauri/target/release/flint src-tauri/resources/bin/flint
@@ -524,7 +524,7 @@ build-cli-dev:
 	$(call MKDIR,'src-tauri/resources/bin')	
 	cd src-tauri && cargo build --no-default-features --features cli --bin flint
 ifeq ($(DETECTED_OS),Windows)
-	copy src-tauri\target\debug\jan.exe src-tauri\resources\bin\jan.exe
+	copy src-tauri\target\debug\flint.exe src-tauri\resources\bin\flint.exe
 else
 	install -m755 src-tauri/target/debug/flint src-tauri/resources/bin/flint
 endif
@@ -532,16 +532,16 @@ endif
 # Build the Jan agent CLI (the `jan` binary with the `cli` feature)
 # The compiled binary lives at two locations after build:
 #   1. src-tauri/resources/bin/flint[.exe] (bundled copy)
-#   2. src-tauri/target/<triple>/release/jan[.exe] (Cargo output)
+#   2. src-tauri/target/<triple>/release/flint[.exe] (Cargo output)
 agent: build-agent
 
 # Build the jan agent CLI binary (release, platform-aware)
-# The binary is compiled into src-tauri/target/<triple>/release/jan[.exe]
+# The binary is compiled into src-tauri/target/<triple>/release/flint[.exe]
 # and then installed to src-tauri/resources/bin/flint[.exe] for bundling.
 build-agent:
 ifeq ($(DETECTED_OS),Windows)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
-	copy src-tauri\target\release\jan.exe src-tauri\resources\bin\jan.exe
+	copy src-tauri\target\release\flint.exe src-tauri\resources\bin\flint.exe
 	@echo "Jan agent built at:"
 	@echo "  src-tauri/resources/bin/flint.exe"
 	@echo "  src-tauri/target/release/flint.exe"
