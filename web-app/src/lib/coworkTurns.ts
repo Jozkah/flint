@@ -99,14 +99,35 @@ export function coworkTurnsToUIMessages(
   }
 
   turns.forEach((turn, i) => {
+    // Another session stopped this run: a row of its own, display only.
+    if (turn.stopNotice) {
+      flushAssistant()
+      messages.push({
+        id: `${idPrefix}-stop-${i}`,
+        role: 'assistant',
+        parts: [{ type: 'data-session-stop', data: turn.stopNotice }],
+      } as any)
+      return
+    }
     if (turn.role === 'user') {
       flushAssistant()
+      const metadata: Record<string, unknown> = {}
+      // janhq/jan#8864: marked where it entered a run as steering.
+      if (turn.steered) metadata.steered = true
+      // Mail from another session: attributed to its sender, not the user.
+      if (turn.from) {
+        metadata.agentMessage = {
+          sessionId: turn.from.sessionId,
+          displayName: turn.from.displayName,
+          messageId: turn.from.messageId,
+          replyTo: turn.from.replyTo ?? null,
+        }
+      }
       messages.push({
         id: `${idPrefix}-user-${i}`,
         role: 'user',
         parts: [{ type: 'text', text: turn.content }],
-        // janhq/jan#8864: marked where it entered a run as steering.
-        ...(turn.steered ? { metadata: { steered: true } } : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       } as any)
       return
     }

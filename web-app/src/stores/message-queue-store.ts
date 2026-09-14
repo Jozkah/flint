@@ -10,6 +10,20 @@ export type QueuedMessage = {
    * dropped and never sent on its own. janhq/jan#8864.
    */
   held?: boolean
+  /**
+   * Set when the message is mail from another agent session
+   * (docs/SESSION_MESSAGING.md). `text` is then the wrapped text the model is
+   * given; this records who sent it so the UI can attribute it and reply.
+   */
+  from?: QueuedMessageSender
+}
+
+export type QueuedMessageSender = {
+  sessionId: string
+  displayName: string
+  messageId: string
+  replyTo?: string | null
+  depth: number
 }
 
 // Stable reference for empty queues so selectors don't trigger unnecessary re-renders
@@ -32,6 +46,8 @@ interface MessageQueueState {
   holdQueue: (threadId: string) => void
   /** Let one held message be sent. */
   release: (threadId: string, messageId: string) => void
+  /** Hold one message that was ready. */
+  hold: (threadId: string, messageId: string) => void
   /** Put messages back after a restart, held; ids already queued are skipped. */
   restoreHeld: (threadId: string, messages: QueuedMessage[]) => void
 }
@@ -137,6 +153,21 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
           ...state.queues,
           [threadId]: queue.map((m) =>
             m.id === messageId ? { ...m, held: false } : m
+          ),
+        },
+      }
+    })
+  },
+
+  hold: (threadId, messageId) => {
+    set((state) => {
+      const queue = state.queues[threadId]
+      if (!queue?.some((m) => m.id === messageId && !m.held)) return state
+      return {
+        queues: {
+          ...state.queues,
+          [threadId]: queue.map((m) =>
+            m.id === messageId ? { ...m, held: true } : m
           ),
         },
       }

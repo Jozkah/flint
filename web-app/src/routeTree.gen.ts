@@ -31,6 +31,8 @@ import { Route as SettingsAttachmentsRouteImport } from './routes/settings/attac
 import { Route as SettingsAssistantRouteImport } from './routes/settings/assistant'
 import { Route as SettingsAgentToolsRouteImport } from './routes/settings/agent-tools'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
+import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
+import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
@@ -145,6 +147,16 @@ const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
   path: '/project/$projectId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoomsRoomIdRoute = RoomsRoomIdRouteImport.update({
+  id: '/rooms/$roomId',
+  path: '/rooms/$roomId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomsIndexRoute = RoomsIndexRouteImport.update({
+  id: '/rooms/',
+  path: '/rooms/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LocalApiServerLogsRoute = LocalApiServerLogsRouteImport.update({
   id: '/local-api-server/logs',
   path: '/local-api-server/logs',
@@ -164,6 +176,8 @@ const SettingsProvidersProviderNameRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/rooms/': typeof RoomsIndexRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
@@ -191,6 +205,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/rooms': typeof RoomsIndexRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
@@ -219,6 +235,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/rooms/': typeof RoomsIndexRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
@@ -248,6 +266,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/rooms/'
+    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
@@ -275,6 +295,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/rooms'
+    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
@@ -302,6 +324,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/rooms/'
+    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
@@ -330,6 +354,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  RoomsIndexRoute: typeof RoomsIndexRoute
+  RoomsRoomIdRoute: typeof RoomsRoomIdRoute
   ArtifactsRoute: typeof ArtifactsRoute
   CoworkRoute: typeof CoworkRoute
   LogsRoute: typeof LogsRoute
@@ -512,6 +538,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rooms/': {
+      id: '/rooms/'
+      path: '/rooms'
+      fullPath: '/rooms/'
+      preLoaderRoute: typeof RoomsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rooms/$roomId': {
+      id: '/rooms/$roomId'
+      path: '/rooms/$roomId'
+      fullPath: '/rooms/$roomId'
+      preLoaderRoute: typeof RoomsRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/local-api-server/logs': {
       id: '/local-api-server/logs'
       path: '/local-api-server/logs'
@@ -538,6 +578,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  RoomsIndexRoute: RoomsIndexRoute,
+  RoomsRoomIdRoute: RoomsRoomIdRoute,
   ArtifactsRoute: ArtifactsRoute,
   CoworkRoute: CoworkRoute,
   LogsRoute: LogsRoute,

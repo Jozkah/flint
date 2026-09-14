@@ -373,6 +373,12 @@ pub fn resolve_decision(
     if crate::tools::is_workspace_tool(tool.name) {
         return Decision::Allow;
     }
+    // Session-messaging tools touch only the mailbox under the data folder:
+    // no project file, no command, no network. Same standing as the workspace
+    // tools -- never a prompt, and the deny check above still wins.
+    if crate::tools::is_mailbox_tool(tool.name) {
+        return Decision::Allow;
+    }
     match tool.capability {
         Capability::Read => {
             // Read roots widen only this branch. The Write branch below keeps

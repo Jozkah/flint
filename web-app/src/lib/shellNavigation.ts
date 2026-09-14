@@ -8,6 +8,7 @@ import { route } from '@/constants/routes'
  */
 export type RailArea =
   | 'workspace'
+  | 'rooms'
   | 'library'
   | 'models'
   | 'tools'
@@ -26,6 +27,7 @@ export type RailItem = {
 
 export const RAIL_ITEMS: readonly RailItem[] = [
   { id: 'workspace', labelKey: 'common:appRail.workspace', group: 'top', to: route.home },
+  { id: 'rooms', labelKey: 'common:appRail.rooms', group: 'top', to: route.rooms },
   { id: 'library', labelKey: 'common:appRail.library', group: 'top', to: route.artifacts },
   {
     id: 'models',
@@ -55,6 +57,7 @@ const within = (pathname: string, base: string) =>
 
 export function areaForPath(pathname: string): RailArea {
   const path = pathname.replace(/\/+$/, '') || '/'
+  if (within(path, route.rooms)) return 'rooms'
   if (within(path, route.artifacts)) return 'library'
   if (within(path, route.settings.model_providers) || within(path, route.settings.hardware))
     return 'models'

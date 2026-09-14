@@ -20,6 +20,18 @@ export type CoworkTurn = {
    * janhq/jan#8864.
    */
   steered?: boolean
+  /**
+   * User-row only: this row is mail from another agent session, handed to the
+   * model wrapped as coordination data (docs/SESSION_MESSAGING.md). Rendered
+   * as "Message from <name>", never as something the user typed.
+   */
+  from?: AgentMessageAttribution
+  /**
+   * Assistant-row only, display only: another session stopped this session's
+   * run through `stop_session`, with its user's approval. Never sent to the
+   * model. The reason is untrusted text from that session's agent.
+   */
+  stopNotice?: SessionStopNotice
   callId?: string
   name?: string
   args?: unknown
@@ -88,6 +100,24 @@ export type CoworkTurn = {
    * vanished when it was given.
    */
   asks?: AskRecord[]
+}
+
+/** Who sent a mailbox message, as carried on a transcript row. */
+export type AgentMessageAttribution = {
+  sessionId: string
+  displayName: string
+  messageId: string
+  replyTo?: string | null
+}
+
+/** Who stopped a run, and why (docs/SESSION_MESSAGING.md, stop_session). */
+export type SessionStopNotice = {
+  requestId: string
+  fromSessionId: string
+  fromName: string
+  /** Untrusted plain text: rendered as text, never as markdown. */
+  reason: string
+  at: number
 }
 
 /** Memory ids placed in (and withheld from) one dispatched request. */

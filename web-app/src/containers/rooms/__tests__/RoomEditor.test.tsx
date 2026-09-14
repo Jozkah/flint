@@ -1,0 +1,192 @@
+import { describe, it, expect, vi } from 'vitest'
+import { screen, within, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import '@testing-library/jest-dom'
+import { createFakeApi, makeParticipant, makeRoom, renderWithApi } from './roomsTestUtils'
+import { RoomEditor } from '../RoomEditor'
+
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const u = await import('./roomsTestUtils')
+  return { useTranslation: () => ({ t: u.t }) }
+})
+vi.mock('@/hooks/useModelProvider', async () => {
+  const u = await import('./roomsTestUtils')
+  return {
+    useModelProvider: (sel: (s: { providers: unknown }) => unknown) => sel({ providers: u.testProviders }),
+  }
+})
+
+const participantCard = (name: string) =>
+  screen.getAllByTestId('room-participant').find((el) =>
+    within(el).queryByDisplayValue(name)
+  )!
+
+describe('RoomEditor', () => {
+  it('rejects duplicate participant names case-insensitively on save', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+
+    const bob = participantCard('Bob')
+    const name = within(bob).getByLabelText('Name')
+    await user.clear(name)
+    await user.type(name, 'alice')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    expect(screen.getAllByText('Another participant is already called “alice”.').length).toBeGreaterThan(0)
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(api.updateRoomSettings).not.toHaveBeenCalled()
+  })
+
+  it('validates and adds a new participant', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+
+    const nameInputs = screen.getAllByLabelText('Name')
+    const newName = nameInputs[nameInputs.length - 1]
+    await user.type(newName, 'ALICE')
+    const modelSelects = screen.getAllByLabelText('Model')
+    const newModel = modelSelects[modelSelects.length - 1] as HTMLSelectElement
+    await user.selectOptions(newModel, screen.getAllByRole('option', { name: 'Plain Model' }).at(-1)!)
+    await user.click(screen.getByRole('button', { name: 'Add participant' }))
+    expect(screen.getByText('Another participant is already called “ALICE”.')).toBeInTheDocument()
+    expect(api.addParticipant).not.toHaveBeenCalled()
+
+    await user.clear(newName)
+    await user.type(newName, 'Carol')
+    await user.click(screen.getByRole('button', { name: 'Add participant' }))
+    expect(api.addParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), {
+      name: 'Carol',
+      role: '',
+      model: { provider: 'openai', id: 'plain-model' },
+      toolAccess: 'none',
+    })
+  })
+
+  it('disables tool access for a model without the tools capability and explains why', () => {
+    const { api } = createFakeApi()
+    const room = makeRoom({
+      participants: [
+        makeParticipant('p1', { name: 'Alice', model: { provider: 'openai', id: 'tool-model' } }),
+        makeParticipant('p2', {
+          name: 'Bob',
+          order: 1,
+          toolAccess: 'read',
+          model: { provider: 'openai', id: 'plain-model' },
+        }),
+      ],
+    })
+    renderWithApi(<RoomEditor room={room} />, api)
+
+    const bob = participantCard('Bob')
+    const bobRadios = within(bob).getAllByRole('radio')
+    bobRadios.forEach((r) => expect(r).toBeDisabled())
+    expect(within(bob).getByRole('radio', { name: 'None' })).toBeChecked()
+    expect(within(bob).getByText('This model does not support tools, so tool access stays off.')).toBeInTheDocument()
+
+    const alice = participantCard('Alice')
+    expect(within(alice).getByRole('radio', { name: 'Read-only' })).toBeEnabled()
+    expect(within(alice).getByText(/Approvals never apply in rooms/)).toBeInTheDocument()
+  })
+
+  it('shows ceilings, caps limits above them and saves the clamped value', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+
+    const rounds = screen.getByLabelText('Rounds') as HTMLInputElement
+    expect(screen.getAllByText('Max 50').length).toBeGreaterThan(0)
+    await user.clear(rounds)
+    await user.type(rounds, '999')
+    expect(screen.getByText('Capped at 50.')).toBeInTheDocument()
+    fireEvent.blur(rounds)
+    expect(rounds.value).toBe('50')
+
+    const minutes = screen.getByLabelText('Running time (minutes)') as HTMLInputElement
+    expect(screen.getByText('Max 240')).toBeInTheDocument()
+    await user.clear(minutes)
+    await user.type(minutes, '1000')
+    expect(screen.getByText('Capped at 240.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(api.updateRoomSettings).toHaveBeenCalledTimes(1)
+    const patch = api.updateRoomSettings.mock.calls[0][1]
+    expect(patch.limits.maxRounds).toBe(50)
+    expect(patch.limits.maxDurationMs).toBe(240 * 60_000)
+    expect(patch.limits.maxCostUsd).toBeNull()
+  })
+
+  it('explains that the cost limit needs pricing for every model', () => {
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    expect(screen.getByText(/works only when every model that speaks has pricing/)).toBeInTheDocument()
+    expect(screen.getByTestId('cost-missing-pricing')).toBeInTheDocument()
+  })
+
+  it('is disabled while the room is running', () => {
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom({ status: 'running' })} />, api)
+    expect(screen.getByText(/Settings are locked while the room is running/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Title')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add participant' })).toBeDisabled()
+    screen.getAllByRole('radio').forEach((r) => expect(r).toBeDisabled())
+  })
+
+  it('shows participant availability problems', () => {
+    const { api } = createFakeApi()
+    const room = makeRoom({
+      participants: [
+        makeParticipant('p1', {
+          name: 'Alice',
+          availability: { state: 'unavailable', reason: 'provider-not-configured', message: 'No API key', at: 1 },
+        }),
+        makeParticipant('p2', {
+          name: 'Bob',
+          order: 1,
+          model: { provider: 'gone', id: 'ghost' },
+          availability: { state: 'unavailable', reason: 'model-missing', message: '', at: 1 },
+        }),
+      ],
+    })
+    renderWithApi(<RoomEditor room={room} />, api)
+    expect(screen.getByText('Provider is not configured — No API key')).toBeInTheDocument()
+    expect(screen.getByText('Model is missing')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'gone / ghost (missing)' })).toBeInTheDocument()
+  })
+
+  it('requires a moderator for moderator-chosen mode', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom({ mode: 'moderator-selected' })} />, api)
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(screen.getByText('Moderator-chosen mode needs an enabled moderator.')).toBeInTheDocument()
+    expect(api.updateRoomSettings).not.toHaveBeenCalled()
+  })
+
+  it('exposes the speaking mode as a keyboard-operable radiogroup', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    const group = screen.getByRole('radiogroup', { name: 'Speaking mode' })
+    const rr = within(group).getByRole('radio', { name: 'Round-robin' })
+    expect(rr).toBeChecked()
+    rr.focus()
+    await user.keyboard('{ArrowDown}')
+    const next = within(group).getByRole('radio', { name: 'You choose' })
+    // Radix moves focus on arrow keys (roving tabindex); Space selects.
+    await waitFor(() => expect(next).toHaveFocus())
+    await user.keyboard(' ')
+    expect(next).toBeChecked()
+    expect(rr).not.toBeChecked()
+  })
+
+  it('removes a participant through the api', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    await user.click(screen.getByRole('button', { name: 'Remove Bob' }))
+    expect(api.removeParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), 'p2')
+  })
+})

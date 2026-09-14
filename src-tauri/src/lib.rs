@@ -220,6 +220,12 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::get_thread_assistant,
         core::threads::commands::create_thread_assistant,
         core::threads::commands::modify_thread_assistant,
+        // Discussion rooms
+        core::rooms::commands::rooms_list,
+        core::rooms::commands::room_get,
+        core::rooms::commands::room_save,
+        core::rooms::commands::room_append,
+        core::rooms::commands::room_delete,
         // Download
         core::downloads::commands::download_files,
         core::downloads::commands::cancel_download_task,

@@ -74,7 +74,15 @@ import {
 import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
-import { useMessageQueue } from '@/stores/message-queue-store'
+import {
+  useMessageQueue,
+  type QueuedMessageSender,
+} from '@/stores/message-queue-store'
+import {
+  agentAttribution,
+  dequeueClaimedReady,
+  takeClaimed,
+} from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
@@ -209,6 +217,8 @@ import {
 } from '@/lib/coworkRunOutcome'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
+import { SessionStopNotice } from '@/containers/SessionStopNotice'
+import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
@@ -1673,7 +1683,7 @@ function CoworkPage() {
    * re-runs the committed history rather than re-sending the question, which
    * would leave the model reading it twice.
    */
-  const runRequest = async (text: string | null) => {
+  const runRequest = async (text: string | null, from?: QueuedMessageSender) => {
     const sid = ensureCurrentSession()
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
@@ -1742,7 +1752,8 @@ function CoworkPage() {
       toast.error(t('common:modelNoTools', { model: selectedModel.id }))
       return
     }
-    if (text && current?.title === 'New session')
+    // Another session's message is not what this session is about.
+    if (text && !from && current?.title === 'New session')
       store.setTitle(sid, text.slice(0, 40))
 
     /**
@@ -1813,7 +1824,9 @@ function CoworkPage() {
     // This run's live lane. Every write names the run, so once the run is
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.
-    let runTurns: CoworkTurn[] = text ? [{ role: 'user', content: text }] : []
+    let runTurns: CoworkTurn[] = text
+      ? [{ role: 'user', content: text, ...(from ? { from: agentAttribution(from) } : {}) }]
+      : []
     // AH-026: the live lane is also kept with the session while the run goes,
     // so a run the app is killed under comes back as an interrupted turn.
     const runStartedAt = Date.now()
@@ -3299,8 +3312,12 @@ function CoworkPage() {
           // session's queue: input typed in another session never reaches
           // this run, whichever session is in view. Shown in the transcript
           // where it entered the conversation, marked as steering.
-          takeSteering: () => {
-            const taken = useMessageQueue.getState().takeReady(sid)
+          takeSteering: async () => {
+            // Mail a tool already consumed (wait_for_reply, read_messages)
+            // is dropped here, so it is never injected a second time.
+            const taken = await takeClaimed(sid, () =>
+              useMessageQueue.getState().takeReady(sid)
+            )
             if (taken.length === 0) return []
             // Into this run's execution record, in sequence with its calls:
             // steering changes what the model works from. The words stay in
@@ -3317,7 +3334,14 @@ function CoworkPage() {
               )
             }
             pushLive(
-              taken.map((m) => ({ role: 'user' as const, content: m.text, steered: true }))
+              taken.map((m) => ({
+                role: 'user' as const,
+                content: m.text,
+                steered: true,
+                // A mailbox message keeps its sender, so the transcript can
+                // say who it came from and offer a reply.
+                ...(m.from ? { from: agentAttribution(m.from) } : {}),
+              }))
             )
             return taken.map(
               (m) =>
@@ -3487,12 +3511,26 @@ function CoworkPage() {
     }
   }, [sessionsWithPending])
 
+  // Mail released for an idle session in view (Automatic wake-ups) becomes
+  // ready without `running` or the session changing, so the count is watched.
+  const readyCount = useMessageQueue((s) =>
+    session?.id ? s.getQueue(session.id).filter((m) => !m.held).length : 0
+  )
+  const idleDrainRef = useRef(false)
   useEffect(() => {
-    if (running || !session?.id) return
-    // Held input waits for the user; only what is ready goes.
-    const next = useMessageQueue.getState().dequeueReady(session.id)
-    if (next) void runRequestRef.current(next.text)
-  }, [running, session?.id])
+    if (running || !session?.id || idleDrainRef.current) return
+    // Held input waits for the user; only what is ready goes. Mail is claimed
+    // first, so a reply a tool already consumed is not sent again.
+    idleDrainRef.current = true
+    void dequeueClaimedReady(session.id)
+      .then((next) => {
+        idleDrainRef.current = false
+        if (next) void runRequestRef.current(next.text, next.from)
+      })
+      .catch(() => {
+        idleDrainRef.current = false
+      })
+  }, [running, session?.id, readyCount])
 
   /**
    * Where the transcript was scrolled to, kept across a trip to Settings.
@@ -3991,6 +4029,19 @@ function CoworkPage() {
                                 record={record}
                                 running={running}
                                 onRespond={respondAsk}
+                              />
+                            )
+                          })}
+                        {/* Another session stopped this run, with its user's
+                        approval: who, and the reason it gave. */}
+                        {(message.parts as { type: string; data?: unknown }[])
+                          .filter((p) => p.type === 'data-session-stop')
+                          .map((p) => {
+                            const notice = p.data as SessionStopNoticeData
+                            return (
+                              <SessionStopNotice
+                                key={notice.requestId}
+                                notice={notice}
                               />
                             )
                           })}

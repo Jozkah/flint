@@ -4,6 +4,7 @@ import {
   BookOpen,
   Box,
   Folder,
+  MessagesSquare,
   Search,
   Settings,
   Wrench,
@@ -17,6 +18,7 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 
 const ICONS: Record<RailArea, LucideIcon> = {
   workspace: Folder,
+  rooms: MessagesSquare,
   library: BookOpen,
   models: Box,
   tools: Wrench,

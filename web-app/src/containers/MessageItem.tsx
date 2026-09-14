@@ -48,6 +48,7 @@ import { useConversationModel } from '@/hooks/useConversationPane'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
+import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
@@ -393,6 +394,7 @@ export const MessageItem = memo(
                     {t('common:steering.delivered')}
                   </div>
                 )}
+                {partIndex === 0 && <AgentMessageHeader metadata={metadata} />}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">

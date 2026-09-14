@@ -33,6 +33,8 @@ pub mod mcp_trust;
 pub mod patch;
 pub mod patch_export;
 pub mod lifecycle;
+/// Cross-session agent messaging (docs/SESSION_MESSAGING.md).
+pub mod session_mailbox;
 pub mod memory;
 pub mod permissions;
 pub mod policy;
@@ -138,8 +140,43 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::project_init_accept,
             commands::bash_jobs_list,
             commands::bash_job_kill,
-            commands::permission_audit_recent
+            commands::permission_audit_recent,
+            commands::mailbox_session_register,
+            commands::mailbox_session_status,
+            commands::mailbox_session_heartbeat,
+            commands::mailbox_session_remove,
+            commands::mailbox_take_for_delivery,
+            commands::mailbox_pending,
+            commands::mailbox_mark_read,
+            commands::mailbox_claim,
+            commands::mailbox_reply,
+            commands::mailbox_list_sessions,
+            commands::mailbox_stop_approve,
+            commands::mailbox_stop_pending,
+            commands::mailbox_stop_resolve
         ])
+        .setup(|app, _api| {
+            // Every mailbox append -- from a command or from a tool handler,
+            // which has no AppHandle -- is announced through this one hook.
+            use tauri::Emitter;
+            let handle = app.clone();
+            session_mailbox::set_emitter(move |session_id, message_id| {
+                let _ = handle.emit(
+                    "agent-mailbox-updated",
+                    serde_json::json!({ "sessionId": session_id, "messageId": message_id }),
+                );
+            });
+            // A recorded stop request, announced to the target's renderer. The
+            // payload carries only ids: the renderer re-reads the request.
+            let stop_handle = app.clone();
+            session_mailbox::set_stop_emitter(move |session_id, request_id| {
+                let _ = stop_handle.emit(
+                    session_mailbox::STOP_REQUESTED_EVENT,
+                    serde_json::json!({ "sessionId": session_id, "requestId": request_id }),
+                );
+            });
+            Ok(())
+        })
         .build()
 }
 

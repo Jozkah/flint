@@ -28,6 +28,8 @@ import {
   type ToolActivityContext,
 } from '@/lib/toolActivity'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
+import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { gateStopSession } from '@/lib/sessionStopGate'
 
 export type DispatchContext = {
   sessionId: string
@@ -321,6 +323,13 @@ async function routeCoworkTool(
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
+
+  // Stopping another session: asked every time, in every mode that offers it,
+  // whatever grants exist; refused in review mode and where nothing can ask.
+  if (toolName === STOP_SESSION_TOOL_NAME) {
+    const refused = await gateStopSession(call, ctx, signal)
+    if (refused) return refused
+  }
 
   // Every mutating call goes through the one policy, so the run mode and the
   // access mode cannot be answered differently in different places.

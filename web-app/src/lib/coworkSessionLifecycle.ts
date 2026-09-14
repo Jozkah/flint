@@ -7,6 +7,8 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { notifySessionRemoved } from '@/lib/mailboxPresence'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 
 /**
  * Delete a Cowork session, stopping its run first (janhq/jan#8905).
@@ -36,4 +38,7 @@ export function deleteCoworkSession(id: string): void {
   useCoworkActiveWork.getState().clearSession(id)
   // The origin ledger describes a run whose transcript is about to be gone.
   useCoworkOrigins.getState().forget(id)
+  // Other sessions can no longer reach it; mail to it becomes undeliverable.
+  notifySessionRemoved(id)
+  useSessionMessaging.getState().forget(id)
 }

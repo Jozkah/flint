@@ -27,6 +27,10 @@ import { useReferenceAliases } from '@/lib/referenceAliases'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
+// Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
+import '@/lib/rooms/e2eHooks'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 
 /**
@@ -68,6 +72,7 @@ const secondaryStores = [
   useProjectInitDrafts,
   useModelEvidence,
   useOnboardingGuide,
+  useSessionMessaging,
   useSplitConversation,
 ] as const
 
@@ -81,6 +86,9 @@ export async function hydrateBackendStores(): Promise<void> {
   // run left in flight, or the panel would show work still running that
   // nothing can ever finish.
   useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
+  // Discussion rooms live in backend files, desktop only. Rooms the previous
+  // run left running are saved paused; failures are logged, never thrown.
+  void scheduleRoomRecovery(IS_TAURI)
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */

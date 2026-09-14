@@ -3431,6 +3431,12 @@ fn advertise_local_tools(
             if permissions.is_denied(name, subject) {
                 continue;
             }
+            // Session messaging belongs to desktop Cowork sessions, which run
+            // their loop in the renderer. This loop -- the CLI, and every
+            // subagent child -- has no mailbox identity, so it never offers them.
+            if tauri_plugin_agent_tools::tools::is_mailbox_tool(name) {
+                continue;
+            }
             // Plan mode advertises only read/net builtins; write/exec are hidden
             // entirely rather than relying on a prompt or execution-time denial.
             if planning
@@ -5512,6 +5518,40 @@ mod tests {
     use serde_json::json;
     use std::collections::VecDeque;
     use std::sync::Mutex as StdMutex;
+
+    /// Session messaging is a desktop Cowork capability. This loop drives the
+    /// CLI and every subagent child, neither of which has a mailbox identity,
+    /// so the mailbox tools are never offered here -- parent or child.
+    #[test]
+    fn mailbox_tools_are_never_advertised_by_the_rust_loop() {
+        let perms = tauri_plugin_agent_tools::permissions::ToolPermissions::allow_all();
+        let subject = tauri_plugin_agent_tools::subject::Subject::MainAgent;
+        let root = std::env::temp_dir();
+        for subagents_enabled in [true, false] {
+            let mut tools = Vec::new();
+            advertise_local_tools(
+                &mut tools,
+                None,
+                &perms,
+                &subject,
+                Some(&root),
+                crate::core::agent::plan::RunMode::Normal,
+                subagents_enabled,
+                1,
+                false,
+                false,
+                false,
+            );
+            let names: Vec<&str> = tools
+                .iter()
+                .filter_map(|t| t["function"]["name"].as_str())
+                .collect();
+            assert!(names.contains(&"read"), "builtins missing: {names:?}");
+            for mailbox in tauri_plugin_agent_tools::session_mailbox::TOOL_NAMES {
+                assert!(!names.contains(mailbox), "{mailbox} advertised: {names:?}");
+            }
+        }
+    }
 
     struct MockModel {
         responses: StdMutex<VecDeque<serde_json::Value>>,
