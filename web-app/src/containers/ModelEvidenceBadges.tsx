@@ -51,19 +51,21 @@ export function ModelEvidenceBadges({
   if (!worked && !unsupported && !isDefault) return null
 
   return (
+    // Compact tinted labels in the same shape as every other status in the
+    // app, so "Worked here" reads as a measured state, not as decoration.
     <span className="flex shrink-0 items-center gap-1">
       {isDefault && (
-        <span className="rounded-full border border-border bg-sunken px-1.5 py-0.5 text-[10px] text-ink-2">
+        <span className="rounded-md border border-border bg-sunken px-1.5 text-[11px] font-medium leading-5 text-ink-2">
           {t('model-fit:badge.default')}
         </span>
       )}
       {unsupported && (
-        <span className="rounded-full bg-destructive-tint px-1.5 py-0.5 text-[10px] text-destructive">
+        <span className="rounded-md bg-destructive-tint px-1.5 text-[11px] font-medium leading-5 text-destructive">
           {t('model-fit:badge.unsupported')}
         </span>
       )}
       {worked && (
-        <span className="rounded-full bg-success-tint px-1.5 py-0.5 text-[10px] text-success">
+        <span className="rounded-md bg-success-tint px-1.5 text-[11px] font-medium leading-5 text-success">
           {t('model-fit:badge.worked')}
         </span>
       )}
