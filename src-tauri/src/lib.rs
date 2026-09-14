@@ -61,6 +61,13 @@ macro_rules! invoke_commands_with_extras {
         core::app::commands::default_data_folder_path,
         core::app::commands::change_app_data_folder,
         core::app::commands::app_token,
+        // JAN -> Flint first-launch data migration
+        core::migration::commands::migration_detect,
+        core::migration::commands::migration_plan,
+        core::migration::commands::migration_execute,
+        core::migration::commands::migration_status,
+        core::migration::commands::migration_rollback,
+        core::migration::commands::migration_dismiss,
         // Backend-owned settings store (webview zustand persistence)
         core::app::settings_store::settings_get,
         core::app::settings_store::settings_set,
