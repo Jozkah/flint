@@ -50,6 +50,7 @@ import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
 import { TONE_CLASSES, toneForTool } from '@/lib/semanticTone'
 import { ChangeDiff } from '@/components/ChangeDiff'
+import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 
 /** Payloads shorter than this fit the collapsed box, so no expand control. */
 const OUTPUT_EXPAND_THRESHOLD = 600
@@ -200,11 +201,24 @@ export const ToolHeader = memo(
     const tone = toneForTool({ name: toolName, state, origin })
     const toneIcon = TONE_CLASSES[tone].icon
 
+    const isQueued = queuePosition >= 0
+    const workState: WorkState = awaitingApproval
+      ? 'needs-you'
+      : isQueued
+        ? 'queued'
+        : state === 'input-streaming' || state === 'input-available'
+          ? 'running'
+          : state === 'output-error' || state === 'output-denied'
+            ? 'failed'
+            : 'done'
+
     return (
+      // A compact integrated row: kind icon, status in words (never the
+      // accent for running), origin, a preview of the arguments, then how
+      // long it took and the disclosure chevron.
       <CollapsibleTrigger
         className={cn(
-          'cursor-pointer flex w-full min-w-0 items-center gap-2 rounded-md text-muted-foreground text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
-          !isOpen && 'hover:bg-sunken',
+          'group/tool-row flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1.5 text-left text-sm text-ink-2 transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
           className
         )}
       >
@@ -217,33 +231,34 @@ export const ToolHeader = memo(
         ) : (
           <WrenchIcon className={cn('size-4 shrink-0', toneIcon)} />
         )}
-        <span
+        <WorkStatus
+          state={workState}
           className={cn(
-            'shrink-0 capitalize',
-            awaitingApproval && 'font-medium text-warning'
+            'min-w-0 first-letter:uppercase',
+            // A finished call is the normal case: say so quietly.
+            workState === 'done' && 'bg-transparent px-0 text-ink-2'
           )}
         >
-          {getStatusText(
-            t,
-            state,
-            toolName,
-            awaitingApproval,
-            queuePosition >= 0
-          )}
-        </span>
+          {getStatusText(t, state, toolName, awaitingApproval, isQueued)}
+        </WorkStatus>
         {origin && (
-          <span className={cn('shrink-0', TONE_CLASSES[tone].badge)}>
+          <span
+            className={cn(
+              'hidden shrink-0 sm:inline',
+              TONE_CLASSES[tone].badge
+            )}
+          >
             {origin}
           </span>
         )}
         {summary && (
-          <span className="min-w-0 truncate text-left font-mono text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
             {summary}
           </span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           {queuePosition > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span>
               {t('tools:toolCall.queuedPosition', { count: queuePosition })}
             </span>
           )}
@@ -253,8 +268,9 @@ export const ToolHeader = memo(
             className="text-muted-foreground"
           />
           <ChevronDownIcon
+            aria-hidden
             className={cn(
-              'size-4 shrink-0 transition-transform',
+              'size-4 shrink-0 motion-safe:transition-transform',
               isOpen ? 'rotate-180' : 'rotate-0'
             )}
           />
@@ -270,13 +286,13 @@ export const ToolContent = memo(
   ({ className, children, ...props }: ToolContentProps) => (
     <CollapsibleContent
       className={cn(
-        'overflow-hidden text-sm relative data-[state=open]:mt-4',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        'overflow-hidden text-sm relative data-[state=open]:mt-1.5 data-[state=open]:mb-2',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="ml-2 min-w-0 pl-4 border-l border-border">
+      <div className="ml-3.5 min-w-0 space-y-3 border-l border-border pl-3">
         {children}
       </div>
     </CollapsibleContent>
@@ -305,17 +321,18 @@ export const ToolInput = memo(
     const asTable = rows.length > 0 && !showRaw
 
     return (
-      <div className={cn('space-y-2', className)} {...props}>
-        <div className="flex items-center gap-1">
-          <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+      <div className={cn('space-y-1', className)} {...props}>
+        <div className="flex min-h-7 items-center gap-1">
+          <h4 className="text-xs font-medium text-muted-foreground">
             {t('tools:toolCall.parameters')}
           </h4>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5">
             {rows.length > 0 && (
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 type="button"
+                className="text-ink-2 pointer-coarse:h-11"
                 onClick={() => setShowRaw((raw) => !raw)}
               >
                 {showRaw
@@ -327,20 +344,20 @@ export const ToolInput = memo(
           </div>
         </div>
         {asTable ? (
-          <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+          <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-code px-3 py-2">
             {rows.map(([key, value]) => (
               <Fragment key={key}>
                 <dt className="truncate font-mono text-xs text-muted-foreground">
                   {key}
                 </dt>
-                <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs">
+                <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs text-foreground">
                   {formatParamValue(value)}
                 </dd>
               </Fragment>
             ))}
           </dl>
         ) : (
-          <div className="rounded-md max-h-40 overflow-auto border border-border">
+          <div className="rounded-md max-h-40 overflow-auto bg-code">
             <CodeBlock code={formatted} language="json" />
           </div>
         )}
@@ -391,19 +408,20 @@ export const ToolApprovalActions = memo(() => {
   if (!pending || !toolCallId || pending.origin || !request) return null
 
   return (
-    // A paper card with a warning side marker: the action in plain words first,
-    // then what it touches, then the answers with Deny focused first.
+    // A separate object that needs an answer, so a real card: a warning edge,
+    // the action in plain words first, then what it touches, then the answers
+    // with Deny focused first.
     <div
       data-testid="inline-approval-card"
-      className="relative mt-4 min-w-0 space-y-3 overflow-hidden rounded-lg border border-line-strong bg-card py-3 pr-3 pl-4 text-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-warning"
+      className="relative min-w-0 space-y-2.5 overflow-hidden rounded-lg border border-line-strong bg-card py-2.5 pr-3 pl-3.5 text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-warning"
     >
       <div className="flex flex-wrap items-start gap-2 text-sm">
         <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-        <span className="min-w-0 flex-1 font-medium text-foreground">
+        <span className="min-w-0 flex-1 basis-48 font-medium text-foreground wrap-break-word">
           {formatPermissionMessage(t, request.action)}
         </span>
         {isFirstInThread && threadPendingCount > 1 && (
-          <span className="shrink-0 rounded-full border border-warning/40 bg-warning-tint px-2 py-0.5 text-xs text-warning tabular-nums">
+          <span className="shrink-0 rounded-md bg-warning-tint px-1.5 py-0.5 text-xs font-medium text-warning tabular-nums">
             {t('permissions:pending.many', { count: threadPendingCount })}
           </span>
         )}
@@ -468,7 +486,7 @@ const ToolImage = memo(({ data, index }: ToolImageProps) => {
     return (
       <div className="flex justify-center">
         <div className="flex size-24 items-center justify-center rounded-md bg-sunken">
-          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-ink-2 border-t-transparent" />
         </div>
       </div>
     )
@@ -537,8 +555,9 @@ export const ToolOutput = memo(
     // so there is no height for the control to act on.
     const isLong =
       !citationPayload && copyText.length > OUTPUT_EXPAND_THRESHOLD
+    // Output scrolls inside its own code-surface box, never the page.
     const boxClassName = cn(
-      'rounded-md overflow-auto border border-border',
+      'max-w-full overflow-auto rounded-md bg-code',
       expanded ? 'max-h-[32rem]' : 'max-h-40'
     )
 
@@ -684,17 +703,18 @@ export const ToolOutput = memo(
     }
 
     return (
-      <div className={cn('space-y-2 mt-4', className)} {...props}>
-        <div className="flex items-center gap-1">
-          <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+      <div className={cn('space-y-1', className)} {...props}>
+        <div className="flex min-h-7 items-center gap-1">
+          <h4 className="text-xs font-medium text-muted-foreground">
             {errorText ? t('tools:toolCall.error') : t('tools:toolCall.result')}
           </h4>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5">
             {summary && (
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 type="button"
+                className="text-ink-2 pointer-coarse:h-11"
                 onClick={() => setShowRaw((raw) => !raw)}
               >
                 {showRaw
