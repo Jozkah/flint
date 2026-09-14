@@ -29,8 +29,10 @@ vi.mock('@/containers/Card', () => ({
   ),
 }))
 
-vi.mock('@/containers/ThemeSwitcher', () => ({
-  ThemeSwitcher: () => <div data-testid="theme-switcher">Theme Switcher</div>,
+const { setTheme } = vi.hoisted(() => ({ setTheme: vi.fn() }))
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: (selector: (s: unknown) => unknown) =>
+    selector({ activeTheme: 'light', setTheme }),
 }))
 
 vi.mock('@/containers/FontSizeSwitcher', () => ({
@@ -106,9 +108,25 @@ describe('Interface Settings Route', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
-    expect(screen.getByTestId('theme-switcher')).toBeInTheDocument()
+    expect(screen.getByTestId('theme-segmented')).toBeInTheDocument()
     expect(screen.getByTestId('font-size-switcher')).toBeInTheDocument()
     expect(screen.getByTestId('accent-color-picker')).toBeInTheDocument()
+  })
+
+  it('offers Light, Dark and System as a segmented control', () => {
+    const Component = InterfaceRoute.component as React.ComponentType
+    render(<Component />)
+
+    expect(screen.getByTestId('theme-option-light')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(screen.getByTestId('theme-option-dark')).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    fireEvent.click(screen.getByTestId('theme-option-auto'))
+    expect(setTheme).toHaveBeenCalledWith('auto')
   })
 
   it('should render reset interface button', () => {

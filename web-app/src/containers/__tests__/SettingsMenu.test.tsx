@@ -117,6 +117,36 @@ describe('SettingsMenu', () => {
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
   })
 
+  it('groups pages under General, Models and tools, and Advanced', () => {
+    render(<SettingsMenu />)
+    const general = screen.getByText('navigation:groupGeneral')
+    const tools = screen.getByText('navigation:groupModelsAndTools')
+    const advanced = screen.getByRole('button', {
+      name: 'navigation:advancedSettings',
+    })
+    // Document order: General, then Models and tools, then Advanced.
+    expect(
+      general.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      tools.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    // Web search and model providers sit with models and tools.
+    const webSearch = screen.getByText('common:web_search')
+    expect(
+      tools.compareDocumentPosition(webSearch) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(screen.getByText('common:modelProviders')).toBeInTheDocument()
+  })
+
+  it('marks selection with a neutral background and an accent rail, not the accent tint', () => {
+    render(<SettingsMenu />)
+    const link = screen.getByText('common:general').closest('a')!
+    expect(link.className).toContain('[&.active]:bg-sidebar-accent')
+    expect(link.className).toContain('[&.active]:before:bg-brand-rail')
+    expect(link.className).not.toContain('bg-brand-tint')
+  })
+
   it('renders integrations links', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:mcp-servers')).toBeInTheDocument()

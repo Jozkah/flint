@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { OctagonAlert } from 'lucide-react'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -59,19 +60,14 @@ export function CompactionPolicySettings() {
   )
 
   return (
-    <Card
-      header={
-        <h1 className="mb-4 text-xl font-semibold text-foreground">
-          {t('settings:compaction.title')}
-        </h1>
-      }
-    >
+    <Card title={t('settings:compaction.title')}>
       {error && (
         <p
           role="alert"
-          className="mb-3 rounded-md border border-destructive/40 bg-destructive-tint px-3 py-2 text-sm text-destructive"
+          className="my-2 flex items-start gap-2 rounded-md bg-destructive-tint px-3 py-2 text-sm text-destructive"
         >
-          {error}
+          <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="min-w-0 break-words">{error}</span>
         </p>
       )}
       {policy && (

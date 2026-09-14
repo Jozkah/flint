@@ -3,7 +3,12 @@ import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { OctagonAlert } from 'lucide-react'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -112,6 +117,7 @@ function formatBytes(bytes: number): string {
 }
 
 function MemorySettings() {
+  const { t } = useTranslation()
   const [scope, setScope] = useState<MemoryScope>('user')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<MemoryView[]>([])
@@ -606,10 +612,11 @@ function MemorySettings() {
 
   return (
     <div className="flex flex-col h-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 w-full">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
+      <SettingsPageHeader title={t('common:memory')} />
+      <SettingsPageBody
+        title={t('common:memory')}
+        description={t('settings:pageDesc.memory')}
+      >
             <Card title="Memory">
               <CardItem
                 title="Use saved memory in conversations"
@@ -641,9 +648,9 @@ function MemorySettings() {
                   />
                 }
               />
-              <div className="mt-3.5 flex flex-col gap-1 border-t border-border pt-3.5" data-testid="memory-recall">
-                <p className="font-medium text-foreground">Use remembered facts in requests</p>
-                <p className="text-xs text-muted-foreground">
+              <div className="flex flex-col gap-0.5 border-b border-border py-3 last:border-b-0" data-testid="memory-recall">
+                <p className="text-sm font-medium text-foreground">Use remembered facts in requests</p>
+                <p className="text-[13px] text-muted-foreground">
                   Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.
                 </p>
                 {(
@@ -653,7 +660,7 @@ function MemorySettings() {
                     ['user', 'All conversations'],
                   ] as Array<[keyof MemoryRecall, string]>
                 ).map(([key, label]) => (
-                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 text-sm text-foreground sm:min-h-9">
+                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 pl-3 text-sm text-ink-2 pointer-fine:min-h-9">
                     <span>{label}</span>
                     <Switch
                       checked={recall[key]}
@@ -670,13 +677,16 @@ function MemorySettings() {
                 <div
                   role="alert"
                   data-testid="memory-storage-error"
-                  className="mt-3 rounded-md border border-destructive/40 bg-destructive-tint p-3 text-xs text-destructive"
+                  className="my-3 flex items-start gap-2 rounded-md bg-destructive-tint p-3 text-xs text-destructive"
                 >
-                  {[settingsIssue, ...(summary?.issues ?? [])]
-                    .filter(Boolean)
-                    .map((issue) => (
-                      <p key={issue as string}>{issue}</p>
-                    ))}
+                  <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                  <div className="min-w-0 space-y-1 break-words">
+                    {[settingsIssue, ...(summary?.issues ?? [])]
+                      .filter(Boolean)
+                      .map((issue) => (
+                        <p key={issue as string}>{issue}</p>
+                      ))}
+                  </div>
                 </div>
               )}
               {summary && (
@@ -693,12 +703,15 @@ function MemorySettings() {
             </Card>
 
             {proposalLocation && proposalsPending.length > 0 && (
-              <Card title="Waiting for you">
+              <Card
+                title="Waiting for you"
+                aside={<span className="tabular-nums">{proposalsPending.length}</span>}
+              >
                 <CardItem
                   title="Memories Jan has offered"
                   description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
                 />
-                <div className="mt-3">
+                <div className="pb-3">
                   <MemoryProposalList
                     proposals={proposalsPending}
                     location={proposalLocation}
@@ -720,11 +733,11 @@ function MemorySettings() {
                   title="Neither side is being used"
                   description="These remembered facts contradict each other, so Jan leaves both out of every request here until you keep one."
                 />
-                <ul className="mt-3 flex flex-col gap-3" data-testid="memory-conflicts">
+                <ul className="flex flex-col gap-3 pb-3" data-testid="memory-conflicts">
                   {conflicts.map((conflict) => (
                     <li
                       key={`${conflict.left.id}|${conflict.right.id}`}
-                      className="rounded-lg border border-border bg-card p-3"
+                      className="rounded-md border border-border p-3"
                       data-testid="memory-conflict"
                       data-left-id={conflict.left.id}
                       data-right-id={conflict.right.id}
@@ -773,12 +786,12 @@ function MemorySettings() {
                 title="What Jan remembers"
                 description="Search, edit, pin and forget what is remembered for this chat, this project, or across chats."
               />
-              <div className="mt-3 flex flex-col gap-3">
+              <div className="flex flex-col gap-3 pb-3">
                 {/* Scopes as tabs: an accent underline marks the one shown. */}
                 <div
                   role="tablist"
                   aria-label="Memory scope"
-                  className="flex items-end gap-1 overflow-x-auto border-b border-border"
+                  className="-mx-4 flex items-end gap-1 overflow-x-auto border-b border-border px-4"
                 >
                   {TABS.map((tab) => (
                     <button
@@ -787,10 +800,10 @@ function MemorySettings() {
                       role="tab"
                       aria-selected={tab.scope === scope}
                       className={cn(
-                        '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 pt-1.5 pb-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
+                        'relative shrink-0 whitespace-nowrap px-3 pt-2 pb-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                         tab.scope === scope
-                          ? 'border-brand text-foreground'
-                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                          ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand-fill'
+                          : 'text-muted-foreground hover:text-foreground'
                       )}
                       onClick={() => {
                         setScope(tab.scope)
@@ -1211,9 +1224,7 @@ function MemorySettings() {
                 )}
               </div>
             </Card>
-          </div>
-        </div>
-      </div>
+      </SettingsPageBody>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>

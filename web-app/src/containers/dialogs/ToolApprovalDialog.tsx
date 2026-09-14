@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { PermissionRequestDescription } from '@/lib/permissionRequest'
 import {
@@ -76,17 +76,17 @@ export function ToolApprovalDialog({
         }}
       >
         <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 text-muted-foreground">
-              <AlertTriangle className="size-4" aria-hidden />
+          <div className="flex items-start gap-3 text-left">
+            <div className="grid size-8 shrink-0 place-items-center rounded-md bg-warning-tint text-warning">
+              <ShieldAlert className="size-4" aria-hidden />
             </div>
-            <div>
-              <DialogTitle>
+            <div className="min-w-0">
+              <DialogTitle className="text-base font-semibold">
                 {request
                   ? t('permissions:request.title')
                   : t('tools:toolApproval.title')}
               </DialogTitle>
-              <DialogDescription className="mt-1 text-muted-foreground">
+              <DialogDescription className="mt-0.5 text-sm text-foreground">
                 {description ??
                   (request ? (
                     formatPermissionMessage(t, request.action)
@@ -111,8 +111,8 @@ export function ToolApprovalDialog({
         {children}
 
         {showSecurityNotice && (
-          <div className="p-2 border bg-secondary rounded-lg">
-            <p className="text-xs text-muted-foreground leading-relaxed">
+          <div className="rounded-md bg-sunken px-3 py-2">
+            <p className="text-xs leading-relaxed text-ink-2">
               {t('tools:toolApproval.securityNotice')}
             </p>
           </div>
@@ -133,10 +133,10 @@ export function ToolApprovalDialog({
           <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
             <Button
               ref={denyRef}
-              variant="ghost"
+              variant="destructive"
               size="sm"
               onClick={() => onDecision('deny')}
-              className="flex-1 text-right sm:flex-none"
+              className="pointer-coarse:h-11"
             >
               {t('tools:toolApproval.deny')}
             </Button>

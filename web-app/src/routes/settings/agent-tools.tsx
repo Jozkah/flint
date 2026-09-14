@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -206,150 +209,139 @@ function AgentToolsContent() {
     />
   )
 
-  const sectionHeader = (titleKey: string, kind: EntryKind) => (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <h1 className=" text-xl font-semibold text-foreground">
-        {t(titleKey)}
-      </h1>
-      <Button
-        variant="outline"
-        size="sm"
-        className="pointer-coarse:h-11"
-        onClick={() => openEditor(kind)}
-      >
-        {t('settings:agentTools.add')}
-      </Button>
-    </div>
+  const addButton = (kind: EntryKind) => (
+    <Button
+      variant="outline"
+      size="sm"
+      className="pointer-coarse:h-11"
+      onClick={() => openEditor(kind)}
+    >
+      {t('settings:agentTools.add')}
+    </Button>
   )
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader />
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
-          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
-            <Card
-              header={
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-                  <div className="min-w-0 space-y-1">
-                    <h1 className=" text-xl font-semibold text-foreground">
-                      {t('settings:agentTools.title')}
-                    </h1>
-                    <p className="text-muted-foreground leading-normal">
-                      {t('settings:agentTools.description')}
-                    </p>
-                  </div>
-                  {/* The path is a tooltip, not a row: it derives from the Jan
-                      data folder that Settings > General already owns. */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 pointer-coarse:h-11"
-                    title={path}
-                    onClick={reveal}
-                    disabled={!path}
-                  >
-                    <FolderCode aria-hidden />
-                    {t('settings:agentTools.openFolder')}
-                  </Button>
-                </div>
-              }
+      <SettingsPageHeader title={t('common:agent_tools')} />
+      <SettingsPageBody
+        title={t('common:agent_tools')}
+        description={t('settings:pageDesc.agentTools')}
+      >
+        <Card
+          title={t('settings:agentTools.title')}
+          description={t('settings:agentTools.description')}
+          aside={
+            // The path is a tooltip, not a row: it derives from the Jan data
+            // folder that Settings > General already owns.
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 pointer-coarse:h-11"
+              title={path}
+              onClick={reveal}
+              disabled={!path}
             >
-              <CardItem
-                anchor="settings-agent-tools-enable"
-                title={t('settings:agentTools.enable')}
-                description={t('settings:agentTools.enableDesc')}
-                align="start"
-                actions={
-                  <Switch
-                    checked={agentToolsEnabled}
-                    onCheckedChange={setAgentToolsEnabled}
+              <FolderCode aria-hidden />
+              {t('settings:agentTools.openFolder')}
+            </Button>
+          }
+        >
+          <CardItem
+            anchor="settings-agent-tools-enable"
+            title={t('settings:agentTools.enable')}
+            description={t('settings:agentTools.enableDesc')}
+            align="start"
+            actions={
+              <Switch
+                checked={agentToolsEnabled}
+                onCheckedChange={setAgentToolsEnabled}
+              />
+            }
+          />
+          {/* A display preference, kept beside the tools it is about.
+              Nothing is deleted: hidden activity stays in the session, in
+              exports and in search. */}
+          <CardItem
+            anchor="settings-agent-tools-hide-completed"
+            title={t('common:coworkDisplay.hideCompletedTools')}
+            description={t('common:coworkDisplay.hideCompletedToolsDescription')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="hide-completed-tools"
+                checked={hideCompletedTools}
+                onCheckedChange={setHideCompletedTools}
+              />
+            }
+          />
+          <CardItem
+            title={t('settings:agentTools.shell')}
+            align="start"
+            description={
+              <span className="flex items-start gap-1.5">
+                {sandbox?.enforces ? (
+                  <Lock className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
+                ) : (
+                  <LockOpen
+                    className="mt-0.5 size-3.5 shrink-0 text-destructive"
+                    aria-hidden
                   />
-                }
-              />
-              {/* A display preference, kept beside the tools it is about.
-                  Nothing is deleted: hidden activity stays in the session, in
-                  exports and in search. */}
-              <CardItem
-                anchor="settings-agent-tools-hide-completed"
-                title={t('common:coworkDisplay.hideCompletedTools')}
-                description={t('common:coworkDisplay.hideCompletedToolsDescription')}
-                align="start"
-                actions={
-                  <Switch
-                    data-testid="hide-completed-tools"
-                    checked={hideCompletedTools}
-                    onCheckedChange={setHideCompletedTools}
-                  />
-                }
-              />
-              <CardItem
-                title={t('settings:agentTools.shell')}
-                align="start"
-                description={
-                  <span className="flex items-start gap-1.5">
-                    {sandbox?.enforces ? (
-                      <Lock className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden />
-                    ) : (
-                      <LockOpen
-                        className="mt-0.5 size-3.5 shrink-0 text-destructive"
-                        aria-hidden
-                      />
-                    )}
-                    <span>
-                      {sandbox === undefined
-                        ? t('settings:agentTools.shellChecking')
-                        : sandbox.enforces
-                          ? t('settings:agentTools.shellSandboxed', {
-                              backend: sandbox.backend,
-                            })
-                          : t('settings:agentTools.shellUnavailable')}
-                    </span>
-                  </span>
-                }
-              />
-              {/* Only offered where it can be enforced: with no backend there is
-                  no shell to give network access to in the first place. */}
-              {sandbox?.enforces && (
-                <CardItem
-                  anchor="settings-agent-tools-network"
-                  title={t('settings:agentTools.network')}
-                  description={t('settings:agentTools.networkDesc')}
-                  align="start"
-                  actions={
-                    <Switch
-                      checked={bashNetworkEnabled}
-                      onCheckedChange={setBashNetworkEnabled}
-                      disabled={!agentToolsEnabled}
-                    />
-                  }
+                )}
+                <span>
+                  {sandbox === undefined
+                    ? t('settings:agentTools.shellChecking')
+                    : sandbox.enforces
+                      ? t('settings:agentTools.shellSandboxed', {
+                          backend: sandbox.backend,
+                        })
+                      : t('settings:agentTools.shellUnavailable')}
+                </span>
+              </span>
+            }
+          />
+          {/* Only offered where it can be enforced: with no backend there is
+              no shell to give network access to in the first place. */}
+          {sandbox?.enforces && (
+            <CardItem
+              anchor="settings-agent-tools-network"
+              title={t('settings:agentTools.network')}
+              description={t('settings:agentTools.networkDesc')}
+              align="start"
+              actions={
+                <Switch
+                  checked={bashNetworkEnabled}
+                  onCheckedChange={setBashNetworkEnabled}
+                  disabled={!agentToolsEnabled}
                 />
-              )}
-            </Card>
+              }
+            />
+          )}
+        </Card>
 
-            <CompactionPolicySettings />
-            <Card header={sectionHeader('settings:agentTools.memories', 'memory')}>
-              {memories.length === 0 ? (
-                <CardItem
-                  description={t('settings:agentTools.noMemories')}
-                />
-              ) : (
-                memories.map((name) => entryRow('memory', name))
-              )}
-            </Card>
+        <CompactionPolicySettings />
+        <Card
+          title={t('settings:agentTools.memories')}
+          aside={addButton('memory')}
+        >
+          {memories.length === 0 ? (
+            <CardItem
+              description={t('settings:agentTools.noMemories')}
+            />
+          ) : (
+            memories.map((name) => entryRow('memory', name))
+          )}
+        </Card>
 
-            <Card header={sectionHeader('settings:agentTools.skills', 'skill')}>
-              {skills.length === 0 ? (
-                <CardItem description={t('settings:agentTools.noSkills')} />
-              ) : (
-                skills.map((skill) =>
-                  entryRow('skill', skill.name, skill.description)
-                )
-              )}
-            </Card>
-          </div>
-        </div>
-      </div>
+        <Card title={t('settings:agentTools.skills')} aside={addButton('skill')}>
+          {skills.length === 0 ? (
+            <CardItem description={t('settings:agentTools.noSkills')} />
+          ) : (
+            skills.map((skill) =>
+              entryRow('skill', skill.name, skill.description)
+            )
+          )}
+        </Card>
+      </SettingsPageBody>
 
       <Dialog
         open={editor !== null}

@@ -147,6 +147,13 @@
     "historyDecision": "Decision",
     "historyTool": "Tool",
     "historyScope": "Scope",
-    "historyRow":"{{decision}} · {{tool}} · {{at}}"
+    "historyRow":"{{decision}} · {{tool}} · {{at}}",
+    "historyLimit": "Last {{count}}",
+    "stateTrusted": "Trusted",
+    "stateChanged": "Invalidated",
+    "stateMissing": "Not configured",
+    "stateUnknown": "Checking",
+    "stateNeedsRenewal": "Needs renewing",
+    "loading": "Loading…"
   }
 }

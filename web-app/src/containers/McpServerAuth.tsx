@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn } from '@/lib/utils'
+import { StatusChip, type StatusTone } from '@/containers/StatusChip'
 import type { MCPAuthStatus } from '@/services/mcp/types'
 
 /**
@@ -21,16 +21,16 @@ interface McpServerAuthProps {
   onClearAuth: () => void
 }
 
-/** Badge tint per state: green means usable, amber needs attention, red is absent. */
-const TONE: Record<MCPAuthStatus['state'], string> = {
-  notApplicable: 'text-ink-2 bg-sunken',
-  staticHeader: 'text-success bg-success-tint',
-  authenticated: 'text-success bg-success-tint',
-  expired: 'text-warning bg-warning-tint',
-  staleResource: 'text-warning bg-warning-tint',
-  scopeMismatch: 'text-warning bg-warning-tint',
-  invalidScopes: 'text-destructive bg-destructive-tint',
-  unauthenticated: 'text-destructive bg-destructive-tint',
+/** Chip tone per state: success means usable, warning needs attention, destructive is absent. */
+const TONE: Record<MCPAuthStatus['state'], StatusTone> = {
+  notApplicable: 'neutral',
+  staticHeader: 'success',
+  authenticated: 'success',
+  expired: 'warning',
+  staleResource: 'warning',
+  scopeMismatch: 'warning',
+  invalidScopes: 'destructive',
+  unauthenticated: 'destructive',
 }
 
 /**
@@ -94,14 +94,9 @@ export function McpServerAuth({
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <span className="text-muted-foreground">{t('mcp-servers:auth.label')}</span>
-      <span
-        className={cn(
-          'rounded-full px-2 py-0.5 text-xs font-medium',
-          TONE[status.state]
-        )}
-      >
+      <StatusChip tone={TONE[status.state]}>
         {t(`mcp-servers:auth.state.${status.state}`)}
-      </span>
+      </StatusChip>
       {status.expiresAt !== null && (
         <span className="text-xs text-muted-foreground">
           {status.state === 'expired'

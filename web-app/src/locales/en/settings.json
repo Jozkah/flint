@@ -467,6 +467,33 @@
     "previewSelected": "Selected row",
     "previewLink": "Link action",
     "previewSuccess": "Success",
-    "previewError": "Error"
+    "previewError": "Error",
+    "previewDiffAdded": "+ added",
+    "previewDiffRemoved": "− removed",
+    "resetTo": "Reset to {{name}}",
+    "presetDefault": "Default"
+  },
+  "appearance": {
+    "themeGroup": "Theme",
+    "themeLabel": "Colour theme",
+    "themeHint": "System follows your operating system.",
+    "readingGroup": "Reading",
+    "behaviourGroup": "Chat display",
+    "resetGroup": "Reset"
+  },
+  "pageDesc": {
+    "general": "Language, the data folder, logs and app-wide options.",
+    "appearance": "How JAN looks on this computer.",
+    "memory": "What JAN remembers between conversations, and where it is kept.",
+    "shortcuts": "Keyboard shortcuts. Choose a shortcut to change it; a combination already in use is refused.",
+    "assistants": "Assistants set the instructions a conversation starts with.",
+    "attachments": "How files attached to a message are read and searched.",
+    "mcpServers": "External tools JAN connects to through the Model Context Protocol.",
+    "webSearch": "Let JAN search the web when a conversation needs it.",
+    "claudeCode": "Run Claude Code with models JAN provides.",
+    "extensions": "Extensions installed in this copy of JAN.",
+    "agentTools": "Files, shell and network access for JAN's built-in agent tools.",
+    "localApiServer": "An OpenAI-compatible server other apps can use to reach your models.",
+    "httpsProxy": "Send JAN's internet requests through a proxy."
   }
 }
