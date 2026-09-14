@@ -72,7 +72,7 @@ export function LogToolbar({
       className="mb-2 flex min-w-0 flex-wrap items-center gap-2"
       data-testid="log-toolbar"
     >
-      <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-card px-2.5 focus-within:outline-2 focus-within:outline-ring sm:max-w-xs pointer-coarse:h-11">
+      <label className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-border bg-card px-2.5 focus-within:outline-2 focus-within:outline-ring sm:w-auto sm:max-w-xs sm:flex-1 pointer-coarse:h-11">
         <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <input
           value={query}

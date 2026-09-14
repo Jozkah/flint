@@ -9,22 +9,12 @@ import {
   Info,
   Search,
   SquareArrowOutUpRight,
-  Trash2,
   Workflow,
   X,
 } from 'lucide-react'
 import { fs } from '@janhq/core'
-import { toast } from 'sonner'
 import HeaderPage from '@/containers/HeaderPage'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -64,11 +54,11 @@ function folderName(folder: string): string {
   return parts[parts.length - 1] ?? folder
 }
 
-function formatUpdated(updated: number, style: 'short' | 'medium'): string {
+function formatUpdated(updated: number): string {
   if (!updated) return ''
   try {
     return new Date(updated).toLocaleString(undefined, {
-      dateStyle: style,
+      dateStyle: 'medium',
       timeStyle: 'short',
     })
   } catch {
@@ -122,7 +112,7 @@ function useSessionWorkspaces(sessionIds: string[]): Record<string, string> {
  * Whether the selected file is still on disk. `undefined` while unknown, or
  * when the check is unavailable: only a definite "no" shows the notice.
  */
-function useFileExists(abs: string | null, version: number) {
+function useFileExists(abs: string | null) {
   const [exists, setExists] = useState<boolean | undefined>(undefined)
   useEffect(() => {
     setExists(undefined)
@@ -136,7 +126,7 @@ function useFileExists(abs: string | null, version: number) {
     return () => {
       alive = false
     }
-  }, [abs, version])
+  }, [abs])
   return exists
 }
 
@@ -314,6 +304,8 @@ function ArtifactsPage() {
                     row={row}
                     selected={rowKey(row) === selectedKey}
                     onSelect={() => setSelectedKey(rowKey(row))}
+                    onOpen={() => open(row)}
+                    onGoToSession={() => goToSession(row)}
                   />
                 ))}
               </ul>
@@ -352,35 +344,47 @@ function ArtifactsPage() {
   )
 }
 
+/**
+ * One artifact. The row itself selects (details open beside the list); the
+ * two icon buttons act straight from the list, as the old card did, and the
+ * row opens the preview on double-click.
+ */
 function LibraryRow({
   row,
   selected,
   onSelect,
+  onOpen,
+  onGoToSession,
 }: {
   row: Row
   selected: boolean
   onSelect: () => void
+  onOpen: () => void
+  onGoToSession: () => void
 }) {
   const { t } = useTranslation()
   const Icon = ARTIFACT_ICON[row.group]
   const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
-  const updated = formatUpdated(row.updated, 'medium')
+  const updated = formatUpdated(row.updated)
   return (
     <li
       data-testid="artifact-card"
-      className="relative border-b border-border"
+      className={cn(
+        'group relative flex min-w-0 items-center border-b border-border transition-colors hover:bg-accent',
+        selected &&
+          'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
+      )}
     >
       <button
         type="button"
         onClick={onSelect}
+        onDoubleClick={onOpen}
         aria-current={selected || undefined}
-        className={cn(
-          'grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-2 py-2 text-left transition-colors hover:bg-accent pointer-coarse:min-h-14 md:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_auto_auto] lg:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_auto_auto]',
-          selected &&
-            'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
-        )}
+        aria-label={t('common:artifactShowDetails', { name: row.title })}
+        data-testid="artifact-row"
+        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 py-2 pl-2 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-14 md:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_10.5rem] lg:grid-cols-[auto_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_10.5rem]"
       >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-sunken">
+        <span className="row-span-2 flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-sunken md:row-span-1">
           <Icon className="size-4 text-muted-foreground" aria-hidden />
         </span>
         {/* min-w-0 on a grid child: `truncate` is inert otherwise. */}
@@ -412,12 +416,35 @@ function LibraryRow({
         <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:block">
           {updated}
         </span>
-        <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         {/* Phones: the source under the name, since its column is hidden. */}
-        <span className="col-start-2 col-end-3 -mt-1.5 truncate text-xs text-ink-2 md:hidden">
+        <span className="col-start-2 truncate text-xs text-ink-2 md:hidden">
           {row.sessionTitle}
         </span>
       </button>
+      <div className="flex shrink-0 items-center gap-0.5 pl-2 pr-1.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="pointer-coarse:size-11"
+          onClick={onOpen}
+          title={t('common:artifactOpenPreview')}
+          aria-label={`${t('common:artifactOpenPreview')}: ${row.title}`}
+          data-testid="artifact-open"
+        >
+          <Eye />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="pointer-coarse:size-11"
+          onClick={onGoToSession}
+          title={t('common:artifactGoToSession')}
+          aria-label={`${t('common:artifactGoToSession')}: ${row.sessionTitle}`}
+          data-testid="artifact-go-to-session"
+        >
+          <ChevronRight />
+        </Button>
+      </div>
     </li>
   )
 }
@@ -440,14 +467,10 @@ function ArtifactInspector({
   revealItemInDir: (path: string) => void
 }) {
   const { t } = useTranslation()
-  const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [checkVersion, setCheckVersion] = useState(0)
   const Icon = ARTIFACT_ICON[row.group]
   const kind = previewKindFor(row.path)
   const abs = row.root ? resolveInRoot(row.root, row.path) : null
-  const exists = useFileExists(abs, checkVersion)
-  const missing = exists === false
+  const missing = useFileExists(abs) === false
   // A real thumbnail only where the browser renders the file on its own; HTML
   // would need executing the page.
   const thumb =
@@ -455,25 +478,7 @@ function ArtifactInspector({
       ? convertFileSrc(abs)
       : null
   const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
-  const updated = formatUpdated(row.updated, 'medium')
-
-  const remove = async () => {
-    if (!abs) return
-    setDeleting(true)
-    try {
-      await fs.rm(abs)
-      toast.success(t('common:artifactDeleted'), { id: 'artifact-delete' })
-      setConfirming(false)
-      setCheckVersion((v) => v + 1)
-    } catch (error) {
-      toast.error(t('common:artifactDeleteFailed'), {
-        id: 'artifact-delete',
-        description: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      setDeleting(false)
-    }
-  }
+  const updated = formatUpdated(row.updated)
 
   return (
     <aside
@@ -566,7 +571,7 @@ function ArtifactInspector({
           <Button
             className="mt-3 pointer-coarse:h-11"
             onClick={onGoToSession}
-            data-testid="artifact-go-to-session"
+            data-testid="artifact-inspector-go-to-session"
           >
             <ChevronRight />
             {t('common:artifactGoToSession')}
@@ -611,7 +616,7 @@ function ArtifactInspector({
               className="pointer-coarse:h-11"
               onClick={onOpen}
               disabled={missing}
-              data-testid="artifact-open"
+              data-testid="artifact-inspector-open"
             >
               <Eye />
               {t('common:artifactOpenPreview')}
@@ -622,7 +627,6 @@ function ArtifactInspector({
                   variant="outline"
                   className="pointer-coarse:h-11"
                   onClick={() => openPath(abs)}
-                  title={t('common:artifactOpenExternal')}
                 >
                   <SquareArrowOutUpRight />
                   {t('common:artifactOpenExternal')}
@@ -635,61 +639,11 @@ function ArtifactInspector({
                   <FolderOpen />
                   {t('common:artifactShowInFolder')}
                 </Button>
-                <Button
-                  variant="destructive"
-                  className="pointer-coarse:h-11"
-                  onClick={() => setConfirming(true)}
-                  data-testid="artifact-delete"
-                >
-                  <Trash2 />
-                  {t('common:artifactDelete')}
-                </Button>
               </>
             )}
           </div>
         </section>
       </div>
-
-      <Dialog open={confirming} onOpenChange={(o) => !deleting && setConfirming(o)}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <div className="flex items-start gap-3 text-left">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive-tint text-destructive">
-                <Trash2 className="size-4" aria-hidden />
-              </span>
-              <div className="min-w-0">
-                <DialogTitle className="break-words">
-                  {t('common:artifactDeleteTitle', { name: row.title })}
-                </DialogTitle>
-                <DialogDescription className="mt-1 text-ink-2">
-                  {t('common:artifactDeleteBody')}
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              className="pointer-coarse:h-11"
-              onClick={() => setConfirming(false)}
-              disabled={deleting}
-              autoFocus
-            >
-              {t('common:cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              className="pointer-coarse:h-11"
-              onClick={() => void remove()}
-              disabled={deleting}
-              data-testid="artifact-delete-confirm"
-            >
-              <Trash2 />
-              {t('common:artifactDelete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </aside>
   )
 }

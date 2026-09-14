@@ -279,8 +279,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         >
           {/* Empty state when searching */}
           {searchQuery && !hasResults && (
-            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-              <Search className="mb-2 size-6 text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+              <Search className="mb-2 size-5 text-muted-foreground" />
               <h3 className="mb-1 text-[13px] font-semibold text-foreground">
                 {t('common:noResultsFound')}
               </h3>
