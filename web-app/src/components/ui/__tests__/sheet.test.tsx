@@ -187,9 +187,9 @@ describe('Sheet Components', () => {
       </Sheet>
     )
 
-    const closeButton = document.querySelector('.absolute.top-4.right-4')
+    const closeButton = document.querySelector('.absolute.top-3.right-3')
     expect(closeButton).toBeInTheDocument()
-    expect(closeButton).toHaveClass('rounded-xs', 'opacity-70', 'transition-opacity')
+    expect(closeButton).toHaveClass('rounded-md', 'size-8', 'transition-colors')
   })
 
   it('renders overlay with proper styling', () => {
