@@ -468,7 +468,7 @@ impl Picker {
             }
             PickerKind::RewindMessage => " ↑/↓ select   Enter choose   Esc cancel",
             PickerKind::RewindScope => " ↑/↓ select   Enter restore   Esc cancel",
-            PickerKind::ViewConfig => " set via: jan config set --provider <id> ...   Esc close",
+            PickerKind::ViewConfig => " set via: flint config set --provider <id> ...   Esc close",
             PickerKind::AgentSettings => " ↑/↓ select   Enter edit   x unset   Esc close",
             PickerKind::ProviderSettings => {
                 " ↑/↓ select   Enter edit   a add   dd delete   x logout   Esc close"
@@ -4174,7 +4174,7 @@ impl App {
         let repo = self.repo_root.clone()?;
         let id = self.thread_id.clone()?;
         match job {
-            SnapshotJob::Base => Some((repo, None, "jan agent base".to_string(), id, Vec::new())),
+            SnapshotJob::Base => Some((repo, None, "flint agent base".to_string(), id, Vec::new())),
             SnapshotJob::Checkpoint { changed, .. } => {
                 let parent = self
                     .checkpoints
@@ -4186,7 +4186,7 @@ impl App {
                     .iter()
                     .filter_map(|p| p.strip_prefix(&repo).ok().map(|p| p.to_path_buf()))
                     .collect();
-                Some((repo, parent, format!("jan agent turn {n}"), id, changed))
+                Some((repo, parent, format!("flint agent turn {n}"), id, changed))
             }
         }
     }
@@ -9041,7 +9041,7 @@ fn handle_model_picker_key(app: &mut App, key: KeyEvent, ctrl: bool) {
 /// persists to rather than a separately minted one.
 fn resume_hint(thread_id: &str) -> String {
     let id: String = thread_id.chars().take(8).collect();
-    format!("\x1b[2m[session {id} - resume with `jan --resume={id}`]\x1b[0m")
+    format!("\x1b[2m[session {id} - resume with `flint --resume={id}`]\x1b[0m")
 }
 async fn handle_key(
     app: &mut App,
@@ -12340,7 +12340,7 @@ async fn open_model_picker(app: &mut App) {
             app.model_picker = Some(picker);
         }
         None => app.note(
-            "no models available (add a provider with `jan config set`, or configure one in the desktop app)",
+            "no models available (add a provider with `flint config set`, or configure one in the desktop app)",
         ),
     }
 }
@@ -13075,7 +13075,7 @@ fn adopt_login_model(app: &mut App, login: &crate::core::cli::auth::LoginResult)
 
 /// Re-read `~/.jan/config.toml` (plus desktop and project layers) into the
 /// session's in-memory `args.provider_configs` map. Must be called after any
-/// mid-session credential write (`/login`, `jan config set`) because
+/// mid-session credential write (`/login`, `flint config set`) because
 /// `prepare_agent_session` snapshots the provider map once at startup and
 /// never re-reads it. Without this, the first turn after sign-in fails
 /// upstream resolution (`"No upstream session found for model ..."`) and
@@ -13136,7 +13136,7 @@ fn terminal_setup_command(app: &mut App) {
 
 /// Open the `/config` screen: a read-only view of the providers configured in
 /// `~/.jan/config.toml` (the standalone-agent credential store), with API keys
-/// redacted. Editing is headless via `jan config set/unset` (shown in the
+/// redacted. Editing is headless via `flint config set/unset` (shown in the
 /// footer), since a TUI is not the safe place to type secrets.
 fn open_config_screen(app: &mut App) {
     let configs = match crate::core::agent::global_config::load_global_config() {
@@ -13148,7 +13148,7 @@ fn open_config_screen(app: &mut App) {
 
     let items: Vec<PickerItem> = if providers.is_empty() {
         vec![PickerItem {
-            label: "no providers configured - run: jan config set --provider <id> --api-key <key>"
+            label: "no providers configured - run: flint config set --provider <id> --api-key <key>"
                 .to_string(),
             value: String::new(),
             hint: None,
@@ -19797,7 +19797,7 @@ mod tests {
         app.thread_id = Some("t1".into());
         let (_, parent, msg, id, changed) = app.resolve_snapshot(&SnapshotJob::Base).unwrap();
         assert!(parent.is_none());
-        assert_eq!(msg, "jan agent base");
+        assert_eq!(msg, "flint agent base");
         assert_eq!(id, "t1");
         assert!(changed.is_empty());
 
@@ -19813,7 +19813,7 @@ mod tests {
             Some("basesha"),
             "first checkpoint parents the base"
         );
-        assert_eq!(msg, "jan agent turn 1");
+        assert_eq!(msg, "flint agent turn 1");
         assert_eq!(changed, vec![std::path::PathBuf::from("src/a.rs")]);
 
         // Disabled (no repo) -> job dropped.
@@ -20379,7 +20379,7 @@ mod tests {
     fn the_resume_hint_offers_a_copyable_continuation_command() {
         assert_eq!(
             resume_hint("0123456789abcdef"),
-            "\x1b[2m[session 01234567 - resume with `jan --resume=01234567`]\x1b[0m"
+            "\x1b[2m[session 01234567 - resume with `flint --resume=01234567`]\x1b[0m"
         );
     }
 
@@ -21068,7 +21068,7 @@ mod tests {
     }
 
     /// `/login --paste-token` skips straight to the legacy field, the same
-    /// escape hatch `jan login --paste-token` gives, and never asks the loop for
+    /// escape hatch `flint login --paste-token` gives, and never asks the loop for
     /// a browser session.
     #[tokio::test]
     async fn login_paste_token_forces_the_legacy_field() {

@@ -53,7 +53,7 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
     let url = obj.get("url").and_then(|u| u.as_str()).map(String::from);
     let transport_type = obj.get("type").and_then(|t| t.as_str()).map(String::from);
     // A remote server is a url; `command` and `args` describe a process and
-    // are required only when there is one to start. `jan cli mcp add --type
+    // are required only when there is one to start. `flint cli mcp add --type
     // http` writes neither, and requiring them made every server it added
     // unconnectable.
     let remote = matches!(transport_type.as_deref(), Some("http" | "sse")) && url.is_some();
@@ -322,7 +322,7 @@ mod tests {
         assert!(extract_command_args(&cfg).is_none());
     }
 
-    /// Found running the AH-134 CLI exercise: a server added with `jan cli mcp
+    /// Found running the AH-134 CLI exercise: a server added with `flint cli mcp
     /// add --type http` has no `command` or `args`, and was refused as an
     /// invalid config before any request was made.
     #[test]

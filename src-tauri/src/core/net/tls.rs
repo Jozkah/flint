@@ -12,7 +12,7 @@
 //! Only where the user, not a project, decides:
 //!
 //! 1. `JAN_CA_BUNDLE` in the environment of the process;
-//! 2. the CLI: `ca_bundle` in `~/.jan/config.toml` (`jan cli net ca set`);
+//! 2. the CLI: `ca_bundle` in `~/.jan/config.toml` (`flint cli net ca set`);
 //! 3. the desktop app: the HTTPS proxy settings (`caBundlePath`).
 //!
 //! A project's `agent.toml` cannot name one: the repository is written by
@@ -510,7 +510,7 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
     None
 }
 
-/// What is in force, for `jan cli net ca status` and the settings page.
+/// What is in force, for `flint cli net ca status` and the settings page.
 pub fn status() -> serde_json::Value {
     match configured() {
         None => serde_json::json!({ "state": "none", "trusts": "the platform's roots only" }),

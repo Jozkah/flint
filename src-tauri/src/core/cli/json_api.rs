@@ -1,10 +1,10 @@
 //! A headless JSON-lines API over stdio, for programs that drive agent runs
 //! (AH-182).
 //!
-//! `jan cli agent run --output-format json` answers one question -- how did this
+//! `flint cli agent run --output-format json` answers one question -- how did this
 //! run end -- with one object once it is over. A program that supervises runs
 //! needs more: start one, watch it happen, answer its approval prompts, ask
-//! what is going on, stop it. `jan cli agent serve` reads one JSON request per
+//! what is going on, stop it. `flint cli agent serve` reads one JSON request per
 //! line on stdin and writes one JSON message per line on stdout.
 //!
 //! Requests carry an `id` (a string or a number) that the response echoes:
@@ -375,8 +375,8 @@ where
     let _ = writer.await;
 }
 
-/// The runner behind `jan cli agent serve`: the same preparation, loop and
-/// persistence as `jan cli agent run`.
+/// The runner behind `flint cli agent serve`: the same preparation, loop and
+/// persistence as `flint cli agent run`.
 pub(crate) struct AgentRunner;
 
 impl Runner for AgentRunner {
@@ -531,7 +531,7 @@ async fn run_agent(
     }
 }
 
-/// `jan cli agent serve`: the API on this process's stdin and stdout.
+/// `flint cli agent serve`: the API on this process's stdin and stdout.
 pub async fn serve_stdio() {
     let input = tokio::io::BufReader::new(tokio::io::stdin());
     serve(input, tokio::io::stdout(), Arc::new(AgentRunner)).await;

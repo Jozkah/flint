@@ -692,7 +692,7 @@ fn claude_code_subscription_type() -> Option<String> {
 }
 
 pub(crate) const CLAUDE_ALIAS_NOTICE: &str =
-    "Claude Code keychain login is active: Jan may use and refresh that credential for Claude requests. Disable with `claude_code_alias = false` in ~/.jan/config.toml or `/settings`. Jan is a third-party client; review Anthropic's Terms of Service.";
+    "Claude Code keychain login is active: Flint may use and refresh that credential for Claude requests. Disable with `claude_code_alias = false` in ~/.jan/config.toml or `/settings`. Flint is a third-party client; review Anthropic's Terms of Service.";
 
 static CLAUDE_ALIAS_ENGAGED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);

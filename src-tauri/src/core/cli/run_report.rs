@@ -1,4 +1,4 @@
-//! Machine-readable result envelope for a non-interactive `jan cli agent run`.
+//! Machine-readable result envelope for a non-interactive `flint cli agent run`.
 //!
 //! The human output of a run is a stream: prose on stdout, progress on stderr.
 //! `--output-format json` replaces it with a single object printed once the run

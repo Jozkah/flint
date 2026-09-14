@@ -202,7 +202,7 @@ pub fn validate_server_name(name: &str) -> Result<(), String> {
 
 /// Build a ready-to-persist server entry from typed fields, mirroring the
 /// desktop's transport contract. `env`/`headers` are already parsed maps; the
-/// callers (`jan cli mcp add` flags and the TUI form) both funnel through here
+/// callers (`flint cli mcp add` flags and the TUI form) both funnel through here
 /// so neither re-implements the shape or its validation.
 pub fn build_server_config(
     transport: &str,
@@ -315,7 +315,7 @@ fn get_server_in(data_folder: &std::path::Path, name: &str) -> Option<McpServerE
 }
 
 /// Split a `KEY=VALUE` pair, rejecting anything without a separator or an empty
-/// key. Shared by the headless `jan cli mcp add` flags and the TUI add/edit form
+/// key. Shared by the headless `flint cli mcp add` flags and the TUI add/edit form
 /// so the two surfaces parse `--env`/`--header` identically.
 pub fn split_kv(kv: &str, what: &str) -> Result<(String, String), String> {
     match kv.split_once('=') {

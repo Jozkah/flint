@@ -353,7 +353,7 @@ impl PendingAuth {
                 }
                 Ok(Poll::Expired) => {
                     return Err(
-                        "the sign-in expired before it was approved. Run `jan login` again."
+                        "the sign-in expired before it was approved. Run `flint login` again."
                             .to_string(),
                     )
                 }
@@ -372,13 +372,13 @@ impl PendingAuth {
             // out on a silent server -- saying "timed out" would contradict a
             // reason like "approved but no API key".
             Some((e, true)) => format!(
-                "could not confirm the sign-in before the window closed: {e} Run `jan login` again."
+                "could not confirm the sign-in before the window closed: {e} Run `flint login` again."
             ),
             Some((e, _)) => format!(
-                "timed out waiting for browser approval (last poll error: {e}). Run `jan login` \
+                "timed out waiting for browser approval (last poll error: {e}). Run `flint login` \
                  again."
             ),
-            None => "timed out waiting for browser approval. Run `jan login` again.".to_string(),
+            None => "timed out waiting for browser approval. Run `flint login` again.".to_string(),
         })
     }
 }
@@ -473,7 +473,7 @@ async fn poll_once(api_root: &str, session_id: &str, verifier: &str) -> Result<P
 
 fn describe_poll_failure(status: u16, error: Option<&str>) -> String {
     match status {
-        401 | 403 => "the sign-in session could not be verified - re-run `jan login`.".to_string(),
+        401 | 403 => "the sign-in session could not be verified - re-run `flint login`.".to_string(),
         429 => "Tokamak is rate limiting - wait a moment and try again.".to_string(),
         500..=599 => format!("Tokamak is unavailable right now (HTTP {status})."),
         _ => match error {
@@ -966,7 +966,7 @@ mod tests {
                 .expect_err("an unapproved session times out");
             assert_eq!(
                 err,
-                "timed out waiting for browser approval. Run `jan login` again."
+                "timed out waiting for browser approval. Run `flint login` again."
             );
             assert_eq!(
                 requests.lock().unwrap().len(),
@@ -1000,7 +1000,7 @@ mod tests {
             assert_eq!(
                 err,
                 "could not confirm the sign-in before the window closed: the sign-in was approved \
-                 but Tokamak returned no API key. Run `jan login` again."
+                 but Tokamak returned no API key. Run `flint login` again."
             );
         });
     }

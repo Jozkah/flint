@@ -1,9 +1,9 @@
 //! Terminal sign-in UX for Tokamak: the plain-stdout counterpart to the TUI's
 //! `/login` overlay. Both drive [`super::tokamak`]; only presentation differs.
 //!
-//! `jan login` runs this directly. The TUI no longer forces this flow on a
+//! `flint login` runs this directly. The TUI no longer forces this flow on a
 //! fresh install -- it launches with an empty model and shows a one-line
-//! notice, letting the user run `/login` (or `jan login`) when they are ready
+//! notice, letting the user run `/login` (or `flint login`) when they are ready
 //! instead of being dropped into a masked key prompt immediately.
 
 use std::io::IsTerminal;
@@ -38,7 +38,7 @@ pub fn reject_headless_without_provider(
 /// opens the authorize page (any device can approve), and polls for the minted
 /// key. When the server predates the `/auth/cli/sessions` endpoints (404/405 on
 /// create), it falls back to the legacy paste-a-key flow automatically; a piped
-/// stdin (`echo $KEY | jan login`) and `--paste-token` force the paste flow.
+/// stdin (`echo $KEY | flint login`) and `--paste-token` force the paste flow.
 pub async fn run_login(paste_token: bool) -> Result<(), String> {
     if !std::io::stdin().is_terminal() {
         return login_from_stdin().await;
@@ -166,18 +166,18 @@ async fn prompt_for_key() -> Result<Option<String>, String> {
 
 /// Why we stopped when there is nobody at the keyboard to paste a key.
 fn headless_message() -> String {
-    "no AI provider is configured. Run `jan login` to sign in to Tokamak, or set one manually:\n  \
-     jan config set --provider <id> --api-key <key> --base-url <url>\nA key can also be passed \
+    "no AI provider is configured. Run `flint login` to sign in to Tokamak, or set one manually:\n  \
+     flint config set --provider <id> --api-key <key> --base-url <url>\nA key can also be passed \
      per run with --api-key or $JAN_API_KEY."
         .to_string()
 }
 
-/// `jan login` with nothing on a piped stdin: say how to feed it one, rather
-/// than repeating "run `jan login`" at someone who just did.
+/// `flint login` with nothing on a piped stdin: say how to feed it one, rather
+/// than repeating "run `flint login`" at someone who just did.
 fn piped_empty_message() -> String {
     format!(
-        "no API key on stdin. Either run `jan login` from a terminal, pipe the key in:\n  echo \
-         $TOKAMAK_API_KEY | jan login\nor set it directly:\n  jan config set --provider {} \
+        "no API key on stdin. Either run `flint login` from a terminal, pipe the key in:\n  echo \
+         $TOKAMAK_API_KEY | flint login\nor set it directly:\n  flint config set --provider {} \
          --api-key <key> --base-url {}",
         tokamak::PROVIDER,
         tokamak::base_url()
@@ -185,9 +185,9 @@ fn piped_empty_message() -> String {
 }
 
 fn cancelled_message() -> String {
-    "sign-in cancelled. Run `jan login` when you have a key, or configure a provider manually \
-     with `jan config set`.\nAlready running a model locally? Point Jan at the desktop app's API \
-     server:\n  jan config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
+    "sign-in cancelled. Run `flint login` when you have a key, or configure a provider manually \
+     with `flint config set`.\nAlready running a model locally? Point Jan at the desktop app's API \
+     server:\n  flint config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
         .to_string()
 }
 
@@ -222,12 +222,12 @@ mod tests {
             headless_message(),
             piped_empty_message(),
         ] {
-            assert!(message.contains("jan login"), "{message}");
-            assert!(message.contains("jan config set"), "{message}");
+            assert!(message.contains("flint login"), "{message}");
+            assert!(message.contains("flint config set"), "{message}");
         }
         // The piped variant must not tell the user to re-run what just failed as
         // if nothing else were possible.
-        assert!(piped_empty_message().contains("| jan login"));
+        assert!(piped_empty_message().contains("| flint login"));
     }
 
     #[test]

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
 
 /// `[tools]`/`[skills]` are always modeled. `[agent]` and `[budget]` are only
-/// compiled for the CLI (their sole consumer, via `jan cli agent run/step/status`).
+/// compiled for the CLI (their sole consumer, via `flint cli agent run/step/status`).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct AgentToml {
     #[cfg(feature = "cli")]

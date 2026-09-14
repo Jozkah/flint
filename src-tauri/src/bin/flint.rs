@@ -107,7 +107,7 @@ impl SandboxArgs {
     }
 }
 
-/// Session-resume selection, shared by the bare TUI and `jan cli agent run`.
+/// Session-resume selection, shared by the bare TUI and `flint cli agent run`.
 /// Threads are per-project (`<project>/.jan/agent/threads`), so resuming from a
 /// different working directory simply finds nothing there.
 #[derive(Args)]
@@ -126,7 +126,7 @@ impl ResumeArgs {
     }
 }
 
-/// Same flags for `jan cli agent run`, which has a required positional TASK: a
+/// Same flags for `flint cli agent run`, which has a required positional TASK: a
 /// space-separated `--resume ID` would swallow the task, so the value form must
 /// be written `--resume=ID`.
 #[derive(Args)]
@@ -244,7 +244,7 @@ enum PluginCommands {
     },
 }
 
-/// The non-interactive command surface, reached via `jan cli <command>`.
+/// The non-interactive command surface, reached via `flint cli <command>`.
 #[derive(Subcommand)]
 enum CliCommands {
     /// Background work that outlives this process (AH-101/AH-102)
@@ -1277,7 +1277,7 @@ async fn handle_cli(cmd: CliCommands) {
     }
 }
 
-/// `jan cli bench`: measure the harness against a fixed task set (AH-196).
+/// `flint cli bench`: measure the harness against a fixed task set (AH-196).
 fn handle_bench(cmd: BenchCommands) {
     use app_lib::core::cli::bench;
     use tauri_plugin_agent_tools::harness_error::ErrorKind;
@@ -1352,7 +1352,7 @@ fn handle_bench(cmd: BenchCommands) {
     }
 }
 
-/// `jan cli net`: outbound network settings (AH-190).
+/// `flint cli net`: outbound network settings (AH-190).
 fn handle_net(cmd: NetCommands) {
     use app_lib::core::net::tls;
     let NetCommands::Ca { cmd } = cmd;
@@ -1404,7 +1404,7 @@ fn handle_net(cmd: NetCommands) {
 
 use tauri_plugin_agent_tools::harness_error::HarnessError;
 
-/// `jan cli job`: work that outlives the process that started it.
+/// `flint cli job`: work that outlives the process that started it.
 fn handle_job(cmd: JobCommands) {
     use tauri_plugin_agent_tools::worker;
     let folder = |given: Option<String>| -> std::path::PathBuf {
@@ -2277,7 +2277,7 @@ async fn handle_agent(cmd: AgentCommands) {
     }
 }
 
-/// `jan cli agent prompts`: what a session sent to the model (AH-087).
+/// `flint cli agent prompts`: what a session sent to the model (AH-087).
 ///
 /// Without `show`, one line per recorded request. With `show`, that request as
 /// text -- `last` for the most recent. The session is required and must match
@@ -2329,7 +2329,7 @@ async fn handle_auth(cmd: AuthCommands) -> Result<(), String> {
         AuthCommands::Status => {
             let status = tokamak::auth_status();
             if !status.signed_in {
-                println!("Not signed in to Tokamak. Run `jan login`.");
+                println!("Not signed in to Tokamak. Run `flint login`.");
                 return Ok(());
             }
             println!("Signed in to Tokamak");
@@ -2351,7 +2351,7 @@ async fn handle_auth(cmd: AuthCommands) -> Result<(), String> {
             }
             match tokamak::live_valid().await {
                 Some(true) => println!("  valid:        yes"),
-                Some(false) => println!("  valid:        no (re-run `jan login`)"),
+                Some(false) => println!("  valid:        no (re-run `flint login`)"),
                 None => println!("  valid:        could not reach upstream"),
             }
             if let Some(warning) = tokamak::expiry_warning() {
@@ -2482,7 +2482,7 @@ async fn handle_models(cmd: ModelsCommands) {
                 eprintln!(
                     "None of these models is reachable from the CLI: they run inside the \
                      Jan app. Enable the app's Local API Server and point the CLI at it:\n  \
-                     jan config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
+                     flint config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
                 );
             }
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
@@ -2753,7 +2753,7 @@ mod tests {
         assert!(Cli::parse_from(["jan", "--safe"]).safe);
     }
 
-    /// Parse `jan cli agent run <task> <extra...>` and pull out its output format.
+    /// Parse `flint cli agent run <task> <extra...>` and pull out its output format.
     fn parsed_output_format(extra: &[&str]) -> OutputFormat {
         let mut argv = vec!["jan", "cli", "agent", "run", "task"];
         argv.extend_from_slice(extra);
@@ -2811,7 +2811,7 @@ mod tests {
     #[test]
     fn prompts_is_a_cli_agent_command() {
         let cli = Cli::try_parse_from(["jan", "cli", "agent", "prompts", "s1", "--show", "last"]);
-        assert!(cli.is_ok(), "`jan cli agent prompts <session> --show last` must parse");
+        assert!(cli.is_ok(), "`flint cli agent prompts <session> --show last` must parse");
     }
 
     #[test]
@@ -2874,7 +2874,7 @@ mod tests {
         ));
     }
 
-    /// Parse a `jan cli mcp <cmd> <extra...>` argv and pull out the subcommand.
+    /// Parse a `flint cli mcp <cmd> <extra...>` argv and pull out the subcommand.
     fn parsed_mcp(extra: &[&str]) -> McpCommands {
         let mut argv = vec!["jan", "cli", "mcp"];
         argv.extend_from_slice(extra);

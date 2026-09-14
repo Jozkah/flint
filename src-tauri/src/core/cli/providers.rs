@@ -405,7 +405,7 @@ async fn fetch_models(
 /// `[provider]` override -> `--provider`/`--api-key` CLI/env overrides.
 ///
 /// `project_root` is `None` when no project context is available (e.g.
-/// `jan cli agent status` without `--project`); the local override is then
+/// `flint cli agent status` without `--project`); the local override is then
 /// skipped. A missing/malformed Desktop store is not fatal: it's simply not
 /// layered in, since Global config alone is a valid standalone setup.
 pub fn load_provider_configs(
@@ -666,7 +666,7 @@ fn set_key(cfg: &mut ProviderConfig, api_key: &str) {
     cfg.api_keys = vec![api_key.to_string()];
 }
 
-/// Every configured model, for `jan cli models list`.
+/// Every configured model, for `flint cli models list`.
 ///
 /// Models the CLI cannot reach are listed too, marked `reachable: false`,
 /// rather than dropped. A desktop user whose models all run on the local

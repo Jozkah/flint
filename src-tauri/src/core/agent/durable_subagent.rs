@@ -3,7 +3,7 @@
 //! An ordinary background subagent is a future inside the parent's process:
 //! it is aborted with the parent run and gone when the app exits. A durable
 //! one is a job under the worker's detached supervisor (`worker::start_argv`),
-//! running `jan cli agent run-subagent --spec <file>`: the same resolution,
+//! running `flint cli agent run-subagent --spec <file>`: the same resolution,
 //! child configuration and loop as an in-process child, in a process of its
 //! own. Its final answer is the job's output; its ending is the job record the
 //! supervisor writes. A later process -- the app after a restart, or a CLI --

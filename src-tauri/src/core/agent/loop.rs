@@ -1035,7 +1035,7 @@ fn ask_timeout_setting() -> Option<std::time::Duration> {
 }
 
 /// Whether `bash` would be confined in `project_root` with no `--sandbox` flag
-/// passed: the answer `jan cli agent status` reports and the TUI notices on.
+/// passed: the answer `flint cli agent status` reports and the TUI notices on.
 pub fn effective_sandbox(project_root: &std::path::Path) -> bool {
     resolve_sandbox(
         None,
@@ -4100,7 +4100,7 @@ async fn orchestrate_inner(
     // top-level run from a subagent's isolated context.
     // `/goal` is a per-request flag like `run_mode`: the TUI sets it while a
     // goal is active, and nothing else does, so every other surface (a plain
-    // turn, `jan cli agent run`, a subagent) leaves the model free to reach for
+    // turn, `flint cli agent run`, a subagent) leaves the model free to reach for
     // `todo` on its own.
     let goal_mode = json_body
         .get("goal_mode")
@@ -9760,7 +9760,7 @@ mod tests {
     }
 
     /// R21: auto-approval covers writes inside the project, never a write
-    /// that escapes it. `jan cli agent run` auto-approves unless --safe, and the
+    /// that escapes it. `flint cli agent run` auto-approves unless --safe, and the
     /// real BranchCraft run wrote C:\\tmp\\dbg.py this way.
     #[tokio::test]
     async fn auto_approval_never_covers_a_write_that_escapes_the_project() {

@@ -5,7 +5,7 @@
 //! arrived will spend the run fixing somebody else's problem, or -- worse --
 //! conclude that its own change caused it.
 //!
-//! `jan cli agent health` finds the project's own checks, runs them, and says
+//! `flint cli agent health` finds the project's own checks, runs them, and says
 //! what happened. The rules it keeps:
 //!
 //! * **Only commands the project declares.** A `package.json` script named

@@ -16,7 +16,7 @@
 //! * **Contents are checked.** Each entry carries a SHA-256; a mismatch refuses
 //!   the whole bundle. Text only, bounded per file and in total.
 //! * **Policy cannot widen silently.** The `[tools]` section goes through the
-//!   same comparison `jan cli agent policy import` uses: a bundle that would
+//!   same comparison `flint cli agent policy import` uses: a bundle that would
 //!   allow more than the project does now is refused unless widening is
 //!   accepted explicitly.
 //! * **All or nothing.** Everything is written to a staging directory first

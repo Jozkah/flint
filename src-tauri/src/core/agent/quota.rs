@@ -15,7 +15,7 @@
 //!   the answer rather than folded in as zero -- a spend ceiling that silently
 //!   treats unpriced use as free is a ceiling that does not hold.
 //!
-//! The ledger these read is the same one `jan cli agent spend` reports, so what
+//! The ledger these read is the same one `flint cli agent spend` reports, so what
 //! stops a run and what a person sees are the same numbers.
 
 use std::path::{Path, PathBuf};
@@ -192,7 +192,7 @@ impl Standing {
 
 /// Where use stands against every declared ceiling, most pressing first.
 ///
-/// The windows are read from the same ledger `jan cli agent spend` reports, so
+/// The windows are read from the same ledger `flint cli agent spend` reports, so
 /// what stops a run and what a person sees are the same numbers.
 pub fn standing(data_folder: &Path, quotas: &Quotas) -> Result<Vec<Standing>, QuotaError> {
     if !quotas.any() {

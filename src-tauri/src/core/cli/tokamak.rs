@@ -312,7 +312,7 @@ fn describe_expiry(expires_at: u64, now: u64) -> Option<String> {
     }
     let Some(remaining) = expires_at.checked_sub(now) else {
         return Some(
-            "your Tokamak key has expired - run `jan login` to sign in again.".to_string(),
+            "your Tokamak key has expired - run `flint login` to sign in again.".to_string(),
         );
     };
     if remaining > EXPIRY_WARNING_WINDOW.as_secs() {
@@ -320,9 +320,9 @@ fn describe_expiry(expires_at: u64, now: u64) -> Option<String> {
     }
     let days = remaining / (24 * 60 * 60);
     Some(match days {
-        0 => "your Tokamak key expires within a day - run `jan login` to renew it.".to_string(),
-        1 => "your Tokamak key expires in 1 day - run `jan login` to renew it.".to_string(),
-        n => format!("your Tokamak key expires in {n} days - run `jan login` to renew it."),
+        0 => "your Tokamak key expires within a day - run `flint login` to renew it.".to_string(),
+        1 => "your Tokamak key expires in 1 day - run `flint login` to renew it.".to_string(),
+        n => format!("your Tokamak key expires in {n} days - run `flint login` to renew it."),
     })
 }
 
@@ -618,7 +618,7 @@ mod tests {
 
         let soon = describe_expiry(now + 6 * DAY, now).expect("inside the window");
         assert!(soon.contains("6 days"), "{soon}");
-        assert!(soon.contains("jan login"), "{soon}");
+        assert!(soon.contains("flint login"), "{soon}");
 
         assert!(describe_expiry(now + DAY + 60, now)
             .expect("1 day")

@@ -505,7 +505,7 @@ fn resolve_project_root(project: &str) -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(project))
 }
 
-/// Resolved-config + provider snapshot for `jan cli agent status`.
+/// Resolved-config + provider snapshot for `flint cli agent status`.
 pub fn cli_agent_status(
     project: &str,
     overrides: &ProviderOverrides,
@@ -947,7 +947,7 @@ fn prepare_agent_session(
     };
     if model.is_empty() && flags.require_model {
         return Err(
-            "no model specified: run `jan login` to sign in to Tokamak, or pass --model, set [agent].model in agent.toml, set default_model in ~/.jan/config.toml, or select a model in the desktop app"
+            "no model specified: run `flint login` to sign in to Tokamak, or pass --model, set [agent].model in agent.toml, set default_model in ~/.jan/config.toml, or select a model in the desktop app"
                 .to_string(),
         );
     }
@@ -1002,8 +1002,8 @@ fn prepare_agent_session(
             "model '{model}' is only offered by '{local}', a local engine the Flint CLI cannot \
              start itself. To use it, run the model in the Jan desktop app with its API server \
              enabled and point a provider at it:\n  \
-             jan config set --provider jan --base-url http://localhost:1337/v1 --model {model}\n\
-             Or pick a model from `jan cli models list`."
+             flint config set --provider jan --base-url http://localhost:1337/v1 --model {model}\n\
+             Or pick a model from `flint cli models list`."
         ));
     }
 
@@ -1532,7 +1532,7 @@ async fn run_agent_loop(
     if persisted.saved && !format.is_json() {
         if let Some(id) = session_id.as_deref() {
             eprintln!(
-                "\x1b[2m[session {} - resume with `jan --resume={}`]\x1b[0m",
+                "\x1b[2m[session {} - resume with `flint --resume={}`]\x1b[0m",
                 short_id(id),
                 short_id(id)
             );
@@ -1567,7 +1567,7 @@ pub(crate) struct PersistedRun {
 }
 
 /// Write a finished headless run to the project's thread store so `--resume`
-/// can continue it. Shared by `jan cli agent run` and the JSON API (AH-182), so
+/// can continue it. Shared by `flint cli agent run` and the JSON API (AH-182), so
 /// the two cannot save a run differently.
 fn persist_headless_run(
     persist: PersistTarget,
@@ -1739,7 +1739,7 @@ fn print_report(report: run_report::RunResult) {
 }
 
 /// Run one durable subagent from its spec (AH-101). Started by a job
-/// supervisor as `jan cli agent run-subagent --spec <file>`; its answer is what
+/// supervisor as `flint cli agent run-subagent --spec <file>`; its answer is what
 /// it prints, which the supervisor keeps as the job's output.
 ///
 /// Configured exactly as an in-process child is (`configure_child_args`,
@@ -1894,7 +1894,7 @@ pub async fn cli_agent_ui(
     }
     // Fresh install with a terminal attached: launch with no model rather than
     // forcing sign-in here. The TUI shows a one-line notice and `/login` (or
-    // `jan login`) picks a model up once the user is ready.
+    // `flint login`) picks a model up once the user is ready.
     let session = prepare_agent_session(
         project,
         model,
@@ -2095,7 +2095,7 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry, density: De
             }
         }
         StreamEvent::AskRequest { .. } => {
-            eprintln!("\n\x1b[31m[error] interactive ask requires `jan agent ui`\x1b[0m")
+            eprintln!("\n\x1b[31m[error] interactive ask requires `flint agent ui`\x1b[0m")
         }
         // Headless never renders an ask prompt, so there is nothing to dismiss.
         StreamEvent::AskResolved { .. } => {}
@@ -2191,7 +2191,7 @@ mod tests {
     #[test]
     fn a_resumed_turn_still_shows_the_model_the_tools_it_ran() {
         let base = std::env::temp_dir().join(format!(
-            "jan-cli-resume-tools-{}-{:?}",
+            "flint-cli-resume-tools-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

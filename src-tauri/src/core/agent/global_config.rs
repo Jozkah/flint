@@ -109,7 +109,7 @@ struct GlobalConfigToml {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     wave: Option<String>,
     /// A PEM bundle of extra certificate authorities to trust for outbound
-    /// HTTPS (AH-190). Set with `jan cli net ca set`, which checks it first.
+    /// HTTPS (AH-190). Set with `flint cli net ca set`, which checks it first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ca_bundle: Option<String>,
     /// The forge API pull requests are opened through (AH-162). A user

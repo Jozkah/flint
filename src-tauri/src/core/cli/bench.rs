@@ -1,9 +1,9 @@
 //! A benchmark harness for the harness itself (AH-196).
 //!
 //! A change to the agent loop -- a new system prompt, a retry policy, a tool
-//! description -- is judged by running it. `jan cli bench run` runs a fixed task
+//! description -- is judged by running it. `flint cli bench run` runs a fixed task
 //! set through the real headless agent and records, per task, whether the result
-//! passed its checks and what it cost; `jan cli bench compare` sets two reports
+//! passed its checks and what it cost; `flint cli bench compare` sets two reports
 //! side by side and fails when a task that passed before fails now.
 //!
 //! ## The task set
@@ -28,7 +28,7 @@
 //!
 //! ## How a task runs
 //!
-//! In a fresh scratch copy of its project, as a separate `jan cli agent run
+//! In a fresh scratch copy of its project, as a separate `flint cli agent run
 //! --output-format json` process -- the same binary, the same loop, nothing
 //! mocked in-process -- with the model, provider settings and data folder of the
 //! benchmark run. The child is owned (`tools::owned`): an interrupted benchmark
