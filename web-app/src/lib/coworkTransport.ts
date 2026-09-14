@@ -70,7 +70,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   protected override memoryInstructions() {
     const out: { source: 'jan-md' | 'compat' | 'skill'; name: string; text: string }[] = []
     const jan = this.config.projectInstructions?.trim()
-    if (jan) out.push({ source: 'jan-md', name: 'JAN.md', text: jan })
+    if (jan) out.push({ source: 'jan-md', name: 'FLINT.md', text: jan })
     for (const one of this.config.compatInstructions ?? []) {
       if (one.content.trim()) out.push({ source: 'compat', name: one.name, text: one.content })
     }

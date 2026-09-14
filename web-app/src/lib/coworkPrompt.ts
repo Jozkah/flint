@@ -80,9 +80,9 @@ export type CoworkPromptOptions = {
   /** Whether `web_search`/`web_fetch` are advertised this run. */
   webSearch: boolean
   /**
-   * Verbatim `JAN.md` from the attached project root, when it has one.
+   * Verbatim `FLINT.md` from the attached project root, when it has one.
    *
-   * `JAN.md` is the one instructions file Jan reads — `AGENTS.md` and
+   * `FLINT.md` is the one instructions file Jan reads — `AGENTS.md` and
    * `CLAUDE.md` are deliberately not ingested, here or in `core::agent`, so
    * only what a user wrote for Jan is treated as authoritative.
    */
@@ -92,7 +92,7 @@ export type CoworkPromptOptions = {
    * compatibility on for this folder.
    *
    * Wrapped and labelled with the file they came from, and ranked below
-   * `JAN.md`: a user's own instructions for Jan outrank instructions written
+   * `FLINT.md`: a user's own instructions for Jan outrank instructions written
    * for something else. Neither outranks this prompt — no instruction file
    * moves the repository, grants a tool, or changes where changes go, however
    * it is phrased.
@@ -111,7 +111,7 @@ export type CoworkPromptOptions = {
  * a project reads the same to the model on the desktop as it does on the CLI.
  *
  * Unlike the CLI this does not walk up past the attached folder. Cowork's
- * boundary is the folder the user attached, and reading a parent's `JAN.md`
+ * boundary is the folder the user attached, and reading a parent's `FLINT.md`
  * would pull in a file from outside it — exactly what the rest of this surface
  * refuses to do. A monorepo therefore needs its instructions at the folder
  * that was attached.
@@ -119,7 +119,7 @@ export type CoworkPromptOptions = {
 /**
  * Stop ingested text from closing the envelope it is being placed in.
  *
- * `JAN.md` is something the user wrote for Jan. A compatibility file is
+ * `FLINT.md` is something the user wrote for Jan. A compatibility file is
  * whatever was in a repository they may have merely cloned, and it arrives here
  * verbatim — so a file containing `</project_instructions>` would end its own
  * block and put everything after it at the same level as Jan's own
@@ -149,7 +149,7 @@ function instructionsBlock(
   parts.push('Project-specific instructions and guidelines:', '')
   if (content) {
     parts.push(
-      '<project_instructions path="JAN.md">',
+      '<project_instructions path="FLINT.md">',
       sealed(content.trim()),
       '</project_instructions>',
       ''
@@ -171,7 +171,7 @@ function instructionsBlock(
     // Named by its own file and marked as lower precedence in the text, so the
     // model can see which it is following where the two disagree.
     parts.push(
-      `<project_instructions path="${attribute(one.name)}" precedence="below JAN.md">`,
+      `<project_instructions path="${attribute(one.name)}" precedence="below FLINT.md">`,
       sealed(one.content.trim()),
       '</project_instructions>',
       ''
@@ -211,7 +211,7 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
         : []),
       ...(opts.projectInstructions?.trim()
         ? [
-            'It carries a `JAN.md`; its instructions are below and take',
+            'It carries a `FLINT.md`; its instructions are below and take',
             'precedence over these general guidelines.',
           ]
         : []),

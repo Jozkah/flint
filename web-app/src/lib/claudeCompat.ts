@@ -350,6 +350,7 @@ export const nestedChainFor = (
 export const INSTRUCTION_PRECEDENCE = [
   'system',
   'cowork-policy',
+  'FLINT.md',
   'JAN.md',
   'CLAUDE.md',
 ] as const

@@ -247,7 +247,7 @@ function scopedInstructionsOwed(
       `\`${toolName}\` was not run yet: \`${path}\` is under a directory with ` +
       'its own instructions, which you had not been given. They are below, ' +
       'they apply to everything under that directory, and they rank below ' +
-      '`JAN.md` and this system prompt where they disagree. Read them, then ' +
+      '`FLINT.md` and this system prompt where they disagree. Read them, then ' +
       'make the same call again.\n\n' +
       blocks,
     isError: true,

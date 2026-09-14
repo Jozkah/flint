@@ -92,7 +92,7 @@ describe('what reaches the model', () => {
    * model is the one following both files, and where they disagree it needs to
    * know which one wins.
    */
-  it('marks the compatibility file as ranking below JAN.md', () => {
+  it('marks the compatibility file as ranking below FLINT.md', () => {
     const text = prompt({
       projectInstructions: 'Jan rules.',
       compatInstructions: compatInstructionBlocks(
@@ -101,7 +101,7 @@ describe('what reaches the model', () => {
     })
 
     expect(text.indexOf('Jan rules.')).toBeLessThan(text.indexOf('Claude rules.'))
-    expect(text).toContain('precedence="below JAN.md"')
+    expect(text).toContain('precedence="below FLINT.md"')
   })
 
   it('still works when the folder has only the compatibility file', () => {
@@ -112,7 +112,7 @@ describe('what reaches the model', () => {
     })
 
     expect(text).toContain('Claude rules.')
-    expect(text).not.toContain('path="JAN.md"')
+    expect(text).not.toContain('path="FLINT.md"')
   })
 
   // An oversized or escaping file contributes nothing, whatever it holds.

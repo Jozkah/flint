@@ -279,7 +279,7 @@ export function summarizeChatContext(input: ChatContextInput): ContextSection[] 
           },
         ]
       : [],
-    // Chat has no project-instruction files; Cowork reads JAN.md/CLAUDE.md.
+    // Chat has no project-instruction files; Cowork reads FLINT.md/CLAUDE.md.
     emptyReason: 'noInstructions',
   })
 

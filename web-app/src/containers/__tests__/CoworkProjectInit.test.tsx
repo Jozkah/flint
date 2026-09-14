@@ -27,11 +27,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   useProjectInitDrafts.setState({ drafts: {} })
   api.projectSurvey.mockResolvedValue(survey)
-  api.projectInitAccept.mockResolvedValue('/repo/JAN.md')
+  api.projectInitAccept.mockResolvedValue('/repo/FLINT.md')
 })
 
 describe('CoworkProjectInit', () => {
-  it('is not offered without a folder, or when the folder has a JAN.md', () => {
+  it('is not offered without a folder, or when the folder has a FLINT.md', () => {
     const { rerender } = render(
       <CoworkProjectInit folder={null} hasInstructions={false} />
     )
@@ -45,7 +45,7 @@ describe('CoworkProjectInit', () => {
     await userEvent.click(screen.getByTestId('project-init-open'))
     const text = await screen.findByTestId('project-init-text')
     expect(text).toHaveValue(survey.draft)
-    expect(text).toHaveAccessibleName('JAN.md')
+    expect(text).toHaveAccessibleName('FLINT.md')
     expect(screen.getByTestId('project-init-not-read')).toHaveTextContent(
       'deeper than 4 levels'
     )
@@ -55,9 +55,9 @@ describe('CoworkProjectInit', () => {
     )
   })
 
-  // Found on Windows: accepting took the offer away -- JAN.md now exists --
+  // Found on Windows: accepting took the offer away -- FLINT.md now exists --
   // and the announcement of the write went with it.
-  it('still announces the write once the folder has its JAN.md', async () => {
+  it('still announces the write once the folder has its FLINT.md', async () => {
     const { rerender } = render(
       <CoworkProjectInit folder="/repo" hasInstructions={false} />
     )
@@ -68,7 +68,7 @@ describe('CoworkProjectInit', () => {
     rerender(<CoworkProjectInit folder="/repo" hasInstructions />)
     expect(screen.queryByTestId('project-init-open')).toBeNull()
     expect(screen.getByTestId('project-init-status')).toHaveTextContent(
-      'Wrote JAN.md'
+      'Wrote FLINT.md'
     )
   })
 
@@ -95,20 +95,20 @@ describe('CoworkProjectInit', () => {
     expect(onAccepted).toHaveBeenCalled()
     expect(useProjectInitDrafts.getState().draftFor('/repo')).toBeNull()
     expect(screen.getByTestId('project-init-status')).toHaveTextContent(
-      'Wrote JAN.md'
+      'Wrote FLINT.md'
     )
   })
 
   it('announces a refusal and keeps the draft', async () => {
     api.projectInitAccept.mockRejectedValue(
-      'this folder already has a JAN.md, so nothing was written'
+      'this folder already has a FLINT.md, so nothing was written'
     )
     render(<CoworkProjectInit folder="/repo" hasInstructions={false} />)
     await userEvent.click(screen.getByTestId('project-init-open'))
     await screen.findByTestId('project-init-text')
     await userEvent.click(screen.getByTestId('project-init-accept'))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'already has a JAN.md'
+      'already has a FLINT.md'
     )
     expect(useProjectInitDrafts.getState().draftFor('/repo')).not.toBeNull()
   })
@@ -124,7 +124,7 @@ describe('CoworkProjectInit', () => {
       '# Edited\n'
     )
     expect(screen.getByTestId('project-init-open')).toHaveTextContent(
-      'Continue the JAN.md draft'
+      'Continue the FLINT.md draft'
     )
     // Reopening shows the edit rather than surveying over it.
     await userEvent.click(screen.getByTestId('project-init-open'))

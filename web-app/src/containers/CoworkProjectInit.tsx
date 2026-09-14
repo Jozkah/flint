@@ -1,9 +1,9 @@
 /**
  * Describe an attached project: a bounded survey proposes a starting
- * `JAN.md`, the user edits it, and it is written only when they accept it.
+ * `FLINT.md`, the user edits it, and it is written only when they accept it.
  * AH-209.
  *
- * Offered only while the folder has no `JAN.md`. The draft is kept per
+ * Offered only while the folder has no `FLINT.md`. The draft is kept per
  * folder until it is accepted or discarded, so closing the dialog -- or the
  * app -- loses no edit. A survey still running when the dialog closes is
  * abandoned: its result is dropped rather than stored.
@@ -33,9 +33,9 @@ export function CoworkProjectInit({
   onAccepted,
 }: {
   folder: string | null
-  /** The folder already has a `JAN.md`; nothing is offered. */
+  /** The folder already has a `FLINT.md`; nothing is offered. */
   hasInstructions: boolean
-  /** `JAN.md` was written; whatever reads it should read it again. */
+  /** `FLINT.md` was written; whatever reads it should read it again. */
   onAccepted?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -93,7 +93,7 @@ export function CoworkProjectInit({
       const dataFolder = await getServiceHub().app().getJanDataFolder()
       await projectInitAccept(dataFolder ?? '', folder, draft.content)
       useProjectInitDrafts.getState().clear(folder)
-      setStatus('Wrote JAN.md')
+      setStatus('Wrote FLINT.md')
       setOpen(false)
       onAccepted?.()
     } catch (e) {
@@ -110,7 +110,7 @@ export function CoworkProjectInit({
     setOpen(false)
   }
 
-  // The live region outlives the offer: accepting writes JAN.md, which takes
+  // The live region outlives the offer: accepting writes FLINT.md, which takes
   // the offer away, and the announcement of the write must not go with it.
   const announcement = (
     <span
@@ -135,7 +135,7 @@ export function CoworkProjectInit({
         data-testid="project-init-open"
       >
         <FileText aria-hidden className="size-3.5" />
-        {draft ? 'Continue the JAN.md draft' : 'Describe this project'}
+        {draft ? 'Continue the FLINT.md draft' : 'Describe this project'}
       </Button>
       {announcement}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -144,7 +144,7 @@ export function CoworkProjectInit({
             <DialogTitle>Describe this project</DialogTitle>
             <DialogDescription>
               Jan read the folder's manifests and layout and ran nothing. Edit
-              the description; it becomes the folder's JAN.md only when you
+              the description; it becomes the folder's FLINT.md only when you
               accept it.
             </DialogDescription>
           </DialogHeader>
@@ -158,7 +158,7 @@ export function CoworkProjectInit({
                 htmlFor="project-init-text"
                 className="text-xs font-medium text-muted-foreground"
               >
-                JAN.md
+                FLINT.md
               </label>
               <textarea
                 id="project-init-text"
@@ -217,7 +217,7 @@ export function CoworkProjectInit({
               disabled={!draft || busy !== null}
               data-testid="project-init-accept"
             >
-              Accept and write JAN.md
+              Accept and write FLINT.md
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,5 @@
 /**
- * Drafts of a project's starting `JAN.md`, kept until they are accepted or
+ * Drafts of a project's starting `FLINT.md`, kept until they are accepted or
  * discarded. AH-209.
  *
  * A survey produces a draft; the user edits it; nothing reaches the folder

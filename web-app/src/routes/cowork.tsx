@@ -248,6 +248,7 @@ import { accessOf, effectiveAccess, runCarries } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
+  LEGACY_NATIVE_INSTRUCTION_FILE,
   MAX_INSTRUCTION_BYTES,
   NATIVE_INSTRUCTION_FILE,
   bindingKey,
@@ -1078,12 +1079,25 @@ function CoworkPage() {
         }
       }
 
-      const probes = await Promise.all([
-        probe(NATIVE_INSTRUCTION_FILE, 'native'),
-        ...COMPATIBILITY_INSTRUCTION_FILES.map((name) =>
-          probe(name, 'compatibility')
-        ),
-      ])
+      // FLINT.md is the native instructions file; JAN.md is the legacy name a
+      // project created before the rename still uses. Prefer FLINT.md; fall
+      // back to JAN.md only when FLINT.md is simply absent (a FLINT.md that
+      // exists but cannot be read is surfaced as-is, not masked by a legacy
+      // file). FLINT.md wins when both exist.
+      const flintProbe = await probe(NATIVE_INSTRUCTION_FILE, 'native')
+      let nativeProbe = flintProbe
+      if (flintProbe.content == null && !flintProbe.error) {
+        const legacy = await probe(LEGACY_NATIVE_INSTRUCTION_FILE, 'native')
+        if (legacy.content != null || legacy.error) nativeProbe = legacy
+      }
+      const probes = [
+        nativeProbe,
+        ...(await Promise.all(
+          COMPATIBILITY_INSTRUCTION_FILES.map((name) =>
+            probe(name, 'compatibility')
+          )
+        )),
+      ]
       if (!alive) return
       if (
         bindingKey({ sessionId: sessionIdRef.current, folder }) !== startedFor
@@ -1095,10 +1109,7 @@ function CoworkPage() {
       // The prompt gets exactly what the card calls active, from the same
       // list, so the two cannot describe different runs.
       const native = files.find((file) => file.role === 'native' && file.active)
-      const nativeProbe = probes.find(
-        (one) => one.name === NATIVE_INSTRUCTION_FILE
-      )
-      setProjectInstructions(native ? (nativeProbe?.content ?? null) : null)
+      setProjectInstructions(native ? (nativeProbe.content ?? null) : null)
     })()
     return () => {
       alive = false

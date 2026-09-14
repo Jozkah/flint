@@ -130,7 +130,7 @@ describe('CoworkChatTransport', () => {
     expect(prompt).not.toContain('# Remembered')
   })
 
-  it('hands retrieval the JAN.md and compatibility text above memory (AH-084)', () => {
+  it('hands retrieval the FLINT.md and compatibility text above memory (AH-084)', () => {
     const t = new CoworkChatTransport(
       's1',
       config({
@@ -143,7 +143,7 @@ describe('CoworkChatTransport', () => {
     )
     const instructions = (t as unknown as { memoryInstructions: () => unknown[] }).memoryInstructions()
     expect(instructions).toEqual([
-      { source: 'jan-md', name: 'JAN.md', text: 'Use pnpm.' },
+      { source: 'jan-md', name: 'FLINT.md', text: 'Use pnpm.' },
       { source: 'compat', name: 'CLAUDE.md', text: 'Tests run under vitest.' },
     ])
   })

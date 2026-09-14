@@ -682,7 +682,7 @@ describe('instructions that govern a subtree', () => {
     expect(result.isError).toBeUndefined()
   })
 
-  it('says the scoped file ranks below JAN.md and the system prompt', async () => {
+  it('says the scoped file ranks below FLINT.md and the system prompt', async () => {
     const t = tracker(nested)
     const result = await dispatchCoworkTool(
       call('write', { path: 'packages/api/server.ts' }),
@@ -690,7 +690,7 @@ describe('instructions that govern a subtree', () => {
     )
 
     expect(result.output).toContain('rank below')
-    expect(result.output).toContain('JAN.md')
+    expect(result.output).toContain('FLINT.md')
   })
 })
 
