@@ -31,11 +31,11 @@ Write-Host "[SUCCESS] Initialization wait completed"
 
 # Verify installation based on nightly flag
 if ($isNightly) {
-    $defaultJanPath = "$env:LOCALAPPDATA\Programs\jan-nightly\Jan-Desktop-nightly.exe"
-    $processName = "Jan-Desktop-nightly.exe"
+    $defaultJanPath = "$env:LOCALAPPDATA\Programs\Flint-nightly\Flint-Desktop-nightly.exe"
+    $processName = "Flint-Desktop-nightly.exe"
 } else {
-    $defaultJanPath = "$env:LOCALAPPDATA\Programs\jan\Jan-Desktop.exe"
-    $processName = "Jan-Desktop.exe"
+    $defaultJanPath = "$env:LOCALAPPDATA\Programs\Flint\Flint-Desktop.exe"
+    $processName = "Flint-Desktop.exe"
 }
 
 if (Test-Path $defaultJanPath) {

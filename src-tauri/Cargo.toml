@@ -10,7 +10,7 @@ edition = "2021"
 # Below that the previous floor was 1.82, for `Option::is_none_or` in agent/loop.rs.
 rust-version = "1.85"
 resolver = "2"
-default-run = "Jan-Desktop"
+default-run = "Flint-Desktop"
 # Every binary this package ships is declared explicitly below. Cargo otherwise
 # auto-discovers each file in `src/bin/` as a binary of its own, carrying none
 # of the `required-features` a declared target would have -- so a feature-gated
@@ -23,7 +23,7 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "Jan-Desktop"
+name = "Flint-Desktop"
 path = "src/main.rs"
 required-features = ["desktop"]
 

@@ -24,9 +24,9 @@ fi
 
 # Use jq to transform the content
 jq --arg channel "$CHANNEL" --arg updater "$UPDATER" '
-    .productName = "Jan-\($channel)" |
+    .productName = "Flint-\($channel)" |
     .identifier = "jan-\($channel).ai.app" |
-    .mainBinaryName = "Jan-Desktop-\($channel)"
+    .mainBinaryName = "Flint-Desktop-\($channel)"
 ' "$INPUT_JSON_FILE" > ./tauri.conf.json.tmp
 
 cat ./tauri.conf.json.tmp
@@ -39,11 +39,11 @@ mv ./tauri.conf.json.tmp $INPUT_JSON_FILE
 CARGO_TOML_PATH="$(dirname "$INPUT_JSON_FILE")/Cargo.toml"
 if [ -f "$CARGO_TOML_PATH" ]; then
     echo "Renaming the desktop bin target in $CARGO_TOML_PATH..."
-    sed -e "s|^name = \"Jan-Desktop\"$|name = \"Jan-Desktop-${CHANNEL}\"|" \
-        -e "s|^default-run = \"Jan-Desktop\"$|default-run = \"Jan-Desktop-${CHANNEL}\"|" \
+    sed -e "s|^name = \"Flint-Desktop\"$|name = \"Flint-Desktop-${CHANNEL}\"|" \
+        -e "s|^default-run = \"Flint-Desktop\"$|default-run = \"Flint-Desktop-${CHANNEL}\"|" \
         "$CARGO_TOML_PATH" > ./Cargo.toml.tmp
     mv ./Cargo.toml.tmp "$CARGO_TOML_PATH"
-    grep -c "Jan-Desktop-${CHANNEL}" "$CARGO_TOML_PATH"
+    grep -c "Flint-Desktop-${CHANNEL}" "$CARGO_TOML_PATH"
 fi
 
 # Update Info.plist if it exists
