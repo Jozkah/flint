@@ -14,6 +14,7 @@ import { Route as LogsRouteImport } from './routes/logs'
 import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
@@ -30,9 +31,8 @@ import { Route as SettingsClaudeCodeRouteImport } from './routes/settings/claude
 import { Route as SettingsAttachmentsRouteImport } from './routes/settings/attachments'
 import { Route as SettingsAssistantRouteImport } from './routes/settings/assistant'
 import { Route as SettingsAgentToolsRouteImport } from './routes/settings/agent-tools'
-import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
-import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
+import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
@@ -60,6 +60,11 @@ const ArtifactsRoute = ArtifactsRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomsIndexRoute = RoomsIndexRouteImport.update({
+  id: '/rooms/',
+  path: '/rooms/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsThreadIdRoute = ThreadsThreadIdRouteImport.update({
@@ -142,19 +147,14 @@ const SettingsAgentToolsRoute = SettingsAgentToolsRouteImport.update({
   path: '/settings/agent-tools',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
-  id: '/project/$projectId',
-  path: '/project/$projectId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RoomsRoomIdRoute = RoomsRoomIdRouteImport.update({
   id: '/rooms/$roomId',
   path: '/rooms/$roomId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RoomsIndexRoute = RoomsIndexRouteImport.update({
-  id: '/rooms/',
-  path: '/rooms/',
+const ProjectProjectIdRoute = ProjectProjectIdRouteImport.update({
+  id: '/project/$projectId',
+  path: '/project/$projectId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LocalApiServerLogsRoute = LocalApiServerLogsRouteImport.update({
@@ -176,14 +176,13 @@ const SettingsProvidersProviderNameRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/rooms/': typeof RoomsIndexRoute
-  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
@@ -200,19 +199,19 @@ export interface FileRoutesByFullPath {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/rooms': typeof RoomsIndexRoute
-  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
@@ -229,20 +228,20 @@ export interface FileRoutesByTo {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/rooms': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers': typeof SettingsProvidersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/rooms/': typeof RoomsIndexRoute
-  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/logs': typeof LogsRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
+  '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/settings/agent-tools': typeof SettingsAgentToolsRoute
   '/settings/assistant': typeof SettingsAssistantRoute
   '/settings/attachments': typeof SettingsAttachmentsRoute
@@ -259,6 +258,7 @@ export interface FileRoutesById {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
 }
@@ -266,14 +266,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/rooms/'
-    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/rooms/$roomId'
     | '/settings/agent-tools'
     | '/settings/assistant'
     | '/settings/attachments'
@@ -290,19 +289,19 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/rooms/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/rooms'
-    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/rooms/$roomId'
     | '/settings/agent-tools'
     | '/settings/assistant'
     | '/settings/attachments'
@@ -319,19 +318,19 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/rooms'
     | '/settings/providers/$providerName'
     | '/settings/providers'
   id:
     | '__root__'
     | '/'
-    | '/rooms/'
-    | '/rooms/$roomId'
     | '/artifacts'
     | '/cowork'
     | '/logs'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
+    | '/rooms/$roomId'
     | '/settings/agent-tools'
     | '/settings/assistant'
     | '/settings/attachments'
@@ -348,20 +347,20 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/rooms/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  RoomsIndexRoute: typeof RoomsIndexRoute
-  RoomsRoomIdRoute: typeof RoomsRoomIdRoute
   ArtifactsRoute: typeof ArtifactsRoute
   CoworkRoute: typeof CoworkRoute
   LogsRoute: typeof LogsRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
+  RoomsRoomIdRoute: typeof RoomsRoomIdRoute
   SettingsAgentToolsRoute: typeof SettingsAgentToolsRoute
   SettingsAssistantRoute: typeof SettingsAssistantRoute
   SettingsAttachmentsRoute: typeof SettingsAttachmentsRoute
@@ -378,6 +377,7 @@ export interface RootRouteChildren {
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
+  RoomsIndexRoute: typeof RoomsIndexRoute
   SettingsProvidersProviderNameRoute: typeof SettingsProvidersProviderNameRoute
   SettingsProvidersIndexRoute: typeof SettingsProvidersIndexRoute
 }
@@ -417,6 +417,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rooms/': {
+      id: '/rooms/'
+      path: '/rooms'
+      fullPath: '/rooms/'
+      preLoaderRoute: typeof RoomsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/threads/$threadId': {
@@ -531,25 +538,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAgentToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/project/$projectId': {
-      id: '/project/$projectId'
-      path: '/project/$projectId'
-      fullPath: '/project/$projectId'
-      preLoaderRoute: typeof ProjectProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/rooms/': {
-      id: '/rooms/'
-      path: '/rooms'
-      fullPath: '/rooms/'
-      preLoaderRoute: typeof RoomsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/rooms/$roomId': {
       id: '/rooms/$roomId'
       path: '/rooms/$roomId'
       fullPath: '/rooms/$roomId'
       preLoaderRoute: typeof RoomsRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/project/$projectId': {
+      id: '/project/$projectId'
+      path: '/project/$projectId'
+      fullPath: '/project/$projectId'
+      preLoaderRoute: typeof ProjectProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/local-api-server/logs': {
@@ -578,14 +578,13 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  RoomsIndexRoute: RoomsIndexRoute,
-  RoomsRoomIdRoute: RoomsRoomIdRoute,
   ArtifactsRoute: ArtifactsRoute,
   CoworkRoute: CoworkRoute,
   LogsRoute: LogsRoute,
   SystemMonitorRoute: SystemMonitorRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
+  RoomsRoomIdRoute: RoomsRoomIdRoute,
   SettingsAgentToolsRoute: SettingsAgentToolsRoute,
   SettingsAssistantRoute: SettingsAssistantRoute,
   SettingsAttachmentsRoute: SettingsAttachmentsRoute,
@@ -602,6 +601,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
+  RoomsIndexRoute: RoomsIndexRoute,
   SettingsProvidersProviderNameRoute: SettingsProvidersProviderNameRoute,
   SettingsProvidersIndexRoute: SettingsProvidersIndexRoute,
 }
