@@ -585,6 +585,15 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Acts on another session, so `Write`. The gate lets it through like the
+    // other messaging tools (a deny rule still wins); what fences it is the
+    // per-call user approval the handler requires, plus the same-project,
+    // running-target and run-id rules in `session_mailbox/stop.rs`.
+    BuiltinTool {
+        name: "stop_session",
+        capability: Capability::Write,
+        path_args: &[],
+    },
 ];
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -649,18 +658,23 @@ mod tests {
     #[test]
     fn builtin_count_matches_expected() {
         // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools
-        // + 2 run-to-run message tools (AH-103) + 4 session-messaging tools.
+        // + 2 run-to-run message tools (AH-103) + 5 session-messaging tools.
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        assert_eq!(BUILTIN_TOOLS.len(), 23);
+        assert_eq!(BUILTIN_TOOLS.len(), 24);
     }
 
     #[test]
     fn mailbox_tools_are_read_with_no_paths_and_session_only() {
         for name in crate::session_mailbox::TOOL_NAMES {
             let t = lookup(name).expect("mailbox tool is builtin");
-            assert_eq!(t.capability, Capability::Read);
+            let expected = if *name == "stop_session" {
+                Capability::Write
+            } else {
+                Capability::Read
+            };
+            assert_eq!(t.capability, expected, "{name}");
             assert!(t.path_args.is_empty());
             assert!(is_mailbox_tool(name));
             assert!(!is_workspace_tool(name));

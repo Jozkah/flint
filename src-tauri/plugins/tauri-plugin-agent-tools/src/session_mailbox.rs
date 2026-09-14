@@ -1098,12 +1098,21 @@ impl Mailbox {
 // Agent tools
 // ---------------------------------------------------------------------------
 
-/// Names of the mailbox tools, in registry order.
+mod stop;
+pub use stop::{
+    set_stop_emitter, stop_code, StopParty, StopRequest, StopStatus, MAX_STOP_REASON_CHARS,
+    STOP_APPROVAL_TTL_MS, STOP_PAIR_LIMIT, STOP_RATE_LIMIT, STOP_RATE_WINDOW_MS,
+    STOP_REQUESTED_EVENT, STOP_REQUEST_TTL_MS,
+};
+
+/// Names of the session-messaging tools, in registry order. `stop_session` is
+/// the only one that acts on another session; see `session_mailbox/stop.rs`.
 pub const TOOL_NAMES: &[&str] = &[
     "list_sessions",
     "send_message",
     "read_messages",
     "wait_for_reply",
+    "stop_session",
 ];
 
 fn tool_error(err: &MailboxError) -> String {
@@ -1238,6 +1247,7 @@ pub async fn run_tool(
                     }),
                 })
         }
+        "stop_session" => stop::run_stop_tool(&mailbox, session_id, args, ctx).await,
         other => Err(MailboxError::new(
             code::NOT_AVAILABLE,
             format!("unknown mailbox tool '{other}'"),
@@ -1251,3 +1261,5 @@ pub async fn run_tool(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod stop_tests;

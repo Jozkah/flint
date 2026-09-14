@@ -278,6 +278,11 @@ type CoworkSessionsState = {
   /** Drop everything the agent produced since the last question, so the run can
    * be taken again. Both lists are rewound together or the transcript and the
    * history the model sees would disagree. */
+  /**
+   * Add display-only rows to a session's transcript without touching the
+   * model history (e.g. "Stopped by <session>"). Nothing is sent to a model.
+   */
+  appendTurns: (id: string, turns: CoworkTurn[]) => void
   rewindToLastUser: (id: string) => void
   clearSession: (id: string) => void
 }
@@ -684,6 +689,15 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               updated: now(),
             }
           }),
+        })),
+
+      appendTurns: (id, turns) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? { ...x, turns: [...x.turns, ...turns], updated: now() }
+              : x
+          ),
         })),
 
       rewindToLastUser: (id) =>

@@ -1303,6 +1303,53 @@ pub async fn mailbox_list_sessions(
     Mailbox::open(Path::new(&data_folder)).list_sessions(&session_id)
 }
 
+/// The user of `session_id` approved one `stop_session` call. Recorded in
+/// memory for that call id, target and reason; the tool refuses without it.
+/// Only the renderer's approval prompt calls this: no tool reaches it.
+#[tauri::command]
+pub async fn mailbox_stop_approve(
+    data_folder: String,
+    session_id: String,
+    call_id: String,
+    target_session_id: String,
+    reason: String,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).approve_stop(
+        &session_id,
+        &call_id,
+        &target_session_id,
+        &reason,
+    )
+}
+
+/// A stop request addressed to `session_id` that may be applied now, or
+/// `null` (unknown, not addressed to it, resolved, or stale).
+#[tauri::command]
+pub async fn mailbox_stop_pending(
+    data_folder: String,
+    session_id: String,
+    request_id: String,
+) -> Result<Option<crate::session_mailbox::StopRequest>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).pending_stop(&session_id, &request_id)
+}
+
+/// The target's renderer reports whether it stopped the named run.
+#[tauri::command]
+pub async fn mailbox_stop_resolve(
+    data_folder: String,
+    session_id: String,
+    request_id: String,
+    applied: bool,
+    run_id: Option<String>,
+) -> Result<crate::session_mailbox::StopRequest, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).resolve_stop(
+        &session_id,
+        &request_id,
+        applied,
+        run_id.as_deref(),
+    )
+}
+
 /// Write one audit record per resource this call touches.
 ///
 /// Split out so the production gate call above stays readable, and so the

@@ -426,6 +426,10 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
             vec![capability::FS_READ]
         }
+        // Writes a stop request under the data folder, never into the
+        // project, so a session with review-only access to its folder still
+        // has it. What fences it is the per-call approval, not the disk.
+        "stop_session" => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision
         // rather than an environment fact, and is enforced by the gate. Nothing
         // about the environment withholds them.

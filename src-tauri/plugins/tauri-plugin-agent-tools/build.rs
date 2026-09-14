@@ -79,6 +79,9 @@ const COMMANDS: &[&str] = &[
     "mailbox_claim",
     "mailbox_reply",
     "mailbox_list_sessions",
+    "mailbox_stop_approve",
+    "mailbox_stop_pending",
+    "mailbox_stop_resolve",
 ];
 
 fn main() {

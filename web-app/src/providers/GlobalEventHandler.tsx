@@ -6,6 +6,7 @@ import { useHardware } from '@/hooks/useHardware'
 import { useMcpToolProgress } from '@/hooks/useMcpToolProgress'
 import { useMailboxPresence } from '@/hooks/useMailboxPresence'
 import { useMailboxDelivery } from '@/hooks/useMailboxDelivery'
+import { useSessionStopRequests } from '@/hooks/useSessionStopRequests'
 import { isPlatformTauri } from '@/lib/platform/utils'
 
 /**
@@ -22,6 +23,8 @@ export function GlobalEventHandler() {
   // delivered into Cowork sessions whichever screen is showing.
   useMailboxPresence()
   useMailboxDelivery()
+  // Approved stop_session requests from another session in the project.
+  useSessionStopRequests()
 
   // Probe hardware on mount so Hub fit-status renders before the user
   // visits Settings → Hardware. Re-detect on visibility return (post-sleep, #6447).

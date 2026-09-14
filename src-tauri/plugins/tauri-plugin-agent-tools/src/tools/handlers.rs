@@ -646,7 +646,7 @@ pub(crate) async fn execute_text(
         "web_fetch" => crate::tools::web::web_fetch(args).await,
         // Cross-session messaging. Refuses unless the dispatcher bound this
         // call to a session and a mailbox (desktop, session scope only).
-        "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
+        "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {
             crate::session_mailbox::run_tool(tool.name, args, ctx).await
         }
         other => format!("ERROR: unknown built-in tool '{other}'"),
