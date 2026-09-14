@@ -60,7 +60,7 @@ export function LeftSidebar() {
             reserveLeft && 'pl-16'
           )}
         >
-          <span className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-ink-2">
+          <span className="truncate text-[13px] font-semibold text-foreground">
             {t(`common:appRail.${area}`)}
           </span>
           <SidebarTrigger className="text-muted-foreground hover:bg-sunken pointer-coarse:size-11" />
