@@ -34,7 +34,7 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) EXE=".exe"; LIB="ggml-base.dll" ;;
   *) EXE=""; LIB="libggml-base.so" ;;
 esac
-for bin in jan jan-cli jan-llama-worker; do
+for bin in flint jan-cli flint-llama-worker; do
   [ -f "src-tauri/resources/bin/${bin}${EXE}" ] || touch "src-tauri/resources/bin/${bin}${EXE}"
 done
 ls src-tauri/resources/bin/*ggml*."${LIB##*.}"* >/dev/null 2>&1 || touch "src-tauri/resources/bin/$LIB"

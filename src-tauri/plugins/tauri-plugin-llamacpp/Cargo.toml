@@ -51,8 +51,8 @@ nix = { version = "=0.30.1", features = ["signal", "process"] }
 # The supervised worker. `required-features` keeps it out of the default build,
 # where there is no compiled llama.cpp to link against.
 [[bin]]
-name = "jan-llama-worker"
-path = "src/bin/jan-llama-worker.rs"
+name = "flint-llama-worker"
+path = "src/bin/flint-llama-worker.rs"
 required-features = ["engine"]
 
 [features]

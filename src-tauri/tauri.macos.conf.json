@@ -3,7 +3,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Jan",
+        "title": "Flint",
         "width": 1200,
         "minWidth": 1024,
         "height": 800,
@@ -43,8 +43,8 @@
       "resources/LICENSE",
       "resources/bin/mlx-server",
       "resources/bin/mlx-swift_Cmlx.bundle",
-      "resources/bin/jan",
-      "resources/bin/jan-llama-worker",
+      "resources/bin/flint",
+      "resources/bin/flint-llama-worker",
       "resources/bin/libggml*"
     ],
     "externalBin": [

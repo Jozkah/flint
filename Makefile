@@ -174,7 +174,7 @@ test: test-prepare install-rust-targets
 # sh.exe is on PATH, so it takes the script.
 stub-resources:
 ifeq ($(RECIPE_SHELL_IS_CMD),yes)
-	-powershell -Command "New-Item -ItemType Directory -Force -Path src-tauri/resources/bin | Out-Null; foreach ($$f in @('jan-cli.exe','jan-llama-worker.exe','ggml-base.dll')) { $$p = Join-Path 'src-tauri/resources/bin' $$f; if (-not (Test-Path $$p)) { New-Item -ItemType File -Path $$p | Out-Null } }"
+	-powershell -Command "New-Item -ItemType Directory -Force -Path src-tauri/resources/bin | Out-Null; foreach ($$f in @('flint.exe','flint-llama-worker.exe','ggml-base.dll')) { $$p = Join-Path 'src-tauri/resources/bin' $$f; if (-not (Test-Path $$p)) { New-Item -ItemType File -Path $$p | Out-Null } }"
 else
 	@./scripts/stub-tauri-resources.sh
 	@node ./scripts/check-tauri-resources.mjs
@@ -186,7 +186,7 @@ test-ci: test-prepare
 # Cheap compile guard for the CLI feature set, covering what test-ci no longer
 # builds. `make build` still builds the real binary on every platform.
 check-cli:
-	cd src-tauri && cargo check --locked --no-default-features --features cli --bin jan
+	cd src-tauri && cargo check --locked --no-default-features --features cli --bin flint
 
 # Build MLX server (macOS Apple Silicon only) - always builds
 build-mlx-server:
@@ -248,35 +248,35 @@ else
 	@echo "Skipping MLX server build (macOS only)"
 endif
 
-# Build jan CLI (release, platform-aware) → src-tauri/resources/bin/jan[.exe]
+# Build jan CLI (release, platform-aware) → src-tauri/resources/bin/flint[.exe]
 build-cli:
 ifeq ($(DETECTED_OS),Darwin)
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan --target aarch64-apple-darwin
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan --target x86_64-apple-darwin
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target aarch64-apple-darwin
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target x86_64-apple-darwin
 	lipo -create \
 		src-tauri/target/aarch64-apple-darwin/release/jan \
 		src-tauri/target/x86_64-apple-darwin/release/jan \
-		-output src-tauri/resources/bin/jan
-	chmod +x src-tauri/resources/bin/jan
+		-output src-tauri/resources/bin/flint
+	chmod +x src-tauri/resources/bin/flint
 	$(call MKDIR,'src-tauri/target/universal-apple-darwin/release')
 
 	echo "Checking for code signing identity..."; \
 	SIGNING_IDENTITY=$$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/'); \
 	if [ -n "$$SIGNING_IDENTITY" ]; then \
 		echo "Signing jan with identity: $$SIGNING_IDENTITY"; \
-		codesign --force --options runtime --timestamp --sign "$$SIGNING_IDENTITY" src-tauri/resources/bin/jan; \
+		codesign --force --options runtime --timestamp --sign "$$SIGNING_IDENTITY" src-tauri/resources/bin/flint; \
 		echo "Code signing completed successfully"; \
 	else \
 		echo "Warning: No Developer ID Application identity found. Skipping code signing (notarization will fail)."; \
 	fi
 
-	cp src-tauri/resources/bin/jan src-tauri/target/universal-apple-darwin/release/jan
+	cp src-tauri/resources/bin/flint src-tauri/target/universal-apple-darwin/release/jan
 else ifeq ($(DETECTED_OS),Windows)
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
 	copy src-tauri\target\release\jan.exe src-tauri\resources\bin\jan.exe
 else
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
-	cp src-tauri/target/release/jan src-tauri/resources/bin/jan
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
+	cp src-tauri/target/release/flint src-tauri/resources/bin/flint
 endif
 
 # ---------------------------------------------------------------------------
@@ -485,10 +485,10 @@ build-engine: engine-source check-engine-toolchain
 	@echo "Building llama.cpp engine worker (variant: $(JAN_ENGINE_VARIANT), features: $(ENGINE_FEATURES), jobs: $(if $(JAN_ENGINE_JOBS),$(JAN_ENGINE_JOBS),all cores))"
 	$(call MKDIR,'$(ENGINE_BIN_DIR)')
 ifeq ($(DETECTED_OS),Windows)
-	cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS_WIN) cargo build --release --features $(ENGINE_FEATURES) --bin jan-llama-worker
+	cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS_WIN) cargo build --release --features $(ENGINE_FEATURES) --bin flint-llama-worker
 	bash src-tauri/build-utils/stage-engine.sh release
 else
-	$(call with_engine_log,cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS) cargo build --release --features $(ENGINE_FEATURES) --bin jan-llama-worker)
+	$(call with_engine_log,cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS) cargo build --release --features $(ENGINE_FEATURES) --bin flint-llama-worker)
 	bash src-tauri/build-utils/stage-engine.sh release
 endif
 	bash src-tauri/build-utils/sign-engine.sh
@@ -512,45 +512,45 @@ build-engine-dev: engine-source check-engine-toolchain
 	@echo "Building llama.cpp engine worker (dev, variant: $(JAN_ENGINE_VARIANT), jobs: $(if $(JAN_ENGINE_JOBS),$(JAN_ENGINE_JOBS),all cores))"
 	$(call MKDIR,'$(ENGINE_BIN_DIR)')
 ifeq ($(DETECTED_OS),Windows)
-	cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS_WIN) cargo build --features $(ENGINE_FEATURES) --bin jan-llama-worker
+	cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS_WIN) cargo build --features $(ENGINE_FEATURES) --bin flint-llama-worker
 	bash src-tauri/build-utils/stage-engine.sh debug
 else
-	$(call with_engine_log,cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS) cargo build --features $(ENGINE_FEATURES) --bin jan-llama-worker)
+	$(call with_engine_log,cd $(ENGINE_PLUGIN_DIR) && $(ENGINE_CARGO_JOBS) cargo build --features $(ENGINE_FEATURES) --bin flint-llama-worker)
 	bash src-tauri/build-utils/stage-engine.sh debug
 endif
 
 # Debug build for local dev (faster, native arch only)
 build-cli-dev:
 	$(call MKDIR,'src-tauri/resources/bin')	
-	cd src-tauri && cargo build --no-default-features --features cli --bin jan
+	cd src-tauri && cargo build --no-default-features --features cli --bin flint
 ifeq ($(DETECTED_OS),Windows)
 	copy src-tauri\target\debug\jan.exe src-tauri\resources\bin\jan.exe
 else
-	install -m755 src-tauri/target/debug/jan src-tauri/resources/bin/jan
+	install -m755 src-tauri/target/debug/flint src-tauri/resources/bin/flint
 endif
 
 # Build the Jan agent CLI (the `jan` binary with the `cli` feature)
 # The compiled binary lives at two locations after build:
-#   1. src-tauri/resources/bin/jan[.exe] (bundled copy)
+#   1. src-tauri/resources/bin/flint[.exe] (bundled copy)
 #   2. src-tauri/target/<triple>/release/jan[.exe] (Cargo output)
 agent: build-agent
 
 # Build the jan agent CLI binary (release, platform-aware)
 # The binary is compiled into src-tauri/target/<triple>/release/jan[.exe]
-# and then installed to src-tauri/resources/bin/jan[.exe] for bundling.
+# and then installed to src-tauri/resources/bin/flint[.exe] for bundling.
 build-agent:
 ifeq ($(DETECTED_OS),Windows)
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
 	copy src-tauri\target\release\jan.exe src-tauri\resources\bin\jan.exe
 	@echo "Jan agent built at:"
-	@echo "  src-tauri/resources/bin/jan.exe"
-	@echo "  src-tauri/target/release/jan.exe"
+	@echo "  src-tauri/resources/bin/flint.exe"
+	@echo "  src-tauri/target/release/flint.exe"
 else
-	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
-	install -m755 src-tauri/target/release/jan src-tauri/resources/bin/jan
+	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
+	install -m755 src-tauri/target/release/flint src-tauri/resources/bin/flint
 	@echo "Jan agent built at:"
-	@echo "  src-tauri/resources/bin/jan"
-	@echo "  src-tauri/target/release/jan"
+	@echo "  src-tauri/resources/bin/flint"
+	@echo "  src-tauri/target/release/flint"
 endif
 
 # Build

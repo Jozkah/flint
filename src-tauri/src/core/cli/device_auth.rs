@@ -47,7 +47,7 @@ use url::Url;
 pub(crate) const SESSIONS_PATH: &str = "/auth/cli/sessions";
 
 /// Identifies this client in the approve page ("… is requesting access").
-const CLIENT_NAME: &str = "Jan CLI";
+const CLIENT_NAME: &str = "Flint CLI";
 
 /// Fallbacks for a server that omits them, matching the reference client.
 const DEFAULT_EXPIRES_IN: u64 = 600;
@@ -538,11 +538,11 @@ struct UserPayload {
     name: Option<String>,
 }
 
-const WAKE_PAGE: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Jan CLI</title>\
+const WAKE_PAGE: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Flint CLI</title>\
 </head><body style=\"font-family:system-ui,sans-serif;display:flex;align-items:center;\
 justify-content:center;height:100vh;margin:0\"><div style=\"text-align:center\">\
 <div style=\"font-size:2rem;margin-bottom:.5rem\">&#10003;</div>\
-<h1 style=\"font-size:1.3rem;font-weight:500;margin:0 0 .4rem\">Jan CLI authorized</h1>\
+<h1 style=\"font-size:1.3rem;font-weight:500;margin:0 0 .4rem\">Flint CLI authorized</h1>\
 <p style=\"opacity:.6;margin:0\">Return to your terminal. You can close this tab.</p>\
 </div></body></html>";
 

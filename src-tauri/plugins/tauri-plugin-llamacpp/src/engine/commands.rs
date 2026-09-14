@@ -82,7 +82,7 @@ fn resolve_worker_exe<R: tauri::Runtime>(
 fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::FaultCallback {
     use tauri::Emitter;
     Arc::new(move |fault: worker::RuntimeFault, line: String| {
-        log::error!("jan-llama-worker fault ({fault:?}): {line}");
+        log::error!("flint-llama-worker fault ({fault:?}): {line}");
         if let Err(e) = app_handle.emit(fault.event_name(), line) {
             log::warn!("emit {} failed: {e}", fault.event_name());
         }
@@ -467,7 +467,7 @@ pub async fn get_engine_info(
     // would fail against a closed port with no explanation.
     if let Some(h) = guard.as_mut() {
         if let Some(status) = h.exited() {
-            log::warn!("jan-llama-worker exited unexpectedly: {status}");
+            log::warn!("flint-llama-worker exited unexpectedly: {status}");
             *guard = None;
             return Ok(None);
         }
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn the_worker_file_name_is_platform_correct() {
         let name = super::worker::worker_file_name();
-        assert!(name.starts_with("jan-llama-worker"));
+        assert!(name.starts_with("flint-llama-worker"));
         assert_eq!(name.ends_with(".exe"), cfg!(windows));
     }
 }

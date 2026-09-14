@@ -1,4 +1,4 @@
-//! Supervises the `jan-llama-worker` process.
+//! Supervises the `flint-llama-worker` process.
 //!
 //! This is the crash boundary. The worker links llama.cpp statically, but in
 //! its own process, because `GGML_ASSERT` calls `abort()` unconditionally and
@@ -38,10 +38,10 @@ pub enum WorkerError {
 impl std::fmt::Display for WorkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Spawn(m) => write!(f, "could not start jan-llama-worker: {m}"),
-            Self::Handshake(m) => write!(f, "jan-llama-worker did not come up: {m}"),
+            Self::Spawn(m) => write!(f, "could not start flint-llama-worker: {m}"),
+            Self::Handshake(m) => write!(f, "flint-llama-worker did not come up: {m}"),
             Self::Timeout(d) => {
-                write!(f, "jan-llama-worker did not report a port within {d:?}")
+                write!(f, "flint-llama-worker did not report a port within {d:?}")
             }
         }
     }
@@ -235,12 +235,12 @@ impl WorkerHandle {
         if self.request_shutdown() {
             match tokio::time::timeout(SHUTDOWN_TIMEOUT, self.child.wait()).await {
                 Ok(Ok(status)) => {
-                    log::info!("jan-llama-worker exited gracefully: {status}");
+                    log::info!("flint-llama-worker exited gracefully: {status}");
                     return;
                 }
                 Ok(Err(e)) => log::warn!("waiting on the worker failed: {e}"),
                 Err(_) => log::warn!(
-                    "jan-llama-worker did not exit within {}s of /shutdown; falling back",
+                    "flint-llama-worker did not exit within {}s of /shutdown; falling back",
                     SHUTDOWN_TIMEOUT.as_secs()
                 ),
             }
@@ -315,7 +315,7 @@ pub async fn spawn(
     //
     // Absolute only: `current_dir` also changes how the OS resolves a *relative*
     // program path, so doing this unconditionally would make a dev's
-    // `--bin build/jan-llama-worker` be looked up inside `build/`. Every shipped
+    // `--bin build/flint-llama-worker` be looked up inside `build/`. Every shipped
     // path is absolute (`resource_dir()`, or `sidecar_path` off
     // `current_exe`), so the hardening lands exactly where it matters.
     if exe.is_absolute() {
@@ -347,7 +347,7 @@ pub async fn spawn(
             let mut lines = BufReader::new(stderr).lines();
             let mut last_fault_at: Option<tokio::time::Instant> = None;
             while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("jan-llama-worker: {line}");
+                log::debug!("flint-llama-worker: {line}");
                 let Some(cb) = on_fault.as_ref() else { continue };
                 let Some(fault) = classify_fault(&line.to_lowercase()) else {
                     continue;
@@ -396,7 +396,7 @@ pub async fn spawn(
     // Keep draining stdout so the worker never blocks on a full pipe.
     tokio::spawn(async move {
         while let Ok(Some(line)) = lines.next_line().await {
-            log::debug!("jan-llama-worker: {line}");
+            log::debug!("flint-llama-worker: {line}");
         }
     });
 
@@ -413,9 +413,9 @@ pub async fn spawn(
 /// lays out a bundled sidecar.
 pub fn worker_file_name() -> &'static str {
     if cfg!(windows) {
-        "jan-llama-worker.exe"
+        "flint-llama-worker.exe"
     } else {
-        "jan-llama-worker"
+        "flint-llama-worker"
     }
 }
 

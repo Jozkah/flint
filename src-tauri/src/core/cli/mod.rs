@@ -999,7 +999,7 @@ fn prepare_agent_session(
         crate::core::cli::providers::unreachable_local_provider(&provider_configs, &model)
     {
         return Err(format!(
-            "model '{model}' is only offered by '{local}', a local engine the Jan CLI cannot \
+            "model '{model}' is only offered by '{local}', a local engine the Flint CLI cannot \
              start itself. To use it, run the model in the Jan desktop app with its API server \
              enabled and point a provider at it:\n  \
              jan config set --provider jan --base-url http://localhost:1337/v1 --model {model}\n\

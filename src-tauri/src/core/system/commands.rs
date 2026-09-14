@@ -708,7 +708,7 @@ pub fn install_jan_cli_sync<R: Runtime>(
         .ok_or_else(|| "bundled CLI has no parent directory".to_string())?;
 
     if !bundled.exists() {
-        return Err("Jan CLI binary not bundled with this version of Jan.".to_string());
+        return Err("Flint CLI binary not bundled with this version of Jan.".to_string());
     }
 
     #[cfg(windows)]
@@ -768,7 +768,7 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
         let dest = jan_cli_install_dir()?.join("jan");
         if dest.exists() {
             std::fs::remove_file(&dest)
-                .map_err(|e| format!("Failed to remove Jan CLI from {}: {}", dest.display(), e))?;
+                .map_err(|e| format!("Failed to remove Flint CLI from {}: {}", dest.display(), e))?;
         }
         Ok(())
     }

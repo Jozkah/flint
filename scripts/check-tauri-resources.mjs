@@ -8,7 +8,7 @@
  * failure a contributor meets is not a test failure — it is
  *
  *   error: failed to run custom build command for `Jan v0.8.4`
- *   resource path `resources/bin/jan` doesn't exist
+ *   resource path `resources/bin/flint` doesn't exist
  *
  * with no indication of what to do about it. That message costs whoever hits
  * it a search through the Makefile; this script answers it directly.

@@ -35,7 +35,7 @@ Darwin)
   # The backend modules are `.so` even on macOS (CMake MODULE libraries), and
   # ggml dlopens them without checking a signature, so leaving them out here
   # fails notarization rather than anything at run time.
-  for target in "$DEST/jan-llama-worker" "$DEST"/libggml*.dylib "$DEST"/libggml*.so; do
+  for target in "$DEST/flint-llama-worker" "$DEST"/libggml*.dylib "$DEST"/libggml*.so; do
     [ -f "$target" ] || continue
     # cmake stages the soname chain as symlinks. codesign follows them, so
     # signing every name would sign the same file three times.
@@ -54,7 +54,7 @@ MINGW* | MSYS* | CYGWIN*)
   signed=0
   # sign.ps1 is the same script tauri's signCommand runs, so the installer and
   # the binaries inside it are signed by one implementation.
-  for target in "$DEST/jan-llama-worker.exe" "$DEST"/ggml*.dll; do
+  for target in "$DEST/flint-llama-worker.exe" "$DEST"/ggml*.dll; do
     [ -f "$target" ] || continue
     powershell -ExecutionPolicy Bypass -File src-tauri/sign.ps1 "$target" || exit 1
     signed=$((signed + 1))

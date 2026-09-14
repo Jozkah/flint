@@ -55,7 +55,7 @@ fn resolve_thread_id(base: &Path, explicit: Option<&str>) -> Result<String, Stri
         }
         if !get_thread_dir(base, id).is_dir() {
             return Err(format!(
-                "thread '{id}' not found under {} - run `jan cli threads list` to see ids",
+                "thread '{id}' not found under {} - run `flint cli threads list` to see ids",
                 base.join("threads").display()
             ));
         }

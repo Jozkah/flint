@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 # Speeds up Invoke-WebRequest on PowerShell 5.1 by orders of magnitude.
 $ProgressPreference = 'SilentlyContinue'
 
-$BinaryName = 'jan.exe'
+$BinaryName = 'flint.exe'
 $PlatformKey = 'windows-x86_64'
 
 if (-not $Dir) {
@@ -112,7 +112,7 @@ function Install-FromSource {
   try {
     # The CLI and the desktop app are mutually exclusive feature configs, so
     # the default features must stay off.
-    cargo build --no-default-features --features cli --bin jan --release
+    cargo build --no-default-features --features cli --bin flint --release
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
@@ -167,7 +167,7 @@ function Install-Published {
     }
 
     Expand-Archive -LiteralPath $archive -DestinationPath $tmp -Force
-    # Published zips keep jan.exe at the root; search anyway so a packaging
+    # Published zips keep flint.exe at the root; search anyway so a packaging
     # change cannot silently break this.
     $extracted = Get-ChildItem -Path $tmp -Recurse -File -Filter $BinaryName |
       Select-Object -First 1

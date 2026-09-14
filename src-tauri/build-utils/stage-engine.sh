@@ -5,7 +5,7 @@
 # The ggml compute backends are MODULE libraries loaded by name at runtime, and
 # ggml resolves them against the *executable's own directory*
 # (ggml/src/ggml-backend-reg.cpp: search paths are GGML_BACKEND_DIR, then the
-# exe dir, then the cwd). So they have to sit next to jan-llama-worker, not
+# exe dir, then the cwd). So they have to sit next to flint-llama-worker, not
 # merely somewhere in the bundle. libggml/libggml-base are ordinary shared
 # libraries found via the rpath ($ORIGIN / @loader_path) build.rs emits, which
 # resolves to the same directory.
@@ -34,15 +34,15 @@ case "$(uname -s)" in
   *)                    EXE="";     LIBEXT="so";    MODEXT="so"  ;;
 esac
 
-WORKER="$TARGET_DIR/jan-llama-worker$EXE"
+WORKER="$TARGET_DIR/flint-llama-worker$EXE"
 if [ ! -f "$WORKER" ]; then
   echo "stage-engine: $WORKER not found; run the cargo build first" >&2
   exit 1
 fi
 
 mkdir -p "$DEST"
-install -m755 "$WORKER" "$DEST/jan-llama-worker$EXE"
-echo "stage-engine: staged jan-llama-worker$EXE"
+install -m755 "$WORKER" "$DEST/flint-llama-worker$EXE"
+echo "stage-engine: staged flint-llama-worker$EXE"
 
 # Newest match only, so a stale artefact from an earlier variant is never
 # picked.

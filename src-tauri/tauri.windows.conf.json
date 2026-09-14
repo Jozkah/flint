@@ -3,7 +3,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Jan",
+        "title": "Flint",
         "width": 1200,
         "minWidth": 1024,
         "height": 800,
@@ -26,8 +26,8 @@
     ],
     "resources": [
       "resources/LICENSE",
-      "resources/bin/jan.exe",
-      "resources/bin/jan-llama-worker.exe",
+      "resources/bin/flint.exe",
+      "resources/bin/flint-llama-worker.exe",
       "resources/bin/ggml*.dll"
     ],
     "externalBin": [

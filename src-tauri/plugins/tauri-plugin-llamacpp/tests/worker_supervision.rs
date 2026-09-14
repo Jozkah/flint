@@ -1,4 +1,4 @@
-//! The supervisor driving the real `jan-llama-worker` binary: spawn, read the
+//! The supervisor driving the real `flint-llama-worker` binary: spawn, read the
 //! handshake, serve over HTTP, stop. This is the crash-boundary path that
 //! replaces spawning a downloaded `llama-server` in router mode.
 //!
@@ -19,7 +19,7 @@ fn model_path() -> Option<String> {
 
 /// Cargo builds the bin for us and hands over its path.
 fn worker_exe() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_jan-llama-worker"))
+    PathBuf::from(env!("CARGO_BIN_EXE_flint-llama-worker"))
 }
 
 /// A preset in exactly the shape Jan's preset.ts already emits.

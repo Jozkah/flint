@@ -554,7 +554,7 @@ fn client_info() -> ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
         client_info: Implementation {
-            name: "Jan CLI Client".to_string(),
+            name: "Flint CLI Client".to_string(),
             version: "0.0.1".to_string(),
             title: None,
             website_url: None,

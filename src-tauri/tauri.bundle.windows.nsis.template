@@ -711,7 +711,7 @@ Section Install
     ; inference permanently unavailable, since there is no runtime backend
     ; download to fall back on, so a build that staged nothing must fail loudly
     ; here the way stage-engine.sh already does.
-    File /a "/oname=jan-llama-worker.exe" "D:\a\jan\jan\src-tauri\resources\bin\jan-llama-worker.exe"
+    File /a "/oname=flint-llama-worker.exe" "D:\a\jan\jan\src-tauri\resources\bin\flint-llama-worker.exe"
     File /a "D:\a\jan\jan\src-tauri\resources\bin\ggml*.dll"
     SetOutPath $INSTDIR
 

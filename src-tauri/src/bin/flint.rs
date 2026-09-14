@@ -25,29 +25,28 @@ use std::fmt::Write as _;
 
 #[derive(Parser)]
 #[command(
-    name = "jan",
+    name = "flint",
     about = "Chat with AI models in an interactive agent console",
-    long_about = "Running `jan` with no arguments opens the interactive agent console (TUI),\n\
+    long_about = "Running `flint` with no arguments opens the interactive agent console (TUI),\n\
 where you chat with a model that can run tools in your project.\n\n\
-The `jan cli` subcommand is the non-interactive fallback: run folder-based\n\
+The `flint cli` subcommand is the non-interactive fallback: run folder-based\n\
 agents headlessly and manage threads and providers.\n\n\
 Models are served by remote providers configured in ~/.jan/config.toml\n\
-(see `jan config set`), a project's agent.toml, or the Jan desktop app.\n\n\
-Once every 24h this sends an anonymous usage ping (version, OS/arch, a random\n\
-install id) to the same endpoint as the update check. Set JAN_CLI_NO_UPDATE_CHECK\n\
-to opt out of both.",
+(a legacy path kept for compatibility; see `flint config set`), a project's\n\
+agent.toml, or the Flint desktop app.\n\n\
+This is a local-only build: it makes no network calls of its own and sends no\n\
+usage data.",
     after_help = "Examples:\n  \
-  jan                                                    # open the interactive agent console (TUI)\n  \
-  jan --safe                                             # TUI that asks before writes and commands\n  \
-  jan --task \"fix the failing test\"                      # seed the TUI with a first message\n  \
-  jan -c                                                 # resume the most recent session\n  \
-  jan --resume 3f7a91c2                                  # resume a session by id (or id prefix)\n  \
-  jan cli agent run \"fix the failing test\"               # run the agent non-interactively\n  \
-  jan cli models list                                    # show every configured provider model\n  \
-  jan cli threads list                                   # list saved conversation threads\n  \
-  jan cli mcp list                                      # list configured MCP servers\n  \
-  jan cli mcp add my-server --command npx --arg -y --arg my-mcp \n  \
-  jan update                                             # install the latest build of this channel"
+  flint                                                  # open the interactive agent console (TUI)\n  \
+  flint --safe                                           # TUI that asks before writes and commands\n  \
+  flint --task \"fix the failing test\"                    # seed the TUI with a first message\n  \
+  flint -c                                               # resume the most recent session\n  \
+  flint --resume 3f7a91c2                                # resume a session by id (or id prefix)\n  \
+  flint cli agent run \"fix the failing test\"             # run the agent non-interactively\n  \
+  flint cli models list                                  # show every configured provider model\n  \
+  flint cli threads list                                 # list saved conversation threads\n  \
+  flint cli mcp list                                     # list configured MCP servers\n  \
+  flint cli mcp add my-server --command npx --arg -y --arg my-mcp"
 )]
 struct Cli {
     #[command(subcommand)]

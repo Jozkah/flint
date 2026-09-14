@@ -131,7 +131,12 @@ pub fn first_resolved(stdout: &str) -> Option<PathBuf> {
 /// Whether a PATH entry the Windows install would prune as stale still holds a
 /// CLI. Such an entry is somebody's install, not debris.
 pub fn path_entry_holds_cli(dir: &Path) -> bool {
-    dir.join("jan.exe").is_file() || dir.join("jan").is_file()
+    // The current CLI is `flint`; `jan` is still checked so a legacy standalone
+    // install is recognised as somebody's install too, not debris.
+    dir.join("flint.exe").is_file()
+        || dir.join("flint").is_file()
+        || dir.join("jan.exe").is_file()
+        || dir.join("jan").is_file()
 }
 
 #[cfg(test)]

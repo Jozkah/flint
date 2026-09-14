@@ -28,8 +28,8 @@ path = "src/main.rs"
 required-features = ["desktop"]
 
 [[bin]]
-name = "jan"
-path = "src/bin/jan.rs"
+name = "flint"
+path = "src/bin/flint.rs"
 required-features = ["cli"]
 
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is

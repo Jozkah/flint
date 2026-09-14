@@ -78,11 +78,11 @@ detect_platform() {
       PLATFORM_KEY="windows-x86_64"
       ARCHIVE_SLUG="windows-x86_64"
       ARCHIVE_EXT="zip"
-      BINARY_NAME="jan.exe"
+      BINARY_NAME="flint.exe"
       ;;
     *) die "unsupported platform: $os $arch" ;;
   esac
-  BINARY_NAME="${BINARY_NAME:-jan}"
+  BINARY_NAME="${BINARY_NAME:-flint}"
 }
 
 sha256_of() {
@@ -141,7 +141,7 @@ build_from_source() {
   echo "building the CLI from $REPO_ROOT (release)"
   # The CLI and the desktop app are mutually exclusive feature configs, so the
   # default features must stay off.
-  (cd "$REPO_ROOT/src-tauri" && cargo build --no-default-features --features cli --bin jan --release)
+  (cd "$REPO_ROOT/src-tauri" && cargo build --no-default-features --features cli --bin flint --release)
   local built="$REPO_ROOT/src-tauri/target/release/$BINARY_NAME"
   [ -f "$built" ] || die "expected a binary at $built"
   install_binary "$built"
