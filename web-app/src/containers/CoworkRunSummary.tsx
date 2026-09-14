@@ -383,7 +383,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
     outcome.nextActions.includes('retry') && Boolean(props.onRetry)
 
   const heading = (text: string) => (
-    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <h4 className="text-xs font-medium text-muted-foreground">
       {text}
     </h4>
   )

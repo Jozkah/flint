@@ -54,14 +54,14 @@ export function DiffView({
           {parsed.hunks.map((hunk, hunkIndex) => (
             <Fragment key={`hunk-${hunkIndex}`}>
               {hunk.header && (
-                <tr className="bg-muted/60">
+                <tr className="bg-sunken">
                   <td
                     colSpan={3}
                     className="select-none px-2 py-0.5 text-muted-foreground"
                   >
                     {hunk.header}
                     {hunk.heading && (
-                      <span className="ml-2 opacity-70">{hunk.heading}</span>
+                      <span className="ml-2">{hunk.heading}</span>
                     )}
                   </td>
                 </tr>
@@ -92,8 +92,8 @@ export function DiffView({
 }
 
 const ROW_TONE: Record<DiffLine['kind'], string> = {
-  add: 'bg-success/[0.08] dark:bg-success/[0.14]',
-  remove: 'bg-destructive/[0.07] dark:bg-destructive/[0.12]',
+  add: 'bg-diff-add-bg text-diff-add',
+  remove: 'bg-diff-del-bg text-diff-del',
   context: '',
   meta: 'text-muted-foreground italic',
 }
@@ -132,8 +132,8 @@ function DiffRow({
           aria-hidden
           className={cn(
             'select-none pr-1',
-            line.kind === 'add' && 'text-success',
-            line.kind === 'remove' && 'text-destructive'
+            line.kind === 'add' && 'text-diff-add',
+            line.kind === 'remove' && 'text-diff-del'
           )}
         >
           {MARKER[line.kind]}

@@ -114,21 +114,30 @@ function HunkPreview({
   ]
   const shown = lines.slice(0, PREVIEW_LINES)
   return (
-    <pre className="mt-1 overflow-x-auto rounded-md bg-sunken/60 p-1 font-mono text-[11px] leading-4">
-      {shown.map((l, i) => (
-        <div
-          key={i}
-          className={l.sign === '+' ? 'text-success' : 'text-destructive'}
-        >
-          {l.sign}
-          {l.text}
-        </div>
-      ))}
-      {lines.length > shown.length ? (
-        <div className="text-muted-foreground">
-          … {lines.length - shown.length} more line(s)
-        </div>
-      ) : null}
+    // Long lines scroll sideways inside the hunk, never the panel.
+    <pre className="mt-1 overflow-x-auto border-y border-border bg-code py-0.5 font-mono text-xs leading-5">
+      <div className="w-max min-w-full">
+        {shown.map((l, i) => (
+          <div
+            key={i}
+            className={
+              l.sign === '+'
+                ? 'bg-diff-add-bg px-2 text-diff-add'
+                : 'bg-diff-del-bg px-2 text-diff-del'
+            }
+          >
+            <span aria-hidden className="select-none pr-2">
+              {l.sign}
+            </span>
+            {l.text}
+          </div>
+        ))}
+        {lines.length > shown.length ? (
+          <div className="px-2 text-muted-foreground">
+            … {lines.length - shown.length} more line(s)
+          </div>
+        ) : null}
+      </div>
     </pre>
   )
 }
@@ -155,11 +164,11 @@ function FileReview({
   const fileConflict = conflicts.find((c) => c.hunk === '')
   return (
     <li
-      className="rounded-md border border-border p-2"
+      className="border-b border-border py-2 last:border-b-0"
       data-testid="proposal-file"
       data-path={file.path}
     >
-      <label className="flex items-center gap-2 text-xs">
+      <label className="flex min-h-8 items-center gap-2 text-xs font-medium text-foreground pointer-coarse:min-h-11">
         <input
           type="checkbox"
           disabled={file.sensitive}
@@ -171,10 +180,10 @@ function FileReview({
         />
         <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
         <span className="shrink-0 text-muted-foreground">{file.change}</span>
-        <span className="shrink-0 font-mono text-success">
+        <span className="shrink-0 font-mono text-diff-add">
           +{file.additions}
         </span>
-        <span className="shrink-0 font-mono text-destructive">
+        <span className="shrink-0 font-mono text-diff-del">
           -{file.deletions}
         </span>
       </label>
@@ -203,12 +212,12 @@ function FileReview({
         </p>
       ) : null}
       {!file.sensitive && !whole ? (
-        <ul className="mt-1 flex flex-col gap-1">
+        <ul className="mt-1 flex flex-col gap-2">
           {file.hunks.map((h) => {
             const conflict = conflicts.find((c) => c.hunk === h.id)
             return (
               <li key={h.id} data-testid="proposal-hunk" data-hunk={h.id}>
-                <label className="flex items-center gap-2 text-[11px] text-ink-2">
+                <label className="flex min-h-7 items-center gap-2 font-mono text-xs text-ink-2 pointer-coarse:min-h-11">
                   <input
                     type="checkbox"
                     checked={chosen?.includes(h.id) ?? false}
@@ -403,9 +412,32 @@ export function CoworkProposalReview({
     return map
   }, [conflicts])
 
+  // "N of M changes selected": a hunk is one change, and a file that can only
+  // be applied whole is one. A credential file is never applied, so it is not
+  // offered as a change at all.
+  const selection = (proposal?.files ?? []).reduce(
+    (acc, file) => {
+      if (file.sensitive) return acc
+      const chosen = selected[file.path]
+      if (file.hunks.length === 0) {
+        return {
+          total: acc.total + 1,
+          chosen: acc.chosen + (chosen !== undefined ? 1 : 0),
+        }
+      }
+      return {
+        total: acc.total + file.hunks.length,
+        chosen:
+          acc.chosen +
+          file.hunks.filter((h) => chosen?.includes(h.id)).length,
+      }
+    },
+    { total: 0, chosen: 0 }
+  )
+
   return (
     <section
-      className="mb-2 rounded-md border border-border p-2"
+      className="border-b border-border px-3 py-2"
       data-testid="proposal-review"
     >
       <div className="flex items-center gap-2">
@@ -419,7 +451,8 @@ export function CoworkProposalReview({
         {!proposal ? (
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
+            className="pointer-coarse:h-11"
             disabled={busy != null}
             onClick={() => void create()}
             data-testid="proposal-create"
@@ -504,14 +537,14 @@ export function CoworkProposalReview({
             const locks = proposal.files.filter(isLockOnly)
             return (
               <>
-                <ul className="mt-2 flex flex-col gap-1">{source.map(row)}</ul>
+                <ul className="mt-1 flex flex-col">{source.map(row)}</ul>
                 {locks.length > 0 ? (
                   <div className="mt-2" data-testid="proposal-lockfiles">
-                    <p className="text-[11px] font-medium text-muted-foreground">
+                    <p className="text-xs font-medium text-muted-foreground">
                       Lock files ({locks.length}), kept apart from the source
                       changes above
                     </p>
-                    <ul className="mt-1 flex flex-col gap-1">{locks.map(row)}</ul>
+                    <ul className="mt-1 flex flex-col">{locks.map(row)}</ul>
                   </div>
                 ) : null}
               </>
@@ -525,26 +558,39 @@ export function CoworkProposalReview({
               Mark {waiting.join(', ')} as reviewed, or leave {waiting.length === 1 ? 'it' : 'them'} out, to apply.
             </p>
           ) : null}
-          <div className="mt-2 flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy != null || waiting.length > 0}
-              onClick={() => void apply()}
-              data-testid="proposal-apply"
+          {/* The review bar stays in reach while the hunks scroll, with room
+              for the home indicator on a phone. */}
+          <div
+            className="sticky bottom-0 z-[1] -mx-3 mt-2 flex flex-wrap items-center gap-2 border-t border-border bg-card px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+            data-testid="proposal-review-bar"
+          >
+            <p
+              className="mr-auto text-xs text-ink-2 tabular-nums"
+              aria-live="polite"
+              data-testid="proposal-selected-count"
             >
-              <Check size={12} />
-              {busy === 'apply' ? 'Applying…' : 'Apply selected'}
-            </Button>
+              {selection.chosen} of {selection.total} changes selected
+            </p>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
+              className="pointer-coarse:h-11"
               disabled={busy != null}
               onClick={() => void reject()}
               data-testid="proposal-reject"
             >
               <X size={12} />
               Reject
+            </Button>
+            <Button
+              size="sm"
+              className="pointer-coarse:h-11"
+              disabled={busy != null || waiting.length > 0}
+              onClick={() => void apply()}
+              data-testid="proposal-apply"
+            >
+              <Check size={12} />
+              {busy === 'apply' ? 'Applying…' : 'Apply selected'}
             </Button>
           </div>
         </>

@@ -48,16 +48,16 @@ describe('the diff view', () => {
     expect(markers).toContain('-')
   })
 
-  it('tints added and removed rows differently, and both faintly', () => {
+  it('tints added and removed rows differently, with the diff tokens', () => {
     const { container } = render(<DiffView diff={DIFF} />)
     const rows = [...container.querySelectorAll('tr')].map((r) => r.className)
-    const add = rows.find((c) => c.includes('success'))
-    const remove = rows.find((c) => c.includes('destructive'))
+    // The diff tokens carry their own light and dark values, so one class
+    // covers both grounds.
+    const add = rows.find((c) => c.includes('bg-diff-add-bg'))
+    const remove = rows.find((c) => c.includes('bg-diff-del-bg'))
     expect(add).toBeTruthy()
     expect(remove).toBeTruthy()
-    // Faint, and stated for both grounds.
-    expect(add).toMatch(/dark:/)
-    expect(remove).toMatch(/dark:/)
+    expect(add).not.toBe(remove)
   })
 
   it('renders the file content, marker stripped', () => {

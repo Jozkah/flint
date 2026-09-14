@@ -209,7 +209,7 @@ export function CoworkRewind(props: RewindProps) {
                 className="mt-3 grid gap-1.5"
                 data-testid="cowork-rewind-scope"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-xs font-medium text-muted-foreground">
                   {t('results:rewind.scopeTitle')}
                 </p>
                 <p className="break-all font-mono text-ink-2">

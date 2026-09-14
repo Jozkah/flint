@@ -108,7 +108,7 @@ export function CoworkRailToolbar({
               ? 'border-brand text-foreground'
               : tabs
                 ? 'border-transparent text-muted-foreground hover:text-foreground'
-                : active === mode && 'bg-brand-tint text-brand-text'
+                : active === mode && 'bg-accent text-foreground'
           )}
         >
           {icon}

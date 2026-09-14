@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
  */
 const diffLineTone = (line: string): string => {
   if (line.startsWith('@@')) return 'text-muted-foreground'
-  if (line.startsWith('+')) return 'bg-success-tint text-success'
-  if (line.startsWith('-')) return 'bg-destructive/10 text-destructive'
+  if (line.startsWith('+')) return 'bg-diff-add-bg text-diff-add'
+  if (line.startsWith('-')) return 'bg-diff-del-bg text-diff-del'
   return 'text-muted-foreground'
 }
 

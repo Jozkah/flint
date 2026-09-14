@@ -88,7 +88,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => props.onAdopt(record)}
             >
@@ -97,7 +97,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => void ask(record)}
             >
@@ -132,7 +132,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="destructive"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => void remove()}
             >
@@ -141,7 +141,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={() => setConfirming(null)}
             >
