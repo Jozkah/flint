@@ -368,7 +368,7 @@ function AddParameterMenu({
         {items.map(({ cat, entries }, catIdx) => (
           <div key={cat.id}>
             {catIdx > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
               {cat.title}
             </DropdownMenuLabel>
             {entries.map((entry) =>

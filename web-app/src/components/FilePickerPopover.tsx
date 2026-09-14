@@ -143,7 +143,7 @@ export function FilePickerPopover({
 
   return (
     <div
-      className="absolute z-50 w-[400px] max-h-[300px] overflow-y-auto rounded-xl border border-border bg-popover shadow-popover p-1"
+      className="absolute z-50 w-[400px] max-h-[300px] overflow-y-auto rounded-lg border border-border bg-popover shadow-popover p-1"
       style={popoverStyle}
       data-testid="reference-menu"
     >
@@ -256,7 +256,7 @@ export function FilePickerPopover({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-medium truncate">{entry.name}</span>
-                <span className="text-[10px] text-muted-foreground uppercase shrink-0">
+                <span className="text-xs text-muted-foreground uppercase shrink-0">
                   {entry.kind === 'file'
                     ? (entry.extension ?? KIND_LABEL.file)
                     : KIND_LABEL[entry.kind]}

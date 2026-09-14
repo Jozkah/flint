@@ -313,7 +313,7 @@ function Row({
         {kind && kind !== 'reported' && (
           <span
             className={cn(
-              'text-[10px] uppercase tracking-wide',
+              'text-xs font-medium',
               kind === 'clamped' ? 'text-warning' : 'text-muted-foreground'
             )}
             aria-hidden="true"

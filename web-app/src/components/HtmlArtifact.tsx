@@ -61,7 +61,7 @@ function HtmlArtifactComponent({
   return (
     <div
       className={cn(
-        'my-4 overflow-hidden rounded-xl border border-border bg-background',
+        'my-4 overflow-hidden rounded-lg border border-border bg-background',
         className
       )}
       data-testid="html-artifact"

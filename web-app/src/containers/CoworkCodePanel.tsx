@@ -703,7 +703,7 @@ export function CoworkCodePanel({
                   // say so rather than letting the name imply it.
                   <span
                     aria-hidden
-                    className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground"
+                    className="shrink-0 text-xs text-muted-foreground"
                   >
                     {tab.origin.kind === 'external' ? 'ext' : 'ws'}
                   </span>

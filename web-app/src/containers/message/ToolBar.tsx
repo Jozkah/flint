@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 
 /** Blinking block that reads as the model typing into the bar. */
 export const Caret = () => (
-  <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] motion-safe:animate-pulse bg-brand" />
+  <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] motion-safe:animate-pulse bg-foreground" />
 )
 
 export type ToolBarProps = {
