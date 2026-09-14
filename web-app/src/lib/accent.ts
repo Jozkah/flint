@@ -42,7 +42,7 @@ export const ACCENT_SURFACES: Record<
   { ground: string; paper: string; sidebar: string; sunken: string; rail: string }
 > = {
   light: { ground: '#F7F8F9', paper: '#FFFFFF', sidebar: '#ECEEF1', sunken: '#EFF1F3', rail: '#E3E6EA' },
-  dark: { ground: '#1B1C1F', paper: '#222327', sidebar: '#161719', sunken: '#18191B', rail: '#111214' },
+  dark: { ground: '#191919', paper: '#1F1F1F', sidebar: '#141414', sunken: '#161616', rail: '#0F0F0F' },
 }
 
 const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
