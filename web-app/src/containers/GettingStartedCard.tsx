@@ -43,7 +43,9 @@ export function GettingStartedCard() {
         data-testid="getting-started"
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 className="font-medium">{t(`onboarding:guideTitle.${intentKey}`)}</h2>
+          <h2 className="text-[13px] font-semibold text-foreground">
+            {t(`onboarding:guideTitle.${intentKey}`)}
+          </h2>
           <Button size="sm" variant="ghost" onClick={guide.skip}>
             {t('onboarding:hideGuide')}
           </Button>
@@ -132,13 +134,13 @@ function GuideStep({
         )}
       </span>
       <div className="min-w-0 space-y-1">
-        <p className="font-medium">
+        <p className="font-medium text-foreground">
           {title}{' '}
           <span className="sr-only">
             ({done ? t('onboarding:stepDone') : t('onboarding:stepTodo')})
           </span>
         </p>
-        <p className="text-muted-foreground">{body}</p>
+        <p className="leading-relaxed text-ink-2">{body}</p>
         {step === 'review-context' && (
           <p className="text-xs text-muted-foreground">
             <TermHint term="context" />
