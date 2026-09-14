@@ -5,7 +5,7 @@ use serde_json::Value;
 
 /// How a server imported from repository configuration must be confined.
 ///
-/// Present only on a server Jan imported from a repository's own
+/// Present only on a server Flint imported from a repository's own
 /// configuration. A server the user configured themselves carries `None` and
 /// keeps the behaviour it has always had — they chose the program, and
 /// confining it would break the ordinary case for no gain in trust.
@@ -21,7 +21,7 @@ pub struct McpConfinement {
     pub repository: Option<std::path::PathBuf>,
     /// Writable, when the session holds a live direct-edit grant for it.
     pub writable_repository: Option<std::path::PathBuf>,
-    /// Jan's data folder, hidden from the server.
+    /// Flint's data folder, hidden from the server.
     pub jan_data: Option<std::path::PathBuf>,
     /// Environment names the user approved. Nothing else is passed through.
     pub allowed_env: Vec<String>,
@@ -89,7 +89,7 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         args,
         envs,
         headers,
-        // Not read from the repository's own file: Jan writes these onto the
+        // Not read from the repository's own file: Flint writes these onto the
         // config it builds when a session activates an imported server. A
         // `.mcp.json` never reaches this function verbatim — the importer
         // emits only command, args, env, type and url — so a repository
@@ -102,7 +102,7 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
     })
 }
 
-/// Read the confinement Jan attached when a session activated this server.
+/// Read the confinement Flint attached when a session activated this server.
 fn parse_confinement(obj: &serde_json::Map<String, Value>) -> Option<McpConfinement> {
     let value = obj.get("janConfinement")?.as_object()?;
     let path = |key: &str| {

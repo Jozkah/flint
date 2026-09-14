@@ -41,7 +41,7 @@ export const Route = createRootRoute({
 })
 
 /**
- * The JAN Atelier shell: graphite rail | contextual sidebar | page, with the
+ * The Flint Atelier shell: graphite rail | contextual sidebar | page, with the
  * status bar across the bottom. One shell for every route; pages supply their
  * own context bar (HeaderPage) and content. On phones the rail and sidebar
  * move into one navigation sheet opened from the context bar.

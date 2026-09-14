@@ -107,7 +107,7 @@ roughly doubled, and the additions are the scaffolding this epic assumes:
   carrying instructions, skills, tools, model, context accounting and an
   evidence limit. This is already the "one frozen manifest" the epic asks for.
 - **`lib/coworkOrigins.ts`** -- an origin ledger that refuses to infer authorship
-  from location; "this appeared while Jan was running, and nothing proves Jan
+  from location; "this appeared while Flint was running, and nothing proves Flint
   caused it" is a first-class outcome.
 - **`lib/coworkGit.ts`** + `core/agent/git.rs` `status`/`file_diff` -- read-only
   working-tree inspection.
@@ -356,7 +356,7 @@ respecting ignore files and the repository boundary, cached by binding plus
 revision identity, invalidated on binding change or explicit refresh. Never a
 recursive ingest -- the bound is part of the design, not a later safeguard.
 
-**Measurement.** Jan runs local models through llama.cpp and remote providers
+**Measurement.** Flint runs local models through llama.cpp and remote providers
 through the AI SDK; they do not share a tokenizer. `Measured` is today a
 two-state type (`known` / not). It needs a third state, or the honesty it
 enforces will be bought at the cost of showing blanks where a labelled estimate
@@ -428,7 +428,7 @@ deciding explicitly rather than inferring from the scaffolding, because turning
 the switch on means feeding content from a repository the user may have merely
 cloned into a tool-using agent with filesystem access, and two existing
 decisions pushed the other way: `JAN.md` is authoritative because only what a
-user wrote *for Jan* counts, and subagent definitions are kept out of attached
+user wrote *for Flint* counts, and subagent definitions are kept out of attached
 folders precisely so a cloned repo cannot inject a system prompt and a tool
 allowlist. Project-level skills and agent definitions -- which carry tool
 allowlists and executable resources -- are the same shape as the thing already
@@ -520,8 +520,8 @@ mutation-capable operation, before worktree apply/export, before access changes,
 before compaction, after task milestones.
 
 **The asymmetry that must not be flattened:** in a managed worktree or sandbox,
-rewind can hard-restore, because Jan owns the tree. In direct-edit mode it must
-not — the user's checkout may contain work Jan never saw. There, the answer is a
+rewind can hard-restore, because Flint owns the tree. In direct-edit mode it must
+not — the user's checkout may contain work Flint never saw. There, the answer is a
 reviewable inverse patch, or an explicit refusal. Implementing one rewind path
 for both modes is the failure mode to guard against.
 

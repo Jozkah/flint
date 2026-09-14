@@ -7,7 +7,7 @@
 //!
 //! One shape of the warning, shared by the TUI and the headless CLI, so the
 //! two never drift into telling the user different things. Whether the count
-//! came from the provider or from Jan's own estimate is part of what is said:
+//! came from the provider or from Flint's own estimate is part of what is said:
 //! an estimate that reads like a measurement is worse than no number at all.
 
 /// The share of the window in use at which the warning is worth making.

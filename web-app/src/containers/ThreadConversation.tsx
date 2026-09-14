@@ -138,7 +138,7 @@ function serverForTool(toolName: string): string | undefined {
     ?.server
 }
 
-// Internal tools never prompt: RAG and the native web tools are Jan's own, and
+// Internal tools never prompt: RAG and the native web tools are Flint's own, and
 // the built-in agent tools are gated in Rust (execute_tool refuses anything
 // needing approval), so only workspace-confined calls ever reach here.
 function isAutoAllowedTool(toolName: string): boolean {
@@ -428,7 +428,7 @@ export function ThreadConversation({
           | undefined
         const totalTokens =
           (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-        // The window Jan actually knows, never a guess: a missing ctx_len used
+        // The window Flint actually knows, never a guess: a missing ctx_len used
         // to read as 32,768, which mislabelled output-cap stops on large
         // remote models and missed real overflows on small ones
         // (janhq/jan#8760). Unknown is not a context-limit verdict.
@@ -2042,7 +2042,7 @@ export function ThreadConversation({
     ''
   )
 
-  // The Details inspector ("What JAN is using"). On a narrow pane it takes the
+  // The Details inspector ("What Flint is using"). On a narrow pane it takes the
   // whole width and a switch moves between it and the conversation; the
   // conversation stays mounted, so its draft and scroll survive.
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -2340,7 +2340,7 @@ export function ThreadConversation({
                             .includes('limit'))) ||
                       (error ?? contextLimitError)?.message ===
                         OUT_OF_CONTEXT_SIZE ? (
-                        // Only where Jan sets the window at load. For any
+                        // Only where Flint sets the window at load. For any
                         // other provider the server owns it, and raising a
                         // setting nothing sends cannot help (janhq/jan#8760).
                         contextIsResizable(selectedProvider) ? (

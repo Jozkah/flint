@@ -29,13 +29,13 @@ import CTABlog from '@/components/Blog/CTA'
 
 # Bitdefender False Positive Flag
 
-Following the recent incident related to Jan version 0.4.4 triggering Bitdefender on Windows with Gen:Variant.Tedy.258323 on January 10, 2024, we wanted to provide a comprehensive postmortem and outline the necessary follow-up actions.
+Following the recent incident related to Flint version 0.4.4 triggering Bitdefender on Windows with Gen:Variant.Tedy.258323 on January 10, 2024, we wanted to provide a comprehensive postmortem and outline the necessary follow-up actions.
 
 ## Incident Overview
 
 ### Bug Description
 
-Jan 0.4.4 installation on Windows triggered Bitdefender to flag it as infected with Gen:Variant.Tedy.258323, leading to automatic quarantine.
+Flint 0.4.4 installation on Windows triggered Bitdefender to flag it as infected with Gen:Variant.Tedy.258323, leading to automatic quarantine.
 
 ### Affected Antivirus
 
@@ -44,24 +44,24 @@ Jan 0.4.4 installation on Windows triggered Bitdefender to flag it as infected w
 
 ### Incident Timeline
 
-- _10 Jan, 2:18 am SGT:_ Hawke flags up Malware antivirus errors for 0.4.4 installation on Windows computers.
-- _10 Jan, 2:21 am SGT:_ @0xSage responds in Discord.
-- _10 Jan, 2:35 am SGT:_ Hawke confirms multiple people have experienced this error on fresh installs.
-- _10 Jan, 2:41 am SGT:_ @louis-jan and @dan-jan revert 0.4.4 out of an abundance of caution.
+- _10 Flint, 2:18 am SGT:_ Hawke flags up Malware antivirus errors for 0.4.4 installation on Windows computers.
+- _10 Flint, 2:21 am SGT:_ @0xSage responds in Discord.
+- _10 Flint, 2:35 am SGT:_ Hawke confirms multiple people have experienced this error on fresh installs.
+- _10 Flint, 2:41 am SGT:_ @louis-jan and @dan-jan revert 0.4.4 out of an abundance of caution.
 - _Incident ongoing:_ To triage and investigate the next day.
-- _10 Jan, 11:36 am SGT:_ @Hien has investigated all versions of Nitro and conducted scans using Bitdefender. Only the 2 latest versions raised warnings (0.2.7, 0.2.8).
-- _10 Jan, 12:44 pm SGT:_ @Hien tested again for the 0.2.6 and suggested using 0.2.6 for now, the 2 remaining Nitro version (0.2.7, 0.2.8) will under further investigation.
+- _10 Flint, 11:36 am SGT:_ @Hien has investigated all versions of Nitro and conducted scans using Bitdefender. Only the 2 latest versions raised warnings (0.2.7, 0.2.8).
+- _10 Flint, 12:44 pm SGT:_ @Hien tested again for the 0.2.6 and suggested using 0.2.6 for now, the 2 remaining Nitro version (0.2.7, 0.2.8) will under further investigation.
 - The team started testing on the fixed build.
-- _10 Jan, 3:22 pm SGT:_ Diagnosis found that it's most likely a false positive. @Hien has only found a solution by attempting to build Nitro Windows CPU on a GitHub-hosted runner and hasn't identified the root cause yet.
-- _10 Jan, 5:24 pm SGT:_ @Hien testing two scenarios and still trying to understand the workings of Bitdefender.
-- _11 Jan, 5:46 pm SGT:_ Postmortem meeting
+- _10 Flint, 3:22 pm SGT:_ Diagnosis found that it's most likely a false positive. @Hien has only found a solution by attempting to build Nitro Windows CPU on a GitHub-hosted runner and hasn't identified the root cause yet.
+- _10 Flint, 5:24 pm SGT:_ @Hien testing two scenarios and still trying to understand the workings of Bitdefender.
+- _11 Flint, 5:46 pm SGT:_ Postmortem meeting
 
 ## Investigation Update
 
 - @Hien has investigated all versions of Nitro and conducted scans using Bitdefender. and only the 2 latest versions raised warnings from Bitdefender. Nitro 0.2.6, which is the highest version without the issue, was tested again, and it no longer triggers a warning from Bitdefender.
 - We have observed that Nitro versions up to 0.2.6 remain unaffected. However, Bitdefender flags versions 0.2.7 and 0.2.8 as infected, leading to the deletion. In order to proceed with the current release, Hien suggests downgrading Nitro to version 0.2.6 and conducting tests with this version. Simultaneously, he will investigate why Bitdefender is flagging versions 0.2.7 and 0.2.8.
 - It's essential to note that between versions 0.2.6, 0.2.7, and 0.2.8, only minor changes were made, which should not trigger a malicious code warning. We can refer to the changelog between 0.2.7 and 0.2.8 to pinpoint these changes.
-- Our primary message is to convey that we did not introduce malicious code into Jan (indicating a false positive), and the investigation aims to understand the root cause behind Bitdefender flagging versions 0.2.7 and 0.2.8.
+- Our primary message is to convey that we did not introduce malicious code into Flint (indicating a false positive), and the investigation aims to understand the root cause behind Bitdefender flagging versions 0.2.7 and 0.2.8.
 - The current diagnosis looks like a false positive but it's still under investigation. Reference link: [here](https://stackoverflow.com/questions/75886428/fake-positive-bit-defender-problem-genvariant-tedy-304469), [here](https://stackoverflow.com/questions/58010466/bitdefender-detects-my-console-application-as-genvariant-ursu-56053), and [here](https://www.cisa.gov/sites/default/files/2023-06/mar-10365227.r1.v1.clear_.pdf).
 - @Hien testing two scenarios and still trying to understand the workings of Bitdefender. Still under investigation: is the issue with the code or the CI?
   - In Case 1, using the same CI agent for tags 0.2.6 and 0.2.8, after PRs by Alan and myself, Bitdefender flagged the Nitro CPU binary build. Naturally, one would conclude this is due to the code.
@@ -92,7 +92,7 @@ Jan 0.4.4 installation on Windows triggered Bitdefender to flag it as infected w
   - _Objective:_ Identify and implement improvements to our release process to prevent similar incidents in the future. This may include enhanced testing procedures, code analysis, and collaboration with antivirus software providers during the pre-release phase. Additionally, we should add verifying the latest antivirus software in the release checklist.
 
 6. **Documentation of Tested Antivirus Versions:**
-  - _Objective:_ Create a document that outlines the testing conducted, including a matrix that correlates Jan versions with the tested antivirus versions.
+  - _Objective:_ Create a document that outlines the testing conducted, including a matrix that correlates Flint versions with the tested antivirus versions.
   - _Sample list:_ for consideration purpose
     - Bitdefender
     - McAfee
@@ -135,7 +135,7 @@ Jan 0.4.4 installation on Windows triggered Bitdefender to flag it as infected w
 
   - _Observation:_ While the incident prompted consideration of a potential supply chain attack, it's crucial to emphasize that this was not the case. Nonetheless, the incident underscored the importance of reviewing our supply chain security measures.
   - _Lesson Learned:_ Going forward, we should strengthen supply chain security by introducing additional verification steps to uphold the integrity of our release process. Collaborating with distribution channels is essential for enhancing security checks and ensuring a robust supply chain.
-  - _Longer-term:_ Exploring options for checking Jan for malicious code and incorporating antivirus as part of our CI/CD pipeline should be considered for a more comprehensive and proactive approach.
+  - _Longer-term:_ Exploring options for checking Flint for malicious code and incorporating antivirus as part of our CI/CD pipeline should be considered for a more comprehensive and proactive approach.
 
 6. **User Education on False Positives:**
   - _Observation:_ Users reported Bitdefender automatically "disinfecting" the flagged Nitro version without allowing any user actions.

@@ -80,7 +80,7 @@ function pathOf(input: unknown): string | undefined {
  * keeps streaming while another is viewed. The handle map below lives outside
  * React for the same reason — route unmount must not abort a run.
  *
- * The loop is also ours because the AI SDK cannot own it here: Jan's tools are
+ * The loop is also ours because the AI SDK cannot own it here: Flint's tools are
  * declared without an `execute`, so `streamText` returns after one step and
  * `stopWhen` never evaluates. Every step boundary, and every cap, is explicit.
  */
@@ -288,7 +288,7 @@ export function abortRun(sid: string, reason = 'cancelled'): void {
 /**
  * Whether a rejection means "the user stopped this", not "this failed".
  *
- * Needed because the abort does not arrive as an `AbortError`: Jan streams
+ * Needed because the abort does not arrive as an `AbortError`: Flint streams
  * through the provider transport, whose `fetch` rejects with a plain
  * `Error('Request cancelled')` when the signal fires. Matched exactly rather
  * than by substring — "connection aborted" is a network failure and must keep

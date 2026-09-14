@@ -16,15 +16,15 @@ import { Callout } from 'nextra/components'
 
 # MCP routing telemetry
 
-This page is under **Reference** for contributors: it describes code hooks, not anything in the Jan UI. For setup and toggles, use **[MCP Servers](./integrations/mcp-servers)** (Integrations).
+This page is under **Reference** for contributors: it describes code hooks, not anything in the Flint UI. For setup and toggles, use **[MCP Servers](./integrations/mcp-servers)** (Integrations).
 
 End users turn routing on or off under **Settings → MCP Servers**.
 
-With **Smart MCP tool routing** enabled, Jan may load tools from only some MCP servers each turn instead of all of them. The orchestrator can report what happened on that path (timings, fallbacks, and token usage when the model provider returns it) through an optional callback on `getRelevantTools`.
+With **Smart MCP tool routing** enabled, Flint may load tools from only some MCP servers each turn instead of all of them. The orchestrator can report what happened on that path (timings, fallbacks, and token usage when the model provider returns it) through an optional callback on `getRelevantTools`.
 
 ## Using the callback
 
-In the Jan repo, import from the web app package (path is under `web-app/src`):
+In the Flint repo, import from the web app package (path is under `web-app/src`):
 
 ```ts
 import { mcpOrchestrator, type McpRoutingTelemetry } from '@/lib/mcp-orchestrator'
@@ -39,7 +39,7 @@ await mcpOrchestrator.getRelevantTools(userMessage, mcpServiceLike, disabledTool
 ```
 
 <Callout type="info">
-  Shipped Jan does not register `onRoutingTelemetry`. Add it in your branch if you want logs, analytics, or local debugging.
+  Shipped Flint does not register `onRoutingTelemetry`. Add it in your branch if you want logs, analytics, or local debugging.
 </Callout>
 
 ## Payload fields
@@ -55,7 +55,7 @@ await mcpOrchestrator.getRelevantTools(userMessage, mcpServiceLike, disabledTool
 | `fallbackReason` | See the list below. |
 | `selectiveToolsWereEmpty` | Selective load returned no tools before any recovery. |
 | `selectiveFetchHadError` | `getToolsForServers` threw while fetching uncached servers. |
-| `fellBackToFullToolList` | Jan then called `getTools()` to recover. |
+| `fellBackToFullToolList` | Flint then called `getTools()` to recover. |
 | `llmRouterUsage` | Present when the provider reports usage for the router call (AI SDK shape). |
 
 ### `fallbackReason`
@@ -72,7 +72,7 @@ If several things go wrong, **tool-load** reasons take precedence over **LLM-onl
 
 ## Changing `ROUTING_THRESHOLD`
 
-`ROUTING_THRESHOLD` lives in `web-app/src/lib/mcp-orchestrator/intent-classifier.ts`. At or below that many connected servers, Jan loads every tool and does not run server selection — less work when you only run a handful of MCP servers.
+`ROUTING_THRESHOLD` lives in `web-app/src/lib/mcp-orchestrator/intent-classifier.ts`. At or below that many connected servers, Flint loads every tool and does not run server selection — less work when you only run a handful of MCP servers.
 
 Use the callback above to see whether routing is worth it for your setup: high `llm_timeout` / `llm_error` counts suggest a faster router model or a longer router timeout in `mcp-router-llm.ts` (that timeout is **not** the MCP **tool call timeout** in Settings). Frequent `selective_fetch_error` or `selective_tools_empty` usually means a server or config problem, not something you fix by tweaking the threshold alone.
 

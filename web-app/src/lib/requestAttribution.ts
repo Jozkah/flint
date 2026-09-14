@@ -11,10 +11,10 @@
  *
  * Send states, in order:
  *
- *  - `assembled`         JAN finished building the request (system prompt,
+ *  - `assembled`         Flint finished building the request (system prompt,
  *                        memory selection, tool list, messages) and handed it
  *                        to the model client. Nothing has been dispatched.
- *  - `sent`              The provider fetch started: the request reached JAN's
+ *  - `sent`              The provider fetch started: the request reached Flint's
  *                        transport, which snapshots it before dialling.
  *  - `response-started`  The provider answered (response head received). The
  *                        snapshot reference arrives with that head, so this is
@@ -27,10 +27,10 @@
  * it was handed to `payload_usage_record`, bound to the same invocation.
  *
  * The boundary this record cannot see past: the snapshot is the JSON body as it
- * left JAN. A provider or adapter may still transform it -- a server applying a
+ * left Flint. A provider or adapter may still transform it -- a server applying a
  * chat template (llama.cpp renders messages through the model's Jinja
  * template), a proxy adding its own system text, a hosted API truncating
- * context. "Included" in the panel means present in what JAN sent, not a claim
+ * context. "Included" in the panel means present in what Flint sent, not a claim
  * about the tokens the model finally saw.
  */
 import type { UIMessage } from '@ai-sdk/react'

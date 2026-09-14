@@ -2,7 +2,7 @@
  * What a model can actually do, resolved once and in one place. AH-195.
  *
  * The context window was permanently "not known" for most local endpoints,
- * because only one field was ever read (`ctx_len`, from Jan's own settings) and
+ * because only one field was ever read (`ctx_len`, from Flint's own settings) and
  * an OpenAI-compatible server reports it under any of half a dozen names. The
  * answer was on the wire the whole time.
  *
@@ -114,7 +114,7 @@ function positiveInteger(value: unknown): number | null {
 /**
  * Read one of `fields` out of a metadata object.
  *
- * Jan's own model settings nest the value under
+ * Flint's own model settings nest the value under
  * `settings.<key>.controller_props.value`, and a provider's `/models` entry
  * puts it at the top level or one level down under `meta`/`metadata`. Both
  * shapes are searched, because both are things this app is handed.
@@ -187,7 +187,7 @@ export function bundledContextFor(modelId: string | null | undefined): number | 
 
 export type CapabilityInputs = {
   modelId?: string | null
-  /** What the user set for this model in Jan. A decision, not a discovery. */
+  /** What the user set for this model in Flint. A decision, not a discovery. */
   override?: unknown
   /**
    * A window learned from a server's own overflow refusal. See

@@ -59,7 +59,7 @@
      `text-main-view-fg/60` call sites were written against actually resolve. */
   --color-main-view: var(--background);
   --color-main-view-fg: var(--foreground);
-  /* JAN Graphite Studio: accent (derived per theme in lib/accent.ts), semantic
+  /* Flint Graphite Studio: accent (derived per theme in lib/accent.ts), semantic
      states, diff colours, the rail and the tonal surfaces. */
   --color-brand: var(--brand);
   --color-brand-fill: var(--brand-fill);
@@ -130,7 +130,7 @@
   --text-4xl: calc(var(--font-size-base) * 2.25);
 }
 
-/* JAN Graphite Studio tokens. Charcoal and cool mineral-grey surfaces separated
+/* Flint Graphite Studio tokens. Charcoal and cool mineral-grey surfaces separated
    by tone, one sans-serif family, compact controls. Accent values below are the
    Vermilion defaults; lib/accent.ts rewrites them inline for the chosen accent
    and the effective theme. Semantic colours (success, warning, destructive) and

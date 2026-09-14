@@ -32,21 +32,21 @@ import { DownloadButton } from '@/components/DownloadButton'
 
 
 # Windows Installation
-Jan runs on Windows 10 and higher, supporting NVIDIA, AMD, and Intel Arc GPUs.
+Flint runs on Windows 10 and higher, supporting NVIDIA, AMD, and Intel Arc GPUs.
 
-## Install Jan
+## Install Flint
 
 <Steps>
 
 ### Download
 
-<DownloadButton href="https://app.jan.ai/download/latest/win-x64">Download Jan for Windows</DownloadButton>
+<DownloadButton href="https://app.jan.ai/download/latest/win-x64">Download Flint for Windows</DownloadButton>
 
 ### Install
 
 1. Run the downloaded `.exe` file
 2. Wait for installation to complete
-3. Launch Jan
+3. Launch Flint
 
 </Steps>
 
@@ -58,9 +58,9 @@ Jan runs on Windows 10 and higher, supporting NVIDIA, AMD, and Intel Arc GPUs.
 - **GPU:** 6GB VRAM minimum for NVIDIA, AMD, or Intel Arc GPUs
 - **Storage:** 10GB free space minimum
 
-## Jan Data Folder
+## Flint Data Folder
 
-Jan stores all your data locally — downloaded models, conversation threads, settings, and logs generated from using the app. Nothing is sent to the cloud.
+Flint stores all your data locally — downloaded models, conversation threads, settings, and logs generated from using the app. Nothing is sent to the cloud.
 
 Default location:
 
@@ -68,7 +68,7 @@ Default location:
 ~\Users\<YourUsername>\AppData\Roaming\Jan\data
 ```
 
-See [Jan Data Folder](/docs/desktop/data-folder) for details.
+See [Flint Data Folder](/docs/desktop/data-folder) for details.
 
 
 ## GPU Acceleration
@@ -113,7 +113,7 @@ and toggle the **ON** switch if not enabled.
 
 <Tabs.Tab>
 
-Jan supports AMD GPUs via two backends: **Vulkan** (default) and **llama.cpp HIP** (ROCm-accelerated). The HIP backend provides significantly better performance than Vulkan for supported AMD GPUs.
+Flint supports AMD GPUs via two backends: **Vulkan** (default) and **llama.cpp HIP** (ROCm-accelerated). The HIP backend provides significantly better performance than Vulkan for supported AMD GPUs.
 
 <Steps>
 
@@ -146,12 +146,12 @@ hipInfo
 
 **3. Download and Install llama.cpp HIP Backend**
 
-Jan does not ship with a pre-built HIP backend. You need to download it manually from the official llama.cpp releases:
+Flint does not ship with a pre-built HIP backend. You need to download it manually from the official llama.cpp releases:
 
 1. Go to the [llama.cpp releases page](https://github.com/ggerganov/llama.cpp/releases)
 2. Download the latest release with `hip` in the filename (e.g., `llama-<version>-bin-win-hip-x64.zip`)
 3. Extract the downloaded archive
-4. In Jan, navigate to **Settings** (<Settings width={16} height={16} style={{display:"inline"}}/>) > **Model Providers** > **Llama.cpp**
+4. In Flint, navigate to **Settings** (<Settings width={16} height={16} style={{display:"inline"}}/>) > **Model Providers** > **Llama.cpp**
 5. Use the backend version selector to point at the extracted folder
 6. Go to **Settings** (<Settings width={16} height={16} style={{display:"inline"}}/>) > **Hardware** and ensure GPU acceleration is enabled
 
@@ -172,7 +172,7 @@ and toggle the **ON** switch if not enabled.
 </Tabs>
 
 
-## Uninstall Jan
+## Uninstall Flint
 
 <Steps>
 
@@ -181,7 +181,7 @@ and toggle the **ON** switch if not enabled.
 1. Open **Control Panels**
 2. Go to **Programs** section
 3. Click **Uninstall Program**
-4. Search for **Jan**
+4. Search for **Flint**
 5. Click the **Three Dots Icon** > **Uninstall**
 6. Click **Uninstall** again to confirm
 7. Click **OK**
@@ -191,7 +191,7 @@ and toggle the **ON** switch if not enabled.
 Remove app data:
 
 1. Navigate to `C:\Users\[username]\AppData\Roaming`
-2. Delete Jan folder
+2. Delete Flint folder
 
 or via **Terminal**:
 

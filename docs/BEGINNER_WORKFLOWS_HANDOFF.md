@@ -4,7 +4,7 @@ Branch: `feature/beginner-workflows`, based on `feat/windows-agent-completion` a
 `728f5cb0a`. Not pushed, not merged.
 
 This document describes behaviour, state and backend contracts independently of
-the current layout, so the JAN Atelier redesign can re-skin these workflows
+the current layout, so the Flint Atelier redesign can re-skin these workflows
 without changing what they do. No visual redesign was attempted; new UI uses
 the existing shadcn/Radix components.
 
@@ -126,7 +126,7 @@ Restore is guarded in the backend, not only in the UI (§6).
 - Cowork binds the attached folder and now includes the memory block after
   policy and project instructions.
 
-### 2.8 Request attribution and "What JAN is using"
+### 2.8 Request attribution and "What Flint is using"
 - Each assistant message stores an attribution record (ids and hashes only):
   request id, snapshot id/hash/status, invocation id, memory ids (candidates,
   injected, conflicts, dropped, project, disabled, temporary), advertised tools,
@@ -139,12 +139,12 @@ Restore is guarded in the backend, not only in the UI (§6).
   snapshot read back from disk), attached to its message, pending, not used,
   not recorded. "Verified" is only claimed from the snapshot.
 - Adapter boundary is stated: providers and local engines may still transform
-  the request after JAN sends it (e.g. chat templates).
+  the request after Flint sends it (e.g. chat templates).
 - "Inspect the sanitized request (advanced)" opens the existing snapshot view.
 
 ### 2.9 Plugins
 - **What a plugin is** (shown in the dialog): a package that adds skills, and
-  for the Jan CLI also slash commands and agent profiles, to one project. It is
+  for the Flint CLI also slash commands and agent profiles, to one project. It is
   not an MCP server (a running connection configured in Settings) and not a
   single skill.
 - Cowork > Plugins: list (name, version, enabled, component counts, source),
@@ -155,7 +155,7 @@ Restore is guarded in the backend, not only in the UI (§6).
 - In Cowork, enabled plugin skills appear as `<plugin>:<skill>`, read-only,
   subject to the project's skill whitelist; disabled or removed plugins are
   hidden and unreadable. Desktop has no slash commands and loads agent profiles
-  only from Jan's saved folder, so those plugin components are CLI-only; the
+  only from Flint's saved folder, so those plugin components are CLI-only; the
   dialog says so.
 
 ---

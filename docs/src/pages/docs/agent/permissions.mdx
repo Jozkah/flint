@@ -84,7 +84,7 @@ allow_write = []
 
 ## The shell sandbox
 
-Jan can run shell commands under OS confinement - bubblewrap on Linux, Seatbelt on macOS,
+Flint can run shell commands under OS confinement - bubblewrap on Linux, Seatbelt on macOS,
 AppContainer on Windows. Confined, a command can **write** only the project and its scratch
 directory, and reaches the network only if allowed. Reads are looser: the CLI keeps `$HOME` readable
 so `git` and `ssh` credential helpers work (`[tools].allow_home_read`, set it to `false` to close

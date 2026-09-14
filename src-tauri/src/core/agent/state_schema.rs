@@ -55,7 +55,7 @@ impl Migration {
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
 pub enum Owner {
-    /// Under the Jan data folder: state about conversations and runs.
+    /// Under the Flint data folder: state about conversations and runs.
     DataFolder,
     /// Inside the project, under `.jan/agent`: state a repository carries.
     Project,

@@ -1,7 +1,7 @@
 /**
  * The participant model adapter: one streamed reply from one model.
  *
- * It resolves the provider through JAN's provider store and ModelFactory and
+ * It resolves the provider through Flint's provider store and ModelFactory and
  * streams with `streamText`. It never touches `useAppState`, the chat
  * transport or any tool/approval store, and it advertises no tools. Only text
  * deltas become the reply; reasoning is never collected.

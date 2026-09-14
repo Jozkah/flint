@@ -76,7 +76,7 @@ export type CheckLimitation =
   | 'no-exit-status'
 
 /**
- * A verification command Jan actually executed, as the tool record shows it.
+ * A verification command Flint actually executed, as the tool record shows it.
  *
  * `outcome` answers "did the command report success", never "is the task
  * correct"; `limitations` says what the verdict does not cover.
@@ -176,7 +176,7 @@ export type RunOutcome = {
     treeKind: TreeKind
     /** The working tree the paths are relative to, when there is one. */
     tree: string | null
-    /** Files Jan itself wrote. */
+    /** Files Flint itself wrote. */
     paths: string[]
   }
   changes: {
@@ -196,7 +196,7 @@ export type RunOutcome = {
   claims: CheckClaim[]
   unresolved: UnresolvedItem[]
   nextActions: NextAction[]
-  /** At least one successful Jan write or completed tool step. */
+  /** At least one successful Flint write or completed tool step. */
   progress: boolean
   /**
    * Whether anything looked at what was built: an end-to-end or visual runner

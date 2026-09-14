@@ -2,7 +2,7 @@
  * Which memories a conversation may use: its project, and whether it is
  * temporary.
  *
- * Jan's sidebar projects have no folder, so their memory identity is the
+ * Flint's sidebar projects have no folder, so their memory identity is the
  * project id itself, which the backend namespaces as `jan-project:<id>` and
  * accepts only from renderer memory commands (never from a model's tool
  * arguments). A Cowork session attached to a folder uses the folder instead;
@@ -25,7 +25,7 @@ export const JAN_PROJECT_PREFIX = 'jan-project:'
 export type MemoryBinding = {
   /** A project folder (Cowork). Takes precedence in the backend. */
   projectRoot?: string
-  /** A Jan workspace project, for a conversation with no folder. */
+  /** A Flint workspace project, for a conversation with no folder. */
   janProjectId?: string
   /** For display only; never sent as identity. */
   janProjectName?: string
@@ -76,7 +76,7 @@ export function workspaceProjectIdentity(
   return binding.janProjectId ? `${JAN_PROJECT_PREFIX}${binding.janProjectId}` : null
 }
 
-/** The raw Jan project id inside a namespaced identity, if it is one. */
+/** The raw Flint project id inside a namespaced identity, if it is one. */
 export function janProjectIdOf(identity: string | null | undefined): string | undefined {
   return identity?.startsWith(JAN_PROJECT_PREFIX)
     ? identity.slice(JAN_PROJECT_PREFIX.length)

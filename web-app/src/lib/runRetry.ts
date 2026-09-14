@@ -112,7 +112,7 @@ export function parseRetryAfter(
  * parameter so the spread is testable rather than incidental.
  *
  * A server that named its own delay outranks the schedule: it knows when it
- * will be ready and Jan does not.
+ * will be ready and Flint does not.
  */
 export function backoffDelay(input: {
   attempt: number

@@ -28,7 +28,7 @@ export const isPluginSkill = (skill: Pick<SkillMeta, 'plugin'>): boolean =>
  * -- and Rust runs one implementation for both. Only the root differs, so this is
  * the single place that picks one:
  *
- * - `store`   -- the desktop's permanent store in the Jan data folder, managed
+ * - `store`   -- the desktop's permanent store in the Flint data folder, managed
  *                from Settings. Reached through the plugin's guest-js.
  * - `project` -- a project's co-located `<folder>/.jan/agent`, managed from the
  *                code screen.

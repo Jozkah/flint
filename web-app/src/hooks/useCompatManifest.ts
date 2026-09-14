@@ -35,7 +35,7 @@ export function useCompatManifest(input: {
   enabledSkills: Set<string>
   availableTools: readonly string[]
   /**
-   * Agents the user has saved in Jan.
+   * Agents the user has saved in Flint.
    *
    * Passed in so an imported agent that reuses one of those names is reported
    * as a duplicate rather than quietly shadowed: a repository must not be able
@@ -43,10 +43,10 @@ export function useCompatManifest(input: {
    */
   savedAgentNames?: readonly string[]
   /**
-   * Absolute user-level skill directories Jan has approved.
+   * Absolute user-level skill directories Flint has approved.
    *
    * Empty by default. Never taken from the repository: a file in the folder
-   * being scanned must not get to choose which of the user's directories Jan
+   * being scanned must not get to choose which of the user's directories Flint
    * reads.
    */
   approvedUserSkillRoots?: readonly string[]
@@ -66,7 +66,7 @@ export function useCompatManifest(input: {
     folder ? s.mcpConsent[folder] : undefined
   )
   // Runtime state, not configuration: a server is only reported up because
-  // Jan's MCP subsystem said it came up.
+  // Flint's MCP subsystem said it came up.
   const runtime = useClaudeCompat((s) =>
     folder ? s.mcpRuntime[folder] : undefined
   )
@@ -181,7 +181,7 @@ export function useCompatManifest(input: {
          * Reads there go through the same contained reader with the root
          * itself as the boundary — so a resource climbing out of a user skill
          * is as unreadable as one climbing out of the repository. The
-         * repository cannot add a root: this list comes from Jan, never from
+         * repository cannot add a root: this list comes from Flint, never from
          * a file in the folder being scanned.
          */
         const userRoots: UserSkillRoot[] =

@@ -22,7 +22,7 @@ export interface InstalledPlugin {
   commands: number
   agents: number
   enabled: boolean
-  /** Absent for a directory Jan did not install (copied in by hand). */
+  /** Absent for a directory Flint did not install (copied in by hand). */
   sourceKind: PluginSourceKind | null
   source: string | null
 }
@@ -34,7 +34,7 @@ export interface PluginDetails extends InstalledPlugin {
   skillNames: string[]
   commandNames: string[]
   agentNames: string[]
-  /** The plugin ships a `.mcp.json`. JAN does not load it. */
+  /** The plugin ships a `.mcp.json`. Flint does not load it. */
   hasMcpConfig: boolean
   executableFiles: string[]
   executableFileCount: number

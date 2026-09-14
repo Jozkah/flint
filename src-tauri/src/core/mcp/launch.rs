@@ -111,13 +111,13 @@ impl ConfinedMcpLaunch {
 /// Rebuild a command so it runs inside the session's sandbox.
 ///
 /// The policy is not invented here: it comes from the agent-tools plugin,
-/// which is the one implementation of Jan's sandboxing and the same one the
+/// which is the one implementation of Flint's sandboxing and the same one the
 /// agent's own shell runs under. A second, MCP-shaped imitation of it would
 /// drift from the real boundary, and the drift would be invisible until
 /// something escaped.
 ///
 /// The environment is rebuilt rather than filtered. `Command` inherits the
-/// parent's environment by default, and Jan's process holds the user's whole
+/// parent's environment by default, and Flint's process holds the user's whole
 /// session — so `env_clear` first, then exactly the names the user approved.
 pub(super) fn confined_mcp_command(
     cmd: Command,

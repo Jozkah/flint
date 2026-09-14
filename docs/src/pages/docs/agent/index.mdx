@@ -23,11 +23,11 @@ import { Rocket, Terminal, Wrench, Settings, Users, SquareTerminal } from 'lucid
 
 # Overview
 
-Jan Agent is an AI agent that lives in your terminal. You give it a task in plain language, and it
+Flint Agent is an AI agent that lives in your terminal. You give it a task in plain language, and it
 reads files, edits them, runs commands, and searches the web until the work is done - asking for
 your approval before anything touches your machine.
 
-It uses the providers you have already configured in Jan Desktop, so if you're a Jan user there is
+It uses the providers you have already configured in Flint Desktop, so if you're a Flint user there is
 nothing new to sign up for.
 
 ```bash
@@ -36,13 +36,13 @@ jan
 
 That single command opens the interactive console in whatever directory you're in.
 
-## Jan Agent and Jan Desktop
+## Flint Agent and Flint Desktop
 
-They're two front ends onto the same stack, built for different jobs. Jan Desktop is where you run
-models on your own hardware and work in a GUI. Jan Agent is where you point a model at a folder and
+They're two front ends onto the same stack, built for different jobs. Flint Desktop is where you run
+models on your own hardware and work in a GUI. Flint Agent is where you point a model at a folder and
 let it work.
 
-| | Jan Desktop | Jan Agent |
+| | Flint Desktop | Flint Agent |
 | --- | --- | --- |
 | Interface | Desktop app | Terminal, interactive or headless |
 | Where models run | Locally via llama.cpp or MLX, or a cloud provider | Cloud providers, or any OpenAI-compatible endpoint |
@@ -51,7 +51,7 @@ let it work.
 | MCP servers | Yes | Yes, the same ones |
 | Skills and memory | Yes | Yes, the same ones |
 
-Neither replaces the other. A common setup is Jan Desktop serving a local model, with Jan Agent
+Neither replaces the other. A common setup is Flint Desktop serving a local model, with Flint Agent
 pointed at it - see [running against local models](/docs/agent/providers#your-own-hardware).
 
 Provider settings, MCP servers, [skills, and memory](/docs/agent/skills)
@@ -60,7 +60,7 @@ are all shared, so anything you set up in one is already there in the other.
 ## Install
 
 <Callout type="warning">
-Jan Agent is a preview. The installer on `dev` pulls from the `agent-nightly` channel - expect
+Flint Agent is a preview. The installer on `dev` pulls from the `agent-nightly` channel - expect
 nightly-quality builds.
 </Callout>
 
@@ -84,29 +84,29 @@ jan --version
 ```
 
 The [Quickstart](/docs/agent/quickstart) covers connecting a provider and finishing a first task.
-Looking for the desktop app instead? <Link href="https://jan.ai/download" target="_blank" rel="noopener noreferrer">Download Jan Desktop</Link>.
+Looking for the desktop app instead? <Link href="https://jan.ai/download" target="_blank" rel="noopener noreferrer">Download Flint Desktop</Link>.
 
 ## What it can do
 
 - **Read and change a project** - open files, make targeted edits, create new ones.
 - **Run commands** - build, test, grep, and read the output to decide what to do next.
 - **Search the web** - look things up mid-task when the answer isn't in your project.
-- **Use your MCP servers** - every connector configured in Jan Desktop is available here too.
+- **Use your MCP servers** - every connector configured in Flint Desktop is available here too.
 - **Follow your project's skills** - reusable procedures it loads when a task calls for them.
 - **Remember across sessions** - durable facts about the project, kept as files you can review.
 - **Delegate** - split large jobs across [subagents](/docs/agent/subagents) that work in parallel.
 - **Keep working toward a goal** - `/goal` keeps it going until a condition you set is true.
 
 <Callout type="info">
-Jan Agent ships no inference engine of its own, so a model always runs somewhere else. That can be a
-cloud provider, or your own machine - point it at any OpenAI-compatible endpoint, such as Jan
+Flint Agent ships no inference engine of its own, so a model always runs somewhere else. That can be a
+cloud provider, or your own machine - point it at any OpenAI-compatible endpoint, such as Flint
 Desktop's [local API server](/docs/desktop/api-server), with `jan config set --base-url`.
 </Callout>
 
 ## Get started
 
 <DocCards>
-  <DocCard title="Quickstart" href="/docs/agent/quickstart" icon={<Rocket size={20} />}>Install Jan Agent, connect a provider, and finish your first task.</DocCard>
+  <DocCard title="Quickstart" href="/docs/agent/quickstart" icon={<Rocket size={20} />}>Install Flint Agent, connect a provider, and finish your first task.</DocCard>
   <DocCard title="Interactive console" href="/docs/agent/console" icon={<SquareTerminal size={20} />}>Slash commands, keyboard shortcuts, and how a session works.</DocCard>
   <DocCard title="Tools & permissions" href="/docs/agent/permissions" icon={<Wrench size={20} />}>What the agent can do, and how approval keeps you in control.</DocCard>
   <DocCard title="Configuration" href="/docs/agent/project-config" icon={<Settings size={20} />}>Providers, `agent.toml`, and per-project instructions.</DocCard>

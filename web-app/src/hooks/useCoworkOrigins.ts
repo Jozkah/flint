@@ -17,7 +17,7 @@ import type {
  * transcript's tool rows, the authority the run held — is gone, and a
  * surviving summary would be a claim with nothing left to support it.
  *
- * Withdrawing access changes what Jan may do next. It does not change what
+ * Withdrawing access changes what Flint may do next. It does not change what
  * happened, so nothing here is rewritten when a grant is handed back.
  */
 export type SessionOrigins = {

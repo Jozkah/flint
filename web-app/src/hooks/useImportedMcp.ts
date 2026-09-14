@@ -13,14 +13,14 @@ import type { McpProbe } from '@/lib/claudeCompat'
 /**
  * Allowing and withdrawing an imported MCP server, for real.
  *
- * The consent switch in readiness drives Jan's own MCP subsystem through this
+ * The consent switch in readiness drives Flint's own MCP subsystem through this
  * — the same `activate`/`deactivate` path a hand-configured server uses, not a
  * second launcher. Everything about *when* a server counts as up lives in
  * `claudeCompatMcp`; this is the wiring that gives it the subsystem and puts
  * the result back where readiness can see it.
  */
 
-/** Jan's MCP subsystem, narrowed to what starting a server needs. */
+/** Flint's MCP subsystem, narrowed to what starting a server needs. */
 const janRuntime = (): McpRuntime => {
   const mcp = getServiceHub().mcp()
   return {
@@ -36,7 +36,7 @@ export function useImportedMcp(input: {
   folder: string | null
   /** The session workspace an imported server would run in. */
   workspacePath: string | null
-  /** Jan's data folder, hidden from any server started here. */
+  /** Flint's data folder, hidden from any server started here. */
   dataFolder: string | null
   /** The repository, writable, only where a live grant says so. */
   writableRepository: string | null
@@ -89,7 +89,7 @@ export function useImportedMcp(input: {
                 ? { writableRepository }
                 : {}),
               ...(dataFolder ? { janData: dataFolder } : {}),
-              // Names only. Values are supplied through Jan's own handling.
+              // Names only. Values are supplied through Flint's own handling.
               allowedEnv: [...(probe.envNames ?? [])],
             }
           : undefined

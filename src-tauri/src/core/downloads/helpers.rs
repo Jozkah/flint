@@ -328,7 +328,7 @@ pub async fn _download_files_internal(
     // Create progress tracker
     let progress_tracker = ProgressTracker::new(items, file_sizes.clone());
 
-    // save file under Jan data folder
+    // save file under Flint data folder
     let jan_data_folder = get_jan_data_folder_path(app.clone());
 
     // Collect download tasks for parallel execution

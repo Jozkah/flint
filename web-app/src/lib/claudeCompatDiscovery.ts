@@ -25,10 +25,10 @@ import { errorText } from '@/lib/errorText'
 /**
  * Where user-level Claude skills may be looked for.
  *
- * A fixed, documented location plus whatever the user has configured in Jan's
+ * A fixed, documented location plus whatever the user has configured in Flint's
  * own settings — and nothing else. The repository must never be able to name a
  * discovery root: a `CLAUDE.md` that could add one would be a file in the
- * repository choosing which of the user's directories Jan reads.
+ * repository choosing which of the user's directories Flint reads.
  *
  * The home directory itself is never scanned. Only this exact subdirectory is.
  */
@@ -38,7 +38,7 @@ export const STANDARD_USER_SKILL_DIR = '.claude/skills'
 export type UserSkillRoot = {
   /** Absolute path, for display and for containment. */
   root: string
-  /** Where it came from — the standard location, or Jan settings. */
+  /** Where it came from — the standard location, or Flint settings. */
   source: 'standard' | 'configured'
   io: CompatIO
 }
@@ -58,7 +58,7 @@ export const CLAUDE_INSTRUCTIONS = 'CLAUDE.md'
 export const CLAUDE_MCP_FILE = '.mcp.json'
 
 /**
- * Fields Jan has no faithful equivalent for.
+ * Fields Flint has no faithful equivalent for.
  *
  * Reported rather than translated. A `permission-mode` mapped onto the nearest
  * Cowork run mode would be a guess about authority, and a guess about
@@ -500,7 +500,7 @@ async function readInert(io: CompatIO, root: string): Promise<InertProbe[]> {
 }
 
 /**
- * Everything Jan can find in one repository.
+ * Everything Flint can find in one repository.
  *
  * A missing directory is silence, not an error: most repositories have none of
  * this, and a run should not be told about the absence of a feature nobody

@@ -208,7 +208,7 @@ fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Res
     let cleaned: Vec<&str> = existing_content
         .split('\n')
         .filter(|line| {
-            // Remove Jan config markers and existing ANTHROPIC env vars to replace them
+            // Remove Flint config markers and existing ANTHROPIC env vars to replace them
             !line.starts_with(marker)
                 && !line.starts_with("# Jan Local API Server")
                 && !line.starts_with("export ANTHROPIC_")
@@ -391,7 +391,7 @@ pub fn launch_claude_code_with_config(
         custom_env_vars,
     )?;
 
-    // Claude Code talks to Jan's local API server, which authenticates inbound
+    // Claude Code talks to Flint's local API server, which authenticates inbound
     // requests against its own key (the proxy_api_key). ANTHROPIC_AUTH_TOKEN
     // MUST therefore be the local server key, and there is no valid placeholder:
     // anything else reaches the proxy, passes its key check, and then gets
@@ -774,7 +774,7 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
     }
 }
 
-/// Build the cleaned shell-file content with all Jan CC env vars stripped out.
+/// Build the cleaned shell-file content with all Flint CC env vars stripped out.
 fn build_cleaned_env_content(env_file_path: &str) -> String {
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
     let cleaned: Vec<&str> = existing_content
@@ -789,7 +789,7 @@ fn build_cleaned_env_content(env_file_path: &str) -> String {
     cleaned.join("\n").trim_end().to_string() + "\n"
 }
 
-/// Clear all Jan-written Claude Code environment variables from the shell config.
+/// Clear all Flint-written Claude Code environment variables from the shell config.
 /// Uses the same write-probe + osascript-fallback logic as `launch_claude_code_with_config`.
 #[tauri::command]
 pub fn clear_claude_code_env() -> Result<(), String> {
@@ -879,7 +879,7 @@ pub fn clear_claude_code_env() -> Result<(), String> {
     }
 }
 
-/// Determine the best writable directory for the Jan CLI install (Unix only).
+/// Determine the best writable directory for the Flint CLI install (Unix only).
 #[cfg(unix)]
 fn jan_cli_install_dir() -> Result<PathBuf, String> {
     let usr_local_bin = PathBuf::from("/usr/local/bin");
@@ -932,7 +932,7 @@ fn add_to_path_windows(install_dir: &PathBuf) -> Result<(), String> {
         .trim()
         .to_string();
 
-    // Remove stale old-style PATH entry (..\\Programs\\Jan without \\resources\\bin)
+    // Remove stale old-style PATH entry (..\\Programs\\Flint without \\resources\\bin)
     // left by previous versions that placed jan.exe next to the GUI binary.
     let old_jan_dir = install_dir
         .parent()

@@ -8,7 +8,7 @@
  * failed record is logged, not thrown. Tool phases reach the log through the
  * tool-activity record the backend already receives.
  *
- * Exports are written under Jan's data folder and never sent anywhere.
+ * Exports are written under Flint's data folder and never sent anywhere.
  */
 import { invoke } from '@tauri-apps/api/core'
 import { errorText } from '@/lib/errorText'

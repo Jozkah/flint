@@ -27,7 +27,7 @@
  *   never added to anything; adding it would count those tokens twice.
  * - `totalTokens` is input plus output.
  *
- * None of this is AH-073's dispatched-payload estimate. That is Jan's own
+ * None of this is AH-073's dispatched-payload estimate. That is Flint's own
  * byte count and is labelled as an estimate where it is shown; this is only
  * ever what a provider reported.
  */
@@ -217,7 +217,7 @@ export function exactUsageText(usage: TokenUsage | undefined): string {
  * - `clamped`: reported, but inconsistent, and cut to a consistent value; the
  *   original is in `reported`.
  *
- * Nothing in a `TokenUsage` is ever `estimated`: Jan's own byte estimate is
+ * Nothing in a `TokenUsage` is ever `estimated`: Flint's own byte estimate is
  * AH-073's record and is never merged into provider usage. A value that is
  * absent is unavailable and has no kind.
  */
@@ -308,7 +308,7 @@ export function normalizeLanguageModelUsage(
       if (isRecord(promptDetails)) {
         cached = tokenCount(promptDetails.cached_tokens)
       }
-      // Proxies that front Anthropic with an OpenAI shape (LiteLLM, Jan's own
+      // Proxies that front Anthropic with an OpenAI shape (LiteLLM, Flint's own
       // server) carry the creation count through under Anthropic's name.
       write = tokenCount(raw.cache_creation_input_tokens)
       if (cached !== undefined || write !== undefined) source = 'openai-chat'

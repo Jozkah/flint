@@ -123,9 +123,9 @@ Claude Code convention). They load as a third, read-only scope:
 - Plugin agents cannot be created or edited through `create_subagent` - they are managed by
   installing or removing the plugin.
 - Claude-runtime frontmatter is translated: `model` and `color` are ignored (the agent runs on the
-  session's model), and `tools` is mapped onto Jan's tool names (`Read` -> `read`, `Glob` -> `glob`,
+  session's model), and `tools` is mapped onto Flint's tool names (`Read` -> `read`, `Glob` -> `glob`,
   `Grep` -> `grep`, `WebSearch` -> `web_search`, `WebFetch` -> `web_fetch`, `TodoWrite` -> `todo`).
-  Names with no Jan equivalent are dropped; an agent listing only unknown tools inherits the
+  Names with no Flint equivalent are dropped; an agent listing only unknown tools inherits the
   parent's full tool policy.
 
 See [Plugins](/docs/agent/plugins#plugin-agents) for how plugin agents are discovered.

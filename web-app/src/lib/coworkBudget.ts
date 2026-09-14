@@ -1,7 +1,7 @@
 /**
  * Bounds on a Cowork run.
  *
- * The AI SDK cannot enforce these for us: Jan's tools are declared without an
+ * The AI SDK cannot enforce these for us: Flint's tools are declared without an
  * `execute`, so `streamText` returns after a single step and its `stopWhen`
  * conditions never evaluate. The loop is the runner's, so the caps are too —
  * and without them an agent with real tools has no upper bound at all.
@@ -138,7 +138,7 @@ export type TurnPlan = {
  * Decide whether this turn can be dispatched as it stands.
  *
  * An unknown window is reported as unknown and never as a refusal: refusing to
- * send because Jan could not discover a limit would make an unreadable server
+ * send because Flint could not discover a limit would make an unreadable server
  * unusable, which is worse than the request the server itself would reject.
  */
 export function planTurn(input: {

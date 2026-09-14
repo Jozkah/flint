@@ -121,7 +121,7 @@ function ActivityRow({
           </span>
           {origin ? (
             // What is actually known, from the run's ledger. A row with no
-            // entry says nothing rather than being assumed to be Jan's.
+            // entry says nothing rather than being assumed to be Flint's.
             <span className="block">
               {t(
                 `common:coworkOrigins.row.${
@@ -151,9 +151,9 @@ type Props = {
   /**
    * The run's origin ledger, when one exists.
    *
-   * Activity says what Jan *called*; the ledger says what is known about the
+   * Activity says what Flint *called*; the ledger says what is known about the
    * result. Without it a failed write and a write someone else made look the
-   * same as Jan's own successful one.
+   * same as Flint's own successful one.
    */
   origins?: readonly OriginEntry[]
 }

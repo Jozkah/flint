@@ -1,5 +1,5 @@
-//! User-wide `~/.jan/config.toml` provider config. Lets Jan Agent run
-//! standalone (no Jan Desktop) with credentials scoped to the whole user, not
+//! User-wide `~/.jan/config.toml` provider config. Lets Flint Agent run
+//! standalone (no Flint Desktop) with credentials scoped to the whole user, not
 //! just one project. Optional: a missing file yields an empty provider set,
 //! not an error.
 
@@ -94,8 +94,8 @@ struct GlobalConfigToml {
     /// for the check to know it was answered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     terminal_hint: Option<bool>,
-    /// Allow Jan to reuse Claude Code's keychain login. `None` = the default,
-    /// on; set false to keep Jan from reading or refreshing that credential.
+    /// Allow Flint to reuse Claude Code's keychain login. `None` = the default,
+    /// on; set false to keep Flint from reading or refreshing that credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     claude_code_alias: Option<bool>,
     /// Glyph swept along the working row while a turn runs, in place of the
@@ -294,7 +294,7 @@ pub(crate) fn terminal_hint_enabled() -> bool {
         .unwrap_or(true)
 }
 
-/// Whether Jan may reuse Claude Code's keychain login
+/// Whether Flint may reuse Claude Code's keychain login
 /// (`claude_code_alias` in `~/.jan/config.toml`), defaulting to on. This
 /// setting is deliberately opt-out to preserve existing behavior while making
 /// the cross-tool credential reuse explicit and reversible.
@@ -492,7 +492,7 @@ fn restrict_permissions(_path: &std::path::Path) {}
 
 /// Create or update a provider entry in `~/.jan/config.toml`, merging with any
 /// existing entry (see [`ProviderUpdate`]). Returns the config path. This is the
-/// headless write path that lets a standalone Jan Agent set credentials with no
+/// headless write path that lets a standalone Flint Agent set credentials with no
 /// Desktop app present.
 pub(crate) fn set_provider(name: &str, update: ProviderUpdate) -> Result<PathBuf, String> {
     if name.trim().is_empty() {
@@ -650,7 +650,7 @@ pub(crate) fn ensure_global_config() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Redirect Jan's home root to a scratch dir for the duration of `f`. Every
+/// Redirect Flint's home root to a scratch dir for the duration of `f`. Every
 /// test that touches `~/.jan` must go through this one helper: the environment
 /// is process-wide, so a second lock elsewhere would let those tests race each
 /// other.
@@ -664,7 +664,7 @@ pub(crate) fn ensure_global_config() -> Result<PathBuf, String> {
 ///
 /// On unix `HOME` is set alongside it, because subprocesses (git, in
 /// particular) resolve their own config through it and should see the same
-/// scratch tree. On Windows it is deliberately left alone: nothing Jan reads
+/// scratch tree. On Windows it is deliberately left alone: nothing Flint reads
 /// consults it, but Git for Windows prefers it over `USERPROFILE`, so
 /// redirecting it took the developer's `user.name` and `user.email` away from
 /// every test that shells out to `git` -- a dozen plugin and checkpoint tests

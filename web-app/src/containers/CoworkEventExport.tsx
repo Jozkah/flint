@@ -4,7 +4,7 @@
  *
  * Metadata only by default. Including content -- prompts, tool inputs and
  * outputs, paths -- takes an explicit tick, with what that means said beside
- * it. The export is written under Jan's data folder; nothing is uploaded.
+ * it. The export is written under Flint's data folder; nothing is uploaded.
  * Inspecting an export reads it as untrusted input and only reports what is
  * in it.
  */

@@ -502,7 +502,7 @@ export class DefaultModelsService implements ModelsService {
       }
 
       if (engine && typeof engine.getTokensCount === 'function') {
-        // Transform Jan's ThreadMessage format to OpenAI chat completion format
+        // Transform Flint's ThreadMessage format to OpenAI chat completion format
         const transformedMessages = messages
           .map((message) => {
             // Handle different content types

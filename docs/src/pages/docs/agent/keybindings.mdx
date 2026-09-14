@@ -53,12 +53,12 @@ just `rs`.
 
 ## Shift+Enter and the Option key
 
-Two keystrokes depend on the terminal rather than on Jan, because the terminal decides what
+Two keystrokes depend on the terminal rather than on Flint, because the terminal decides what
 reaches the application at all:
 
 - **<kbd>Shift</kbd>+<kbd>Enter</kbd>** has no representation in the classic terminal encoding -
   it sends a bare carriage return, identical to a plain <kbd>Enter</kbd>. It only arrives when the
-  terminal implements the kitty keyboard protocol, which Jan asks for at startup. kitty, Ghostty,
+  terminal implements the kitty keyboard protocol, which Flint asks for at startup. kitty, Ghostty,
   WezTerm, foot, Rio, Konsole 24+, Alacritty 0.14+, iTerm2 3.5+ and Windows Terminal all deliver
   it. Terminal.app and VTE terminals (gnome-terminal, Tilix) cannot.
 - **<kbd>Option</kbd>+<kbd>Delete</kbd> on macOS** needs the terminal to send `Option` as `Alt`.
@@ -99,8 +99,8 @@ Cancelling stops the turn, not the session. See [rewinding](/docs/agent/sessions
 | Click | Expand or collapse the row under the pointer |
 
 <Callout type="tip">
-Mouse tracking is on by default, which means Jan owns selection rather than the terminal - dragging
-selects and copies through Jan, and clicking a folded row expands it. Set `mouse = false` in
+Mouse tracking is on by default, which means Flint owns selection rather than the terminal - dragging
+selects and copies through Flint, and clicking a folded row expands it. Set `mouse = false` in
 `~/.jan/config.toml` to hand both back to the terminal. There is no hotkey for this.
 </Callout>
 

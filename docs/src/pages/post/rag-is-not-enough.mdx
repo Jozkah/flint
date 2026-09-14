@@ -27,7 +27,7 @@ Problems still arise with catastrophic forgetting in general tasks, commonly obs
 
 *Figure 1. Mistral 7B excels in benchmarks, ranking among the top foundational models.*
 
-*Note: We are not sponsored by the Mistral team, though lots of folks like to run Mistral locally using [Jan](https://jan.ai/)., our desktop client.*
+*Note: We are not sponsored by the Mistral team, though lots of folks like to run Mistral locally using [Flint](https://jan.ai/)., our desktop client.*
 
 ## Cost effectively improving the base model
 
@@ -60,11 +60,11 @@ This approach produced a final model - [Stealth 7B v1.2](https://huggingface.co/
 
 With the base model ready, we started on our specific use case.
 
-Jan is an open-source project enjoying strong growth, but at one point we began receiving a new support ticket every minute, which quickly overwhelmed our bootstrapped resources.
+Flint is an open-source project enjoying strong growth, but at one point we began receiving a new support ticket every minute, which quickly overwhelmed our bootstrapped resources.
 
 So, we directed our efforts toward training a model to answer user questions based on existing technical documentation.  
 
-Specifically, we trained it on on the [Nitro documentation](https://nitro.jan.ai/docs). For context, Nitro is the default inference engine for Jan. It’s a enterprise-ready server implementation of LlamaCPP, written in C++, with multimodal, queues, and other production-level server capabilities. 
+Specifically, we trained it on on the [Nitro documentation](https://nitro.jan.ai/docs). For context, Nitro is the default inference engine for Flint. It’s a enterprise-ready server implementation of LlamaCPP, written in C++, with multimodal, queues, and other production-level server capabilities.
 
 It made an interesting corpus because it was rife with post-2023 technical jargon, edge cases, and poor informational layout.
 
@@ -87,7 +87,7 @@ This final model can be found [here on Huggingface](https://huggingface.co/jan-h
 ![image](https://hackmd.io/_uploads/SJyDTVk6p.png)
 
 
-*Figure 3. Using the new finetuned model in [Jan](https://jan.ai/)*
+*Figure 3. Using the new finetuned model in [Flint](https://jan.ai/)*
 
 ## Improving results with RAG
 

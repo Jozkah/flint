@@ -15,7 +15,7 @@ export async function recordMemoryUses(opts: {
   sessionId: string | undefined
   projectRoot?: string
   /**
-   * The Jan workspace project a folderless chat is in, so a project memory it
+   * The Flint workspace project a folderless chat is in, so a project memory it
    * carried is visible to the backend when the use is recorded.
    */
   janProjectId?: string

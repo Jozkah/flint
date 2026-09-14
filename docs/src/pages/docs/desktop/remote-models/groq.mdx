@@ -20,9 +20,9 @@ import { Settings, Plus } from 'lucide-react'
 
 # Groq
 
-Jan supports [Groq](https://groq.com/) API integration, allowing you to use Groq's high-performance LLM models (Llama 3.x, Qwen, DeepSeek and more) through Jan's interface.
+Flint supports [Groq](https://groq.com/) API integration, allowing you to use Groq's high-performance LLM models (Llama 3.x, Qwen, DeepSeek and more) through Flint's interface.
 
-## Integrate Groq API with Jan
+## Integrate Groq API with Flint
 
 <Steps>
 ### Step 1: Get Your API Key
@@ -33,7 +33,7 @@ Jan supports [Groq](https://groq.com/) API integration, allowing you to use Groq
 Ensure your API key has sufficient credits
 </Callout>
 
-### Step 2: Configure Jan
+### Step 2: Configure Flint
 
 1. Navigate to the **Settings** (<Settings width={16} height={16} style={{display:"inline"}}/>)
 2. Under **Model Providers**, select **Groq**
@@ -51,8 +51,8 @@ Ensure your API key has sufficient credits
 
 ## Available Models Through Groq
 
-Jan automatically includes Groq's available models. In case you want to use a specific Groq model that
-you cannot find in **Jan**, follow the instructions in the [Add Cloud Models](/docs/desktop/manage-models#add-models-1):
+Flint automatically includes Groq's available models. In case you want to use a specific Groq model that
+you cannot find in **Flint**, follow the instructions in the [Add Cloud Models](/docs/desktop/manage-models#add-models-1):
 - See list of available models in [Groq Documentation](https://console.groq.com/docs/models).
 - The `id` property must match the model name in the list. For example, if you want to use Llama3.3 70B, you must set the `id` property to `llama-3.3-70b-versatile`.
 
@@ -68,7 +68,7 @@ Common issues and solutions:
 **2. Connection Problems**
 - Check your internet connection
 - Verify Groq's system status
-- Look for error messages in [Jan's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
+- Look for error messages in [Flint's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
 
 **3. Model Unavailable**
 - Confirm your API key has access to the model

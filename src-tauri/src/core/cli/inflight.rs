@@ -218,7 +218,7 @@ pub fn state(thread_dir: &Path) -> RunState {
 /// finished it: kept, it is the assistant text that arrived, followed by a note
 /// that the turn was cut off, so the model continues the work rather than
 /// imitating a status marker in its own replies. The note is a user-role
-/// message that says it comes from Jan: the loop replaces every `system`
+/// message that says it comes from Flint: the loop replaces every `system`
 /// message with its own prompt when a run starts, so a system note would
 /// never reach the model.
 pub fn recovered_conversation(checkpoint: &Checkpoint, choice: InterruptedChoice) -> Vec<Value> {

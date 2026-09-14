@@ -113,7 +113,7 @@ export function CardItem({
 }
 
 /**
- * A settings group (JAN Graphite Studio): a bordered `rounded-lg` object with
+ * A settings group (Flint Graphite Studio): a bordered `rounded-lg` object with
  * a compact title row and integrated rows separated by hairlines. No shadow,
  * no oversized heading.
  */

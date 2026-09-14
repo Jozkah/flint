@@ -147,7 +147,7 @@ export const providerModels = {
 } as const
 
 /**
- * llama.cpp slot pins. Jan sends every chat turn to slot 0 so a thread reuses
+ * llama.cpp slot pins. Flint sends every chat turn to slot 0 so a thread reuses
  * its cached KV prefix across turns, every background task (title generation,
  * subagents) to slot 1 so it can never overwrite that cache, and every Cowork
  * turn to slot 2.

@@ -1,5 +1,5 @@
 /**
- * Where a tool call came from. Jan runs four families of tools -- the native
+ * Where a tool call came from. Flint runs four families of tools -- the native
  * web tools, the built-in RAG tools, the built-in agent tools, and MCP server
  * tools -- and a collapsed card is ambiguous without saying which.
  */

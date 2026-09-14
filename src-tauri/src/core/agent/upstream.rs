@@ -1090,7 +1090,7 @@ fn should_try_next_api_key(status: reqwest::StatusCode) -> bool {
 
 /// Names the proxy environment variables in force, without their values (they
 /// routinely carry credentials). A proxy set in the environment is a common
-/// reason a request fails for Jan and for nothing else, and it is invisible in
+/// reason a request fails for Flint and for nothing else, and it is invisible in
 /// the error itself.
 #[cfg(not(feature = "cli"))]
 fn proxy_env_hint() -> Option<String> {
@@ -1182,7 +1182,7 @@ pub(crate) fn log_brief(err: &str) -> String {
 ///
 /// A thin delegate to [`super::genai_bridge`], which owns the wire format, SSE
 /// handling, provider field-name variance, and the retry policy. Every provider
-/// the agent talks to comes through here -- cloud, a Jan desktop API server, a
+/// the agent talks to comes through here -- cloud, a Flint desktop API server, a
 /// local llama.cpp router, an MLX session -- so there is exactly one upstream
 /// implementation to reason about.
 ///
@@ -1973,7 +1973,7 @@ mod tests {
         assert!(body.get("max_output_tokens").is_none());
     }
 
-    /// A proxy in the environment breaks Jan and nothing else, and never shows up
+    /// A proxy in the environment breaks Flint and nothing else, and never shows up
     /// in the error. Names only: the values carry credentials.
     #[test]
     fn proxy_env_hint_names_set_variables_without_their_values() {
@@ -1994,7 +1994,7 @@ mod tests {
         );
     }
 
-    /// A model served both by a Jan desktop API server (reachable over HTTP) and
+    /// A model served both by a Flint desktop API server (reachable over HTTP) and
     /// by local engine descriptors (no base_url) must always resolve to the
     /// server. `HashMap` order is randomized, so the local entries outnumber the
     /// remote one here: without a deterministic preference this fails most runs.

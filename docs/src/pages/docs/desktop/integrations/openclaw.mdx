@@ -17,20 +17,20 @@ keywords:
 import { Callout, Steps } from 'nextra/components'
 
 <Callout type="warning">
-**Important: OpenClaw Integration Removed in Jan v0.7.9**
+**Important: OpenClaw Integration Removed in Flint v0.7.9**
 
-As of Jan v0.7.9, the OpenClaw integration has been discontinued and is no longer available. If you wish to use OpenClaw, please use **Jan v0.7.8**.
+As of Flint v0.7.9, the OpenClaw integration has been discontinued and is no longer available. If you wish to use OpenClaw, please use **Flint v0.7.8**.
 
-The Jan team is focusing on building a safe, stable, and practical agent experience for Jan. We appreciate your patience and support as we work toward delivering a more robust solution.
+The Flint team is focusing on building a safe, stable, and practical agent experience for Flint. We appreciate your patience and support as we work toward delivering a more robust solution.
 </Callout>
 
 # Agents
 
-Jan supports autonomous AI agents that run entirely on your own hardware — no cloud required.
+Flint supports autonomous AI agents that run entirely on your own hardware — no cloud required.
 
 ## OpenClaw Agent
 
-OpenClaw is Jan's first default agent. Unlike a chatbot that only answers questions, OpenClaw acts as a personal assistant that can take real actions on your behalf.
+OpenClaw is Flint's first default agent. Unlike a chatbot that only answers questions, OpenClaw acts as a personal assistant that can take real actions on your behalf.
 
 <Callout type="warning">
 OpenClaw requires Node.js v22.12 or later to be installed.
@@ -50,7 +50,7 @@ Extend OpenClaw with skills to add new capabilities and integrations.
 
 ### Enable OpenClaw
 
-Go to **Settings > Integrations > OpenClaw** and click **Start** next to **Enable OpenClaw**. Jan will automatically walk you through the required installation steps — just wait for the process to complete.
+Go to **Settings > Integrations > OpenClaw** and click **Start** next to **Enable OpenClaw**. Flint will automatically walk you through the required installation steps — just wait for the process to complete.
 
 ![OpenClaw Channels](../_assets/openclaw-integration.png)
 
@@ -64,7 +64,7 @@ Once setup is complete, connect your messaging channels under the **Channels** s
 
 ![WhatsApp Setup](../_assets/openclaw-whatsapp-setup.png)
 
-Click **Start Setup** and Jan will configure everything automatically, then display a QR code. Scan it with your WhatsApp app to pair your account. Once connected, you can chat with Jan directly from your phone.
+Click **Start Setup** and Flint will configure everything automatically, then display a QR code. Scan it with your WhatsApp app to pair your account. Once connected, you can chat with Flint directly from your phone.
 
 ### Start Chatting
 
@@ -109,22 +109,22 @@ rm ~/Library/LaunchAgents/ai.openclaw.gateway.plist
 
 ## Uninstalling OpenClaw
 
-Currently, Jan does not have a built-in feature to uninstall OpenClaw. However, you can remove it manually by following the steps below.
+Currently, Flint does not have a built-in feature to uninstall OpenClaw. However, you can remove it manually by following the steps below.
 
 <Callout type="info">
-When you enable OpenClaw through Jan, Jan installs the OpenClaw binary into its own data folder (inside the `openclaw/bunx/bin/` subdirectory), which is **not** on your system PATH. This means running `openclaw` directly in a terminal will likely result in a "command not found" error. The instructions below account for this.
+When you enable OpenClaw through Flint, Flint installs the OpenClaw binary into its own data folder (inside the `openclaw/bunx/bin/` subdirectory), which is **not** on your system PATH. This means running `openclaw` directly in a terminal will likely result in a "command not found" error. The instructions below account for this.
 
-The default Jan data folder locations are:
+The default Flint data folder locations are:
 - **macOS:** `~/Library/Application Support/Jan/data/`
 - **Linux:** `~/.local/share/Jan/data/`
-- **Windows:** `%APPDATA%\Jan\data\`
+- **Windows:** `%APPDATA%\Flint\data\`
 
-If you have customized your Jan data folder, you can find the actual path in **Settings > Advanced > Jan Data Folder**.
+If you have customized your Flint data folder, you can find the actual path in **Settings > Advanced > Flint Data Folder**.
 </Callout>
 
 ### Step 1: Stop the Gateway and Uninstall the Service
 
-Use OpenClaw's built-in uninstall command to stop the gateway and remove the service registration. Since Jan's OpenClaw binary is not on your PATH, you have several options:
+Use OpenClaw's built-in uninstall command to stop the gateway and remove the service registration. Since Flint's OpenClaw binary is not on your PATH, you have several options:
 
 #### Option A: Using npx (requires Node.js and npm)
 
@@ -134,7 +134,7 @@ This is the simplest method if you have Node.js installed:
 npx -y openclaw uninstall --all --yes --non-interactive
 ```
 
-#### Option B: Using the full path to Jan's OpenClaw binary
+#### Option B: Using the full path to Flint's OpenClaw binary
 
 **macOS:**
 
@@ -156,7 +156,7 @@ npx -y openclaw uninstall --all --yes --non-interactive
 
 #### Option C: If you installed OpenClaw yourself (npm/bun)
 
-If you installed OpenClaw globally yourself (outside of Jan), the `openclaw` command should already be on your PATH:
+If you installed OpenClaw globally yourself (outside of Flint), the `openclaw` command should already be on your PATH:
 
 ```bash
 openclaw uninstall --all --yes --non-interactive
@@ -202,7 +202,7 @@ Remove-Item -Force "$env:USERPROFILE\.openclaw\gateway.cmd" -ErrorAction Silentl
 
 ### Step 3: Remove the OpenClaw Binary
 
-Delete Jan's internal OpenClaw installation directory.
+Delete Flint's internal OpenClaw installation directory.
 
 **macOS:**
 

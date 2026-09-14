@@ -32,7 +32,7 @@ const SIDEBAR_WIDTH_ICON = "5rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 //* new constants for sidebar resizing
-// JAN Atelier: 220px to 300px.
+// Flint Atelier: 220px to 300px.
 const MIN_SIDEBAR_WIDTH = "13.75rem";
 const MAX_SIDEBAR_WIDTH = "18.75rem";
 

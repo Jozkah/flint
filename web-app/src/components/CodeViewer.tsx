@@ -93,7 +93,7 @@ function lineOfNode(node: Node | null): number | null {
 }
 
 /**
- * Read-only source viewer: Shiki highlighting in the active Jan theme, line numbers,
+ * Read-only source viewer: Shiki highlighting in the active Flint theme, line numbers,
  * horizontal scrolling, optional word wrap, copy actions and selection →
  * “Add to chat”. The content is displayed exactly as read — no formatter runs.
  */

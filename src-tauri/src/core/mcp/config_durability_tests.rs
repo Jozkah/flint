@@ -1,10 +1,10 @@
-//! A config Jan cannot read must never be silently replaced.
+//! A config Flint cannot read must never be silently replaced.
 //!
 //! `get_mcp_configs` answered an unparseable `mcp_config.json` by starting from
-//! `{}`, re-adding the default `Jan Browser MCP` entry, and writing the result
+//! `{}`, re-adding the default `Flint Browser MCP` entry, and writing the result
 //! back over the original. The user's servers were gone for good, and what was
 //! left was exactly the file reported upstream in janhq/jan#8519: `mcpSettings`
-//! and a lone `Jan Browser MCP`. The file could become unparseable in the first
+//! and a lone `Flint Browser MCP`. The file could become unparseable in the first
 //! place because every writer used a truncate-then-write `fs::write`.
 
 use super::commands::get_mcp_configs;

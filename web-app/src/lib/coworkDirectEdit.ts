@@ -16,7 +16,7 @@ import { sameBinding, type Binding } from '@/lib/coworkReadiness'
 export type AuthorizeDeps = {
   /** The session and folder the user is asking about. */
   binding: Binding
-  /** Jan's data folder, needed by the backend to validate the root. */
+  /** Flint's data folder, needed by the backend to validate the root. */
   dataFolder: string | null
   /** Issues the grant. Resolves false-ish when the backend refused. */
   authorize: (

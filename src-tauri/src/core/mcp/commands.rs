@@ -37,7 +37,7 @@ async fn tool_call_timeout(state: &AppState) -> Duration {
 /// A server counts as "enabled" if it's in `mcp_active_servers`, regardless of
 /// whether it's currently connected — a transiently disconnected server still
 /// contributes its last successfully listed tools (`mcp_last_known_tools`), so
-/// the tool schema Jan sends stays present and stable across reconnects instead
+/// the tool schema Flint sends stays present and stable across reconnects instead
 /// of shrinking/growing and invalidating the downstream KV-cache prefix.
 /// `mcp_last_known_tools` is only cleared by explicit user deactivation
 /// (`deactivate_mcp_server`), never by a transient list-tools failure here.
@@ -1055,7 +1055,7 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         mutated = true;
     }
 
-    // Migration: Add Jan Browser MCP if not present
+    // Migration: Add Flint Browser MCP if not present
     let mcp_servers = config_object
         .get_mut("mcpServers")
         .and_then(|v| v.as_object_mut())
@@ -1127,7 +1127,7 @@ fn get_result_text(result: &rmcp::model::CallToolResult) -> Option<&str> {
         .map(|t| t.text.as_str())
 }
 
-/// Check if Jan Browser extension is connected via MCP
+/// Check if Flint Browser extension is connected via MCP
 #[tauri::command]
 pub async fn check_jan_browser_extension_connected(
     state: State<'_, AppState>,

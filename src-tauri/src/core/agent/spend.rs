@@ -135,7 +135,7 @@ pub struct ModelSpend {
     /// what it costs -- never a zero.
     #[serde(default)]
     pub cost: Option<f64>,
-    /// How many of the dispatches counted here were Jan's own estimate rather
+    /// How many of the dispatches counted here were Flint's own estimate rather
     /// than the provider's count.
     pub estimated_dispatches: usize,
 }

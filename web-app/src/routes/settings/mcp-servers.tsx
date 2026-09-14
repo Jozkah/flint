@@ -264,7 +264,7 @@ function MCPServersDesktop() {
   >({})
   const serviceHubRef = useRef(serviceHub)
   serviceHubRef.current = serviceHub
-  // Server names may contain spaces ("Jan Browser MCP"), so join on NUL.
+  // Server names may contain spaces ("Flint Browser MCP"), so join on NUL.
   const connectedKey = connectedServers.join('\u0000')
 
   useEffect(() => {

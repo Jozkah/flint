@@ -11,7 +11,7 @@
 //     at *build* time (see vite.config.ts). A web bundle built without the
 //     Tauri CLI (e.g. a bare `vite build`) has `IS_MACOS === false` even when
 //     it later runs on macOS, which dropped the traffic-light reservation and
-//     let the "Jan" wordmark slide underneath the native close/min/max buttons
+//     let the "Flint" wordmark slide underneath the native close/min/max buttons
 //     — exactly the reported overlap.
 //
 // The reservation is therefore resolved from the build-time define OR a runtime
@@ -95,7 +95,7 @@ export function detectMacOverlay(nav?: {
 
   const ua = `${navigatorLike.userAgent ?? ''} ${navigatorLike.platform ?? ''}`
   // iOS reports "iPhone"/"iPad" and has no traffic lights; exclude it. (An iPad
-  // in desktop mode can spoof "Macintosh", but Jan ships no iPad target.)
+  // in desktop mode can spoof "Macintosh", but Flint ships no iPad target.)
   if (/iPhone|iPad|iPod/i.test(ua)) return false
   return /Mac OS X|Macintosh|MacIntel/i.test(ua)
 }
@@ -106,14 +106,14 @@ export type SidebarTitlebar = {
   controlsOnLeft: boolean
   /** Keep the top-left corner clear (macOS overlay, or left-anchored buttons). */
   reserveLeft: boolean
-  /** Render the "Jan" wordmark on the left edge. */
+  /** Render the "Flint" wordmark on the left edge. */
   showWordmarkLeft: boolean
-  /** Render the "Jan" wordmark inside the right control cluster instead. */
+  /** Render the "Flint" wordmark inside the right control cluster instead. */
   showWordmarkRight: boolean
 }
 
 /**
- * Where the sidebar header may place the "Jan" wordmark.
+ * Where the sidebar header may place the "Flint" wordmark.
  *
  * On macOS (native overlay) or when a Linux DE anchors its window buttons on
  * the left, the top-left belongs to those buttons: the wordmark is hidden there

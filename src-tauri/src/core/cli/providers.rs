@@ -1,6 +1,6 @@
 //! Cloud provider credential loader for the CLI.
 //!
-//! Jan Agent runs standalone, without Jan Desktop, so provider config is
+//! Flint Agent runs standalone, without Flint Desktop, so provider config is
 //! resolved from two `.jan` scopes rather than desktop's `settings.json`:
 //!
 //! 1. Global `~/.jan/config.toml` (user-wide, [`crate::core::agent::global_config`]) - the base.

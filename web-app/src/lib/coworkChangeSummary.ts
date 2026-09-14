@@ -2,13 +2,13 @@
  * What this session changed -- and only what it changed.
  *
  * The working tree of an attached repository usually has edits in it that
- * nobody asked Jan about: a half-finished branch, a config someone tweaked an
- * hour ago. Counting those as change activity tells the user Jan wrote 40
+ * nobody asked Flint about: a half-finished branch, a config someone tweaked an
+ * hour ago. Counting those as change activity tells the user Flint wrote 40
  * files when it wrote two, which is worse than showing nothing: it is a claim
  * about authorship that is false.
  *
  * So a repository file counts only when this session wrote to that path. In
- * the sandbox that is the diff Jan produced; in a directly-edited checkout it
+ * the sandbox that is the diff Flint produced; in a directly-edited checkout it
  * is the same write turn, landing somewhere Git can see.
  */
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
@@ -21,7 +21,7 @@ export type ChangeCounts = {
 }
 
 /**
- * Whether a repository-relative path is one of the paths Jan wrote.
+ * Whether a repository-relative path is one of the paths Flint wrote.
  *
  * Git reports paths relative to the repository root; a tool call may name an
  * absolute path, a path relative to the attached folder, or the same file
@@ -46,8 +46,8 @@ export function janAuthoredChanges(
     deletions: diffs.reduce((sum, d) => sum + d.deletions, 0),
   }
 
-  // A file Jan wrote whose own diff carried no line counts -- a direct edit
-  // the tool reported without one -- is still Jan's change, and Git knows how
+  // A file Flint wrote whose own diff carried no line counts -- a direct edit
+  // the tool reported without one -- is still Flint's change, and Git knows how
   // big it was. Everything else in the working tree belongs to whoever wrote
   // it and is not this session's to report.
   for (const file of git?.files ?? []) {

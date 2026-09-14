@@ -169,12 +169,12 @@ const MODEL_PROVIDER_STORE_KEY = 'model-provider'
 /** Set once the user has agreed to the first-run download. */
 const SETUP_CONSENT_KEY = 'llamacpp-first-run-setup-started'
 /**
- * The embedding model Jan prefers when it is already installed.
+ * The embedding model Flint prefers when it is already installed.
  *
- * There is deliberately no URL beside this id. Jan used to fetch this model
+ * There is deliberately no URL beside this id. Flint used to fetch this model
  * from huggingface.co at startup, and again on the first RAG call if that had
  * failed, so a fresh launch reached the internet without the user asking for
- * anything. Nothing downloads a model on Jan's initiative any more: an
+ * anything. Nothing downloads a model on Flint's initiative any more: an
  * embedding feature either finds a model already installed or reports that it
  * is unavailable.
  */
@@ -353,7 +353,7 @@ async function readPersistedLlamacppModels(): Promise<PersistedModelState[]> {
  * Breadth-first search of `rootDir` for the directory directly containing
  * a file named `serverName`. Returns the absolute path of that directory,
  * or null if not found. Used by manual backend install to tolerate
- * different archive layouts (Jan-built `build/bin/...` vs upstream
+ * different archive layouts (Flint-built `build/bin/...` vs upstream
  * llama.cpp's flat `llama-bXXXX/...`).
  */
 async function findLlamaServerDir(
@@ -392,7 +392,7 @@ async function findLlamaServerDir(
 }
 
 // Folder structure for llamacpp extension:
-// <Jan's data folder>/llamacpp
+// <Flint's data folder>/llamacpp
 //  - models/<modelId>/
 //    - model.yml (required)
 //    - model.gguf (optional, present if downloaded from URL)
@@ -1597,7 +1597,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
               ])
               if (await fs.existsSync(configPath)) continue // Don't reimport
 
-              // this is relative to Jan's data folder
+              // this is relative to Flint's data folder
               const modelDir = `${this.providerId}/models/${modelId}`
 
               let size_bytes = (
@@ -1746,7 +1746,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     if (await fs.existsSync(configPath))
       throw new Error(`Model ${modelId} already exists`)
 
-    // this is relative to Jan's data folder
+    // this is relative to Flint's data folder
     const modelDir = `${this.providerId}/models/${modelId}`
 
     // we only use these from opts
@@ -2431,7 +2431,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * `router.preset.ini`, so updating Zustand alone has no effect on inference.
    *
    * Sidebar keys are mapped to the canonical `model.yml` / preset keys here.
-   * Keys not in the mapping are silently ignored — they're either Jan-side
+   * Keys not in the mapping are silently ignored — they're either Flint-side
    * concerns (`reasoning`, `auto_increase_ctx_len`) or not yet emitted by
    * `preset.ts` (deferred to phase b).
    */
@@ -2752,7 +2752,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       path: modelConfigPath,
     })
     // model option is required
-    // NOTE: model_path and mmproj_path can be either relative to Jan's data folder or absolute path
+    // NOTE: model_path and mmproj_path can be either relative to Flint's data folder or absolute path
     const modelPath = await joinPath([
       janDataFolderPath,
       modelConfig.model_path,

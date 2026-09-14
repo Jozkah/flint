@@ -19,7 +19,7 @@ import { Settings, Plus } from 'lucide-react'
 
 # Hugging Face
 
-Jan supports Hugging Face models through two methods: the new **HF Router** (recommended) and **Inference Endpoints**. Both methods require a Hugging Face token and **billing to be set up**.
+Flint supports Hugging Face models through two methods: the new **HF Router** (recommended) and **Inference Endpoints**. Both methods require a Hugging Face token and **billing to be set up**.
 
 ![HuggingFace Inference Providers](../_assets/hf_providers.png)
 
@@ -33,19 +33,19 @@ The HF Router provides access to models from multiple providers (Replicate, Toge
 
 Visit [Hugging Face Settings > Access Tokens](https://huggingface.co/settings/tokens) and create a token. Make sure you have billing set up on your account.
 
-### Step 2: Configure Jan
+### Step 2: Configure Flint
 
 1. Go to **Settings** > **Model Providers** > **HuggingFace**
 2. Enter your HF token
 3. Use this URL: `https://router.huggingface.co/v1`
 
-![Jan HF Setup](../_assets/provider-huggingface.png)
+![Flint HF Setup](../_assets/provider-huggingface.png)
 
 You can find out more about the HF Router [here](https://huggingface.co/docs/inference-providers/index).
 
 ### Step 3: Start Using Models
 
-Jan comes with three HF Router models pre-configured. Select one and start chatting immediately.
+Flint comes with three HF Router models pre-configured. Select one and start chatting immediately.
 
 </Steps>
 
@@ -88,9 +88,9 @@ If you get a response, you can click on **Copy** to copy the endpoint URL and AP
   You will need to be logged into the HuggingFace Inference Endpoints and have a credit card on file to deploy a model.
 </Callout>
 
-### Step 3: Configure Jan
+### Step 3: Configure Flint
 
-If you do not have an API key you can create one under **Settings** > **Access Tokens** [here](https://huggingface.co/settings/tokens). Once you finish, copy the token and add it to Jan alongside your endpoint URL at **Settings** > **Model Providers** > **HuggingFace**.
+If you do not have an API key you can create one under **Settings** > **Access Tokens** [here](https://huggingface.co/settings/tokens). Once you finish, copy the token and add it to Flint alongside your endpoint URL at **Settings** > **Model Providers** > **HuggingFace**.
 
 **3.1 HF Token**
 ![Get Token](../_assets/hf_jan_nano_5.png)
@@ -100,8 +100,8 @@ If you do not have an API key you can create one under **Settings** > **Access T
 ![Endpoint URL](../_assets/hf_jan_nano_4.png)
 <br/>
 
-**3.3 Jan Settings**
-![Jan Settings](../_assets/hf_jan_nano_6.png)
+**3.3 Flint Settings**
+![Flint Settings](../_assets/hf_jan_nano_6.png)
 
 <Callout type='warning'>
 Make sure to add `/v1/` to the end of your endpoint URL. This is required by the OpenAI API.
@@ -125,7 +125,7 @@ If you want to learn how to use Jan Nano with MCP, check out [the guide here](..
 
 **Option 1 (HF Router):** Access to models from multiple providers as shown in the providers image above.
 
-**Option 2 (Inference Endpoints):** You can follow the steps above with a large amount of models on Hugging Face and bring them to Jan. Check out other models in the [Hugging Face Model Hub](https://huggingface.co/models).
+**Option 2 (Inference Endpoints):** You can follow the steps above with a large amount of models on Hugging Face and bring them to Flint. Check out other models in the [Hugging Face Model Hub](https://huggingface.co/models).
 
 ## Troubleshooting
 
@@ -141,7 +141,7 @@ Common issues and solutions:
 **2. Connection Problems**
 - Check your internet connection
 - Verify Hugging Face's system status
-- Look for error messages in [Jan's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
+- Look for error messages in [Flint's logs](/docs/desktop/troubleshooting#how-to-get-error-logs)
 
 **3. Model Unavailable**
 - Confirm your API key has access to the model

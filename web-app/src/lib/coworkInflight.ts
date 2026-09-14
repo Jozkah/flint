@@ -94,8 +94,8 @@ export function unfinishedReply(record: InFlightRecord): string {
  * Completed tool calls and their results are kept either way. A tool that was
  * still running when the run died has no result, so it is closed as
  * interrupted rather than left open. The unfinished reply is kept (continue)
- * or dropped (discard-partial), and a note from Jan says which -- as a user
- * turn marked as Jan's, because it has to reach the model, and the model must
+ * or dropped (discard-partial), and a note from Flint says which -- as a user
+ * turn marked as Flint's, because it has to reach the model, and the model must
  * not read a status marker in its own voice.
  */
 export function recover(

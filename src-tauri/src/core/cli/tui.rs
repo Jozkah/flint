@@ -5193,7 +5193,7 @@ impl App {
     fn check_context_pressure(&mut self) {
         use crate::core::agent::context_pressure::{line, pressure};
         // `tokens_estimated` is the difference between "the provider counted
-        // this" and "Jan measured the history itself", and the warning says
+        // this" and "Flint measured the history itself", and the warning says
         // which it is rather than letting an estimate read as a measurement.
         let Some(found) = pressure(
             self.tokens,
@@ -13009,8 +13009,8 @@ fn finish_account_login(app: &mut App, result: Result<String, String>) {
 fn login_success_message(provider: &str) -> String {
     format!("signed in to {provider}. Use /model to select a model.")
 }
-/// Warn after a Claude account sign-in that Jan reaches Anthropic directly
-/// with the user's OAuth token. Since Jan is a third-party client (not the
+/// Warn after a Claude account sign-in that Flint reaches Anthropic directly
+/// with the user's OAuth token. Since Flint is a third-party client (not the
 /// official Claude Code CLI), usage proceeds against Anthropic's Claude Code
 /// Terms of Service at the user's own risk; there is no guarantee that
 /// Anthropic permits third-party access to the same quota.
@@ -28361,7 +28361,7 @@ mod tests {
 
     #[test]
     fn tilde_path_abbreviates_only_the_home_prefix() {
-        // Whatever the platform resolves as Jan's home, not `HOME` -- which is
+        // Whatever the platform resolves as Flint's home, not `HOME` -- which is
         // unset on Windows and made this assert on a variable the function no
         // longer reads.
         let home = crate::core::app::commands::jan_home_dir().expect("a home in tests");

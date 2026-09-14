@@ -16,9 +16,9 @@ twitter:
 import { Callout } from 'nextra/components'
 import CTABlog from '@/components/Blog/CTA'
 
-# Replicating Deep Research in Jan
+# Replicating Deep Research in Flint
 
-Deep Research like that of OpenAI, Gemini, and Qwen, is not at feature parity in Jan yet, so this post
+Deep Research like that of OpenAI, Gemini, and Qwen, is not at feature parity in Flint yet, so this post
 highlights our initial steps at making a hybrid, local and cloud-based deep research system that competes
 with the best implementations to date.
 
@@ -112,20 +112,20 @@ Here's a screenshot of this in action (in Claude Desktop):
 ![Claude Agent Desktop](./_assets/claude-agent.png)
 ![Claude Report Visualizer](./_assets/claude-report-visualizer.png)
 
-## Replicating Deep Research Results with Jan
+## Replicating Deep Research Results with Flint
 
 After testing and observing how Deep Research works in different platforms, we thought, how could we
-replicate this in Jan? In particular, how could we replicate it with a hybrid approach combining local
+replicate this in Flint? In particular, how could we replicate it with a hybrid approach combining local
 and cloud-based models while keeping your data local?
 
 <Callout>
-This experiment was done using the latest version of Jan `v0.6.7`, but it can potentially be replicated in
+This experiment was done using the latest version of Flint `v0.6.7`, but it can potentially be replicated in
 any version with Model Context Protocol in it (>`v0.6.3`).
 </Callout>
 
 **The Key: Assistants + Tools**
 
-Running deep research in Jan can be accomplished by combining [custom assistants](https://jan.ai/docs/desktop/assistants)
+Running deep research in Flint can be accomplished by combining [custom assistants](https://jan.ai/docs/desktop/assistants)
 with [MCP search tools](https://jan.ai/docs/mcp-examples/search/exa). This pairing allows any model—local or
 cloud—to follow a systematic research workflow, to create a report similar to that of other providers, with some
 visible limitations (for now).
@@ -175,6 +175,6 @@ different commercial Deep Research offerings.
 - **Good Enough Factor**: While not matching commercial quality, the outputs were solid approximations suitable for many research needs
 
 ## Conclusion
-This was an initial exploration in the roadmap to create a top hybrid implementation of deep research in Jan. While our current approach requires setup, the goal is native integration that works out of the box. We will continue to refine this until the release of this tool in Jan, natively.
+This was an initial exploration in the roadmap to create a top hybrid implementation of deep research in Flint. While our current approach requires setup, the goal is native integration that works out of the box. We will continue to refine this until the release of this tool in Flint, natively.
 
 <CTABlog />

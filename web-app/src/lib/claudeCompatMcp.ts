@@ -9,8 +9,8 @@ import { errorText } from '@/lib/errorText'
 /**
  * Bringing an imported MCP server up, and taking it down again.
  *
- * The adapter that turns a Claude definition into a Jan config was already
- * tested; this is what actually drives Jan's MCP subsystem with it. Kept as a
+ * The adapter that turns a Claude definition into a Flint config was already
+ * tested; this is what actually drives Flint's MCP subsystem with it. Kept as a
  * separate module taking its subsystem as an argument because the interesting
  * behaviour is all timing — a server that has consented but not initialized, a
  * handshake that fails, a disable arriving while a call is in flight — and
@@ -36,7 +36,7 @@ export type McpRuntimeState =
   | 'disabled'
   | 'unsupported'
 
-/** The part of Jan's MCP subsystem this needs. */
+/** The part of Flint's MCP subsystem this needs. */
 export type McpRuntime = {
   activate: (name: string, config: unknown) => Promise<void>
   deactivate: (name: string) => Promise<void>
@@ -64,10 +64,10 @@ export type McpRuntimeRecord = {
  * fingerprint; values never reach this module at all.
  *
  * Scope: this only detects that a repository's `.mcp.json` entry changed under
- * an import consent, before Jan has built a server config from it. It is not
+ * an import consent, before Flint has built a server config from it. It is not
  * the identity tool approvals are bound to. Tool trust (the backend gate and
  * the renderer approval store) uses the backend's `mcp_identity` fingerprint of
- * the config Jan actually runs, fetched through `serverFingerprints()`, and
+ * the config Flint actually runs, fetched through `serverFingerprints()`, and
  * nothing that grants a tool call compares this value.
  */
 export function fingerprintMcp(probe: McpProbe): string {

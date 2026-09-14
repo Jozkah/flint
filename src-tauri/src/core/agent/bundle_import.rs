@@ -95,7 +95,7 @@ pub enum ImportErrorKind {
     HashMismatch,
     /// Over a count, size, depth, length or time bound.
     TooLarge,
-    /// A path that could leave the project or name Git's or Jan's state.
+    /// A path that could leave the project or name Git's or Flint's state.
     PathRefused,
     /// Two paths that name the same file on some file system.
     PathCollision,
@@ -539,7 +539,7 @@ fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
-/// Where an import is prepared, private to Jan.
+/// Where an import is prepared, private to Flint.
 fn workdir(data_folder: &Path, id: &str) -> PathBuf {
     imports_dir(data_folder).join(format!("{id}.partial"))
 }

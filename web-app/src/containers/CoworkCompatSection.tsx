@@ -9,11 +9,11 @@ import {
 import { errorText } from '@/lib/errorText'
 
 /**
- * What Jan found in this folder's Claude configuration, and what it did about
+ * What Flint found in this folder's Claude configuration, and what it did about
  * each part.
  *
  * The section is a matrix rather than a status light because "compatible" is
- * not one fact. A repository can have instructions Jan reads, a skill it
+ * not one fact. A repository can have instructions Flint reads, a skill it
  * refuses because a resource points outside the folder, an agent missing a
  * tool, a remote server waiting for approval and a hook that will never run —
  * all at once. Showing a single "compatible" badge over that would be the
@@ -138,7 +138,7 @@ export function CoworkCompatSection({
                       ) : null}
                     </span>
                     {/* Offered only where consent is the thing standing in the
-                        way. A server Jan refuses to confine has no button,
+                        way. A server Flint refuses to confine has no button,
                         because there is nothing the user could consent to. */}
                     {item.type === 'mcp' &&
                     (item.state === 'consent-required' ||

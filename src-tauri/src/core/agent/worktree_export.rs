@@ -12,7 +12,7 @@
 //!
 //! The changes are read the way a proposal reads them
 //! (`proposals::changes_in_worktree`): links out of the worktree refuse the
-//! whole export, and Git's and Jan's own state are never included. Nothing in
+//! whole export, and Git's and Flint's own state are never included. Nothing in
 //! the worktree or the user's checkout is written.
 //!
 //! The bundle is assembled under a `.partial` name and renamed into place
@@ -36,7 +36,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExportErrorKind {
-    /// The worktree is not under the folder Jan manages.
+    /// The worktree is not under the folder Flint manages.
     NotManaged,
     /// The worktree is missing, corrupt, off its branch or its repository
     /// changed.

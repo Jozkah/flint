@@ -1,18 +1,18 @@
-# Jan Cowork Trust and Coding Rework
+# Flint Cowork Trust and Coding Rework
 
 ## Decision
 
-Proceed with a focused Cowork rework. Keep ordinary Jan chats lightweight and conversational. Make Cowork the explicit, repository-bound agent experience.
+Proceed with a focused Cowork rework. Keep ordinary Flint chats lightweight and conversational. Make Cowork the explicit, repository-bound agent experience.
 
 Use `4ad88aaf1` (`fix(cowork): tell the truth about external files, and prove it`) as the integration baseline. It already contains the external-file safety, file activity, session isolation, model organization, and related fixes described in the September 4 handoff. Do not recreate those changes on an older branch.
 
-This is not a project to clone the full Claude Code, OpenCode, or Hermes harness. It is a project to make Jan's smaller harness predictable, honest, and safe enough that a user can trust which repository it is reading, what instructions it loaded, and whether it is allowed to act.
+This is not a project to clone the full Claude Code, OpenCode, or Hermes harness. It is a project to make Flint's smaller harness predictable, honest, and safe enough that a user can trust which repository it is reading, what instructions it loaded, and whether it is allowed to act.
 
 ## Product diagnosis
 
 ### Target user
 
-A developer who wants to open a local repository in Jan, ask it to inspect or continue work, review the proposed next step, and then let it make verifiable changes without writing a long defensive prompt.
+A developer who wants to open a local repository in Flint, ask it to inspect or continue work, review the proposed next step, and then let it make verifiable changes without writing a long defensive prompt.
 
 ### Observed failure
 
@@ -31,14 +31,14 @@ The external-file handoff adds a second class of trust failures: snapshot files 
 - "Projects" conflates chat organization, uploaded knowledge, and a local code folder.
 - Cowork's folder binding exists, but it is visually secondary and separate from the older Projects surface.
 - New Cowork sessions default to action mode; plan mode is opt-in and represented by a subtle icon.
-- The Cowork system prompt says to prefer acting over asking, which is wrong for an ambiguous first turn asking Jan to learn and resume work.
+- The Cowork system prompt says to prefer acting over asking, which is wrong for an ambiguous first turn asking Flint to learn and resume work.
 - Only root-level `JAN.md` is automatically loaded. Other harness files are deliberately ignored, and skill activation is not presented as a preflight contract.
 - The attached repository is read-only while generated changes land in a hidden session sandbox. That is safe, but it does not match a developer's ordinary meaning of "work on this project."
 - Capability and context assembly are mostly invisible, making failures look like model mistakes instead of missing setup.
 
 ## Product promise
 
-When Cowork says a repository is open, every project read, search, instruction, skill, command, and edit belongs to that exact repository-bound session. Before the first mutation, Jan shows what it loaded and asks the user to approve the proposed next action unless the user explicitly chose an autonomous mode.
+When Cowork says a repository is open, every project read, search, instruction, skill, command, and edit belongs to that exact repository-bound session. Before the first mutation, Flint shows what it loaded and asks the user to approve the proposed next action unless the user explicitly chose an autonomous mode.
 
 ## Anti-goals
 
@@ -62,7 +62,7 @@ When Cowork says a repository is open, every project read, search, instruction, 
    - late selection results cannot overwrite a newer selection;
    - file activity remains deduplicated, correctly settled, attributed, and ordered.
 2. Free enough disk space for a native build. Prefer removing the current worktree's regenerable `src-tauri/target` only after confirming the target. Do not delete sibling worktrees or their state.
-3. Stop or relocate the unrelated long-running Jan process that is causing random test failures, with explicit user approval if it belongs to another session.
+3. Stop or relocate the unrelated long-running Flint process that is causing random test failures, with explicit user approval if it belongs to another session.
 4. Re-run the full root suite in a stable environment and record exact totals, skips, todos, and the unchanged baseline `formatDate` failure if it still exists.
 5. Build the macOS app and execute all 12 prepared drag/drop and file-opening smoke cases. Record evidence for each case. Repeat the equivalent critical path on Windows because the original defect was reported with Windows paths.
 
@@ -130,17 +130,17 @@ Exit gate: the feedback prompt produces a status/continuity report and approval 
    - a shallow repository map generated on demand;
    - relevant conversation summary after compaction.
 2. Keep normal chat's initial context small. Do not pay the coding-harness cost unless the user opens Cowork.
-3. Preserve `JAN.md` as Jan's authoritative native instruction file. Add an explicit compatibility setting for recognized foreign files (`AGENTS.md`, `CLAUDE.md`, or project-defined paths) rather than silently ingesting them. The readiness card must name every file actually loaded and its precedence.
+3. Preserve `JAN.md` as Flint's authoritative native instruction file. Add an explicit compatibility setting for recognized foreign files (`AGENTS.md`, `CLAUDE.md`, or project-defined paths) rather than silently ingesting them. The readiness card must name every file actually loaded and its precedence.
 4. Resolve explicitly named skills before the model can act. If the user requests "superpowers" and it is missing, disabled, unreadable, or ambiguous, stop and present the exact issue. Never silently ignore the request.
 5. Add a context inspector showing approximate tokens by category and warning when instructions, skills, or history were omitted or compacted.
 
-Exit gate: a user can answer "what context did Jan receive?" from the UI, and requested skills cannot disappear silently.
+Exit gate: a user can answer "what context did Flint receive?" from the UI, and requested skills cannot disappear silently.
 
 ### Phase 5 — Align write behavior with the coding promise
 
 1. Offer three honest access modes:
    - **Review only**: attached repository is read-only; outputs stay in the session sandbox.
-   - **Managed worktree**: recommended for Git repositories; Jan edits an isolated worktree and shows a branch diff.
+   - **Managed worktree**: recommended for Git repositories; Flint edits an isolated worktree and shows a branch diff.
    - **Edit this folder**: explicit opt-in for direct repository mutation with approval policy and Git dirty-state warning.
 2. Do not hide the destination of changes. Show it beside the project identity and in every Changes view.
 3. For managed worktrees, record source repository, base revision, worktree path, and branch. Refuse stale or mismatched bindings.

@@ -1,7 +1,7 @@
 //! Importing agent definitions written for other harnesses (AH-118, AH-119).
 //!
-//! Two ecosystems put their agent definitions somewhere Jan can read them, and
-//! both describe roughly what a Jan subagent is: a name, a description of when
+//! Two ecosystems put their agent definitions somewhere Flint can read them, and
+//! both describe roughly what a Flint subagent is: a name, a description of when
 //! to use it, a system prompt, and the tools it is allowed:
 //!
 //! * **OpenCode** — `.opencode/agent/<name>.md` (and `~/.config/opencode/
@@ -48,8 +48,8 @@ impl Dialect {
     }
 }
 
-/// One definition, as Jan would hold it, plus everything true of the original
-/// that Jan does not hold.
+/// One definition, as Flint would hold it, plus everything true of the original
+/// that Flint does not hold.
 #[derive(Debug, Clone)]
 pub struct Imported {
     pub definition: SubagentDefinition,
@@ -90,12 +90,12 @@ struct AgentFrontmatter {
     /// OpenCode: `primary`, `subagent` or `all`.
     mode: Option<String>,
     model: Option<String>,
-    /// OpenCode: sampling temperature. Jan has no per-subagent temperature.
+    /// OpenCode: sampling temperature. Flint has no per-subagent temperature.
     temperature: Option<serde_yaml::Value>,
     /// OpenCode writes a map of switches; Qwen writes a list, or a
     /// comma-separated string.
     tools: Option<serde_yaml::Value>,
-    /// OpenCode: per-tool permission rules. Jan's permissions are the run's.
+    /// OpenCode: per-tool permission rules. Flint's permissions are the run's.
     permission: Option<serde_yaml::Value>,
     /// OpenCode: an agent its author turned off.
     disable: Option<bool>,
@@ -106,8 +106,8 @@ struct AgentFrontmatter {
     rest: BTreeMap<String, serde_yaml::Value>,
 }
 
-/// Tool names the two ecosystems use, mapped to Jan's. Unknown names are
-/// dropped *and reported*: the author's runtime has tools Jan does not, and a
+/// Tool names the two ecosystems use, mapped to Flint's. Unknown names are
+/// dropped *and reported*: the author's runtime has tools Flint does not, and a
 /// silent drop turns a narrow agent into a wide one.
 fn map_tool(name: &str) -> Option<&'static str> {
     match name.trim().to_ascii_lowercase().as_str() {
@@ -128,11 +128,11 @@ fn map_tool(name: &str) -> Option<&'static str> {
     }
 }
 
-/// The tools an imported agent's author could have had: Jan's side of the
+/// The tools an imported agent's author could have had: Flint's side of the
 /// mapping above, and nothing else.
 ///
 /// This is what "everything except these" means for a subtractive switch map.
-/// Not every Jan tool: an OpenCode agent's author never had `memory_write` or
+/// Not every Flint tool: an OpenCode agent's author never had `memory_write` or
 /// `screenshot`, and turning off `write` is not a request to be handed them.
 fn importable_tools() -> Vec<String> {
     let mut tools: Vec<String> = [
@@ -151,8 +151,8 @@ fn importable_tools() -> Vec<String> {
 /// * A list, or a comma-separated string (Qwen): those tools, mapped.
 /// * A map of switches (OpenCode): the ones switched on. A map that only
 ///   switches things *off* is subtractive -- it means "everything but these" --
-///   so it becomes every Jan tool except those, which is the same sentence in
-///   the only grammar Jan's format has.
+///   so it becomes every Flint tool except those, which is the same sentence in
+///   the only grammar Flint's format has.
 ///
 /// `None` means the author said nothing, and the child inherits the parent's
 /// policy; an empty list would mean "no tools at all", which is a different
@@ -339,7 +339,7 @@ fn read_markdown(path: &Path, skipped: &mut Vec<String>) -> Result<Option<Import
             system_prompt,
             allowed_tools,
             // Kept exactly as written. It names a model in the author's
-            // provider, and rewriting it to something Jan has would be
+            // provider, and rewriting it to something Flint has would be
             // choosing a model on their behalf; an unknown one fails when it
             // is dispatched, saying so.
             model: fm.model.clone().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()),
@@ -605,7 +605,7 @@ mod tests {
     }
 
     /// AH-118: an OpenCode agent, with its switches, its mode and the fields
-    /// Jan has no room for.
+    /// Flint has no room for.
     #[test]
     fn an_opencode_agent_becomes_a_subagent_and_says_what_it_left_behind() {
         let root = temp_root("opencode");
@@ -649,7 +649,7 @@ mod tests {
     }
 
     /// OpenCode's switches can be subtractive: a map that only turns things
-    /// off means everything else stays on, and Jan's allowlist says so.
+    /// off means everything else stays on, and Flint's allowlist says so.
     #[test]
     fn switches_that_only_turn_things_off_import_as_everything_else() {
         let root = temp_root("subtractive");

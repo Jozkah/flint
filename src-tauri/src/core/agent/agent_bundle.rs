@@ -1,7 +1,7 @@
 //! A project's agents, skills, commands and policy as one portable file
 //! (AH-145).
 //!
-//! What a project has taught Jan lives in several places under
+//! What a project has taught Flint lives in several places under
 //! `<project>/.jan/agent/`: subagent definitions, skills (with the files a
 //! skill bundles), plugin command templates, and the `[tools]` policy in
 //! `agent.toml`. Moving that to another project meant copying four trees and

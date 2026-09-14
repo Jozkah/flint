@@ -375,13 +375,13 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         version: parsed.version.clone(),
     }
 }
-/// Whether a name refers to the built-in Jan skill (aliased `jan`), which is
+/// Whether a name refers to the built-in Flint skill (aliased `jan`), which is
 /// always available even with no project skills installed.
 fn is_default_jan_skill(name: &str) -> bool {
     safe_stem(name).ok().as_deref() == Some(DEFAULT_JAN_SKILL_NAME)
 }
 
-/// The built-in Jan skill's metadata: the plugin-embedded onboarding skill is
+/// The built-in Flint skill's metadata: the plugin-embedded onboarding skill is
 /// advertised in every catalog even with zero project skills installed, but
 /// never force-loaded - its full body stays embedded and is fetched on demand
 /// via `skill_read` / `/skill:jan`, honoring the same invocation flags as any
@@ -436,7 +436,7 @@ fn side_catalog(
             Some(meta_for(&e, &parsed))
         })
         .collect();
-    // The built-in Jan skill is always advertised so onboarding works even in
+    // The built-in Flint skill is always advertised so onboarding works even in
     // an empty project (mirrors the plugin's side_catalog). It honors the
     // enabled whitelist and side filter, and is skipped if a project or plugin
     // skill named "jan" already shadows it.
@@ -589,7 +589,7 @@ pub(crate) fn build_invocation_message(
             });
             (body, dir_note)
         }
-        // The built-in Jan skill has no file on disk; serve its embedded body
+        // The built-in Flint skill has no file on disk; serve its embedded body
         // on demand, exactly like the plugin's skill_read path.
         Err(_) if is_default_jan_skill(name) => (parse(DEFAULT_JAN_SKILL).body, None),
         Err(e) => return Err(e),

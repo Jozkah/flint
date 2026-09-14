@@ -1,4 +1,4 @@
-//! The agent roles Jan ships. AH-094 to AH-099.
+//! The agent roles Flint ships. AH-094 to AH-099.
 //!
 //! Six named, versioned definitions a parent can dispatch by name with the
 //! `task` tool: explorer, planner, implementer, reviewer, tester, security.

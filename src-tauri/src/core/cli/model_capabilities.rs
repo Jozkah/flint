@@ -3,7 +3,7 @@
 //! The effective context window comes from the selected model unless the
 //! project explicitly configures one. This module resolves that without any
 //! provider metadata request: a small fixed catalog of known model families
-//! covers the models Jan ships, and everything else falls back to a
+//! covers the models Flint ships, and everything else falls back to a
 //! conservative default. The resolved value drives the header gauge and
 //! proactive compaction, and is deliberately never sent up as a generation
 //! parameter.
@@ -38,7 +38,7 @@ impl ContextWindowSource {
 }
 
 /// Strip exactly one configured provider qualifier (`anthropic/...`) when the
-/// first segment is one of Jan's catalog providers. A user-provided model id is
+/// first segment is one of Flint's catalog providers. A user-provided model id is
 /// normally the bare id, but `--model anthropic/claude-sonnet-4-6` and the
 /// desktop selection can carry the provider prefix; both must resolve alike.
 fn strip_provider_qualifier(model_id: &str) -> &str {
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn non_catalog_provider_qualifier_is_not_stripped() {
-        // A provider Jan doesn't ship keeps its qualifier: the id must still
+        // A provider Flint doesn't ship keeps its qualifier: the id must still
         // fall through to the conservative default rather than mis-matching.
         assert_eq!(
             resolve_context_window("azure/claude-sonnet-4-6", None).source,

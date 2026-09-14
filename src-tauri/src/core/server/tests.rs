@@ -1187,7 +1187,7 @@ mod server_tests {
         assert_eq!(schema["allOf"][0]["type"], json!("string"));
     }
 
-    // janhq/jan#8792: a browser calling Jan's local API sends its own Origin and
+    // janhq/jan#8792: a browser calling Flint's local API sends its own Origin and
     // Referer. Forwarding those upstream made a CORS-strict backend (Ollama
     // with OLLAMA_ORIGINS, or behind nginx) refuse the request with 403.
     #[test]

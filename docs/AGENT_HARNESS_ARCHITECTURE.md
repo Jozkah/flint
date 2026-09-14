@@ -335,7 +335,7 @@ The bundle holds three things:
   change, counts and review flags. It also holds SHA-256 hashes of the patch
   and of each shipped file.
 
-The record arrives over IPC, so it must lie inside Jan's worktrees folder and
+The record arrives over IPC, so it must lie inside Flint's worktrees folder and
 still be in the state it was recorded in. Refusals are typed: `not-managed`,
 `not-ready`, `link-escape`, `no-changes`, `io`. The bundle is assembled under
 a `.partial` name and renamed only when complete. A failure removes the
@@ -773,13 +773,13 @@ have no chain configuration, so they never fail over.
 `core/agent/context_pressure.rs`, shared by the TUI and the headless CLI so the
 two cannot drift: the share of the window in use, the figures behind it
 (`82,000 of 100,000 tokens`), where those figures came from -- the provider's
-count or Jan's estimate -- and what can still be done (`/compact`, `/context`).
+count or Flint's estimate -- and what can still be done (`/compact`, `/context`).
 It fires at 80% and once per approach: crossing back below re-arms it, which is
 what a compaction, a new conversation or a larger window does. The window is the
 one the run resolved (`[agent].context_window`, then the model catalog, then the
 fallback), never a constant. The desktop counter is the same rule at 85%, with
 "Nearly full" / "Full" in words beside the ring and the same "of N tokens,
-counted by the provider / Jan's estimate" line in its popover. A surface that
+counted by the provider / Flint's estimate" line in its popover. A surface that
 does not know the window -- a remote provider that reports none -- says the
 count and no percentage rather than inventing a denominator.
 
@@ -825,7 +825,7 @@ gone. A gone or unresponsive server is removed and restarted with the
 configured backoff. `check_jan_browser_extension_connected` is separate: it
 calls the browser server's own tool named `ping` to test the extension link.
 
-**User-level skills (AH-121).** Native Jan skills have two scopes on every
+**User-level skills (AH-121).** Native Flint skills have two scopes on every
 surface. The desktop keeps them in the permanent store,
 `<jan_data_folder>/agent-workspace/skills`, which is already shared across
 projects. The CLI and the Rust agent loop read the project store
@@ -895,7 +895,7 @@ how much they are worth trusting: the user's own setting, the provider's
 metadata for that model, the local runtime's report for the loaded model, the
 provider default, then bundled offline metadata. Nothing here reaches the
 network. It recognizes `ctx_len`, `ctx_size`, `n_ctx`, `context_length`,
-`max_context_length`, `max_model_len` and `context_window`, and reads Jan's own
+`max_context_length`, `max_model_len` and `context_window`, and reads Flint's own
 nested `settings.<key>.controller_props.value` shape as well as a `/models`
 entry's flat one -- reading only `ctx_len`, as the app used to, left every
 OpenAI-compatible endpoint permanently "not known". `n_ctx_train` is kept apart
@@ -908,10 +908,10 @@ reply -- 15% of the window, floored at 512 and capped at 8192 -- and classifies
 the turn as `fits`, `tight`, `over` or `unknown` *before* dispatch. `over`
 raises `ContextOverflowError` inside the run's own try block, so the turn is
 torn down like any other ending: the user's message is committed and the run is
-closed. `unknown` is never a refusal -- it is a limit Jan could not discover,
+closed. `unknown` is never a refusal -- it is a limit Flint could not discover,
 not one that was exceeded.
 
-**What it cost (AH-073).** Jan's own measurement is bytes over four and is
+**What it cost (AH-073).** Flint's own measurement is bytes over four and is
 labelled an estimate. The exact number comes from the server that tokenized the
 payload, and `usage.rs` records it against the invocation *and* the snapshot of
 the payload it counted, because a run makes many model calls and a count shown
@@ -945,7 +945,7 @@ memory its parent would, and nothing from any other session.
 Precedence, highest first, and what each is:
 
 1. The system prompt of the surface, including the run's permission and
-   workspace constraints -- policy, set by Jan.
+   workspace constraints -- policy, set by Flint.
 2. The user's current message -- the request.
 3. `JAN.md` and approved compatibility instructions -- project policy, content
    that grants nothing (see section 1).
@@ -983,7 +983,7 @@ rewrite stays temp-and-rename, so an interrupted write leaves the previous
 file, and a store that cannot be read at all is never overwritten with what
 little was readable. The project folder the renderer names is validated
 before anything is written inside it: it must resolve to a real directory,
-not a filesystem root, not overlap the Jan data folder, and its `.jan` and
+not a filesystem root, not overlap the Flint data folder, and its `.jan` and
 `.jan/agent` must not be symlinks or junctions (Windows reparse points
 included); a refused folder gets no project memory and the reason is reported
 to the page and the turn. Saving refuses credentials, authority claims and
@@ -1299,7 +1299,7 @@ wrote it.
 
 **What the provider cached (AH-211).** Provider-reported usage, including the
 prompt cache, has one shape everywhere: `web-app/src/lib/tokenUsage.ts`. It is
-kept apart from AH-073's dispatched-payload estimate, which is Jan's own byte
+kept apart from AH-073's dispatched-payload estimate, which is Flint's own byte
 count and stays labelled as an estimate; nothing in this shape is ever
 estimated. The fields, and what each provider's wire format means by them:
 
@@ -1850,7 +1850,7 @@ places that cannot. The golden-repository suite is built on them.
 ### An MCP server's documents (AH-137)
 
 MCP servers offer *resources* as well as tools: documents a client may read,
-where reading runs nothing on the server. Jan connected to servers and never
+where reading runs nothing on the server. Flint connected to servers and never
 asked for them, so a server whose whole purpose was to expose a wiki or a
 schema looked empty.
 
@@ -1986,7 +1986,7 @@ cost.
 * A model nobody priced is shown with its tokens and the words **not priced**,
   and is listed under the total rather than folded into it as zero. A total
   that silently omits a model is a wrong total.
-* An estimate is said to be one: dispatches Jan counted itself are reported
+* An estimate is said to be one: dispatches Flint counted itself are reported
   separately from the provider's own counts, the same distinction `usage.rs`
   draws, carried through to money instead of flattened.
 * Cached input is charged at the cached rate where one is declared, which is
@@ -2087,8 +2087,8 @@ handing over instructions that cannot be followed.
 
 ## Agents written for somebody else's harness (AH-118, AH-119)
 
-Two ecosystems keep agent definitions in files Jan can read, and both describe
-roughly what a Jan subagent is -- a name, a description of when to use it, a
+Two ecosystems keep agent definitions in files Flint can read, and both describe
+roughly what a Flint subagent is -- a name, a description of when to use it, a
 prompt, and the tools it may use:
 
 * **OpenCode**: `.opencode/agent/<name>.md`, YAML frontmatter over a markdown
@@ -2105,20 +2105,20 @@ The rule the importer is built on is that it does not guess:
 * A key it knows is mapped. A key it does not know is **reported by name** in
   the import's notes. Nothing is dropped silently, so nobody has to diff two
   directories to find out what survived.
-* What Jan has no room for is named too, and why: a per-agent `temperature`
-  (Jan has none per subagent), OpenCode `permission` rules (a subagent runs
+* What Flint has no room for is named too, and why: a per-agent `temperature`
+  (Flint has none per subagent), OpenCode `permission` rules (a subagent runs
   under the run's permissions, narrowed by its tool list), `color`.
-* A tool with no Jan equivalent is not imported and is listed. Dropping it
+* A tool with no Flint equivalent is not imported and is listed. Dropping it
   silently would widen a deliberately narrow agent.
 * OpenCode writes `tools` as on/off switches. A map that only switches things
   *off* is subtractive, so it becomes every tool an imported agent could name,
-  minus those -- not every Jan tool, because that author never had
+  minus those -- not every Flint tool, because that author never had
   `memory_write` or `screenshot`, and turning off `write` is not a request to
   be handed them.
 * `mode: primary` is OpenCode's word for the agent a person talks to. It is
   passed over by name, not imported as a subagent; so is one its author
   disabled.
-* `model` is kept exactly as written. Rewriting it to a model Jan has would be
+* `model` is kept exactly as written. Rewriting it to a model Flint has would be
   choosing one on the author's behalf; an unknown model fails at dispatch,
   saying so.
 
@@ -2602,7 +2602,7 @@ In the timeline panel, Step through (disabled while a run is going) loads the mo
 
 Remote MCP OAuth tokens were kept in plaintext in `<data>/mcp_oauth.json` (owner-only on Unix, unprotected on Windows) and refreshed only when a connection was opened: rmcp's own refresh compares the token's original `expires_in`, which never decreases, so a connection left open past the token's lifetime kept sending an expired token.
 
-Tokens now live in the same secret store as provider keys (`provider_secrets`: the OS keyring -- Windows Credential Manager on Windows -- or its AES-GCM file when the keyring is unavailable or refuses a value over its size limit). The record key is `mcp-oauth:` plus a hash of the canonical data folder and the server name, because the keyring belongs to the OS user, not to a Jan profile: two profiles with a server of the same name neither read nor overwrite each other's tokens. A plaintext record from an earlier build is moved into the store the first time it is read; the plaintext copy is removed only after the store holds it (a store that cannot be written leaves it where it was), and the file is deleted once empty. A store record outranks a plaintext one.
+Tokens now live in the same secret store as provider keys (`provider_secrets`: the OS keyring -- Windows Credential Manager on Windows -- or its AES-GCM file when the keyring is unavailable or refuses a value over its size limit). The record key is `mcp-oauth:` plus a hash of the canonical data folder and the server name, because the keyring belongs to the OS user, not to a Flint profile: two profiles with a server of the same name neither read nor overwrite each other's tokens. A plaintext record from an earlier build is moved into the store the first time it is read; the plaintext copy is removed only after the store holds it (a store that cannot be written leaves it where it was), and the file is deleted once empty. A store record outranks a plaintext one.
 
 `authorized_client` refreshes a token inside the 60-second window when it connects, and then starts a refresher for the connection that refreshes each token 60 seconds before its expiry, stores the result and repeats. It holds the connection's authorization manager weakly and checks every two seconds, so it ends with the connection. A provider that omits the refresh token on refresh (RFC 6749 section 6) keeps the previous one, both in the store and on the live connection. Failures are typed: a stale resource, an expired token without a refresh token and a refused refresh are `authentication` at stage `startup` (the stored tokens are left untouched), discovery failure is `transport`, and a store that cannot be written is `io` at `persistence`. `jan cli mcp auth-status <name>` and `jan cli mcp auth-clear <name>` expose the state and the clear.
 
@@ -2627,9 +2627,9 @@ The ledger is keyed by run and call: `record` adds to the run's totals and keeps
 
 A resumed run already carried every completed tool call and result (Phase 5), but only as of the last saved turn: a run killed mid-turn lost that turn outright. On both surfaces the turn in flight is now kept while it happens, and a later process offers it back instead of silently losing or re-running it.
 
-**Headless (`jan cli agent run`, the JSON API).** `core::cli::inflight` keeps `<thread>/inflight.json` for the run in flight: the conversation as the loop last published it, the text streamed since (written at most every 400 ms, bounded), and the writer's pid and creation time. The thread record itself is written when the run starts, so an interrupted thread is listed and resumable by id; a clean end removes the checkpoint. Two defects stood in the way and are fixed: the loop published its conversation only at natural stops, so no checkpoint could hold a step completed before the run died -- it now publishes each completed step as soon as its results are in; and process liveness trusted creation time alone, which on Windows reads a process that has ended as alive while anything holds a handle to it -- `job_record::still_running` (used by background-job reconciliation too) now also asks whether the process has ended. On `--resume`, a session another live process is running is refused (`invalid_input`, naming the pid). A session whose run was cut off is refused unless the caller chooses `--interrupted=continue` (keep the completed steps and the unfinished reply) or `--interrupted=discard-partial` (keep the steps, drop the reply); either way the model is sent the recovered conversation and a note, as a user-role message marked as coming from Jan, that the previous run was interrupted -- a system message would be replaced by the run's prompt, and a status marker in the assistant's own voice is one the model imitates. A client's cancel over the JSON API is a decision, not an interruption, and leaves no checkpoint.
+**Headless (`jan cli agent run`, the JSON API).** `core::cli::inflight` keeps `<thread>/inflight.json` for the run in flight: the conversation as the loop last published it, the text streamed since (written at most every 400 ms, bounded), and the writer's pid and creation time. The thread record itself is written when the run starts, so an interrupted thread is listed and resumable by id; a clean end removes the checkpoint. Two defects stood in the way and are fixed: the loop published its conversation only at natural stops, so no checkpoint could hold a step completed before the run died -- it now publishes each completed step as soon as its results are in; and process liveness trusted creation time alone, which on Windows reads a process that has ended as alive while anything holds a handle to it -- `job_record::still_running` (used by background-job reconciliation too) now also asks whether the process has ended. On `--resume`, a session another live process is running is refused (`invalid_input`, naming the pid). A session whose run was cut off is refused unless the caller chooses `--interrupted=continue` (keep the completed steps and the unfinished reply) or `--interrupted=discard-partial` (keep the steps, drop the reply); either way the model is sent the recovered conversation and a note, as a user-role message marked as coming from Flint, that the previous run was interrupted -- a system message would be replaced by the run's prompt, and a status marker in the assistant's own voice is one the model imitates. A client's cancel over the JSON API is a decision, not an interruption, and leaves no checkpoint.
 
-**Desktop (Cowork).** A Cowork run's live turns are checkpointed onto the persisted session (`inFlight`) at every step and at most every half second while text streams, and cleared when the turn is committed. A session holding a checkpoint of a run that is not running in this process shows `CoworkInterruptedTurn`: how many completed steps were kept and how long the unfinished reply is, with Continue and (when there is a reply) Discard unfinished reply. Nothing resumes until one is chosen. `recoverInFlight` rebuilds the conversation from the checkpoint (a call that never finished is closed as `stale`, not left running), adds the note from Jan, and the next run continues from it.
+**Desktop (Cowork).** A Cowork run's live turns are checkpointed onto the persisted session (`inFlight`) at every step and at most every half second while text streams, and cleared when the turn is committed. A session holding a checkpoint of a run that is not running in this process shows `CoworkInterruptedTurn`: how many completed steps were kept and how long the unfinished reply is, with Continue and (when there is a reply) Discard unfinished reply. Nothing resumes until one is chosen. `recoverInFlight` rebuilds the conversation from the checkpoint (a call that never finished is closed as `stale`, not left running), adds the note from Flint, and the next run continues from it.
 
 
 ## Restarting or replacing a failed team member (AH-111)
@@ -2658,7 +2658,7 @@ An ordinary background subagent is a future inside the dispatching process: it i
 
 ## OAuth scopes for MCP servers (AH-135)
 
-Before this, a sign-in to a remote MCP server asked for no scopes at all (`start_authorization(&[], ..)`) and kept whatever the provider granted, so the authority a stored token carried was whatever the provider chose and nobody on Jan's side had stated or seen it.
+Before this, a sign-in to a remote MCP server asked for no scopes at all (`start_authorization(&[], ..)`) and kept whatever the provider granted, so the authority a stored token carried was whatever the provider chose and nobody on Flint's side had stated or seen it.
 
 **Declared.** A server's `mcp_config.json` entry declares its scopes: `"oauth": { "scopes": ["mcp:read", "mcp:tools"] }` (`jan cli mcp add --scope`, repeatable; the TUI edit form keeps an entry's existing scopes). `oauth::declared_scopes` reads them as a sorted, de-duplicated set of RFC 6749 scope tokens and refuses, as `invalid_input`, anything else: an `oauth` value that is not an object, a key other than `scopes`, a non-list, a non-string, an empty token, or a token with a space, quote, backslash or non-ASCII character. A typo there never quietly means "no scopes". Scopes on a stdio server are refused.
 
@@ -2681,7 +2681,7 @@ The project index (`index.rs`, AH-059..061) locates names by reading text; by it
 
 **The protocol (AH-057).** JSON-RPC 2.0 over the server's stdin and stdout with `Content-Length` framing (`encode`/`decode`; a message over 32 MiB, a frame without a length or a cut-short body is a protocol error, not an allocation). The client sends `initialize`/`initialized` with the project as the workspace folder, keeps each file it asks about in sync with the disk (`didOpen`, then a full-text `didChange` when the file's contents changed), and asks `textDocument/definition`, `references` (with the declaration), `implementation` and `hover`. `publishDiagnostics` notifications are kept per file; `diagnostics` waits, bounded, for one published after the file was synced. Requests the server makes of the client (`workspace/configuration`, progress creation) are answered with defaults so a server that asks is never left waiting. Positions are converted between the model's 1-based characters and LSP's 0-based UTF-16 units in both directions. Locations are shown relative to the project, and a location outside it (the standard library) is marked as such.
 
-**The tool.** `lsp` takes `action` (definition, references, implementation, hover, diagnostics, status), `path`, `line`, `column`. The path is resolved inside the project like every path the model names and refused when it escapes. It is read-only, so it is offered and answered in Plan mode, and it does not depend on the subagent context. Errors are typed: a file no known server covers, or `[tools] lsp = false` in `agent.toml`, is `unsupported`; a server that is not on PATH is `tool_unavailable` and says Jan installs nothing; a server that does not finish starting, crashes, or keeps failing is `tool_failed`; a request past its deadline is `timeout`; a stopped run is `cancelled`; an unreadable answer is `invalid_response`.
+**The tool.** `lsp` takes `action` (definition, references, implementation, hover, diagnostics, status), `path`, `line`, `column`. The path is resolved inside the project like every path the model names and refused when it escapes. It is read-only, so it is offered and answered in Plan mode, and it does not depend on the subagent context. Errors are typed: a file no known server covers, or `[tools] lsp = false` in `agent.toml`, is `unsupported`; a server that is not on PATH is `tool_unavailable` and says Flint installs nothing; a server that does not finish starting, crashes, or keeps failing is `tool_failed`; a request past its deadline is `timeout`; a stopped run is `cancelled`; an unreadable answer is `invalid_response`.
 
 **Which servers.** `SERVERS` lists only what has been exercised: Go files go to `gopls`. A server is used only when it is already on PATH. It is started with `GOPROXY=off` and `GOTOOLCHAIN=local`, so starting one never fetches a module or a toolchain, and with the shell's environment allowlist plus the toolchain's own variables -- never the host's whole environment, so API keys a run holds do not reach it.
 
@@ -2690,7 +2690,7 @@ The project index (`index.rs`, AH-059..061) locates names by reading text; by it
 * *Health.* Before every use the process is checked, so an exited server is noticed before a request waits on it; a request that outlives its deadline marks the server unhealthy and it is replaced on the next use rather than asked again.
 * *Restart.* A dead or wedged server is restarted at most `MAX_RESTARTS` (3) times in a run; after that the refusal says it kept failing.
 * *Shutdown with the run.* Dropping the pool -- when the run ends -- sends `shutdown` and `exit`, waits briefly, then stops the process tree and joins the reader thread.
-* *Cancellation.* A waiting request stops at once and sends `$/cancelRequest`. The server's process is adopted by the run's cancellation token, so stopping the run stops it; it is registered for the application's shutdown reaping; and it runs in a process tree stopped as a unit (`tools::owned::OwnedChild`): on Windows a kill-on-close job object, so it cannot outlive Jan even when Jan is killed, and on Unix its own process group.
+* *Cancellation.* A waiting request stops at once and sends `$/cancelRequest`. The server's process is adopted by the run's cancellation token, so stopping the run stops it; it is registered for the application's shutdown reaping; and it runs in a process tree stopped as a unit (`tools::owned::OwnedChild`): on Windows a kill-on-close job object, so it cannot outlive Flint even when Flint is killed, and on Unix its own process group.
 
 
 ## Custom certificate authorities (AH-190)
@@ -2747,7 +2747,7 @@ Three operations that change history, as loop tools with the refusals a shell co
 
 The `pull_request` loop tool (`core/agent/pull_request.rs`) opens a pull request for the current branch and keeps its description true to the branch. The model writes the title and the why; the harness supplies the facts: the description is the model's text followed by a section between `<!-- jan:change -->` markers listing the branch's commits and changed files against the base and the head commit.
 
-**create.** Refused before the forge is asked anything: a detached HEAD, a branch with commits its remote does not have or that disagrees with its remote (the tool never pushes), a base the remote lacks or that is not a plain name, a branch proposed into itself or with nothing to propose, an `origin` that names no owner/repository, a title that is empty, multi-line or over 200 characters, a description carrying Jan's markers, a credential, more than 60 000 bytes, or a file path the branch does not change. The forge is then asked for an open pull request from this branch -- adopting it if one exists, which is how a create abandoned after its request was sent does not open a duplicate -- and otherwise one is opened. The pull request is recorded under the data folder per project and branch (API origin, repository, number, URL, base and the head the description was written for; never the token), atomically, only after the forge answered.
+**create.** Refused before the forge is asked anything: a detached HEAD, a branch with commits its remote does not have or that disagrees with its remote (the tool never pushes), a base the remote lacks or that is not a plain name, a branch proposed into itself or with nothing to propose, an `origin` that names no owner/repository, a title that is empty, multi-line or over 200 characters, a description carrying Flint's markers, a credential, more than 60 000 bytes, or a file path the branch does not change. The forge is then asked for an open pull request from this branch -- adopting it if one exists, which is how a create abandoned after its request was sent does not open a duplicate -- and otherwise one is opened. The pull request is recorded under the data folder per project and branch (API origin, repository, number, URL, base and the head the description was written for; never the token), atomically, only after the forge answered.
 
 **sync and status.** `status` compares the recorded head with the branch and says whether the description is in step. `sync` reads the pull request, rewrites only the marked section (text a person added outside it is kept byte for byte; a description whose markers were deleted gets the section appended, nothing removed), sends the update only when it changed, and records the new head. It refuses the same unpushed or diverged branch states as create, and a record made through a different API origin.
 
@@ -2775,7 +2775,7 @@ The `semantic_search` loop tool (`core/agent/semantic.rs`) finds code by meaning
 
 **Undoing a history operation never drops later work (R19).** A finished rebase or cherry-pick records where it left the branch (`refs/jan/after/...`, named like its backup). `abort` with the backup of a finished operation resets only while HEAD is still exactly there; if the branch has moved, or there is no record of where the operation ended, it refuses and resets nothing.
 
-**Jan's git runs no program the repository names (R20).** A project that denies `bash` could still get a command run: the files under `.git` are ordinary project files to `write`, and git runs hooks and configured programs. Every git run by the git tools, pull requests, change checkpoints, isolated subagent checkouts and proposal diffs now gets hooks pointed at a path holding none, fsmonitor, commit/tag signing, ssh and credential programs off, `diff.external` cleared for diffs, and no terminal prompt. The git tools (`git_split`, `git_history`, `git_branch`, `pull_request`) additionally refuse a repository whose own config, including included files, names a program: filter, diff and merge drivers, editors, ssh/gpg/credential programs, a non-boolean fsmonitor, a local hooksPath, shell aliases. Checkpoints and isolated checkouts do not refuse filter drivers, so repositories using git-lfs locally keep working; that residual is documented.
+**Flint's git runs no program the repository names (R20).** A project that denies `bash` could still get a command run: the files under `.git` are ordinary project files to `write`, and git runs hooks and configured programs. Every git run by the git tools, pull requests, change checkpoints, isolated subagent checkouts and proposal diffs now gets hooks pointed at a path holding none, fsmonitor, commit/tag signing, ssh and credential programs off, `diff.external` cleared for diffs, and no terminal prompt. The git tools (`git_split`, `git_history`, `git_branch`, `pull_request`) additionally refuse a repository whose own config, including included files, names a program: filter, diff and merge drivers, editors, ssh/gpg/credential programs, a non-boolean fsmonitor, a local hooksPath, shell aliases. Checkpoints and isolated checkouts do not refuse filter drivers, so repositories using git-lfs locally keep working; that residual is documented.
 
 **Escapes from the project are never auto-approved (R21).** `jan cli agent run` auto-approves prompts unless `--safe`. The loop turned every prompt into an allow, including writes and reads that resolve outside the project, which gate.rs documents as never auto-approved. Auto-approval now covers only in-project writes and commands; `WriteEscape` and `ReadEscape` always prompt, and a headless run with nobody to ask is refused. Found from the real BranchCraft run, where the model's `write` to `/tmp/dbg.py` created `C:\tmp\dbg.py`.
 
@@ -2786,6 +2786,6 @@ The `semantic_search` loop tool (`core/agent/semantic.rs`) finds code by meaning
 
 **Semantic search ranking and reuse (AH-071).** Ranges are cut at the definitions the project index found, so a range is one function, type or constant, with long definitions cut within themselves and the text before the first definition its own range. A file that moved or was renamed keeps its vectors: they are reused by content hash and relabelled with the new path, and its content is not sent again. Hits are ranked by meaning with the query's exact words as a bounded second signal (weight 0.15) that only breaks near-ties, and every hit carries its provenance: the model, the file content hash, and both score components. The lexical signal never stands alone: without an embedding model the tool still refuses and searches nothing.
 
-**Checkpoints and isolated checkouts run no filter program (R22).** R20 turned off hooks, fsmonitor and signing for every git Jan runs, but a change checkpoint (`git add` into a private index, `checkout-index` on restore) and an isolated checkout (`git worktree add`) still ran the clean/smudge programs a repository's own config names through `.gitattributes`. Those paths now refuse a repository whose own config names a filter, diff or merge program, except the exact commands git-lfs installs, so repositories that use git-lfs keep checkpoints and isolated checkouts; for any other such repository undo is unavailable and the refusal names the setting.
+**Checkpoints and isolated checkouts run no filter program (R22).** R20 turned off hooks, fsmonitor and signing for every git Flint runs, but a change checkpoint (`git add` into a private index, `checkout-index` on restore) and an isolated checkout (`git worktree add`) still ran the clean/smudge programs a repository's own config names through `.gitattributes`. Those paths now refuse a repository whose own config names a filter, diff or merge program, except the exact commands git-lfs installs, so repositories that use git-lfs keep checkpoints and isolated checkouts; for any other such repository undo is unavailable and the refusal names the setting.
 
 **Benchmark task set.** `src-tauri/tests/bench/harness-smoke.toml` is a small committed task set for `jan cli bench run` (a greeting file, a one-line bug fix, an answer read from a file), with objective checks only, kept loadable by a unit test.

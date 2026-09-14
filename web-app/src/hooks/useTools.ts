@@ -19,7 +19,7 @@ export const useTools = () => {
         // A server connect/disconnect/tools-refresh fired this (mcp-update);
         // the orchestrator's per-request tool cache would otherwise only
         // notice via its own TTL, serving stale/reordered tools in the
-        // meantime and destabilizing the KV-cache prefix Jan sends.
+        // meantime and destabilizing the KV-cache prefix Flint sends.
         mcpOrchestrator.invalidateCache()
 
         // Get MCP extension first

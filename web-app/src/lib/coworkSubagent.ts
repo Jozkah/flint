@@ -98,7 +98,7 @@ export type ResolvedSubagent = {
   allowedTools: string[] | null
   model: string | null
   /**
-   * Where the definition came from. `builtin` is one of Jan's roles
+   * Where the definition came from. `builtin` is one of Flint's roles
    * (AH-094..099), which is what makes a change "changed by the reviewer role"
    * rather than by an agent someone named (AH-110).
    */

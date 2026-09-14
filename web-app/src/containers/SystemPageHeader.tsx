@@ -15,7 +15,7 @@ type SystemPageHeaderProps = {
  * 52px context bar, and in their own window without the shell (`LogsLayout`),
  * where there is no sidebar, no navigation sheet and no window-control inset to
  * clear. Outside the shell the same row is drawn as a plain bar so the page
- * still reads as part of JAN.
+ * still reads as part of Flint.
  */
 export function SystemPageHeader({ title, icon, actions }: SystemPageHeaderProps) {
   const inShell = useOptionalSidebar() !== null

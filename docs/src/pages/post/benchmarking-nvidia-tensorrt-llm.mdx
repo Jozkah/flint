@@ -17,7 +17,7 @@ Jan now supports [NVIDIA TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) i
 We've been excited for TensorRT-LLM for a while, and [had a lot of fun implementing it](https://github.com/janhq/nitro-tensorrt-llm). As part of the process, we've run some benchmarks, to see how TensorRT-LLM fares on consumer hardware (e.g. [4090s](https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/), [3090s](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/)) we commonly see in the [Jan's hardware community](https://discord.com/channels/1107178041848909847/1201834752206974996).
 
 <Callout type="info" >
-  **Give it a try!** Jan's TensorRT-LLM extension is available in Jan v0.4.9. We precompiled some TensorRT-LLM models for you to try: `Mistral 7b`, `TinyLlama-1.1b`, `TinyJensen-1.1b` 😂
+  **Give it a try!** Flint's TensorRT-LLM extension is available in Flint v0.4.9. We precompiled some TensorRT-LLM models for you to try: `Mistral 7b`, `TinyLlama-1.1b`, `TinyJensen-1.1b` 😂
 
   Bugs or feedback? Let us know on [GitHub](https://github.com/janhq/jan) or via [Discord](https://discord.com/channels/1107178041848909847/1201832734704795688).
 </Callout>
@@ -60,12 +60,12 @@ We ran the experiment using standardized inference requests in a sandboxed envir
 - **Test runs**: 5 batches of 10 runs each, per inference engine, on a bare metal PC with no other applications.
 - **Parameters**: User defaults, i.e. `batch_size 1`, `input_len 2048` and `output_len 512`
 - **Measurements**:
-  - CPU, memory from Jan system monitor
+  - CPU, memory from Flint system monitor
   - GPU VRAM utilization metrics from `nvidia-smi`, and taken over an interval of 14 seconds. 
   - Throughput (token/sec) using [Jan's built-in Tokens/sec perf stat](https://github.com/search?q=repo%3Ajanhq%2Fjan%20timeDiffInSeconds&type=code).
 
 <Callout>
-We picked a [batch size of 1](https://www.reddit.com/r/LocalLLaMA/comments/17sbwo5/what_does_batch_size_mean_in_inference/) to simulate realistic real-world use cases, as Jan users are likely to make one inference request at a time. We also used a `input_len` of 2048 and `output_len` of 512 to simulate a typical chatbot use case.
+We picked a [batch size of 1](https://www.reddit.com/r/LocalLLaMA/comments/17sbwo5/what_does_batch_size_mean_in_inference/) to simulate realistic real-world use cases, as Flint users are likely to make one inference request at a time. We also used a `input_len` of 2048 and `output_len` of 512 to simulate a typical chatbot use case.
 </Callout>
 
 <Callout>
@@ -104,7 +104,7 @@ Note: `ngl` is the abbreviation of `Number of GPU Layers` with the range from `0
 ### NVIDIA GeForce RTX 4090 GPU
 
 ![image](https://catalog.jan.ai/docs/4090s.png)
-*Jan is built on this Dual-4090 workstation, which recently got upgraded to a nice case*
+*Flint is built on this Dual-4090 workstation, which recently got upgraded to a nice case*
 
 ![image](./_assets/og-4090s.webp)
 *The original case (or lack thereof) for our Dual-4090 cluster, as posted on [r/localllama](https://www.reddit.com/r/LocalLLaMA/comments/16lxt6a/case_for_dual_4090s/)*
@@ -121,7 +121,7 @@ Note: `ngl` is the abbreviation of `Number of GPU Layers` with the range from `0
 - TensorRT-LLM model: Mistral 7B v0.2 AWQ, quantized for single GPU (Ada)
 </Callout>
 
-For this test, we used Jan's [Dual-4090 workstation](https://www.reddit.com/r/LocalLLaMA/comments/16lxt6a/case_for_dual_4090s/), which our engineers timeshare to build Jan.
+For this test, we used Flint's [Dual-4090 workstation](https://www.reddit.com/r/LocalLLaMA/comments/16lxt6a/case_for_dual_4090s/), which our engineers timeshare to build Flint.
 
 The [NVIDIA GeForce RTX 4090](https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/) is the latest top-of-the-line desktop GPU, with an MSRP of $1,599, and uses the Ada architecture. It has a ~1000 GB/s memory bandwidth within VRAM, and a PCIe4 x16 lane (~32 GB/s) between the GPU and the CPU. 
 
@@ -141,7 +141,7 @@ The intuition for why llama.cpp is slower is because it compiles a model into a 
 ### NVIDIA GeForce RTX 3090 GPU
 
 ![image](./_assets/3090s.jpg)
-*Our 3090 Machine, now used by one of our engineers to build Jan*
+*Our 3090 Machine, now used by one of our engineers to build Flint*
 
 <Callout type="info" >
   **Hardware Details**
@@ -185,7 +185,7 @@ Interestingly, the GeForce RTX 3090 was only 16.6% slower compared with the GeFo
 - TensorRT-LLM model: Mistral 7B v0.2 AWQ, quantized for single GPU (Ada)
 </Callout>
 
-We also benchmarked an NVIDIA GeForce RTX 4070 Laptop GPU with 8gb of VRAM, which is a popular configuration among Jan users. Laptop GPUs are less powerful than their desktop counterparts, as they trade portability for reduced energy consumption and thermal constraints.
+We also benchmarked an NVIDIA GeForce RTX 4070 Laptop GPU with 8gb of VRAM, which is a popular configuration among Flint users. Laptop GPUs are less powerful than their desktop counterparts, as they trade portability for reduced energy consumption and thermal constraints.
 
 | Metrics                  | GGUF (using CPU) | GGUF (using GPU) | TensorRT-LLM | Difference on GPU |
 | ------------------------ | ---------------- | ---------------- | ------------ | ----------------- |

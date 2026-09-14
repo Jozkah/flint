@@ -10,7 +10,7 @@ export const hostOf = (url: string): string => {
 /**
  * The letter shown in place of a site's icon.
  *
- * Jan used to fetch favicons from Google, which meant every domain a search
+ * Flint used to fetch favicons from Google, which meant every domain a search
  * returned — and therefore a good deal about what someone was reading — was
  * reported to a third party none of this app talks to otherwise. A letter
  * drawn from the hostname fills the same slot and leaves the machine.

@@ -24,16 +24,16 @@ import { Callout, Steps } from 'nextra/components'
 import { Settings, FolderOpen } from 'lucide-react'
 
 
-# Jan Data Folder
-Jan stores your data locally in JSON format. Your data is yours alone.
+# Flint Data Folder
+Flint stores your data locally in JSON format. Your data is yours alone.
 
-## Open Jan Data Folder
+## Open Flint Data Folder
 
-Via Jan:
+Via Flint:
 1. Settings (<Settings width={16} height={16} style={{display:"inline"}}/>) > General > App Logs
 2. Click **Open Logs**
 
-![Open Jan Data Folder](./_assets/server-troubleshooting.png)
+![Open Flint Data Folder](./_assets/server-troubleshooting.png)
 
 Via Terminal:
 
@@ -49,7 +49,7 @@ cd ~/.local/share/Jan/data
 ```
 
 <Callout type="info">
-The data folder location can be customised from **Settings > General > Jan Data Folder**. Once changed, the path above no longer applies — check the Settings page for the active location.
+The data folder location can be customised from **Settings > General > Flint Data Folder**. Once changed, the path above no longer applies — check the Settings page for the active location.
 </Callout>
 
 ## Directory Structure
@@ -128,7 +128,7 @@ Parameters:
 | avatar                 | Assistant image                                              | string  | None    |
 | object                 | OpenAI API compatibility marker                              | string  | None    |
 | created_at             | Creation timestamp                                          | string  | None    |
-| name                   | Display name                                                | string  | Jan     |
+| name                   | Display name                                                | string  | Flint     |
 | description            | Role description                                            | string  | Default |
 | model                  | Allowed models (* = all)                                    | string  | *       |
 | instructions           | Default thread instructions                                 | string  | None    |
@@ -224,6 +224,6 @@ Chat archive. Each thread (`/threads/jan_unixstamp/`) contains:
 
 
 
-## Delete Jan Data
+## Delete Flint Data
 Uninstall guides: [Mac](/docs/desktop/install/mac#step-2-clean-up-data-optional),
 [Windows](/docs/desktop/install/windows#step-2-handle-jan-data), or [Linux](docs/desktop/install/linux#uninstall-jan).

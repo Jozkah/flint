@@ -47,7 +47,7 @@ export function CoworkRailToolbar({
   active: RailMode | null
   onSelect: (mode: RailMode) => void
   /** Files this session changed. The user's own uncommitted work is not
-   * counted here: reporting it would be Jan claiming someone else's edits. */
+   * counted here: reporting it would be Flint claiming someone else's edits. */
   changeCount: number
   additions: number
   deletions: number

@@ -1,4 +1,4 @@
-# Consolidation of every Jan branch into `main`, 2026-09-08
+# Consolidation of every Flint branch into `main`, 2026-09-08
 
 Every branch that existed on the `origin` (private) remote is now an ancestor of
 `main`. This is the record of how each one was treated and why.
@@ -30,7 +30,7 @@ precisely what the local-only work deliberately removed:
 | `core/cli/telemetry.rs`, `useJanBrowserExtension` | 4 |
 
 Merging those trees in would reintroduce telemetry, the automatic updater, the
-Jan model hub and runtime model downloading — the four things the task forbids.
+Flint model hub and runtime model downloading — the four things the task forbids.
 
 ## The treatment
 
@@ -41,7 +41,7 @@ tree is unchanged, and no obsolete file returns. The integration tree was
 verified byte-identical before and after all sixteen merges.
 
 Only four merges were needed. The branches share history *with each other* — they
-all descend from the same upstream Jan trunk — so merging the four newest tips
+all descend from the same upstream Flint trunk — so merging the four newest tips
 made the other twelve ancestors as well.
 
 | Branch | Original tip | Ancestor of `main` | Treatment |

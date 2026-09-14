@@ -6,7 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 /**
- * JAN Graphite Studio buttons: compact, one radius. Primary uses the accent
+ * Flint Graphite Studio buttons: compact, one radius. Primary uses the accent
  * fill with its derived hover, pressed and on-fill colours (lib/accent.ts) and
  * is kept to one per working context. Destructive stays outlined in the error
  * colour so a red-hued accent can never make a primary action look

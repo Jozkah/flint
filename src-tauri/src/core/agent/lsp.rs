@@ -47,7 +47,7 @@
 //!   server with `$/cancelRequest`). The server's process is adopted by the
 //!   run's cancellation token, so stopping the run stops the server; it is
 //!   registered for the application's shutdown reaping; and on Windows it runs
-//!   in a kill-on-close job, so it cannot outlive Jan even if Jan is killed.
+//!   in a kill-on-close job, so it cannot outlive Flint even if Flint is killed.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};

@@ -50,7 +50,7 @@ const SHELL_METACHARS: &[char] = &[
 
 const USER_AGENT: &str = "jan-agent-plugin-manager";
 
-/// Provenance record written into every plugin Jan installs.
+/// Provenance record written into every plugin Flint installs.
 const INSTALL_RECORD_FILE: &str = ".jan-install.json";
 
 /// Prefix of the staging directories an install copies or clones into before
@@ -322,7 +322,7 @@ pub struct InstalledPlugin {
     /// False when listed in `[plugins].disabled`.
     pub enabled: bool,
     /// `local`, `git` or `marketplace`, from the install record; `None` for a
-    /// directory Jan did not install (copied in by hand, or installed before
+    /// directory Flint did not install (copied in by hand, or installed before
     /// records existed).
     pub source_kind: Option<String>,
     /// The folder path or URL the plugin was installed from.
@@ -355,7 +355,7 @@ pub struct PluginDetails {
     pub skill_names: Vec<String>,
     pub command_names: Vec<String>,
     pub agent_names: Vec<String>,
-    /// The plugin ships a `.mcp.json`. Jan does not load it.
+    /// The plugin ships a `.mcp.json`. Flint does not load it.
     pub has_mcp_config: bool,
     /// Script and executable files (relative, `/`-separated), capped at
     /// [`MAX_LISTED_EXECUTABLES`]. They only ever run if the agent runs them

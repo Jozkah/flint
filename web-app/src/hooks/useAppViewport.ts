@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-/** Below this width JAN uses the phone layout. Matches Tailwind `md`. */
+/** Below this width Flint uses the phone layout. Matches Tailwind `md`. */
 export const PHONE_MAX_WIDTH = 767
 
 /**

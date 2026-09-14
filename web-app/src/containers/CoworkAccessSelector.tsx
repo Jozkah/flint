@@ -75,7 +75,7 @@ function blockedReason(
       ? 'common:coworkAccess.capabilityFailed'
       : 'common:coworkAccess.capabilityLoading'
   }
-  // Each write mode asks its own question: on Windows a Jan-owned worktree can
+  // Each write mode asks its own question: on Windows a Flint-owned worktree can
   // be confined while the user's own folder cannot.
   const supported =
     option === 'managed-worktree'

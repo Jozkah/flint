@@ -116,9 +116,9 @@ a plugin can fan work out to specialized agents exactly as it does in Claude Cod
 metadata is handled honestly:
 
 - `model` and `color` are ignored - the agent always runs on the session's model
-- `tools` is mapped onto Jan's tool names (`Read` -> `read`, `Glob` -> `glob`, `Grep` -> `grep`,
+- `tools` is mapped onto Flint's tool names (`Read` -> `read`, `Glob` -> `glob`, `Grep` -> `grep`,
   `WebSearch` -> `web_search`, `WebFetch` -> `web_fetch`, `TodoWrite` -> `todo`, and so on);
-  names with no Jan equivalent are dropped, and an agent listing only unknown tools inherits the
+  names with no Flint equivalent are dropped, and an agent listing only unknown tools inherits the
   parent's full tool policy
 - `skill_list` and `skill_read` stay available even when `tools` maps to a narrow set - a plugin
   agent can always load the skills its procedure references, matching Claude Code (see
@@ -184,7 +184,7 @@ marketplace = "https://example.com/jan-plugins/index.json"
 `install <name>` and `search` report the missing config - direct git URLs always work.
 
 <Callout type="info">
-Plugins are shared with Jan Desktop - the same project files, through the same directory. The
+Plugins are shared with Flint Desktop - the same project files, through the same directory. The
 desktop agent exposes `agent_plugin_list`, `agent_plugin_install`, `agent_plugin_remove`, and
 `agent_plugin_search` for UI integration.
 </Callout>

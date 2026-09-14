@@ -5,7 +5,7 @@ pub const CONFIGURATION_FILE_NAME: &str = "settings.json";
 /// source for legacy config recovery.
 pub const TAURI_BUNDLE_IDENTIFIER: &str = "jan.ai.app";
 
-// Categorised lists of Jan data directories and files.
+// Categorised lists of Flint data directories and files.
 // The factory-reset logic selectively deletes by category based on user choices.
 // Add new entries to the appropriate category so they are picked up automatically.
 

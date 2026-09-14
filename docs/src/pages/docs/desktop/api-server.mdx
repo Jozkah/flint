@@ -21,9 +21,9 @@ import { Callout, Steps } from 'nextra/components'
 
 # Local API Server
 
-Jan provides a built-in, OpenAI-compatible API server that runs entirely on your computer, powered by `llama.cpp`. Use it as a drop-in replacement for cloud APIs to build private, offline-capable AI applications.
+Flint provides a built-in, OpenAI-compatible API server that runs entirely on your computer, powered by `llama.cpp`. Use it as a drop-in replacement for cloud APIs to build private, offline-capable AI applications.
 
-![Jan's Local API Server Settings UI](./_assets/local-api-server.png)
+![Flint's Local API Server Settings UI](./_assets/local-api-server.png)
 
 ## Quick Start
 
@@ -32,10 +32,10 @@ Jan provides a built-in, OpenAI-compatible API server that runs entirely on your
 1.  Navigate to **Settings** > **Local API Server**.
 2.  Click **Start Server**.
 
-The server is ready when the logs show `JAN API listening at http://127.0.0.1:1337`.
+The server is ready when the logs show `Flint API listening at http://127.0.0.1:1337`.
 
 ### Test with cURL
-Open a terminal and make a request. Replace `YOUR_MODEL_ID` with the ID of an available model in Jan.
+Open a terminal and make a request. Replace `YOUR_MODEL_ID` with the ID of an available model in Flint.
 
 ```bash
 curl http://127.0.0.1:1337/v1/chat/completions \
@@ -102,6 +102,6 @@ Ensure **Verbose Server Logs** are enabled to get detailed error messages in the
 - **Connection Refused:** The server is not running, or your application is pointing to the wrong host or port.
 - **401 Unauthorized:** Your API Key is missing from the `Authorization` header or is incorrect.
 - **404 Not Found:**
-    - The `model` ID in your request body does not match an available model in Jan.
+    - The `model` ID in your request body does not match an available model in Flint.
     - Your request URL is incorrect (check the API Prefix).
-- **CORS Error (in a web browser):** Ensure the CORS toggle is enabled in Jan's settings.
+- **CORS Error (in a web browser):** Ensure the CORS toggle is enabled in Flint's settings.

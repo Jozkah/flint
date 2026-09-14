@@ -64,9 +64,9 @@ export default function LlamacppOomListener() {
     })
     // Fired for every model unload the router observes (explicit unload, LRU
     // eviction under models_max, or a crash) - forwarded unconditionally.
-    // Jan already flips activeModels off for unloads it requested itself, so
+    // Flint already flips activeModels off for unloads it requested itself, so
     // reconciling an already-correct state here is a harmless no-op; the
-    // real value is catching router-side evictions Jan didn't initiate.
+    // real value is catching router-side evictions Flint didn't initiate.
     const unlistenUnloaded = listen<UnloadEventPayload>(
       'llamacpp-model-unloaded',
       (event) => {

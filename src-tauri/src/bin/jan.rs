@@ -1,6 +1,6 @@
-//! jan — headless CLI for Jan.
+//! jan — headless CLI for Flint.
 //!
-//! Shares the Tauri-free core logic with the Jan desktop app; talks only to
+//! Shares the Tauri-free core logic with the Flint desktop app; talks only to
 //! remote providers (no local inference, no GUI dependencies).
 //! Build with: cargo build --no-default-features --features cli --bin jan
 
@@ -254,7 +254,7 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: JobCommands,
     },
-    /// List and inspect conversation threads saved by the Jan app
+    /// List and inspect conversation threads saved by the Flint app
     #[command(display_order = 10)]
     Threads {
         #[command(subcommand)]
@@ -577,7 +577,7 @@ enum AgentCommands {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Import agent definitions written for OpenCode or Qwen Code into Jan's
+    /// Import agent definitions written for OpenCode or Qwen Code into Flint's
     /// own subagent format (AH-118, AH-119)
     ImportAgents {
         /// A definition file, a directory of them (`.opencode/agent`,
@@ -722,7 +722,7 @@ enum AgentCommands {
 }
 
 /// Read/write the user-wide `~/.jan/config.toml` provider store. This is the
-/// self-sufficient config surface for a standalone Jan Agent: every command is
+/// self-sufficient config surface for a standalone Flint Agent: every command is
 /// headless and persists across runs.
 #[derive(Subcommand)]
 enum AgentConfigCommands {
@@ -769,7 +769,7 @@ enum JobCommands {
         owner: String,
         /// The command to run, as the host shell would run it
         command: String,
-        /// Where Jan keeps its data. Defaults to the configured data folder
+        /// Where Flint keeps its data. Defaults to the configured data folder
         #[arg(long)]
         data: Option<String>,
     },

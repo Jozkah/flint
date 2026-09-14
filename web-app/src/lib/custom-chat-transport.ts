@@ -868,7 +868,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   protected projectRoot?: string
   /**
-   * The Jan sidebar project an ordinary chat belongs to. Read from the thread
+   * The Flint sidebar project an ordinary chat belongs to. Read from the thread
    * at send time, so moving the chat or deleting the project changes the next
    * request's scope and never the one already running.
    */
@@ -1643,7 +1643,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     // Zero means "not known", never "a window with no room in it". It reaches
     // `effectiveContextWindow` and then the `> 0` guard below, which is what
-    // lets an undiscoverable window still dispatch: Jan's own budgets still
+    // lets an undiscoverable window still dispatch: Flint's own budgets still
     // apply, but no context limit is enforced against a number nobody has.
     const configuredContextTokens =
       usableContextValue(inferenceParams.max_context_tokens) ?? 0

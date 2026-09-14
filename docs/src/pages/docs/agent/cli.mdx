@@ -247,15 +247,15 @@ jan cli models list
 ]
 ```
 
-This includes providers inherited from Jan Desktop, so it can list models even when
+This includes providers inherited from Flint Desktop, so it can list models even when
 `jan config list` shows none of its own.
 
 ## `jan cli mcp`
 
-Manage Model Context Protocol servers in the shared `mcp_config.json` -- the same store Jan
+Manage Model Context Protocol servers in the shared `mcp_config.json` -- the same store Flint
 Desktop and the interactive console read. Servers you add or enable here are available in both.
 
-The desktop-only `Jan Browser MCP` bridge is never listed or editable from the CLI.
+The desktop-only `Flint Browser MCP` bridge is never listed or editable from the CLI.
 
 ```bash
 jan cli mcp list                            # JSON, env/header values redacted

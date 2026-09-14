@@ -34,7 +34,7 @@ export function useModelCapabilities(
       (provider?.provider as string) ?? ''
     )
     // A remote provider has no local runtime to ask, and asking would be a
-    // request Jan has no business making.
+    // request Flint has no business making.
     if (!extension?.getModelProps) return
     extension
       .getModelProps(modelId)

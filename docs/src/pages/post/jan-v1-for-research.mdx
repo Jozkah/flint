@@ -209,7 +209,7 @@ The differences between Jan-Nano, Lucy, and Jan-V1 can be summarized as follows 
    - A **4-billion parameter model** from Menlo Research's *Jan Family*, explicitly built *based on Lucy*.  
    - Achieves **91.1% accuracy** on SimpleQA, outperforming Jan-Nano by ~8 percentage points.  
    - Focuses on **agentic reasoning and problem-solving** via enhanced tool integration (e.g., for complex tasks).  
-   - Targets seamless integration with the Jan App for local, high-performance research workflows.
+   - Targets seamless integration with the Flint App for local, high-performance research workflows.
 
 ### Key Distinctions:
 - **Size & Use Case**: Lucy is the smallest (1.7B) and mobile-optimized; Jan-Nano and Jan-V1 are both 4B but Jan-V1 is a scaled-up version of Lucy for higher performance.
@@ -331,12 +331,12 @@ Jan-V1 comes with an [embedded chat template](https://huggingface.co/janhq/Jan-v
 
 ### Step 1: Access assistant settings
 
-Navigate to the Jan app and access the **assistant settings icon** ⚙️ on the top left of the screen. 
-![Jan app: how to open assistant settings](./_assets/jan_settings.png)
+Navigate to the Flint app and access the **assistant settings icon** ⚙️ on the top left of the screen.
+![Flint app: how to open assistant settings](./_assets/jan_settings.png)
 
 When you open the assistant settings, you'll notice the system prompt field appears empty. This is expected behavior because Jan-V1's default system prompt is embedded directly into the [chat template](https://huggingface.co/janhq/Jan-v1-4B/blob/main/chat_template.jinja) rather than being displayed in the Jan app's UI. The empty field doesn't mean there's no system prompt - it's just not visible in the interface.
 
-![Jan app assistant settings interface showing empty system prompt field interface](./_assets/jan_default_prompt.png)
+![Flint app assistant settings interface showing empty system prompt field interface](./_assets/jan_default_prompt.png)
 
 ### Step 2: Understanding the Default System Prompt
 

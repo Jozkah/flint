@@ -39,7 +39,7 @@ type AppRailProps = {
 }
 
 /**
- * The 64px rail: the JAN wordmark, a separate activity indicator, the four work
+ * The 64px rail: the Flint wordmark, a separate activity indicator, the four work
  * areas on top and Search, System and Settings at the bottom. The current area
  * is marked with the accent (selection); activity has its own indicator.
  */

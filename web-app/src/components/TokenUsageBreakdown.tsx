@@ -38,7 +38,7 @@ const formatExact = (num: number) => num.toLocaleString()
  * A row is drawn only for a count the provider reported, or one derived from
  * reported counts, and says which it is. When the cache was not reported, a
  * single "Not reported" row says so rather than showing a cached figure of
- * zero that nobody measured. Nothing here is an estimate: Jan's own payload
+ * zero that nobody measured. Nothing here is an estimate: Flint's own payload
  * estimate (AH-073) is a separate record and is never shown as usage.
  */
 export function TokenUsageBreakdown({

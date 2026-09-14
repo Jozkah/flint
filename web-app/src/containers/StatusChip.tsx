@@ -31,7 +31,7 @@ const TONE_CLASSES: Record<StatusTone, { chip: string; dot: string }> = {
 }
 
 /**
- * A status label on a semantic tint (JAN Graphite Studio): Loaded, Failed,
+ * A status label on a semantic tint (Flint Graphite Studio): Loaded, Failed,
  * Connected, Needs authorization. The words carry the meaning; the colour only
  * repeats it. Any `aria-*`, `role` or `data-*` attribute passes through, so a
  * live status keeps its announcement and its test hook.

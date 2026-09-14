@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 
-/** JAN Atelier contextual sidebar: 256px by default, resizable 220-300px. */
+/** Flint Atelier contextual sidebar: 256px by default, resizable 220-300px. */
 export const SIDEBAR_DEFAULT_WIDTH = '16rem'
 export const SIDEBAR_MIN_REM = 13.75
 export const SIDEBAR_MAX_REM = 18.75

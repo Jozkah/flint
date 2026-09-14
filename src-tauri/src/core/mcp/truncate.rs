@@ -1,7 +1,7 @@
 //! Size cap for MCP tool results.
 //!
 //! A tool result is injected verbatim into conversation history, so one call to
-//! a tool that dumps a whole page (Jan Browser MCP's snapshot, for instance) can
+//! a tool that dumps a whole page (Flint Browser MCP's snapshot, for instance) can
 //! exhaust the model's context on its own, regardless of how large that context
 //! is. Everything that hands an MCP result to a model funnels through here first
 //! so the payload is bounded and the clipping is announced rather than silent.
@@ -106,7 +106,7 @@ mod tests {
     /// not just in the struct.
     #[test]
     fn serialized_result_the_web_layer_receives_is_bounded() {
-        // Stand-in for a Jan Browser MCP page snapshot: one enormous text block.
+        // Stand-in for a Flint Browser MCP page snapshot: one enormous text block.
         let snapshot =
             CallToolResult::success(vec![Content::text("<div>page</div>".repeat(100_000))]);
 

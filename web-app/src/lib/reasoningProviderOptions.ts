@@ -42,7 +42,7 @@ function readBudgetLevel(
 }
 
 /**
- * Translate Jan's shared reasoning settings (reasoning on/off/auto + thinking
+ * Translate Flint's shared reasoning settings (reasoning on/off/auto + thinking
  * budget level) into the per-request `providerOptions` the AI SDK expects for
  * cloud providers, using each provider's NATIVE options rather than a
  * context-derived token budget (which we can't know for cloud models):

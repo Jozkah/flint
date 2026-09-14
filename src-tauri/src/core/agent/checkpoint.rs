@@ -10,17 +10,17 @@
 //! What this module adds is the distinction that made promoting it unsafe to do
 //! bluntly.
 //!
-//! **In a worktree or a sandbox, Jan owns the tree.** Everything in it got
-//! there because Jan put it there, so rolling it back to a checkpoint loses
-//! nothing that was not Jan's to lose. Hard restore is correct.
+//! **In a worktree or a sandbox, Flint owns the tree.** Everything in it got
+//! there because Flint put it there, so rolling it back to a checkpoint loses
+//! nothing that was not Flint's to lose. Hard restore is correct.
 //!
-//! **In the user's own checkout, Jan does not.** The tree holds work Jan never
+//! **In the user's own checkout, Flint does not.** The tree holds work Flint never
 //! saw — edits made in their editor while a run was going, a stash, a
 //! half-finished change in a file the run never touched. `restore` discards
 //! everything after the target indiscriminately, so pointing it at a user's
 //! checkout would delete work whose only sin was being in the same directory.
 //!
-//! So rewind is not one operation with a flag. It is a hard restore where Jan
+//! So rewind is not one operation with a flag. It is a hard restore where Flint
 //! owns the tree, and a reviewable patch where it does not — and the type
 //! system is what keeps them apart, rather than a caller remembering which case
 //! they are in.
@@ -32,7 +32,7 @@
 //! - Every file `git add -A` sees: tracked files and untracked files that are
 //!   not ignored. Contents come back byte for byte — `core.autocrlf` and the
 //!   tree's own `.gitattributes` conversions (`text`, `eol`, filters) are off
-//!   for Jan's snapshots, so line endings are never rewritten.
+//!   for Flint's snapshots, so line endings are never rewritten.
 //! - Deletions (a deleted file is written again) and additions (a file created
 //!   after the checkpoint is removed, and a directory it leaves empty goes too).
 //!   An untracked file created after the checkpoint is part of the tree, so it
@@ -85,16 +85,16 @@ use super::git;
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Destination {
-    /// A Jan-owned worktree or sandbox. Everything in it is Jan's.
+    /// A Flint-owned worktree or sandbox. Everything in it is Flint's.
     Managed,
-    /// The user's own checkout. It holds work Jan never saw.
+    /// The user's own checkout. It holds work Flint never saw.
     UserCheckout,
 }
 
 impl Destination {
     /// May a rewind here discard what is on disk?
     ///
-    /// Only where Jan owns the tree. This is the one question the module
+    /// Only where Flint owns the tree. This is the one question the module
     /// exists to answer, so it is a named method rather than a comparison
     /// spelled out at each call site.
     pub fn may_hard_restore(self) -> bool {
@@ -124,7 +124,7 @@ pub struct Checkpoint {
 /// does not hold, so a snapshot built only from reported paths would silently
 /// lose an edit nobody reported — a file a shell command wrote, or one changed
 /// after the previous point. Completeness is what makes a restore safe to
-/// offer, and it is worth a scan in a tree Jan owns.
+/// offer, and it is worth a scan in a tree Flint owns.
 ///
 /// **In the user's checkout** `changed` lists the paths touched since the
 /// previous checkpoint and only those are staged, so the cost is proportional
@@ -158,7 +158,7 @@ pub fn capture(
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum RewindPlan {
-    /// Jan owns this tree, so it can be put back as it was.
+    /// Flint owns this tree, so it can be put back as it was.
     Restore {
         sha: String,
         /// Every path the restore would change: the working tree as it stands,
@@ -166,11 +166,11 @@ pub enum RewindPlan {
         files: Vec<String>,
         /// Paths that differ from `latest` — the state the tree was last known
         /// to be in. Anything here changed after that point, and the caller
-        /// decides which of it Jan wrote.
+        /// decides which of it Flint wrote.
         #[serde(rename = "changedSinceLatest")]
         changed_since_latest: Vec<String>,
     },
-    /// Jan does not own this tree. Here is the change, for the user to apply.
+    /// Flint does not own this tree. Here is the change, for the user to apply.
     Patch { diff: String },
 }
 
@@ -201,7 +201,7 @@ pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String>
     let root = PathBuf::from(&checkpoint.root);
     // The inverse: what to change to get from where the tree is now back to the
     // checkpoint. Reviewable, reversible, and it leaves untouched anything the
-    // user changed that Jan never did.
+    // user changed that Flint never did.
     let diff = git::diff_between(&root, latest, &checkpoint.sha)?;
     Ok(RewindPlan::Patch { diff })
 }
@@ -237,7 +237,7 @@ impl RestoreGuard {
 ///
 /// Refuses anything else. A caller that has a user's checkout and wants it back
 /// the way it was gets a patch from [`plan`] and shows it to them; there is no
-/// path from here to overwriting files Jan did not write.
+/// path from here to overwriting files Flint did not write.
 ///
 /// In a managed tree, refuses before writing anything when the tree has changes
 /// no checkpoint holds (see [`RestoreGuard`]), or when the root is not the top
@@ -572,7 +572,7 @@ mod tests {
         .unwrap();
 
         // The snapshot is a commit object, not a commit on the branch. Someone
-        // looking at their own history must not see Jan's bookkeeping in it.
+        // looking at their own history must not see Flint's bookkeeping in it.
         let after = String::from_utf8_lossy(
             &Command::new("git")
                 .arg("-C")
@@ -636,7 +636,7 @@ mod tests {
         )
         .unwrap();
 
-        // Work Jan never saw, in the same directory.
+        // Work Flint never saw, in the same directory.
         std::fs::write(root.join("their-notes.txt"), "hours of work\n").unwrap();
         std::fs::write(root.join("a.txt"), "their edit\n").unwrap();
 

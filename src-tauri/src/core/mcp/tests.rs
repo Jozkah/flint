@@ -547,7 +547,7 @@ async fn test_stop_mcp_servers_prevents_concurrent_shutdown() {
 
 #[test]
 fn test_extension_disconnected_error_detection() {
-    // Real error messages from Jan Browser MCP server when extension is not connected
+    // Real error messages from Flint Browser MCP server when extension is not connected
     let disconnected_errors = [
         // Direct error messages from MCP server
         "Browser extension not connected to bridge",
@@ -1021,7 +1021,7 @@ fn test_cleanup_own_locks_removes_only_current_pid_locks() {
     let fake_child_pid = std::process::id().wrapping_add(1);
     create_lock_file(app.handle(), own_port, "ours", fake_child_pid).unwrap();
 
-    // Lock owned by a different Jan instance — write directly into the SAME dir lockfile uses
+    // Lock owned by a different Flint instance — write directly into the SAME dir lockfile uses
     let app_data_dir = app.handle().path().app_data_dir().expect("app data dir");
     std::fs::create_dir_all(&app_data_dir).ok();
     let other_path = app_data_dir.join(format!("mcp_lock_{}.json", other_port));
@@ -1089,7 +1089,7 @@ async fn terminate_browser_mcp_reaps_process_group() {
 /// Confining a local MCP server at the launcher boundary.
 ///
 /// These assert the thing the plugin's own tests cannot: that the command
-/// Jan is about to spawn is the confined one, with the environment rebuilt
+/// Flint is about to spawn is the confined one, with the environment rebuilt
 /// rather than inherited. The policy itself is the plugin's, and tested there.
 #[cfg(test)]
 mod mcp_confinement_tests {
@@ -1163,7 +1163,7 @@ mod mcp_confinement_tests {
         );
     }
 
-    /// Jan's process holds the user's whole session. `Command` inherits that
+    /// Flint's process holds the user's whole session. `Command` inherits that
     /// by default, so the environment is rebuilt rather than filtered.
     #[test]
     fn only_approved_environment_names_reach_the_server() {
@@ -1341,7 +1341,7 @@ mod mcp_confinement_tests {
         assert!(!launch.is_confined());
     }
 
-    /// The confinement is read from what Jan attached, never from the
+    /// The confinement is read from what Flint attached, never from the
     /// repository's own file.
     #[test]
     fn confinement_is_parsed_from_the_configuration_jan_builds() {
@@ -1586,7 +1586,7 @@ mod mcp_end_to_end_tests {
         (dir, server)
     }
 
-    /// The config Jan builds when a session consents to an imported server.
+    /// The config Flint builds when a session consents to an imported server.
     fn imported_config(workspace: &std::path::Path, server: &std::path::Path) -> serde_json::Value {
         serde_json::json!({
             "command": "/usr/bin/python3",
@@ -1612,7 +1612,7 @@ mod mcp_end_to_end_tests {
         let (ws, server) = workspace();
         let config = imported_config(&ws, &server);
 
-        // Exactly what the desktop and the CLI do: parse the config Jan built,
+        // Exactly what the desktop and the CLI do: parse the config Flint built,
         // then prepare a launch through the one capability that can make one.
         let params = extract_command_args(&config).expect("parse the imported config");
         assert!(params.imported, "the config Jan builds marks the import");
@@ -1678,7 +1678,7 @@ mod mcp_end_to_end_tests {
     }
 }
 
-/// Jan's real remote transport, against a real server on loopback.
+/// Flint's real remote transport, against a real server on loopback.
 ///
 /// Everything here goes through `serve_http` — the same construction the
 /// desktop and the CLI use — with a real `reqwest` client and a real
@@ -1943,12 +1943,12 @@ mod mcp_http_integration_tests {
     }
 }
 
-/// Jan's real SSE transport, against a real SSE server on loopback.
+/// Flint's real SSE transport, against a real SSE server on loopback.
 ///
 /// SSE is two halves: a long-lived stream the server writes events to, and a
 /// POST endpoint the client is told about in the stream's first event. Both
-/// are real here, driven through Jan's own `serve_sse` — so this covers the
-/// transport Jan advertises rather than a parser that recognises its name.
+/// are real here, driven through Flint's own `serve_sse` — so this covers the
+/// transport Flint advertises rather than a parser that recognises its name.
 #[cfg(test)]
 mod mcp_sse_integration_tests {
     use super::super::helpers::serve_sse;
