@@ -5,13 +5,13 @@
    once index.html's inline <style> makes Tauri hash style-src (voids unsafe-inline). */
 @import 'sonner/dist/styles.css';
 
-/* Accent tint for neutral toasts (Appearance > Accent color, --primary).
-   Set via class, not an inline style prop, so WebView2's hashed style-src
-   CSP doesn't drop it. richColors typed toasts keep their semantics. */
+/* Neutral toasts sit on the popover surface; the accent is kept for selection
+   and the primary action. Set via class, not an inline style prop, so
+   WebView2's hashed style-src CSP doesn't drop it. */
 .toaster {
-  --normal-bg: color-mix(in oklch, var(--popover) 92%, var(--primary));
+  --normal-bg: var(--popover);
   --normal-text: var(--popover-foreground);
-  --normal-border: color-mix(in oklch, var(--border) 55%, var(--primary));
+  --normal-border: var(--border);
 }
 @import '@/styles/font.css';
 @import '@/styles/markdown.css';
