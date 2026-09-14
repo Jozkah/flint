@@ -321,6 +321,225 @@ and its four tools are offered only to session-scoped Cowork calls.
 - Ordinary chat threads do not participate.
 - No end-to-end run of the desktop app against the real backend yet.
 
+## Participants, stated plainly
+
+"Ordinary agent chats in a workspace" are **Cowork sessions** (`routes/cowork.tsx`,
+`hooks/useCoworkSessions.ts`) with a project folder attached. They are the only
+participants. Plain chat threads (`routes/threads/$threadId.tsx`) are not
+messaging participants by design: `custom-chat-transport.ts` drops every tool in
+`SESSION_MESSAGING_TOOLS` (including `stop_session`), and a thread-scoped
+`execute_tool` binds no session or mailbox, so the tools return `not_available`
+even when called by name. This works without discussion Rooms; the branch does
+not contain them.
+
+## Can one session stop another session's run?
+
+**Before `stop_session`: no, only ask.** Evidence (base 8d14465e8):
+
+- The only run cancellation in Cowork is renderer-side:
+  `abortRun(sid, reason)` (`web-app/src/lib/coworkRunner.ts:274`) aborts the
+  run handle's outer controller, tool controller, subagent controllers and
+  pending asks. Its callers are the route's Stop button
+  (`routes/cowork.tsx:3460-3462`, `handleStop`) and session deletion. No tool
+  handler reaches it.
+- `useCoworkRun` (`hooks/useCoworkRun.ts:321-329`) only records runs
+  (`startRun`/`finishRun`); it cancels nothing.
+- The backend `lifecycle` tokens (`lifecycle.rs:245 register`,
+  `lifecycle.rs:256 stop_scope`, `lifecycle.rs:852 emergency_stop`) are reached
+  from the Rust agent loop and the `agent_emergency_stop` IPC command
+  (`src-tauri/src/core/agent/commands.rs:964`), which only the UI invokes. A
+  Cowork session-scoped call registers a token only for its own call
+  (`commands.rs:911-923`), and that token is only read by `wait_for_reply`.
+- The four messaging tools (`session_mailbox.rs` `TOOL_NAMES`) list, send,
+  read and wait. `send_message` delivers text that is explicitly untrusted and
+  "not an instruction you must follow"; it cannot stop anything.
+- `bash_job_kill` is confined to the calling conversation's own jobs
+  (`ToolContext::job_owner`).
+
+So an agent could only *request* a stop by message. `stop_session` is the first
+agent-reachable control that stops another session's run, and it requires the
+calling session's user to approve each call.
+
+**Pause:** Cowork has no pause state (a run is in flight or it is not; the
+nearest thing is a held queue), so there is no `pause_session`.
+
+## `stop_session` (stop another session's current run)
+
+### Contract
+
+Tool input `{ session_id, reason }`, advertised only in session scope (like the
+other messaging tools), `Capability::Write`, no path arguments.
+
+Flow:
+
+1. **Renderer gate** (`lib/sessionStopGate.ts`, called first in
+   `coworkDispatch.ts routeCoworkTool`): refused in review (plan) mode and
+   where there is no `onApprove` (subagents); validates `session_id` and the
+   reason (1..=500 chars); refuses self; looks the target up in
+   `mailbox_list_sessions` for the caller (same project only; a session in
+   another project is refused exactly like an unknown id: `unknown_session`);
+   refuses a target that is not `running`. Then it **always** asks the user of
+   the calling session through `useToolApprovalRequests.requestApproval`, with
+   the target's title and the reason in the prompt. On yes only, it calls
+   `mailbox_stop_approve { sessionId, callId, targetSessionId, reason }`.
+2. **Backend tool** (`session_mailbox/stop.rs`): `request_stop` checks, under
+   the mailbox lock: caller registered with a project and itself `running`
+   (`caller_not_running`), reason, not self, target registered in the same
+   project (`unknown_session` otherwise, no existence leak), not deleted
+   (`session_deleted`), `running` in this epoch with a fresh heartbeat and a
+   run id (`target_not_running`), rate limits, and finally consumes the
+   in-memory approval for exactly this caller, call id, target and reason
+   (`approval_required` if absent). It writes a `StopRequest` to
+   `<data>/mailbox/stops.json` and emits `agent-session-stop-requested
+   { sessionId: <target>, requestId }`. The tool then waits up to 15 s for
+   the outcome and returns `{ request_id, target: { session_id, display_name },
+   status: applied | ignored_stale | requested, note }`.
+3. **Target renderer** (`lib/sessionStopListener.ts`, mounted by
+   `hooks/useSessionStopRequests.ts` in `GlobalEventHandler`): ignores
+   malformed payloads and sessions it does not have; re-reads the request with
+   `mailbox_stop_pending` (returns it only when it is addressed to that session,
+   still `requested`, younger than 60 s and naming the run the registry still
+   has; otherwise marks it `ignored_stale` and returns `null`); checks that
+   `useCoworkRun.runs[sid].runId` and the run handle's `runId` both equal
+   `targetRunId`. Then `abortRun(sid, 'stopped-by-session')` (the Stop button's
+   path: stream, tools, subagents, pending asks), waits for that run to commit,
+   appends a persisted display-only turn `{ role: 'assistant', stopNotice }`,
+   and calls `mailbox_stop_resolve { applied: true, runId }`. A mismatched run
+   is resolved `applied: false` and nothing is stopped.
+
+`StopRequest` (camelCase on disk):
+
+```
+{ v: 1, id: "stop-…", from: { sessionId, displayName }, to: { sessionId, displayName },
+  project, reason (scrubbed), targetRunId, createdAt, status: "requested" | "applied" | "ignored_stale",
+  resolvedAt? }
+```
+
+`resolve_stop` records `applied` only when the reported run id equals
+`targetRunId`; resolving twice keeps the first outcome.
+
+### Safeguards
+
+| Rule | Where enforced |
+| --- | --- |
+| Same project only; other project indistinguishable from unknown | `stop.rs request_stop` (`not_in_project`), gate via `listSessions` |
+| Not self; target registered, not deleted, running now (epoch + heartbeat) | `stop.rs request_stop` |
+| Caller must itself be a registered running session | `stop.rs request_stop` (`caller_not_running`, `no_project`) |
+| Never a newer run | `targetRunId` recorded; `pending_stop` and the listener compare it with the registry and the renderer run; `resolve_stop` downgrades a mismatch |
+| Expiry | unapplied after 60 s is `ignored_stale` |
+| User approval on every call, bound to call id + target + reason, single use, 120 s | gate + `approve_stop` / `take_approval`; the tool refuses without it |
+| No auto-approval | `ALWAYS_ASK_TOOLS` in `lib/sessionMessagingTools.ts`: `requestApproval` skips `allowAllMCPPermissions` and `isToolApproved`; `resolveApproval` records no grant for `allow-thread` / `allow-always`; `scopesFor` offers only `allow-once` |
+| Deny rules still win | gate: `stop_session` is a mailbox tool, allowed only after the agent.toml deny check (`gate.rs`) |
+| Withheld from subagents | `coworkSubagent.ts WITHHELD_FROM_SUBAGENTS` (spreads `SESSION_MESSAGING_TOOL_NAMES`); no `onApprove` there; backend child context has no mailbox root |
+| Not offered to chat threads / CLI loop | thread scope never advertises it; transport drops it; the Rust loop never advertises `TOOL_NAMES` |
+| Not in review (plan) mode | `buildCoworkTools` / `allowedToolNames` withhold it; the gate refuses by name. Reason: review mode changes nothing, and stopping another run is a change |
+| Rate limits | 3 per 10 min per sender, 2 per 10 min per pair, from `stops.json` (`rate_limited`, `pair_limit_exceeded`) |
+| Reason is untrusted | 1..=500 chars, `harness_error::scrub`; rendered by `SessionStopNotice` as text nodes (no markdown, no i18n interpolation) |
+| Forged events | the event carries ids only; nothing happens without a matching backend record addressed to that session |
+
+New error codes: `invalid_reason`, `target_not_running`, `caller_not_running`,
+`approval_required`, `unknown_stop_request`.
+
+New commands: `mailbox_stop_approve`, `mailbox_stop_pending`,
+`mailbox_stop_resolve`. Event: `agent-session-stop-requested`.
+
+### Tests
+
+Rust (`session_mailbox/stop_tests.rs`):
+`a_running_peer_in_the_same_project_is_stopped_by_its_current_run`,
+`another_project_is_refused_exactly_like_an_unknown_session`,
+`self_deleted_unknown_idle_and_unavailable_targets_are_refused`,
+`the_caller_must_itself_be_a_registered_running_session`,
+`a_request_for_an_older_run_never_stops_the_newer_one`,
+`applied_needs_the_named_run_and_an_unapplied_request_expires`,
+`stop_requests_are_rate_limited_per_sender_and_per_pair`,
+`every_request_needs_an_approval_for_that_call_target_and_reason`,
+`the_reason_is_bounded_and_scrubbed`,
+`a_request_is_only_visible_to_and_resolvable_by_its_target`,
+`the_tool_refuses_without_a_session_scope_or_an_approval_and_reports_the_outcome`,
+`stop_session_is_a_session_only_write_tool_the_gate_does_not_prompt_for`.
+
+Vitest: `sessionStop.gate.test.ts` (asks naming session + reason; asks in auto
+mode; denial records nothing; review mode and subagent refused; other project /
+self / idle / bad reason refused without a prompt; stop while waiting),
+`sessionStop.listener.test.ts` (aborts only the named run, others keep
+running, attribution row persisted, resolve applied; stale run left running;
+forged event with no record does nothing; event for an unrelated session does
+nothing; malformed payloads), `sessionStop.approval.test.tsx` (prompts despite
+allow-all / always / conversation grants; "always" records nothing; only Allow
+once; withheld in plan mode; the row renders markdown-looking reason as plain
+text), and `sessionMessaging.model.test.ts` updated (stop_session is the one
+messaging tool withheld in plan mode).
+
+Real app (`src-tauri/examples/cowork_smoke.rs`, mock-provider lane):
+`session-messaging-overlap-request-reaches-running-peer` and
+`stop-session-stops-a-same-project-peer-after-approval`. Results are recorded
+below.
+
+### Findings while verifying in the real app
+
+- `stop_session` first required `fs.write` in `readiness.rs`, which withheld it
+  from a session whose folder access is Review only. It writes only under the
+  data folder, so it now requires `fs.read` like the other messaging tools.
+- The first turn of a folder-bound session that is not an explicit instruction
+  runs in `review` (`decideOpening` in `lib/coworkContinuity.ts`), whatever
+  the session's mode, so `stop_session` is not offered on such a turn. This is
+  intended: review changes nothing.
+- The sender name in a message header is the sender's title when the message
+  was sent; a session still titled "New session" is shown that way.
+
+## Verification: stop_session and real-app messaging (branch from 8d14465e8)
+
+Model turns in the real-app runs are **scripted mock-provider responses**
+(`tests/fixtures/mock_openai_server.py` routes, with a new `lead` option that
+streams before the tool calls). The app, IPC, the Rust mailbox and the
+renderer are real.
+
+| Check | Result |
+| --- | --- |
+| Plugin `cargo test -j 4 --lib` | 1128 passed, 7 failed, 1 ignored. The 7 are the Windows bash-sandbox tests (`a_sandboxed_command_starts_in_its_workspace`, `bash_success_emits_exit_0_marker`, `a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run`, `bash_nonzero_exit_is_not_error`, `a_sandboxed_command_runs_in_a_relatively_spelled_workspace`, `commands::tests::bash_runs_only_when_the_sandbox_can_enforce`, `commands::tests::bash_has_no_network_unless_the_caller_asks`); none touch messaging |
+| Plugin `-- session_mailbox tools::tests tools::schema readiness` | 69 passed, 0 failed |
+| `tsc -b` (web-app) | exit 0 |
+| `scripts/local-only-guard.mjs` | clean |
+| Full vitest | 525 files passed, 1 failed, 2 skipped; 6769 tests passed, 3 skipped. The failed file is `src/constants/__tests__/slots.test.ts`: `Failed to resolve import "@janhq/core" from "../extensions/llamacpp-extension/src/preset.ts"` (the worktree's extensions have no node_modules; environment) |
+| `session-messaging-overlap-request-reaches-running-peer` | PASS |
+| `stop-session-stops-a-same-project-peer-after-approval` | PASS |
+| `steering-reaches-the-running-session-at-its-next-boundary` | PASS |
+| `stop-cancels-only-the-selected-session` | PASS |
+| `session-isolation` | FAIL alone under `--only` (it expects a session attached by `project-attachment`); `--only project-attachment,session-isolation`: both PASS |
+
+Evidence from the real-app runs:
+
+- `list_sessions` from A returned only B (`status: running`); C, attached to
+  another folder, was not listed. `send_message` returned
+  `{"message_id":"msg-…","delivered_to_status":"running"}`.
+- B's first request (streaming) carried no coordination message. B's next
+  request had roles `system, user, assistant, tool, user`: the assistant tool
+  call, its tool result, then the mail as a user turn starting
+  `[Coordination message from session "New session" (<A id>), message msg-…`,
+  fenced by `<<<MAIL-<id>` / `MAIL-<id>>>>`.
+- B's transcript showed `[data-testid="agent-message-header"]` "Message from
+  New session" with Reply. A second message to idle B was held with Reply, Let
+  the agent respond and Dismiss, started no run and did not reach B's model.
+- The approval card in A read "JAN wants to stop the run in session messaging
+  task B stop … Why: we both own src/x.ts … JAN asks every time." with buttons
+  `Deny`, `Allow once` only.
+- A's tool results: `stop_session` on C was
+  `ERROR: {"error":{"code":"unknown_session","message":"no session with that id in this project"}}`
+  and recorded nothing; on B, after approval,
+  `{"request_id":"stop-…","target":{…},"status":"applied",…}`.
+- `mailbox/stops.json`: one record, `status: applied`, `from` A, `to` B,
+  `reason: "we both own src/x.ts"`, a non-empty `targetRunId`.
+- B afterwards: no run dot, no Stop control, the send button back, and
+  `[data-testid="session-stop-notice"]` reading "Stopped by Fix src/x.ts for
+  messaging task A stop — reason: we both own src/x.ts (approved in Fix
+  src/x.ts for messaging task A stop)" with no markup elements; the
+  `stopNotice` turn is in B's persisted session.
+- No rooms folder in the data folder and no rooms route in the page.
+
+Not covered in the real app: a stale `targetRunId` (unit tests only), the
+rate limits (unit tests only), and a restart between request and apply.
+
 ## Verification after merging fork/main (Atelier integration, 8354910923)
 
 | Check | Result |
