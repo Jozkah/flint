@@ -1,5 +1,5 @@
 import TextareaAutosize from 'react-textarea-autosize'
-import { cn, formatBytes } from '@/lib/utils'
+import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
 import {
@@ -108,6 +108,10 @@ import {
   NEW_THREAD_ATTACHMENT_KEY,
   useChatAttachments,
 } from '@/hooks/useChatAttachments'
+import {
+  VisionDisabledDialog,
+  type VisionDisabledChoice,
+} from '@/containers/dialogs/VisionDisabledDialog'
 
 import {
   acceptAttribute,
@@ -115,6 +119,8 @@ import {
   isTextual,
   reasonMessageKey,
   validateAttachment,
+  visionBlockedFiles,
+  type ModelCapabilities,
   type RejectionReason,
 } from '@/lib/attachmentSupport'
 import {
@@ -642,11 +648,20 @@ const ChatInput = memo(function ChatInput({
   const conversationModel = useConversationModel()
   const selectedModel = conversationModel.selectedModel
 
-  /** What the picker offers, which follows the model's actual capabilities. */
+  /**
+   * What the picker offers.
+   *
+   * Images are always offered, whatever the model claims: picking one now
+   * opens a question -- send without it, or turn vision on -- and a file the
+   * picker refuses to show cannot raise that question at all. The desktop
+   * dialog has always offered images regardless, so this is also the two
+   * intakes finally agreeing. Audio and video still follow the capability,
+   * since neither has an equivalent answer to offer.
+   */
   const attachmentAccept = useMemo(
     () =>
       acceptAttribute({
-        vision: Boolean(selectedModel?.capabilities?.includes('vision')),
+        vision: true,
         audio: Boolean(selectedModel?.capabilities?.includes('audio')),
         video: Boolean(selectedModel?.capabilities?.includes('video')),
       }),
@@ -665,7 +680,6 @@ const ChatInput = memo(function ChatInput({
     'tools' | 'assistants' | false
   >(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [hasMmproj, setHasMmproj] = useState(false)
   const activeModels = useAppState(useShallow((state) => state.activeModels))
   // Check if selected model is currently loaded/active
   const isModelActive = selectedModel?.id ? activeModels.includes(selectedModel.id) : false
@@ -761,27 +775,6 @@ const ChatInput = memo(function ChatInput({
       lastTransferredThreadId.current = currentThreadId
     }
   }, [scopeKey, draftScope, currentThreadId, transferAttachments])
-
-  // Check for mmproj existence or vision capability when model changes
-  useEffect(() => {
-    const checkMmprojSupport = async () => {
-      if (selectedModel && selectedModel?.id) {
-        try {
-          // Only check mmproj for llamacpp provider
-          if (selectedModel?.capabilities?.includes('vision')) {
-            setHasMmproj(true)
-          } else {
-            setHasMmproj(false)
-          }
-        } catch (error) {
-          console.error('Error checking mmproj:', error)
-          setHasMmproj(false)
-        }
-      }
-    }
-
-    checkMmprojSupport()
-  }, [selectedModel, selectedModel?.capabilities, selectedProvider, serviceHub])
 
   // Check if there are active MCP servers
   const hasActiveMCPServers =
@@ -1401,7 +1394,82 @@ const ChatInput = memo(function ChatInput({
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
-  const processImageFiles = useCallback(async (files: File[]) => {
+  /**
+   * An attach that is waiting on the user, because the model cannot read the
+   * images in it. The whole batch is held, not just the pictures: cancelling
+   * has to leave the draft exactly as it was, which it cannot do if the text
+   * files have already been read and attached.
+   */
+  const [visionPrompt, setVisionPrompt] = useState<{
+    files: File[]
+    blocked: File[]
+    canEnable: boolean
+  } | null>(null)
+
+  const openVisionPrompt = useCallback(
+    async (files: File[], blocked: File[]) => {
+      // Offering to turn vision on is only honest where it would work. A
+      // llama.cpp model sees through an mmproj file; without one the switch
+      // buys nothing but a request that fails later, so the option is withheld
+      // and the reason shown instead.
+      let canEnable = true
+      if (selectedProvider === 'llamacpp' && selectedModel?.id) {
+        try {
+          canEnable = await serviceHub
+            .models()
+            .checkMmprojExists(selectedModel.id)
+        } catch (error) {
+          console.error('Failed to check mmproj support:', error)
+          canEnable = false
+        }
+      }
+      setVisionPrompt({ files, blocked, canEnable })
+    },
+    [selectedModel?.id, selectedProvider, serviceHub]
+  )
+
+  /** Turn vision on for the selected model, the way the edit dialog would. */
+  const enableVisionOnSelectedModel = useCallback(() => {
+    if (!selectedModel?.id || !selectedProvider) return
+    const provider = getProviderByName(selectedProvider)
+    if (!provider) return
+
+    const models = provider.models.map((model: Model) =>
+      model.id === selectedModel.id
+        ? ({
+            ...model,
+            capabilities: Array.from(
+              new Set([...(model.capabilities ?? []), 'vision'])
+            ),
+            // Marked as the user's own decision so the automatic capability
+            // detection does not quietly take it away again.
+            _userConfiguredCapabilities: true,
+          } as Model)
+        : model
+    )
+    updateProvider(selectedProvider, { ...provider, models })
+  }, [
+    getProviderByName,
+    selectedModel?.id,
+    selectedProvider,
+    updateProvider,
+  ])
+
+  type ProcessImageOptions = {
+    /**
+     * The model's media capabilities, when they must not be read from the
+     * store. Enabling vision and re-running in the same tick would otherwise
+     * see the capabilities this render closed over -- the old ones.
+     */
+    capabilities?: ModelCapabilities
+    /** The vision question has been asked and answered; do not ask again. */
+    visionAsked?: boolean
+  }
+
+  const processImageFiles = useCallback(async (
+    files: File[],
+    options?: ProcessImageOptions
+  ) => {
     const maxSize = 10 * 1024 * 1024 // 10MB in bytes
 
     const validFiles: File[] = []
@@ -1410,7 +1478,7 @@ const ChatInput = memo(function ChatInput({
     // several possible problems this file actually had.
     const rejected: { name: string; reason: RejectionReason }[] = []
 
-    const capabilities = {
+    const capabilities = options?.capabilities ?? {
       vision: Boolean(selectedModel?.capabilities?.includes('vision')),
       audio: Boolean(selectedModel?.capabilities?.includes('audio')),
       video: Boolean(selectedModel?.capabilities?.includes('video')),
@@ -1418,6 +1486,20 @@ const ChatInput = memo(function ChatInput({
     const limits = {
       maxBytes: maxSize,
       maxCount: DEFAULT_ATTACHMENT_LIMITS.maxCount,
+    }
+
+    // An image handed to a model that cannot see is a question, not an error.
+    // Dropping it silently threw away something the user had already decided
+    // mattered, and the model's own metadata is often just incomplete -- a
+    // manually added OpenAI-compatible endpoint rarely declares vision even
+    // when it has it. Ask before anything is read, so a cancel leaves nothing
+    // behind.
+    if (!options?.visionAsked) {
+      const blocked = visionBlockedFiles(files, { capabilities, limits })
+      if (blocked.length > 0) {
+        void openVisionPrompt(files, blocked)
+        return
+      }
     }
 
     Array.from(files).forEach((file) => {
@@ -1632,8 +1714,50 @@ const ChatInput = memo(function ChatInput({
     serviceHub,
     setFileIngestProgress,
     selectedModel?.capabilities,
+    openVisionPrompt,
     t,
   ])
+
+  /** Act on the answer to the vision question, then let the attach finish. */
+  const handleVisionChoice = useCallback(
+    async (choice: VisionDisabledChoice) => {
+      const pending = visionPrompt
+      setVisionPrompt(null)
+      if (!pending) return
+
+      // The picker keeps its last selection, so it has to be cleared or the
+      // same file cannot be chosen again.
+      if (fileInputRef.current) fileInputRef.current.value = ''
+
+      if (choice === 'cancel') return
+
+      if (choice === 'proceed') {
+        const blocked = new Set(pending.blocked)
+        const rest = pending.files.filter((file) => !blocked.has(file))
+        if (rest.length > 0)
+          await processImageFiles(rest, { visionAsked: true })
+        return
+      }
+
+      enableVisionOnSelectedModel()
+      await processImageFiles(pending.files, {
+        visionAsked: true,
+        // The store update lands in the next render; this call must not wait
+        // for it, so the new capability is passed in directly.
+        capabilities: {
+          vision: true,
+          audio: Boolean(selectedModel?.capabilities?.includes('audio')),
+          video: Boolean(selectedModel?.capabilities?.includes('video')),
+        },
+      })
+    },
+    [
+      enableVisionOnSelectedModel,
+      processImageFiles,
+      selectedModel?.capabilities,
+      visionPrompt,
+    ]
+  )
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -2006,14 +2130,13 @@ const ChatInput = memo(function ChatInput({
     }
   }, [serviceHub, processImageFiles])
 
-  const dropAcceptsAnything = hasMmproj || audioSupported || videoSupported
-
+  // The drop zone is always live. Gating it on the model's media capabilities
+  // meant a text-only model refused every drop, a plain `.txt` included, and
+  // an image now opens a question rather than being turned away at the door.
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (dropAcceptsAnything) {
-      setIsDragOver(true)
-    }
+    setIsDragOver(true)
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -2030,9 +2153,7 @@ const ChatInput = memo(function ChatInput({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (dropAcceptsAnything) {
-      setIsDragOver(true)
-    }
+    setIsDragOver(true)
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -2040,7 +2161,6 @@ const ChatInput = memo(function ChatInput({
     e.stopPropagation()
     setIsDragOver(false)
 
-    if (!dropAcceptsAnything) return
     if (!e.dataTransfer) {
       console.warn('No dataTransfer available in drop event')
       return
@@ -2072,7 +2192,7 @@ const ChatInput = memo(function ChatInput({
       (f) => !audioOnes.includes(f) && !videoOnes.includes(f)
     )
 
-    if (otherOnes.length > 0 && hasMmproj) {
+    if (otherOnes.length > 0) {
       const dt = new DataTransfer()
       otherOnes.forEach((f) => dt.items.add(f))
       const syntheticEvent = {
@@ -2112,107 +2232,107 @@ const ChatInput = memo(function ChatInput({
       }
     }
 
-    if (hasMmproj) {
-      const clipboardItems = e.clipboardData?.items
-      let hasProcessedImage = false
+    // Pasted images are handled whatever the model can read: one it
+    // cannot see opens the question below rather than being dropped on
+    // the floor, which is what gating this on vision amounted to.
+    const clipboardItems = e.clipboardData?.items
+    let hasProcessedImage = false
 
-      // Try clipboardData.items first (traditional method)
-      if (clipboardItems && clipboardItems.length > 0) {
-        const imageItems = Array.from(clipboardItems).filter((item) =>
-          item.type.startsWith('image/')
-        )
-
-        if (imageItems.length > 0) {
-          e.preventDefault()
-
-          const files: File[] = []
-          let processedCount = 0
-
-          imageItems.forEach((item) => {
-            const file = item.getAsFile()
-            if (file) {
-              files.push(file)
-            }
-            processedCount++
-
-            // When all items are processed, handle the valid files
-            if (processedCount === imageItems.length) {
-              if (files.length > 0) {
-                const syntheticEvent = {
-                  target: {
-                    files: files,
-                  },
-                } as unknown as React.ChangeEvent<HTMLInputElement>
-
-                handleFileChange(syntheticEvent)
-                hasProcessedImage = true
-              }
-            }
-          })
-
-          // If we found image items but couldn't get files, fall through to modern API
-          if (processedCount === imageItems.length && !hasProcessedImage) {
-            // Continue to modern clipboard API fallback below
-          } else {
-            return // Successfully processed with traditional method
-          }
-        }
-      }
-
-      // Modern Clipboard API fallback (for Linux, images copied from web, etc.)
-      if (
-        navigator.clipboard &&
-        'read' in navigator.clipboard &&
-        !hasProcessedImage
-      ) {
-        try {
-          const clipboardContents = await navigator.clipboard.read()
-          const files: File[] = []
-
-          for (const item of clipboardContents) {
-            const imageTypes = item.types.filter((type) =>
-              type.startsWith('image/')
-            )
-
-            for (const type of imageTypes) {
-              try {
-                const blob = await item.getType(type)
-                // Convert blob to File with better naming
-                const extension = type.split('/')[1] || 'png'
-                const file = new File(
-                  [blob],
-                  `pasted-image-${Date.now()}.${extension}`,
-                  { type }
-                )
-                files.push(file)
-              } catch (error) {
-                console.error('Error reading clipboard item:', error)
-              }
-            }
-          }
-
-          if (files.length > 0) {
-            e.preventDefault()
-            const syntheticEvent = {
-              target: {
-                files: files,
-              },
-            } as unknown as React.ChangeEvent<HTMLInputElement>
-
-            handleFileChange(syntheticEvent)
-            return
-          }
-        } catch (error) {
-          console.error('Clipboard API access failed:', error)
-        }
-      }
-
-      // If we reach here, no image was found - allow normal text pasting to continue
-      console.log(
-        'No image data found in clipboard, allowing normal text paste'
+    // Try clipboardData.items first (traditional method)
+    if (clipboardItems && clipboardItems.length > 0) {
+      const imageItems = Array.from(clipboardItems).filter((item) =>
+        item.type.startsWith('image/')
       )
+
+      if (imageItems.length > 0) {
+        e.preventDefault()
+
+        const files: File[] = []
+        let processedCount = 0
+
+        imageItems.forEach((item) => {
+          const file = item.getAsFile()
+          if (file) {
+            files.push(file)
+          }
+          processedCount++
+
+          // When all items are processed, handle the valid files
+          if (processedCount === imageItems.length) {
+            if (files.length > 0) {
+              const syntheticEvent = {
+                target: {
+                  files: files,
+                },
+              } as unknown as React.ChangeEvent<HTMLInputElement>
+
+              handleFileChange(syntheticEvent)
+              hasProcessedImage = true
+            }
+          }
+        })
+
+        // If we found image items but couldn't get files, fall through to modern API
+        if (processedCount === imageItems.length && !hasProcessedImage) {
+          // Continue to modern clipboard API fallback below
+        } else {
+          return // Successfully processed with traditional method
+        }
+      }
     }
-    // If hasMmproj is false or no images found, allow normal text pasting to continue
+
+    // Modern Clipboard API fallback (for Linux, images copied from web, etc.)
+    if (
+      navigator.clipboard &&
+      'read' in navigator.clipboard &&
+      !hasProcessedImage
+    ) {
+      try {
+        const clipboardContents = await navigator.clipboard.read()
+        const files: File[] = []
+
+        for (const item of clipboardContents) {
+          const imageTypes = item.types.filter((type) =>
+            type.startsWith('image/')
+          )
+
+          for (const type of imageTypes) {
+            try {
+              const blob = await item.getType(type)
+              // Convert blob to File with better naming
+              const extension = type.split('/')[1] || 'png'
+              const file = new File(
+                [blob],
+                `pasted-image-${Date.now()}.${extension}`,
+                { type }
+              )
+              files.push(file)
+            } catch (error) {
+              console.error('Error reading clipboard item:', error)
+            }
+          }
+        }
+
+        if (files.length > 0) {
+          e.preventDefault()
+          const syntheticEvent = {
+            target: {
+              files: files,
+            },
+          } as unknown as React.ChangeEvent<HTMLInputElement>
+
+          handleFileChange(syntheticEvent)
+          return
+        }
+      } catch (error) {
+        console.error('Clipboard API access failed:', error)
+      }
+    }
+
+    // If we reach here, no image was found - allow normal text pasting to continue
+    console.log(
+      'No image data found in clipboard, allowing normal text paste'
+    )
   }
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
@@ -2237,11 +2357,11 @@ const ChatInput = memo(function ChatInput({
               isFocused && 'border-ring ring-3 ring-ring/20',
               isDragOver && 'border-brand ring-3 ring-ring/30 bg-brand-tint'
             )}
-            data-drop-zone={dropAcceptsAnything ? 'true' : undefined}
-            onDragEnter={dropAcceptsAnything ? handleDragEnter : undefined}
-            onDragLeave={dropAcceptsAnything ? handleDragLeave : undefined}
-            onDragOver={dropAcceptsAnything ? handleDragOver : undefined}
-            onDrop={dropAcceptsAnything ? handleDrop : undefined}
+            data-drop-zone="true"
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
           >
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
@@ -2572,9 +2692,7 @@ const ChatInput = memo(function ChatInput({
                     <DropdownMenuItem onClick={() => void openImagePicker()}>
                       <ImageIcon className="size-4 text-muted-foreground" />
                       <span>
-                        {hasMmproj
-                          ? t('common:attachFiles.addFilesOrImages')
-                          : t('common:attachFiles.addFiles')}
+                        {t('common:attachFiles.addFilesOrImages')}
                       </span>
                       <input
                         type="file"
@@ -3189,6 +3307,16 @@ const ChatInput = memo(function ChatInput({
           <TokenCounter messages={threadMessages || []} source={tokenSource} />
         </div>
       )}
+
+      <VisionDisabledDialog
+        open={visionPrompt !== null}
+        fileNames={(visionPrompt?.blocked ?? []).map((file) => file.name)}
+        modelName={
+          selectedModel ? getModelDisplayName(selectedModel) : ''
+        }
+        canEnable={visionPrompt?.canEnable ?? false}
+        onChoose={(choice) => void handleVisionChoice(choice)}
+      />
 
     </div>
   )

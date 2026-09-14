@@ -230,3 +230,22 @@ export function acceptAttribute(
     .sort()
     .join(',')
 }
+
+/**
+ * The files that a missing vision capability alone is keeping out.
+ *
+ * Attaching an image to a model that cannot see is not a dead end: the user may
+ * want to send the rest of the draft without it, or turn the capability on. To
+ * offer that choice the caller has to know the difference between "this model
+ * cannot read images" and "this file was too large" -- a file failing for any
+ * other reason is not listed here, because enabling vision would not rescue it.
+ */
+export function visionBlockedFiles<
+  T extends { name: string; size: number; type?: string },
+>(files: readonly T[], context: ValidationContext): T[] {
+  if (context.capabilities.vision) return []
+  return files.filter((file) => {
+    const decision = validateAttachment(file, context)
+    return !decision.ok && decision.reason === 'needs-vision'
+  })
+}
