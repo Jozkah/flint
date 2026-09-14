@@ -114,7 +114,7 @@ zoom, viewports 1440x900, 1280x720, 1024x768, 768x1024, 390x844, 360x800 and
 844x390, phone drawer and composer).
 
 Screenshots are kept outside the repository in
-`C:UsersJozkahDesktopJAN-Graphite-Screenshots` (`journeys/` for the
+`C:\Users\Jozkah\Desktop\JAN-Graphite-Screenshots` (`journeys/` for the
 journey run, `dark-palette/before` and `dark-palette/after` for matching dark
 theme captures with rendered-contrast reports).
 
