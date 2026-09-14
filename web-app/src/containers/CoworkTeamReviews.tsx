@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, GitBranch, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
+import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 import { listProposals, type ProposalRecord } from '@/lib/proposals'
 import {
   listTeamChildren,
@@ -38,6 +39,16 @@ const STATE: Record<ChildState, string> = {
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',
+}
+
+/** The shared work status each child state is shown with: icon and word. */
+const WORK_STATE: Record<ChildState, WorkState> = {
+  running: 'running',
+  // Stopped by something other than the work: it needs a person to look.
+  interrupted: 'blocked',
+  completed: 'done',
+  failed: 'failed',
+  cancelled: 'cancelled',
 }
 
 /** The newest proposal made from this child's worktree, if any. */
@@ -79,18 +90,12 @@ function ChildRow({
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-mono font-medium">{view.taskId}</span>
-        <span
-          className={
-            view.state === 'completed'
-              ? 'rounded-md bg-success-tint px-1 text-success'
-              : view.state === 'running'
-                ? 'rounded-md bg-sunken px-1'
-                : 'rounded-md bg-destructive/10 px-1 text-destructive'
-          }
+        <WorkStatus
+          state={WORK_STATE[view.state]}
           data-testid="team-child-state"
         >
           {STATE[view.state]}
-        </span>
+        </WorkStatus>
         {proposal ? (
           <span
             className="rounded-md bg-sunken px-1 text-ink-2"

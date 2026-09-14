@@ -79,12 +79,14 @@ export function CoworkWorkflowCard({
               aria-valuemin={0}
               aria-valuemax={progress.total}
               aria-valuenow={progress.finished}
-              className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+              className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-sunken"
             >
+              {/* Neutral, not the accent: the accent means "selected", and a
+                  workflow in progress is not a selected one. */}
               <span
                 className={cn(
                   'block h-full rounded-full motion-safe:transition-[width]',
-                  progress.error > 0 ? 'bg-destructive' : 'bg-brand'
+                  progress.error > 0 ? 'bg-destructive' : 'bg-ink-2'
                 )}
                 style={{ width: `${Math.round(progress.fraction * 100)}%` }}
               />
@@ -116,7 +118,7 @@ export function CoworkWorkflowCard({
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
               >
                 <StatusIcon status={task.status} />
                 {task.kind === 'shell' ? (

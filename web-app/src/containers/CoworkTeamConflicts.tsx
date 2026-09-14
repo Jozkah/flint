@@ -86,7 +86,7 @@ function ConflictRow({
     tasks.find((t) => t.id === id)?.description ?? ''
   const name = `team-conflict-${conflictKey(conflict)}`
   const option = (value: Choice, label: string) => (
-    <label className="flex items-center gap-2 text-xs">
+    <label className="flex min-h-7 cursor-pointer items-center gap-2 text-xs pointer-coarse:min-h-11">
       <input
         type="radio"
         name={name}
@@ -114,7 +114,7 @@ function ConflictRow({
 
   return (
     <li
-      className="rounded-md border border-border p-2"
+      className="rounded-md border border-border bg-card p-2"
       data-testid="team-conflict"
       data-tasks={conflict.tasks.join(',')}
     >
