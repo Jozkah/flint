@@ -42,14 +42,14 @@ export function CoworkRunNotice(props: Props) {
           {t(`common:run.${props.kind}`)}
         </span>
         {props.message?.trim() ? (
-          <span className="min-w-0 break-words text-muted-foreground">
+          <span className="min-w-0 break-words text-ink-2">
             {props.message}
           </span>
         ) : null}
         <Button
           variant="outline"
           size="sm"
-          className="h-7"
+          className="h-7 pointer-coarse:h-11"
           onClick={props.onRetry}
         >
           {t('common:run.tryAgain')}
@@ -78,13 +78,18 @@ export function CoworkRunNotice(props: Props) {
       className="mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive"
     >
       <TriangleAlert size={14} aria-hidden className="shrink-0" />
+      {/* Always the words, then the detail: a raw error message alone does not
+          say that the run failed. */}
       <span className="min-w-0 break-words">
-        {props.message?.trim() || t('common:run.failed')}
+        <span className="font-medium">{t('common:run.failed')}</span>
+        {props.message?.trim() ? (
+          <span className="text-foreground"> {props.message.trim()}</span>
+        ) : null}
       </span>
       <Button
         variant="outline"
         size="sm"
-        className="h-7"
+        className="h-7 pointer-coarse:h-11"
         onClick={props.onRetry}
       >
         {t('common:run.tryAgain')}

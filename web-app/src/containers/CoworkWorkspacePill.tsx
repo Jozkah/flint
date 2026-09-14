@@ -57,9 +57,13 @@ export function CoworkWorkspacePill({
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant="ghost"
+          variant={folderName ? 'outline' : 'ghost'}
           size={folderName ? 'xs' : 'icon-xs'}
-          className="shrink-0 text-muted-foreground"
+          className={
+            folderName
+              ? 'shrink-0 gap-1 bg-transparent text-muted-foreground pointer-coarse:h-11'
+              : 'shrink-0 text-muted-foreground pointer-coarse:size-11'
+          }
           aria-label={
             folderName
               ? t('common:workspace.a11yWithFolder', { folder: folderName })
@@ -68,11 +72,26 @@ export function CoworkWorkspacePill({
         >
           {folderName ? (
             <>
-              <Folder className="size-3.5 shrink-0" />
+              {gitBranch ? (
+                <GitBranch className="size-3.5 shrink-0" aria-hidden />
+              ) : (
+                <Folder className="size-3.5 shrink-0" aria-hidden />
+              )}
               <span className="max-w-[120px] truncate text-foreground">
                 {folderName}
               </span>
-              <Lock className="size-3 shrink-0 text-muted-foreground" />
+              {gitBranch ? (
+                <span
+                  aria-hidden
+                  className="hidden max-w-[96px] truncate font-mono text-[11px] text-muted-foreground xl:inline"
+                >
+                  · {gitBranch}
+                </span>
+              ) : null}
+              <Lock
+                className="size-3 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
             </>
           ) : (
             <FolderPlus className="size-[18px] shrink-0" />
@@ -94,7 +113,7 @@ export function CoworkWorkspacePill({
           <>
             {/* What is attached */}
             <section className="p-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs font-medium text-muted-foreground">
                 {t('common:workspace.readsFrom')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -136,7 +155,7 @@ export function CoworkWorkspacePill({
             {/* Where the agent's changes actually land. The folder above is
                 read-only, so saying "writable project" would be a lie. */}
             <section className="p-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="text-xs font-medium text-muted-foreground">
                 {t('common:workspace.writesTo')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -205,9 +224,9 @@ export function CoworkWorkspacePill({
                 {t('common:workspace.change')}
               </Button>
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                className="ml-auto h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="ml-auto h-8"
                 onClick={onDetach}
               >
                 {t('common:workspace.detach')}

@@ -106,20 +106,21 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
+            variant="outline"
             size="xs"
             aria-label={t('common:coworkAccess.label')}
             className={cn(
-              'shrink-0 gap-1',
+              'shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
               // Editing the user's own checkout is the state worth noticing.
-              active === 'edit-folder'
-                ? 'text-brand-text'
-                : 'text-muted-foreground'
+              active === 'edit-folder' ? 'text-warning' : 'text-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
             <span>{t(accessLabelKey(active))}</span>
-            <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
+            <ChevronDown
+              aria-hidden
+              className="size-3 shrink-0 text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80">

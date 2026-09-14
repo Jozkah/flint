@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { History } from 'lucide-react'
+import { History, OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { CheckpointEntry, RewindPlan } from '@/hooks/useCoworkCheckpoints'
@@ -173,8 +173,12 @@ export function CoworkRewind(props: RewindProps) {
         ))}
       </ul>
       {failure ? (
-        <p role="alert" className="mt-1 text-destructive">
-          {failure}
+        <p
+          role="alert"
+          className="mt-1 flex items-start gap-1.5 text-destructive"
+        >
+          <OctagonAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+          <span className="min-w-0 break-words">{failure}</span>
         </p>
       ) : null}
       {notice ? (
@@ -198,7 +202,7 @@ export function CoworkRewind(props: RewindProps) {
               close()
             }
           }}
-          className="mt-2 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-2 rounded-lg border border-border bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {open.plan.kind === 'restore' ? (
             <>

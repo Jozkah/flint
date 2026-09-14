@@ -22,6 +22,9 @@
     "failed": "The run stopped before finishing, and nothing was completed.",
     "cancelled": "The run was stopped before anything was completed."
   },
+  "plan": {
+    "progress": "{{done}} of {{total}} done"
+  },
   "kept": "These changes were kept. Stopping a run does not undo what it already did.",
   "location": {
     "sandbox": "In this session's sandbox, not in your repository.",

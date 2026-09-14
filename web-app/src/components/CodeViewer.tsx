@@ -227,8 +227,8 @@ export function CodeViewer({
           aria-label={label}
           aria-pressed={pressed}
           className={cn(
-            'shrink-0',
-            pressed ? 'text-primary' : 'text-muted-foreground'
+            'shrink-0 pointer-coarse:size-11',
+            pressed ? 'bg-accent text-foreground' : 'text-muted-foreground'
           )}
         >
           {icon}
@@ -246,8 +246,8 @@ export function CodeViewer({
   )
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <div className="flex h-8 shrink-0 items-center gap-1 border-b px-2">
+    <div className={cn('flex h-full min-h-0 min-w-0 flex-col', className)}>
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2 pointer-coarse:h-11">
         <span
           className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
           title={relPath}
@@ -260,7 +260,7 @@ export function CodeViewer({
         {/* Truthful about capability: this surface never writes. */}
         {!isWritableOrigin(origin) && (
           <span
-            className="shrink-0 rounded-sm bg-secondary px-1 text-[10px] uppercase tracking-wide text-muted-foreground"
+            className="shrink-0 rounded-sm bg-sunken px-1 text-[11px] text-muted-foreground"
             title={t('common:codePanel.readOnlyHint')}
           >
             {t('common:codePanel.readOnly')}
@@ -299,7 +299,9 @@ export function CodeViewer({
         tabIndex={0}
         onMouseUp={handleMouseUp}
         onKeyUp={handleMouseUp}
-        className="relative min-h-0 flex-1 overflow-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+        // The code surface scrolls both ways inside itself; long lines never
+        // widen the panel or the page.
+        className="relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-code focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
         data-testid="code-viewer-body"
       >
         {html ? (

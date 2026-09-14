@@ -140,6 +140,7 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
@@ -3903,6 +3904,7 @@ function CoworkPage() {
           )}
           data-testid="cowork-content-view"
         >
+          <CoworkPlanStrip todos={session?.todos} />
           <div className="flex-1 relative">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState

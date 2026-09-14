@@ -44,19 +44,23 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
+            variant="outline"
             size="xs"
             aria-label={t('common:coworkMode.label')}
             className={cn(
-              'shrink-0 gap-1',
+              'shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
               // Autonomous is the mode that can change things without asking,
-              // so it is the one that does not sit quietly in the row.
-              mode === 'auto' ? 'text-brand-text' : 'text-muted-foreground'
+              // so it is the one that does not sit quietly in the row. Warning,
+              // not the accent: the accent means selected.
+              mode === 'auto' ? 'text-warning' : 'text-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
             <span>{t(modeLabelKey(mode))}</span>
-            <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />
+            <ChevronDown
+              aria-hidden
+              className="size-3 shrink-0 text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
