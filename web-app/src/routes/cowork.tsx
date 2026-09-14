@@ -3816,7 +3816,7 @@ function CoworkPage() {
         <PageHeaderRow>
           {!phone && session?.title ? (
             <h1
-              className="hidden min-w-0 max-w-[18rem] shrink truncate font-display text-lg leading-tight text-foreground lg:block"
+              className="font-semibold hidden min-w-0 max-w-[18rem] shrink truncate text-lg leading-tight text-foreground lg:block"
               title={session.title}
               data-testid="cowork-session-title"
             >

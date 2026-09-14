@@ -74,7 +74,7 @@ function ProjectPageContent() {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4">
         <div className="text-center">
-          <h1 className="font-display text-[28px] leading-tight mb-2">
+          <h1 className="font-semibold  text-xl leading-tight mb-2">
             {t('projects.projectNotFound')}
           </h1>
           <p className="text-muted-foreground">
@@ -98,7 +98,7 @@ function ProjectPageContent() {
           {/* Project Name with Dropdown */}
           <div className="flex min-w-0 items-center justify-between gap-2 mb-4">
             <h1
-              className="min-w-0 truncate font-display text-[28px] leading-tight text-foreground"
+              className="font-semibold min-w-0 truncate text-xl leading-tight text-foreground"
               title={project.name}
             >
               {project.name}
@@ -173,8 +173,8 @@ function ProjectPageContent() {
           {/* Empty State */}
           {projectThreads.length === 0 && (
             <div className="flex flex-col items-center justify-center px-4 pt-8 pb-12 text-center bg-card rounded-lg border border-border mb-6">
-              <MessageCircle className="size-8 text-muted-foreground/50 mb-3" />
-              <h3 className="font-display text-xl text-foreground mb-1">
+              <MessageCircle className="size-8 text-muted-foreground mb-3" />
+              <h3 className="font-semibold  text-xl text-foreground mb-1">
                 {t('projects.noConversationsIn', { projectName: project.name })}
               </h3>
               <p className="text-sm text-muted-foreground">

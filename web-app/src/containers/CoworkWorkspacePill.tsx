@@ -72,7 +72,7 @@ export function CoworkWorkspacePill({
               <span className="max-w-[120px] truncate text-foreground">
                 {folderName}
               </span>
-              <Lock className="size-3 shrink-0 text-muted-foreground/70" />
+              <Lock className="size-3 shrink-0 text-muted-foreground" />
             </>
           ) : (
             <FolderPlus className="size-[18px] shrink-0" />

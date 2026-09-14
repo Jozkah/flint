@@ -8,14 +8,9 @@ import {
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 
-// JAN Atelier typefaces, bundled with the app so nothing is fetched at runtime.
-import '@fontsource/ibm-plex-sans/400.css'
-import '@fontsource/ibm-plex-sans/500.css'
-import '@fontsource/ibm-plex-sans/600.css'
-import '@fontsource/ibm-plex-mono/400.css'
-import '@fontsource/ibm-plex-mono/500.css'
-import '@fontsource/newsreader/400.css'
-import '@fontsource/newsreader/500.css'
+// JAN Graphite Studio typefaces, bundled with the app so nothing is fetched at runtime.
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 import './index.css'
 
 // Mobile-specific viewport and styling setup

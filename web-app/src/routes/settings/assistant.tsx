@@ -130,7 +130,7 @@ function AssistantContent() {
                   </DropdownMenu>
                 }
               />
-              <h1 className="mt-5 mb-3 font-display text-lg font-normal text-foreground">{t('assistants:allAssistants')}</h1>
+              <h1 className="mt-5 mb-3 text-lg font-semibold text-foreground">{t('assistants:allAssistants')}</h1>
               {sortedAssistants.map((assistant) => (
                 <div
                   className="group my-1.5 flex min-h-11 items-center gap-3 rounded-lg border border-border bg-card px-3 py-3 transition-colors hover:bg-sunken"

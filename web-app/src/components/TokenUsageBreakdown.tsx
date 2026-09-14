@@ -292,7 +292,7 @@ function Row({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 text-muted-foreground/70 hover:text-foreground focus-visible:text-foreground"
+                className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:text-foreground"
                 aria-label={note}
                 data-testid={`${testId}-note`}
               >

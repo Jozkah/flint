@@ -76,7 +76,7 @@ function HTTPSProxyContent() {
             <Card
               header={
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <h1 className="font-display text-xl font-normal text-foreground">
+                  <h1 className=" text-xl font-semibold text-foreground">
                     {t('settings:httpsProxy.proxy')}
                   </h1>
                   <Switch
@@ -181,7 +181,7 @@ function HTTPSProxyContent() {
             </Card>
             <Card
               header={
-                <h1 className="mb-4 font-display text-xl font-normal text-foreground">
+                <h1 className="mb-4 text-xl font-semibold text-foreground">
                   {t('settings:httpsProxy.caBundle')}
                 </h1>
               }

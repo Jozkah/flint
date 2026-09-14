@@ -61,7 +61,7 @@ function WebSearchContent() {
             <Card
               header={
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <h1 className="font-display text-xl font-normal text-foreground">
+                  <h1 className=" text-xl font-semibold text-foreground">
                     {t('settings:webSearch.title')}
                   </h1>
                   <Switch

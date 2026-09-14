@@ -621,7 +621,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <FileText className="size-8 text-muted-foreground/50 mb-3" />
+          <FileText className="size-8 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground text-center">
             {t('common:projects.filesDescription')}
           </p>
@@ -690,7 +690,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <FileText className="size-8 text-muted-foreground/50 mb-3" />
+          <FileText className="size-8 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground text-center">
             {t('common:projects.filesDescription')}
           </p>

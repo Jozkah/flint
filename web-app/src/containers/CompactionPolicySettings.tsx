@@ -61,7 +61,7 @@ export function CompactionPolicySettings() {
   return (
     <Card
       header={
-        <h1 className="mb-4 font-display text-xl font-normal text-foreground">
+        <h1 className="mb-4 text-xl font-semibold text-foreground">
           {t('settings:compaction.title')}
         </h1>
       }

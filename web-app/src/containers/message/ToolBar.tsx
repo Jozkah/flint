@@ -42,7 +42,7 @@ export const ToolBar = ({
   const className = cn(
     'min-w-0 flex-1 truncate text-left text-sm',
     mono && 'font-mono text-xs',
-    !value && 'text-muted-foreground/60'
+    !value && 'text-muted-foreground'
   )
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">

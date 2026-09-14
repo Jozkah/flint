@@ -102,7 +102,7 @@ function ModelProviders() {
         {/* Global settings */}
         <Card
           header={
-            <h2 className="mb-4 font-display text-xl font-normal text-foreground">
+            <h2 className="mb-4 text-xl font-semibold text-foreground">
               {t('provider:globalSettings')}
             </h2>
           }
@@ -121,7 +121,7 @@ function ModelProviders() {
         {/* Model Providers */}
         <Card
           header={
-            <h2 className="mb-4 font-display text-xl font-normal text-foreground">
+            <h2 className="mb-4 text-xl font-semibold text-foreground">
               {t('common:modelProviders')}
             </h2>
           }

@@ -25,7 +25,7 @@ function ExtensionsContent() {
             <Card
               header={
                 <div className="mb-4 flex items-center justify-between">
-                  <h1 className="font-display text-xl font-normal text-foreground">
+                  <h1 className=" text-xl font-semibold text-foreground">
                     {t('settings:extensions.title')}
                   </h1>
                   {/* <div className="flex items-center gap-2">

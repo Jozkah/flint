@@ -194,7 +194,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
                 />
                 <span>
                   <span className="font-medium capitalize">{option}</span>
-                  <span className="block text-main-view-fg/70">
+                  <span className="block text-muted-foreground">
                     {describeScope(option, props)}
                   </span>
                 </span>

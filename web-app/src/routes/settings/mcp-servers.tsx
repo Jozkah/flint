@@ -702,7 +702,7 @@ function MCPServersDesktop() {
                   <div className="mb-4 flex flex-col">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <h1 className="font-display text-xl font-normal text-foreground">
+                        <h1 className=" text-xl font-semibold text-foreground">
                           {t('mcp-servers:title')}
                         </h1>
                         <div className="rounded-full bg-warning-tint px-2 py-0.5 text-xs text-warning">
@@ -912,7 +912,7 @@ function MCPServersDesktop() {
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                           {/* The connection state is the chip under the
                               title; a coloured dot here only repeated it. */}
-                          <h1 className="min-w-0 break-words font-display text-lg font-normal capitalize text-foreground">
+                          <h1 className="min-w-0 break-words text-lg font-semibold capitalize text-foreground">
                             {key}
                           </h1>
                           {config.official && (

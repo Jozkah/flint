@@ -212,7 +212,7 @@ export const Citations = memo(
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {heading}
         {payload.query && (
-          <span className="ml-2 normal-case font-normal text-muted-foreground/70">
+          <span className="ml-2 normal-case font-normal text-muted-foreground">
             for &ldquo;{payload.query}&rdquo;
           </span>
         )}

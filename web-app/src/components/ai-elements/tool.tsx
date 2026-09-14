@@ -237,20 +237,20 @@ export const ToolHeader = memo(
           </span>
         )}
         {summary && (
-          <span className="min-w-0 truncate text-left font-mono text-xs text-muted-foreground/60">
+          <span className="min-w-0 truncate text-left font-mono text-xs text-muted-foreground">
             {summary}
           </span>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {queuePosition > 0 && (
-            <span className="text-xs text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground">
               {t('tools:toolCall.queuedPosition', { count: queuePosition })}
             </span>
           )}
           <ToolElapsed
             startedAt={startedAt}
             endedAt={endedAt}
-            className="text-muted-foreground/60"
+            className="text-muted-foreground"
           />
           <ChevronDownIcon
             className={cn(
@@ -330,7 +330,7 @@ export const ToolInput = memo(
           <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5">
             {rows.map(([key, value]) => (
               <Fragment key={key}>
-                <dt className="truncate font-mono text-xs text-muted-foreground/70">
+                <dt className="truncate font-mono text-xs text-muted-foreground">
                   {key}
                 </dt>
                 <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs">

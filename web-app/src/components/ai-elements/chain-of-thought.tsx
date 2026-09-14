@@ -330,7 +330,7 @@ const statusIcons: Record<ChainOfThoughtStepStatus, ReactNode> = {
   active: (
     <CircleDotIcon className="size-4 text-brand motion-safe:animate-pulse shrink-0" />
   ),
-  pending: <CircleIcon className="size-4 text-muted-foreground/50 shrink-0" />,
+  pending: <CircleIcon className="size-4 text-muted-foreground shrink-0" />,
 }
 
 export const ChainOfThoughtStep = memo(
@@ -348,7 +348,7 @@ export const ChainOfThoughtStep = memo(
           className={cn(
             'text-sm leading-snug',
             status === 'active' && 'text-foreground',
-            status === 'pending' && 'text-muted-foreground/50'
+            status === 'pending' && 'text-muted-foreground'
           )}
         >
           {label}

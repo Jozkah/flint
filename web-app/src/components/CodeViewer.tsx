@@ -249,7 +249,7 @@ export function CodeViewer({
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
       <div className="flex h-8 shrink-0 items-center gap-1 border-b px-2">
         <span
-          className="min-w-0 flex-1 truncate font-mono text-xs text-main-view-fg/70"
+          className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
           title={relPath}
         >
           {relPath}

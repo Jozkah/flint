@@ -217,7 +217,7 @@ export const TokenCounter = memo(function TokenCounter({
                     stroke="currentColor"
                     strokeWidth="1.5"
                     fill="none"
-                    className="text-muted-foreground/40"
+                    className="text-muted-foreground"
                   />
                   <circle
                     cx="8"

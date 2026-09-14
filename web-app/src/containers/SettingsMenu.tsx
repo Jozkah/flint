@@ -357,7 +357,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
             <div className="mt-1 flex flex-col gap-0.5">
               {activeLocalProviders.length > 0 && (
                 <>
-                  <span className="px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                  <span className="px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     {t('common:localProviders')}
                   </span>
                   {activeLocalProviders.map(renderActiveProvider)}
@@ -368,7 +368,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
                 <>
                   <span
                     className={cn(
-                      'px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70',
+                      'px-2 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground',
                       activeLocalProviders.length > 0 && 'mt-2'
                     )}
                   >

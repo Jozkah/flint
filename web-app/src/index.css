@@ -59,8 +59,8 @@
      `text-main-view-fg/60` call sites were written against actually resolve. */
   --color-main-view: var(--background);
   --color-main-view-fg: var(--foreground);
-  /* JAN Atelier: accent (derived per theme in lib/accent.ts), semantic states,
-     the graphite rail and the paper surfaces. */
+  /* JAN Graphite Studio: accent (derived per theme in lib/accent.ts), semantic
+     states, diff colours, the rail and the tonal surfaces. */
   --color-brand: var(--brand);
   --color-brand-fill: var(--brand-fill);
   --color-brand-fill-hover: var(--brand-fill-hover);
@@ -87,11 +87,15 @@
   --color-line-strong: var(--line-strong);
   --color-code: var(--code);
   --color-scrim: var(--scrim);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-del: var(--diff-del);
+  --color-diff-del-bg: var(--diff-del-bg);
   --animate-hue-rotate: hue-rotate 4s infinite;
-  --font-studio: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
-  --font-display: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-studio: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --shadow-overlay: var(--overlay-shadow);
 
   /* Font scale based on --font-size-base */
@@ -126,126 +130,138 @@
   --text-4xl: calc(var(--font-size-base) * 2.25);
 }
 
-/* JAN Atelier tokens. Ivory ground, paper surfaces, graphite rail. Accent
-   values below are the Vermilion defaults; lib/accent.ts rewrites them inline
-   for the chosen accent and the effective theme. Semantic colours (success,
-   warning, destructive) are never derived from the accent. Hex values are kept
-   so lib/__tests__/accent.test.ts can check contrast against the same numbers. */
+/* JAN Graphite Studio tokens. Charcoal and cool mineral-grey surfaces separated
+   by tone, one sans-serif family, compact controls. Accent values below are the
+   Vermilion defaults; lib/accent.ts rewrites them inline for the chosen accent
+   and the effective theme. Semantic colours (success, warning, destructive) and
+   diff colours are never derived from the accent. Hex values are kept so
+   lib/__tests__/accent.test.ts can check contrast against the same numbers.
+
+   Surfaces: --sidebar (navigation) < --background (working pane) < --card
+   (raised content) in light; the dark theme keeps the same order by tone.
+   --sunken is the secondary pane (inspectors, plan strips). */
 :root {
   --radius: 0.375rem;
-  --background: #F5F1EA;
-  --foreground: #1E1C19;
-  --card: #FBF9F5;
-  --card-foreground: #1E1C19;
-  --popover: #FBF9F5;
-  --popover-foreground: #1E1C19;
+  --background: #F7F8F9;
+  --foreground: #15171A;
+  --card: #FFFFFF;
+  --card-foreground: #15171A;
+  --popover: #FFFFFF;
+  --popover-foreground: #15171A;
   --primary: #C0412B;
   --primary-foreground: #FFFFFF;
-  --secondary: #EAE4DA;
-  --secondary-foreground: #1E1C19;
-  --muted: #EAE4DA;
-  --muted-foreground: #6B645A;
-  --accent: #E7E0D5;
-  --accent-foreground: #1E1C19;
-  --destructive: #B3261E;
+  --secondary: #ECEEF1;
+  --secondary-foreground: #15171A;
+  --muted: #ECEEF1;
+  --muted-foreground: #565B63;
+  --accent: #E6E9ED;
+  --accent-foreground: #15171A;
+  --destructive: #B0183F;
   --destructive-foreground: #FFFFFF;
-  --destructive-tint: #F7E0DC;
-  --success: #2E7A4C;
-  --success-tint: #E1EEE5;
-  --warning: #9A620F;
-  --warning-tint: #F5EAD2;
-  --border: #E3DCD1;
-  --line-strong: #D1C8BA;
-  --input: #8C8377;
+  --destructive-tint: #F7E3E8;
+  --success: #23774A;
+  --success-tint: #E1EFE7;
+  --warning: #8A5A00;
+  --warning-tint: #F6EDDA;
+  --border: #D7DBE0;
+  --line-strong: #BFC5CC;
+  --input: #858B94;
   --ring: #C0412B;
-  --chart-1: #6E8F72;
-  --chart-2: #B3A48C;
-  --chart-3: #2F5D8A;
-  --chart-4: #D9C89E;
+  --chart-1: #46618A;
+  --chart-2: #4E6E3A;
+  --chart-3: #8A5A00;
+  --chart-4: #7B8390;
   --chart-5: #C0412B;
-  --sidebar: #EFEAE2;
-  --sidebar-foreground: #1E1C19;
+  --sidebar: #ECEEF1;
+  --sidebar-foreground: #15171A;
   --sidebar-primary: #C0412B;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #E5DED3;
-  --sidebar-accent-foreground: #1E1C19;
-  --sidebar-border: #E3DCD1;
+  --sidebar-accent: #E0E3E8;
+  --sidebar-accent-foreground: #15171A;
+  --sidebar-border: #D7DBE0;
   --sidebar-ring: #C0412B;
-  --rail: #1D1E1D;
-  --rail-hover: #282927;
-  --rail-active: #333431;
-  --rail-foreground: #EEEAE3;
-  --rail-muted: #A7A299;
-  --sunken: #EAE4DA;
-  --ink-2: #4A453E;
-  --code: #EFEAE2;
-  --scrim: rgba(24, 18, 12, 0.36);
-  --overlay-shadow: 0 1px 2px rgba(40, 30, 20, 0.06), 0 12px 32px rgba(40, 30, 20, 0.12);
+  --rail: #E3E6EA;
+  --rail-hover: #D8DCE1;
+  --rail-active: #CFD4DA;
+  --rail-foreground: #15171A;
+  --rail-muted: #52575F;
+  --sunken: #EFF1F3;
+  --ink-2: #474D55;
+  --code: #EBEEF1;
+  --scrim: rgba(15, 17, 20, 0.38);
+  --overlay-shadow: 0 1px 2px rgba(20, 24, 30, 0.08), 0 10px 30px rgba(20, 24, 30, 0.16);
   --brand: #C0412B;
   --brand-fill: #C0412B;
   --brand-fill-hover: #A93826;
   --brand-fill-pressed: #93301F;
   --brand-foreground: #FFFFFF;
-  --brand-text: #B23B26;
-  --brand-rail: #E0654D;
-  --brand-tint: #F2E3DC;
-  --brand-soft: #E8CBBF;
+  --brand-text: #AE3A26;
+  --brand-rail: #C0412B;
+  --brand-tint: #F6E4E0;
+  --brand-soft: #EBC9C1;
+  /* Diff colours: their own tokens, never the accent or the error colour. */
+  --diff-add: #1C6A40;
+  --diff-add-bg: rgba(35, 119, 74, 0.11);
+  --diff-del: #9C1537;
+  --diff-del-bg: rgba(176, 24, 63, 0.08);
   /* Shell geometry. Defaults, not limits: panels shrink before they clip. */
-  --rail-w: 80px;
-  --ctx-h: 52px;
-  --status-h: 28px;
-  --inspector-w: 360px;
+  --rail-w: 64px;
+  --ctx-h: 46px;
+  --status-h: 26px;
+  --inspector-w: 328px;
+  /* Reading width for conversation text; data views are not capped by it. */
+  --read-w: 46rem;
 }
 
 .dark {
-  --background: #1A1917;
-  --foreground: #ECE7DF;
-  --card: #211F1C;
-  --card-foreground: #ECE7DF;
-  --popover: #211F1C;
-  --popover-foreground: #ECE7DF;
+  --background: #1B1C1F;
+  --foreground: #E9EAEC;
+  --card: #222327;
+  --card-foreground: #E9EAEC;
+  --popover: #26282C;
+  --popover-foreground: #E9EAEC;
   --primary: #E0654D;
   --primary-foreground: #141210;
-  --secondary: #2A2824;
-  --secondary-foreground: #ECE7DF;
-  --muted: #2A2824;
-  --muted-foreground: #978F84;
-  --accent: #2C2A26;
-  --accent-foreground: #ECE7DF;
-  --destructive: #EF7B6F;
+  --secondary: #26282B;
+  --secondary-foreground: #E9EAEC;
+  --muted: #26282B;
+  --muted-foreground: #A0A5AC;
+  --accent: #2A2C30;
+  --accent-foreground: #E9EAEC;
+  --destructive: #F0708F;
   --destructive-foreground: #141210;
-  --destructive-tint: #40231F;
-  --success: #6DBB8A;
-  --success-tint: #1E3127;
-  --warning: #DFA84A;
-  --warning-tint: #3A2E18;
-  --border: #33302B;
-  --line-strong: #46423A;
-  --input: #77706A;
+  --destructive-tint: #3A1F28;
+  --success: #5DB47F;
+  --success-tint: #1B3125;
+  --warning: #E2A94E;
+  --warning-tint: #3A2F1A;
+  --border: #2C2E33;
+  --line-strong: #3E4147;
+  --input: #737880;
   --ring: #E0654D;
-  --chart-1: #5E8563;
-  --chart-2: #8E806A;
-  --chart-3: #7FA8D1;
-  --chart-4: #B8A676;
+  --chart-1: #94AACB;
+  --chart-2: #97B77F;
+  --chart-3: #E2A94E;
+  --chart-4: #8C9198;
   --chart-5: #E0654D;
-  --sidebar: #1E1C1A;
-  --sidebar-foreground: #ECE7DF;
+  --sidebar: #161719;
+  --sidebar-foreground: #E9EAEC;
   --sidebar-primary: #E0654D;
   --sidebar-primary-foreground: #141210;
-  --sidebar-accent: #2A2824;
-  --sidebar-accent-foreground: #ECE7DF;
-  --sidebar-border: #33302B;
+  --sidebar-accent: #24262A;
+  --sidebar-accent-foreground: #E9EAEC;
+  --sidebar-border: #2A2C30;
   --sidebar-ring: #E0654D;
-  --rail: #121211;
-  --rail-hover: #1E1E1C;
-  --rail-active: #2A2A27;
-  --rail-foreground: #ECE7DF;
-  --rail-muted: #8F8A82;
-  --sunken: #2A2824;
-  --ink-2: #C8C1B6;
-  --code: #282622;
-  --scrim: rgba(0, 0, 0, 0.5);
-  --overlay-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 36px rgba(0, 0, 0, 0.45);
+  --rail: #111214;
+  --rail-hover: #1D1E21;
+  --rail-active: #27292D;
+  --rail-foreground: #E9EAEC;
+  --rail-muted: #A0A5AC;
+  --sunken: #18191B;
+  --ink-2: #B7BBC1;
+  --code: #131416;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --overlay-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(0, 0, 0, 0.5);
   --brand: #E0654D;
   --brand-fill: #E0654D;
   --brand-fill-hover: #EB7B64;
@@ -255,6 +271,10 @@
   --brand-rail: #E0654D;
   --brand-tint: #3A2520;
   --brand-soft: #56342B;
+  --diff-add: #82CDA0;
+  --diff-add-bg: rgba(93, 180, 127, 0.13);
+  --diff-del: #F496AD;
+  --diff-del-bg: rgba(240, 112, 143, 0.12);
 }
 
 /* Hidden while a phone keyboard is open (see hooks/useAppViewport). */

@@ -238,7 +238,7 @@ function ClaudeCodeIntegration() {
                     <path d="M27 54H36V72H27V54Z" fill="#D77757" />
                     <path d="M81 54H90V72H81V54Z" fill="#D77757" />
                   </svg>
-                  <h1 className="font-display text-xl font-normal text-foreground">
+                  <h1 className=" text-xl font-semibold text-foreground">
                     Claude Code integration
                   </h1>
                 </div>

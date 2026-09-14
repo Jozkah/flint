@@ -373,7 +373,7 @@ export const ModelSupportStatus = ({
           className="w-96 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto overscroll-contain bg-card text-sm space-y-3"
         >
           <div>
-            <h3 className="font-display text-lg font-normal leading-tight text-foreground">
+            <h3 className=" text-lg font-semibold leading-tight text-foreground">
               {t('model-fit:title')}
             </h3>
             <p className="text-muted-foreground text-xs mt-0.5">

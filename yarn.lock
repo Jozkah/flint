@@ -2590,24 +2590,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@fontsource/ibm-plex-mono@npm:5":
+"@fontsource-variable/geist-mono@npm:5.3.0":
   version: 5.3.0
-  resolution: "@fontsource/ibm-plex-mono@npm:5.3.0"
-  checksum: 10c0/4aaf5a3c9efc7c32de4fa46ff3187ac63720904beab825f331ac01800038899761da23270f09d3fb5cff22f7cdc366904834854e2107229ad60833bba71c223d
+  resolution: "@fontsource-variable/geist-mono@npm:5.3.0"
+  checksum: 10c0/21a4097b3ccce08cbc181199f68a9193adc17d997ef8d883eab7565c6d79a82b2f8d7656f32f97b66f1f0b4ebba78a1a822c6318d55e0c5f572d74683ab036ee
   languageName: node
   linkType: hard
 
-"@fontsource/ibm-plex-sans@npm:5":
+"@fontsource-variable/geist@npm:5.3.0":
   version: 5.3.0
-  resolution: "@fontsource/ibm-plex-sans@npm:5.3.0"
-  checksum: 10c0/8e4c7a849e8167c8de1905282a62ff312a4266e364e3c436fa6d89d650bbb30b3386157ae31af3783e00f85fa64fd7e26bee7ca232db7d22fdc082f6b531edb5
-  languageName: node
-  linkType: hard
-
-"@fontsource/newsreader@npm:5":
-  version: 5.3.0
-  resolution: "@fontsource/newsreader@npm:5.3.0"
-  checksum: 10c0/deda64f6553ad7d05e3f91e2e5a8b10657b28ef04317a8f231cd4524509ac3a33aca3e752df8ab3496e426ac99b51183bdda92d33f80136b525e5b8ba0a96553
+  resolution: "@fontsource-variable/geist@npm:5.3.0"
+  checksum: 10c0/6b1d1d249643377c885d040769bf0964f242e8d03c4470535329ad4eed3d30a8134fea0d45c0b99b8069924a1f506a3bcb5b8d9cea77b7b5234dc7dd57371842
   languageName: node
   linkType: hard
 
@@ -2991,9 +2984,8 @@ __metadata:
     "@dnd-kit/modifiers": "npm:9.0.0"
     "@dnd-kit/sortable": "npm:10.0.0"
     "@eslint/js": "npm:8.57.0"
-    "@fontsource/ibm-plex-mono": "npm:5"
-    "@fontsource/ibm-plex-sans": "npm:5"
-    "@fontsource/newsreader": "npm:5"
+    "@fontsource-variable/geist": "npm:5.3.0"
+    "@fontsource-variable/geist-mono": "npm:5.3.0"
     "@janhq/core": "workspace:*"
     "@janhq/interfaces": "npm:0.0.2"
     "@janhq/tauri-plugin-agent-tools-api": "link:../src-tauri/plugins/tauri-plugin-agent-tools"

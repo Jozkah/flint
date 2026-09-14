@@ -876,7 +876,7 @@ function ProviderDetail() {
       <SettingsPageHeader />
       <SettingsPageBody>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <h2 className="min-w-0 truncate font-display text-2xl font-normal text-foreground">
+          <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">
             {getProviderTitle(providerName)}
           </h2>
           <Switch
@@ -1058,7 +1058,7 @@ function ProviderDetail() {
                 {provider.provider === 'azure' && (
                   <div className="mb-5 space-y-2">
                     <div className="space-y-1">
-                      <h3 className="font-display text-lg font-normal text-foreground">
+                      <h3 className=" text-sm font-semibold text-foreground">
                         {t('providers:baseUrl.title')}
                       </h3>
                       <p className="text-sm leading-normal text-muted-foreground">
@@ -1078,7 +1078,7 @@ function ProviderDetail() {
                 )}
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <h3 className="font-display text-lg font-normal text-foreground">
+                    <h3 className=" text-sm font-semibold text-foreground">
                       {t('providers:apiKeys.title')}
                     </h3>
                     <p className="text-sm leading-normal text-muted-foreground">
@@ -1272,7 +1272,7 @@ function ProviderDetail() {
           <Card
             header={
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-xl font-normal text-foreground">
+                <h2 className=" text-base font-semibold text-foreground">
                   {t('providers:models')}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">

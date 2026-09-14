@@ -12,7 +12,7 @@ export function SettingsPageHeader({ children }: { children?: ReactNode }) {
   return (
     <HeaderPage>
       <div className="flex w-full min-w-0 items-center justify-between gap-3">
-        <h1 className="truncate font-display text-xl font-normal leading-none text-foreground">
+        <h1 className="truncate text-xl font-semibold leading-none text-foreground">
           {t('common:settings')}
         </h1>
         {children && (

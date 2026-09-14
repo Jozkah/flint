@@ -115,13 +115,13 @@ function DiffRow({
   return (
     <tr className={ROW_TONE[line.kind]}>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground/60 tabular-nums"
+        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
         style={gutter}
       >
         {line.oldNumber ?? ''}
       </td>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground/60 tabular-nums"
+        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
         style={gutter}
       >
         {line.newNumber ?? ''}

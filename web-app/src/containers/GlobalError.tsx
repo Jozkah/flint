@@ -19,7 +19,7 @@ export default function GlobalError({ error }: GlobalErrorProps) {
         <span className="inline-flex size-16 items-center justify-center rounded-lg bg-destructive-tint text-destructive">
           <AlertTriangle className="size-8" />
         </span>
-        <h1 className="mt-5 font-display text-3xl font-normal text-foreground">
+        <h1 className="mt-5 text-xl font-semibold text-foreground">
           Oops! Unexpected error occurred.
         </h1>
         <p className="my-2 text-ink-2">

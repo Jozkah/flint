@@ -344,7 +344,7 @@ function SetupScreen() {
                       )}
                     </span>
                   )}
-                  <h1 className="font-display text-3xl font-normal leading-tight tracking-tight text-foreground">
+                  <h1 className=" text-xl font-semibold leading-tight tracking-[-0.01em] text-foreground">
                     {isSetupPage && isSetupComplete
                       ? t('setup:stageSetupDone')
                       : t(currentPage.labelKey)}

@@ -99,7 +99,7 @@ export function Card({ title, children, header }: CardProps) {
   return (
     <section className="w-full rounded-lg border border-border bg-card p-4 text-muted-foreground md:p-5">
       {title && (
-        <h1 className="mb-4 font-display text-xl font-normal text-foreground">
+        <h1 className="mb-4 text-xl font-semibold text-foreground">
           {title}
         </h1>
       )}

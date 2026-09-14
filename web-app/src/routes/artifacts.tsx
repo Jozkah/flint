@@ -173,7 +173,7 @@ function ArtifactsPage() {
     <div className="flex h-full w-full flex-col">
       <HeaderPage>
         <div className="relative z-20 flex w-full min-w-0 items-center gap-2 sm:gap-3">
-          <h1 className="hidden shrink-0 font-display text-lg leading-none text-foreground sm:block">
+          <h1 className="font-semibold hidden shrink-0 text-lg leading-none text-foreground sm:block">
             {t('common:appRail.library')}
           </h1>
           <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-sunken px-2.5 focus-within:outline-2 focus-within:outline-ring sm:max-w-sm pointer-coarse:h-11">
@@ -220,7 +220,7 @@ function ArtifactsPage() {
                 className="mx-auto mt-10 flex max-w-md flex-col items-start gap-3 rounded-lg border border-border bg-card p-6"
                 data-testid="artifacts-empty"
               >
-                <h2 className="font-display text-2xl leading-tight text-foreground">
+                <h2 className="font-semibold  text-lg leading-tight text-foreground">
                   {t('common:artifactsEmptyTitle')}
                 </h2>
                 <p className="text-sm leading-relaxed text-ink-2">

@@ -58,13 +58,13 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
       {...dragRegion}
       data-testid="context-bar"
       className={cn(
-        'flex items-center shrink-0 border-b border-border bg-card pr-3',
+        'flex items-center shrink-0 border-b border-border bg-background pr-2',
         drags && 'cursor-grab active:cursor-grabbing',
-        inset.macLeftPad ? 'pl-24' : 'pl-3 md:pl-6',
+        inset.macLeftPad ? 'pl-24' : 'pl-2 md:pl-4',
         children === undefined && 'border-none'
       )}
       style={{
-        // The shell's context bar height (52px), from one token.
+        // The shell's context bar height (46px), from one token.
         height: 'var(--ctx-h)',
         minHeight: 'var(--ctx-h)',
         ...(inset.leftPx ? { paddingLeft: inset.leftPx } : {}),

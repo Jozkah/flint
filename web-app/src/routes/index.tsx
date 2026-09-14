@@ -83,7 +83,7 @@ function Index() {
           <div className={cn('text-center mb-5')}>
             <h1
               className={cn(
-                'mt-2 font-display text-[28px] leading-tight font-normal text-foreground md:text-[32px]',
+                'mt-2 text-xl leading-tight font-semibold text-foreground md:text-xl',
               )}
             >
               {t('chat:description')}

@@ -431,7 +431,7 @@ export function NavCowork() {
           >
             <SearchIcon
               ref={searchIconRef}
-              className="text-foreground/70"
+              className="text-ink-2"
               size={16}
             />
             <span>{t('common:search')}</span>
@@ -446,7 +446,7 @@ export function NavCowork() {
           >
             <MessageCircleIcon
               ref={newSessionIconRef}
-              className="text-foreground/70"
+              className="text-ink-2"
               size={16}
             />
             <span>{t('common:newSession')}</span>
@@ -457,7 +457,7 @@ export function NavCowork() {
           return (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton onClick={item.onClick}>
-                <Icon className="text-foreground/70" size={16} />
+                <Icon className="text-ink-2" size={16} />
                 <span>{item.title}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -208,7 +208,7 @@ function AgentToolsContent() {
 
   const sectionHeader = (titleKey: string, kind: EntryKind) => (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h1 className="font-display text-xl font-normal text-foreground">
+      <h1 className=" text-xl font-semibold text-foreground">
         {t(titleKey)}
       </h1>
       <Button
@@ -232,7 +232,7 @@ function AgentToolsContent() {
               header={
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                   <div className="min-w-0 space-y-1">
-                    <h1 className="font-display text-xl font-normal text-foreground">
+                    <h1 className=" text-xl font-semibold text-foreground">
                       {t('settings:agentTools.title')}
                     </h1>
                     <p className="text-muted-foreground leading-normal">

@@ -357,7 +357,7 @@ export function SecondaryPanePicker({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-8">
         <div className="mx-auto w-full max-w-md">
-          <h2 className="font-display text-2xl leading-tight text-foreground">
+          <h2 className="font-semibold  text-lg leading-tight text-foreground">
             {t('chat:split.pickTitle')}
           </h2>
           <p className="mt-2 text-sm text-ink-2">

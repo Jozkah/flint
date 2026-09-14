@@ -414,7 +414,7 @@ function LocalAPIServerContent() {
                 header={
                   <div className="mb-4 flex w-full flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start">
                     <div className="w-full min-w-0 space-y-1">
-                      <h1 className="font-display text-xl font-normal text-foreground">
+                      <h1 className=" text-xl font-semibold text-foreground">
                         {t('settings:localApiServer.title')}
                       </h1>
                       <p className="text-muted-foreground mb-2">

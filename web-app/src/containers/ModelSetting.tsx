@@ -271,7 +271,7 @@ export function ModelSetting({
           whole screen on a phone. */}
       <SheetContent className="w-full max-w-none gap-0 border-l border-border bg-card sm:w-[var(--inspector-w)] sm:max-w-[var(--inspector-w)]">
         <SheetHeader className="border-b border-border px-5 py-4">
-          <SheetTitle className="font-display text-xl font-normal leading-tight">
+          <SheetTitle className=" text-xl font-semibold leading-tight">
             {t('common:modelSettings.title', {
               modelId: getModelDisplayName(model),
             })}

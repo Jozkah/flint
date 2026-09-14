@@ -121,7 +121,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
       data-testid="custom-headers"
     >
       <div className="space-y-1">
-        <h3 className="font-display text-lg font-normal text-foreground">
+        <h3 className=" text-lg font-semibold text-foreground">
           {t('providers:customHeaders.title')}
         </h3>
         <p className="text-sm text-muted-foreground leading-normal">

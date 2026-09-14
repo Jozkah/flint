@@ -102,7 +102,7 @@ export const TerminalWidget = memo(
         </div>
         <div className="px-2 py-1.5 font-mono text-xs">
           <div className="flex gap-1.5">
-            <span className="shrink-0 select-none text-muted-foreground/70">
+            <span className="shrink-0 select-none text-muted-foreground">
               $
             </span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word text-foreground">
@@ -125,14 +125,14 @@ export const TerminalWidget = memo(
             </pre>
           )}
           {result?.truncated && (
-            <p className="mt-1 text-muted-foreground/70">
+            <p className="mt-1 text-muted-foreground">
               {t('tools:toolCall.outputTruncated')}
             </p>
           )}
           {/* Surfaced rather than dropped: when the sandbox is what failed the
               command, the limits are the actual explanation for the exit code. */}
           {result?.sandboxNote && (
-            <p className="mt-1 flex items-start gap-1.5 text-muted-foreground/70">
+            <p className="mt-1 flex items-start gap-1.5 text-muted-foreground">
               <Lock className="mt-0.5 size-3.5 shrink-0" />
               <span>{result.sandboxNote}</span>
             </p>
@@ -215,7 +215,7 @@ export const AgentToolWidget = memo(
           activateLabel={t('common:codePanel.openInCode')}
           trailing={
             bar.detail ? (
-              <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {bar.detail}
               </span>
             ) : undefined
@@ -243,7 +243,7 @@ export const AgentToolWidget = memo(
           ) : body ? (
             <OutputBlock>{body}</OutputBlock>
           ) : (
-            <p className="px-2 text-sm text-muted-foreground/70">
+            <p className="px-2 text-sm text-muted-foreground">
               {t('tools:toolCall.noResults')}
             </p>
           ))}
