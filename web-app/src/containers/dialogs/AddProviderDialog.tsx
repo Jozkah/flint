@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
+import { TriangleAlert } from 'lucide-react'
 
 interface AddProviderDialogProps {
   onCreateProvider: (
@@ -89,7 +90,7 @@ export function AddProviderDialog({
           <DialogTitle>{t('provider:addOpenAIProvider')}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 mt-2">
+        <div className="flex flex-col gap-3">
           <Input
             ref={nameInputRef}
             value={name}
@@ -150,7 +151,11 @@ export function AddProviderDialog({
             />
           </div>
           {error && (
-            <p role="alert" className="text-xs text-destructive">
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 text-xs text-destructive"
+            >
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {error}
             </p>
           )}
