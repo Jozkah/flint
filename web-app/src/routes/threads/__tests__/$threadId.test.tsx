@@ -296,6 +296,8 @@ vi.mock('@/lib/utils', () => ({
 
 vi.mock('@/containers/WhatJanIsUsing', () => ({
   WhatJanIsUsing: () => null,
+  WhatJanIsUsingToggle: () => null,
+  WhatJanIsUsingPanel: () => null,
 }))
 
 vi.mock('@/lib/instructionTemplate', () => ({

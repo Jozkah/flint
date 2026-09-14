@@ -11,7 +11,11 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const listAttachments = vi.fn()
 vi.mock('@/lib/extension', () => ({
   ExtensionManager: {
-    getInstance: () => ({ get: () => ({ listAttachments }) }),
+    getInstance: () => ({
+      get: () => ({ listAttachments }),
+      // The context-window meter asks for a local engine; there is none here.
+      getByName: () => undefined,
+    }),
   },
 }))
 
@@ -161,6 +165,8 @@ describe('WhatJanIsUsing', () => {
   it('removes a pending attachment before it is sent', async () => {
     render(<WhatJanIsUsing threadId="t1" messages={[]} />)
     await openPanel()
+    // Files have their own tab in the inspector.
+    fireEvent.click(screen.getByTestId('context-tab-files'))
     const attachments = screen.getByTestId('context-section-attachments')
     fireEvent.click(
       within(attachments).getByRole('button', { name: 'context:action.remove-pending-attachment' })
