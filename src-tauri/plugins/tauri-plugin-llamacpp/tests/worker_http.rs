@@ -476,7 +476,7 @@ async fn reload_applies_a_regenerated_preset_and_reports_the_diff() {
     let (status, body) = post(
         &base,
         "/models/reload",
-        &format!(r#"{{"preset_path":"{preset}","models_max":3}}"#),
+        &serde_json::json!({ "preset_path": preset, "models_max": 3 }).to_string(),
         Some(KEY),
     )
     .await;
@@ -504,7 +504,7 @@ async fn reload_applies_a_regenerated_preset_and_reports_the_diff() {
     let (status, body) = post(
         &base,
         "/models/reload",
-        &format!(r#"{{"preset_path":"{preset}"}}"#),
+        &serde_json::json!({ "preset_path": preset }).to_string(),
         Some(KEY),
     )
     .await;

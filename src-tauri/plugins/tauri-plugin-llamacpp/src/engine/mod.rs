@@ -210,11 +210,33 @@ pub fn assert_pinned_version() -> Result<(), EngineError> {
 mod tests {
     use super::*;
 
+    /// The pin's own internal shape, not its literal value: upstream's build
+    /// tag *is* `b` followed by the build number, so a bump that touches one of
+    /// the two constants and forgets the other -- the easy mistake in an engine
+    /// upgrade -- would ship a tag and a build number that disagree, and the
+    /// runtime guard (`assert_pinned_version`) compares against the number.
+    #[test]
+    fn the_tag_and_build_number_describe_the_same_build() {
+        assert_eq!(
+            PINNED_TAG,
+            format!("b{PINNED_BUILD_NUMBER}"),
+            "the pinned tag must be `b` + the build number"
+        );
+        assert!(
+            PINNED_BUILD_NUMBER.chars().all(|c| c.is_ascii_digit()),
+            "the build number must be a bare integer, got {PINNED_BUILD_NUMBER:?}"
+        );
+        assert!(
+            PINNED_COMMIT.chars().all(|c| c.is_ascii_hexdigit()),
+            "the commit must be a hex sha, got {PINNED_COMMIT:?}"
+        );
+    }
+
     #[test]
     fn pin_constants_are_populated_from_build_rs() {
-        assert_eq!(PINNED_TAG, "b10621");
-        assert_eq!(PINNED_BUILD_NUMBER, "10621");
-        assert_eq!(PINNED_VERSION, "0.3.0");
+        assert_eq!(PINNED_TAG, "b10809");
+        assert_eq!(PINNED_BUILD_NUMBER, "10809");
+        assert_eq!(PINNED_VERSION, "0.4.0");
         assert_eq!(PINNED_COMMIT.len(), 40, "commit should be a full sha");
     }
 
