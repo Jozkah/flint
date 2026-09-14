@@ -58,7 +58,7 @@ describe('SearchDialog', () => {
     fireEvent.change(input, { target: { value: 'trip' } })
     const first = document.querySelector('[data-index="0"]')!
     expect(first).toHaveAttribute('data-selected', 'true')
-    expect(first.className).toContain('bg-brand-tint')
+    expect(first.className).toContain('bg-accent')
 
     fireEvent.keyDown(input, { key: 'ArrowDown' })
     const second = document.querySelector('[data-index="1"]')!

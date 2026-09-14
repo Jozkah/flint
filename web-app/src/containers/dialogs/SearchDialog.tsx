@@ -29,19 +29,19 @@ interface SearchDialogProps {
 }
 
 /**
- * A result row. The keyboard selection is the accent tint with a 2px marker,
- * the same treatment as a selected item anywhere else in the shell.
+ * A result row. The keyboard selection is the neutral selected surface with a
+ * 2px accent marker, the same treatment as a selected item anywhere else.
  */
 const itemClass = (selected: boolean) =>
   cn(
-    'relative flex w-full min-h-10 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-sunken pointer-coarse:min-h-11',
+    'relative flex w-full min-h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent pointer-coarse:min-h-11',
     selected &&
-      'bg-brand-tint hover:bg-brand-tint before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
   )
 
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-xs font-medium tracking-wide text-muted-foreground [font-variant-caps:all-small-caps]">
+    <span className="text-xs font-medium text-muted-foreground">
       {children}
     </span>
   )
@@ -55,6 +55,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const [recentVersion, setRecentVersion] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const restoreRef = useRef<HTMLElement | null>(null)
 
   const threads = useThreads((state) => state.threads)
   const getFilteredThreads = useThreads((state) => state.getFilteredThreads)
@@ -228,10 +229,24 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       <DialogContent
         // Phone: a full-screen sheet, so the results are not squeezed between
         // the keyboard and a bottom sheet's top edge.
-        className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
+        className="flex flex-col gap-0 overflow-hidden bg-popover p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
         showCloseButton={false}
         aria-describedby={undefined}
         data-testid="search-dialog"
+        onOpenAutoFocus={() => {
+          // Where focus was before opening, so closing can put it back even
+          // when a shortcut opened this rather than a trigger button.
+          const active = document.activeElement
+          restoreRef.current = active instanceof HTMLElement ? active : null
+        }}
+        onCloseAutoFocus={(event) => {
+          const el = restoreRef.current
+          restoreRef.current = null
+          if (el && el.isConnected && el !== document.body) {
+            event.preventDefault()
+            el.focus({ preventScroll: true })
+          }
+        }}
       >
         <VisuallyHidden>
           <DialogTitle>{t('common:search')}</DialogTitle>
@@ -245,7 +260,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             type="text"
             placeholder={t('common:searchThreads')}
             aria-label={t('common:searchThreads')}
-            className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
+            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -266,7 +281,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           {searchQuery && !hasResults && (
             <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
               <Search className="mb-2 size-6 text-muted-foreground" />
-              <h3 className="font-semibold mb-1 text-lg text-foreground">
+              <h3 className="mb-1 text-[13px] font-semibold text-foreground">
                 {t('common:noResultsFound')}
               </h3>
               <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">

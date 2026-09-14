@@ -53,6 +53,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const restoreRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -186,10 +187,24 @@ export function CommandPalette() {
       <DialogContent
         // Phone: a full-screen sheet rather than a bottom sheet under the
         // keyboard.
-        className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
+        className="flex flex-col gap-0 overflow-hidden bg-popover p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
         showCloseButton={false}
         aria-describedby={undefined}
         data-testid="command-palette"
+        onOpenAutoFocus={() => {
+          // Where focus was before opening, so closing can put it back even
+          // when a shortcut opened this rather than a trigger button.
+          const active = document.activeElement
+          restoreRef.current = active instanceof HTMLElement ? active : null
+        }}
+        onCloseAutoFocus={(event) => {
+          const el = restoreRef.current
+          restoreRef.current = null
+          if (el && el.isConnected && el !== document.body) {
+            event.preventDefault()
+            el.focus({ preventScroll: true })
+          }
+        }}
       >
         <VisuallyHidden>
           <DialogTitle>{t('common:commandPalette.title')}</DialogTitle>
@@ -203,7 +218,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={t('common:commandPalette.placeholder')}
-            className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
+            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
             data-testid="command-palette-input"
             role="combobox"
             aria-expanded
@@ -243,7 +258,7 @@ export function CommandPalette() {
                 {startsGroup && (
                   <li
                     role="presentation"
-                    className="px-3 pb-0.5 pt-2 text-xs font-medium tracking-wide text-muted-foreground [font-variant-caps:all-small-caps]"
+                    className="px-2.5 pb-0.5 pt-2 text-xs font-medium text-muted-foreground"
                   >
                     {t(`common:commandPalette.group.${command.section}`)}
                   </li>
@@ -257,9 +272,9 @@ export function CommandPalette() {
                   onMouseEnter={() => setActive(index)}
                   onClick={() => runAt(index)}
                   className={cn(
-                    'relative flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm pointer-coarse:min-h-11',
+                    'relative flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-foreground pointer-coarse:min-h-11',
                     selected &&
-                      'bg-brand-tint before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+                      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">

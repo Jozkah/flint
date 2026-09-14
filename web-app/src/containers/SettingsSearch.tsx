@@ -171,10 +171,10 @@ export function SettingsSearch() {
           id="settings-search-results"
           role="listbox"
           aria-label={t('common:settingsSearch.results')}
-          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border border-border bg-popover shadow-overlay"
+          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-overlay"
         >
           <p
-            className="px-2 py-1 text-[11px] text-muted-foreground"
+            className="px-2 py-1 text-xs text-muted-foreground"
             aria-live="polite"
           >
             {t('common:settingsSearch.count', { count: flatResults.length })}
@@ -189,9 +189,9 @@ export function SettingsSearch() {
                 key={section}
                 role="group"
                 aria-label={section}
-                className="border-t first:border-t-0"
+                className="border-t border-border first:border-t-0"
               >
-                <p className="sticky top-0 bg-popover px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="sticky top-0 bg-popover px-2 pt-2 pb-0.5 text-xs font-medium text-muted-foreground">
                   {section}
                 </p>
                 {items.map((entry, j) => {
@@ -206,15 +206,16 @@ export function SettingsSearch() {
                       onMouseEnter={() => setActive(i)}
                       onClick={() => select(entry)}
                       className={cn(
-                        'cursor-pointer px-2 py-1.5',
-                        i === active && 'bg-secondary'
+                        'relative cursor-pointer rounded-sm px-2 py-1.5 pointer-coarse:py-2.5',
+                        i === active &&
+                          'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
                       )}
                     >
-                      <span className="block truncate text-sm">
+                      <span className="block truncate text-[13px] text-foreground">
                         {entry.title}
                       </span>
                       {entry.description && (
-                        <p className="truncate text-[11px] text-muted-foreground">
+                        <p className="truncate text-xs text-muted-foreground">
                           {entry.description}
                         </p>
                       )}
