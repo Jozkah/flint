@@ -10,6 +10,16 @@ const toolPart = (turns: CoworkTurn[]) =>
   )
 
 describe('coworkTurnsToUIMessages', () => {
+  it('forwards assistant token speed metadata for the shared indicator', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'assistant', content: 'answer', tokenSpeed: { tokenSpeed: 42, promptSpeed: 120 } },
+    ]) as any[]
+    expect(messages[0].metadata.tokenSpeed).toEqual({
+      tokenSpeed: 42,
+      promptSpeed: 120,
+    })
+  })
+
   it('starts a new user message and flushes the assistant before it', () => {
     const messages = coworkTurnsToUIMessages([
       { role: 'user', content: 'first' },

@@ -481,7 +481,7 @@ pub fn render(report: &Report) -> String {
 mod tests {
     use super::*;
     use crate::core::agent::fixtures::Workspace;
-    use tauri_plugin_agent_tools::usage::{self, PayloadUsage, UsageSource};
+    use tauri_plugin_agent_tools::usage::{self, UsageSource};
 
     fn usage_record(data: &Path, model: &str, input: u64, output: u64, source: UsageSource) {
         let mut record = usage::record(format!("inv-{model}-{input}-{output}"), source);

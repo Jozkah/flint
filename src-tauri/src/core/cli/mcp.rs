@@ -458,7 +458,6 @@ async fn connect_in(
                     let mut cmd = Command::new(&params.command);
                     #[cfg(windows)]
                     {
-                        use std::os::windows::process::CommandExt;
                         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                     }
                     #[cfg(unix)]

@@ -377,7 +377,7 @@ function MCPServersDesktop() {
       if (editingKey !== name) {
         toggleServer(editingKey, false)
         renameServer(editingKey, name, config)
-        toggleServer(name, true)
+        toggleServer(name, true, config)
         // Grants never follow a rename: the approval was for the old name,
         // and its OAuth tokens may belong to an endpoint the edit changed.
         forgetServerGrants(editingKey, 'renamed', name)
@@ -386,14 +386,14 @@ function MCPServersDesktop() {
       } else {
         toggleServer(editingKey, false)
         editServer(editingKey, config)
-        toggleServer(editingKey, true)
+        toggleServer(editingKey, true, config)
         syncServers()
       }
     } else {
       // Add new server
       toggleServer(name, false)
       addServer(name, config)
-      toggleServer(name, true)
+      toggleServer(name, true, config)
       syncServers()
     }
   }
@@ -581,10 +581,16 @@ function MCPServersDesktop() {
     }
   }
 
-  const toggleServer = (serverKey: string, active: boolean) => {
+  const toggleServer = (
+    serverKey: string,
+    active: boolean,
+    configOverride?: MCPServerConfig
+  ) => {
     if (serverKey) {
       setLoadingServers((prev) => ({ ...prev, [serverKey]: true }))
-      const config = getServerConfig(serverKey)
+      // React state updates asynchronously; save can activate a server before
+      // its new config appears in mcpServers.
+      const config = configOverride ?? getServerConfig(serverKey)
       if (active && config) {
         const transport = transportOf(config)
         setRuntime((prev) => ({ ...prev, [serverKey]: beginActivation() }))

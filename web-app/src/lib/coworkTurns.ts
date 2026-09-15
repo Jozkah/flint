@@ -151,6 +151,13 @@ export function coworkTurnsToUIMessages(
           data: { usage: turn.usage, memory: turn.memory },
         } as never)
       }
+      if (turn.tokenSpeed) {
+        const asst = ensureAssistant(i)
+        asst.metadata = {
+          ...(asst.metadata ?? {}),
+          tokenSpeed: turn.tokenSpeed,
+        }
+      }
       // Questions the run asked here. They stay in the transcript after they
       // are answered, so the answer is part of the history.
       for (const ask of turn.asks ?? []) {

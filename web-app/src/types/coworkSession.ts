@@ -90,6 +90,13 @@ export type CoworkTurn = {
    * reported none.
    */
   usage?: Usage
+  /** Provider-reported generation and prompt-reading speeds for this reply. */
+  tokenSpeed?: {
+    tokenSpeed: number
+    promptSpeed?: number
+    tokenCount?: number
+    durationMs?: number
+  }
   /**
    * Questions the run asked at this point in the conversation.
    *

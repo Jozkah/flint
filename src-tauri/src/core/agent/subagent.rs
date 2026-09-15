@@ -943,6 +943,7 @@ impl BackgroundSubagents {
     }
 
     /// One child, by run id.
+    #[cfg(test)]
     pub(crate) fn inspect(&self, run_id: &str) -> Option<SubagentRunInfo> {
         self.list().into_iter().find(|info| info.run_id == run_id)
     }
@@ -1480,7 +1481,7 @@ pub fn is_subagent_tool(name: &str) -> bool {
 
 /// `list_subagent_runs`, for the model: this run's dispatched children and
 /// where each one is.
-pub fn format_subagent_runs(runs: &[SubagentRunInfo]) -> String {
+pub(crate) fn format_subagent_runs(runs: &[SubagentRunInfo]) -> String {
     if runs.is_empty() {
         return "No background subagents are waiting to be collected in this run.".to_string();
     }
@@ -1499,7 +1500,7 @@ pub fn format_subagent_runs(runs: &[SubagentRunInfo]) -> String {
 }
 
 /// `cancel_subagent`, for the model: exactly what the cancel did.
-pub fn format_subagent_cancel(run_id: &str, outcome: SubagentCancelOutcome) -> String {
+pub(crate) fn format_subagent_cancel(run_id: &str, outcome: SubagentCancelOutcome) -> String {
     match outcome {
         SubagentCancelOutcome::CancelledQueued => format!(
             "Cancelled {run_id} before it started; it will not run. await_subagent on it returns Cancelled."

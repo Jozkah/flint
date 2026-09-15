@@ -4852,10 +4852,6 @@ async fn run_turn_cycle(
     /// is stopped. See the check itself for why one is not enough.
     const MAX_UNEXECUTABLE_TURNS: usize = 3;
     let mut unexecutable_turns: usize = 0;
-    // The budget notice is announced once, on the turn that crosses the
-    // ceiling. Without the latch every later turn would push another copy and
-    // the notice would crowd out the conversation it is annotating.
-    let mut budget_notice_recorded = false;
     // Mid-run todo upkeep: after a long uninterrupted run of mutating tool
     // calls with no todo touch, nudge the model once to keep the list honest
     // rather than only ever reminding it at a full stop -- a task that never
@@ -5202,20 +5198,17 @@ async fn run_turn_cycle(
         // assistant's voice hands it an example of itself emitting one, which
         // is the shape a model will imitate unprompted on later turns.
         if budget.exhausted() {
-            if !budget_notice_recorded {
-                budget_notice_recorded = true;
-                conversation_messages.push(serde_json::json!({
-                    "role": "system",
-                    "content": format!(
-                        "[session token budget exhausted ({} tokens)] The configured \
-                         ceiling has been reached, so this run stopped here. {} tool \
-                         call(s) the last turn asked for were not run. Raise the \
-                         budget or start a new run to continue.",
-                        budget.spent(),
-                        tool_calls.len()
-                    ),
-                }));
-            }
+            conversation_messages.push(serde_json::json!({
+                "role": "system",
+                "content": format!(
+                    "[session token budget exhausted ({} tokens)] The configured \
+                     ceiling has been reached, so this run stopped here. {} tool \
+                     call(s) the last turn asked for were not run. Raise the \
+                     budget or start a new run to continue.",
+                    budget.spent(),
+                    tool_calls.len()
+                ),
+            }));
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });

@@ -418,6 +418,42 @@ describe('createCustomFetch — named SSE event filtering scope', () => {
     })
     expect(await res.text()).not.toContain('message_start')
   })
+
+  it('drops tool-call chunks whose provider supplied no function name', async () => {
+    const stream = [
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"list_allowed_directories","arguments":"{}"}}]}}]}',
+      '',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":null,"arguments":"{}"}}]}}]}',
+      '',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":null,"arguments":"{}"}}]}}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n')
+    const wrapped = createCustomFetch(
+      (() =>
+        Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          })
+        )) as typeof globalThis.fetch,
+      {},
+      false,
+      undefined,
+      true
+    )
+
+    const res = await wrapped('http://v100:8555/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+    })
+
+    const text = await res.text()
+    expect(text).toContain('list_allowed_directories')
+    expect(text).not.toContain('"name":null')
+    expect((text.match(/list_allowed_directories/g) ?? []).length).toBe(2)
+  })
 })
 
 describe('createCustomFetch — max_tokens coercion', () => {

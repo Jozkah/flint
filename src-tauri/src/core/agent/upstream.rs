@@ -938,6 +938,7 @@ pub(crate) fn is_context_overflow_body(body: &str) -> bool {
 }
 
 /// True when an error string carries the [`CONTEXT_OVERFLOW_MARKER`].
+#[cfg(any(feature = "cli", test))]
 pub(crate) fn is_context_overflow_error(err: &str) -> bool {
     err.contains(CONTEXT_OVERFLOW_MARKER)
 }

@@ -76,6 +76,7 @@ fn tail_start(rest: &[Value], target: usize) -> Option<usize> {
 /// model, the compacted request could still overflow). The `Err` is propagated
 /// so the caller can preserve history and block the request instead. Every
 /// other summarizer failure stays recoverable and yields a [`FALLBACK_NOTE`].
+#[cfg(test)]
 pub(crate) async fn compact_conversation(
     messages: &[Value],
     model_id: &str,
@@ -114,6 +115,7 @@ impl Default for CompactOptions {
 impl CompactOptions {
     /// The options a policy asks for, with the tail `keep_recent` chosen by the
     /// caller (a manual `/compact` keeps a shorter one).
+    #[cfg(feature = "cli")]
     pub(crate) fn from_policy(
         policy: &tauri_plugin_agent_tools::compaction_policy::Policy,
         keep_recent: usize,

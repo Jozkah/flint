@@ -460,7 +460,6 @@ pub async fn refresh<E: Embed>(
         if dim != 0 && dim != length {
             // The model behind the name changed length: nothing old is comparable.
             kept.clear();
-            update.reused = 0;
             return Err(refuse(
                 ErrorKind::InvalidResponse,
                 format!("the embedding model now returns {length}-dimensional vectors and the index holds {dim}; it changed behind the same name, so nothing was saved"),

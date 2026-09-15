@@ -3274,7 +3274,20 @@ function CoworkPage() {
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
-            pushLive(turns, stepSnapshot ?? lastSnapshotRef.current[sid])
+            const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
+            const settledTurns = turns.map((turn) =>
+              turn.role === 'assistant' && turn.content === result.text && liveStats
+                ? {
+                    ...turn,
+                    tokenSpeed: {
+                      tokenSpeed: liveStats.tokensPerSecond ?? 0,
+                      promptSpeed: liveStats.promptPerSecond ?? undefined,
+                      tokenCount: liveStats.completionTokens,
+                    },
+                  }
+                : turn
+            )
+            pushLive(settledTurns, stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
             // no-op rather than a duplicate.

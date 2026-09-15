@@ -2278,6 +2278,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         "user's home directory."
       )
       parts.push(
+        'This limit applies only to these built-in tools. For a location outside',
+        'the workspace, use a configured filesystem MCP tool when its allowed',
+        'directories include that location. Tool approval approves a call; it',
+        'does not expand a tool\'s filesystem roots. Do not report an MCP path',
+        'as denied until that MCP tool returns its own error.'
+      )
+      parts.push(
         useAgentToolsConfig.getState().bashNetworkEnabled
           ? 'It has network access.'
           : 'It has no network access, so commands that download or upload will fail.'

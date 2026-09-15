@@ -15,20 +15,26 @@
 //! to your repository" true by construction rather than by remembering to
 //! clear something.
 
+#[cfg(any(feature = "tauri", test))]
 use std::collections::HashMap;
+#[cfg(any(feature = "tauri", test))]
 use std::path::{Path, PathBuf};
+#[cfg(any(feature = "tauri", test))]
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(any(feature = "tauri", test))]
 use crate::tools::jail;
 
 /// One authorization: a folder, the session it was granted to, and nothing else.
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "tauri", test))]
 struct Grant {
     session_id: String,
     /// Canonical, as the backend resolved it — never as the caller spelled it.
     root: PathBuf,
 }
 
+#[cfg(any(feature = "tauri", test))]
 fn registry() -> &'static Mutex<HashMap<String, Grant>> {
     static GRANTS: OnceLock<Mutex<HashMap<String, Grant>>> = OnceLock::new();
     GRANTS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -39,6 +45,7 @@ fn registry() -> &'static Mutex<HashMap<String, Grant>> {
 /// Asked of the sandbox backend rather than declared here, so a platform that
 /// cannot hold the line is never offered the option. See
 /// [`jail::supports_write_roots`].
+#[cfg(any(feature = "tauri", test))]
 pub fn capability() -> bool {
     jail::supports_write_roots(jail::backend())
 }
@@ -48,11 +55,13 @@ pub fn capability() -> bool {
 /// True wherever [`capability`] is, and also on Windows, where AppContainer
 /// can grant a Jan-owned directory the same way it grants the thread
 /// workspace. This is what Managed worktree mode asks.
+#[cfg(any(feature = "tauri", test))]
 pub fn worktree_capability() -> bool {
     jail::supports_owned_write_roots(jail::backend())
 }
 
 /// Whether `root` is a managed worktree: strictly inside Jan's worktree folder.
+#[cfg(any(feature = "tauri", test))]
 fn is_owned_worktree(root: &Path, data_folder: &Path) -> bool {
     let Ok(owned) = crate::workspace::worktrees_dir(data_folder).canonicalize() else {
         return false;
@@ -64,6 +73,7 @@ fn is_owned_worktree(root: &Path, data_folder: &Path) -> bool {
 ///
 /// Process-local and never shown to a model, so this needs to be unique rather
 /// than unguessable. The clock and a counter give that without a dependency.
+#[cfg(any(feature = "tauri", test))]
 fn new_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -88,6 +98,7 @@ fn new_id() -> String {
 ///
 /// Nothing is published if any step fails: the registry is only touched after
 /// validation has succeeded.
+#[cfg(any(feature = "tauri", test))]
 pub fn authorize(
     session_id: &str,
     folder: &str,
@@ -132,6 +143,7 @@ pub fn authorize(
 }
 
 /// Withdraw one grant. Idempotent: revoking what is already gone is success.
+#[cfg(any(feature = "tauri", test))]
 pub fn revoke(grant_id: &str) -> bool {
     registry()
         .lock()
@@ -173,6 +185,7 @@ pub fn child_session_id(parent: &str, child: &str) -> String {
 }
 
 /// Whether `id` is a child destination of `parent`.
+#[cfg(any(feature = "tauri", test))]
 pub fn is_child_of(id: &str, parent: &str) -> bool {
     id.starts_with(parent) && id[parent.len()..].starts_with(CHILD_SEP)
 }
@@ -183,6 +196,7 @@ pub fn is_child_of(id: &str, parent: &str) -> bool {
 /// the session that dispatched it would be authority nobody can see and nobody
 /// asked to keep: the user detached the folder, and every root that was reached
 /// through that decision goes away with it.
+#[cfg(any(feature = "tauri", test))]
 pub fn revoke_session(session_id: &str) -> usize {
     let Ok(mut grants) = registry().lock() else {
         return 0;
@@ -200,6 +214,7 @@ pub fn revoke_session(session_id: &str) -> usize {
 /// session switch, must not authorize a write in a session it was never given
 /// to — so the answer is `None` and the run writes to its sandbox as if it had
 /// never been authorized at all.
+#[cfg(any(feature = "tauri", test))]
 pub fn resolve(grant_id: &str, session_id: &str) -> Option<PathBuf> {
     let grants = registry().lock().ok()?;
     let grant = grants.get(grant_id)?;

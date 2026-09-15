@@ -210,10 +210,8 @@ pub fn search(
                 continue;
             };
             found.searched += 1;
-            let mut lines = 0usize;
             for (i, line) in text.lines().enumerate() {
-                lines = i + 1;
-                if lines > MAX_MESSAGES {
+                if i + 1 > MAX_MESSAGES {
                     found.truncated.push(session.clone());
                     break;
                 }

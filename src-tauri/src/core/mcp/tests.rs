@@ -1269,7 +1269,7 @@ mod mcp_confinement_tests {
         // shell, and -- worse -- the leak assertion passed vacuously, because
         // empty output contains no marker either. A confinement test that
         // cannot fail is not a confinement test.
-        let mut inner = if cfg!(windows) {
+        let inner = if cfg!(windows) {
             let mut c = Command::new("cmd.exe");
             c.arg("/c")
                 .arg("echo [%JAN_MCP_LEAK_MARKER%][%API_TOKEN%]");

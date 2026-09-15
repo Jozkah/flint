@@ -25,6 +25,7 @@ use tauri_plugin_agent_tools::skills::{
 use tauri_plugin_agent_tools::workspace::{project_store, workspace_filename};
 
 /// `<project_root>/.jan/agent/skills`.
+#[cfg(test)]
 pub(crate) fn skills_dir(root: &Path) -> PathBuf {
     tool_skills::skills_dir(&project_store(root))
 }

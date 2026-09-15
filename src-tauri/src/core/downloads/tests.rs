@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::models::*;
+#[cfg(unix)]
 use crate::core::filesystem::helpers::resolve_path_within_jan_data_folder;
 use reqwest::header::HeaderMap;
 use std::collections::HashMap;

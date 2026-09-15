@@ -82,3 +82,125 @@ export function filterDefaultSseEvents(
     })
   )
 }
+
+type OpenAiToolCall = {
+  index?: unknown
+  function?: { name?: unknown; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+/**
+ * vLLM can emit parallel tool-call deltas with `function.name: null` before it
+ * has produced a real function call. The AI SDK validates each delta as an
+ * OpenAI chunk and aborts the whole response at that point. Keep legitimate
+ * continuation deltas (which omit a name after an earlier named delta), but
+ * drop a new tool-call index that has no usable name to associate with it.
+ */
+class OpenAiToolCallSseSanitizer {
+  private buffer = ''
+  private readonly names = new Map<number, string>()
+
+  private sanitizeFrame(frame: string): string {
+    const lines = frame.split(/\r\n|\n|\r/)
+    const dataIndex = lines.findIndex((line) => line.startsWith('data:'))
+    if (dataIndex < 0) return frame
+    const raw = lines[dataIndex]!.slice('data:'.length).trimStart()
+    if (!raw || raw === '[DONE]') return frame
+
+    let payload: { choices?: unknown }
+    try {
+      payload = JSON.parse(raw) as { choices?: unknown }
+    } catch {
+      return frame
+    }
+    if (!Array.isArray(payload.choices)) return frame
+
+    let changed = false
+    const choices = payload.choices.flatMap((choice) => {
+      if (!choice || typeof choice !== 'object') return [choice]
+      const record = choice as { delta?: { tool_calls?: unknown; [key: string]: unknown } }
+      const calls = record.delta?.tool_calls
+      if (!Array.isArray(calls)) return [choice]
+
+      const kept = calls.flatMap((call) => {
+        if (!call || typeof call !== 'object') {
+          changed = true
+          return []
+        }
+        const toolCall = call as OpenAiToolCall
+        const index = typeof toolCall.index === 'number' ? toolCall.index : undefined
+        const name = toolCall.function?.name
+        if (typeof name === 'string' && name.trim()) {
+          if (index !== undefined) this.names.set(index, name)
+          return [call]
+        }
+        const known = index === undefined ? undefined : this.names.get(index)
+        if (!known) {
+          changed = true
+          return []
+        }
+        changed = true
+        return [{ ...toolCall, function: { ...toolCall.function, name: known } }]
+      })
+
+      if (kept.length > 0) {
+        return [{ ...record, delta: { ...record.delta, tool_calls: kept } }]
+      }
+      // A delta containing only invalid calls has no useful protocol content.
+      if (Object.keys(record.delta ?? {}).every((key) => key === 'tool_calls')) {
+        changed = true
+        return []
+      }
+      return [{ ...record, delta: { ...record.delta, tool_calls: kept } }]
+    })
+
+    if (!changed) return frame
+    if (choices.length === 0) return ''
+    const next = JSON.stringify({ ...payload, choices })
+    lines[dataIndex] = `data: ${next}`
+    return lines.join('\n')
+  }
+
+  process(chunk: string): string {
+    this.buffer += chunk
+    let out = ''
+    for (;;) {
+      const match = FRAME_SEPARATOR.exec(this.buffer)
+      if (!match) break
+      const end = match.index + match[0].length
+      out += this.sanitizeFrame(this.buffer.slice(0, end))
+      this.buffer = this.buffer.slice(end)
+    }
+    return out
+  }
+
+  flush(): string {
+    if (!this.buffer) return ''
+    const frame = this.buffer
+    this.buffer = ''
+    return this.sanitizeFrame(frame)
+  }
+}
+
+/** Removes malformed OpenAI-compatible tool-call deltas before AI SDK parsing. */
+export function sanitizeOpenAiToolCallSseEvents(
+  body: ReadableStream<Uint8Array>
+): ReadableStream<Uint8Array> {
+  const sanitizer = new OpenAiToolCallSseSanitizer()
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  const emit = (text: string, controller: TransformStreamDefaultController<Uint8Array>) => {
+    if (text) controller.enqueue(encoder.encode(text))
+  }
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        emit(sanitizer.process(decoder.decode(chunk, { stream: true })), controller)
+      },
+      flush(controller) {
+        emit(sanitizer.process(decoder.decode()), controller)
+        emit(sanitizer.flush(), controller)
+      },
+    })
+  )
+}

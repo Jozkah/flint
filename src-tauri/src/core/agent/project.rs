@@ -27,6 +27,7 @@ pub(crate) struct AgentToml {
     pub plugins: PluginsSection,
     /// `[notify]` -- who to tell when a run ends or wants a person (AH-185,
     /// AH-184).
+    #[cfg(feature = "cli")]
     #[serde(default)]
     pub notify: crate::core::agent::notify::NotifySection,
     /// `[profiles.<name>]` -- named variations on this project's settings,
@@ -37,6 +38,7 @@ pub(crate) struct AgentToml {
     #[serde(default)]
     pub routing: Vec<crate::core::agent::routing::RoutingRule>,
     /// `[output]` -- how much a run says about itself (AH-181).
+    #[cfg(feature = "cli")]
     #[serde(default)]
     pub output: OutputSection,
     /// `[licenses]` -- what this project's dependencies may be licensed under
@@ -56,6 +58,7 @@ pub(crate) struct LicensesSection {
 
 /// `[output]` -- how much a headless run prints while it works (AH-181).
 #[derive(Debug, Clone, Default, Deserialize)]
+#[cfg(feature = "cli")]
 pub(crate) struct OutputSection {
     /// `compact`, `normal` or `verbose`. Unset is normal.
     #[serde(default)]
@@ -76,10 +79,13 @@ pub(crate) struct OutputSection {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct ProfileSection {
     #[serde(default)]
+    #[cfg(feature = "cli")]
     pub model: Option<String>,
     #[serde(default)]
+    #[cfg(feature = "cli")]
     pub max_tokens: Option<u64>,
     #[serde(default)]
+    #[cfg(feature = "cli")]
     pub context_window: Option<u64>,
     /// `[tools].default` for this profile: `allow`, `ask` or `deny`.
     #[serde(default)]
@@ -834,7 +840,6 @@ skills = ["two", "three"]
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static COUNTER: AtomicU32 = AtomicU32::new(0);

@@ -452,7 +452,7 @@ fn supervise_launch(
             .at(Stage::Job)
     })?;
     let mut written = 0u64;
-    let mut pump = |mut reader: Box<dyn std::io::Read + Send>, sink: &mut std::fs::File, written: &mut u64| {
+    let pump = |mut reader: Box<dyn std::io::Read + Send>, sink: &mut std::fs::File, written: &mut u64| {
         let mut buffer = [0u8; 8192];
         while let Ok(n) = reader.read(&mut buffer) {
             if n == 0 {

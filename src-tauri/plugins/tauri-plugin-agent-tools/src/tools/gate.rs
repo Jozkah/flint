@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::permissions::ToolPermissions;
-use crate::tools::cmdscan::{normalize, scan_command, CommandScan};
+use crate::tools::cmdscan::normalize;
 use crate::tools::sandbox::{
     command_touches_hidden_jan_path, escapes_read_roots, escapes_write_roots, is_hidden_jan_path,
 };

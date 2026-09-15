@@ -792,7 +792,7 @@ impl ToolActivityItem {
         if event.exit_code.is_some() {
             self.exit_code = event.exit_code;
         }
-        let mut take = |mine: &mut String, theirs: String| {
+        let take = |mine: &mut String, theirs: String| {
             if !theirs.is_empty() {
                 *mine = theirs;
             }

@@ -1426,8 +1426,8 @@ mod review_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
     static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    use std::sync::atomic::Ordering;
 }
 
 #[cfg(all(test, feature = "cli"))]

@@ -70,7 +70,10 @@ import { providerFetch } from '@/lib/providerFetch'
 const httpFetch = providerFetch
 import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
 import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
-import { filterDefaultSseEvents } from './sseEventTypeFilter'
+import {
+  filterDefaultSseEvents,
+  sanitizeOpenAiToolCallSseEvents,
+} from './sseEventTypeFilter'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import {
@@ -531,6 +534,16 @@ export function createCustomFetch(
       normalised[targetKey] = coerced
     }
     const merged = { ...rawBody, ...normalised }
+    // OpenAI-compatible providers require every declared function tool to
+    // carry a non-empty string name. Keep malformed discovery data from
+    // reaching strict servers (for example: Expected 'function.name' to be a
+    // string) even when a caller supplied tools directly in the request body.
+    if (Array.isArray(merged.tools)) {
+      merged.tools = merged.tools.filter((tool) => {
+        const name = (tool as { function?: { name?: unknown } })?.function?.name
+        return typeof name === 'string' && name.trim().length > 0
+      })
+    }
     if (keepLlamacppOnly) {
       // Assert the server default explicitly so a preset/CLI override can't
       // silently disable prompt-prefix KV reuse across turns.
@@ -621,11 +634,14 @@ export function createCustomFetch(
         res.body &&
         contentType.includes('text/event-stream')
       ) {
-        return new Response(filterDefaultSseEvents(res.body), {
+        return new Response(
+          sanitizeOpenAiToolCallSseEvents(filterDefaultSseEvents(res.body)),
+          {
           status: res.status,
           statusText: res.statusText,
           headers: res.headers,
-        })
+          }
+        )
       }
       return res
     }

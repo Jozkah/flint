@@ -543,7 +543,7 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
     let mut path: Option<String> = None;
     let mut head: Option<String> = None;
     let mut branch: Option<String> = None;
-    let mut flush = |path: &mut Option<String>,
+    let flush = |path: &mut Option<String>,
                      head: &mut Option<String>,
                      branch: &mut Option<String>,
                      found: &mut Vec<WorktreeRecord>| {
@@ -997,6 +997,7 @@ mod tests {
         discard(&record, false).expect("nothing to lose");
     }
 
+    #[cfg(unix)]
     #[test]
     fn refuses_a_worktrees_root_that_leads_somewhere_else() {
         // The check has to be on the disk, not the string: a symlink where Flint
@@ -1006,10 +1007,7 @@ mod tests {
         let elsewhere = f._dir.path().join("elsewhere");
         std::fs::create_dir_all(&elsewhere).unwrap();
         let linked = f._dir.path().join("linked");
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&elsewhere, &linked).unwrap();
-        #[cfg(not(unix))]
-        return;
 
         // The root itself resolving elsewhere is fine — it is still one place
         // Flint owns. What must not happen is a *child* escaping it.

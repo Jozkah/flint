@@ -1622,7 +1622,7 @@ enum PayloadOutcome {
     AlreadyInstalled(String),
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cli"))]
 fn install_payload_dir(
     root: &Path,
     plugins: &Path,

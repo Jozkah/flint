@@ -164,9 +164,9 @@ mod windows_impl {
                 get_sym!(lib, b"ADL_Adapter_NumberOfAdapters_Get\0", AdlAdapterNumberofadaptersGet);
             let adl_adapter_adapter_info_get: Symbol<AdlAdapterAdapterinfoGet> =
                 get_sym!(lib, b"ADL_Adapter_AdapterInfo_Get\0", AdlAdapterAdapterinfoGet);
-            let AdlAdapterActiveGet: Symbol<AdlAdapterActiveGet> =
+            let adl_adapter_active_get: Symbol<AdlAdapterActiveGet> =
                 get_sym!(lib, b"ADL_Adapter_Active_Get\0", AdlAdapterActiveGet);
-            let AdlGetDedicatedVramUsage: Symbol<AdlGetDedicatedVramUsage> =
+            let adl_get_dedicated_vram_usage: Symbol<AdlGetDedicatedVramUsage> =
                 get_sym!(lib, b"ADL2_Adapter_DedicatedVRAMUsage_Get\0", AdlGetDedicatedVramUsage);
 
             // TODO: try to put nullptr here. then we don't need direct libc dep
@@ -196,11 +196,11 @@ mod windows_impl {
 
                 for adapter in adapter_info.iter() {
                     let mut is_active = 0;
-                    AdlAdapterActiveGet(adapter.iAdapterIndex, &mut is_active);
+                    adl_adapter_active_get(adapter.iAdapterIndex, &mut is_active);
 
                     if is_active != 0 {
                         let mut vram_mb = 0;
-                        let _ = AdlGetDedicatedVramUsage(
+                        let _ = adl_get_dedicated_vram_usage(
                             ptr::null_mut(),
                             adapter.iAdapterIndex,
                             &mut vram_mb,

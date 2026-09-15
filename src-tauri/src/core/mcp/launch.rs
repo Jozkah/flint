@@ -159,7 +159,6 @@ pub(super) fn confined_mcp_command(
     }
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         confined.creation_flags(0x08000000);
     }
     #[cfg(unix)]

@@ -263,6 +263,7 @@ pub(crate) fn load_memory_catalog(project_root: &Path) -> Option<String> {
 /// Assemble the project system prompt: the optional base prompt, the always-on
 /// built-in skills/memory guide, then any project-authored skills. The guide is
 /// always present for project runs, so this never returns None.
+#[cfg(test)]
 pub(crate) fn build_system_prompt(
     base: Option<&str>,
     project_root: &Path,
