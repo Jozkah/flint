@@ -52,6 +52,8 @@
   },
   "editor": {
     "heading": "Room settings",
+    "sectionGeneral": "General",
+    "sectionDiscussion": "Discussion & moderator",
     "lockedWhileRunning": "Settings are locked while the room is running. Pause or stop it to edit.",
     "title": "Title",
     "objective": "Objective",

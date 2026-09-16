@@ -1,5 +1,4 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
 import type {
   ModeratorConfig,
   Participant,
@@ -338,7 +337,7 @@ export function RoomEditor({ room }: { room: Room }) {
       )}
 
       <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
-        <RoomSection>
+        <RoomSection title={t('rooms:editor.sectionGeneral')} collapsible defaultOpen>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
             <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
@@ -393,7 +392,7 @@ export function RoomEditor({ room }: { room: Room }) {
           </div>
         </RoomSection>
 
-        <RoomSection>
+        <RoomSection title={t('rooms:editor.sectionDiscussion')} collapsible>
         <div className="flex flex-col gap-2">
           <span id={`${uid}-mode`} className="text-sm font-medium">
             {t('rooms:editor.speakingMode')}
@@ -468,14 +467,14 @@ export function RoomEditor({ room }: { room: Room }) {
         </section>
         </RoomSection>
 
-        <RoomSection contentClassName="gap-2">
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-p-heading`}>
-          <h3 id={`${uid}-p-heading`} className="text-sm font-medium">
-            {t('rooms:editor.participants')}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-          </p>
+        <RoomSection
+          title={`${t('rooms:editor.participants')} · ${participants.length}`}
+          description={t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
+          collapsible
+          defaultOpen
+          contentClassName="gap-2"
+        >
+        <section className="flex flex-col gap-2">
           {participants.length === 0 && (
             <p className="text-sm text-muted-foreground">{t('rooms:editor.noParticipants')}</p>
           )}
@@ -673,17 +672,12 @@ export function RoomEditor({ room }: { room: Room }) {
 
         </RoomSection>
 
-        <RoomSection>
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-            <span className="text-sm font-medium">{t('rooms:editor.limits')}</span>
-            <ChevronDown
-              aria-hidden
-              className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
-            />
-          </summary>
-          <p className="mt-2 text-xs text-muted-foreground">{t('rooms:editor.limitsHint')}</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <RoomSection
+          title={t('rooms:editor.limits')}
+          description={t('rooms:editor.limitsHint')}
+          collapsible
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
             {LIMIT_KEYS.map((key) => {
               const lid = `${uid}-limit-${key}`
               const ceiling = displayCeiling(key)
@@ -722,7 +716,6 @@ export function RoomEditor({ room }: { room: Room }) {
               )
             })}
           </div>
-        </details>
         </RoomSection>
 
         <div className="flex flex-col items-stretch gap-2 pt-1">
