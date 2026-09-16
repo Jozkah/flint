@@ -144,6 +144,8 @@ jobs:
               new_build_version="${base_version}.${t_value}"
           }
           generate_build_version ${{ inputs.new_version }}
+          ws='${{ github.workspace }}'
+          sed -i "s|flint_workspace|${ws//\\/\\\\}|g" ./src-tauri/tauri.bundle.windows.nsis.template
           sed -i "s/jan_version/$new_base_version/g" ./src-tauri/tauri.bundle.windows.nsis.template
           sed -i "s/jan_build/$new_build_version/g" ./src-tauri/tauri.bundle.windows.nsis.template
 

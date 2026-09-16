@@ -154,4 +154,27 @@ mod tests {
         assert!(line.chars().count() <= MAX_LINE + 40, "{}", line.chars().count());
         let _ = std::fs::remove_dir_all(&data);
     }
+
+    /// The application logger (`tauri_plugin_log`) rotates only files named
+    /// `app.log*` under `<data>/logs`. A server log lives under `<data>/mcp-logs`
+    /// with a hashed name, so app.log rotation can never rotate or delete it --
+    /// the log-retention fix keeps app.log's own segments, and independently
+    /// managed server logs are out of its rotation domain entirely.
+    #[test]
+    fn a_server_log_is_out_of_the_app_logger_rotation_domain() {
+        let data = temp("domain");
+        let path = path_for(&data, "some-server");
+        assert_eq!(
+            path.parent().unwrap(),
+            log_dir(&data),
+            "server logs live under mcp-logs"
+        );
+        assert!(
+            log_dir(&data).ends_with("mcp-logs"),
+            "and never under the app logger's logs/ folder"
+        );
+        let file = path.file_name().unwrap().to_string_lossy();
+        assert!(file.ends_with(".log") && file != "app.log");
+        let _ = std::fs::remove_dir_all(&data);
+    }
 }

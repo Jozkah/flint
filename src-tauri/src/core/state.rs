@@ -10,7 +10,7 @@ use crate::core::mcp::models::{McpSettings, ToolWithServer};
 #[cfg(not(feature = "cli"))]
 use crate::core::mcp::progress::JanClientHandler;
 #[cfg(feature = "cli")]
-use rmcp::model::{CallToolRequestParam, CallToolResult, InitializeRequestParam, Tool};
+use rmcp::model::{CallToolRequestParams, CallToolResult, InitializeRequestParams, Tool};
 #[cfg(feature = "cli")]
 use rmcp::ServiceError;
 use rmcp::{service::RunningService, RoleClient};
@@ -94,7 +94,7 @@ pub type SharedMcpServers = Arc<Mutex<HashMap<String, RunningMcpService>>>;
 #[cfg(feature = "cli")]
 pub enum RunningServiceEnum {
     NoInit(RunningService<RoleClient, ()>),
-    WithInit(RunningService<RoleClient, InitializeRequestParam>),
+    WithInit(RunningService<RoleClient, InitializeRequestParams>),
 }
 #[cfg(feature = "cli")]
 pub type SharedMcpServers = Arc<Mutex<HashMap<String, RunningServiceEnum>>>;
@@ -113,7 +113,7 @@ impl RunningServiceEnum {
     /// One prompt, filled in with the server's own arguments (AH-138).
     pub async fn get_prompt(
         &self,
-        param: rmcp::model::GetPromptRequestParam,
+        param: rmcp::model::GetPromptRequestParams,
     ) -> Result<rmcp::model::GetPromptResult, ServiceError> {
         match self {
             Self::NoInit(s) => s.get_prompt(param).await,
@@ -129,7 +129,7 @@ impl RunningServiceEnum {
     }
     pub async fn call_tool(
         &self,
-        params: CallToolRequestParam,
+        params: CallToolRequestParams,
     ) -> Result<CallToolResult, ServiceError> {
         match self {
             Self::NoInit(s) => s.call_tool(params).await,
@@ -153,7 +153,7 @@ impl RunningServiceEnum {
     /// Read one resource by uri (AH-137).
     pub async fn read_resource(
         &self,
-        params: rmcp::model::ReadResourceRequestParam,
+        params: rmcp::model::ReadResourceRequestParams,
     ) -> Result<rmcp::model::ReadResourceResult, ServiceError> {
         match self {
             Self::NoInit(s) => s.read_resource(params).await,
@@ -161,12 +161,12 @@ impl RunningServiceEnum {
         }
     }
 
-    /// The `initialize` response: what the server said it implements. Read by
+    /// The peer's handshake info: what the server said it implements. Read by
     /// the `/mcp` detail screen for its capabilities and version lines.
-    pub fn peer_info(&self) -> Option<rmcp::model::InitializeResult> {
+    pub fn peer_info(&self) -> Option<rmcp::model::ServerPeerInfo> {
         match self {
-            Self::NoInit(s) => s.peer_info().cloned(),
-            Self::WithInit(s) => s.peer_info().cloned(),
+            Self::NoInit(s) => s.peer_info().map(|p| (*p).clone()),
+            Self::WithInit(s) => s.peer_info().map(|p| (*p).clone()),
         }
     }
 }

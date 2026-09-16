@@ -70,17 +70,52 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _html(self, status, body):
+        # A single-page-app catch-all: 200 + HTML at a metadata URL. rmcp 0.8.5
+        # treated this as a fatal parse error and aborted discovery; rmcp 3.x
+        # skips the unparseable candidate and falls through to
+        # protected-resource discovery. Modelled by --spa-catch-all.
+        data = body.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         base = f"http://127.0.0.1:{self.server.server_address[1]}"
-        if self.path.startswith("/.well-known/oauth-authorization-server"):
+        prefix = "/.well-known/oauth-authorization-server"
+        if self.path.startswith(prefix):
+            # RFC 8414 path-aware discovery: for an issuer with a path
+            # (e.g. `{base}/mcp`), the metadata lives at
+            # `/.well-known/oauth-authorization-server/mcp` and its `issuer`
+            # MUST equal that issuer. rmcp 3.x enforces this, so echo the
+            # requested suffix rather than always returning the origin.
+            suffix = urllib.parse.urlparse(self.path).path[len(prefix):]
+            # SPA catch-all: every authorization-server metadata URL except the
+            # dedicated `/authsrv` one serves HTML, forcing discovery to fall
+            # through to the protected-resource path.
+            if ARGS.spa_catch_all and suffix != "/authsrv":
+                return self._html(200, "<!doctype html><html><body>app</body></html>")
+            issuer = base + suffix
             return self._json(200, {
-                "issuer": base,
+                "issuer": issuer,
                 "authorization_endpoint": f"{base}/authorize",
                 "token_endpoint": f"{base}/token",
                 "registration_endpoint": f"{base}/register",
                 "response_types_supported": ["code"],
                 "grant_types_supported": ["authorization_code", "refresh_token"],
                 "code_challenge_methods_supported": ["S256"],
+            })
+        if self.path.startswith("/.well-known/oauth-protected-resource"):
+            # RFC 9728 protected-resource metadata. Under --spa-catch-all the
+            # authorization server is advertised at `{base}/authsrv`, whose
+            # metadata (above) is the only JSON one; otherwise it is the
+            # resource itself.
+            authsrv = f"{base}/authsrv" if ARGS.spa_catch_all else f"{base}/mcp"
+            return self._json(200, {
+                "resource": f"{base}/mcp",
+                "authorization_servers": [authsrv],
             })
         if self.path.startswith("/authorize"):
             return self._authorize()
@@ -258,6 +293,7 @@ def main():
     parser.add_argument("--grant-only", default=None)
     parser.add_argument("--refresh-scope", default="")
     parser.add_argument("--omit-granted-scope", action="store_true")
+    parser.add_argument("--spa-catch-all", action="store_true")
     parser.parse_args(namespace=ARGS)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True

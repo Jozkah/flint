@@ -35,16 +35,16 @@ ${StrLoc}
 !define HOMEPAGE ""
 !define INSTALLMODE "currentUser"
 !define LICENSE ""
-!define INSTALLERICON "D:\a\jan\jan\src-tauri\icons\icon.ico"
+!define INSTALLERICON "flint_workspace\src-tauri\icons\icon.ico"
 !define SIDEBARIMAGE ""
 !define HEADERIMAGE ""
 !define MAINBINARYNAME "jan_mainbinaryname"
-!define MAINBINARYSRCPATH "D:\a\jan\jan\src-tauri\target\release\jan_mainbinaryname.exe"
+!define MAINBINARYSRCPATH "flint_workspace\src-tauri\target\release\jan_mainbinaryname.exe"
 !define BUNDLEID "jan_bundleid"
 !define COPYRIGHT ""
 !define OUTFILE "nsis-output.exe"
 !define ARCH "x64"
-!define ADDITIONALPLUGINSPATH "D:\a\jan\jan\src-tauri\target\release\nsis\x64\Plugins\x86-unicode\additional"
+!define ADDITIONALPLUGINSPATH "flint_workspace\src-tauri\target\release\nsis\x64\Plugins\x86-unicode\additional"
 !define ALLOWDOWNGRADES "true"
 !define DISPLAYLANGUAGESELECTOR "false"
 !define INSTALLWEBVIEW2MODE "downloadBootstrapper"
@@ -66,6 +66,101 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
+Var LockedFile
+
+!define STOP_GRACE 12
+!define STOP_LIMIT 60
+!macro StopBundledProcess exe
+  StrCpy $R4 0
+  ${Do}
+    !if "${INSTALLMODE}" == "currentUser"
+      nsis_tauri_utils::FindProcessCurrentUser "${exe}"
+    !else
+      nsis_tauri_utils::FindProcess "${exe}"
+    !endif
+    Pop $R5
+    ${If} $R5 <> 0
+      ${ExitDo}
+    ${EndIf}
+    ${If} $R4 >= ${STOP_GRACE}
+      !if "${INSTALLMODE}" == "currentUser"
+        nsis_tauri_utils::KillProcessCurrentUser "${exe}"
+      !else
+        nsis_tauri_utils::KillProcess "${exe}"
+      !endif
+      Pop $R5
+    ${EndIf}
+    IntOp $R4 $R4 + 1
+    ${If} $R4 >= ${STOP_LIMIT}
+      ${ExitDo}
+    ${EndIf}
+    Sleep 500
+  ${Loop}
+!macroend
+
+!macro UnlockBundledBinary path
+  ${If} ${FileExists} "${path}"
+    StrCpy $R6 0
+    ${Do}
+      ClearErrors
+      Delete "${path}"
+      ${IfNot} ${Errors}
+        ${ExitDo}
+      ${EndIf}
+      ClearErrors
+      Delete "${path}.old"
+      ClearErrors
+      Rename "${path}" "${path}.old"
+      ${IfNot} ${Errors}
+        ${ExitDo}
+      ${EndIf}
+      IntOp $R6 $R6 + 1
+      ${If} $R6 >= 5
+        StrCpy $LockedFile "${path}"
+        ${ExitDo}
+      ${EndIf}
+      Sleep 200
+    ${Loop}
+    ClearErrors
+  ${EndIf}
+!macroend
+
+!macro UnlockBundledPattern dir pattern
+  StrCpy $R2 0
+  ${Do}
+    FindFirst $R8 $R9 "${dir}\${pattern}"
+    ${Do}
+      ${If} $R9 == ""
+        ${ExitDo}
+      ${EndIf}
+      StrCpy $R7 "${dir}\$R9"
+      !insertmacro UnlockBundledBinary "$R7"
+      FindNext $R8 $R9
+    ${Loop}
+    FindClose $R8
+    IntOp $R2 $R2 + 1
+    ${If} $R2 >= 3
+    ${OrIf} $LockedFile != ""
+      ${ExitDo}
+    ${EndIf}
+  ${Loop}
+!macroend
+
+!macro FreeBundledFiles
+  !insertmacro StopBundledProcess "flint-llama-worker.exe"
+  !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint.exe"
+  !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
+  !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "ggml*.dll"
+  !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
+  !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "cublas*.dll"
+  !insertmacro UnlockBundledBinary "$INSTDIR\bun.exe"
+  !insertmacro UnlockBundledBinary "$INSTDIR\uv.exe"
+  ${If} $LockedFile != ""
+    nsis_tauri_utils::StrReplace "$(failedToKillApp)" "{{product_name}}" "${PRODUCTNAME}"
+    Pop $R3
+    Abort "$R3$\n$LockedFile"
+  ${EndIf}
+!macroend
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -452,7 +547,7 @@ FunctionEnd
 ;Languages
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_RESERVEFILE_LANGDLL
-  !include "D:\a\jan\jan\src-tauri\target\release\nsis\x64\English.nsh"
+  !include "flint_workspace\src-tauri\target\release\nsis\x64\English.nsh"
 
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -689,6 +784,7 @@ Section Install
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro FreeBundledFiles
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -698,11 +794,11 @@ Section Install
     CreateDirectory "$INSTDIR\resources\pre-install"
     CreateDirectory "$INSTDIR\resources\bin"
     SetOutPath $INSTDIR
-    File /a "/oname=LICENSE" "D:\a\jan\jan\src-tauri\resources\LICENSE"
+    File /a "/oname=LICENSE" "flint_workspace\src-tauri\resources\LICENSE"
     SetOutPath "$INSTDIR\resources\pre-install"
-    File /nonfatal /a /r "D:\a\jan\jan\src-tauri\resources\pre-install\"
+    File /nonfatal /a /r "flint_workspace\src-tauri\resources\pre-install\"
     SetOutPath "$INSTDIR\resources\bin"
-    File /a "/oname=flint.exe" "D:\a\jan\jan\src-tauri\resources\bin\flint.exe"
+    File /a "/oname=flint.exe" "flint_workspace\src-tauri\resources\bin\flint.exe"
     ; The engine. This block is a hand-maintained snapshot of
     ; tauri.windows.conf.json's `bundle.resources`, which the NSIS bundler does
     ; not read once CI points it at this template, so anything added there has
@@ -711,13 +807,15 @@ Section Install
     ; inference permanently unavailable, since there is no runtime backend
     ; download to fall back on, so a build that staged nothing must fail loudly
     ; here the way stage-engine.sh already does.
-    File /a "/oname=flint-llama-worker.exe" "D:\a\jan\jan\src-tauri\resources\bin\flint-llama-worker.exe"
-    File /a "D:\a\jan\jan\src-tauri\resources\bin\ggml*.dll"
+    File /a "/oname=flint-llama-worker.exe" "flint_workspace\src-tauri\resources\bin\flint-llama-worker.exe"
+    File /a "flint_workspace\src-tauri\resources\bin\ggml*.dll"
+    File /nonfatal /a "flint_workspace\src-tauri\resources\bin\cudart64_*.dll"
+    File /nonfatal /a "flint_workspace\src-tauri\resources\bin\cublas*.dll"
     SetOutPath $INSTDIR
 
   ; Copy external binaries
-    File /a "/oname=bun.exe" "D:\a\jan\jan\src-tauri\resources\bin\bun-x86_64-pc-windows-msvc.exe"
-    File /a "/oname=uv.exe" "D:\a\jan\jan\src-tauri\resources\bin\uv-x86_64-pc-windows-msvc.exe"
+    File /a "/oname=bun.exe" "flint_workspace\src-tauri\resources\bin\bun-x86_64-pc-windows-msvc.exe"
+    File /a "/oname=uv.exe" "flint_workspace\src-tauri\resources\bin\uv-x86_64-pc-windows-msvc.exe"
 
   ; Create file associations
 
@@ -829,6 +927,7 @@ Section Uninstall
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro StopBundledProcess "flint-llama-worker.exe"
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -847,7 +946,9 @@ Section Uninstall
 
   ; Delete external binaries
     Delete "$INSTDIR\bun.exe"
+    Delete "$INSTDIR\bun.exe.old"
     Delete "$INSTDIR\uv.exe"
+    Delete "$INSTDIR\uv.exe.old"
 
   ; Delete app associations
 

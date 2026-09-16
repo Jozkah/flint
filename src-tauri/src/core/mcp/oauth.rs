@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rmcp::transport::auth::{AuthClient, AuthorizationManager, OAuthState, OAuthTokenResponse};
+use rmcp::transport::auth::{
+    AuthClient, AuthorizationManager, AuthorizationRequest, OAuthState, OAuthTokenResponse,
+};
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
 use crate::core::server::provider_secrets;
@@ -245,7 +247,7 @@ fn check_grant(name: &str, allowed: &[String], granted: &[String]) -> Result<(),
 async fn manager_for(
     name: &str,
     url: &str,
-    base: &reqwest::Client,
+    base: &reqwest13::Client,
     client_id: &str,
     tokens: OAuthTokenResponse,
 ) -> Result<AuthorizationManager, HarnessError> {
@@ -642,7 +644,7 @@ fn spawn_refresher(
     data_folder: PathBuf,
     name: String,
     url: String,
-    base: reqwest::Client,
+    base: reqwest13::Client,
     client_id: String,
     manager: Weak<tokio::sync::Mutex<AuthorizationManager>>,
     mut current: OAuthTokenResponse,
@@ -730,7 +732,7 @@ pub async fn advertises_oauth(url: &str) -> bool {
     let OAuthState::Unauthorized(manager) = state else {
         return false;
     };
-    manager.discover_metadata().await.is_ok()
+    manager.resolve_metadata().await.is_ok()
 }
 
 /// An authorization in flight: the browser has somewhere to go and the loopback
@@ -775,9 +777,14 @@ pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<Pending
     let mut state = OAuthState::new(url.to_string(), None)
         .await
         .map_err(|e| format!("could not reach '{url}' for OAuth discovery: {e}"))?;
-    let asked: Vec<&str> = scopes.iter().map(String::as_str).collect();
+    // Flint declares the scopes it asks for (AH-135); an empty list would let
+    // the SDK auto-select from server metadata, which is not the same policy.
     state
-        .start_authorization(&asked, &redirect_uri, Some(CLIENT_NAME))
+        .start_authorization(
+            AuthorizationRequest::new(redirect_uri.clone())
+                .with_scopes(scopes.clone())
+                .with_client_name(CLIENT_NAME),
+        )
         .await
         .map_err(|e| format!("'{server}' does not offer OAuth we can use: {e}"))?;
     let authorization_url = state
@@ -989,8 +996,8 @@ pub async fn authorized_client(
     name: &str,
     url: &str,
     config: &Value,
-    base: reqwest::Client,
-) -> Result<Option<AuthClient<reqwest::Client>>, HarnessError> {
+    base: reqwest13::Client,
+) -> Result<Option<AuthClient<reqwest13::Client>>, HarnessError> {
     let auth = |message: String| HarnessError::new(ErrorKind::Authentication, message).at(Stage::Startup);
     if has_static_authorization(config) {
         return Ok(None);
@@ -1063,14 +1070,15 @@ pub async fn authorized_client(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oauth2::{AccessToken, EmptyExtraTokenFields, RefreshToken, TokenResponse};
+    use oauth2::{AccessToken, RefreshToken, TokenResponse};
+    use rmcp::transport::auth::VendorExtraTokenFields;
     use serde_json::json;
 
     fn tokens(expires_in: Option<u64>, refresh: bool) -> OAuthTokenResponse {
         let mut t = OAuthTokenResponse::new(
             AccessToken::new("at-1".to_string()),
             oauth2::basic::BasicTokenType::Bearer,
-            EmptyExtraTokenFields {},
+            VendorExtraTokenFields::default(),
         );
         if let Some(secs) = expires_in {
             t.set_expires_in(Some(&Duration::from_secs(secs)));
@@ -1191,7 +1199,7 @@ mod tests {
             let mut t = OAuthTokenResponse::new(
                 AccessToken::new("plaintext-canary-access".to_string()),
                 oauth2::basic::BasicTokenType::Bearer,
-                EmptyExtraTokenFields {},
+                VendorExtraTokenFields::default(),
             );
             t.set_refresh_token(Some(RefreshToken::new("plaintext-canary-refresh".to_string())));
             t
@@ -1340,7 +1348,7 @@ mod tests {
         let mut t = OAuthTokenResponse::new(
             AccessToken::new(access.to_string()),
             oauth2::basic::BasicTokenType::Bearer,
-            EmptyExtraTokenFields {},
+            VendorExtraTokenFields::default(),
         );
         t.set_expires_in(Some(&Duration::from_secs(expires_in)));
         t.set_refresh_token(Some(RefreshToken::new(refresh.to_string())));
@@ -1467,12 +1475,40 @@ mod tests {
         assert_eq!(info.declared_scopes, strings(&["mcp:read", "mcp:tools"]));
         assert_eq!(info.granted_scopes, strings(&["mcp:read", "mcp:tools"]));
         runtime().block_on(async {
-            let client = authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new())
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest13::Client::new())
                 .await
                 .unwrap()
                 .expect("an authorized client");
             assert!(client.get_access_token().await.unwrap().starts_with("code-access-"));
         });
+    }
+
+    /// Authorization-server metadata discovery: the base's RFC 8414 metadata is
+    /// fetched and its issuer accepted, so the server is reported as offering
+    /// OAuth. Guards the `resolve_metadata` migration and issuer validation.
+    #[test]
+    fn authorization_server_metadata_discovery_advertises_oauth() {
+        let fixture = OauthFixture::start(&[]);
+        let advertised = runtime().block_on(advertises_oauth(&fixture.url()));
+        assert!(
+            advertised,
+            "advertises_oauth must resolve the authorization-server metadata"
+        );
+    }
+
+    /// Protected-resource discovery fallback. rmcp 0.8.5 treated a 200+HTML
+    /// authorization-server metadata response (an SPA catch-all) as a fatal
+    /// parse error and aborted; rmcp 3.x skips the unparseable candidate and
+    /// falls through to protected-resource discovery, which names the real
+    /// authorization server. This is the #8891 discovery fix.
+    #[test]
+    fn discovery_falls_through_to_protected_resource_when_metadata_is_html() {
+        let fixture = OauthFixture::start(&["--spa-catch-all"]);
+        let advertised = runtime().block_on(advertises_oauth(&fixture.url()));
+        assert!(
+            advertised,
+            "protected-resource discovery must still find OAuth behind an SPA catch-all"
+        );
     }
 
     /// AH-135: a provider that adds a scope to a grant that did ask for some is
@@ -1522,7 +1558,7 @@ mod tests {
         let mut t = OAuthTokenResponse::new(
             AccessToken::new("at-scoped".to_string()),
             oauth2::basic::BasicTokenType::Bearer,
-            EmptyExtraTokenFields {},
+            VendorExtraTokenFields::default(),
         );
         t.set_expires_in(Some(&Duration::from_secs(3600)));
         let stored = StoredCredentials::from_exchange("client-1".to_string(), t, fixture.url())
@@ -1536,7 +1572,7 @@ mod tests {
             assert_eq!(info.state, "scopeMismatch");
             assert!(info.can_authenticate && info.has_credentials);
             let refused = runtime()
-                .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+                .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest13::Client::new()))
                 .err()
                 .unwrap_or_else(|| panic!("a mismatched token was used under {declared:?}"));
             assert_eq!(refused.kind(), ErrorKind::Authentication);
@@ -1552,7 +1588,7 @@ mod tests {
         let broken = json!({ "type": "http", "url": fixture.url(), "oauth": { "scopes": "mcp:read" } });
         assert!(matches!(status(dir.path(), "srv", &broken), AuthStatus::InvalidScopes { .. }));
         let refused = runtime()
-            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest::Client::new()))
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest13::Client::new()))
             .err()
             .expect("an unreadable declaration authorizes nothing");
         assert_eq!(refused.kind(), ErrorKind::InvalidInput);
@@ -1569,7 +1605,7 @@ mod tests {
         save(dir.path(), "srv", &stored).unwrap();
         let config = scoped(&fixture, &["mcp:read"]);
         let refused = runtime()
-            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest::Client::new()))
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest13::Client::new()))
             .err()
             .expect("a widened refresh is refused");
         assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
@@ -1605,7 +1641,7 @@ mod tests {
         let fixture = OauthFixture::start(&["--accept", "rt-good"]);
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-good", 30)).unwrap();
         runtime().block_on(async {
-            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new())
                 .await
                 .unwrap()
                 .expect("an authorized client");
@@ -1632,7 +1668,7 @@ mod tests {
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-first", "rt-good", 62)).unwrap();
         let rt = runtime();
         rt.block_on(async {
-            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new())
                 .await
                 .unwrap()
                 .expect("an authorized client");
@@ -1668,7 +1704,7 @@ mod tests {
         let fixture = OauthFixture::start(&["--accept", "rt-kept", "--expires-in", "62", "--omit-refresh"]);
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-kept", 30)).unwrap();
         runtime().block_on(async {
-            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new())
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new())
                 .await
                 .unwrap()
                 .expect("an authorized client");
@@ -1709,7 +1745,7 @@ mod tests {
         let fixture = OauthFixture::start(&["--accept", "a-different-token"]);
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-revoked", 10)).unwrap();
         let err = runtime()
-            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest::Client::new()))
+            .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new()))
             .err()
             .expect("a refused refresh is an error");
         assert_eq!(err.kind(), ErrorKind::Authentication);
@@ -1825,7 +1861,7 @@ mod tests {
                 "s",
                 "https://x/mcp",
                 &config,
-                reqwest::Client::new(),
+                reqwest13::Client::new(),
             ));
         assert!(matches!(got, Ok(None)));
     }
@@ -1844,7 +1880,7 @@ mod tests {
                 "s",
                 "https://new/mcp",
                 &config,
-                reqwest::Client::new(),
+                reqwest13::Client::new(),
             ));
         let err = got.expect_err("stale resource is an error, not a silent skip");
         assert_eq!(err.kind(), ErrorKind::Authentication);

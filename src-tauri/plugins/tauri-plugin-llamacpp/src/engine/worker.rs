@@ -144,8 +144,6 @@ pub const API_KEY_ENV: &str = "JAN_LLAMA_API_KEY";
 /// which terminates each `server_queue` loop and frees the model.
 const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
-
-
 /// How long to wait for the handshake. Generous because a cold page-cache read
 /// of the preset plus binding a port can be slow on a loaded machine, but far
 /// short of a model load -- the worker answers before loading anything.
@@ -208,12 +206,64 @@ impl std::fmt::Debug for WorkerHandle {
     }
 }
 
+#[cfg(windows)]
+mod reap {
+    use std::os::windows::io::RawHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    pub struct Job(HANDLE);
+
+    unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub fn confine(child: RawHandle) -> Option<Job> {
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            log::warn!("could not create a job object for the Flint worker");
+            return None;
+        }
+        let job = Job(job);
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            log::warn!("could not set kill-on-close on the Flint worker job object");
+            return None;
+        }
+        if unsafe { AssignProcessToJobObject(job.0, child as HANDLE) } == 0 {
+            log::warn!("could not put the Flint worker in its job object");
+            return None;
+        }
+        Some(job)
+    }
+}
+
 pub struct WorkerHandle {
     pub port: u16,
     pub pid: u32,
     pub api_key: String,
     pub models: Vec<String>,
     child: Child,
+    #[cfg(windows)]
+    _job: Option<reap::Job>,
 }
 
 impl WorkerHandle {
@@ -335,6 +385,8 @@ pub async fn spawn(
         .kill_on_drop(true);
 
     let mut child = cmd.spawn().map_err(|e| WorkerError::Spawn(e.to_string()))?;
+    #[cfg(windows)]
+    let job = child.raw_handle().and_then(reap::confine);
 
     let stdout = child
         .stdout
@@ -348,7 +400,9 @@ pub async fn spawn(
             let mut last_fault_at: Option<tokio::time::Instant> = None;
             while let Ok(Some(line)) = lines.next_line().await {
                 log::debug!("flint-llama-worker: {line}");
-                let Some(cb) = on_fault.as_ref() else { continue };
+                let Some(cb) = on_fault.as_ref() else {
+                    continue;
+                };
                 let Some(fault) = classify_fault(&line.to_lowercase()) else {
                     continue;
                 };
@@ -406,6 +460,8 @@ pub async fn spawn(
         api_key: api_key.to_string(),
         models: hs.models,
         child,
+        #[cfg(windows)]
+        _job: job,
     })
 }
 
@@ -611,9 +667,18 @@ mod tests {
             .map(Path::new)
             .find(|p| p.is_file());
         let Some(exe) = exe else { return };
-        let err = spawn(exe, Path::new("/tmp/x.ini"), 0, "k", 1, 0, HashMap::new(), None)
-            .await
-            .expect_err("a silent exit must fail");
+        let err = spawn(
+            exe,
+            Path::new("/tmp/x.ini"),
+            0,
+            "k",
+            1,
+            0,
+            HashMap::new(),
+            None,
+        )
+        .await
+        .expect_err("a silent exit must fail");
         assert!(matches!(err, WorkerError::Handshake(_)), "got {err:?}");
     }
 }

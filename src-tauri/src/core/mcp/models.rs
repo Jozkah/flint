@@ -452,11 +452,11 @@ pub fn render_prompt(result: &rmcp::model::GetPromptResult) -> String {
     }
     for message in &result.messages {
         let role = match message.role {
-            rmcp::model::PromptMessageRole::User => "user",
-            rmcp::model::PromptMessageRole::Assistant => "assistant",
+            rmcp::model::Role::User => "user",
+            rmcp::model::Role::Assistant => "assistant",
         };
         let text = match &message.content {
-            rmcp::model::PromptMessageContent::Text { text } => text.clone(),
+            rmcp::model::ContentBlock::Text(t) => t.text.clone(),
             other => serde_json::to_string(other).unwrap_or_default(),
         };
         out.push_str(&format!("[{role}] {text}\n"));

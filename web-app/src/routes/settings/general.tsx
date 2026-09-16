@@ -271,6 +271,7 @@ function General() {
                 <div className="mt-1 flex min-w-0 items-center gap-2">
                   <div className="min-w-0 max-w-100 rounded-sm bg-sunken px-1.5 py-0.5">
                     <span
+                      data-testid="app-data-folder-path"
                       title={janDataFolder}
                       className="line-clamp-1 break-all font-mono text-xs text-ink-2"
                     >

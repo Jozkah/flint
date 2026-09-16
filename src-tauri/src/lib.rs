@@ -360,7 +360,11 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
 /// handing the app to [`run_app`].
 #[cfg(not(feature = "cli"))]
 pub fn build_app() -> tauri::App {
-    let mut builder = tauri::Builder::default();
+    let builder = tauri::Builder::default();
+    // Shadowed rather than mutated: under `cowork-smoke`/`e2e` the plugin below
+    // is the only thing that touches `builder`, and a `mut` binding would then
+    // be unused -- which CI's `clippy -D warnings` treats as an error.
+    //
     // Not under `cowork-smoke`. The plugin's namespace is the bundle
     // identifier, so a harness build joined the same one as the user's own Flint:
     // starting the harness while Flint was running made the harness the *second*
@@ -368,13 +372,16 @@ pub fn build_app() -> tauri::App {
     // harness then reported success having run no scenarios at all, because its
     // driver thread never got an app to drive. A test driver has no business
     // claiming the application's single-instance identity.
-    #[cfg(all(desktop, not(feature = "cowork-smoke")))]
-    {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
-          println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
-          // when defining deep link schemes at runtime, you must also check `argv` here
-        }));
-    }
+    // Also disabled under `e2e`: single-instance keys off a per-user socket
+    // (a TMPDIR socket on macOS, a D-Bus name on Linux, a named mutex on
+    // Windows) that the harness's HOME override does not isolate, so a running
+    // Flint would make the test binary the second instance and it would forward
+    // its argv and exit before the embedded WebDriver server ever bound.
+    #[cfg(all(desktop, not(feature = "cowork-smoke"), not(feature = "e2e")))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
+        println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+        // when defining deep link schemes at runtime, you must also check `argv` here
+    }));
 
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())
@@ -391,6 +398,13 @@ pub fn build_app() -> tauri::App {
     #[cfg(feature = "deep-link")]
     {
         app_builder = app_builder.plugin(tauri_plugin_deep_link::init());
+    }
+
+    // e2e builds only: the embedded WebDriver server @wdio/tauri-service drives.
+    // Gated behind the `e2e` feature so no release binary exposes it.
+    #[cfg(feature = "e2e")]
+    {
+        app_builder = app_builder.plugin(tauri_plugin_wdio_webdriver::init());
     }
 
     #[cfg(target_os = "macos")]
@@ -471,6 +485,16 @@ pub fn build_app() -> tauri::App {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // The plugin defaults to a 40 KB cap and KeepOne, which
+                    // deletes the previous app.log on each rotation. At Debug
+                    // level startup alone crosses 40 KB in ~30s, so a model
+                    // load that logs after startup writes its flint-llama-worker
+                    // / llama.cpp diagnostics into a segment the next rotation
+                    // removes -- exactly the lines needed to triage local
+                    // inference. Raise the cap and archive to dated files so
+                    // worker and engine logs survive. janhq/jan log fix.
+                    .max_file_size(10_000_000)
+                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
                     // The plugin's own layout, with values the user marked
                     // secret (a custom provider header, janhq/jan#8208)
                     // replaced before any target -- file, stdout, webview --

@@ -76,6 +76,10 @@ default = [
 cowork-smoke = ["desktop"]
 hardware = ["dep:tauri-plugin-hardware"]
 deep-link = ["dep:tauri-plugin-deep-link"]
+# WebDriver e2e only. Runs an embedded WebDriver server inside the app so
+# @wdio/tauri-service can drive it. Opt-in so release builds never ship a
+# remote-control listener; enabled by no supported build path.
+e2e = ["dep:tauri-plugin-wdio-webdriver"]
 # MLX (tauri-plugin-mlx) is Apple-Silicon-only; it's a macOS-target dependency
 # (see [target.'cfg(target_os = "macos")'.dependencies]) rather than a feature.
 desktop = [
@@ -155,11 +159,9 @@ log = "0.4"
 # accessors on the persisted token record (`core::mcp::oauth`).
 oauth2 = "5.0"
 rand = "0.8"
-rmcp = { version = "0.8.5", features = [
+rmcp = { version = "3.2.0", features = [
     "auth",
     "client",
-    "transport-sse-client",
-    "transport-sse-client-reqwest",
     "transport-streamable-http-client",
     "transport-streamable-http-client-reqwest",
     "transport-child-process",
@@ -176,6 +178,7 @@ unicode-normalization = "0.1"
 tar = "0.4"
 zip = "0.6"
 tauri-plugin-deep-link = { version = "2", optional = true }
+tauri-plugin-wdio-webdriver = { version = "1.4", optional = true }
 tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", optional = true }
 tauri-plugin-llamacpp = { path = "./plugins/tauri-plugin-llamacpp", optional = true }
 # The CLI consumes only these plugins' tauri-free cores (`db`, `provider`, the

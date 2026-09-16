@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import {
+  appendLiveMessages,
+  assistantAnchorId,
+  coworkTurnsToUIMessages,
+} from '@/lib/coworkTurns'
 import type { CoworkTurn } from '@/hooks/useCoworkSessions'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -261,5 +265,123 @@ describe('per-turn usage on the transcript', () => {
       { role: 'assistant', content: 'done' },
     ])
     expect(partsOf(messages, 1).some((p: any) => p.type === 'data-turn-usage')).toBe(false)
+  })
+})
+
+describe('appendLiveMessages', () => {
+  const committed: CoworkTurn[] = [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'first' },
+  ]
+
+  it('an offset slice mints the ids the whole transcript would', () => {
+    const live: CoworkTurn[] = [
+      { role: 'user', content: 'again' },
+      { role: 'assistant', content: 'second' },
+    ]
+    const whole = coworkTurnsToUIMessages([...committed, ...live], 's')
+    const split = appendLiveMessages(
+      coworkTurnsToUIMessages(committed, 's'),
+      coworkTurnsToUIMessages(live, 's', {}, committed.length)
+    )
+    expect(split).toEqual(whole)
+    expect(split.map((m) => m.id)).toEqual([
+      's-user-0',
+      's-asst-1',
+      's-user-2',
+      's-asst-3',
+    ])
+  })
+
+  it('keeps every committed message identical across a live update', () => {
+    const base = coworkTurnsToUIMessages(committed, 's')
+    const live: CoworkTurn[] = [
+      { role: 'user', content: 'again' },
+      {
+        role: 'tool',
+        content: '',
+        callId: 'c1',
+        name: 'write',
+        status: 'running',
+        argsLive: '{"path":"a.html","content":"<h1>',
+      },
+    ]
+    const out = appendLiveMessages(
+      base,
+      coworkTurnsToUIMessages(live, 's', {}, committed.length)
+    )
+    expect(out[0]).toBe(base[0])
+    expect(out[1]).toBe(base[1])
+    expect(out).toHaveLength(4)
+  })
+
+  it('joins a resumed run onto the committed assistant message', () => {
+    const live: CoworkTurn[] = [{ role: 'assistant', content: 'continued' }]
+    const whole = coworkTurnsToUIMessages([...committed, ...live], 's')
+    const split = appendLiveMessages(
+      coworkTurnsToUIMessages(committed, 's'),
+      coworkTurnsToUIMessages(live, 's', {}, committed.length)
+    )
+    expect(split).toEqual(whole)
+    expect(split).toHaveLength(2)
+    expect(partsOf(split, 1).map((p: any) => p.text)).toEqual([
+      'first',
+      'continued',
+    ])
+  })
+
+  it('returns the committed list itself when nothing is live', () => {
+    const base = coworkTurnsToUIMessages(committed, 's')
+    expect(appendLiveMessages(base, [])).toBe(base)
+  })
+})
+
+describe('streamed tool arguments stay out of the rendered message', () => {
+  // A `write` streams its body into `argsLive` (raw JSON) on the run store.
+  // The transcript conversion renders `turn.args` (the parsed object, set only
+  // once the call lands) as the tool part's `input`; `argsLive` is never a
+  // message prop. So a multi-megabyte streamed argument cannot enter the
+  // rendered props or the accessible DOM while it is arriving — only the live
+  // tail re-renders, and it renders nothing of the body until it is parsed.
+  it('does not leak a huge live argument buffer into the tool part', () => {
+    const huge = 'X'.repeat(4 * 1024 * 1024) // 4 MB, mid-stream
+    const messages = coworkTurnsToUIMessages([
+      {
+        role: 'tool',
+        content: '',
+        callId: 'c1',
+        name: 'write',
+        args: null,
+        argsLive: `{"path":"big.txt","content":"${huge}`,
+        status: 'running',
+      },
+    ]) as any[]
+    const part = messages
+      .flatMap((m) => m.parts)
+      .find((p: any) => p.type === 'tool-write')
+    expect(part).toBeTruthy()
+    // The parsed args are absent while streaming, so the input is empty.
+    expect(part.input).toBeNull()
+    // The huge buffer is nowhere in what the renderer receives.
+    expect(JSON.stringify(messages)).not.toContain('XXXX')
+  })
+
+  it('renders the full parsed arguments once the call has landed', () => {
+    const messages = coworkTurnsToUIMessages([
+      {
+        role: 'tool',
+        content: '',
+        callId: 'c1',
+        name: 'write',
+        args: { path: 'big.txt', content: 'the whole body' },
+        result: 'wrote big.txt',
+        status: 'done',
+      },
+    ]) as any[]
+    const part = messages
+      .flatMap((m) => m.parts)
+      .find((p: any) => p.type === 'tool-write')
+    // Full arguments are available for dispatch/persistence and for the card.
+    expect(part.input).toEqual({ path: 'big.txt', content: 'the whole body' })
   })
 })

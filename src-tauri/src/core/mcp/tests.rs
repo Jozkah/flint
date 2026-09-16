@@ -1406,7 +1406,7 @@ mod mcp_confinement_tests {
 /// does with the answer.
 #[cfg(test)]
 mod mcp_resource_tests {
-    use rmcp::model::ReadResourceRequestParam;
+    use rmcp::model::ReadResourceRequestParams;
     use rmcp::ServiceExt;
     use std::path::PathBuf;
     use std::process::Stdio;
@@ -1450,14 +1450,12 @@ mod mcp_resource_tests {
 
         let resources = service.list_all_resources().await.expect("resources/list");
         assert!(
-            resources.iter().any(|r| r.raw.uri == "fixture://notes/one"),
+            resources.iter().any(|r| r.uri == "fixture://notes/one"),
             "the server's resource must be discovered: {resources:?}"
         );
 
         let read = service
-            .read_resource(ReadResourceRequestParam {
-                uri: "fixture://notes/one".to_string(),
-            })
+            .read_resource(ReadResourceRequestParams::new("fixture://notes/one"))
             .await
             .expect("resources/read");
         let text = serde_json::to_string(&read).expect("serialize");
@@ -1466,9 +1464,7 @@ mod mcp_resource_tests {
         // A uri the server does not have is that server's refusal, not a
         // silent empty document.
         assert!(service
-            .read_resource(ReadResourceRequestParam {
-                uri: "fixture://notes/missing".to_string(),
-            })
+            .read_resource(ReadResourceRequestParams::new("fixture://notes/missing"))
             .await
             .is_err());
 
@@ -1560,7 +1556,7 @@ mod mcp_resource_tests {
 mod mcp_end_to_end_tests {
     use super::super::launch::ConfinedMcpLaunch;
     use super::super::models::extract_command_args;
-    use rmcp::model::CallToolRequestParam;
+    use rmcp::model::CallToolRequestParams;
     use rmcp::ServiceExt;
     use std::path::PathBuf;
     use std::process::Stdio;
@@ -1633,7 +1629,7 @@ mod mcp_end_to_end_tests {
         // A real handshake, through the same client the production path uses.
         let service = ().serve(process).await.expect("initialize");
         let info = service.peer_info().expect("the server identified itself");
-        assert_eq!(info.server_info.name, "jan-test-fixture");
+        assert_eq!(info.server_info.as_ref().expect("server_info").name, "jan-test-fixture");
 
         let tools = service.list_all_tools().await.expect("tools/list");
         assert!(
@@ -1642,10 +1638,7 @@ mod mcp_end_to_end_tests {
         );
 
         let result = service
-            .call_tool(CallToolRequestParam {
-                name: "echo_fixture".into(),
-                arguments: None,
-            })
+            .call_tool(CallToolRequestParams::new("echo_fixture"))
             .await
             .expect("tools/call");
         let text = serde_json::to_string(&result).expect("serialize the result");
@@ -1690,7 +1683,7 @@ mod mcp_end_to_end_tests {
 mod mcp_http_integration_tests {
     use super::super::helpers::serve_http;
     use super::super::progress::JanClientHandler;
-    use rmcp::model::{CallToolRequestParam, ClientInfo};
+    use rmcp::model::{CallToolRequestParams, ClientInfo};
     use std::io::BufRead;
     use std::path::PathBuf;
 
@@ -1759,7 +1752,7 @@ mod mcp_http_integration_tests {
     async fn connect(
         fixture: &Fixture,
     ) -> Result<super::super::super::state::RunningMcpService, String> {
-        let client = reqwest::Client::builder()
+        let client = reqwest13::Client::builder()
             .build()
             .map_err(|e| e.to_string())?;
         serve_http(client, &fixture.url(), handler("fixture")).await
@@ -1771,7 +1764,7 @@ mod mcp_http_integration_tests {
 
         let service = connect(&fixture).await.expect("initialize");
         let info = service.peer_info().expect("the server identified itself");
-        assert_eq!(info.server_info.name, "jan-http-fixture");
+        assert_eq!(info.server_info.as_ref().expect("server_info").name, "jan-http-fixture");
 
         let tools = service.list_all_tools().await.expect("tools/list");
         assert!(
@@ -1780,10 +1773,7 @@ mod mcp_http_integration_tests {
         );
 
         let result = service
-            .call_tool(CallToolRequestParam {
-                name: "echo_fixture".into(),
-                arguments: None,
-            })
+            .call_tool(CallToolRequestParams::new("echo_fixture"))
             .await
             .expect("tools/call");
         let text = serde_json::to_string(&result).expect("serialize");
@@ -1800,7 +1790,7 @@ mod mcp_http_integration_tests {
             let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
             socket.local_addr().expect("addr").port()
         };
-        let client = reqwest::Client::builder().build().expect("client");
+        let client = reqwest13::Client::builder().build().expect("client");
 
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(10),
@@ -1869,10 +1859,7 @@ mod mcp_http_integration_tests {
 
         let service = connect(&fixture).await.expect("initialize");
         let outcome = service
-            .call_tool(CallToolRequestParam {
-                name: "echo_fixture".into(),
-                arguments: None,
-            })
+            .call_tool(CallToolRequestParams::new("echo_fixture"))
             .await;
 
         assert!(
@@ -1903,10 +1890,7 @@ mod mcp_http_integration_tests {
             let service = std::sync::Arc::new(service);
             let held = service.clone();
             async move {
-                held.call_tool(CallToolRequestParam {
-                    name: "echo_fixture".into(),
-                    arguments: None,
-                })
+                held.call_tool(CallToolRequestParams::new("echo_fixture"))
                 .await
             }
         });
@@ -1943,211 +1927,12 @@ mod mcp_http_integration_tests {
     }
 }
 
-/// Flint's real SSE transport, against a real SSE server on loopback.
-///
-/// SSE is two halves: a long-lived stream the server writes events to, and a
-/// POST endpoint the client is told about in the stream's first event. Both
-/// are real here, driven through Flint's own `serve_sse` — so this covers the
-/// transport Flint advertises rather than a parser that recognises its name.
-#[cfg(test)]
-mod mcp_sse_integration_tests {
-    use super::super::helpers::serve_sse;
-    use super::super::progress::JanClientHandler;
-    use rmcp::model::{CallToolRequestParam, ClientInfo};
-    use std::io::BufRead;
-    use std::path::PathBuf;
-
-    struct Fixture {
-        child: std::process::Child,
-        port: u16,
-    }
-
-    impl Fixture {
-        /// Starts the fixture, or fails the test: like the HTTP fixture, this
-        /// used to return `None` -- and every caller passed having run nothing
-        /// -- wherever `/usr/bin/python3` was absent.
-        fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
-            let script =
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_sse_server.py");
-            assert!(script.exists(), "missing fixture {}", script.display());
-            let python = ["python3", "python"]
-                .into_iter()
-                .find(|p| {
-                    std::process::Command::new(p)
-                        .arg("--version")
-                        .output()
-                        .is_ok_and(|o| o.status.success())
-                })
-                .expect("python is required for the SSE MCP fixture");
-            let mut command = std::process::Command::new(python);
-            command.arg(&script).arg(mode);
-            if let Some(path) = barrier {
-                command.arg(path);
-            }
-            let mut child = command
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .ok()?;
-            let stdout = child.stdout.take()?;
-            let mut line = String::new();
-            std::io::BufReader::new(stdout).read_line(&mut line).ok()?;
-            Some(Self {
-                child,
-                port: line.trim().parse().ok()?,
-            })
-        }
-
-        fn url(&self) -> String {
-            format!("http://127.0.0.1:{}/sse", self.port)
-        }
-    }
-
-    impl Drop for Fixture {
-        fn drop(&mut self) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
-    }
-
-    async fn connect(
-        fixture: &Fixture,
-    ) -> Result<super::super::super::state::RunningMcpService, String> {
-        let client = reqwest::Client::builder()
-            .build()
-            .map_err(|e| e.to_string())?;
-        serve_sse(
-            client,
-            &fixture.url(),
-            JanClientHandler::for_test(ClientInfo::default(), "sse-fixture".to_string()),
-        )
-        .await
-    }
-
-    /// The whole lifecycle: stream, endpoint, initialize, list, call, shutdown.
-    #[tokio::test]
-    async fn an_sse_server_handshakes_lists_and_calls() {
-        let fixture = Fixture::start("ok", None).expect("the SSE MCP fixture started");
-
-        let service = connect(&fixture).await.expect("initialize over SSE");
-        let info = service.peer_info().expect("the server identified itself");
-        assert_eq!(info.server_info.name, "jan-sse-fixture");
-
-        let tools = service.list_all_tools().await.expect("tools/list");
-        assert!(
-            tools.iter().any(|tool| tool.name == "echo_fixture"),
-            "the server's tool must be discovered: {tools:?}"
-        );
-
-        let called = service
-            .call_tool(CallToolRequestParam {
-                name: "echo_fixture".into(),
-                arguments: None,
-            })
-            .await
-            .expect("tools/call");
-        let text = serde_json::to_string(&called).expect("serialize");
-        assert!(text.contains("fixture-answer"), "{text}");
-
-        service.cancel().await.expect("shutdown");
-    }
-
-    /// The stream drops before the handshake completes. There is no service.
-    #[tokio::test]
-    async fn a_stream_that_closes_during_initialize_yields_no_service() {
-        let fixture = Fixture::start("close-during-init", None).expect("the SSE MCP fixture started");
-
-        let outcome =
-            tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await;
-
-        assert!(
-            outcome.is_err() || outcome.expect("settled").is_err(),
-            "a stream that closes during initialize must not produce a service"
-        );
-    }
-
-    /// An event that is not valid JSON-RPC must not derail the handshake into
-    /// reporting success.
-    #[tokio::test]
-    async fn a_malformed_event_does_not_produce_a_working_service() {
-        let fixture = Fixture::start("malformed-event", None).expect("the SSE MCP fixture started");
-
-        let outcome = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            let service = connect(&fixture).await?;
-            // If the handshake did survive the junk event, the server is
-            // genuinely usable — which is also an acceptable outcome, as
-            // long as it is real.
-            service.list_all_tools().await.map_err(|e| e.to_string())?;
-            service.cancel().await.ok();
-            Ok::<(), String>(())
-        })
-        .await;
-
-        // What must not happen is a hang: either it worked or it failed.
-        assert!(
-            outcome.is_ok(),
-            "a malformed event must not leave the client waiting forever"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_tool_listing_failure_is_reported_over_sse() {
-        let fixture = Fixture::start("tools-list-error", None).expect("the SSE MCP fixture started");
-
-        let service = connect(&fixture).await.expect("initialize");
-        assert!(
-            service.list_all_tools().await.is_err(),
-            "a failing tools/list must be reported, not treated as an empty set"
-        );
-        service.cancel().await.ok();
-    }
-
-    /// A call held open by the server, released by the test rather than by a
-    /// sleep, then shut down.
-    #[tokio::test]
-    async fn a_call_in_flight_settles_and_shutdown_completes() {
-        let barrier = std::env::temp_dir().join(format!("jan-sse-barrier-{}", std::process::id()));
-        let _ = std::fs::remove_file(&barrier);
-
-        let fixture = Fixture::start("slow-call", Some(&barrier)).expect("the SSE MCP fixture started");
-
-        let service = std::sync::Arc::new(connect(&fixture).await.expect("initialize"));
-        let held = service.clone();
-        let call = tokio::spawn(async move {
-            held.call_tool(CallToolRequestParam {
-                name: "echo_fixture".into(),
-                arguments: None,
-            })
-            .await
-        });
-
-        std::fs::write(&barrier, b"go").expect("release the barrier");
-        let settled = tokio::time::timeout(std::time::Duration::from_secs(15), call).await;
-        let _ = std::fs::remove_file(&barrier);
-
-        assert!(
-            settled.is_ok(),
-            "a call the server released must settle rather than hang"
-        );
-    }
-
-    /// Nothing in a failure carries a secret, and the endpoint is loopback.
-    #[tokio::test]
-    async fn sse_failures_carry_no_secret_and_no_public_endpoint() {
-        let fixture = Fixture::start("close-during-init", None).expect("the SSE MCP fixture started");
-
-        let message =
-            match tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await
-            {
-                Ok(Err(message)) => message,
-                _ => return,
-            };
-
-        assert!(!message.to_lowercase().contains("secret"), "{message}");
-        assert!(!message.to_lowercase().contains("token"), "{message}");
-        assert!(!message.contains("https://"), "{message}");
-    }
-}
+// The SSE client transport was removed in rmcp 3.x (MCP deprecated HTTP+SSE
+// for Streamable HTTP): the `transport-sse-client` feature and
+// `SseClientTransport` no longer exist, so an SSE-client integration test can
+// no longer be written against the SDK. A legacy `transport: "sse"` config now
+// connects over the streamable-HTTP client with a deprecation warning; the
+// streamable-HTTP path is covered by `mcp_http_integration_tests` above.
 
 /// Deciding whether a server may start under a name.
 ///

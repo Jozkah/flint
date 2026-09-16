@@ -142,3 +142,57 @@ describe('a session that only touched files', () => {
     expect(store().sessions).toHaveLength(1)
   })
 })
+
+/**
+ * Restoring the right Cowork session across surface switches and deletions.
+ * These pin the store-side half of session restoration; the Chat-tab half is
+ * covered by left-sidebar/__tests__/tabRestoration.test.tsx.
+ */
+describe('Cowork session restoration', () => {
+  it('keeps the selected session across a surface switch', () => {
+    const first = store().createSession()
+    store().commitTurns(first, [{ role: 'user', content: 'keep me' }], [], [])
+    const second = store().createSession()
+    store().selectSession(first)
+    // Leaving Cowork for Chat and coming back changes no store state, so the
+    // selection the route reads on return is still the one the user left on.
+    expect(store().currentId).toBe(first)
+    expect(store().sessions.some((s) => s.id === second)).toBe(true)
+  })
+
+  it('does not replace an active first-response session on New session', () => {
+    // A run is in flight: its session has no committed turns yet but must not
+    // be reused. `startSession` creates a fresh one and leaves the running one.
+    const running = store().createSession()
+    const fresh = store().startSession({ running: true, hasDraft: false })
+    expect(fresh).not.toBe(running)
+    expect(store().sessions.some((s) => s.id === running)).toBe(true)
+  })
+
+  it('an explicit new session survives a surface switch', () => {
+    const previous = store().createSession()
+    store().commitTurns(previous, [{ role: 'user', content: 'old' }], [], [])
+    const fresh = store().startSession({ running: false, hasDraft: false })
+    expect(store().currentId).toBe(fresh)
+    store().selectSession(fresh) // returning from Chat
+    expect(store().currentId).toBe(fresh)
+  })
+
+  it('falls back to a remaining session when the current one is deleted', () => {
+    const older = store().createSession()
+    store().commitTurns(older, [{ role: 'user', content: 'older' }], [], [])
+    const current = store().createSession()
+    store().selectSession(current)
+    store().deleteSession(current)
+    // Not left pointing at nothing while other sessions exist.
+    expect(store().currentId).not.toBeNull()
+    expect(store().sessions.some((s) => s.id === store().currentId!)).toBe(true)
+  })
+
+  it('clears the selection when the last session is deleted', () => {
+    const only = store().createSession()
+    store().selectSession(only)
+    store().deleteSession(only)
+    expect(store().currentId).toBeNull()
+  })
+})

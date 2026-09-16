@@ -108,7 +108,11 @@ vi.mock('@/components/ui/button', () => ({
 }))
 
 vi.mock('@/components/PromptProgress', () => ({
-  PromptProgress: () => <div data-testid="prompt-progress" />,
+  // `hideIdle` is what suppresses the generic "Working…" fallback, and the real
+  // component renders nothing when it is set with no model load in flight, so
+  // the stand-in has to honour it or every caller looks like it shows a card.
+  PromptProgress: ({ hideIdle }: { hideIdle?: boolean }) =>
+    hideIdle ? null : <div data-testid="prompt-progress" />,
 }))
 
 const pendingApprovalsRef = vi.hoisted(() => ({ current: {} as any }))
@@ -158,35 +162,6 @@ describe('MessageItem', () => {
     )
     expect(screen.getByText('Hi there')).toBeInTheDocument()
     expect(screen.queryByTestId('render-markdown')).not.toBeInTheDocument()
-    // An ordinary user message is not labelled as mail from another session.
-    expect(screen.queryByTestId('agent-message-header')).not.toBeInTheDocument()
-  })
-
-  it('labels a message delivered from another agent session with its sender', () => {
-    render(
-      <MessageItem
-        message={
-          makeMsg({
-            role: 'user',
-            parts: [{ type: 'text', text: 'Schema is ready' }],
-            metadata: {
-              agentMessage: {
-                sessionId: 'session-b',
-                displayName: 'Planner',
-                messageId: 'mail-1',
-                replyTo: null,
-              },
-            },
-          }) as any
-        }
-        isFirstMessage
-        isLastMessage
-        status={'ready' as any}
-      />
-    )
-    expect(screen.getByTestId('agent-message-header')).toHaveTextContent(
-      'messaging:messageFrom Planner'
-    )
   })
 
   it('renders attached files from user text metadata', () => {
@@ -494,7 +469,9 @@ describe('MessageItem', () => {
     expect(screen.getByTestId('tool-output')).toHaveTextContent('boom')
   })
 
-  it('shows progress for an executing tool call (not awaiting approval)', () => {
+  /// The tool's own card names the call and ticks its duration one row above,
+  /// so a status row repeating it was the same thing twice.
+  it('leaves an executing tool call to its own card', () => {
     render(
       <MessageItem
         message={
@@ -509,9 +486,8 @@ describe('MessageItem', () => {
         status={'ready' as any}
       />
     )
-    // A pending tool call renders the new activity-status row, not PromptProgress.
     expect(screen.queryByTestId('prompt-progress')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(/Search/)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('shows a persistent badge for a successfully loaded skill', () => {

@@ -81,7 +81,12 @@ export type CoworkTurnsOptions = {
 export function coworkTurnsToUIMessages(
   turns: CoworkTurn[],
   idPrefix = 'code',
-  options: CoworkTurnsOptions = {}
+  options: CoworkTurnsOptions = {},
+  // The position of `turns[0]` in the whole transcript, so a slice converted on
+  // its own mints the same message ids the full transcript would. Lets the
+  // committed transcript and the rows a run is still producing be converted
+  // separately without either changing identity. AH: only-live-tail re-render.
+  indexOffset = 0
 ): UIMessage[] {
   const messages: UIMessage[] = []
   let assistant: any = null
@@ -98,7 +103,8 @@ export function coworkTurnsToUIMessages(
     return assistant
   }
 
-  turns.forEach((turn, i) => {
+  turns.forEach((turn, at) => {
+    const i = at + indexOffset
     // Another session stopped this run: a row of its own, display only.
     if (turn.stopNotice) {
       flushAssistant()
@@ -219,4 +225,26 @@ export function coworkTurnsToUIMessages(
 
   flushAssistant()
   return messages
+}
+
+/**
+ * The committed transcript followed by the rows a run is still producing.
+ *
+ * Converting the two separately keeps every committed message's identity across
+ * a streamed delta, so `MessageItem`'s memo skips them and a `write` of any
+ * size re-renders only the card it is filling. The one seam is a run resumed
+ * without a question: its first rows continue the last committed assistant
+ * message, so the two are joined here exactly as one conversion would have.
+ */
+export function appendLiveMessages(
+  committed: UIMessage[],
+  live: UIMessage[]
+): UIMessage[] {
+  if (live.length === 0) return committed
+  const last = committed.at(-1)
+  if (!last || last.role !== 'assistant' || live[0].role !== 'assistant') {
+    return [...committed, ...live]
+  }
+  const joined = { ...last, parts: [...last.parts, ...live[0].parts] }
+  return [...committed.slice(0, -1), joined, ...live.slice(1)]
 }

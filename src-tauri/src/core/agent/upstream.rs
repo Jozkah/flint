@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use reqwest::Client;
-use rmcp::model::{CallToolRequestParam, CallToolResult};
+use rmcp::model::{CallToolRequestParams, CallToolResult};
 #[cfg(not(feature = "cli"))]
 use tauri_plugin_llamacpp::state::LlamacppState;
 use tokio::sync::{mpsc, Mutex};
@@ -721,10 +721,9 @@ pub(crate) async fn execute_mcp_tool_calls(
         }
         let server_cap = budget.result_cap(tool_output_cap);
 
-        let tool_call = service.call_tool(CallToolRequestParam {
-            name: tool_name.clone().into(),
-            arguments: Some(args_map),
-        });
+        let tool_call = service.call_tool(
+            CallToolRequestParams::new(tool_name.clone()).with_arguments(args_map),
+        );
 
         let result = match tokio::time::timeout(timeout_duration, tool_call).await {
             Ok(call_result) => call_result.map_err(|e| e.to_string()),
@@ -780,10 +779,9 @@ pub(crate) async fn list_mcp_resources(mcp_servers: &SharedMcpServers) -> String
                     seen += 1;
                     out.push_str(&format!(
                         "{name}: {} ({}){}\n",
-                        resource.raw.uri,
-                        resource.raw.name,
+                        resource.uri,
+                        resource.name,
                         resource
-                            .raw
                             .description
                             .as_ref()
                             .map(|d| format!(" -- {d}"))
@@ -822,9 +820,8 @@ pub(crate) async fn read_mcp_resource(
             "ERROR [tool_unavailable]: no MCP server called '{server}' is connected here."
         );
     };
-    let read = service.read_resource(rmcp::model::ReadResourceRequestParam {
-        uri: uri.to_string(),
-    });
+    let read =
+        service.read_resource(rmcp::model::ReadResourceRequestParams::new(uri.to_string()));
     match read.await {
         Ok(result) => {
             let mut text = String::new();
@@ -844,6 +841,9 @@ pub(crate) async fn read_mcp_resource(
                             mime_type.unwrap_or_else(|| "binary".into())
                         ));
                     }
+                    // rmcp's ResourceContents is non-exhaustive; a variant this
+                    // build does not know is passed over rather than shown.
+                    _ => {}
                 }
             }
             let kept: String = text.chars().take(MAX_RESOURCE_CHARS).collect();

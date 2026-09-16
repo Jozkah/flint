@@ -46,7 +46,12 @@ export function CoworkArtifactCard({
           <Icon size={18} className="text-muted-foreground" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{artifact.title}</span>
+          <span
+            className="block truncate text-sm font-medium"
+            title={artifact.title}
+          >
+            {artifact.title}
+          </span>
           <span className="block truncate text-xs text-muted-foreground">
             {artifact.group} · {artifact.label}
           </span>
