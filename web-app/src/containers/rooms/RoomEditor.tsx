@@ -12,6 +12,7 @@ import type {
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -153,6 +154,7 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
+  const serviceHub = useServiceHub()
   const { pendingAction } = useRoomsState()
   const providers = useModelProvider((s) => s.providers)
   const uid = useId()
@@ -292,6 +294,26 @@ export function RoomEditor({ room }: { room: Room }) {
     }
   }
 
+  const attachFolder = async () => {
+    setError(null)
+    try {
+      const picked = await serviceHub.dialog().open({ directory: true })
+      const path = Array.isArray(picked) ? picked[0] : picked
+      if (!path) return
+      await api.updateRoomSettings(room, { folder: path })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const detachFolder = async () => {
+    setError(null)
+    try {
+      await api.updateRoomSettings(room, { folder: null })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+
   return (
     <form
       aria-labelledby={`${uid}-heading`}
@@ -329,6 +351,45 @@ export function RoomEditor({ room }: { room: Room }) {
               value={objective}
               onChange={(e) => edit(setObjective)(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t('rooms:editor.workingFolder')}</Label>
+            <p className="text-xs text-muted-foreground">
+              {t('rooms:editor.workingFolderHint')}
+            </p>
+            {room.folder ? (
+              <div className="flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2 py-1 text-xs">
+                  {room.folder}
+                </code>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void attachFolder()}
+                >
+                  {t('rooms:editor.changeFolder')}
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => void detachFolder()}
+                >
+                  {t('rooms:editor.detachFolder')}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => void attachFolder()}
+              >
+                {t('rooms:editor.attachFolder')}
+              </Button>
+            )}
           </div>
         </RoomSection>
 

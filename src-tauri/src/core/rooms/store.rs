@@ -268,6 +268,11 @@ pub struct Room {
     pub mode: SpeakingMode,
     pub moderator: ModeratorConfig,
     pub participants: Vec<Participant>,
+    /// An optional working folder the room's tool-capable participants read
+    /// from. Absent on rooms created before this existed, and on rooms that
+    /// have not attached one (serde default keeps those loading unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,

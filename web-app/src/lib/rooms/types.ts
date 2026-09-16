@@ -160,6 +160,11 @@ export type Room = {
   mode: SpeakingMode
   moderator: ModeratorConfig
   participants: Participant[]
+  /**
+   * An optional working folder the room's tool-capable participants read from.
+   * `null`/absent when no folder is attached. Persisted with the room.
+   */
+  folder?: string | null
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */

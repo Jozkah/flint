@@ -78,6 +78,8 @@ export type RoomSettingsPatch = {
   moderator?: Partial<ModeratorConfig>
   limits?: Partial<RoomLimits>
   participants?: ParticipantPatch[]
+  /** The working folder, or `null` to detach it. */
+  folder?: string | null
 }
 
 export interface RoomEditor {
@@ -526,6 +528,8 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           objective: patch.objective !== undefined ? patch.objective.trim() : room.objective,
           mode: patch.mode ?? room.mode,
           moderator: patch.moderator ? normaliseModerator(patch.moderator, room.moderator) : room.moderator,
+          folder:
+            patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           participants,
         }
