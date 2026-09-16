@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ChevronDown, Globe, Search, Wrench } from 'lucide-react'
 import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
+import { stripConclusion } from '@/lib/rooms/consensus'
 import type {
   LiveTurn,
   Room,
@@ -282,7 +283,11 @@ function MessageBody({
       {message.toolCalls && message.toolCalls.length > 0 && (
         <ToolTrace calls={message.toolCalls} t={t} />
       )}
-      <RoomMessageText text={message.text} mentionColors={mentionColors} className="text-sm" />
+      <RoomMessageText
+        text={stripConclusion(message.text).text}
+        mentionColors={mentionColors}
+        className="text-sm"
+      />
       {message.kind === 'vote-call' && (
         <p className="mt-1 text-xs text-muted-foreground" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
@@ -493,7 +498,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
             </span>
           </header>
           <RoomMessageText
-            text={live.text}
+            text={stripConclusion(live.text).text}
             mentionColors={mentionColors}
             isStreaming
             className="text-sm"
