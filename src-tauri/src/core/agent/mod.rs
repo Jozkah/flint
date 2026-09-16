@@ -69,5 +69,6 @@ pub mod tooling;
 pub mod transcript;
 pub mod upstream;
 pub mod vcs;
+pub mod verification;
 pub mod worktree;
 pub mod worktree_export;
