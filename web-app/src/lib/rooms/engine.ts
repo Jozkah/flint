@@ -165,6 +165,8 @@ class RoomRun {
   readonly summaryCache = new Map<string, string>()
   /** The live turn in flight, so compaction can flag itself on it. */
   private activeLive: LiveTurn | null = null
+  /** Consecutive speech turns addressed to the user, to break a wait-loop. */
+  private consecutiveUserWaits = 0
   readonly toolNoted = new Set<string>()
   droppedNoted = false
   readonly lookup: ProviderLookup
@@ -836,6 +838,10 @@ class RoomRun {
         }
         converged = consecutiveRepetitive >= limits.maxRepetitiveTurns
       }
+      // Track a wait-loop: turns addressed to the user, when the participants
+      // are asking for input rather than talking to each other.
+      const addressedUser = outcome.kind === 'complete' && outcome.message.to?.kind === 'user'
+      this.consecutiveUserWaits = addressedUser ? this.consecutiveUserWaits + 1 : 0
       await this.save()
 
       if (!(await this.ensureEnough(2))) return
@@ -856,6 +862,20 @@ class RoomRun {
       if (converged) {
         await this.system('Recent turns repeat earlier ones; the discussion has converged.')
         return this.close({ kind: 'converged', by: 'repetition' })
+      }
+      // A whole round of participants all waiting on the user (e.g. every model
+      // asking for a file or a tool it lacks): stop churning and hand back to the
+      // user instead of looping. A reply resumes it.
+      if (
+        this.consecutiveUserWaits >= 2 &&
+        this.consecutiveUserWaits >= activeParticipants(this.room).length
+      ) {
+        this.consecutiveUserWaits = 0
+        await this.system(
+          'Every participant is waiting for your input, so the room paused. Reply — or attach a folder / enable a tool they need — and it will continue.'
+        )
+        await this.save({ status: 'awaiting-user', nextSpeakerId: null })
+        return
       }
       if (this.room.mode === 'user-selected') {
         await this.save({ status: 'awaiting-user', nextSpeakerId: null })

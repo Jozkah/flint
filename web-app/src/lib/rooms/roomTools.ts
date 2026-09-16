@@ -26,6 +26,7 @@ import {
   WEB_FETCH_INPUT_SCHEMA,
   WEB_SEARCH_DESCRIPTION,
   WEB_SEARCH_INPUT_SCHEMA,
+  executeWebTool,
 } from '@/lib/webSearchTool'
 import type { RoomToolActivity, RoomToolContext } from './callError'
 
@@ -45,6 +46,28 @@ function capOutput(text: string): string {
   return text.length > ROOM_TOOL_OUTPUT_CAP
     ? `${text.slice(0, ROOM_TOOL_OUTPUT_CAP)}\n… (truncated)`
     : text
+}
+
+/**
+ * Shape a native web-tool result into text for the model. web_fetch already
+ * returns a string; web_search returns a `{results: [...]}` object, which is
+ * flattened into a numbered, cited list.
+ */
+function webResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (content && typeof content === 'object' && 'results' in content) {
+    const results = (content as { results?: Array<Record<string, unknown>> }).results ?? []
+    if (results.length === 0) return 'No results.'
+    return results
+      .map((r, i) => {
+        const title = typeof r.title === 'string' ? r.title : ''
+        const url = typeof r.url === 'string' ? r.url : ''
+        const text = typeof r.text === 'string' ? r.text : ''
+        return `${i + 1}. ${title}\n${url}${text ? `\n${text}` : ''}`
+      })
+      .join('\n\n')
+  }
+  return content == null ? '' : String(content)
 }
 
 type ExecOptions = { readOnlyProject?: string; writeGrant?: string; scope: 'thread' }
@@ -98,18 +121,26 @@ export async function buildRoomTools(
     }
   }
 
-  // Web research when the app has web search on -- no folder required.
+  // Web research when the app has web search on -- no folder required. These go
+  // through Flint's native web plugin (executeWebTool), which reaches the
+  // network, NOT the sandboxed agent-tools path (executeAgentTool refuses with
+  // "no network access", since that sandbox has none).
   if (useWebSearchConfig.getState().webSearchEnabled) {
-    const webOptions: ExecOptions = { scope: 'thread' }
+    const webRun = (name: 'web_search' | 'web_fetch') => async (input: unknown) => {
+      const res = await executeWebTool(name, (input ?? {}) as Record<string, unknown>)
+      const output = res.error ? `ERROR: ${res.error}` : webResultText(res.content)
+      onActivity?.({ name, ok: !res.error, args: input, output: capOutput(output) })
+      return output
+    }
     tools['web_search'] = {
       description: WEB_SEARCH_DESCRIPTION,
       inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-      execute: run('web_search', webOptions),
+      execute: webRun('web_search'),
     } as Tool
     tools['web_fetch'] = {
       description: WEB_FETCH_DESCRIPTION,
       inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
-      execute: run('web_fetch', webOptions),
+      execute: webRun('web_fetch'),
     } as Tool
   }
 

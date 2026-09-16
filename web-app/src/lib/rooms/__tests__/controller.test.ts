@@ -233,6 +233,20 @@ describe('room controller', () => {
     expect(messagesOf(persistence, room.id).some((m) => m.text === 'one more question')).toBe(true)
   })
 
+  it('pauses to awaiting-user when a whole round is stuck waiting on the user', async () => {
+    // Both participants keep addressing @user (asking for input they lack),
+    // which would otherwise loop forever in round-robin.
+    const { fn, calls } = scriptedStream(() => ({ text: `@user please paste the file ${uniqueText()}` }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { limits: { maxTurns: 20 } })
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    const saved = persistence.rooms.get(room.id)!
+    expect(saved.status).toBe('awaiting-user')
+    // It stopped after roughly one round, not after burning every turn.
+    expect(calls.length).toBeLessThanOrEqual(3)
+  })
+
   it.each([
     ['pause', 'paused'],
     ['stop', 'stopped'],
