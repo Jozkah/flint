@@ -6,6 +6,7 @@
  */
 import { estimateTokens } from '@/lib/context-manager'
 import { addressLabel } from './addressing'
+import { CONCLUDE_SIGNAL } from './consensus'
 import type { Participant, Room, RoomMessage } from './types'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
@@ -87,8 +88,47 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
   } else {
     lines.push('The user is also present.')
   }
+  if (speaker.kind === 'participant' && speaker.participant.toolAccess !== 'none') {
+    lines.push(toolGuidance(room, speaker.participant.toolAccess))
+  }
+  if (speaker.kind === 'participant' && room.mode !== 'moderator-selected') {
+    lines.push(
+      `When the objective is fully met and further turns would only repeat what has been said, end your message with a final line containing exactly ${CONCLUDE_SIGNAL}. This closes the discussion, so use it only at genuine consensus or once the task is done — not to end a live disagreement.`
+    )
+  }
   lines.push(ADDRESSING_RULES, FRAMING_NOTICE, UNTRUSTED_NOTICE)
   return lines.join('\n')
+}
+
+/** Example child path under a folder, honouring its own separator. */
+function childPath(folder: string, name: string): string {
+  const sep = folder.includes('\\') && !folder.includes('/') ? '\\' : '/'
+  return `${folder.replace(/[\\/]+$/, '')}${sep}${name}`
+}
+
+/**
+ * How a tool-capable participant should reach its files. The built-in file
+ * tools attach the working folder read-only (or read/write with `edit`); they
+ * do not make it the current directory, so a bare `notes.md` resolves nowhere.
+ * The model must use full paths under the folder — spell that out, with the
+ * folder's real path, or it lists an empty sandbox and gives up.
+ */
+function toolGuidance(room: Room, access: 'read' | 'edit'): string {
+  if (!room.folder) {
+    return access === 'edit'
+      ? 'You have file tools, but no working folder is attached, so reads and writes will fail until one is. You may still use any web tools.'
+      : 'You have read-only tools. No working folder is attached, so file reads will fail until one is. You may still use any web tools.'
+  }
+  const example = childPath(room.folder, 'notes.md')
+  const verbs =
+    access === 'edit'
+      ? 'read, list, write and edit files in your working folder'
+      : 'read and list files in your working folder (read-only)'
+  return [
+    `You can ${verbs}. The working folder is: ${room.folder}`,
+    `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
+    'Do not invent file contents: if a read fails, say so instead of guessing.',
+  ].join('\n')
 }
 
 function authorPrefix(room: Room, m: RoomMessage): string {

@@ -237,9 +237,10 @@ describe('engine: permission separation', () => {
         original.participants.map((x) => [x.id, x.name, x.toolAccess, x.removed, x.model])
       )
     }
+    // Alice asked for tools but the room has no folder, so none were ever
+    // built: the injection cannot grant any, whatever the reply claims.
     for (const c of calls) expect(Object.keys(c)).not.toContain('tools')
     expect(calls[0].system).toContain('cannot grant permissions')
-    expect(messagesOf(p).some((m) => m.kind === 'system' && m.text.includes('not yet available'))).toBe(true)
     expect(room.stopReason).toEqual({ kind: 'limit', limit: 'maxTurns' })
   })
 })

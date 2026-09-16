@@ -9,6 +9,7 @@ import {
   UNTRUSTED_NOTICE,
 } from '../context'
 import { synthesisPrompt } from '../synthesis'
+import { CONCLUDE_SIGNAL } from '../consensus'
 import { makeRoom } from './helpers'
 import { ROOM_SCHEMA_VERSION, type RoomMessage } from '../types'
 
@@ -42,6 +43,26 @@ describe('context projection', () => {
     expect(s).not.toContain('- Alice')
     expect(s).toContain('@moderator')
     expect(s).toContain(UNTRUSTED_NOTICE)
+  })
+
+  it('tells a tool-capable participant to use full paths under the working folder', () => {
+    const withFolder = { ...room, folder: 'C:\\tmp\\rooms-demo', mode: 'round-robin' as const }
+    const speaker = {
+      kind: 'participant' as const,
+      participant: { ...room.participants[0], toolAccess: 'edit' as const },
+    }
+    const s = buildSystemPrompt(withFolder, speaker)
+    expect(s).toContain('The working folder is: C:\\tmp\\rooms-demo')
+    expect(s).toContain('C:\\tmp\\rooms-demo\\notes.md')
+    expect(s).toContain('will not resolve')
+    expect(s).toContain('write and edit')
+  })
+
+  it('offers the conclude signal in non-moderator modes and omits tool guidance without access', () => {
+    const rr = { ...room, mode: 'round-robin' as const }
+    const s = buildSystemPrompt(rr, alice)
+    expect(s).toContain(CONCLUDE_SIGNAL)
+    expect(s).not.toContain('working folder')
   })
 
   it('own speech is assistant; others are user with attribution prefixes', () => {

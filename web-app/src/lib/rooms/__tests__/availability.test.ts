@@ -48,12 +48,17 @@ describe('availability preflight', () => {
     expect(room.participants[1].availability).toMatchObject({ state: 'unavailable', reason: 'repeated-errors' })
   })
 
-  it('tool access read runs as none, with a reason', () => {
+  it('notes tools only when a tool-capable participant cannot use them', () => {
+    // provider-a's model supports tools; provider-b's does not (per the lookup).
     const withTools = participant('a', 'A', 'provider-a', 'model-1', { toolAccess: 'read' })
     const noTools = participant('b', 'B', 'provider-b', 'model-2', { toolAccess: 'read' })
-    expect(effectiveToolAccess(withTools, lookup)).toMatchObject({ access: 'none' })
-    expect(effectiveToolAccess(withTools, lookup).note).toContain('not yet available')
+    // Tools active -> no room note (the folder guidance lives in the prompt).
+    expect(effectiveToolAccess(withTools, lookup)).toEqual({ note: null })
+    // Asked for tools but the model cannot -> a note explains why.
     expect(effectiveToolAccess(noTools, lookup).note).toContain('does not support tools')
-    expect(effectiveToolAccess(participant('c', 'C', 'provider-a', 'model-1'), lookup)).toEqual({ access: 'none', note: null })
+    // No tool access -> nothing to say.
+    expect(effectiveToolAccess(participant('c', 'C', 'provider-a', 'model-1'), lookup)).toEqual({
+      note: null,
+    })
   })
 })
