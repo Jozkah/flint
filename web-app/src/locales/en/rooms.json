@@ -150,6 +150,8 @@
     "interrupted": "Interrupted",
     "failed": "Failed",
     "streaming": "Speaking…",
+    "compacting": "Compacting…",
+    "compactingBody": "Summarising earlier messages that no longer fit the context window…",
     "voteCall": "Vote called",
     "vote": "Vote",
     "tally": "Agree {{agree}} · Disagree {{disagree}} · Abstain {{abstain}}",

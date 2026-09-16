@@ -305,4 +305,7 @@ export type LiveTurn = {
   author: RoomAuthor
   text: string
   startedAt: number
+  /** The turn is pausing to compact (summarise) earlier messages that no longer
+   * fit the model's context window, before it speaks. */
+  compacting?: boolean
 }

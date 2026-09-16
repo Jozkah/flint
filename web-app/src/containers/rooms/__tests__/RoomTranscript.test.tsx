@@ -156,6 +156,35 @@ describe('RoomTranscript', () => {
     expect(screen.getByText('Nothing has been said yet.')).toBeInTheDocument()
   })
 
+  it('drops the redundant "[name to user]:" attribution prefix from the body', () => {
+    const msg = makeMessage({ text: '[b to User]: Here is my point.' })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const md = screen.getByTestId('render-markdown')
+    expect(md.textContent).toBe('Here is my point.')
+  })
+
+  it('shows a compacting indicator on the live turn', () => {
+    const live = {
+      roomId: 'r1',
+      turnId: 't9',
+      author: { kind: 'participant' as const, participantId: 'p2', name: 'Bob' },
+      text: '',
+      startedAt: 1,
+      compacting: true,
+    }
+    render(
+      <RoomTranscript
+        room={makeRoom()}
+        journal={asJournal([makeMessage({ text: 'earlier' })])}
+        liveTurn={live}
+      />
+    )
+    expect(screen.getByText(/^Compacting/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Summarising earlier messages that no longer fit/)
+    ).toBeInTheDocument()
+  })
+
   it('repairs pseudo <bash> tool blocks into a real code fence', () => {
     const msg = makeMessage({ text: 'Let me check: <bash> ```bash ls -la ``` </bash> done.' })
     render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)

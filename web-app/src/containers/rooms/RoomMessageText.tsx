@@ -22,6 +22,17 @@ function escapeRegExp(s: string): string {
 const TOOL_TAGS = /<\/?(?:bash|shell|sh|cmd|powershell|python|tool|tool_call)>/gi
 
 /**
+ * A leading attribution prefix the model copies from the projected transcript,
+ * e.g. "[b to User]:" or "[pxa-27b to @Alice]:". The transcript already shows
+ * who spoke and to whom, so this is redundant noise -- drop it from the body.
+ */
+const ADDRESS_PREFIX = /^\s*\[[^\]\n]*\bto\b[^\]\n]*\]:\s*/i
+
+function stripAddressPrefix(text: string): string {
+  return text.replace(ADDRESS_PREFIX, '')
+}
+
+/**
  * Repair the tool-call syntax some models emit as prose. They wrap a command in
  * `<bash>…</bash>` and put a whole ```` ```lang … ``` ```` fence on one line, so
  * markdown renders it as a jumbled paragraph rather than a code block. Strip the
@@ -99,7 +110,7 @@ export const RoomMessageText = memo(function RoomMessageText({
   className?: string
 }) {
   const content = useMemo(
-    () => linkifyMentions(normalizeToolBlocks(text), mentionColors),
+    () => linkifyMentions(normalizeToolBlocks(stripAddressPrefix(text)), mentionColors),
     [text, mentionColors]
   )
   return (

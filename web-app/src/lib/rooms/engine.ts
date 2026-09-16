@@ -163,6 +163,8 @@ class RoomRun {
   activeSince: number | null = null
   readonly errorStreaks = new Map<string, number>()
   readonly summaryCache = new Map<string, string>()
+  /** The live turn in flight, so compaction can flag itself on it. */
+  private activeLive: LiveTurn | null = null
   readonly toolNoted = new Set<string>()
   droppedNoted = false
   readonly lookup: ProviderLookup
@@ -357,6 +359,15 @@ class RoomRun {
         ? this.room.moderator.model
         : speakerModel
     this.calls++
+    // Tell the UI this turn is compacting, so a "Compacting earlier messages…"
+    // note shows instead of a silent pause while the summary is written.
+    if (this.activeLive) {
+      this.emit({
+        type: 'live',
+        roomId: this.roomId,
+        live: { ...this.activeLive, text: '', compacting: true },
+      })
+    }
     try {
       if (this.deps.summarize) {
         return await this.deps.summarize({ room: this.room, older, model, signal: this.signal })
@@ -409,11 +420,13 @@ class RoomRun {
       summaryCache: this.summaryCache,
       summarize: (older) => this.summarizeOlder(older, model),
     })
-    if (built.trimmed?.kind === 'dropped' && !this.droppedNoted) {
+    if (built.trimmed && !this.droppedNoted) {
       this.droppedNoted = true
       const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
       await this.system(
-        `The discussion is longer than ${who}'s context window; the oldest ${built.trimmed.count} message(s) were left out of that prompt.`
+        built.trimmed.kind === 'summarized'
+          ? `The discussion outgrew ${who}'s context window, so the oldest ${built.trimmed.count} message(s) were compacted into a summary.`
+          : `The discussion is longer than ${who}'s context window; the oldest ${built.trimmed.count} message(s) were left out of that prompt.`
       )
     }
     return built
@@ -442,6 +455,8 @@ class RoomRun {
       text: '',
       startedAt: this.deps.now(),
     }
+    // Shared with summarizeOlder so it can flag "compacting" on this same turn.
+    this.activeLive = live
     this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
 
     const pricing = args.participant?.pricing ?? pricingForModel(this.room.participants, args.model)

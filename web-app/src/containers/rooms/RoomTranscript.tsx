@@ -494,15 +494,19 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
             <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
-              {t('rooms:transcript.streaming')}
+              {t(live.compacting ? 'rooms:transcript.compacting' : 'rooms:transcript.streaming')}
             </span>
           </header>
-          <RoomMessageText
-            text={stripConclusion(live.text).text}
-            mentionColors={mentionColors}
-            isStreaming
-            className="text-sm"
-          />
+          {live.compacting ? (
+            <p className="text-sm text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+          ) : (
+            <RoomMessageText
+              text={stripConclusion(live.text).text}
+              mentionColors={mentionColors}
+              isStreaming
+              className="text-sm"
+            />
+          )}
         </article>
       )}
       </div>
