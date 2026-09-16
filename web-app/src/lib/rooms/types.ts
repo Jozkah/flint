@@ -145,7 +145,7 @@ export type RoomUsage = {
 export type StopReason =
   | { kind: 'user' }
   | { kind: 'limit'; limit: keyof RoomLimits | 'ceiling' }
-  | { kind: 'converged'; by: 'moderator' | 'repetition' }
+  | { kind: 'converged'; by: 'moderator' | 'repetition' | 'consensus' }
   | { kind: 'synthesized' }
   | { kind: 'no-participants'; message: string }
   | { kind: 'interrupted-by-restart' }

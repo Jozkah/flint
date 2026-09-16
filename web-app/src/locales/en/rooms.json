@@ -211,6 +211,7 @@
     "limit": "limit reached ({{limit}})",
     "ceiling": "hard ceiling reached",
     "converged-moderator": "the moderator closed the discussion",
+    "converged-consensus": "the participants reached a conclusion",
     "converged-repetition": "participants started repeating themselves",
     "synthesized": "synthesis written",
     "no-participants": "fewer than two participants available",

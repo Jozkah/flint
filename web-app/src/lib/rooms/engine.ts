@@ -59,6 +59,7 @@ import {
 } from './policy'
 import { messagesFromJournal, repairJournal } from './recovery'
 import { isRepetitive, recentSpeech } from './repetition'
+import { stripConclusion } from './consensus'
 import {
   composeSynthesisText,
   computeDissent,
@@ -771,11 +772,19 @@ class RoomRun {
       const speaker = choice.participant
       const request = choice.via === 'moderator' && directive?.request ? directive.request : null
       const before = this.messages.length
+      // A participant may end the discussion early by concluding it, but never
+      // when a moderator is the one deciding when to stop.
+      const allowConsensus = this.room.mode !== 'moderator-selected'
+      let concluded = false
       const outcome = await this.participantTurn(
         speaker,
         'speech',
         request ? `The moderator asks you: ${quoteText(request)}` : null,
-        (raw) => ({ to: parseAddressFor(raw, this.room) })
+        (raw) => {
+          const c = stripConclusion(raw)
+          concluded = c.concluded && allowConsensus
+          return { to: parseAddressFor(c.text, this.room), text: c.text }
+        }
       )
 
       this.room = markSpoken(this.room, speaker.id)
@@ -801,6 +810,10 @@ class RoomRun {
       await this.save()
 
       if (!(await this.ensureEnough(2))) return
+      if (concluded) {
+        await this.system('A participant concluded the discussion; the objective is met.')
+        return this.close({ kind: 'converged', by: 'consensus' })
+      }
       if (converged) {
         await this.system('Recent turns repeat earlier ones; the discussion has converged.')
         return this.close({ kind: 'converged', by: 'repetition' })

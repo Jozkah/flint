@@ -217,9 +217,9 @@ export function stopReasonText(reason: StopReason, t: T): string {
         ? t('rooms:stopReason.ceiling')
         : t('rooms:stopReason.limit', { limit: t(`rooms:limits.${reason.limit}`) })
     case 'converged':
-      return reason.by === 'moderator'
-        ? t('rooms:stopReason.converged-moderator')
-        : t('rooms:stopReason.converged-repetition')
+      if (reason.by === 'moderator') return t('rooms:stopReason.converged-moderator')
+      if (reason.by === 'consensus') return t('rooms:stopReason.converged-consensus')
+      return t('rooms:stopReason.converged-repetition')
     case 'synthesized':
       return t('rooms:stopReason.synthesized')
     case 'no-participants':

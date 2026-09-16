@@ -247,6 +247,7 @@ pub struct RoomUsage {
 pub enum ConvergedBy {
     Moderator,
     Repetition,
+    Consensus,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
