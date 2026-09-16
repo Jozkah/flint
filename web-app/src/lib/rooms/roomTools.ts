@@ -6,9 +6,10 @@
  * grant (the gate refuses any write outside the grant's root). Web tools
  * (web_search/web_fetch) research the web and need no folder. MCP tools come
  * from the user's connected Model Context Protocol servers, but only from
- * servers the user has already trusted (`allow-always` in chat, or the master
- * "allow all MCP" toggle) -- rooms never prompt, so an untrusted server's tools
- * are withheld rather than refused mid-call. Disabled tools are dropped too.
+ * servers the backend actually trusts (trust one in Settings -> MCP Servers, or
+ * "always allow" it once in chat; the master "allow all MCP" toggle also works)
+ * -- rooms never prompt, so an untrusted server's tools are withheld rather than
+ * refused mid-call. Disabled tools are dropped too.
  * Each tool carries an `execute`, so the AI SDK runs the tool cycle itself.
  * Schemas for the built-ins come from Rust via `getAgentToolSchemas`, the same
  * source Cowork uses, so a room advertises the identical contract.
@@ -135,22 +136,27 @@ export async function buildMcpTools(
   const out: Record<string, Tool> = {}
   let mcp: ReturnType<ReturnType<typeof getServiceHub>['mcp']>
   let mcpTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown>; server: string }>
+  let trusted: string[] = []
   try {
     mcp = getServiceHub().mcp()
-    mcpTools = await mcp.getTools()
+    // The backend's own trust record is the source of truth: exactly the
+    // servers whose calls it will allow. Advertising by anything else risks
+    // offering a tool that is then refused mid-turn (rooms never prompt).
+    ;[mcpTools, trusted] = await Promise.all([
+      mcp.getTools(),
+      mcp.trustedServers().catch(() => [] as string[]),
+    ])
   } catch {
     return out
   }
 
   const isDisabled = useToolAvailable.getState().isToolDisabled
-  // Only advertise tools from servers the user has already trusted. Trust is
-  // fingerprint-bound in the backend gate; here we match by server name (the
-  // backend still refuses a changed definition at call time, so this fails
-  // safe), plus the master "allow all MCP" bypass.
-  const approval = useToolApproval.getState()
-  const serverTrusted = (server: string) =>
-    approval.allowAllMCPPermissions ||
-    approval.approvedServers.some((grant) => grant.name === server)
+  // Advertise a server's tools only when the backend trusts it (or the master
+  // "allow all MCP" bypass is on). Trust it in Settings -> MCP Servers, or
+  // "always allow" once in chat, and it appears in rooms too.
+  const trustedSet = new Set(trusted)
+  const allowAll = useToolApproval.getState().allowAllMCPPermissions
+  const serverTrusted = (server: string) => allowAll || trustedSet.has(server)
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
     if (!serverTrusted(t.server)) continue // withhold untrusted servers, never refuse mid-call

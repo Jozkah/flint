@@ -19,10 +19,11 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
 
 const getTools = vi.fn(async () => [] as unknown[])
 const callTool = vi.fn(async () => ({ error: '', content: [{ text: '' }] }))
+let trustedServers: string[] = []
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({
     app: () => ({ getJanDataFolder: async () => '/data' }),
-    mcp: () => ({ getTools, callTool }),
+    mcp: () => ({ getTools, callTool, trustedServers: async () => trustedServers }),
   }),
 }))
 
@@ -36,14 +37,10 @@ vi.mock('@/hooks/useToolAvailable', () => ({
   },
 }))
 
-let trustedServers: string[] = []
 let allowAllMcp = false
 vi.mock('@/hooks/useToolApproval', () => ({
   useToolApproval: {
-    getState: () => ({
-      allowAllMCPPermissions: allowAllMcp,
-      approvedServers: trustedServers.map((name) => ({ name, fingerprint: 'fp' })),
-    }),
+    getState: () => ({ allowAllMCPPermissions: allowAllMcp }),
   },
 }))
 
