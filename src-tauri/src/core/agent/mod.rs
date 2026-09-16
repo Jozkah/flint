@@ -16,6 +16,7 @@ pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod compaction;
+pub mod compaction_policy;
 pub mod consensus;
 pub mod context;
 pub mod context_pressure;
