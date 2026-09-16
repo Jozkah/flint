@@ -1,6 +1,6 @@
 # Flint 0.9.0
 
-Flint is a local-first, private fork of [Jan](https://github.com/janhq/jan), rebuilt into a full agentic workspace that runs against your own models and keeps your data on your machine. This first tagged release brings together everything Flint adds on top of Jan: a local-only build that never phones home, one-click migration from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, an agent runtime you can reconstruct, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and the Graphite/Atelier redesign.
+Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into a full agentic workspace that runs against your own models and keeps your data on your machine. This first tagged release brings together everything Flint adds on top of Jan: a local-only build that never phones home, one-click migration from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, an agent runtime you can reconstruct, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and the Graphite/Atelier redesign.
 
 ## Highlights
 
