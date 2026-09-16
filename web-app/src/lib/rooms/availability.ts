@@ -57,6 +57,21 @@ export function modelSupportsTools(ref: RoomModelRef, lookup: ProviderLookup): b
   return resolveModel(ref, lookup).model?.capabilities?.includes('tools') ?? false
 }
 
+/**
+ * Tool support as three states, so "not loaded yet" is not mistaken for "no
+ * tools". Forcing a participant to `none` on `unknown` (a provider whose model
+ * list has not resolved) silently and permanently strips tool access the user
+ * chose; only a resolved model that truly lacks the capability should.
+ */
+export function modelToolSupport(
+  ref: RoomModelRef,
+  lookup: ProviderLookup
+): 'yes' | 'no' | 'unknown' {
+  const { model } = resolveModel(ref, lookup)
+  if (!model) return 'unknown'
+  return model.capabilities?.includes('tools') ? 'yes' : 'no'
+}
+
 export type ModelProblem = { reason: ParticipantUnavailableReason; message: string }
 
 /** Why a model cannot be used right now, or null. */

@@ -23,7 +23,14 @@ let trustedServers: string[] = []
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({
     app: () => ({ getJanDataFolder: async () => '/data' }),
-    mcp: () => ({ getTools, callTool, trustedServers: async () => trustedServers }),
+    mcp: () => ({
+      getTools,
+      callTool,
+      trustReport: async () => ({
+        trusted: trustedServers.map((name) => ({ name, fingerprint: 'fp', currentFingerprint: 'fp' })),
+        invalidated: [],
+      }),
+    }),
   }),
 }))
 
@@ -171,7 +178,11 @@ describe('buildRoomTools', () => {
       q: 'x',
     })
     expect(out).toBe('RESULT A\nRESULT B')
-    expect(callTool).toHaveBeenCalledWith({ toolName: 'search_docs', arguments: { q: 'x' } })
+    expect(callTool).toHaveBeenCalledWith({
+      toolName: 'search_docs',
+      serverName: 'docs',
+      arguments: { q: 'x' },
+    })
     expect(activity).toEqual([
       { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B', mcp: true },
     ])

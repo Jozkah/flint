@@ -230,13 +230,16 @@ export function RoomEditor({ room }: { room: Room }) {
       const nextParticipants = room.participants.map((p) => {
         const d = participants.find((x) => x.id === p.id)
         if (!d) return p
-        const tools = modelSupportsTools(findModel(providers, d.model))
+        // Send the chosen access as-is; the controller drops it to 'none' only
+        // when the model resolves and truly lacks tools. Forcing 'none' here
+        // when the provider's model list has not loaded (findModel undefined)
+        // would silently and permanently strip access the user set.
         return {
           ...p,
           name: d.name.trim(),
           role: d.role.trim(),
           model: d.model,
-          toolAccess: tools ? d.toolAccess : ('none' as const),
+          toolAccess: d.toolAccess,
           pricing: parsePricing(d),
         }
       })

@@ -19,6 +19,7 @@ import {
   defaultProviderLookup,
   effectiveToolAccess,
   markUnavailable,
+  modelSupportsTools,
   preflightParticipants,
   type ProviderLookup,
 } from './availability'
@@ -460,7 +461,12 @@ class RoomRun {
       // can research even with no folder attached. With no access the context
       // is absent and the turn behaves exactly as before.
       const toolContext =
-        args.participant && args.participant.toolAccess !== 'none'
+        args.participant &&
+        args.participant.toolAccess !== 'none' &&
+        // Guard against a model whose tools capability changed after the
+        // participant was saved: sending tools to a model that cannot use them
+        // is a provider error that would suspend the participant.
+        modelSupportsTools(args.participant.model, this.lookup)
           ? {
               roomId: this.roomId,
               folder: this.room.folder ?? null,

@@ -15,7 +15,7 @@ import {
 } from './engine'
 import {
   defaultProviderLookup,
-  modelSupportsTools,
+  modelToolSupport,
   type ProviderLookup,
 } from './availability'
 import { parseAddress } from './addressing'
@@ -126,13 +126,15 @@ function canResumeOnMessage(room: Room, now: number): boolean {
     case 'paused':
     case 'awaiting-user':
     case 'completed':
-      break
     case 'stopped':
-      if (room.stopReason?.kind === 'limit') return false
       break
     default:
       return false
   }
+  // The single source of truth for "would continuing help": if no limit blocks,
+  // resume; if one does, leave it for the composer's extend prompt. Keying off
+  // stopReason instead would strand a limit-stopped room whose limit the user
+  // has since raised in the editor -- the message would be swallowed.
   return checkLimits(room, now, { activeSince: now, callsMade: 0, speaking: true }) === null
 }
 
@@ -335,9 +337,12 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       name: name.slice(0, 80),
       role: (input.role ?? '').trim().slice(0, 200),
       model: { provider: input.model.provider, id: input.model.id },
-      // Forced to none when the model lacks the tools capability.
+      // Forced to none only when the model resolves and truly lacks tools; an
+      // unresolved model (provider not loaded yet) keeps the requested access
+      // rather than being silently and permanently downgraded. The engine gates
+      // tools again at run time, when the model is resolvable.
       toolAccess:
-        wantsTools && modelSupportsTools(input.model, lookup)
+        wantsTools && modelToolSupport(input.model, lookup) !== 'no'
           ? (requested as 'read' | 'edit')
           : 'none',
       removed: input.removed ?? false,
@@ -591,6 +596,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           folder:
             patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
+          // Raising a limit that stopped the room clears the stop, so a message
+          // resumes it instead of being stranded by a limit that no longer binds.
+          stopReason:
+            patch.limits && room.stopReason?.kind === 'limit' ? null : room.stopReason,
           participants,
         }
         return saveRoom(updated)

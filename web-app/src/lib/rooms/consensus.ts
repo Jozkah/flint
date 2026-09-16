@@ -21,7 +21,10 @@ export function stripConclusion(raw: string): { concluded: boolean; text: string
   if (!raw.includes(CONCLUDE_SIGNAL)) return { concluded: false, text: raw }
   const text = raw
     .split('\n')
-    .filter((line) => !line.includes(CONCLUDE_SIGNAL))
+    // Remove the signal token in place so an inline conclusion keeps its prose
+    // ("We agree on X. [[CONCLUDED]]" stays "We agree on X."). A line that was
+    // only the signal becomes blank and is collapsed away below.
+    .map((line) => line.split(CONCLUDE_SIGNAL).join('').trimEnd())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

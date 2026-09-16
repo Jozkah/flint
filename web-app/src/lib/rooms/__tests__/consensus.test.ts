@@ -14,6 +14,13 @@ describe('stripConclusion', () => {
     expect(stripConclusion(raw)).toEqual({ concluded: true, text: 'We have consensus: Takt.' })
   })
 
+  it('keeps prose on the same line as the signal', () => {
+    expect(stripConclusion(`We agree on Takt. ${CONCLUDE_SIGNAL}`)).toEqual({
+      concluded: true,
+      text: 'We agree on Takt.',
+    })
+  })
+
   it('removes the signal even mid-text and collapses the gap', () => {
     const raw = `Final answer.\n\n${CONCLUDE_SIGNAL}\n\nthanks all`
     const out = stripConclusion(raw)

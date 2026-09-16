@@ -136,28 +136,32 @@ export async function buildMcpTools(
   const out: Record<string, Tool> = {}
   let mcp: ReturnType<ReturnType<typeof getServiceHub>['mcp']>
   let mcpTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown>; server: string }>
-  let trusted: string[] = []
+  let report: { trusted: Array<{ name: string; fingerprint: string; currentFingerprint: string | null }> }
   try {
     mcp = getServiceHub().mcp()
     // The backend's own trust record is the source of truth: exactly the
     // servers whose calls it will allow. Advertising by anything else risks
     // offering a tool that is then refused mid-turn (rooms never prompt).
-    ;[mcpTools, trusted] = await Promise.all([
+    ;[mcpTools, report] = await Promise.all([
       mcp.getTools(),
-      mcp.trustedServers().catch(() => [] as string[]),
+      mcp.trustReport().catch(() => ({ trusted: [], invalidated: [] })),
     ])
   } catch {
     return out
   }
 
   const isDisabled = useToolAvailable.getState().isToolDisabled
-  // Advertise a server's tools only when the backend actually trusts it -- the
-  // same record it enforces at call time. The renderer's "allow all MCP" toggle
-  // is deliberately NOT honoured here: it does not write backend trust, so a
-  // server it "allows" would still be refused mid-call, which is exactly the
-  // failure rooms must avoid (they never prompt). Trust a server in chat via
-  // "Always allow" and it appears in rooms and works.
-  const trustedSet = new Set(trusted)
+  // Advertise a server's tools only when the backend actually trusts its CURRENT
+  // definition. A grant whose fingerprint no longer matches (the server's config
+  // changed) would be refused mid-call, so require the running definition to be
+  // the approved one. The renderer's "allow all MCP" toggle is deliberately NOT
+  // honoured -- it does not write backend trust. Trust a server via "Always
+  // allow" in chat and it appears in rooms and works.
+  const trustedSet = new Set(
+    report.trusted
+      .filter((e) => e.currentFingerprint != null && e.currentFingerprint === e.fingerprint)
+      .map((e) => e.name)
+  )
   const serverTrusted = (server: string) => trustedSet.has(server)
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
@@ -168,7 +172,13 @@ export async function buildMcpTools(
       inputSchema: jsonSchema(t.inputSchema),
       execute: async (input: unknown) => {
         try {
-          const res = await mcp.callTool({ toolName: t.name, arguments: input as object })
+          // Route to the exact server the tool was advertised from, so a bare
+          // name shared by another server cannot redirect the call.
+          const res = await mcp.callTool({
+            toolName: t.name,
+            serverName: t.server,
+            arguments: input as object,
+          })
           const output = res.error
             ? `ERROR: ${res.error}`
             : (res.content ?? []).map((c) => c.text).join('\n')
