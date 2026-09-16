@@ -1,6 +1,6 @@
 # Flint 0.9.0
 
-Flint is a local-first, private fork of [Jan](https://github.com/menloresearch/jan) built into a full agentic workspace. This is the first tagged Flint release, and it gathers everything Flint adds on top of Jan: a private local-only build, a one-click migration path from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, a reconstructable agent runtime, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and the Graphite/Atelier redesign.
+Flint is a local-first, private fork of [Jan](https://github.com/janhq/jan) built into a full agentic workspace. This is the first tagged Flint release, and it gathers everything Flint adds on top of Jan: a private local-only build, a one-click migration path from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, a reconstructable agent runtime, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and the Graphite/Atelier redesign.
 
 ## Highlights
 
@@ -64,7 +64,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - rebrand(docs): Flint navigation labels, keeping the research model names
 - docs(rebrand): add an original Flint logo and replace the Jan logo in the favicon, boot splash, window title, and in-app badges
 - docs(readme): rewrite the README as "Flint â€” a fork of Jan" with provenance, migration and feature sections (#12)
-- docs(license): retain Apache-2.0, the Menlo Research copyright, acknowledgements and upstream provenance
+- docs(license): retain Apache-2.0, the upstream copyright, acknowledgements and upstream provenance
 - feat(migration): first-launch Jan to Flint data-migration core and the six Tauri commands
 - feat(migration): a guided first-launch migration assistant UI
 - feat(migration): Copy, Reuse, Move and Start-fresh modes, with per-category selection
@@ -271,4 +271,4 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 
 ---
 
-Flint is an independent fork of [Jan](https://github.com/menloresearch/jan) by Menlo Research and preserves Jan's Apache-2.0 license, copyright notices, contributor attribution, acknowledgements, and upstream provenance.
+Flint is an independent fork of [Jan](https://github.com/janhq/jan) by [janhq](https://github.com/janhq) and preserves Jan's Apache-2.0 license, copyright notices, contributor attribution, acknowledgements, and upstream provenance.
