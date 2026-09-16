@@ -6,10 +6,11 @@
  * grant (the gate refuses any write outside the grant's root). Web tools
  * (web_search/web_fetch) research the web and need no folder. MCP tools come
  * from the user's connected Model Context Protocol servers, but only from
- * servers the backend actually trusts (trust one in Settings -> MCP Servers, or
- * "always allow" it once in chat; the master "allow all MCP" toggle also works)
- * -- rooms never prompt, so an untrusted server's tools are withheld rather than
- * refused mid-call. Disabled tools are dropped too.
+ * servers the backend actually trusts ("always allow" a server once in chat) --
+ * rooms never prompt, so an untrusted server's tools are withheld rather than
+ * refused mid-call. The renderer "allow all MCP" toggle does not grant backend
+ * trust, so it is intentionally not honoured here. Disabled tools are dropped
+ * too.
  * Each tool carries an `execute`, so the AI SDK runs the tool cycle itself.
  * Schemas for the built-ins come from Rust via `getAgentToolSchemas`, the same
  * source Cowork uses, so a room advertises the identical contract.
@@ -20,7 +21,6 @@ import { getAgentToolSchemas, executeAgentTool } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { useToolApproval } from '@/hooks/useToolApproval'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -151,12 +151,14 @@ export async function buildMcpTools(
   }
 
   const isDisabled = useToolAvailable.getState().isToolDisabled
-  // Advertise a server's tools only when the backend trusts it (or the master
-  // "allow all MCP" bypass is on). Trust it in Settings -> MCP Servers, or
-  // "always allow" once in chat, and it appears in rooms too.
+  // Advertise a server's tools only when the backend actually trusts it -- the
+  // same record it enforces at call time. The renderer's "allow all MCP" toggle
+  // is deliberately NOT honoured here: it does not write backend trust, so a
+  // server it "allows" would still be refused mid-call, which is exactly the
+  // failure rooms must avoid (they never prompt). Trust a server in chat via
+  // "Always allow" and it appears in rooms and works.
   const trustedSet = new Set(trusted)
-  const allowAll = useToolApproval.getState().allowAllMCPPermissions
-  const serverTrusted = (server: string) => allowAll || trustedSet.has(server)
+  const serverTrusted = (server: string) => trustedSet.has(server)
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
     if (!serverTrusted(t.server)) continue // withhold untrusted servers, never refuse mid-call

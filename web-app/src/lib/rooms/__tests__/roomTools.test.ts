@@ -37,12 +37,6 @@ vi.mock('@/hooks/useToolAvailable', () => ({
   },
 }))
 
-let allowAllMcp = false
-vi.mock('@/hooks/useToolApproval', () => ({
-  useToolApproval: {
-    getState: () => ({ allowAllMCPPermissions: allowAllMcp }),
-  },
-}))
 
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
 import type { RoomToolActivity } from '../types'
@@ -69,7 +63,6 @@ describe('buildRoomTools', () => {
     callTool.mockResolvedValue({ error: '', content: [{ text: '' }] })
     disabledTools = []
     trustedServers = []
-    allowAllMcp = false
     webSearchEnabled = false
   })
 
@@ -214,14 +207,16 @@ describe('buildRoomTools', () => {
     expect(tools.search_docs).toBeUndefined()
   })
 
-  it('advertises every MCP tool when allow-all MCP is on', async () => {
-    allowAllMcp = true
+  it('advertises tools from every trusted server, and only those', async () => {
+    trustedServers = ['docs', 'other']
     getAgentToolSchemas.mockResolvedValue([schema('read')])
     getTools.mockResolvedValue([
       { name: 'search_docs', description: 'search', inputSchema: { type: 'object' }, server: 'docs' },
       { name: 'query_db', description: 'db', inputSchema: { type: 'object' }, server: 'other' },
+      { name: 'run_cmd', description: 'shell', inputSchema: { type: 'object' }, server: 'shell' },
     ])
     const tools = await buildRoomTools(ctx)
+    // 'shell' is not trusted, so its tool is withheld.
     expect(Object.keys(tools).sort()).toEqual(['query_db', 'read', 'search_docs'])
   })
 })
