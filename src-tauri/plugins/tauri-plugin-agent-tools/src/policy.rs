@@ -33,6 +33,9 @@ struct ToolsSection {
     deny: Vec<String>,
     #[serde(default)]
     allow_write: Vec<String>,
+    /// Calls to confirm every time, overriding allow but not deny.
+    #[serde(default)]
+    ask: Vec<String>,
     #[serde(default)]
     allow_network: Option<bool>,
     /// Destinations this project may reach. Empty means "anywhere not denied".
@@ -132,7 +135,8 @@ pub fn load_under(
             &tools.allow,
             &org.clamp_deny(&tools.deny),
             &tools.allow_write,
-        ),
+        )
+        .with_ask(&tools.ask),
         network: NetworkPolicy {
             // The project's setting wins over the surface's default, which is
             // the point of writing it down in the repository -- within what

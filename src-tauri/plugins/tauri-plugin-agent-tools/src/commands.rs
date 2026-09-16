@@ -706,7 +706,7 @@ async fn execute_tool_inner(
     let store = resolve_store(&data_folder, project.as_deref());
     // Plural from the outset so attaching a second folder later is not another
     // signature change.
-    let read_roots: Vec<PathBuf> = match read_only_project.as_deref() {
+    let mut read_roots: Vec<PathBuf> = match read_only_project.as_deref() {
         Some(path) => vec![workspace::validate_read_root(
             Path::new(path),
             &root,
@@ -736,6 +736,21 @@ async fn execute_tool_inner(
     // renderer is one the caller can choose not to send.
     let policy = crate::policy::load(read_only_project.as_deref().map(Path::new), allow_network);
     let permissions = policy.permissions.clone();
+    // Widen the read roots by any absolute directories the project's own allow
+    // rules make readable (e.g. `allow = ["read(C:/data/**)"]`), so a policy
+    // that opts into reading a host location does not then prompt on every read
+    // there. Each is validated like the attached project root; one that fails
+    // validation is skipped rather than failing the call, and deny rules still
+    // win at the gate.
+    for dir in permissions.sandbox_read_dirs() {
+        if let Ok(validated) =
+            workspace::validate_read_root(&dir, &root, Some(Path::new(&data_folder)))
+        {
+            if !read_roots.contains(&validated) {
+                read_roots.push(validated);
+            }
+        }
+    }
     let decision = gate::resolve_decision(
         tool,
         &args,

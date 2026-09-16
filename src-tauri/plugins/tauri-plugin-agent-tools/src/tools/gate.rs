@@ -20,6 +20,10 @@ pub enum PromptKind {
     /// exists.
     WriteEscape,
     Exec,
+    /// A call an `ask` rule marks for confirmation every time. Unlike the
+    /// others it is never satisfied by a session grant, so "allow always" does
+    /// not silence it -- that is the point of the tier.
+    Ask,
 }
 
 /// The user's answer to a permission prompt (wire shape for a later IPC command).
@@ -82,6 +86,8 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape,
             // Exec coverage is command-specific; use `covers_command`.
             PromptKind::Exec => false,
+            // Confirm every time: a session grant never covers an ask.
+            PromptKind::Ask => false,
         }
     }
 
@@ -108,6 +114,8 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape = true,
             // No-op: exec is granted per command via `grant_command`.
             PromptKind::Exec => {}
+            // No-op: an ask is never remembered, by design.
+            PromptKind::Ask => {}
         }
     }
 
@@ -364,6 +372,12 @@ pub fn resolve_decision(
             .unwrap_or(false);
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
+    }
+    // Ask sits between deny and allow: a matching ask rule overrides an allow
+    // and forces a prompt every time (deny above still wins). Inert unless the
+    // project wrote an `ask` list.
+    if perms.asks_call(tool.name, &resources, subject).is_some() {
+        return Decision::Prompt(PromptKind::Ask);
     }
     if perms.allows_call(tool.name, &resources, subject).is_some() {
         return Decision::Allow;

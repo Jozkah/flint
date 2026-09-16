@@ -2952,6 +2952,7 @@ impl CompositeToolInvoker {
                         PromptKind::Write => "write",
                         PromptKind::WriteEscape => "write_escape",
                         PromptKind::Exec => "exec",
+                        PromptKind::Ask => "ask",
                     };
                     let path = tool
                         .path_args
@@ -4162,6 +4163,42 @@ async fn orchestrate_inner(
         }
     }
     let model_id = model_id.ok_or("No running model sessions available")?;
+    // Apply the project's `[models]` allowlist/alias policy at finalization: an
+    // alias maps to its concrete target, and a model outside a non-empty
+    // allowlist is refused with an actionable error rather than silently
+    // switched. Inert when no `[models]` section is written, so a project that
+    // never restricts models finalizes exactly as before.
+    let model_id = {
+        let policy = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(
+                    root,
+                    profile.as_deref(),
+                )
+                .ok()
+            })
+            .map(|cfg| cfg.models)
+            .unwrap_or_default();
+        if policy.is_empty() {
+            model_id
+        } else {
+            // A config that cannot be honoured refuses the run rather than
+            // finalizing on a model nobody chose.
+            let problems = policy.validate();
+            if !problems.is_empty() {
+                return Err(format!("[models] config: {}", problems.join("; ")).into());
+            }
+            let resolved = policy.resolve(&model_id).map_err(|e| e.to_string())?;
+            if resolved.via_alias {
+                log::info!(
+                    "agent: model alias resolved {model_id:?} -> {:?}",
+                    resolved.model
+                );
+            }
+            resolved.model
+        }
+    };
 
     let (mut openai_tools, mut tool_to_server) =
         collect_mcp_openai_tools(mcp_servers, mcp_settings).await?;

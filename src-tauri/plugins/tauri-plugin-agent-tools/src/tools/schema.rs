@@ -4,14 +4,14 @@
 
 use serde_json::{json, Value};
 
-/// OpenAI function schemas for the 7 built-in tools.
+/// OpenAI function schemas for the built-in tools.
 pub fn builtin_tool_schemas() -> Vec<Value> {
     vec![
         json!({
             "type": "function",
             "function": {
                 "name": "read",
-                "description": "Read the contents of a UTF-8 text file. Output is truncated to 2000 lines or 64KB (whichever is hit first). Use offset/limit for large files. Image files (png/jpeg/gif/webp, detected by signature or extension) are returned as a vision image instead of text.",
+                "description": "Read a UTF-8 text file and return its contents with line numbers. Prefer this over `bash cat` for reading a file: the line numbers anchor later `edit` calls and the output is truncated safely. Reading stops at 2000 lines or 64KB, whichever comes first; page through a longer file with offset/limit rather than assuming you saw all of it. An image file (png/jpeg/gif/webp, detected by signature or extension) comes back as a vision image, not text. Read a file before you edit it, so each old_string matches the current contents.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -27,7 +27,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "ls",
-                "description": "List directory contents sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Truncated to the entry limit or 64KB.",
+                "description": "List a directory's immediate entries, sorted alphabetically, with a '/' suffix on directories; dotfiles are included. Use it to orient yourself in an unfamiliar tree before reaching for find or grep. It does not recurse -- use find to match files by name across subdirectories. Truncated to the entry limit (default 500) or 64KB.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -42,7 +42,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "find",
-                "description": "Search for files by glob pattern, e.g. '*.ts', '**/*.json', or 'src/**/*.rs'. Returns paths relative to the search directory. Respects .gitignore.",
+                "description": "Find files by glob pattern (e.g. '*.ts', '**/*.json', 'src/**/*.rs'), returning paths relative to the search directory. Use it to locate files by name or extension; use grep instead to search file *contents*. Respects .gitignore, so generated and vendored files are skipped. Returns up to `limit` paths (default 1000).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -58,7 +58,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "grep",
-                "description": "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Truncated to the match limit or 64KB.",
+                "description": "Search file contents for a regex (or a literal string with `literal: true`) and return matching lines with their path and line number. Use it to find where something is defined or used; use find to match by filename instead. Narrow a large search with `glob` and `path` rather than raising `limit`. Respects .gitignore. Truncated to the match limit (default 100) or 64KB.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -94,7 +94,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "write",
-                "description": "Create or overwrite a file relative to the project root.",
+                "description": "Create a file, or overwrite one in full, at a path relative to the project root. Use it for a new file or a wholesale rewrite; to change part of an existing file use edit, which is safer and shows a focused diff. Overwriting replaces all of the file's contents -- read it first if you might need what is there. Parent directories are created as needed.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -109,7 +109,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "edit",
-                "description": "Edit a file using one or more exact text replacements applied in order. Each old_string must match exactly once in the current file state.",
+                "description": "Change parts of an existing file through one or more exact string replacements, applied in order, each against the result of the previous. Read the file first so every old_string reflects its current contents. By default an old_string must appear exactly once -- include enough surrounding context to make it unique -- or set replace_all to change every occurrence (use it to rename a symbol). Prefer this over write for a targeted change; use write only for a new file or a full rewrite.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -120,8 +120,9 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "old_string": { "type": "string", "description": "Exact text to replace (must be unique at apply time)." },
-                                    "new_string": { "type": "string", "description": "Replacement text." }
+                                    "old_string": { "type": "string", "description": "Exact text to replace. Must match exactly once unless replace_all is true; add surrounding context to make it unique." },
+                                    "new_string": { "type": "string", "description": "Replacement text." },
+                                    "replace_all": { "type": "boolean", "description": "Replace every occurrence of old_string instead of requiring a single match (default false). Use for renaming a repeated symbol." }
                                 },
                                 "required": ["old_string", "new_string"]
                             }
@@ -177,7 +178,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "memory_list",
-                "description": "List the names of your project memory notes (durable facts stored across sessions). No arguments.",
+                "description": "List the names of your project memory notes -- durable facts you saved across sessions. Check it at the start of work to see what you already know before asking or re-deriving. No arguments.",
                 "parameters": { "type": "object", "properties": {}, "required": [] }
             }
         }),
@@ -185,7 +186,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "memory_read",
-                "description": "Read one of your project memory notes by name.",
+                "description": "Read one project memory note by name (names come from memory_list). Use it to recall a decision, convention or preference you stored earlier.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -199,7 +200,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "memory_write",
-                "description": "Create or overwrite a project memory note. Use for durable, non-obvious facts (decisions, conventions, preferences). Keep it short.",
+                "description": "Create or overwrite a project memory note for a durable, non-obvious fact -- a decision, convention or preference worth having next session. Keep it short, one topic per note; do not store secrets or things easily re-read from the code. Overwriting replaces the whole note.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -233,7 +234,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_list",
-                "description": "List the project skills (reusable procedures) with a one-line description of each. No arguments.",
+                "description": "List the project skills (reusable procedures) with a one-line description of each. Check here before doing a recurring task by hand -- a skill may already define the steps. No arguments.",
                 "parameters": { "type": "object", "properties": {}, "required": [] }
             }
         }),
@@ -241,7 +242,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_read",
-                "description": "Load a skill's full instructions by name. The system prompt lists each skill's name and purpose; call this to read the complete procedure before applying a skill.",
+                "description": "Load a skill's full instructions by name (names come from skill_list or the system prompt). Read the whole procedure before applying a skill, and follow it as written.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -255,7 +256,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_write",
-                "description": "Create or update a project skill (a reusable procedure for this project). Keep it concise.",
+                "description": "Create or update a project skill -- a reusable procedure for this project -- when you have a repeatable workflow worth capturing. Keep it concise and actionable; the name becomes the skill title. Overwriting replaces the whole skill.",
                 "parameters": {
                     "type": "object",
                     "properties": {

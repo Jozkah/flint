@@ -37,6 +37,10 @@ pub(crate) struct AgentToml {
     /// `[[routing]]` -- which model answers what (AH-194).
     #[serde(default)]
     pub routing: Vec<crate::core::agent::routing::RoutingRule>,
+    /// `[models]` -- an allowlist and alias map over the model a run may use,
+    /// applied at model-id finalization.
+    #[serde(default)]
+    pub models: crate::core::agent::routing::ModelPolicy,
     /// `[output]` -- how much a run says about itself (AH-181).
     #[cfg(feature = "cli")]
     #[serde(default)]

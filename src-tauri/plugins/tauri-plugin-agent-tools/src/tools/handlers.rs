@@ -671,17 +671,23 @@ fn apply_edits(
         let Some(new_string) = e.get("new_string").and_then(|v| v.as_str()) else {
             return Err(format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1));
         };
+        let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         let count = content.matches(old_string).count();
         if count == 0 {
             return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
         }
-        if count > 1 {
-            return Err(format!(
-                "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
-                i + 1
-            ));
+        if replace_all {
+            // Rename-style replacement: every occurrence, no uniqueness guard.
+            content = content.replace(old_string, new_string);
+        } else {
+            if count > 1 {
+                return Err(format!(
+                    "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
+                    i + 1
+                ));
+            }
+            content = content.replacen(old_string, new_string, 1);
         }
-        content = content.replacen(old_string, new_string, 1);
     }
     Ok(content)
 }
@@ -925,11 +931,18 @@ fn render_edit_diff(edits: &[serde_json::Value], prior: &str) -> String {
         if n > 1 {
             out.push_str(&format!("@@ edit {}/{} @@\n", i + 1, n));
         }
+        let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         match working.find(old) {
             Some(pos) => {
                 let (old_block, new_block, start) = expand_hunk(&working, pos, old, new);
                 out.push_str(&render_hunk_diff(&old_block, &new_block, start));
-                working.replace_range(pos..pos + old.len(), new);
+                // Keep `working` consistent for later edits in the same call: a
+                // replace_all edit rewrites every occurrence, not just the first.
+                if replace_all {
+                    working = working.replace(old, new);
+                } else {
+                    working.replace_range(pos..pos + old.len(), new);
+                }
             }
             // `edit()` will reject this call, but the arguments are still worth
             // showing; there is no file position to number them against.

@@ -606,6 +606,25 @@ impl ResourceRule {
     pub fn source(&self) -> &str {
         &self.source
     }
+
+    /// The filesystem-path pattern this rule matches, with any `path:` kind
+    /// prefix stripped, or `None` for a bare tool rule or a non-path kind
+    /// (`git:`, `command:`, `mcp:`, `net:`, `process:`, `unknown:`). Used to
+    /// derive sandbox read roots from a project's allow rules, so an
+    /// `allow = ["read(C:/data/**)"]` widens what reads may reach without a
+    /// prompt. A bare drive letter like `C:` is not a kind prefix.
+    pub fn read_root_pattern(&self) -> Option<&str> {
+        let raw = self.resource.as_ref()?.as_str();
+        if let Some(rest) = raw.strip_prefix("path:") {
+            return Some(rest);
+        }
+        if let Some((kind, _)) = raw.split_once(':') {
+            if ["git", "command", "mcp", "net", "process", "unknown"].contains(&kind) {
+                return None;
+            }
+        }
+        Some(raw)
+    }
 }
 
 /// Match one pattern against one resource.
