@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import type {
   ModeratorConfig,
   Participant,
@@ -356,10 +357,11 @@ export function RoomEditor({ room }: { room: Room }) {
           </RadioGroup>
           <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
         </div>
-        </RoomSection>
 
-        <RoomSection contentClassName="gap-2">
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-mod-heading`}>
+        <section
+          className="flex flex-col gap-2 border-t border-border pt-4"
+          aria-labelledby={`${uid}-mod-heading`}
+        >
           <h3 id={`${uid}-mod-heading`} className="text-sm font-medium">
             {t('rooms:editor.moderator')}
           </h3>
@@ -600,13 +602,17 @@ export function RoomEditor({ room }: { room: Room }) {
 
         </RoomSection>
 
-        <RoomSection contentClassName="gap-2">
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-l-heading`}>
-          <h3 id={`${uid}-l-heading`} className="text-sm font-medium">
-            {t('rooms:editor.limits')}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t('rooms:editor.limitsHint')}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <RoomSection>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+            <span className="text-sm font-medium">{t('rooms:editor.limits')}</span>
+            <ChevronDown
+              aria-hidden
+              className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+            />
+          </summary>
+          <p className="mt-2 text-xs text-muted-foreground">{t('rooms:editor.limitsHint')}</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {LIMIT_KEYS.map((key) => {
               const lid = `${uid}-limit-${key}`
               const ceiling = displayCeiling(key)
@@ -645,13 +651,15 @@ export function RoomEditor({ room }: { room: Room }) {
               )
             })}
           </div>
-        </section>
+        </details>
         </RoomSection>
 
-        <div className="sticky bottom-0 -mx-3 flex flex-wrap items-center gap-2 border-t border-border bg-sidebar px-3 pt-3">
-          <Button type="submit">{t('rooms:editor.save')}</Button>
+        <div className="flex flex-col items-stretch gap-2 pt-1">
+          <Button type="submit" className="w-full">
+            {t('rooms:editor.save')}
+          </Button>
           {saved && (
-            <span role="status" className="text-xs text-muted-foreground">
+            <span role="status" className="text-center text-xs text-muted-foreground">
               {t('rooms:editor.saved')}
             </span>
           )}
