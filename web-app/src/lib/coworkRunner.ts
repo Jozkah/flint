@@ -184,6 +184,58 @@ export function salvageToolArgs(raw: unknown): Record<string, unknown> | undefin
   return first ? asObject(first) : undefined
 }
 
+/** Cap on how much of a rejected call's raw arguments is echoed back. A whole
+ * file's worth of `content` would otherwise flood the transcript and the next
+ * request's context. */
+const ARGS_ECHO_CAP = 300
+
+/** Echo a rejected call's arguments, capped so a huge value is not dumped. */
+function capArgs(raw: unknown): string {
+  const s = typeof raw === 'string' ? raw : JSON.stringify(raw)
+  return s.length > ARGS_ECHO_CAP
+    ? `${s.slice(0, ARGS_ECHO_CAP)}... (${s.length} chars, truncated)`
+    : s
+}
+
+/**
+ * Roughly, whether a string is JSON that was cut off before it closed -- a tool
+ * call whose arguments ran past the model's output-token budget mid-value (a
+ * `write` of a whole large file is the usual cause). Long, opens like JSON, and
+ * has no complete top-level object, so it never balanced.
+ */
+export function looksTruncatedArgs(raw: unknown): boolean {
+  if (typeof raw !== 'string') return false
+  const t = raw.trimStart()
+  if (t.length < 200) return false
+  if (!t.startsWith('{') && !t.startsWith('[')) return false
+  return firstJsonObject(t) === undefined
+}
+
+/**
+ * The refusal text for a call the SDK could not parse. A call cut off by the
+ * output limit gets specific, actionable guidance -- resending the same giant
+ * value just truncates again and loops -- rather than the generic parse error,
+ * which the model cannot act on.
+ */
+function invalidArgsMessage(errorText: unknown, raw: unknown, usable: boolean): string {
+  const base = String(errorText ?? 'the call was not valid')
+  if (looksTruncatedArgs(raw)) {
+    return (
+      `${base} -- the arguments were cut off before they were complete, which ` +
+      'happens when the content is too large to return in one turn. Do not ' +
+      'resend the whole thing: create the file with a first `write` of its ' +
+      'opening portion, then extend it with `edit` in further calls (or write ' +
+      'fewer lines per call).'
+    )
+  }
+  return (
+    base +
+    (usable || raw === undefined
+      ? ''
+      : ` (the arguments sent were: ${capArgs(raw)})`)
+  )
+}
+
 /** The kind of refusal an invalid call is, from the SDK's own reason. */
 export function refusalKindOf(invalid: string): HarnessRefusalKind {
   return /unavailable tool|no such tool|not (?:a|an) (?:available|offered) tool/i.test(invalid)
@@ -552,13 +604,7 @@ export async function consumeStep(
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
             input: usable ? raw : {},
-            invalid:
-              String(chunk.errorText ?? 'the call was not valid') +
-              (usable || raw === undefined
-                ? ''
-                : ` (the arguments sent were: ${
-                    typeof raw === 'string' ? raw : JSON.stringify(raw)
-                  })`),
+            invalid: invalidArgsMessage(chunk.errorText, raw, usable),
           }
           result.toolCalls.push(call)
           sink.onToolCall(call)

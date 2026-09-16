@@ -381,6 +381,39 @@ describe('an invalid tool call', () => {
     expect(dispatched.input).toEqual({ path: '/x/HEAD' })
     expect(JSON.stringify(out.messages)).not.toContain('was not run')
   })
+
+  /// A `write` of a whole large file overran the model's output budget, so its
+  /// arguments were cut off mid-content and never parsed. The refusal must say
+  /// so and tell the model to split the write, not dump the giant blob back.
+  it('tells the model to split a write whose arguments were cut off', async () => {
+    const truncated = `{"path":"main.cpp","content":"${'x'.repeat(4000)}` // no closing quote/brace
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'write',
+          input: truncated,
+          errorText: 'Invalid input for tool write: JSON parsing failed',
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('write the file')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    expect(d.dispatch).not.toHaveBeenCalled()
+    const told = JSON.stringify(out.messages)
+    expect(told).toContain('cut off')
+    expect(told).toContain('`edit`')
+    // The 4000-char blob is not echoed back into the transcript/context.
+    expect(told).not.toContain('x'.repeat(1000))
+  })
 })
 
 describe('runTurn', () => {
