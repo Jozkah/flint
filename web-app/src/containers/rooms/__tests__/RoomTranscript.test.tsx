@@ -156,6 +156,15 @@ describe('RoomTranscript', () => {
     expect(screen.getByText('Nothing has been said yet.')).toBeInTheDocument()
   })
 
+  it('repairs pseudo <bash> tool blocks into a real code fence', () => {
+    const msg = makeMessage({ text: 'Let me check: <bash> ```bash ls -la ``` </bash> done.' })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const md = screen.getByTestId('render-markdown')
+    // The wrapper tags are gone and the fence is reflowed onto its own lines.
+    expect(md.textContent).not.toContain('<bash>')
+    expect(md.textContent).toContain('```bash\nls -la\n```')
+  })
+
   it('shows tool chips and expands them to the advanced input/output view', () => {
     const msg = makeMessage({
       text: 'Looked it up.',

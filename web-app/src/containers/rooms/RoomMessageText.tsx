@@ -18,6 +18,32 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Pseudo tool-call wrappers models sometimes emit around a command. */
+const TOOL_TAGS = /<\/?(?:bash|shell|sh|cmd|powershell|python|tool|tool_call)>/gi
+
+/**
+ * Repair the tool-call syntax some models emit as prose. They wrap a command in
+ * `<bash>…</bash>` and put a whole ```` ```lang … ``` ```` fence on one line, so
+ * markdown renders it as a jumbled paragraph rather than a code block. Strip the
+ * wrapper tags and reflow an inline fence onto its own lines. A well-formed
+ * fence (a newline after the language) is left untouched, since the reflow only
+ * matches a fence whose content starts on the same line.
+ */
+function normalizeToolBlocks(text: string): string {
+  if (!text.includes('```') && !TOOL_TAGS.test(text)) {
+    TOOL_TAGS.lastIndex = 0
+    return text
+  }
+  TOOL_TAGS.lastIndex = 0
+  return text
+    .replace(TOOL_TAGS, '')
+    .replace(/```([\w+-]*)[ \t]+([\s\S]*?)```/g, (_m, lang: string, body: string) => {
+      return `\n\`\`\`${lang}\n${body.trim()}\n\`\`\`\n`
+    })
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 /**
  * Encode a color for the mention href. Parens must be escaped too (not escaped
  * by encodeURIComponent) or a value like `var(--primary)` would close the
@@ -72,7 +98,10 @@ export const RoomMessageText = memo(function RoomMessageText({
   isStreaming?: boolean
   className?: string
 }) {
-  const content = useMemo(() => linkifyMentions(text, mentionColors), [text, mentionColors])
+  const content = useMemo(
+    () => linkifyMentions(normalizeToolBlocks(text), mentionColors),
+    [text, mentionColors]
+  )
   return (
     <RenderMarkdown
       content={content}
