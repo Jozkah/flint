@@ -159,11 +159,31 @@ export function participantColor(seed: string): string {
 }
 
 /**
- * Name -> color for every participant in the room, for coloring `@mentions` in
- * message bodies. Names are lower-cased so a mention matches regardless of case.
+ * Colors for the non-participant mention targets -- the whole room and the
+ * human -- kept distinct from the participant palette so `@room` and `@user`
+ * read differently from a person being addressed.
+ */
+const SPECIAL_MENTION_COLORS: Record<string, string> = {
+  room: '#eab308', // gold: everyone in the room
+  everyone: '#eab308',
+  all: '#eab308',
+  user: '#db2777', // pink: the human
+  you: '#db2777',
+  moderator: '#64748b', // slate: the moderator model
+  mod: '#64748b',
+}
+
+/**
+ * Name -> color for every mention target in the room: each participant (by
+ * their own stable color) plus the special `@room`/`@user`/`@moderator`
+ * targets. Names are lower-cased so a mention matches regardless of case. A
+ * participant literally named "room" keeps their own color (set last).
  */
 export function participantColorsByName(room: Room | null): Map<string, string> {
   const out = new Map<string, string>()
+  for (const [name, color] of Object.entries(SPECIAL_MENTION_COLORS)) {
+    out.set(name, color)
+  }
   for (const p of room?.participants ?? []) {
     const name = p.name.trim().toLowerCase()
     if (name) out.set(name, participantColor(p.id))
