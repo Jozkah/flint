@@ -303,6 +303,69 @@ fn arg_u32(args: &Value, key: &str) -> Result<Option<u32>, String> {
     }
 }
 
+/// A [`DesktopUi`] backed by the on-disk settings JSON for `apply_setting`, with
+/// the UI-only capabilities (open file, terminal, diff) reporting that no
+/// interactive desktop surface is attached to this context.
+///
+/// This is the runtime-reachable slice: `apply_settings` genuinely reads and
+/// writes the settings file (allowlisted, atomically), so the agent can change a
+/// permitted setting end to end. The editor/terminal/diff tools require a live
+/// window and are served by the desktop's window layer, which supplies its own
+/// [`DesktopUi`]; here they refuse rather than pretend.
+pub struct FileSettingsUi {
+    settings_path: PathBuf,
+}
+
+impl FileSettingsUi {
+    pub fn new(settings_path: PathBuf) -> Self {
+        Self { settings_path }
+    }
+
+    fn read(&self) -> serde_json::Map<String, Value> {
+        std::fs::read_to_string(&self.settings_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default()
+    }
+}
+
+impl DesktopUi for FileSettingsUi {
+    fn open_file(&self, _path: &Path, _line: Option<u32>, _column: Option<u32>) -> Result<(), String> {
+        Err("no interactive desktop surface is attached to this session".to_string())
+    }
+    fn terminal_contents(&self, _id: Option<&str>, _max: usize) -> Result<String, String> {
+        Err("no interactive desktop surface is attached to this session".to_string())
+    }
+    fn show_diff(&self, _path: &Path, _diff: &str) -> Result<String, String> {
+        Err("no interactive desktop surface is attached to this session".to_string())
+    }
+    fn diff_accepted(&self, _diff_id: &str) -> Result<(), String> {
+        Err("no interactive desktop surface is attached to this session".to_string())
+    }
+    fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String> {
+        let mut map = self.read();
+        let previous = map.get(key).cloned().unwrap_or(Value::Null);
+        map.insert(key.to_string(), value.clone());
+        let serialized =
+            serde_json::to_string_pretty(&Value::Object(map)).map_err(|e| e.to_string())?;
+        // Atomic write: temp + rename, so a crash never truncates settings.
+        let dir = self
+            .settings_path
+            .parent()
+            .ok_or_else(|| "settings path has no parent".to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let tmp = dir.join(format!(".settings.tmp-{}", std::process::id()));
+        std::fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &self.settings_path).map_err(|e| e.to_string())?;
+        Ok(SettingChange {
+            key: key.to_string(),
+            previous,
+            resulting: value.clone(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,5 +515,45 @@ mod tests {
     fn unknown_tool_is_refused() {
         let mut b = bridge();
         assert!(b.dispatch(&ctx("s1"), "rm_rf", &json!({})).is_err());
+    }
+
+    #[test]
+    fn file_settings_ui_applies_an_allowlisted_setting_atomically() {
+        let dir = std::env::temp_dir().join(format!("jan-settings-ui-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, r#"{ "editor.fontSize": 12 }"#).unwrap();
+
+        let mut b = DesktopBridge::new(FileSettingsUi::new(path.clone()));
+        let c = RequestContext {
+            window_id: "w".into(),
+            workspace_root: dir.clone(),
+            conversation_id: "c".into(),
+            session_id: "s".into(),
+        };
+
+        // An allowlisted setting is written through, and the file reflects it.
+        let out = b
+            .dispatch(&c, "apply_settings", &json!({ "key": "editor.fontSize", "value": 16 }))
+            .unwrap();
+        assert_eq!(out["previous"], json!(12));
+        assert_eq!(out["resulting"], json!(16));
+        let saved: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved["editor.fontSize"], json!(16));
+
+        // A non-allowlisted key is refused and the file is untouched.
+        assert!(b
+            .dispatch(&c, "apply_settings", &json!({ "key": "provider.apiKey", "value": "x" }))
+            .is_err());
+
+        // A UI-only tool reports there is no interactive surface here.
+        let err = b
+            .dispatch(&c, "open_file", &json!({ "path": "a.txt" }))
+            .unwrap_err();
+        assert!(err.contains("no interactive desktop surface"), "{err}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

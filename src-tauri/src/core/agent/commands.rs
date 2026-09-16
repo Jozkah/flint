@@ -631,6 +631,37 @@ pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
     worktree::pending(&record.into())
 }
 
+/// Route one `jan-desktop` bridge tool call. The runtime entry point for the
+/// in-process desktop UI tools (open_file, get_terminal_contents, show_diff,
+/// diff_accepted, apply_settings): it binds the call to its window, workspace,
+/// conversation and session via a [`RequestContext`], and dispatches through the
+/// bridge's authorization layer.
+///
+/// The backend context supplies a settings-file-backed UI, so `apply_settings`
+/// works end to end; the editor/terminal/diff tools require a live window and
+/// are served by the desktop window layer's own UI implementation.
+#[tauri::command]
+pub fn agent_desktop_bridge(
+    data_folder: String,
+    session_id: String,
+    conversation_id: String,
+    workspace: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use crate::core::agent::desktop_bridge::{DesktopBridge, FileSettingsUi, RequestContext};
+    let settings_path = std::path::Path::new(&data_folder)
+        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
+    let mut bridge = DesktopBridge::new(FileSettingsUi::new(settings_path));
+    let ctx = RequestContext {
+        window_id: String::new(),
+        workspace_root: std::path::PathBuf::from(&workspace),
+        conversation_id,
+        session_id,
+    };
+    bridge.dispatch(&ctx, &tool, &args)
+}
+
 /// Every Flint-owned worktree of this repository that is on disk.
 ///
 /// The recovery surface. A session's own record dies with the process, so
