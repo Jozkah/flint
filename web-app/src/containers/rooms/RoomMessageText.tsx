@@ -18,6 +18,15 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/**
+ * Encode a color for the mention href. Parens must be escaped too (not escaped
+ * by encodeURIComponent) or a value like `var(--primary)` would close the
+ * markdown link early at its first `)`.
+ */
+function encodeColor(color: string): string {
+  return encodeURIComponent(color).replace(/\(/g, '%28').replace(/\)/g, '%29')
+}
+
 /** Rewrite `@Name` for known participants into a color-carrying markdown link. */
 function linkifyMentions(text: string, colors: Map<string, string>): string {
   if (colors.size === 0 || !text.includes('@')) return text
@@ -27,7 +36,7 @@ function linkifyMentions(text: string, colors: Map<string, string>): string {
   return text.replace(pattern, (match, name: string) => {
     const color = colors.get(name.toLowerCase())
     if (!color) return match
-    return `[${match}](${MENTION_PREFIX}${encodeURIComponent(color)})`
+    return `[${match}](${MENTION_PREFIX}${encodeColor(color)})`
   })
 }
 

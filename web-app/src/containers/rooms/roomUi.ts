@@ -167,8 +167,10 @@ const SPECIAL_MENTION_COLORS: Record<string, string> = {
   room: '#eab308', // gold: everyone in the room
   everyone: '#eab308',
   all: '#eab308',
-  user: '#db2777', // pink: the human
-  you: '#db2777',
+  // The human is the app's own accent color (the settings accent drives
+  // `--primary`), so @user always matches whatever accent is set.
+  user: 'var(--primary)',
+  you: 'var(--primary)',
   moderator: '#64748b', // slate: the moderator model
   mod: '#64748b',
 }
