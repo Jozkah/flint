@@ -1,4 +1,37 @@
-﻿# Flint 0.9
+﻿# Flint 0.9.1
+
+A stabilisation release on top of 0.9.0, and the arrival of **tool-using discussion rooms**. 0.9.0 was rough; 0.9.1 fixes the problems people hit in it and adds a large amount to Rooms.
+
+## New in Rooms
+
+Rooms — multi-model discussions with you in control — can now **use tools**, not just talk.
+
+- **A working folder and file tools.** Attach a folder to a room, then give a participant **Read-only** or **Read & edit** access. Read-only participants can `read`, `ls`, `find` and `grep` inside the folder; Read & edit adds `write`/`edit`, confined to that folder by a direct-edit grant so a write can never land outside it.
+- **Your MCP servers.** Tools from the MCP servers you have trusted are offered to participants and routed to the exact server they came from. Only servers whose current definition you trusted appear, so a call is never refused mid-turn.
+- **Web research.** With web search on, participants get `web_search` and `web_fetch` and can cite what they find.
+- **A clear tool trace.** Every tool call shows as a chip in the transcript, coloured by kind exactly like the Cowork tab — built-in indigo, reads cyan, writes amber, MCP violet, failures red — and expands to show the call's input and result.
+- **Conclude early.** A participant can end a discussion once the objective is met instead of grinding out every round.
+- **Continue past a limit.** When a room stops on a rounds/turns/tokens/time/cost limit, one click continues it for however many more rounds you ask — every limit is lifted together, so it actually runs on instead of stopping again.
+- **Pick up a stopped room with a message.** Sending a message to a paused, completed or stopped room resumes it and the participants respond; at a limit it offers to extend.
+- **Automatic compaction.** A discussion longer than a model's context window is summarised down instead of silently dropping the oldest messages, with a "Compacting…" note while it happens.
+- **No more spinning.** A room whose participants are all waiting on you (e.g. asking for a file it does not have) pauses and hands back to you rather than looping.
+- **Presentation.** Each participant has its own colour, reflected in `@mentions`; `@room`, `@user` (your accent colour) and `@moderator` are distinct; messages render Markdown; and the settings panel is a tidy collapsible accordion. New participants default to read-only tools when their model supports them.
+
+## Also new
+
+- **Cowork** shows **tokens/sec** on each reply, including providers that do not report llama.cpp timings.
+- Idle-time **memory consolidation**, an opt-in **autonomous-mode safety classifier** (off by default), a worktree symlink/sparse-checkout optimisation, behaviour-steering tool descriptions, and a Flint boot-loader sprite and installer icon.
+
+## Fixes (present in 0.9.0)
+
+- **"Allow all MCP permissions" no longer runs built-in tools without asking.** That setting is about MCP servers, as its label says — it was also silently approving Cowork's own `write`/`edit`/`bash` in Ask mode. It now only auto-approves an MCP server's tools; a built-in tool is still asked about.
+- **A disabled tool can no longer execute.** Disabling a tool used to only hide it from the model; a model that re-emitted an earlier call could still run it. The call is now refused.
+- **Cowork context bar.** The left-rail **"Workspace"** label no longer wraps to "Workspa ce", the context-bar buttons share one height, "Autonomous" mode reads **"Auto mode"**, and token usage is shown in a single place instead of two.
+- **Rooms settings.** The room model picker now offers the same models as the Home and Cowork bars, and the settings panel no longer overlaps its **Save** button.
+
+---
+
+# Flint 0.9
 
 ## Migration
 
