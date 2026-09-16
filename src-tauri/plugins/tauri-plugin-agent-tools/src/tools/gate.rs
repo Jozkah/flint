@@ -1295,6 +1295,67 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
+    /// The #4b path merge, end to end, in the real desktop shape. A
+    /// project-relative `allow = ["read(drivers/**)"]` rule does two things: it
+    /// grants the read tool the discovery read at the gate, and — via
+    /// `sandbox_read_dirs`, resolved against the attached project — it yields the
+    /// concrete directory the desktop command merges into the sandbox read roots
+    /// so the *sandboxed shell* can reach the same path. Both come from one rule;
+    /// nothing else about the sandbox is loosened, and a path the rule does not
+    /// name still escapes.
+    #[test]
+    fn a_policy_read_rule_opens_its_path_through_the_sandbox_merge() {
+        let root = unique_root(); // ephemeral thread workspace
+        let project = unique_root(); // attached project (base for patterns)
+        std::fs::create_dir_all(project.join("drivers")).unwrap();
+        std::fs::write(project.join("drivers/EAC.sys"), b"decoy").unwrap();
+
+        let perms =
+            ToolPermissions::new(PermissionDefault::ReadOnly, &s(&["read(drivers/**)"]), &[], &[]);
+
+        // 1. The rule yields the concrete read directory the command feeds the
+        //    sandbox (so bash, bound by read roots, can reach it too).
+        let read_roots = perms.sandbox_read_dirs(&project);
+        assert_eq!(
+            read_roots,
+            vec![project.join("drivers")],
+            "the allow(read) rule yields the concrete project read dir"
+        );
+
+        // 2. The read tool's discovery read of the .sys file is granted by the
+        //    rule at the gate.
+        let target = project.join("drivers/EAC.sys");
+        let allowed = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({"path": target.to_string_lossy()}),
+            &root,
+            None,
+            &read_roots,
+            &perms,
+            &SessionGrants::default(),
+            true,
+        );
+        assert_eq!(allowed, Decision::Allow);
+
+        // 3. A path the rule does NOT name is not granted: still an escape prompt.
+        let other = project.join("other/data.bin");
+        let denied = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({"path": other.to_string_lossy()}),
+            &root,
+            None,
+            &read_roots,
+            &perms,
+            &SessionGrants::default(),
+            true,
+        );
+        assert_eq!(denied, Decision::Prompt(PromptKind::ReadEscape));
+
+        for d in [&root, &project] {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+
     #[test]
     fn an_escaping_read_still_prompts_when_no_root_covers_it() {
         let root = unique_root();
