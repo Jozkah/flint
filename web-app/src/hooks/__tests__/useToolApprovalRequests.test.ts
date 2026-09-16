@@ -49,17 +49,30 @@ describe('useToolApprovalRequests', () => {
     })
   })
 
-  it('auto-resolves true (no pending) when allowAllMCPPermissions is set', async () => {
+  it('auto-resolves true (no pending) when allowAllMCPPermissions is set for a server tool', async () => {
     useToolApproval.setState({ allowAllMCPPermissions: true })
     const { result } = renderHook(() => useToolApprovalRequests())
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1')
+      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
     })
 
     await expect(p!).resolves.toBe(true)
     expect(result.current.pending['tc1']).toBeUndefined()
+  })
+
+  it('allow-all does NOT auto-approve a built-in tool with no server (must be asked)', () => {
+    // "Allow all MCP permissions" is an MCP setting; a server-less agent tool
+    // (write/edit/bash) still has to be approved in Ask mode.
+    useToolApproval.setState({ allowAllMCPPermissions: true })
+    const { result } = renderHook(() => useToolApprovalRequests())
+
+    act(() => {
+      void result.current.requestApproval('tc-write', 'write', 'thread-1')
+    })
+
+    expect(result.current.pending['tc-write']).toBeDefined()
   })
 
   it('auto-resolves true (no pending) when the tool is already approved for the thread', async () => {
