@@ -54,8 +54,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { predefinedProviders } from '@/constants/providers'
-import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import { offersModels } from '@/lib/providerOffers'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
@@ -158,47 +157,9 @@ const setLastUsedModel = (provider: string, model: string) => {
   }
 }
 
-/**
- * Is this one of the built-in provider templates?
- *
- * Exact match. This was `predefinedProviders.some((e) => e.provider.includes(p))`,
- * which is a substring test *and* backwards: it asked whether a template's id
- * contains the user's provider name, so a provider called `ai` matched `openai`
- * and one called `x` matched `xai`. A user whose provider name happened to be a
- * substring of a template's had it silently reclassified as a built-in.
- */
-function isPredefinedProvider(providerName: string): boolean {
-  return predefinedProviders.some((e) => e.provider === providerName)
-}
-
-/**
- * Should this provider's models be offered in the picker?
- *
- * The rule that matters: a provider the user configured, which has models, is
- * always offered. Only an *unconfigured built-in template* is hidden, and that
- * is what the API-key check is for -- it is a proxy for "the user has not set
- * this one up", never a gate on providers they plainly did set up.
- *
- * Keying that gate on `api_key` alone is what made models vanish from the bar
- * after a restart. `partialize` strips `api_key` and `api_key_fallbacks` before
- * persisting -- keys live in the OS keyring -- so on every launch every
- * provider looks keyless until `applyKeyringKeys()` re-seeds them. Combined
- * with the substring bug above, a custom provider with a short name was
- * reclassified as built-in, found keyless, and had all of its models dropped.
- */
-function offersModels(provider: {
-  provider: string
-  models: unknown[]
-  api_key?: string
-  api_key_fallbacks?: string[]
-}): boolean {
-  // The bundled local runtime is always offered.
-  if (provider.provider === 'llamacpp') return true
-  // Anything the user added, with models discovered under it.
-  if (!isPredefinedProvider(provider.provider)) return provider.models.length > 0
-  // A built-in template: offered once it has a key, or models the user added.
-  return providerHasRemoteApiKeys(provider) || provider.models.length > 0
-}
+// `offersModels` (the rule for which providers appear in a model picker) is
+// shared with the Rooms participant picker so every surface offers the same
+// providers. See `@/lib/providerOffers`.
 
 const DropdownModelProvider = memo(function DropdownModelProvider({
   model,
