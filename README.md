@@ -128,7 +128,8 @@ Everything below is implemented in this fork, on top of upstream Jan. Each agent
 
 - **Session-to-session messaging:** agent sessions in the same project can message one another through a backend mailbox. Messages are attributed to the sender, replies are addressed back, and delivery is project-scoped and fenced against prompt injection.
 - **`stop_session`:** a permission-safe way to stop a running peer session in the same project, gated by explicit user approval, with protection against acting on a run that already ended.
-- **Multi-model Discussion Rooms:** put several providers and models in one room with moderator and speaking policies, a shared transcript with addressed replies, per-room budgets and limits, persistence, restart recovery, termination, and synthesis.
+- **Multi-model Discussion Rooms:** put several providers and models in one room with moderator and speaking policies, a shared transcript with addressed replies, per-room budgets and limits, persistence, restart recovery, termination, and synthesis. Participants have their own colours, `@mentions` are colour-matched, and messages render Markdown.
+- **Tool-using rooms (0.9.1):** give a participant read-only or read/edit access and attach a working folder — writes are confined to it by a direct-edit grant. Participants can also use your trusted MCP-server tools (routed to the exact server) and web search. Every call shows as a colour-coded chip that expands to its input and result, just like Cowork. A participant can conclude a discussion early; a stopped room resumes when you message it and offers to continue past a limit; and long discussions compact themselves to fit each model's context window.
 - **First-launch JAN migration assistant:** see [Migration from JAN](#migration-from-jan).
 
 </details>
