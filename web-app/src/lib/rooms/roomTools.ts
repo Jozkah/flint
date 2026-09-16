@@ -41,6 +41,17 @@ export const ROOM_TOOL_MAX_STEPS = 8
 /** Cap on captured tool output kept for the transcript's advanced view. */
 export const ROOM_TOOL_OUTPUT_CAP = 4000
 
+/** Coerce a tool's `unknown` content to text for the model. */
+function asText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (content == null) return ''
+  try {
+    return JSON.stringify(content)
+  } catch {
+    return String(content)
+  }
+}
+
 /** Keep the transcript small: truncate captured output past the cap. */
 function capOutput(text: string): string {
   return text.length > ROOM_TOOL_OUTPUT_CAP
@@ -80,7 +91,7 @@ export async function buildRoomTools(
 
   const run = (name: string, options: ExecOptions) => async (input: unknown) => {
     const result = await executeAgentTool(name, input, ctx.roomId, options)
-    const output = result.error ? `ERROR: ${result.error}` : (result.content ?? '')
+    const output = result.error ? `ERROR: ${result.error}` : asText(result.content)
     onActivity?.({ name, ok: !result.error, args: input, output: capOutput(output) })
     return output
   }
