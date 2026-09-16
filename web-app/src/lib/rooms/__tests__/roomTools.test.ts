@@ -36,6 +36,17 @@ vi.mock('@/hooks/useToolAvailable', () => ({
   },
 }))
 
+let trustedServers: string[] = []
+let allowAllMcp = false
+vi.mock('@/hooks/useToolApproval', () => ({
+  useToolApproval: {
+    getState: () => ({
+      allowAllMCPPermissions: allowAllMcp,
+      approvedServers: trustedServers.map((name) => ({ name, fingerprint: 'fp' })),
+    }),
+  },
+}))
+
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
 import type { RoomToolActivity } from '../types'
 
@@ -60,6 +71,8 @@ describe('buildRoomTools', () => {
     callTool.mockReset()
     callTool.mockResolvedValue({ error: '', content: [{ text: '' }] })
     disabledTools = []
+    trustedServers = []
+    allowAllMcp = false
     webSearchEnabled = false
   })
 
@@ -150,6 +163,7 @@ describe('buildRoomTools', () => {
   })
 
   it('advertises enabled MCP tools and routes calls through callTool', async () => {
+    trustedServers = ['docs']
     getAgentToolSchemas.mockResolvedValue([schema('read')])
     getTools.mockResolvedValue([
       { name: 'search_docs', description: 'search', inputSchema: { type: 'object' }, server: 'docs' },
@@ -174,6 +188,7 @@ describe('buildRoomTools', () => {
   })
 
   it('surfaces an MCP tool error and never shadows a built-in of the same name', async () => {
+    trustedServers = ['docs']
     getAgentToolSchemas.mockResolvedValue([schema('read')])
     getTools.mockResolvedValue([
       { name: 'read', description: 'mcp read', inputSchema: { type: 'object' }, server: 'docs' },
@@ -189,5 +204,27 @@ describe('buildRoomTools', () => {
     const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
     expect(out).toBe('ERROR: boom')
     expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
+  })
+
+  it('withholds MCP tools from servers the user has not trusted', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'search_docs', description: 'search', inputSchema: { type: 'object' }, server: 'docs' },
+    ])
+    // No trusted servers, no allow-all.
+    const tools = await buildRoomTools(ctx)
+    expect(Object.keys(tools)).toEqual(['read'])
+    expect(tools.search_docs).toBeUndefined()
+  })
+
+  it('advertises every MCP tool when allow-all MCP is on', async () => {
+    allowAllMcp = true
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'search_docs', description: 'search', inputSchema: { type: 'object' }, server: 'docs' },
+      { name: 'query_db', description: 'db', inputSchema: { type: 'object' }, server: 'other' },
+    ])
+    const tools = await buildRoomTools(ctx)
+    expect(Object.keys(tools).sort()).toEqual(['query_db', 'read', 'search_docs'])
   })
 })

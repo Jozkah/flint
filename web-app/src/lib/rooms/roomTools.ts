@@ -5,11 +5,13 @@
  * access, write/edit are added too, confined to that folder by a direct-edit
  * grant (the gate refuses any write outside the grant's root). Web tools
  * (web_search/web_fetch) research the web and need no folder. MCP tools come
- * from the user's connected Model Context Protocol servers -- the same set the
- * main chat exposes, filtered by the global per-tool disable list. Each tool
- * carries an `execute`, so the AI SDK runs the tool cycle itself. Schemas for
- * the built-ins come from Rust via `getAgentToolSchemas`, the same source
- * Cowork uses, so a room advertises the identical contract.
+ * from the user's connected Model Context Protocol servers, but only from
+ * servers the user has already trusted (`allow-always` in chat, or the master
+ * "allow all MCP" toggle) -- rooms never prompt, so an untrusted server's tools
+ * are withheld rather than refused mid-call. Disabled tools are dropped too.
+ * Each tool carries an `execute`, so the AI SDK runs the tool cycle itself.
+ * Schemas for the built-ins come from Rust via `getAgentToolSchemas`, the same
+ * source Cowork uses, so a room advertises the identical contract.
  */
 import { jsonSchema, type Tool } from 'ai'
 import { directEditAuthorize } from '@janhq/tauri-plugin-agent-tools-api'
@@ -17,6 +19,7 @@ import { getAgentToolSchemas, executeAgentTool } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -140,8 +143,17 @@ export async function buildMcpTools(
   }
 
   const isDisabled = useToolAvailable.getState().isToolDisabled
+  // Only advertise tools from servers the user has already trusted. Trust is
+  // fingerprint-bound in the backend gate; here we match by server name (the
+  // backend still refuses a changed definition at call time, so this fails
+  // safe), plus the master "allow all MCP" bypass.
+  const approval = useToolApproval.getState()
+  const serverTrusted = (server: string) =>
+    approval.allowAllMCPPermissions ||
+    approval.approvedServers.some((grant) => grant.name === server)
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
+    if (!serverTrusted(t.server)) continue // withhold untrusted servers, never refuse mid-call
     if (out[t.name]) continue // first server wins on a name clash, like the chat
     out[t.name] = {
       description: t.description,
