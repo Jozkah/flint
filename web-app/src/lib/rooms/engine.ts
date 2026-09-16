@@ -814,8 +814,18 @@ class RoomRun {
 
       if (!(await this.ensureEnough(2))) return
       if (concluded) {
+        // The participant's own message is the conclusion, so stop cleanly here
+        // rather than running close()'s final-positions round and synthesis --
+        // those only restate a point already made and read as noise after
+        // "concluded". Moderator/repetition convergence still synthesises,
+        // where an automatic summary earns its place.
         await this.system('A participant concluded the discussion; the objective is met.')
-        return this.close({ kind: 'converged', by: 'consensus' })
+        await this.save({
+          status: 'completed',
+          stopReason: { kind: 'converged', by: 'consensus' },
+          nextSpeakerId: null,
+        })
+        return
       }
       if (converged) {
         await this.system('Recent turns repeat earlier ones; the discussion has converged.')
