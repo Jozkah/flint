@@ -48,9 +48,7 @@
       #initial-loader img {
         width: 5rem;
         height: 5rem;
-        /* Static first; waves only if setup runs past the delay. */
-        animation: wave 2s ease-in-out 2.5s infinite;
-        transform-origin: 70% 70%;
+        /* Sprite animates itself (strike + sparks). */
       }
       @keyframes wave {
         0%,
@@ -128,7 +126,7 @@
   </head>
   <body>
     <div id="initial-loader" data-tauri-drag-region>
-      <img src="/images/flint-logo.svg" alt="Flint Logo" data-tauri-drag-region />
+      <img src="/images/flint-steel-loader.svg" alt="Flint Logo" data-tauri-drag-region />
       <p id="initial-loader-caption" data-tauri-drag-region>Booting up Flint…</p>
     </div>
     <div id="root"></div>
