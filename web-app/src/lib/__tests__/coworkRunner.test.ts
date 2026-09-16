@@ -349,6 +349,38 @@ describe('an invalid tool call', () => {
     // The model is still told what it sent, so it can correct itself.
     expect(JSON.stringify(out.messages)).toContain('{\\"path\\":')
   })
+
+  /// A model that appends a stray brace after otherwise-valid JSON
+  /// (`{"path":"…"}}`) failed the SDK's strict parse. Rather than refuse the
+  /// whole call, salvage the first complete object and dispatch it.
+  it('salvages a call whose arguments have trailing junk after valid JSON', async () => {
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'read',
+          input: '{"path":"/x/HEAD"}}',
+          errorText:
+            'Invalid input for tool read: JSON parsing failed: Unexpected non-whitespace character after JSON',
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('read HEAD')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    // The recovered call ran instead of being refused.
+    expect(d.dispatch).toHaveBeenCalledTimes(1)
+    const dispatched = (d.dispatch as any).mock.calls[0][0]
+    expect(dispatched.input).toEqual({ path: '/x/HEAD' })
+    expect(JSON.stringify(out.messages)).not.toContain('was not run')
+  })
 })
 
 describe('runTurn', () => {

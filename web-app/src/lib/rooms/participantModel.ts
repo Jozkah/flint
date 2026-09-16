@@ -6,7 +6,14 @@
  * transport or any tool/approval store, and it advertises no tools. Only text
  * deltas become the reply; reasoning is never collected.
  */
-import { streamText, stepCountIs, type LanguageModel, type Tool } from 'ai'
+import {
+  streamText,
+  stepCountIs,
+  InvalidToolInputError,
+  type LanguageModel,
+  type Tool,
+} from 'ai'
+import { salvageToolArgs } from '@/lib/coworkRunner'
 import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
@@ -127,7 +134,21 @@ export async function streamParticipantReply(
       // Read-only built-in tools, executed by the SDK's own loop, bounded so a
       // turn cannot spin. Absent unless the room has a folder and the
       // participant has tool access.
-      ...(tools ? { tools, stopWhen: stepCountIs(ROOM_TOOL_MAX_STEPS) } : {}),
+      ...(tools
+        ? {
+            tools,
+            stopWhen: stepCountIs(ROOM_TOOL_MAX_STEPS),
+            // Salvage a tool call whose arguments the model emitted with trailing
+            // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
+            // parse rejects. Recover the first complete object rather than fail the
+            // turn -- the same recovery Cowork does on its own tool path.
+            experimental_repairToolCall: async ({ toolCall, error }) => {
+              if (!InvalidToolInputError.isInstance(error)) return null
+              const fixed = salvageToolArgs(toolCall.input)
+              return fixed ? { ...toolCall, input: JSON.stringify(fixed) } : null
+            },
+          }
+        : {}),
       onError: ({ error }) => {
         streamError = error
       },

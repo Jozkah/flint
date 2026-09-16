@@ -130,6 +130,60 @@ export type HarnessRefusal = {
   agent?: string
 }
 
+/**
+ * The substring of the first complete, brace-balanced JSON object in `text`,
+ * or undefined. Quote- and escape-aware, so braces inside string values do not
+ * end it. Used to salvage tool arguments a model emitted with trailing junk
+ * after the object (a stray `}`, a second object, prose), which the SDK's
+ * strict parse rejects whole.
+ */
+function firstJsonObject(text: string): string | undefined {
+  const start = text.indexOf('{')
+  if (start < 0) return undefined
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === '{') depth++
+    else if (c === '}' && --depth === 0) return text.slice(start, i + 1)
+  }
+  return undefined
+}
+
+/**
+ * Recover a tool call's arguments object when the SDK could not parse the
+ * model's raw arguments text. Models sometimes append a stray brace or trailing
+ * text after otherwise-valid JSON (e.g. `{"path":"…"}}`); rather than refuse the
+ * whole call, take the first complete JSON object. Returns the object, or
+ * undefined when nothing usable is present (so the caller keeps refusing).
+ */
+export function salvageToolArgs(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw !== 'string') return undefined
+  const asObject = (s: string): Record<string, unknown> | undefined => {
+    try {
+      const v = JSON.parse(s)
+      return v !== null && typeof v === 'object' && !Array.isArray(v)
+        ? (v as Record<string, unknown>)
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const trimmed = raw.trim()
+  const direct = asObject(trimmed)
+  if (direct) return direct
+  const first = firstJsonObject(trimmed)
+  return first ? asObject(first) : undefined
+}
+
 /** The kind of refusal an invalid call is, from the SDK's own reason. */
 export function refusalKindOf(invalid: string): HarnessRefusalKind {
   return /unavailable tool|no such tool|not (?:a|an) (?:available|offered) tool/i.test(invalid)
@@ -476,6 +530,24 @@ export async function consumeStep(
           const raw = chunk.input
           const usable =
             raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+          // Only the parse-failure case is recoverable: the arguments arrived as
+          // raw text (a string) the SDK could not parse, but the model appended
+          // a stray brace or trailing text after valid JSON (e.g. `{"path":"…"}}`).
+          // Salvage the first complete object and dispatch it as a normal call.
+          // An object that failed for another reason -- an unavailable tool, a
+          // schema violation -- is still refused below.
+          const salvaged =
+            typeof raw === 'string' ? salvageToolArgs(raw) : undefined
+          if (salvaged) {
+            const call: PendingToolCall = {
+              toolCallId: chunk.toolCallId,
+              toolName: chunk.toolName,
+              input: salvaged,
+            }
+            result.toolCalls.push(call)
+            sink.onToolCall(call)
+            break
+          }
           const call: PendingToolCall = {
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
