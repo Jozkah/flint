@@ -162,7 +162,7 @@ pub fn parse_report(reply: &str) -> VerificationReport {
 /// error — it is a BLOCKED verdict, because a verifier that could not run must
 /// not let the work through. The evidence is clamped by the caller before it
 /// gets here.
-pub async fn verify(
+pub(crate) async fn verify(
     model_id: &str,
     input: &VerificationInput,
     model: &dyn ModelInvoker,
