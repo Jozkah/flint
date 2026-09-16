@@ -91,6 +91,32 @@ describe('room editor', () => {
     expect(persistence.rooms.get(room.id)).toEqual(room)
   })
 
+  it('a new participant defaults to read-only for a tool-capable model', async () => {
+    const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    // No toolAccess given: the controller applies its default.
+    const room = await ctl.createRoom({
+      title: 'Defaults',
+      participants: [
+        { name: 'Alice', model: models.a }, // tool-capable -> read
+        { name: 'Bob', model: models.b }, // no tools -> none
+      ],
+    })
+    expect(room.participants.map((p) => p.toolAccess)).toEqual(['read', 'none'])
+
+    const added = await ctl.addParticipant(room, { name: 'Cara', model: models.a })
+    expect(added.participants.find((p) => p.name === 'Cara')?.toolAccess).toBe('read')
+
+    // An explicit 'none' is still honoured.
+    const room2 = await ctl.createRoom({
+      title: 'Explicit none',
+      participants: [
+        { name: 'Dan', model: models.a, toolAccess: 'none' },
+        { name: 'Eve', model: models.b },
+      ],
+    })
+    expect(room2.participants.map((p) => p.toolAccess)).toEqual(['none', 'none'])
+  })
+
   it('rejects duplicate names', async () => {
     const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
     await expect(
@@ -112,7 +138,8 @@ describe('room editor', () => {
     expect(updated.title).toBe('Renamed')
     expect(updated.limits.maxRounds).toBe(50)
     expect(updated.participants.map((p) => [p.name, p.toolAccess])).toEqual([
-      ['Alice', 'none'],
+      // Alice (tool-capable model) kept her default read-only from createRoom.
+      ['Alice', 'read'],
       ['Robert', 'none'],
       ['Carol', 'read'],
     ])

@@ -311,9 +311,14 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   ): Participant => {
     const name = input.name.trim()
     if (!name) throw roomError('invalid_room', 'A participant needs a name.')
-    // 'read' and 'edit' both need a tool-capable model; kept as chosen, or
+    // A new participant (no toolAccess given) defaults to read-only, so a
+    // tool-capable model can use tools the moment the room has a folder or a
+    // trusted MCP server -- without that default, every room silently started
+    // tool-less and users hit "I have no tools". An explicit 'none' is still
+    // honoured. 'read'/'edit' both need a tool-capable model, and any choice is
     // dropped to 'none' when the model has no tools.
-    const wantsTools = input.toolAccess === 'read' || input.toolAccess === 'edit'
+    const requested: ToolAccess = input.toolAccess ?? 'read'
+    const wantsTools = requested === 'read' || requested === 'edit'
     let pricing: Participant['pricing']
     if (input.pricing) {
       const i = Number(input.pricing.inputPerMTokUsd)
@@ -330,7 +335,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       // Forced to none when the model lacks the tools capability.
       toolAccess:
         wantsTools && modelSupportsTools(input.model, lookup)
-          ? (input.toolAccess as 'read' | 'edit')
+          ? (requested as 'read' | 'edit')
           : 'none',
       removed: input.removed ?? false,
       order: input.order,

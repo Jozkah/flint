@@ -274,7 +274,8 @@ export function RoomEditor({ room }: { room: Room }) {
         name: newName.trim(),
         role: newRole.trim(),
         model: newModel,
-        toolAccess: 'none',
+        // Omitted so the controller applies its default (read-only for a
+        // tool-capable model), rather than starting the participant tool-less.
       })
       setNewName('')
       setNewRole('')

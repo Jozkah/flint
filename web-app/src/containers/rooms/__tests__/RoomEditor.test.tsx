@@ -56,11 +56,12 @@ describe('RoomEditor', () => {
     await user.clear(newName)
     await user.type(newName, 'Carol')
     await user.click(screen.getByRole('button', { name: 'Add participant' }))
+    // toolAccess is omitted so the controller applies its default (read-only
+    // for a tool-capable model) rather than starting the participant tool-less.
     expect(api.addParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), {
       name: 'Carol',
       role: '',
       model: { provider: 'openai', id: 'plain-model' },
-      toolAccess: 'none',
     })
   })
 
