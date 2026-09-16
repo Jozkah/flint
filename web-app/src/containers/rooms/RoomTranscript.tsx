@@ -149,16 +149,20 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
         {calls.map((c, i) => {
           const tone = TONE_CLASSES[toneFor(c)]
           const Icon = toolIcon(c.name)
+          // Match Cowork: a neutral chip whose icon carries the tool's kind
+          // colour, and a red tint only when the call failed.
           return (
             <span
               key={`${c.name}-${i}`}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-foreground',
-                tone.border,
-                tone.surface
+                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+                c.ok ? 'bg-sunken text-ink-2' : 'bg-destructive-tint text-destructive'
               )}
             >
-              <Icon className={cn('size-3 shrink-0', tone.icon)} aria-hidden />
+              <Icon
+                className={cn('size-3 shrink-0', c.ok ? tone.icon : 'text-destructive')}
+                aria-hidden
+              />
               {c.name}
             </span>
           )
@@ -199,10 +203,10 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                   <span className="text-foreground">{c.name}</span>
                   <span
                     className={cn(
-                      'ml-auto rounded px-1.5 py-0.5 text-[10px]',
+                      'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
                       isError
-                        ? 'bg-destructive/10 text-destructive'
-                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        ? 'bg-destructive-tint text-destructive'
+                        : 'bg-success-tint text-success'
                     )}
                   >
                     {isError ? t('rooms:transcript.toolFailed') : t('rooms:transcript.toolOk')}
@@ -245,7 +249,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                       className={cn(
                         'max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
                         isError
-                          ? 'border border-destructive/30 bg-destructive/10 text-destructive'
+                          ? 'border border-destructive/30 bg-destructive-tint text-destructive'
                           : 'bg-code text-foreground'
                       )}
                     >
