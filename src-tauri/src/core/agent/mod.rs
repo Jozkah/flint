@@ -20,6 +20,7 @@ pub mod compaction_policy;
 pub mod memory_consolidation;
 pub mod context;
 pub mod context_pressure;
+pub mod hooks;
 pub mod events;
 pub mod extensions;
 pub mod genai_bridge;
