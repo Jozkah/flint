@@ -167,6 +167,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_worktree_discard,
         core::agent::commands::agent_worktree_pending,
         core::agent::commands::agent_worktree_list,
+        core::agent::commands::agent_worktree_optimize,
         core::agent::commands::agent_proposal_from_worktree,
         core::agent::commands::agent_proposal_list,
         core::agent::commands::agent_proposal_apply,

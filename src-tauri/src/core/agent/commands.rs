@@ -493,6 +493,41 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
     worktree::list(repo, &roots)
 }
 
+/// Apply opt-in optimizations to a worktree after it was created.
+///
+/// A separate, post-creation step on purpose: `ensure` stays the plain "make me
+/// an isolated checkout" operation, and narrowing it with a sparse checkout or
+/// sharing heavy directories into it is a choice made explicitly here. Both the
+/// sparse paths and the symlinked directories are repository-relative and
+/// validated as such, so neither can climb out of the worktree or reach into
+/// `.git`.
+///
+/// The record arrives over IPC, so the path is checked against the folder Flint
+/// owns before anything is done to it — the same boundary [`agent_worktree_discard`]
+/// uses, not a new one.
+#[tauri::command]
+pub fn agent_worktree_optimize(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    symlink_directories: Vec<String>,
+    sparse_paths: Vec<String>,
+) -> Result<(), String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    let record: worktree::WorktreeRecord = record.into();
+    if !std::path::Path::new(&record.path).starts_with(&roots) {
+        return Err(format!(
+            "{} is not a worktree Flint manages, so Flint will not optimize it",
+            record.path
+        ));
+    }
+    worktree::apply_optimizations(
+        std::path::Path::new(&record.path),
+        std::path::Path::new(&record.source_root),
+        &symlink_directories,
+        &sparse_paths,
+    )
+}
+
 /// Why a proposal command refused, with the conflicts when that is the reason,
 /// so the review can mark the exact hunks rather than show a sentence.
 #[derive(serde::Serialize, Debug)]
