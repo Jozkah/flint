@@ -226,7 +226,12 @@ export type RoomMessage = {
   dissent?: Array<{ participantId: string; name: string; position: string }>
   /** For moderator notes: the parsed directive, when one was produced. */
   directive?: ModeratorDirective
+  /** The read-only tools a tool-capable participant used to produce this reply. */
+  toolCalls?: RoomToolActivity[]
 }
+
+/** One tool a participant used in its turn, for the transcript. */
+export type RoomToolActivity = { name: string; ok: boolean }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
 export type ModeratorDirective = {

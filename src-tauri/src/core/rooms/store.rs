@@ -410,6 +410,18 @@ pub struct RoomMessage {
     pub dissent: Option<Vec<RoomDissent>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directive: Option<ModeratorDirective>,
+    /// The read-only tools a tool-capable participant used to produce this
+    /// reply. Absent on messages from participants without tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<RoomToolCall>>,
+}
+
+/// One tool a participant used in its turn, journaled for the transcript.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomToolCall {
+    pub name: String,
+    pub ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

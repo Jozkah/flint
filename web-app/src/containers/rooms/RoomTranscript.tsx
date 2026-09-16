@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Wrench } from 'lucide-react'
 import type { LiveTurn, Room, RoomAuthor, RoomJournalRecord, RoomMessage } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -110,6 +110,24 @@ function MessageBody({
 }) {
   return (
     <>
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1" data-testid="message-tools">
+          {message.toolCalls.map((c, i) => (
+            <span
+              key={`${c.name}-${i}`}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
+                c.ok
+                  ? 'border-border bg-muted text-muted-foreground'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+              )}
+            >
+              <Wrench className="size-3 shrink-0" aria-hidden />
+              {c.name}
+            </span>
+          ))}
+        </div>
+      )}
       <RoomMessageText text={message.text} mentionColors={mentionColors} className="text-sm" />
       {message.kind === 'vote-call' && (
         <p className="mt-1 text-xs text-muted-foreground" data-testid="vote-tally">

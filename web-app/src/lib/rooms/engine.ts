@@ -454,6 +454,20 @@ class RoomRun {
         }
       }
 
+      // Read-only built-in tools for this turn: only when the participant has
+      // tool access and the room has a working folder to read from. Absent
+      // otherwise, so a room without a folder behaves exactly as before.
+      const toolContext =
+        args.participant &&
+        args.participant.toolAccess !== 'none' &&
+        this.room.folder
+          ? {
+              roomId: this.roomId,
+              folder: this.room.folder,
+              access: args.participant.toolAccess,
+            }
+          : undefined
+
       let shrink = false
       let attempt = 0
       let built = await this.prompt(args.speaker, args.model, args.instruction, shrink)
@@ -489,6 +503,7 @@ class RoomRun {
               live.text += delta
               this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
             },
+            ...(toolContext ? { toolContext } : {}),
           })
           if (this.signal.aborted) throw new RunAborted()
           const raw = typeof res.text === 'string' ? res.text : live.text
@@ -502,7 +517,16 @@ class RoomRun {
           const extra = args.finalize ? args.finalize(raw) : {}
           // Stored after the provider `try`: a write failure is a persistence
           // error, never a provider error to classify or retry.
-          completed = { raw, message: this.message({ ...base, text: raw, usage, ...extra }) }
+          completed = {
+            raw,
+            message: this.message({
+              ...base,
+              text: raw,
+              usage,
+              ...extra,
+              ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
+            }),
+          }
         } catch (e) {
           if (isRoomPersistenceError(e)) throw e
           if (e instanceof RunAborted || isAbortLike(e, this.signal)) {
