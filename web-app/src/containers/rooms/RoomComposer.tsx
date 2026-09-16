@@ -37,9 +37,10 @@ export function RoomComposer({ room }: { room: Room }) {
     room.status === 'running'
       ? null
       : checkLimits(room, Date.now(), { activeSince: Date.now(), callsMade: 0, speaking: true })
+  // Any soft limit blocks; 'ceiling' is the hard cap and cannot be extended.
   const limitStop = blocking && blocking !== 'ceiling' ? blocking : null
-  const limitCeiling =
-    limitStop && limitStop !== 'maxDurationMs' ? ROOM_LIMIT_CEILINGS[limitStop] : undefined
+  // Continue is measured in rounds regardless of which limit was hit.
+  const limitCeiling = ROOM_LIMIT_CEILINGS.maxRounds
 
   const send = async () => {
     const body = text.trim()

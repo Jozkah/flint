@@ -19,7 +19,7 @@ import {
   type ProviderLookup,
 } from './availability'
 import { parseAddress } from './addressing'
-import { checkLimits, clampLimits, emptyUsage } from './limits'
+import { checkLimits, clampLimits, emptyUsage, extendedLimits } from './limits'
 import { activeParticipants } from './policy'
 import {
   getRoomPersistence,
@@ -471,32 +471,14 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         if (resume) void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
       }),
 
-    extendLimit: (roomId, addUnits, text, to) =>
+    extendLimit: (roomId, addRounds, text, to) =>
       guarded('extendLimit', async () => {
-        const add = Math.max(1, Math.floor(addUnits))
         await enqueue(roomId, async () => {
           const { room } = await persistence().getRoom(roomId)
-          const stop = room.stopReason
-          // Raise the limit that actually blocks the room: the one it stopped on,
-          // or -- for a room that concluded yet also sits at a limit -- whatever
-          // continuing would hit. Fall back to rounds. 'ceiling' is not
-          // user-extendable.
-          const blocking = checkLimits(room, now(), {
-            activeSince: now(),
-            callsMade: 0,
-            speaking: true,
-          })
-          const from =
-            stop?.kind === 'limit' && stop.limit !== 'ceiling'
-              ? stop.limit
-              : blocking && blocking !== 'ceiling'
-                ? blocking
-                : 'maxRounds'
-          const key: keyof RoomLimits = from
-          const current = room.limits[key] ?? 0
-          // The duration limit is stored in ms but asked for in minutes.
-          const increment = key === 'maxDurationMs' ? add * 60_000 : add
-          const limits = clampLimits({ ...room.limits, [key]: current + increment })
+          // Raise every limit together so the room can actually run the extra
+          // rounds -- extending one limit by a small count re-trips instantly on
+          // the token/time/cost limits or on whatever limit is next.
+          const limits = extendedLimits(room, addRounds)
           await saveRoom({ ...room, limits, stopReason: null })
           const body = text?.trim()
           if (body && to) {

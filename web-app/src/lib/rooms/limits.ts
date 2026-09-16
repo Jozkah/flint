@@ -127,6 +127,44 @@ export function checkLimits(
 }
 
 /**
+ * Limits raised to let a stopped room run `addRounds` more rounds.
+ *
+ * "Continue" must actually continue: raising only the one limit that stopped
+ * the room (by a small count) fails for the token, time and cost limits, where
+ * a "+3" means +3 tokens / +3 ms and re-trips instantly -- and even a good
+ * round bump still dies on whichever *other* limit is next. So every limit is
+ * lifted together, to the room's own per-round consumption times the number of
+ * rounds asked for (with headroom), never below its current value, and always
+ * clamped to the fixed ceilings. A room that hits a ceiling truly cannot go
+ * further; everything short of that continues.
+ */
+export function extendedLimits(room: Room, addRounds: number): RoomLimits {
+  const n = Math.max(1, Math.floor(addRounds))
+  const u = room.usage
+  const cur = clampLimits(room.limits)
+  const rounds = Math.max(1, u.rounds)
+  const tokens = u.inputTokens + u.outputTokens
+  // Per-round consumption so far, with a 1.5x safety margin for the estimate.
+  const perRoundTurns = Math.max(1, Math.ceil((u.turns / rounds) * 1.5))
+  const perRoundTokens = Math.ceil((tokens / rounds) * 1.5)
+  const perRoundMs = Math.ceil((u.activeMs / rounds) * 1.5)
+  const raise = (currentLimit: number, floor: number) => Math.max(currentLimit, floor)
+  const next: Partial<RoomLimits> = {
+    ...cur,
+    maxRounds: raise(cur.maxRounds, u.rounds + n),
+    maxTurns: raise(cur.maxTurns, u.turns + n * perRoundTurns + 1),
+    maxTotalTokens: raise(cur.maxTotalTokens, tokens + n * perRoundTokens + 1),
+    // A full extra minute on top, so a slow first turn after resume has room.
+    maxDurationMs: raise(cur.maxDurationMs, u.activeMs + n * perRoundMs + 60_000),
+  }
+  if (cur.maxCostUsd != null) {
+    const perRoundCost = ((u.costUsd ?? 0) / rounds) * 1.5
+    next.maxCostUsd = Math.max(cur.maxCostUsd, (u.costUsd ?? 0) + n * perRoundCost + 0.01)
+  }
+  return clampLimits(next)
+}
+
+/**
  * The cost limit applies only when every model that can speak (active
  * participants, and the moderator when enabled) has user-entered pricing.
  */

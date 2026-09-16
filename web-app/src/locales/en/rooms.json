@@ -230,7 +230,7 @@
     "send": "Send",
     "hint": "Ctrl+Enter to send",
     "limitReached": "The {{limit}} limit was reached. Continue the discussion?",
-    "extendBy": "More",
+    "extendBy": "More rounds",
     "continue": "Continue"
   }
 }
