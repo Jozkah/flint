@@ -32,17 +32,6 @@ Rooms — multi-model discussions with you in control — can now **use tools**,
 - **No more spinning.** A room whose participants are all waiting on you (e.g. asking for a file it does not have) pauses and hands back to you rather than looping.
 - **Presentation.** Each participant has its own colour, reflected in `@mentions`; `@room`, `@user` (your accent colour) and `@moderator` are distinct; messages render Markdown; and the settings panel is a tidy collapsible accordion. New participants default to read-only tools when their model supports them.
 
-### Fixes
-
-- **"Allow all MCP permissions" no longer runs built-in tools without asking.** That setting is about MCP servers, as its label says — it was also silently approving Cowork's own `write`/`edit`/`bash` in Ask mode. It now only auto-approves an MCP server's tools; a built-in tool is still asked about.
-- **A disabled tool can no longer execute.** Disabling a tool used to only hide it from the model; a model that re-emitted an earlier call could still run it. The call is now refused.
-- **Cowork context bar.** The left-rail **"Workspace"** label no longer wraps to "Workspa ce", the context-bar buttons share one height, "Autonomous" mode reads **"Auto mode"**, and token usage is shown in a single place instead of two.
-- **Rooms settings.** The room model picker now offers the same models as the Home and Cowork bars, and the settings panel no longer overlaps its **Save** button.
-- **A tool call with a stray brace no longer fails.** Some models append an extra `}` or trailing text after otherwise-valid tool arguments (e.g. `{"path":"…"}}`); `read`, `ls` and `grep` were refused with "JSON parsing failed" and the run stalled. The first complete arguments object is now recovered and the call runs, in both Cowork and Rooms.
-- **The `bash` tool tells the model which shell it is.** On Windows the sandbox cannot run bash inside its AppContainer, so a command is handed to PowerShell — but the model wrote bash syntax like `cp a b && echo done`, which Windows PowerShell rejects (`&&` is not a separator), failing the call and everything that depended on it. `bash`'s description now says to use PowerShell syntax when that is the real shell.
-- **A giant file write no longer loops.** A `write` of a whole large file could overrun the model's output budget, cutting the arguments off mid-content so they never parsed; the generic error made the model resend the same oversized write and loop. The refusal now says the arguments were cut off and to build the file in smaller pieces, and no longer dumps the whole blob back into the conversation.
-- **Auto-compaction no longer overflows the window.** Compaction fit the input to the exact context window using a token estimate; a denser real count (code- and JSON-heavy tool output) overflowed the server by a handful of tokens, a hard failure with no retry. A small window-proportional margin is now reserved, so the estimate's slack triggers one more compaction instead of failing the run.
-
 ## Migration
 
 **Flint detects an existing Jan installation on first launch.**
