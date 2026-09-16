@@ -153,6 +153,12 @@ import { readFileAsText } from '@/lib/fileSafety'
 type ChatInputProps = {
   className?: string
   showSpeedToken?: boolean
+  /**
+   * Hide the composer's token counter. For a surface that already shows token
+   * usage elsewhere (Cowork shows it per turn), so the same number is not
+   * reported twice.
+   */
+  hideTokenCounter?: boolean
   model?: ThreadModel
   initialMessage?: boolean
   projectId?: string
@@ -265,6 +271,7 @@ const ChatInput = memo(function ChatInput({
   surfaceControls,
   stopControl,
   tokenSource,
+  hideTokenCounter,
   threadId: threadIdProp,
   draftScope,
   takeFocus = true,
@@ -687,14 +694,16 @@ const ChatInput = memo(function ChatInput({
   // Reconcile video capability from /props once the model is loaded.
   useReconcileVideoCapability(selectedModel?.id, selectedProvider, isModelActive)
 
-  const tokenCounterVisible = shouldShowTokenCounter({
-    hasSelectedModel: !!selectedModel,
-    isAgentMode: effectiveAgentMode,
-    isInitialMessage: !!initialMessage,
-    hasMessages: (threadMessages?.length ?? 0) > 0,
-    hasPromptText: prompt.trim().length > 0,
-    hasReportedUsage: (tokenSource?.usage?.totalTokens ?? 0) > 0,
-  })
+  const tokenCounterVisible =
+    !hideTokenCounter &&
+    shouldShowTokenCounter({
+      hasSelectedModel: !!selectedModel,
+      isAgentMode: effectiveAgentMode,
+      isInitialMessage: !!initialMessage,
+      hasMessages: (threadMessages?.length ?? 0) > 0,
+      hasPromptText: prompt.trim().length > 0,
+      hasReportedUsage: (tokenSource?.usage?.totalTokens ?? 0) > 0,
+    })
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')

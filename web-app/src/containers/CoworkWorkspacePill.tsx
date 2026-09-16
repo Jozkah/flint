@@ -61,8 +61,8 @@ export function CoworkWorkspacePill({
           size={folderName ? 'xs' : 'icon-xs'}
           className={
             folderName
-              ? 'shrink-0 gap-1 bg-transparent text-muted-foreground pointer-coarse:h-11'
-              : 'shrink-0 text-muted-foreground pointer-coarse:size-11'
+              ? 'h-8 shrink-0 gap-1 bg-transparent text-muted-foreground pointer-coarse:h-11'
+              : 'size-8 shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           aria-label={
             folderName

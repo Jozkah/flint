@@ -110,7 +110,8 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             size="xs"
             aria-label={t('common:coworkAccess.label')}
             className={cn(
-              'shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
+              // h-8 to match the model selector and the other context-bar pills.
+              'h-8 shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
               // Editing the user's own checkout is the state worth noticing.
               active === 'edit-folder' ? 'text-warning' : 'text-foreground'
             )}

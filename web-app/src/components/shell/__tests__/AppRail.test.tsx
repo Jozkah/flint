@@ -35,11 +35,12 @@ describe('AppRail overflow safety', () => {
     }
   })
 
-  it('bounds each label to the tile and never clips it — no truncation, wrapping allowed', () => {
+  it('bounds each label to the tile and never clips it — no truncation, whole words kept', () => {
     const { container } = render(<AppRail />)
-    // The label is the last span inside each tile; assert the overflow contract
-    // on every one so a long or localized label wraps inside the 64px rail
-    // instead of spilling past its edge, and is never hidden by truncation.
+    // The label is the last span inside each tile; assert the layout contract
+    // on every one so a long or localized label fits the 64px rail without
+    // spilling past its edge, keeps whole words (no mid-word break like
+    // "Workspa ce"), and is never hidden by truncation.
     const tiles = container.querySelectorAll('[data-testid^="rail-"], [data-testid="cowork-settings"]')
     expect(tiles.length).toBe(RAIL_ITEMS.length)
     for (const tile of Array.from(tiles)) {
@@ -48,7 +49,10 @@ describe('AppRail overflow safety', () => {
       const cls = label!.className
       expect(cls).toContain('w-full')
       expect(cls).toContain('text-center')
-      expect(cls).toContain('overflow-wrap:anywhere')
+      // Words stay whole and the label shrinks to fit rather than breaking a
+      // word across two lines; multi-word labels still wrap between words.
+      expect(cls).toContain('[word-break:keep-all]')
+      expect(cls).toContain('[overflow-wrap:normal]')
       expect(cls).not.toContain('truncate')
       expect(cls).not.toContain('whitespace-nowrap')
       // Tile grows with wrapped text rather than clipping at a fixed height.

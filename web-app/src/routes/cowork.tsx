@@ -4439,6 +4439,10 @@ function CoworkPage() {
                   />
                 }
                 tokenSource={tokenSource}
+                // Token usage is shown per turn in the transcript
+                // (TurnUsageDetails); hide the composer's counter so the same
+                // number is not reported in two places.
+                hideTokenCounter
                 surfaceControls={
                   <>
                     {phone && sessionControls}

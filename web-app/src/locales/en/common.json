@@ -1074,7 +1074,7 @@
       "description": "Works normally, but every change waits for you to allow it."
     },
     "auto": {
-      "label": "Autonomous",
+      "label": "Auto mode",
       "description": "Changes files and runs commands without asking."
     }
   },

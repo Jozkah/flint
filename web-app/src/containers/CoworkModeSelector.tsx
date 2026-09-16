@@ -48,7 +48,9 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
             size="xs"
             aria-label={t('common:coworkMode.label')}
             className={cn(
-              'shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
+              // h-8 to line up with the model selector and the other pills in
+              // the context bar; xs's h-6 left them shorter than the selector.
+              'h-8 shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row. Warning,
               // not the accent: the accent means selected.
