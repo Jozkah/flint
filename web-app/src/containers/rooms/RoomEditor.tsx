@@ -20,6 +20,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { normalizeError, useRoomsApi, useRoomsState, type RoomsUiError } from './roomsBindings'
 import { activeParticipants, clampLimit, isEditable, limitCeiling } from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
+import { RoomSection } from './RoomSection'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -299,30 +300,38 @@ export function RoomEditor({ room }: { room: Room }) {
         void save()
       }}
     >
-      <h2 id={`${uid}-heading`} className="text-sm font-semibold">
-        {t('rooms:editor.heading')}
-      </h2>
+      <div className="px-1">
+        <h2 id={`${uid}-heading`} className="text-sm font-semibold text-foreground">
+          {t('rooms:editor.heading')}
+        </h2>
+      </div>
       {locked && (
-        <p role="note" className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+        <p
+          role="note"
+          className="rounded-lg border border-border bg-muted/60 p-2.5 text-xs text-muted-foreground"
+        >
           {t('rooms:editor.lockedWhileRunning')}
         </p>
       )}
 
-      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
-          <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
-          <Textarea
-            id={`${uid}-objective`}
-            rows={3}
-            value={objective}
-            onChange={(e) => edit(setObjective)(e.target.value)}
-          />
-        </div>
+      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
+        <RoomSection>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
+            <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
+            <Textarea
+              id={`${uid}-objective`}
+              rows={3}
+              value={objective}
+              onChange={(e) => edit(setObjective)(e.target.value)}
+            />
+          </div>
+        </RoomSection>
 
+        <RoomSection>
         <div className="flex flex-col gap-2">
           <span id={`${uid}-mode`} className="text-sm font-medium">
             {t('rooms:editor.speakingMode')}
@@ -347,7 +356,9 @@ export function RoomEditor({ room }: { room: Room }) {
           </RadioGroup>
           <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
         </div>
+        </RoomSection>
 
+        <RoomSection contentClassName="gap-2">
         <section className="flex flex-col gap-2" aria-labelledby={`${uid}-mod-heading`}>
           <h3 id={`${uid}-mod-heading`} className="text-sm font-medium">
             {t('rooms:editor.moderator')}
@@ -392,7 +403,9 @@ export function RoomEditor({ room }: { room: Room }) {
             </div>
           )}
         </section>
+        </RoomSection>
 
+        <RoomSection contentClassName="gap-2">
         <section className="flex flex-col gap-2" aria-labelledby={`${uid}-p-heading`}>
           <h3 id={`${uid}-p-heading`} className="text-sm font-medium">
             {t('rooms:editor.participants')}
@@ -413,7 +426,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 <li
                   key={p.id}
                   data-testid="room-participant"
-                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-card p-3"
+                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-background p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="flex min-w-0 flex-col gap-1.5">
@@ -533,7 +546,7 @@ export function RoomEditor({ room }: { room: Room }) {
             })}
           </ul>
 
-          <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-dashed border-border p-3">
+          <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-dashed border-border bg-background/60 p-3">
             <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
             {atMax ? (
               <p className="text-xs text-muted-foreground">
@@ -585,6 +598,9 @@ export function RoomEditor({ room }: { room: Room }) {
           </div>
         </section>
 
+        </RoomSection>
+
+        <RoomSection contentClassName="gap-2">
         <section className="flex flex-col gap-2" aria-labelledby={`${uid}-l-heading`}>
           <h3 id={`${uid}-l-heading`} className="text-sm font-medium">
             {t('rooms:editor.limits')}
@@ -630,11 +646,10 @@ export function RoomEditor({ room }: { room: Room }) {
             })}
           </div>
         </section>
+        </RoomSection>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm">
-            {t('rooms:editor.save')}
-          </Button>
+        <div className="sticky bottom-0 -mx-3 flex flex-wrap items-center gap-2 border-t border-border bg-sidebar px-3 pt-3">
+          <Button type="submit">{t('rooms:editor.save')}</Button>
           {saved && (
             <span role="status" className="text-xs text-muted-foreground">
               {t('rooms:editor.saved')}

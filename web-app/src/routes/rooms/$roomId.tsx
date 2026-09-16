@@ -105,7 +105,7 @@ function RoomPage() {
           </main>
           <aside
             data-testid="room-side-panel"
-            className="flex w-full shrink-0 flex-col gap-6 border-t border-border bg-card p-4 lg:w-[360px] lg:overflow-y-auto lg:border-l lg:border-t-0"
+            className="flex w-full shrink-0 flex-col gap-3 border-t border-border bg-sidebar p-3 lg:w-[384px] lg:overflow-y-auto lg:border-l lg:border-t-0"
           >
             <RoomControls room={room} />
             <RoomEditor room={room} />

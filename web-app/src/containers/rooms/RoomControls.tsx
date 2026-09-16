@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { normalizeError, useRoomsApi, useRoomsState, type RoomsUiError } from './roomsBindings'
 import { activeParticipants, availableParticipants, controlAvailability } from './roomUi'
+import { RoomSection } from './RoomSection'
 
 export function RoomControls({ room }: { room: Room }) {
   const { t } = useTranslation()
@@ -50,17 +51,33 @@ export function RoomControls({ room }: { room: Room }) {
   const speakers = availableParticipants(room)
 
   return (
-    <section aria-label={t('rooms:controls.label')} aria-busy={busy} className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        {room.status === 'paused' ? (
-          <Button size="sm" disabled={!avail.resume || busy} onClick={() => run(() => c.resume(room.id))}>
-            {t('rooms:controls.resume')}
-          </Button>
-        ) : (
-          <Button size="sm" disabled={!avail.start || busy} onClick={() => run(() => c.start(room.id))}>
-            {t('rooms:controls.start')}
-          </Button>
-        )}
+    <RoomSection
+      aria-label={t('rooms:controls.label')}
+      aria-busy={busy}
+      title={t('rooms:controls.label')}
+      contentClassName="gap-3"
+    >
+      {/* The primary action gets the full width so the main thing to do is
+          unmistakable; the routine turn actions sit in an even grid below. */}
+      {room.status === 'paused' ? (
+        <Button
+          className="w-full"
+          disabled={!avail.resume || busy}
+          onClick={() => run(() => c.resume(room.id))}
+        >
+          {t('rooms:controls.resume')}
+        </Button>
+      ) : (
+        <Button
+          className="w-full"
+          disabled={!avail.start || busy}
+          onClick={() => run(() => c.start(room.id))}
+        >
+          {t('rooms:controls.start')}
+        </Button>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
         <Button
           size="sm"
           variant="outline"
@@ -77,20 +94,14 @@ export function RoomControls({ room }: { room: Room }) {
         >
           {t('rooms:controls.cancelTurn')}
         </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          disabled={!avail.stop || busy}
-          onClick={() => setStopOpen(true)}
-        >
-          {t('rooms:controls.stop')}
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline" disabled={!avail.selectNext || busy}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              disabled={!avail.selectNext || busy}
+            >
               {t('rooms:controls.selectNext')}
             </Button>
           </DropdownMenuTrigger>
@@ -132,6 +143,17 @@ export function RoomControls({ room }: { room: Room }) {
           {t('rooms:controls.synthesize')}
         </Button>
       </div>
+
+      {/* Stop ends the run: kept on its own, away from the routine actions. */}
+      <Button
+        size="sm"
+        variant="destructive"
+        className="w-full"
+        disabled={!avail.stop || busy}
+        onClick={() => setStopOpen(true)}
+      >
+        {t('rooms:controls.stop')}
+      </Button>
 
       {voteOpen && avail.callVote && (
         <form
@@ -203,6 +225,6 @@ export function RoomControls({ room }: { room: Room }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </RoomSection>
   )
 }
