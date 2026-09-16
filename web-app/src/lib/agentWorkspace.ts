@@ -5,6 +5,7 @@ import {
   memoryWrite,
   memoryDelete,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { invoke } from '@tauri-apps/api/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import * as skillStore from '@/lib/skillStore'
 import type { SkillMeta } from '@/lib/skillStore'
@@ -60,4 +61,41 @@ export async function deleteMemory(name: string): Promise<void> {
 /** Open the store in the OS file manager. */
 export async function revealStore(): Promise<void> {
   await getServiceHub().opener().openPath(await storePath())
+}
+
+/**
+ * The summary the `consolidate_memory` command returns. Mirrors the Rust
+ * `ConsolidationOutcome` (serde `camelCase`).
+ */
+export interface ConsolidationOutcome {
+  /** Whether a consolidation actually ran and wrote output. */
+  ran: boolean
+  /** "ok" when it ran, otherwise the skip reason (disabled / not idle /
+   * nothing new / busy). */
+  reason: string
+  notesRead: number
+  factsIn: number
+  factsOut: number
+  conflictsResolved: number
+  secretsFiltered: number
+  bytesWritten: number
+}
+
+/**
+ * Idle-time memory consolidation ("autoDream").
+ *
+ * The backend is the real gate: it is off unless the store's config enabled it,
+ * and it enforces the cross-process lock, path safety and atomic write whatever
+ * the caller passes. `manual = true` (the user pressing "run now") bypasses the
+ * enabled/idle gates only; `manual = false` is the idle poller's auto path.
+ * `idleSecs` is the inactivity threshold the caller has been observing.
+ */
+export async function consolidateMemory(
+  idleSecs: number,
+  manual: boolean
+): Promise<ConsolidationOutcome> {
+  return await invoke<ConsolidationOutcome>('consolidate_memory', {
+    idleSecs,
+    manual,
+  })
 }

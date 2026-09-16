@@ -13,8 +13,10 @@ pub mod bundle_import;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
-pub mod compaction;
 pub mod auto_mode;
+pub mod compaction;
+#[cfg(not(feature = "cli"))]
+pub mod memory_consolidation;
 pub mod context;
 pub mod context_pressure;
 pub mod events;

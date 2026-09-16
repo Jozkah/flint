@@ -1909,3 +1909,49 @@ pub async fn payload_usage_lookup(
         session.as_deref(),
     )
 }
+
+/// Idle-time memory consolidation ("autoDream").
+///
+/// Folds the permanent store's memory notes into a single deduplicated,
+/// contradiction-resolved note. Off by default: the auto path (`manual = false`,
+/// driven by the frontend idle poller) only runs when the store's
+/// `consolidation.json` has enabled it and the machine is idle. A manual run
+/// (`manual = true`, the user pressing "run now") bypasses the enabled/idle
+/// gates, but every other guard still applies — the cross-process lock, the
+/// path-safety check, and the atomic write. The backend is the real gate; the
+/// hook merely schedules.
+///
+/// Uses the deterministic [`memory_consolidation::HeuristicMerger`] (passing
+/// `None` for the model): consolidation reuses no second server, and wiring a
+/// live model is a matter of handing `run_consolidation` an invoker instead.
+#[tauri::command]
+pub async fn consolidate_memory(
+    idle_secs: u64,
+    manual: bool,
+) -> Result<memory_consolidation::ConsolidationOutcome, String> {
+    use crate::core::agent::memory_consolidation as mc;
+
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let store = workspace::permanent_store(&data_folder);
+    let dir = tauri_plugin_agent_tools::memory::memory_dir(&store);
+
+    // The persisted config carries the enabled flag (default: off); the caller's
+    // `idle_secs` overrides the idle threshold for this evaluation.
+    let mut config = mc::ConsolidationConfig::load(&dir);
+    config.idle_threshold_secs = idle_secs;
+
+    // The renderer is the only idle sensor (it sees pointer/keyboard); the hook
+    // calls the auto path only after `idle_secs` of inactivity. The snapshot
+    // encodes that contract — last activity was at least `idle_secs` ago — so
+    // the backend's `is_idle` gate exercises the same threshold and passes
+    // exactly when the caller's claim holds. `enabled` (default off), the lock,
+    // path safety, atomic write and the new-since checkpoint remain the real
+    // backend gates. A `manual` call bypasses the enabled/idle gates only.
+    let now = mc::now_ms();
+    let snapshot = mc::ActivitySnapshot {
+        last_activity_ms: now.saturating_sub(idle_secs.saturating_mul(1000)),
+    };
+    mc::run_consolidation(&dir, &config, snapshot, now, manual, None).await
+}
+
+use crate::core::agent::memory_consolidation;
