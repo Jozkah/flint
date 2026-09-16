@@ -88,8 +88,12 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
   } else {
     lines.push('The user is also present.')
   }
-  if (speaker.kind === 'participant' && speaker.participant.toolAccess !== 'none') {
-    lines.push(toolGuidance(room, speaker.participant.toolAccess))
+  if (speaker.kind === 'participant') {
+    lines.push(
+      speaker.participant.toolAccess === 'none'
+        ? 'You have no tools in this discussion. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
+        : toolGuidance(room, speaker.participant.toolAccess)
+    )
   }
   if (speaker.kind === 'participant' && room.mode !== 'moderator-selected') {
     lines.push(
