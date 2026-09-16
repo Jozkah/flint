@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { asJournal, makeMessage, makeRoom } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
@@ -154,5 +154,29 @@ describe('RoomTranscript', () => {
   it('shows an empty state', () => {
     render(<RoomTranscript room={makeRoom()} journal={[]} liveTurn={null} />)
     expect(screen.getByText('Nothing has been said yet.')).toBeInTheDocument()
+  })
+
+  it('shows tool chips and expands them to the advanced input/output view', () => {
+    const msg = makeMessage({
+      text: 'Looked it up.',
+      toolCalls: [
+        { name: 'read', ok: true, args: { path: 'notes.md' }, output: 'FILE BODY' },
+        { name: 'grep', ok: false, args: { pattern: 'x' }, output: 'ERROR: nope' },
+      ],
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+
+    const tools = screen.getByTestId('message-tools')
+    // Simple view: a chip per call, details collapsed.
+    expect(within(tools).getByText('read')).toBeInTheDocument()
+    expect(within(tools).getByText('grep')).toBeInTheDocument()
+    expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('tool-trace-toggle'))
+
+    const details = screen.getByTestId('tool-trace-details')
+    expect(within(details).getByText('"notes.md"', { exact: false })).toBeInTheDocument()
+    expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
+    expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
   })
 })

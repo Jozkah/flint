@@ -91,7 +91,9 @@ describe('buildRoomTools', () => {
       readOnlyProject: '/work',
       scope: 'thread',
     })
-    expect(activity).toEqual([{ name: 'read', ok: true }])
+    expect(activity).toEqual([
+      { name: 'read', ok: true, args: { path: 'src/main.rs' }, output: 'FILE BODY' },
+    ])
   })
 
   it('surfaces a tool error as text and marks the activity failed', async () => {
@@ -105,7 +107,9 @@ describe('buildRoomTools', () => {
     })
 
     expect(out).toBe('ERROR: permission denied')
-    expect(activity).toEqual([{ name: 'grep', ok: false }])
+    expect(activity).toEqual([
+      { name: 'grep', ok: false, args: { pattern: 'x' }, output: 'ERROR: permission denied' },
+    ])
   })
 
   it('adds web tools when web search is on, and works with no folder', async () => {
@@ -164,7 +168,9 @@ describe('buildRoomTools', () => {
     })
     expect(out).toBe('RESULT A\nRESULT B')
     expect(callTool).toHaveBeenCalledWith({ toolName: 'search_docs', arguments: { q: 'x' } })
-    expect(activity).toEqual([{ name: 'search_docs', ok: true }])
+    expect(activity).toEqual([
+      { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B' },
+    ])
   })
 
   it('surfaces an MCP tool error and never shadows a built-in of the same name', async () => {
@@ -182,6 +188,6 @@ describe('buildRoomTools', () => {
 
     const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
     expect(out).toBe('ERROR: boom')
-    expect(activity).toEqual([{ name: 'ask', ok: false }])
+    expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom' }])
   })
 })

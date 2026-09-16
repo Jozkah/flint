@@ -1,6 +1,13 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, Wrench } from 'lucide-react'
-import type { LiveTurn, Room, RoomAuthor, RoomJournalRecord, RoomMessage } from '@/lib/rooms/types'
+import { ArrowDown, ChevronDown, ChevronRight, Wrench } from 'lucide-react'
+import type {
+  LiveTurn,
+  Room,
+  RoomAuthor,
+  RoomJournalRecord,
+  RoomMessage,
+  RoomToolActivity,
+} from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import {
@@ -97,6 +104,97 @@ function KindLabel({ message, t }: { message: RoomMessage; t: T }) {
   }
 }
 
+function formatArgs(args: unknown): string {
+  try {
+    return typeof args === 'string' ? args : JSON.stringify(args, null, 2)
+  } catch {
+    return String(args)
+  }
+}
+
+/**
+ * The tools a participant used, as compact chips (simple view) with a toggle to
+ * expand each call's input and output (advanced view). The toggle only appears
+ * when at least one call carries detail to show.
+ */
+function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
+
+  return (
+    <div className="mb-1.5" data-testid="message-tools">
+      <div className="flex flex-wrap items-center gap-1">
+        {calls.map((c, i) => (
+          <span
+            key={`${c.name}-${i}`}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
+              c.ok
+                ? 'border-border bg-muted text-muted-foreground'
+                : 'border-destructive/40 bg-destructive/10 text-destructive'
+            )}
+          >
+            <Wrench className="size-3 shrink-0" aria-hidden />
+            {c.name}
+          </span>
+        ))}
+        {hasDetails && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            data-testid="tool-trace-toggle"
+            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? (
+              <ChevronDown className="size-3 shrink-0" aria-hidden />
+            ) : (
+              <ChevronRight className="size-3 shrink-0" aria-hidden />
+            )}
+            {expanded ? t('rooms:transcript.toolHide') : t('rooms:transcript.toolDetails')}
+          </button>
+        )}
+      </div>
+      {expanded && hasDetails && (
+        <div className="mt-1.5 space-y-1.5" data-testid="tool-trace-details">
+          {calls.map((c, i) => (
+            <div
+              key={`${c.name}-detail-${i}`}
+              className="rounded-md border border-border bg-muted/40 p-2 text-[11px]"
+            >
+              <div className="flex items-center gap-1 font-medium">
+                <Wrench className="size-3 shrink-0" aria-hidden />
+                <span>{c.name}</span>
+                <span
+                  className={cn('ml-auto', c.ok ? 'text-muted-foreground' : 'text-destructive')}
+                >
+                  {c.ok ? t('rooms:transcript.toolOk') : t('rooms:transcript.toolFailed')}
+                </span>
+              </div>
+              {c.args !== undefined && (
+                <div className="mt-1">
+                  <p className="text-muted-foreground">{t('rooms:transcript.toolArgs')}</p>
+                  <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-1.5">
+                    {formatArgs(c.args)}
+                  </pre>
+                </div>
+              )}
+              {c.output && (
+                <div className="mt-1">
+                  <p className="text-muted-foreground">{t('rooms:transcript.toolOutput')}</p>
+                  <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-1.5">
+                    {c.output}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MessageBody({
   message,
   tally,
@@ -111,22 +209,7 @@ function MessageBody({
   return (
     <>
       {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-1" data-testid="message-tools">
-          {message.toolCalls.map((c, i) => (
-            <span
-              key={`${c.name}-${i}`}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
-                c.ok
-                  ? 'border-border bg-muted text-muted-foreground'
-                  : 'border-destructive/40 bg-destructive/10 text-destructive'
-              )}
-            >
-              <Wrench className="size-3 shrink-0" aria-hidden />
-              {c.name}
-            </span>
-          ))}
-        </div>
+        <ToolTrace calls={message.toolCalls} t={t} />
       )}
       <RoomMessageText text={message.text} mentionColors={mentionColors} className="text-sm" />
       {message.kind === 'vote-call' && (

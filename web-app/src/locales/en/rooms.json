@@ -162,7 +162,13 @@
     "noDissent": "No dissent recorded.",
     "moderatorNote": "Moderator note",
     "disagreements": "Disagreements",
-    "jumpToLatest": "Jump to latest"
+    "jumpToLatest": "Jump to latest",
+    "toolDetails": "Details",
+    "toolHide": "Hide",
+    "toolArgs": "Input",
+    "toolOutput": "Output",
+    "toolOk": "ok",
+    "toolFailed": "failed"
   },
   "controls": {
     "label": "Room controls",

@@ -230,8 +230,17 @@ export type RoomMessage = {
   toolCalls?: RoomToolActivity[]
 }
 
-/** One tool a participant used in its turn, for the transcript. */
-export type RoomToolActivity = { name: string; ok: boolean }
+/**
+ * One tool a participant used in its turn, for the transcript. `name`/`ok` drive
+ * the simple chip; `args`/`output` are captured for the expandable advanced view
+ * (`output` is truncated to keep the transcript small).
+ */
+export type RoomToolActivity = {
+  name: string
+  ok: boolean
+  args?: unknown
+  output?: string
+}
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
 export type ModeratorDirective = {

@@ -426,6 +426,12 @@ pub struct RoomMessage {
 pub struct RoomToolCall {
     pub name: String,
     pub ok: bool,
+    /// The tool's input, kept for the transcript's expandable advanced view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    /// The tool's output (truncated on the frontend), for the advanced view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

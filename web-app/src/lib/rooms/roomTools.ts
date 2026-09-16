@@ -33,6 +33,16 @@ export const ROOM_WRITE_TOOLS = ['write', 'edit'] as const
 /** Upper bound on tool steps in one participant turn, so a turn cannot loop. */
 export const ROOM_TOOL_MAX_STEPS = 8
 
+/** Cap on captured tool output kept for the transcript's advanced view. */
+export const ROOM_TOOL_OUTPUT_CAP = 4000
+
+/** Keep the transcript small: truncate captured output past the cap. */
+function capOutput(text: string): string {
+  return text.length > ROOM_TOOL_OUTPUT_CAP
+    ? `${text.slice(0, ROOM_TOOL_OUTPUT_CAP)}\n… (truncated)`
+    : text
+}
+
 type ExecOptions = { readOnlyProject?: string; writeGrant?: string; scope: 'thread' }
 
 export async function buildRoomTools(
@@ -43,8 +53,9 @@ export async function buildRoomTools(
 
   const run = (name: string, options: ExecOptions) => async (input: unknown) => {
     const result = await executeAgentTool(name, input, ctx.roomId, options)
-    onActivity?.({ name, ok: !result.error })
-    return result.error ? `ERROR: ${result.error}` : (result.content ?? '')
+    const output = result.error ? `ERROR: ${result.error}` : (result.content ?? '')
+    onActivity?.({ name, ok: !result.error, args: input, output: capOutput(output) })
+    return output
   }
 
   // File tools only make sense against an attached folder. With `edit` access,
@@ -138,12 +149,15 @@ export async function buildMcpTools(
       execute: async (input: unknown) => {
         try {
           const res = await mcp.callTool({ toolName: t.name, arguments: input as object })
-          onActivity?.({ name: t.name, ok: !res.error })
-          if (res.error) return `ERROR: ${res.error}`
-          return (res.content ?? []).map((c) => c.text).join('\n')
+          const output = res.error
+            ? `ERROR: ${res.error}`
+            : (res.content ?? []).map((c) => c.text).join('\n')
+          onActivity?.({ name: t.name, ok: !res.error, args: input, output: capOutput(output) })
+          return output
         } catch (e) {
-          onActivity?.({ name: t.name, ok: false })
-          return `ERROR: ${e instanceof Error ? e.message : String(e)}`
+          const output = `ERROR: ${e instanceof Error ? e.message : String(e)}`
+          onActivity?.({ name: t.name, ok: false, args: input, output })
+          return output
         }
       },
     } as Tool
