@@ -24,7 +24,8 @@ export type { RoomToolActivity }
  */
 export type RoomToolContext = {
   roomId: string
-  folder: string
+  /** The folder file-read tools resolve against, or null for none. */
+  folder: string | null
   access: ToolAccess
 }
 

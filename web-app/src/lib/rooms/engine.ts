@@ -454,16 +454,15 @@ class RoomRun {
         }
       }
 
-      // Read-only built-in tools for this turn: only when the participant has
-      // tool access and the room has a working folder to read from. Absent
-      // otherwise, so a room without a folder behaves exactly as before.
+      // Read-only tools for this turn, when the participant has tool access.
+      // File tools need the room's folder; web tools do not, so a participant
+      // can research even with no folder attached. With no access the context
+      // is absent and the turn behaves exactly as before.
       const toolContext =
-        args.participant &&
-        args.participant.toolAccess !== 'none' &&
-        this.room.folder
+        args.participant && args.participant.toolAccess !== 'none'
           ? {
               roomId: this.roomId,
-              folder: this.room.folder,
+              folder: this.room.folder ?? null,
               access: args.participant.toolAccess,
             }
           : undefined

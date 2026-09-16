@@ -7,6 +7,11 @@ vi.mock('@/lib/agentTools', () => ({
   executeAgentTool: (...a: unknown[]) => executeAgentTool(...a),
 }))
 
+let webSearchEnabled = false
+vi.mock('@/hooks/useWebSearchConfig', () => ({
+  useWebSearchConfig: { getState: () => ({ webSearchEnabled }) },
+}))
+
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
 import type { RoomToolActivity } from '../types'
 
@@ -24,6 +29,7 @@ describe('buildRoomTools', () => {
   beforeEach(() => {
     getAgentToolSchemas.mockReset()
     executeAgentTool.mockReset()
+    webSearchEnabled = false
   })
 
   it('offers only the read-only built-ins and drops everything else', async () => {
@@ -69,5 +75,13 @@ describe('buildRoomTools', () => {
 
     expect(out).toBe('ERROR: permission denied')
     expect(activity).toEqual([{ name: 'grep', ok: false }])
+  })
+
+  it('adds web tools when web search is on, and works with no folder', async () => {
+    webSearchEnabled = true
+    const tools = await buildRoomTools({ roomId: 'r1', folder: null, access: 'read' })
+    // No folder -> no file schemas fetched, only web tools.
+    expect(getAgentToolSchemas).not.toHaveBeenCalled()
+    expect(Object.keys(tools).sort()).toEqual(['web_fetch', 'web_search'])
   })
 })
