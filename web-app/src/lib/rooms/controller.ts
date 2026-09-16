@@ -19,7 +19,7 @@ import {
   type ProviderLookup,
 } from './availability'
 import { parseAddress } from './addressing'
-import { clampLimits, emptyUsage } from './limits'
+import { checkLimits, clampLimits, emptyUsage } from './limits'
 import { activeParticipants } from './policy'
 import {
   getRoomPersistence,
@@ -115,22 +115,25 @@ function roomError(code: RoomError['code'], message: string): RoomError {
 
 /**
  * Whether a user message should make a non-running room pick up and respond,
- * rather than only be recorded. Paused, awaiting-user and completed rooms
- * resume; a stopped room resumes only when it was not stopped by a limit --
- * a limit-stopped room would just re-trip the same limit, so extending it is
- * offered instead (see `extendLimit`).
+ * rather than only be recorded. Paused, awaiting-user, completed and
+ * user/converged-stopped rooms resume -- but only when continuing would not
+ * immediately hit a limit. A room at (or past) a limit is left as it is so the
+ * composer can offer to extend it (see `extendLimit`); otherwise it would
+ * resume and re-stop in the same instant, swallowing the message.
  */
-function canResumeOnMessage(room: Room): boolean {
+function canResumeOnMessage(room: Room, now: number): boolean {
   switch (room.status) {
     case 'paused':
     case 'awaiting-user':
     case 'completed':
-      return true
+      break
     case 'stopped':
-      return room.stopReason?.kind !== 'limit'
+      if (room.stopReason?.kind === 'limit') return false
+      break
     default:
       return false
   }
+  return checkLimits(room, now, { activeSince: now, callsMade: 0, speaking: true }) === null
 }
 
 export function defaultNewId(): string {
@@ -463,7 +466,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
               : to
           await appendMessage(roomId, userMessage(roomId, room.round, body, address))
-          resume = canResumeOnMessage(room)
+          resume = canResumeOnMessage(room, now())
         })
         if (resume) void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
       }),
@@ -474,12 +477,26 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         await enqueue(roomId, async () => {
           const { room } = await persistence().getRoom(roomId)
           const stop = room.stopReason
-          // Raise the limit that actually stopped the room (rounds, turns, …);
-          // fall back to rounds. The hard 'ceiling' is not user-extendable.
-          const key: keyof RoomLimits =
-            stop?.kind === 'limit' && stop.limit !== 'ceiling' ? stop.limit : 'maxRounds'
+          // Raise the limit that actually blocks the room: the one it stopped on,
+          // or -- for a room that concluded yet also sits at a limit -- whatever
+          // continuing would hit. Fall back to rounds. 'ceiling' is not
+          // user-extendable.
+          const blocking = checkLimits(room, now(), {
+            activeSince: now(),
+            callsMade: 0,
+            speaking: true,
+          })
+          const from =
+            stop?.kind === 'limit' && stop.limit !== 'ceiling'
+              ? stop.limit
+              : blocking && blocking !== 'ceiling'
+                ? blocking
+                : 'maxRounds'
+          const key: keyof RoomLimits = from
           const current = room.limits[key] ?? 0
-          const limits = clampLimits({ ...room.limits, [key]: current + add })
+          // The duration limit is stored in ms but asked for in minutes.
+          const increment = key === 'maxDurationMs' ? add * 60_000 : add
+          const limits = clampLimits({ ...room.limits, [key]: current + increment })
           await saveRoom({ ...room, limits, stopReason: null })
           const body = text?.trim()
           if (body && to) {

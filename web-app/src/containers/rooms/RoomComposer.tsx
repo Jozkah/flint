@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { Address, Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { checkLimits } from '@/lib/rooms/limits'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,16 +29,17 @@ export function RoomComposer({ room }: { room: Room }) {
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [extendBy, setExtendBy] = useState(3)
 
-  // The room stopped because a soft limit was reached. A plain message would
-  // only re-trip it, so offer to raise that limit and continue. The hard
-  // 'ceiling' is not extendable.
-  const limitStop =
-    room.status === 'stopped' &&
-    room.stopReason?.kind === 'limit' &&
-    room.stopReason.limit !== 'ceiling'
-      ? room.stopReason.limit
-      : null
-  const limitCeiling = limitStop ? ROOM_LIMIT_CEILINGS[limitStop] : undefined
+  // The room is not running and continuing would immediately hit a soft limit
+  // (whether it stopped on that limit or concluded while already at it). A plain
+  // message would only re-trip it, so offer to raise that limit and continue.
+  // The hard 'ceiling' is not extendable.
+  const blocking =
+    room.status === 'running'
+      ? null
+      : checkLimits(room, Date.now(), { activeSince: Date.now(), callsMade: 0, speaking: true })
+  const limitStop = blocking && blocking !== 'ceiling' ? blocking : null
+  const limitCeiling =
+    limitStop && limitStop !== 'maxDurationMs' ? ROOM_LIMIT_CEILINGS[limitStop] : undefined
 
   const send = async () => {
     const body = text.trim()
