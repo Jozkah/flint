@@ -16,8 +16,24 @@ const directEditAuthorize = vi.fn(async () => 'grant-123')
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   directEditAuthorize: (...a: unknown[]) => directEditAuthorize(...a),
 }))
+
+const getTools = vi.fn(async () => [] as unknown[])
+const callTool = vi.fn(async () => ({ error: '', content: [{ text: '' }] }))
 vi.mock('@/hooks/useServiceHub', () => ({
-  getServiceHub: () => ({ app: () => ({ getJanDataFolder: async () => '/data' }) }),
+  getServiceHub: () => ({
+    app: () => ({ getJanDataFolder: async () => '/data' }),
+    mcp: () => ({ getTools, callTool }),
+  }),
+}))
+
+let disabledTools: string[] = []
+vi.mock('@/hooks/useToolAvailable', () => ({
+  useToolAvailable: {
+    getState: () => ({
+      isToolDisabled: (server: string, tool: string) =>
+        disabledTools.includes(`${server}::${tool}`),
+    }),
+  },
 }))
 
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
@@ -39,6 +55,11 @@ describe('buildRoomTools', () => {
     executeAgentTool.mockReset()
     directEditAuthorize.mockReset()
     directEditAuthorize.mockResolvedValue('grant-123')
+    getTools.mockReset()
+    getTools.mockResolvedValue([])
+    callTool.mockReset()
+    callTool.mockResolvedValue({ error: '', content: [{ text: '' }] })
+    disabledTools = []
     webSearchEnabled = false
   })
 
@@ -122,5 +143,45 @@ describe('buildRoomTools', () => {
     const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit' })
     // Read still works; write is not offered without a grant.
     expect(Object.keys(tools)).toEqual(['read'])
+  })
+
+  it('advertises enabled MCP tools and routes calls through callTool', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'search_docs', description: 'search', inputSchema: { type: 'object' }, server: 'docs' },
+      { name: 'hidden', description: 'nope', inputSchema: { type: 'object' }, server: 'docs' },
+    ])
+    disabledTools = ['docs::hidden']
+    callTool.mockResolvedValue({ error: '', content: [{ text: 'RESULT A' }, { text: 'RESULT B' }] })
+    const activity: RoomToolActivity[] = []
+    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+
+    // The disabled tool is dropped; the enabled one is offered alongside reads.
+    expect(Object.keys(tools).sort()).toEqual(['read', 'search_docs'])
+
+    const out = await (tools.search_docs as { execute: (i: unknown) => Promise<string> }).execute({
+      q: 'x',
+    })
+    expect(out).toBe('RESULT A\nRESULT B')
+    expect(callTool).toHaveBeenCalledWith({ toolName: 'search_docs', arguments: { q: 'x' } })
+    expect(activity).toEqual([{ name: 'search_docs', ok: true }])
+  })
+
+  it('surfaces an MCP tool error and never shadows a built-in of the same name', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'read', description: 'mcp read', inputSchema: { type: 'object' }, server: 'docs' },
+      { name: 'ask', description: 'ask', inputSchema: { type: 'object' }, server: 'docs' },
+    ])
+    callTool.mockResolvedValue({ error: 'boom', content: [] })
+    const activity: RoomToolActivity[] = []
+    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+
+    // The built-in `read` is kept; MCP does not overwrite it.
+    expect((tools.read as { description: string }).description).toBe('read tool')
+
+    const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
+    expect(out).toBe('ERROR: boom')
+    expect(activity).toEqual([{ name: 'ask', ok: false }])
   })
 })
