@@ -1,6 +1,6 @@
-﻿# Flint 0.9.1
+﻿# Flint 0.9
 
-A stabilisation release on top of 0.9.0, and the arrival of **tool-using discussion rooms**. 0.9.0 was rough; 0.9.1 fixes the problems people hit in it and adds a large amount to Rooms.
+The headline of this release is **tool-using discussion rooms** — Rooms can now do work, not just talk — alongside the fixes that make the rest of the app solid.
 
 ## New in Rooms
 
@@ -22,16 +22,12 @@ Rooms — multi-model discussions with you in control — can now **use tools**,
 - **Cowork** shows **tokens/sec** on each reply, including providers that do not report llama.cpp timings.
 - Idle-time **memory consolidation**, an opt-in **autonomous-mode safety classifier** (off by default), a worktree symlink/sparse-checkout optimisation, behaviour-steering tool descriptions, and a Flint boot-loader sprite and installer icon.
 
-## Fixes (present in 0.9.0)
+## Fixes
 
 - **"Allow all MCP permissions" no longer runs built-in tools without asking.** That setting is about MCP servers, as its label says — it was also silently approving Cowork's own `write`/`edit`/`bash` in Ask mode. It now only auto-approves an MCP server's tools; a built-in tool is still asked about.
 - **A disabled tool can no longer execute.** Disabling a tool used to only hide it from the model; a model that re-emitted an earlier call could still run it. The call is now refused.
 - **Cowork context bar.** The left-rail **"Workspace"** label no longer wraps to "Workspa ce", the context-bar buttons share one height, "Autonomous" mode reads **"Auto mode"**, and token usage is shown in a single place instead of two.
 - **Rooms settings.** The room model picker now offers the same models as the Home and Cowork bars, and the settings panel no longer overlaps its **Save** button.
-
----
-
-# Flint 0.9
 
 ## Migration
 
