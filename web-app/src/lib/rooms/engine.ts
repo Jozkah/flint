@@ -515,18 +515,21 @@ class RoomRun {
           this.room = { ...this.room, usage: addCallUsage(this.room.usage, usage, pricing) }
           if (args.participant) this.errorStreaks.set(args.participant.id, 0)
           const extra = args.finalize ? args.finalize(raw) : {}
+          const message = this.message({
+            ...base,
+            text: raw,
+            usage,
+            ...extra,
+            ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
+          })
+          // The conclude signal is a control token, never transcript prose:
+          // strip it from every turn kind (final position and synthesis emit it
+          // too, and their finalize does not clean the text). Detection of it
+          // stays with the speech turn, on the raw reply.
+          message.text = stripConclusion(message.text).text
           // Stored after the provider `try`: a write failure is a persistence
           // error, never a provider error to classify or retry.
-          completed = {
-            raw,
-            message: this.message({
-              ...base,
-              text: raw,
-              usage,
-              ...extra,
-              ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
-            }),
-          }
+          completed = { raw, message }
         } catch (e) {
           if (isRoomPersistenceError(e)) throw e
           if (e instanceof RunAborted || isAbortLike(e, this.signal)) {
