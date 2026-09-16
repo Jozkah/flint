@@ -211,9 +211,11 @@ describe('room controller', () => {
   })
 
   it('a message resumes a room that had concluded', async () => {
+    // Conclude on the 3rd turn: a lone or first-round conclusion is ignored, so
+    // the signal must land after a full round has been spoken.
     let n = 0
     const { fn, calls } = scriptedStream(() =>
-      n++ === 0 ? { text: `We agree. ${CONCLUDE_SIGNAL}` } : { text: uniqueText() }
+      n++ === 2 ? { text: `We agree. ${CONCLUDE_SIGNAL}` } : { text: uniqueText() }
     )
     const { ctl, persistence } = setup(fn)
     const room = await createDefault(ctl, { limits: { maxTurns: 6 } })

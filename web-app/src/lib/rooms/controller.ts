@@ -259,15 +259,22 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       } finally {
         if (s.run === run) s.run = null
         store().setRunning(roomId, false)
-        // Messages sent after the run's last drain are still recorded.
+        // Messages sent after the run's last drain are still recorded -- and if
+        // the room can act on them, it resumes so they are not left unanswered.
         const leftovers = s.userQueue.splice(0)
         if (leftovers.length) {
+          let resume = false
           void enqueue(roomId, async () => {
             const { room } = await persistence().getRoom(roomId)
             for (const m of leftovers) {
               await appendMessage(roomId, userMessage(roomId, room.round, m.text, m.to))
             }
-          }).catch(reportError)
+            resume = canResumeOnMessage(room, now())
+          })
+            .then(() => {
+              if (resume) void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+            })
+            .catch(reportError)
         }
       }
     })
@@ -471,6 +478,16 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
               : to
           await appendMessage(roomId, userMessage(roomId, room.round, body, address))
+          // In user-selected mode the room waits for the user to pick who speaks
+          // next, so a message only resumes when it names a participant (that one
+          // answers); a message to everyone/moderator leaves the room waiting.
+          if (room.mode === 'user-selected' && room.status === 'awaiting-user') {
+            if (address.kind === 'participant') {
+              await saveRoom({ ...room, nextSpeakerId: address.participantId })
+              resume = true
+            }
+            return
+          }
           resume = canResumeOnMessage(room, now())
         })
         if (resume) void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')

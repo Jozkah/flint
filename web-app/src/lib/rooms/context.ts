@@ -5,6 +5,7 @@
  * `user` content, fitted to the speaker's own context window.
  */
 import { estimateTokens } from '@/lib/context-manager'
+import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
 import type { Participant, Room, RoomMessage } from './types'
@@ -118,10 +119,14 @@ function childPath(folder: string, name: string): string {
  * folder's real path, or it lists an empty sandbox and gives up.
  */
 function toolGuidance(room: Room, access: 'read' | 'edit'): string {
+  const web = useWebSearchConfig.getState().webSearchEnabled
   if (!room.folder) {
-    return access === 'edit'
-      ? 'You have file tools, but no working folder is attached, so reads and writes will fail until one is. You may still use any web tools.'
-      : 'You have read-only tools. No working folder is attached, so file reads will fail until one is. You may still use any web tools.'
+    // No folder means no file tools; whether any tools exist depends on web
+    // search and connected MCP servers. Don't promise tools that aren't there.
+    const webNote = web
+      ? ' You do have web tools (web_search / web_fetch), plus any connected MCP tools.'
+      : ' Unless connected MCP tools are available, you have no tools this turn; do not attempt file or command tools.'
+    return `No working folder is attached, so file tools are unavailable.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')
   const verbs =

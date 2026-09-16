@@ -782,8 +782,13 @@ class RoomRun {
       const request = choice.via === 'moderator' && directive?.request ? directive.request : null
       const before = this.messages.length
       // A participant may end the discussion early by concluding it, but never
-      // when a moderator is the one deciding when to stop.
-      const allowConsensus = this.room.mode !== 'moderator-selected'
+      // when a moderator is the one deciding when to stop, and never as a lone
+      // voice (with fewer than two participants "consensus" is one opinion) or
+      // before a full round has been spoken.
+      const allowConsensus =
+        this.room.mode !== 'moderator-selected' &&
+        activeParticipants(this.room).length >= 2 &&
+        this.room.usage.turns >= activeParticipants(this.room).length
       let concluded = false
       const outcome = await this.participantTurn(
         speaker,
