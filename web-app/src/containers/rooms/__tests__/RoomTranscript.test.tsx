@@ -9,6 +9,14 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
   return { useTranslation: () => ({ t: u.t }) }
 })
 
+// The markdown renderer is defer-rendered and covered by its own tests; here we
+// only care that the transcript delegates to it and never emits raw HTML. The
+// stub renders the (already mention-linkified) content as text.
+vi.mock('@/containers/RenderMarkdown', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RenderMarkdown: ({ content }: any) => <div data-testid="render-markdown">{content}</div>,
+}))
+
 const byKind = (kind: string) =>
   screen.getAllByTestId('room-message').filter((el) => el.getAttribute('data-kind') === kind)
 
@@ -90,16 +98,17 @@ describe('RoomTranscript', () => {
     expect(within(error).getByTestId('message-error')).toHaveTextContent('Rate limit hit')
   })
 
-  it('renders model text as plain text, never as HTML or markdown', () => {
+  it('renders message text through the markdown renderer, never as raw HTML or scripts', () => {
     const text = '<script>window.__pwned = true</script>\n**bold** <img src=x onerror=alert(1)>'
     const { container } = render(
       <RoomTranscript room={makeRoom()} journal={asJournal([makeMessage({ text })])} liveTurn={null} />
     )
+    // Delegated to the shared markdown renderer (so **bold** etc. format), which
+    // has its own rendering + sanitization tests.
+    expect(screen.getAllByTestId('render-markdown').length).toBeGreaterThan(0)
+    // Raw HTML and scripts never become live elements or execute.
     expect(container.querySelector('script')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
-    expect(container.querySelector('strong')).toBeNull()
-    const p = screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text)
-    expect(p).toHaveClass('whitespace-pre-wrap')
     expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined()
   })
 
@@ -136,7 +145,9 @@ describe('RoomTranscript', () => {
     const liveTurn = screen.getByTestId('room-live-turn')
     expect(log).not.toContainElement(liveTurn)
     expect(liveTurn).toHaveTextContent('Bob · expert · tool-model')
-    expect(liveTurn).toHaveTextContent('partial <b>reply</b>')
+    // The live turn renders as markdown too; raw HTML is never emitted.
+    expect(liveTurn).toHaveTextContent('partial')
+    expect(liveTurn).toHaveTextContent('reply')
     expect(liveTurn.querySelector('b')).toBeNull()
   })
 

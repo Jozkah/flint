@@ -8,9 +8,12 @@ import {
   findParticipant,
   messagesOf,
   participantAttribution,
+  participantColor,
+  participantColorsByName,
   voteTallies,
   type VoteTally,
 } from './roomUi'
+import { RoomMessageText } from './RoomMessageText'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -30,6 +33,22 @@ function authorLabel(author: RoomAuthor, room: Room | null, t: T): string {
     case 'system':
       return t('rooms:transcript.system')
   }
+}
+
+/**
+ * The message author in the transcript header. Each participant reads in their
+ * own stable color (the same color their `@mentions` get), with the role and
+ * model kept muted beside the name so the name is what the color highlights.
+ */
+function AuthorName({ author, room, t }: { author: RoomAuthor; room: Room | null; t: T }) {
+  if (author.kind === 'participant') {
+    return (
+      <span className="font-semibold" style={{ color: participantColor(author.participantId) }}>
+        {authorLabel(author, room, t)}
+      </span>
+    )
+  }
+  return <span className="font-medium text-foreground">{authorLabel(author, room, t)}</span>
 }
 
 /** Model output is untrusted: always plain text, whitespace preserved. */
@@ -81,15 +100,17 @@ function KindLabel({ message, t }: { message: RoomMessage; t: T }) {
 function MessageBody({
   message,
   tally,
+  mentionColors,
   t,
 }: {
   message: RoomMessage
   tally: VoteTally | undefined
+  mentionColors: Map<string, string>
   t: T
 }) {
   return (
     <>
-      <PlainText text={message.text} />
+      <RoomMessageText text={message.text} mentionColors={mentionColors} className="text-sm" />
       {message.kind === 'vote-call' && (
         <p className="mt-1 text-xs text-muted-foreground" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
@@ -160,6 +181,9 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
   const tallies = useMemo(() => voteTallies(messages), [messages])
+  // Name -> color for the participants, so an @mention of one is painted in the
+  // same color as that participant's name. Rebuilt only when the roster changes.
+  const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -255,9 +279,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
               )}
             >
               <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="font-medium text-foreground">
-                  {authorLabel(m.author, room, t)}
-                </span>
+                <AuthorName author={m.author} room={room} t={t} />
                 {chip && (
                   <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">
                     {chip}
@@ -276,7 +298,12 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                   </span>
                 )}
               </header>
-              <MessageBody message={m} tally={tallies.get(m.id)} t={t} />
+              <MessageBody
+                message={m}
+                tally={tallies.get(m.id)}
+                mentionColors={mentionColors}
+                t={t}
+              />
             </article>
           )
         })}
@@ -288,12 +315,17 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           className="min-w-0 rounded-lg border border-dashed border-border bg-card p-3"
         >
           <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-medium text-foreground">{authorLabel(live.author, room, t)}</span>
+            <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
               {t('rooms:transcript.streaming')}
             </span>
           </header>
-          <PlainText text={live.text} />
+          <RoomMessageText
+            text={live.text}
+            mentionColors={mentionColors}
+            isStreaming
+            className="text-sm"
+          />
         </article>
       )}
       </div>

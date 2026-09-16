@@ -126,6 +126,51 @@ export function participantAttribution(p: Participant | undefined, fallbackName:
   return [p.name, p.role.trim(), p.model.id].filter(Boolean).join(' · ')
 }
 
+/**
+ * A palette of distinct colors for room participants, chosen to stay legible on
+ * both the light and dark card backgrounds (mid-tone solids, not tints).
+ */
+const PARTICIPANT_COLORS = [
+  '#e5484d', // red
+  '#d6409f', // magenta
+  '#8e4ec6', // violet
+  '#3e63dd', // indigo
+  '#0091ff', // blue
+  '#12a594', // teal
+  '#46a758', // green
+  '#e5622d', // orange
+] as const
+
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
+/**
+ * A stable, distinct color for a participant, so their name in the transcript
+ * header and every `@mention` of them read in one consistent color. Keyed by a
+ * seed (the participant id) so a rename keeps the color.
+ */
+export function participantColor(seed: string): string {
+  return PARTICIPANT_COLORS[hashString(seed) % PARTICIPANT_COLORS.length]
+}
+
+/**
+ * Name -> color for every participant in the room, for coloring `@mentions` in
+ * message bodies. Names are lower-cased so a mention matches regardless of case.
+ */
+export function participantColorsByName(room: Room | null): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const p of room?.participants ?? []) {
+    const name = p.name.trim().toLowerCase()
+    if (name) out.set(name, participantColor(p.id))
+  }
+  return out
+}
+
 export function addressLabel(to: Address, room: Room | null, t: T): string | null {
   switch (to.kind) {
     case 'room':
