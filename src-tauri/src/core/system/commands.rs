@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_llamacpp::cleanup_llama_processes;
 
@@ -600,9 +600,7 @@ pub async fn check_jan_cli_installed() -> CliInstallStatus {
             #[cfg(windows)]
             let path = {
                 raw.lines()
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty() && !p.to_ascii_lowercase().contains("\\target\\"))
-                    .next()
+                    .map(str::trim).find(|p| !p.is_empty() && !p.to_ascii_lowercase().contains("\\target\\"))
                     .map(str::to_string)
                     .or_else(|| {
                         raw.lines()
@@ -718,10 +716,10 @@ pub fn install_jan_cli_sync<R: Runtime>(
     #[cfg(windows)]
     {
         add_to_path_windows(&resource_bin_dir)?;
-        return Ok(CliInstallStatus {
+        Ok(CliInstallStatus {
             installed: true,
             path: Some(bundled.to_string_lossy().into_owned()),
-        });
+        })
     }
 
     #[cfg(unix)]
@@ -764,7 +762,7 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
     {
         let bin_dir = jan_cli_bin_dir_windows()?;
         remove_from_path_windows(&bin_dir)?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(unix)]
@@ -912,7 +910,7 @@ fn jan_cli_bin_dir_windows() -> Result<PathBuf, String> {
 
 /// Add a directory to the Windows user PATH.
 #[cfg(windows)]
-fn add_to_path_windows(install_dir: &PathBuf) -> Result<(), String> {
+fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
     use std::process::Command;
 
     let install_dir_str = install_dir.to_string_lossy().to_string();
@@ -1003,7 +1001,7 @@ fn add_to_path_windows(install_dir: &PathBuf) -> Result<(), String> {
 
 /// Remove a directory from the Windows user PATH.
 #[cfg(windows)]
-fn remove_from_path_windows(dir: &PathBuf) -> Result<(), String> {
+fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
     use std::process::Command;
 
     let dir_str = dir.to_string_lossy().to_string();
