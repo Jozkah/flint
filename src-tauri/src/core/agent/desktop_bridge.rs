@@ -279,9 +279,10 @@ fn resolve_in_workspace(workspace: &Path, rel: &str) -> Result<PathBuf, String> 
 }
 
 fn has_drive_or_root(s: &str) -> bool {
+    let b = s.as_bytes();
     s.starts_with('/')
         || s.starts_with('\\')
-        || (s.as_bytes().len() >= 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic())
+        || (b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic())
 }
 
 fn arg_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
