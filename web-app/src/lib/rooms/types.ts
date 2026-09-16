@@ -284,6 +284,13 @@ export interface RoomController {
   /** user-selected mode, or an override in any mode while not mid-turn */
   selectNext(roomId: string, participantId: string): Promise<void>
   sendUserMessage(roomId: string, text: string, to: Address): Promise<void>
+  /**
+   * Raise the limit that stopped the room by `addUnits` and continue it,
+   * optionally posting `text` (addressed by `to`) first. For a room stopped
+   * because a limit was reached, since a plain message alone would only
+   * re-trip the same limit.
+   */
+  extendLimit(roomId: string, addUnits: number, text?: string, to?: Address): Promise<void>
   callVote(roomId: string, proposal: string): Promise<void>
   requestFinalPositions(roomId: string): Promise<void>
   synthesize(roomId: string): Promise<void>

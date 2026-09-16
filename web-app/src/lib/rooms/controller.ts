@@ -113,6 +113,26 @@ function roomError(code: RoomError['code'], message: string): RoomError {
   return { code, message }
 }
 
+/**
+ * Whether a user message should make a non-running room pick up and respond,
+ * rather than only be recorded. Paused, awaiting-user and completed rooms
+ * resume; a stopped room resumes only when it was not stopped by a limit --
+ * a limit-stopped room would just re-trip the same limit, so extending it is
+ * offered instead (see `extendLimit`).
+ */
+function canResumeOnMessage(room: Room): boolean {
+  switch (room.status) {
+    case 'paused':
+    case 'awaiting-user':
+    case 'completed':
+      return true
+    case 'stopped':
+      return room.stopReason?.kind !== 'limit'
+    default:
+      return false
+  }
+}
+
 export function defaultNewId(): string {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
   if (c?.randomUUID) return c.randomUUID()
@@ -427,6 +447,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           s.userQueue.push({ text: body, to })
           return
         }
+        // Whether the room should pick the message up and act on it, rather than
+        // just record it. A room stopped by a limit is left alone: resuming it
+        // would only re-trip the same limit, so the UI offers to extend instead.
+        let resume = false
         await enqueue(roomId, async () => {
           const { room } = await persistence().getRoom(roomId)
           const address =
@@ -434,7 +458,34 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
               : to
           await appendMessage(roomId, userMessage(roomId, room.round, body, address))
+          resume = canResumeOnMessage(room)
         })
+        if (resume) void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
+      }),
+
+    extendLimit: (roomId, addUnits, text, to) =>
+      guarded('extendLimit', async () => {
+        const add = Math.max(1, Math.floor(addUnits))
+        await enqueue(roomId, async () => {
+          const { room } = await persistence().getRoom(roomId)
+          const stop = room.stopReason
+          // Raise the limit that actually stopped the room (rounds, turns, …);
+          // fall back to rounds. The hard 'ceiling' is not user-extendable.
+          const key: keyof RoomLimits =
+            stop?.kind === 'limit' && stop.limit !== 'ceiling' ? stop.limit : 'maxRounds'
+          const current = room.limits[key] ?? 0
+          const limits = clampLimits({ ...room.limits, [key]: current + add })
+          await saveRoom({ ...room, limits, stopReason: null })
+          const body = text?.trim()
+          if (body && to) {
+            const address =
+              to.kind === 'room'
+                ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
+                : to
+            await appendMessage(roomId, userMessage(roomId, room.round, body, address))
+          }
+        })
+        void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
       }),
 
     callVote: (roomId, proposal) =>

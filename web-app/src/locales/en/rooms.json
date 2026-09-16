@@ -223,10 +223,14 @@
   "composer": {
     "label": "Message to the room",
     "placeholder": "Write to the room…",
+    "placeholderExtend": "Add a message for the participants (optional)…",
     "to": "Send to",
     "toRoom": "Everyone",
     "toModerator": "Moderator",
     "send": "Send",
-    "hint": "Ctrl+Enter to send"
+    "hint": "Ctrl+Enter to send",
+    "limitReached": "The {{limit}} limit was reached. Continue the discussion?",
+    "extendBy": "More",
+    "continue": "Continue"
   }
 }

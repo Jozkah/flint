@@ -15,6 +15,7 @@ import {
 } from './helpers'
 import type { StreamReplyInput } from '../callError'
 import type { StreamReply } from '../callError'
+import { CONCLUDE_SIGNAL } from '../consensus'
 
 const initialStore = useRoomsStore.getState()
 
@@ -154,6 +155,52 @@ describe('room controller', () => {
     expect(state.runningRoomIds).toEqual([])
     expect(state.liveTurn).toBeNull()
     expect(approvals).not.toHaveBeenCalled()
+  })
+
+  it('a limit-stopped room is not resumed by a message, but extendLimit continues it', async () => {
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl) // maxTurns: 2
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!.stopReason).toEqual({ kind: 'limit', limit: 'maxTurns' })
+    const afterLimit = calls.length
+
+    // A plain message records but does not resume (it would only re-trip it).
+    await ctl.sendUserMessage(room.id, 'please continue', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(ctl.isRunning(room.id)).toBe(false)
+    expect(calls.length).toBe(afterLimit)
+    expect(persistence.rooms.get(room.id)!.status).toBe('stopped')
+
+    // Extending raises the breached limit and continues, carrying the message.
+    await ctl.extendLimit(room.id, 3, 'go on', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(calls.length).toBeGreaterThan(afterLimit)
+    const saved = persistence.rooms.get(room.id)!
+    expect(saved.limits.maxTurns).toBe(5)
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'go on')).toBe(true)
+  })
+
+  it('a message resumes a room that had concluded', async () => {
+    let n = 0
+    const { fn, calls } = scriptedStream(() =>
+      n++ === 0 ? { text: `We agree. ${CONCLUDE_SIGNAL}` } : { text: uniqueText() }
+    )
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { limits: { maxTurns: 6 } })
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!).toMatchObject({
+      status: 'completed',
+      stopReason: { kind: 'converged', by: 'consensus' },
+    })
+    const afterConclude = calls.length
+
+    await ctl.sendUserMessage(room.id, 'one more question', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(calls.length).toBeGreaterThan(afterConclude)
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'one more question')).toBe(true)
   })
 
   it.each([
