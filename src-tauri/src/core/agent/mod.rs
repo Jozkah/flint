@@ -15,6 +15,7 @@ pub mod checkpoint;
 pub mod commands;
 pub mod auto_mode;
 pub mod compaction;
+pub mod compaction_policy;
 #[cfg(not(feature = "cli"))]
 pub mod memory_consolidation;
 pub mod context;
