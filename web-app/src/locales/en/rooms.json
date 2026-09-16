@@ -166,7 +166,8 @@
     "toolDetails": "Details",
     "toolHide": "Hide",
     "toolArgs": "Input",
-    "toolOutput": "Output",
+    "toolOutput": "Result",
+    "toolError": "Error",
     "toolOk": "ok",
     "toolFailed": "failed"
   },

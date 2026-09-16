@@ -152,11 +152,11 @@ export async function buildMcpTools(
           const output = res.error
             ? `ERROR: ${res.error}`
             : (res.content ?? []).map((c) => c.text).join('\n')
-          onActivity?.({ name: t.name, ok: !res.error, args: input, output: capOutput(output) })
+          onActivity?.({ name: t.name, ok: !res.error, args: input, output: capOutput(output), mcp: true })
           return output
         } catch (e) {
           const output = `ERROR: ${e instanceof Error ? e.message : String(e)}`
-          onActivity?.({ name: t.name, ok: false, args: input, output })
+          onActivity?.({ name: t.name, ok: false, args: input, output, mcp: true })
           return output
         }
       },

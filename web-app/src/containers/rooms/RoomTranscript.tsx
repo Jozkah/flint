@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ChevronDown, ChevronRight, Wrench } from 'lucide-react'
+import { ArrowDown, ChevronDown, Globe, Search, Wrench } from 'lucide-react'
+import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
 import type {
   LiveTurn,
   Room,
@@ -104,18 +105,39 @@ function KindLabel({ message, t }: { message: RoomMessage; t: T }) {
   }
 }
 
-function formatArgs(args: unknown): string {
-  try {
-    return typeof args === 'string' ? args : JSON.stringify(args, null, 2)
-  } catch {
-    return String(args)
+/** The lucide icon for a tool row, matching Cowork's choices. */
+function toolIcon(name: string) {
+  if (name === 'web_search') return Search
+  if (name === 'web_fetch') return Globe
+  return Wrench
+}
+
+/** The Cowork tone for one room tool call: kind colours it, failure outranks. */
+function toneFor(c: RoomToolActivity) {
+  return toneForTool({
+    name: c.name,
+    state: c.ok ? 'output-available' : 'output-error',
+    isMcp: c.mcp,
+  })
+}
+
+/** Args as label/value rows for the table view; a non-object shows as one row. */
+function argRows(args: unknown): Array<[string, string]> {
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    return Object.entries(args as Record<string, unknown>).map(([k, v]) => [
+      k,
+      typeof v === 'string' ? v : JSON.stringify(v),
+    ])
   }
+  if (args === undefined) return []
+  return [['', typeof args === 'string' ? args : JSON.stringify(args, null, 2)]]
 }
 
 /**
- * The tools a participant used, as compact chips (simple view) with a toggle to
- * expand each call's input and output (advanced view). The toggle only appears
- * when at least one call carries detail to show.
+ * The tools a participant used. Simple view: one tone-coloured chip per call,
+ * the same palette as the Cowork tab (built-in indigo, read cyan, write amber,
+ * MCP violet, failures red). Advanced view (the Details toggle) expands each
+ * call into a tidy Input table and a Result/Error block.
  */
 function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
   const [expanded, setExpanded] = useState(false)
@@ -124,71 +146,116 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
   return (
     <div className="mb-1.5" data-testid="message-tools">
       <div className="flex flex-wrap items-center gap-1">
-        {calls.map((c, i) => (
-          <span
-            key={`${c.name}-${i}`}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
-              c.ok
-                ? 'border-border bg-muted text-muted-foreground'
-                : 'border-destructive/40 bg-destructive/10 text-destructive'
-            )}
-          >
-            <Wrench className="size-3 shrink-0" aria-hidden />
-            {c.name}
-          </span>
-        ))}
+        {calls.map((c, i) => {
+          const tone = TONE_CLASSES[toneFor(c)]
+          const Icon = toolIcon(c.name)
+          return (
+            <span
+              key={`${c.name}-${i}`}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-foreground',
+                tone.border,
+                tone.surface
+              )}
+            >
+              <Icon className={cn('size-3 shrink-0', tone.icon)} aria-hidden />
+              {c.name}
+            </span>
+          )
+        })}
         {hasDetails && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
             data-testid="tool-trace-toggle"
-            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            {expanded ? (
-              <ChevronDown className="size-3 shrink-0" aria-hidden />
-            ) : (
-              <ChevronRight className="size-3 shrink-0" aria-hidden />
-            )}
+            <ChevronDown
+              className={cn(
+                'size-3 shrink-0 transition-transform',
+                expanded ? 'rotate-0' : '-rotate-90'
+              )}
+              aria-hidden
+            />
             {expanded ? t('rooms:transcript.toolHide') : t('rooms:transcript.toolDetails')}
           </button>
         )}
       </div>
       {expanded && hasDetails && (
-        <div className="mt-1.5 space-y-1.5" data-testid="tool-trace-details">
-          {calls.map((c, i) => (
-            <div
-              key={`${c.name}-detail-${i}`}
-              className="rounded-md border border-border bg-muted/40 p-2 text-[11px]"
-            >
-              <div className="flex items-center gap-1 font-medium">
-                <Wrench className="size-3 shrink-0" aria-hidden />
-                <span>{c.name}</span>
-                <span
-                  className={cn('ml-auto', c.ok ? 'text-muted-foreground' : 'text-destructive')}
-                >
-                  {c.ok ? t('rooms:transcript.toolOk') : t('rooms:transcript.toolFailed')}
-                </span>
+        <div
+          className="mt-2 ml-1.5 space-y-3 border-l border-border pl-3"
+          data-testid="tool-trace-details"
+        >
+          {calls.map((c, i) => {
+            const tone = TONE_CLASSES[toneFor(c)]
+            const Icon = toolIcon(c.name)
+            const rows = argRows(c.args)
+            const isError = !c.ok
+            return (
+              <div key={`${c.name}-detail-${i}`} className="min-w-0 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
+                  <span className="text-foreground">{c.name}</span>
+                  <span
+                    className={cn(
+                      'ml-auto rounded px-1.5 py-0.5 text-[10px]',
+                      isError
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    )}
+                  >
+                    {isError ? t('rooms:transcript.toolFailed') : t('rooms:transcript.toolOk')}
+                  </span>
+                </div>
+                {rows.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {t('rooms:transcript.toolArgs')}
+                    </p>
+                    <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-code px-3 py-2">
+                      {rows.map(([k, v], r) => (
+                        <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
+                          {k ? (
+                            <dt className="truncate font-mono text-[11px] text-muted-foreground">
+                              {k}
+                            </dt>
+                          ) : (
+                            <dt className="sr-only">value</dt>
+                          )}
+                          <dd
+                            className={cn(
+                              'min-w-0 max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground',
+                              k ? '' : 'col-span-2'
+                            )}
+                          >
+                            {v}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+                {c.output && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {isError ? t('rooms:transcript.toolError') : t('rooms:transcript.toolOutput')}
+                    </p>
+                    <pre
+                      className={cn(
+                        'max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
+                        isError
+                          ? 'border border-destructive/30 bg-destructive/10 text-destructive'
+                          : 'bg-code text-foreground'
+                      )}
+                    >
+                      {c.output}
+                    </pre>
+                  </div>
+                )}
               </div>
-              {c.args !== undefined && (
-                <div className="mt-1">
-                  <p className="text-muted-foreground">{t('rooms:transcript.toolArgs')}</p>
-                  <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-1.5">
-                    {formatArgs(c.args)}
-                  </pre>
-                </div>
-              )}
-              {c.output && (
-                <div className="mt-1">
-                  <p className="text-muted-foreground">{t('rooms:transcript.toolOutput')}</p>
-                  <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background p-1.5">
-                    {c.output}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

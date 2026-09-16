@@ -175,7 +175,9 @@ describe('RoomTranscript', () => {
     fireEvent.click(screen.getByTestId('tool-trace-toggle'))
 
     const details = screen.getByTestId('tool-trace-details')
-    expect(within(details).getByText('"notes.md"', { exact: false })).toBeInTheDocument()
+    // Args render as a label/value table: the key and its value each appear.
+    expect(within(details).getByText('path')).toBeInTheDocument()
+    expect(within(details).getByText('notes.md')).toBeInTheDocument()
     expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
     expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
   })

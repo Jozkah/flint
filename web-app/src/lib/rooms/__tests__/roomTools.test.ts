@@ -169,7 +169,7 @@ describe('buildRoomTools', () => {
     expect(out).toBe('RESULT A\nRESULT B')
     expect(callTool).toHaveBeenCalledWith({ toolName: 'search_docs', arguments: { q: 'x' } })
     expect(activity).toEqual([
-      { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B' },
+      { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B', mcp: true },
     ])
   })
 
@@ -188,6 +188,6 @@ describe('buildRoomTools', () => {
 
     const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
     expect(out).toBe('ERROR: boom')
-    expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom' }])
+    expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
   })
 })

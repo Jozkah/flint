@@ -432,6 +432,9 @@ pub struct RoomToolCall {
     /// The tool's output (truncated on the frontend), for the advanced view.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    /// The tool came from an MCP server, for the transcript's colouring.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

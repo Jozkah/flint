@@ -240,6 +240,8 @@ export type RoomToolActivity = {
   ok: boolean
   args?: unknown
   output?: string
+  /** The tool came from an MCP server (colours the chip like Cowork's). */
+  mcp?: boolean
 }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
