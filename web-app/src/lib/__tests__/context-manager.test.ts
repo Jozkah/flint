@@ -6,6 +6,8 @@ import {
   trimMessages,
   compactMessages,
   deriveToolOutputCap,
+  contextSafetyMargin,
+  inputBudgetTokens,
   type ContextManagerConfig,
 } from '../context-manager'
 
@@ -69,6 +71,23 @@ describe('estimateMessageTokens', () => {
     }
     const tokens = estimateMessageTokens(msg)
     expect(tokens).toBe(4) // just overhead
+  })
+})
+
+describe('input budget safety margin', () => {
+  it('reserves a window-proportional margin, with a floor', () => {
+    // 2% of the window, above the 1024-token floor.
+    expect(contextSafetyMargin(200_000)).toBe(4_000)
+    // Below the floor for a small window.
+    expect(contextSafetyMargin(8_192)).toBe(1_024)
+  })
+
+  it('subtracts output, system prompt and the margin from the window', () => {
+    // The 200000/22000/178001 overflow: the budget now leaves headroom under
+    // the window instead of packing input to the exact limit.
+    const budget = inputBudgetTokens(200_000, 22_000, 1_000)
+    expect(budget).toBe(200_000 - 22_000 - 1_000 - 4_000)
+    expect(budget).toBeLessThan(200_000 - 22_000)
   })
 })
 

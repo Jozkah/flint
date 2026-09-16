@@ -17,6 +17,46 @@ export function estimateTokens(text: string): number {
 }
 
 /**
+ * Slack kept below the true input budget to absorb token-estimation error.
+ *
+ * The trimmer measures with a characters-per-token heuristic; a real
+ * tokenizer counts differently, and code- and JSON-heavy tool output packs
+ * denser than the heuristic assumes. Fitting the input to the exact window
+ * then overflows the server by the size of that error -- a hard request
+ * failure over a handful of tokens (janhq: "for a total of at least N+1
+ * tokens"). Reserving a small, window-proportional margin turns that into one
+ * more compaction instead. It also leaves room for the summary a summarize
+ * pass injects after trimming, which the trim budget does not otherwise count.
+ */
+const SAFETY_MARGIN_MIN_TOKENS = 1024
+const SAFETY_MARGIN_FRACTION = 0.02
+
+export function contextSafetyMargin(maxContextTokens: number): number {
+  const target = Math.max(
+    SAFETY_MARGIN_MIN_TOKENS,
+    Math.ceil(maxContextTokens * SAFETY_MARGIN_FRACTION)
+  )
+  // Never claim more than a quarter of the window -- the same ceiling the
+  // reserve uses -- so a tiny window still has room for the conversation.
+  return Math.min(target, Math.floor(maxContextTokens / 4))
+}
+
+/** The input tokens a request may carry, after reserving output, the system
+ * prompt and the estimation-error margin. */
+export function inputBudgetTokens(
+  maxContextTokens: number,
+  maxOutputTokens: number,
+  systemPromptTokens: number
+): number {
+  return (
+    maxContextTokens -
+    maxOutputTokens -
+    systemPromptTokens -
+    contextSafetyMargin(maxContextTokens)
+  )
+}
+
+/**
  * Share of the model's context window a single tool result may occupy.
  *
  * One result should never crowd out the conversation that gives it meaning, so
@@ -104,7 +144,11 @@ export function trimMessages(
     return { messages, trimmedCount: 0 }
   }
 
-  const inputBudget = maxContextTokens - maxOutputTokens - systemPromptTokens
+  const inputBudget = inputBudgetTokens(
+    maxContextTokens,
+    maxOutputTokens,
+    systemPromptTokens
+  )
   if (inputBudget <= 0) {
     return { messages: messages.slice(-1), trimmedCount: messages.length - 1 }
   }
@@ -164,7 +208,11 @@ export async function compactMessages(
     return { messages, trimmedCount: 0 }
   }
 
-  const inputBudget = maxContextTokens - maxOutputTokens - systemPromptTokens
+  const inputBudget = inputBudgetTokens(
+    maxContextTokens,
+    maxOutputTokens,
+    systemPromptTokens
+  )
   if (inputBudget <= 0) {
     return { messages: messages.slice(-1), trimmedCount: messages.length - 1 }
   }

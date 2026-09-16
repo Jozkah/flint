@@ -96,6 +96,12 @@ describe('reading a limit out of a refusal', () => {
       4096,
       5000,
     ],
+    [
+      'split input/output form with a total',
+      "This model's maximum context length is 200000 tokens. However, you requested 22000 output tokens and your prompt contains at least 178001 input tokens, for a total of at least 200001 tokens.",
+      200000,
+      200001,
+    ],
   ])('reads the %s', (_label, message, tokens, request) => {
     const limit = parseServerContextLimit(null, message)
     expect(limit).toEqual({
