@@ -291,7 +291,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   ): Participant => {
     const name = input.name.trim()
     if (!name) throw roomError('invalid_room', 'A participant needs a name.')
-    const wantsRead = input.toolAccess === 'read'
+    // 'read' and 'edit' both need a tool-capable model; kept as chosen, or
+    // dropped to 'none' when the model has no tools.
+    const wantsTools = input.toolAccess === 'read' || input.toolAccess === 'edit'
     let pricing: Participant['pricing']
     if (input.pricing) {
       const i = Number(input.pricing.inputPerMTokUsd)
@@ -306,7 +308,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       role: (input.role ?? '').trim().slice(0, 200),
       model: { provider: input.model.provider, id: input.model.id },
       // Forced to none when the model lacks the tools capability.
-      toolAccess: wantsRead && modelSupportsTools(input.model, lookup) ? 'read' : 'none',
+      toolAccess:
+        wantsTools && modelSupportsTools(input.model, lookup)
+          ? (input.toolAccess as 'read' | 'edit')
+          : 'none',
       removed: input.removed ?? false,
       order: input.order,
       availability: { state: 'unknown' },

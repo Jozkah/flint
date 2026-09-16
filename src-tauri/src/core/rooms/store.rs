@@ -156,6 +156,10 @@ pub enum SpeakingMode {
 pub enum ToolAccess {
     None,
     Read,
+    /// Read plus write/edit, confined to the room's attached folder by a
+    /// direct-edit grant. Requires a folder; falls back to read behaviour with
+    /// none.
+    Edit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

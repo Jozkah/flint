@@ -548,17 +548,27 @@ export function RoomEditor({ room }: { room: Room }) {
                       onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
                       className="flex flex-wrap gap-4"
                     >
-                      {(['none', 'read'] as const).map((v) => (
+                      {(['none', 'read', 'edit'] as const).map((v) => (
                         <div key={v} className="flex items-center gap-2">
                           <RadioGroupItem id={`${pid}-tools-${v}`} value={v} />
                           <Label htmlFor={`${pid}-tools-${v}`}>
-                            {t(v === 'none' ? 'rooms:editor.toolNone' : 'rooms:editor.toolRead')}
+                            {t(
+                              v === 'none'
+                                ? 'rooms:editor.toolNone'
+                                : v === 'read'
+                                  ? 'rooms:editor.toolRead'
+                                  : 'rooms:editor.toolEdit'
+                            )}
                           </Label>
                         </div>
                       ))}
                     </RadioGroup>
                     <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
-                      {tools ? t('rooms:editor.toolReadHint') : t('rooms:editor.toolUnsupported')}
+                      {!tools
+                        ? t('rooms:editor.toolUnsupported')
+                        : p.toolAccess === 'edit'
+                          ? t('rooms:editor.toolEditHint')
+                          : t('rooms:editor.toolReadHint')}
                     </p>
                   </div>
 

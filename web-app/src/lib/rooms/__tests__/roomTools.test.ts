@@ -12,6 +12,14 @@ vi.mock('@/hooks/useWebSearchConfig', () => ({
   useWebSearchConfig: { getState: () => ({ webSearchEnabled }) },
 }))
 
+const directEditAuthorize = vi.fn(async () => 'grant-123')
+vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
+  directEditAuthorize: (...a: unknown[]) => directEditAuthorize(...a),
+}))
+vi.mock('@/hooks/useServiceHub', () => ({
+  getServiceHub: () => ({ app: () => ({ getJanDataFolder: async () => '/data' }) }),
+}))
+
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
 import type { RoomToolActivity } from '../types'
 
@@ -29,6 +37,8 @@ describe('buildRoomTools', () => {
   beforeEach(() => {
     getAgentToolSchemas.mockReset()
     executeAgentTool.mockReset()
+    directEditAuthorize.mockReset()
+    directEditAuthorize.mockResolvedValue('grant-123')
     webSearchEnabled = false
   })
 
@@ -83,5 +93,34 @@ describe('buildRoomTools', () => {
     // No folder -> no file schemas fetched, only web tools.
     expect(getAgentToolSchemas).not.toHaveBeenCalled()
     expect(Object.keys(tools).sort()).toEqual(['web_fetch', 'web_search'])
+  })
+
+  it('adds write tools with a folder-confined grant for edit access', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write'), schema('edit')])
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+    const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit' })
+
+    expect(directEditAuthorize).toHaveBeenCalledWith('/data', 'r1', '/work')
+    expect(Object.keys(tools).sort()).toEqual(['edit', 'read', 'write'])
+
+    await (tools.write as { execute: (i: unknown) => Promise<string> }).execute({
+      path: 'a.txt',
+      content: 'x',
+    })
+    // Writes carry the grant and are confined to the folder.
+    expect(executeAgentTool).toHaveBeenCalledWith(
+      'write',
+      { path: 'a.txt', content: 'x' },
+      'r1',
+      { readOnlyProject: '/work', writeGrant: 'grant-123', scope: 'thread' }
+    )
+  })
+
+  it('withholds write tools when the grant cannot be minted', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read'), schema('write')])
+    directEditAuthorize.mockRejectedValueOnce(new Error('refused'))
+    const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit' })
+    // Read still works; write is not offered without a grant.
+    expect(Object.keys(tools)).toEqual(['read'])
   })
 })
