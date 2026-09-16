@@ -41,6 +41,9 @@ pub(crate) struct AgentToml {
     /// applied at model-id finalization.
     #[serde(default)]
     pub models: crate::core::agent::routing::ModelPolicy,
+    /// `[auto_mode]` -- the autonomous-mode safety classifier, off by default.
+    #[serde(default)]
+    pub auto_mode: crate::core::agent::auto_mode::AutoModePolicy,
     /// `[output]` -- how much a run says about itself (AH-181).
     #[cfg(feature = "cli")]
     #[serde(default)]

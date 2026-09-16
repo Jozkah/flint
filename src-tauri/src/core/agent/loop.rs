@@ -925,6 +925,11 @@ struct CompositeToolInvoker {
     grants: std::sync::Mutex<tauri_plugin_agent_tools::tools::gate::SessionGrants>,
     subagents: Option<SubagentContext>,
     auto_approve: bool,
+    /// The autonomous-mode safety policy (AH: findings F1), resolved once per
+    /// run from `[auto_mode]`. Off by default, so with no section its
+    /// `block_reason` is always `None` and auto-approval is unchanged. Only ever
+    /// consulted while `auto_approve` is on.
+    auto_mode: crate::core::agent::auto_mode::AutoModePolicy,
     run_mode: crate::core::agent::plan::RunMode,
     /// Who this dispatch acts as, for the permission gate. AH-007. The same
     /// subject the run's tools were advertised under: a run offered a tool and
@@ -2521,6 +2526,21 @@ fn plan_mode_read_only_msg(name: &str) -> String {
     format!("ERROR: tool '{name}' unavailable in plan_mode_read_only (plan mode is read-only)")
 }
 
+/// The refusal the autonomous-mode safety policy returns for a blocked call.
+/// Names the class and the reason so the model can adjust rather than retry the
+/// same action, and points at how a person would allow it if they meant to.
+fn auto_mode_refusal_msg(
+    name: &str,
+    block: &crate::core::agent::auto_mode::Block,
+) -> String {
+    format!(
+        "ERROR: tool '{name}' was refused by the autonomous-mode safety policy \
+         ({}): {}. If this was intended, a person can allow it -- run it \
+         interactively, or add it to `[auto_mode].allow` in agent.toml.",
+        block.category, block.reason
+    )
+}
+
 #[async_trait]
 impl ToolInvoker for CompositeToolInvoker {
     fn observe_conversation(&self, messages: &[serde_json::Value]) {
@@ -2868,6 +2888,27 @@ impl CompositeToolInvoker {
                 // its parent something and withhold it from the child.
                 &self.subject,
             );
+            // Autonomous-mode safety classifier (findings F1), consulted only
+            // for the write/exec calls auto-approval would otherwise wave
+            // through, and only when a project opted in with `[auto_mode]`. It
+            // is a second layer over the gate below, not a replacement: a
+            // blocked class of action (force push, `curl | bash`, editing the
+            // agent's own config, ...) is refused before the auto-approval turns
+            // the prompt into a silent yes. Off by default -> `block_reason` is
+            // `None` and nothing here changes.
+            if self.auto_approve {
+                if let Decision::Prompt(PromptKind::Write | PromptKind::Exec) = decision {
+                    if let Some(block) =
+                        self.auto_mode.block_reason(name, tool.capability, &args)
+                    {
+                        out.push(ToolOutcome::plain(
+                            id.clone(),
+                            auto_mode_refusal_msg(name, &block),
+                        ));
+                        continue;
+                    }
+                }
+            }
             // Auto-approval suppresses the prompts for writes and commands inside
             // the project, and still honors HardDeny, so the hidden `.jan`
             // invariant (while the shell is sandboxed) and explicit agent.toml
@@ -4382,9 +4423,21 @@ async fn orchestrate_inner(
             })
             .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
             .unwrap_or_default();
+        // The autonomous-mode safety policy, resolved once per run like routing.
+        // Absent/unreadable config means the default (disabled), so the classifier
+        // is inert unless a project opts in with `[auto_mode] enabled = true`.
+        let auto_mode = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref())
+                    .ok()
+            })
+            .map(|cfg| cfg.auto_mode)
+            .unwrap_or_default();
         let tools = CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
             routing,
+            auto_mode,
             format_on_edit: settings.format_on_edit,
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -7971,6 +8024,7 @@ mod tests {
             subagents: None,
             subject,
             auto_approve: false,
+            auto_mode: crate::core::agent::auto_mode::AutoModePolicy::default(),
             run_mode: crate::core::agent::plan::RunMode::Normal,
         }
     }
