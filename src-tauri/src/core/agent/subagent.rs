@@ -283,12 +283,38 @@ impl SubagentRegistry {
 /// metadata and ignored (the parent's model runs the child); `tools` maps
 /// Claude tool names onto Flint tool names, dropping names with no equivalent.
 fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
-    let dir = crate::core::agent::skills::plugins_dir(project_root);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return;
-    };
     // `[plugins].disabled` plugins stay installed but contribute no agents.
     let disabled = crate::core::agent::project::disabled_plugins(project_root);
+    let mut project = Vec::new();
+    scan_plugins_root_for_agents(
+        &crate::core::agent::skills::plugins_dir(project_root),
+        &disabled,
+        &mut project,
+    );
+    let mut global = Vec::new();
+    if let Some(dir) = crate::core::agent::skills::user_plugins_dir() {
+        scan_plugins_root_for_agents(&dir, &disabled, &mut global);
+    }
+    out.extend(project.iter().map(|(_, d)| d.clone()));
+    out.extend(global.into_iter().filter_map(|(plugin, def)| {
+        (!project
+            .iter()
+            .any(|(p, d)| *p == plugin && d.name == def.name))
+        .then_some(def)
+    }));
+}
+
+/// Scan one plugins root (project or global) for `<plugin>/agents/**/*.md`
+/// files, tagging each definition with the plugin directory name so callers
+/// can shadow global entries by `(plugin, name)`.
+fn scan_plugins_root_for_agents(
+    dir: &Path,
+    disabled: &[String],
+    out: &mut Vec<(String, SubagentDefinition)>,
+) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in rd.flatten() {
         let path = entry.path();
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -300,7 +326,9 @@ fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
         if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin) {
             continue;
         }
-        scan_agent_dir(&path.join("agents"), out);
+        let mut defs = Vec::new();
+        scan_agent_dir(&path.join("agents"), &mut defs);
+        out.extend(defs.into_iter().map(|d| (plugin.to_string(), d)));
     }
 }
 
@@ -570,8 +598,7 @@ pub(crate) fn resolve_dispatch(
     // The rules are read for the agent being dispatched, by the name it is
     // dispatched under (AH-007), so `agent:reviewer/bash` narrows the
     // reviewer's toolset and leaves every other subagent's alone.
-    let child =
-        tauri_plugin_agent_tools::subject::Subject::NamedAgent(req.subagent_name.clone());
+    let child = tauri_plugin_agent_tools::subject::Subject::NamedAgent(req.subagent_name.clone());
     match registry.get(&req.subagent_name).cloned() {
         Some(definition) => {
             // Registered definition: the call-site allowlist further narrows it.
@@ -771,7 +798,8 @@ fn can_change_files(allowed: Option<&[String]>) -> bool {
     match allowed {
         None => true,
         Some(list) => list.iter().any(|name| {
-            lookup(name).is_some_and(|t| matches!(t.capability, Capability::Write | Capability::Exec))
+            lookup(name)
+                .is_some_and(|t| matches!(t.capability, Capability::Write | Capability::Exec))
         }),
     }
 }
@@ -801,7 +829,9 @@ pub(crate) fn isolation_for(
         return Ok(None);
     };
     let repo = worktree::identity(root).is_ok();
-    let wanted = req.isolate.unwrap_or(repo && can_change_files(allowed_tools));
+    let wanted = req
+        .isolate
+        .unwrap_or(repo && can_change_files(allowed_tools));
     if !wanted {
         return Ok(None);
     }
@@ -885,8 +915,8 @@ fn ending_of(
 
 async fn settle_checkout(checkout: ChildCheckout, result: &Result<String, SubagentError>) {
     let (status, detail) = ending_of(result);
-    let _ = tokio::task::spawn_blocking(move || settle_checkout_now(&checkout, status, &detail))
-        .await;
+    let _ =
+        tokio::task::spawn_blocking(move || settle_checkout_now(&checkout, status, &detail)).await;
 }
 
 /// Default cap on concurrently *running* subagents per parent run when
@@ -1018,7 +1048,9 @@ impl BackgroundSubagents {
             // Cancelled on its own already: its end was announced and its
             // checkout settled then, and announcing either twice would tell a
             // consumer two different stories about the same child.
-            if entry.phase.swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
+            if entry
+                .phase
+                .swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
                 == PHASE_CANCELLED
             {
                 continue;
@@ -1158,7 +1190,12 @@ async fn run_subagent(
     let name = resolved.definition.name.clone();
     let child_args = configure_child_args(parent_args, &resolved, &run_id);
 
-    let body = child_body(&resolved, &description, &parent, parent.conversation.as_deref());
+    let body = child_body(
+        &resolved,
+        &description,
+        &parent,
+        parent.conversation.as_deref(),
+    );
 
     let _ = events.send(StreamEvent::SubagentStart {
         run_id: run_id.clone(),
@@ -1359,7 +1396,12 @@ pub(crate) fn spawn_subagent(
                 // count and announced its end, and it must not start now. The
                 // permit goes straight back to the next child in line.
                 if task_phase
-                    .compare_exchange(PHASE_QUEUED, PHASE_RUNNING, Ordering::SeqCst, Ordering::SeqCst)
+                    .compare_exchange(
+                        PHASE_QUEUED,
+                        PHASE_RUNNING,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    )
                     .is_err()
                 {
                     return;
@@ -1405,7 +1447,12 @@ pub(crate) fn spawn_subagent(
         // result must not bring it back. Its checkout was settled by the
         // cancel, so it is not settled a second time here.
         let result = if task_phase
-            .compare_exchange(PHASE_RUNNING, PHASE_FINISHED, Ordering::SeqCst, Ordering::SeqCst)
+            .compare_exchange(
+                PHASE_RUNNING,
+                PHASE_FINISHED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
             .is_ok()
         {
             // Recorded before the result is handed over, so a parent that
@@ -1714,7 +1761,10 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .get("fork_context")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
-        durable: args.get("durable").and_then(|v| v.as_bool()).unwrap_or(false),
+        durable: args
+            .get("durable")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
 }
 
@@ -1746,7 +1796,9 @@ pub fn forked_history(parent: &[serde_json::Value], task: &str) -> Vec<serde_jso
         .collect();
     let mut cut = false;
     for message in parent.iter().rev() {
-        let size = serde_json::to_string(*message).map(|s| s.len()).unwrap_or(0);
+        let size = serde_json::to_string(*message)
+            .map(|s| s.len())
+            .unwrap_or(0);
         if kept.len() >= MAX_FORK_MESSAGES || chars + size > MAX_FORK_CHARS {
             cut = true;
             break;
@@ -1781,10 +1833,18 @@ pub fn forked_history(parent: &[serde_json::Value], task: &str) -> Vec<serde_jso
     let answered: std::collections::BTreeSet<String> = kept
         .iter()
         .filter(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
-        .filter_map(|m| m.get("tool_call_id").and_then(|v| v.as_str()).map(str::to_string))
+        .filter_map(|m| {
+            m.get("tool_call_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
         .collect();
     for message in kept.iter_mut() {
-        let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()).cloned() else {
+        let Some(calls) = message
+            .get("tool_calls")
+            .and_then(|v| v.as_array())
+            .cloned()
+        else {
             continue;
         };
         let live: Vec<serde_json::Value> = calls
@@ -1925,7 +1985,9 @@ mod tests {
         assert_eq!(last["role"], "user");
         assert_eq!(last["content"], "do the thing");
         assert!(
-            !serde_json::to_string(&forked).unwrap().contains("most recent part"),
+            !serde_json::to_string(&forked)
+                .unwrap()
+                .contains("most recent part"),
             "an untruncated fork claims no truncation"
         );
     }
@@ -1962,7 +2024,11 @@ mod tests {
             .collect();
         let forked = forked_history(&parent, "task");
         let carried = forked.len() - 2; // the note and the task are not parent messages
-        assert!(carried < parent.len(), "carried {carried} of {}", parent.len());
+        assert!(
+            carried < parent.len(),
+            "carried {carried} of {}",
+            parent.len()
+        );
         let size: usize = forked[1..forked.len() - 1]
             .iter()
             .map(|m| serde_json::to_string(m).unwrap().len())
@@ -2034,10 +2100,7 @@ mod tests {
         let mut parent = vec![serde_json::json!({ "role": "system", "content": "be the parent" })];
         parent.extend(plain_turns(2));
         let forked = forked_history(&parent, "task");
-        assert!(
-            !forked.iter().any(|m| m["role"] == "system"),
-            "{forked:#?}"
-        );
+        assert!(!forked.iter().any(|m| m["role"] == "system"), "{forked:#?}");
         assert_eq!(forked.len(), 3, "{forked:#?}");
         assert_eq!(forked[0]["content"], "message 0");
     }
@@ -2074,14 +2137,18 @@ mod tests {
     fn a_durable_child_is_asked_for_and_never_assumed() {
         let base = serde_json::json!({ "subagent_name": "s", "description": "d" });
         assert!(!parse_dispatch_args(&base).unwrap().durable);
-        let asked = serde_json::json!({ "subagent_name": "s", "description": "d", "durable": true });
+        let asked =
+            serde_json::json!({ "subagent_name": "s", "description": "d", "durable": true });
         assert!(parse_dispatch_args(&asked).unwrap().durable);
-        let junk = serde_json::json!({ "subagent_name": "s", "description": "d", "durable": "yes" });
+        let junk =
+            serde_json::json!({ "subagent_name": "s", "description": "d", "durable": "yes" });
         assert!(!parse_dispatch_args(&junk).unwrap().durable);
-        let offered = subagent_tool_schemas(&SubagentRegistry::default(), 3).into_iter().any(|t| {
-            t["function"]["name"] == "dispatch_subagent"
-                && t["function"]["parameters"]["properties"]["durable"]["type"] == "boolean"
-        });
+        let offered = subagent_tool_schemas(&SubagentRegistry::default(), 3)
+            .into_iter()
+            .any(|t| {
+                t["function"]["name"] == "dispatch_subagent"
+                    && t["function"]["parameters"]["properties"]["durable"]["type"] == "boolean"
+            });
         assert!(offered, "dispatch_subagent does not offer durable");
     }
 
@@ -2143,8 +2210,15 @@ mod tests {
     #[test]
     fn a_saved_definition_shadows_a_builtin_role() {
         let root = unique_root("shadow-builtin");
-        assert_eq!(SubagentRegistry::load(&root).get("reviewer").unwrap().scope, SubagentScope::Builtin);
-        write_def(&project_subagents_dir(&root), "reviewer", "allowed_tools = [\"read\"]\n");
+        assert_eq!(
+            SubagentRegistry::load(&root).get("reviewer").unwrap().scope,
+            SubagentScope::Builtin
+        );
+        write_def(
+            &project_subagents_dir(&root),
+            "reviewer",
+            "allowed_tools = [\"read\"]\n",
+        );
         let reg = SubagentRegistry::load(&root);
         let winner = reg.get("reviewer").unwrap();
         assert_eq!(winner.scope, SubagentScope::Project);
@@ -2158,7 +2232,9 @@ mod tests {
             model: None,
             scope: SubagentScope::Builtin,
         };
-        assert!(reg.create_in(&root, def.clone(), SubagentScope::Builtin, true).is_err());
+        assert!(reg
+            .create_in(&root, def.clone(), SubagentScope::Builtin, true)
+            .is_err());
         assert!(reg.create(def, SubagentScope::Builtin, true).is_err());
         assert!(subagent_dir_for(&root, SubagentScope::Builtin).is_err());
         let _ = std::fs::remove_dir_all(&root);
@@ -2237,7 +2313,11 @@ mod tests {
         write_def(&dir, "good", "");
         let reg = SubagentRegistry::load(&root);
         assert!(reg.get("good").is_some());
-        let saved: Vec<_> = reg.list().into_iter().filter(|d| d.scope != SubagentScope::Builtin).collect();
+        let saved: Vec<_> = reg
+            .list()
+            .into_iter()
+            .filter(|d| d.scope != SubagentScope::Builtin)
+            .collect();
         assert_eq!(saved.len(), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -2378,14 +2458,29 @@ mod tests {
     #[test]
     fn intersect_none_none_inherits() {
         let p = ToolPermissions::allow_all();
-        assert_eq!(intersect_allowed_tools(None, None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap(), None);
+        assert_eq!(
+            intersect_allowed_tools(
+                None,
+                None,
+                &p,
+                &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())
+            )
+            .unwrap(),
+            None
+        );
     }
 
     #[test]
     fn intersect_definition_only_drops_parent_denied() {
         let def = vec!["read".to_string(), "write".to_string()];
         let p = perms_denying(&["write"]);
-        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
+        let out = intersect_allowed_tools(
+            Some(&def),
+            None,
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -2402,7 +2497,13 @@ mod tests {
         let def = vec!["read".to_string(), "grep".to_string(), "write".to_string()];
         let req = vec!["read".to_string()];
         let p = ToolPermissions::allow_all();
-        let out = intersect_allowed_tools(Some(&def), Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
+        let out = intersect_allowed_tools(
+            Some(&def),
+            Some(&req),
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -2417,7 +2518,13 @@ mod tests {
     fn intersect_skill_tools_dedupe_when_already_listed() {
         let def = vec!["read".to_string(), "skill_read".to_string()];
         let p = ToolPermissions::allow_all();
-        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
+        let out = intersect_allowed_tools(
+            Some(&def),
+            None,
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -2433,7 +2540,13 @@ mod tests {
     fn intersect_skill_tools_respect_parent_deny() {
         let def = vec!["read".to_string()];
         let p = perms_denying(&["skill_read"]);
-        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
+        let out = intersect_allowed_tools(
+            Some(&def),
+            None,
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap();
         assert_eq!(
             out,
             Some(vec!["read".to_string(), "skill_list".to_string()])
@@ -2445,7 +2558,13 @@ mod tests {
         let def = vec!["read".to_string()];
         let req = vec!["bash".to_string()];
         let p = ToolPermissions::allow_all();
-        let err = intersect_allowed_tools(Some(&def), Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap_err();
+        let err = intersect_allowed_tools(
+            Some(&def),
+            Some(&req),
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap_err();
         assert!(matches!(err, SubagentError::PermissionDenied(_)));
     }
 
@@ -2453,7 +2572,13 @@ mod tests {
     fn intersect_request_denied_by_parent_is_rejected() {
         let req = vec!["bash".to_string()];
         let p = perms_denying(&["bash"]);
-        let err = intersect_allowed_tools(None, Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap_err();
+        let err = intersect_allowed_tools(
+            None,
+            Some(&req),
+            &p,
+            &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string()),
+        )
+        .unwrap_err();
         assert!(matches!(err, SubagentError::PermissionDenied(_)));
     }
 
@@ -2521,8 +2646,12 @@ mod tests {
     fn concurrent_writing_children_each_get_their_own_worktree() {
         let root = git_repo("iso-write");
         let data = unique_root("iso-write-data");
-        let a = isolate(&root, &data, None, None, "sub-worker-1").unwrap().expect("isolated");
-        let b = isolate(&root, &data, None, None, "sub-worker-2").unwrap().expect("isolated");
+        let a = isolate(&root, &data, None, None, "sub-worker-1")
+            .unwrap()
+            .expect("isolated");
+        let b = isolate(&root, &data, None, None, "sub-worker-2")
+            .unwrap()
+            .expect("isolated");
         assert_ne!(a.path, b.path, "two children share a checkout");
         assert_ne!(a.branch, b.branch);
         let roots = crate::core::agent::worktree::absolute(&workspace::worktrees_dir(&data))
@@ -2531,9 +2660,15 @@ mod tests {
             .unwrap();
         for c in [&a, &b] {
             let p = Path::new(&c.path).canonicalize().unwrap();
-            assert!(p.starts_with(&roots), "{} is outside Jan's worktrees", c.path);
+            assert!(
+                p.starts_with(&roots),
+                "{} is outside Jan's worktrees",
+                c.path
+            );
             assert!(!p.starts_with(&root), "the checkout is inside the project");
-            assert!(c.branch.starts_with(crate::core::agent::worktree::BRANCH_PREFIX));
+            assert!(c
+                .branch
+                .starts_with(crate::core::agent::worktree::BRANCH_PREFIX));
         }
         let listed = crate::core::agent::team_children::list(
             &data,
@@ -2546,7 +2681,9 @@ mod tests {
             .iter()
             .all(|v| v.state == crate::core::agent::team_children::ChildState::Running));
         // The same run id in a later dispatch never lands in an earlier checkout.
-        let again = isolate(&root, &data, None, None, "sub-worker-1").unwrap().unwrap();
+        let again = isolate(&root, &data, None, None, "sub-worker-1")
+            .unwrap()
+            .unwrap();
         assert_ne!(again.path, a.path);
     }
 
@@ -2557,13 +2694,25 @@ mod tests {
         let root = git_repo("iso-read");
         let data = unique_root("iso-read-data");
         assert_eq!(
-            isolate(&root, &data, Some(vec!["read".into(), "grep".into()]), None, "r1").unwrap(),
+            isolate(
+                &root,
+                &data,
+                Some(vec!["read".into(), "grep".into()]),
+                None,
+                "r1"
+            )
+            .unwrap(),
             None
         );
-        assert_eq!(isolate(&root, &data, None, Some(false), "r2").unwrap(), None);
-        assert!(isolate(&root, &data, Some(vec!["write".into()]), None, "r3")
-            .unwrap()
-            .is_some());
+        assert_eq!(
+            isolate(&root, &data, None, Some(false), "r2").unwrap(),
+            None
+        );
+        assert!(
+            isolate(&root, &data, Some(vec!["write".into()]), None, "r3")
+                .unwrap()
+                .is_some()
+        );
     }
 
     /// Asking for isolation where it cannot be had is refused with a typed
@@ -2574,7 +2723,10 @@ mod tests {
         let data = unique_root("iso-plain-data");
         assert_eq!(isolate(&plain, &data, None, None, "p1").unwrap(), None);
         let err = isolate(&plain, &data, None, Some(true), "p2").unwrap_err();
-        assert!(matches!(err, SubagentError::Isolation(ref m) if m.contains("not a git repository")), "{err}");
+        assert!(
+            matches!(err, SubagentError::Isolation(ref m) if m.contains("not a git repository")),
+            "{err}"
+        );
     }
 
     /// How a child ended is recorded once: a late cancellation from tearing
@@ -2593,7 +2745,8 @@ mod tests {
             .unwrap()
             .canonicalize()
             .unwrap();
-        let v = crate::core::agent::team_children::list(&data, &roots, &root.to_string_lossy(), None);
+        let v =
+            crate::core::agent::team_children::list(&data, &roots, &root.to_string_lossy(), None);
         assert_eq!(v[0].state, ChildState::Completed);
         assert_eq!(v[0].files.len(), 1);
         assert_eq!(
@@ -3086,7 +3239,12 @@ mod tests {
                 Err(_) => {
                     let p = sem.acquire_owned().await.unwrap();
                     if task_phase
-                        .compare_exchange(PHASE_QUEUED, PHASE_RUNNING, Ordering::SeqCst, Ordering::SeqCst)
+                        .compare_exchange(
+                            PHASE_QUEUED,
+                            PHASE_RUNNING,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
                         .is_err()
                     {
                         return;
@@ -3097,7 +3255,12 @@ mod tests {
             };
             let _ = work.await;
             let result = if task_phase
-                .compare_exchange(PHASE_RUNNING, PHASE_FINISHED, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(
+                    PHASE_RUNNING,
+                    PHASE_FINISHED,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
                 .is_ok()
             {
                 Ok("the answer".to_string())
@@ -3145,7 +3308,11 @@ mod tests {
         register_child(&bg, "sub-b", &events, work_b);
         tokio::task::yield_now().await;
 
-        let states: Vec<_> = bg.list().iter().map(|r| (r.run_id.clone(), r.state)).collect();
+        let states: Vec<_> = bg
+            .list()
+            .iter()
+            .map(|r| (r.run_id.clone(), r.state))
+            .collect();
         assert_eq!(
             states,
             vec![
@@ -3155,7 +3322,10 @@ mod tests {
         );
 
         assert_eq!(bg.cancel("sub-a"), SubagentCancelOutcome::CancelledRunning);
-        assert_eq!(bg.inspect("sub-a").unwrap().state, SubagentRunState::Cancelled);
+        assert_eq!(
+            bg.inspect("sub-a").unwrap().state,
+            SubagentRunState::Cancelled
+        );
         assert_eq!(ends(&mut events_rx), vec!["sub-a".to_string()]);
         assert!(matches!(
             await_subagent(&bg, "sub-a").await,
@@ -3238,11 +3408,16 @@ mod tests {
             elapsed_ms: 2_500,
         }];
         let text = format_subagent_runs(&runs);
-        assert!(text.contains("sub-reviewer-3 [reviewer] queued, 2s: review the parser"), "{text}");
+        assert!(
+            text.contains("sub-reviewer-3 [reviewer] queued, 2s: review the parser"),
+            "{text}"
+        );
         assert!(format_subagent_runs(&[]).starts_with("No background subagents"));
         assert!(format_subagent_cancel("x", SubagentCancelOutcome::Unknown).starts_with("ERROR"));
-        assert!(format_subagent_cancel("x", SubagentCancelOutcome::CancelledQueued)
-            .contains("will not run"));
+        assert!(
+            format_subagent_cancel("x", SubagentCancelOutcome::CancelledQueued)
+                .contains("will not run")
+        );
     }
 
     #[test]
@@ -3476,7 +3651,10 @@ mod tests {
             ]
         );
         for name in &names {
-            assert!(is_subagent_tool(name), "{name} is routed to the subagent handler");
+            assert!(
+                is_subagent_tool(name),
+                "{name} is routed to the subagent handler"
+            );
         }
         let dispatch = &schemas[0]["function"]["description"].as_str().unwrap();
         assert!(dispatch.contains("reviewer"), "got: {dispatch}");
@@ -3584,6 +3762,32 @@ mod tests {
         assert_eq!(def.scope, SubagentScope::Plugin);
         let list = format_subagent_list(&reg);
         assert!(list.contains("code-explorer [plugin]"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn plugin_agents_include_global_plugin_agents() {
+        let root = unique_root("global-plugin-agents");
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let adir = tauri_plugin_agent_tools::skills::plugins_dir(&store)
+            .join("caveman")
+            .join("agents");
+        std::fs::create_dir_all(&adir).unwrap();
+        std::fs::write(
+            adir.join("cavecrew-builder.md"),
+            "---\nname: cavecrew-builder\ndescription: Builds\n---\nYou build.",
+        )
+        .unwrap();
+        crate::core::agent::skills::set_test_user_plugins(Some(store));
+
+        let reg = SubagentRegistry::load(&root);
+        let def = reg
+            .get("cavecrew-builder")
+            .expect("global plugin agent loaded");
+        assert_eq!(def.scope, SubagentScope::Plugin);
+
+        crate::core::agent::skills::set_test_user_plugins(None);
         let _ = std::fs::remove_dir_all(&root);
     }
 
