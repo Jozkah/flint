@@ -13,11 +13,12 @@ use app_lib::core::agent::plugins::InstalledPlugin;
 use app_lib::core::cli::mcp::{self, split_kv, McpServerEntry};
 use app_lib::core::cli::providers::{load_provider_configs, ProviderOverrides};
 use app_lib::core::cli::run_report::OutputFormat;
+use app_lib::core::cli::stream_input::InputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
-    cli_plugin_remove, cli_plugin_search, ResumeTarget, SessionFlags,
+    cli_plugin_remove, cli_plugin_search, ResumeRequest, ResumeTarget, SessionFlags,
 };
 use std::fmt::Write as _;
 
@@ -107,6 +108,28 @@ impl SandboxArgs {
     }
 }
 
+/// Whether this run works in its own git worktree. `None` from neither flag
+/// defers to `[agent].worktree`, then the global `worktree`, then off.
+#[derive(Args, Clone, Copy)]
+struct WorktreeArgs {
+    /// Work in a dedicated git worktree instead of the project directory
+    #[arg(long)]
+    worktree: bool,
+    /// Work in the project directory, overriding a persistent worktree setting
+    #[arg(long, conflicts_with = "worktree")]
+    no_worktree: bool,
+}
+
+impl WorktreeArgs {
+    fn into_flag(self) -> Option<bool> {
+        match (self.worktree, self.no_worktree) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        }
+    }
+}
+
 /// Session-resume selection, shared by the bare TUI and `flint cli agent run`.
 /// Threads are per-project (`<project>/.jan/agent/threads`), so resuming from a
 /// different working directory simply finds nothing there.
@@ -118,11 +141,15 @@ struct ResumeArgs {
     /// Resume the most recent session (alias for a bare --resume)
     #[arg(long = "continue", short = 'c', conflicts_with = "resume")]
     continue_session: bool,
+    /// Branch the resumed session into a new one rather than continuing it in
+    /// place; alone, forks the most recent session
+    #[arg(long = "fork-session")]
+    fork_session: bool,
 }
 
 impl ResumeArgs {
-    fn into_target(self) -> Option<ResumeTarget> {
-        ResumeTarget::from_flags(self.resume, self.continue_session)
+    fn into_request(self) -> Option<ResumeRequest> {
+        ResumeRequest::from_flags(self.resume, self.continue_session, self.fork_session)
     }
 }
 
@@ -142,11 +169,15 @@ struct ResumeRunArgs {
     /// such a session; completed tool calls are kept either way (AH-026)
     #[arg(long, value_enum, value_name = "CHOICE")]
     interrupted: Option<app_lib::core::cli::inflight::InterruptedChoice>,
+    /// Branch the resumed session into a new one rather than continuing it in
+    /// place; alone, forks the most recent session
+    #[arg(long = "fork-session")]
+    fork_session: bool,
 }
 
 impl ResumeRunArgs {
-    fn into_target(self) -> Option<ResumeTarget> {
-        ResumeTarget::from_flags(self.resume, self.continue_session)
+    fn into_request(self) -> Option<ResumeRequest> {
+        ResumeRequest::from_flags(self.resume, self.continue_session, self.fork_session)
     }
 }
 
@@ -391,11 +422,19 @@ enum AgentCommands {
         #[command(flatten)]
         sandbox: SandboxArgs,
         #[command(flatten)]
+        worktree: WorktreeArgs,
+        #[command(flatten)]
         resume: ResumeRunArgs,
         /// `text` streams the answer as it arrives; `json` prints one result
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+        /// `stream-json` reads newline-delimited `user` and `permission`
+        /// messages from stdin while the run is in flight; it requires
+        /// `--output-format stream-json`. `text` (the default) does not read
+        /// stdin.
+        #[arg(long, value_enum, default_value_t = InputFormat::Text)]
+        input_format: InputFormat,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -1045,7 +1084,7 @@ async fn run() {
                 sandbox: cli.sandbox.into_flag(),
                 ..Default::default()
             },
-            cli.resume.into_target(),
+            cli.resume.into_request(),
         )
         .await
         {
@@ -1501,8 +1540,10 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            worktree,
             resume,
             output_format,
+            input_format,
             events,
             profile,
             output_density,
@@ -1523,6 +1564,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    worktree: worktree.into_flag(),
                     profile,
                     density: match output_density
                         .as_deref()
@@ -1546,8 +1588,9 @@ async fn handle_agent(cmd: AgentCommands) {
                     interrupted: resume.interrupted,
                     ..Default::default()
                 },
-                resume.into_target(),
+                resume.into_request(),
                 output_format,
+                input_format,
             )
             .await
         }

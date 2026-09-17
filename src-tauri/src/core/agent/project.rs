@@ -321,6 +321,11 @@ pub(crate) struct AgentSection {
     /// out of the context budget.
     #[serde(default)]
     pub send_reasoning: Option<bool>,
+    /// Give each session in this project its own git worktree, so the agent's
+    /// edits land in a separate checkout instead of the user's. `None` = defer
+    /// to the global `worktree` setting, then the default, off.
+    #[serde(default)]
+    pub worktree: Option<bool>,
 }
 
 // `default`/`allow`/`deny`/`allow_write` are consumed by `permissions_from`,
@@ -492,6 +497,11 @@ pub(crate) struct RunSettings {
     pub sandbox: Option<bool>,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
+    /// `[agent].worktree`: give each session its own git checkout. Merged with
+    /// the global setting and the `--worktree` flag by the caller. CLI-only,
+    /// like the `[agent]` section it comes from.
+    #[cfg(feature = "cli")]
+    pub worktree: Option<bool>,
 }
 
 /// A missing or malformed config yields defaults rather than an error: a project
@@ -513,6 +523,8 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
+        #[cfg(feature = "cli")]
+        worktree: cfg.agent.worktree,
     }
 }
 

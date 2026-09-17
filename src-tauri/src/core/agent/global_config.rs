@@ -22,6 +22,9 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 # sandbox = true                      # run `bash` under OS confinement (same as
 #                                     # passing --sandbox); off by default, so
 #                                     # shell commands run with your own access
+# worktree = true                     # run each session in its own git worktree
+#                                     # (same as passing --worktree); off by
+#                                     # default, so the agent edits your checkout
 # think_tags = false                  # stop treating <think> tags in model
 #                                     # content as reasoning; they render and
 #                                     # are resent as ordinary prose. On by
@@ -74,6 +77,10 @@ struct GlobalConfigToml {
     /// `--sandbox` flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sandbox: Option<bool>,
+    /// Give each session its own git worktree to work in. `None` = the
+    /// default, off. The "permanently on" answer to `--worktree`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    worktree: Option<bool>,
     /// Parse `<think>` tags in model *content* as reasoning. `None` = the
     /// default, on. Native `reasoning_content` streaming is a separate
     /// mechanism and is unaffected.
@@ -324,6 +331,13 @@ pub(crate) fn sandbox_setting() -> Option<bool> {
     load_raw().ok().and_then(|config| config.sandbox)
 }
 
+/// Whether a session gets its own git worktree by default (`worktree` in
+/// `~/.jan/config.toml`). `None` when unset, so a project's `agent.toml` or the
+/// `--worktree` flag decides first. Unreadable config yields `None`, like
+/// [`sandbox_setting`]: a preference must not block a session from starting.
+pub(crate) fn worktree_setting() -> Option<bool> {
+    load_raw().ok().and_then(|config| config.worktree)
+}
 /// Whether inline `<think>` tags in model content are parsed as reasoning
 /// (`think_tags` in `~/.jan/config.toml`), defaulting to on. `false` makes the
 /// tags ordinary prose: rendered verbatim, kept in the answer sent back as
