@@ -14,4 +14,9 @@ export class DefaultOpenerService implements OpenerService {
     console.log('openPath called with path:', path)
     // No-op - not implemented in default service
   }
+
+  async openUrl(url: string): Promise<void> {
+    console.log('openUrl called with url:', url)
+    // No-op - not implemented in default service
+  }
 }
