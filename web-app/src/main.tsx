@@ -61,6 +61,16 @@ const preventDefaultFileDrop = () => {
   })
 }
 
+// Suppress the default browser/webview context menu globally so only custom
+// React-driven menus appear.  Individual components opt in by calling
+// e.preventDefault() + opening their own menu (the pattern in ThreadList,
+// NavCowork, etc.); everywhere else the right-click simply does nothing.
+const suppressDefaultContextMenu = () => {
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+  })
+}
+
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {
   interface Register {
@@ -86,6 +96,7 @@ const boot = async () => {
   installConsoleLogForwarding()
   setupMobileViewport()
   preventDefaultFileDrop()
+  suppressDefaultContextMenu()
 
   await consumePendingWebdataReset()
 

@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import {
+  Check,
+  DownloadCloud,
+  Eye,
+  EyeOff,
+  FileText,
+  Globe,
+  Loader2,
+  OctagonAlert,
+  Pencil,
   Plus,
   Trash2,
-  FileText,
-  DownloadCloud,
-  Loader2,
-  Check,
-  OctagonAlert,
 } from 'lucide-react'
 import {
   Dialog,
@@ -16,12 +20,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useGlobalExtensions, type Scope } from '@/hooks/useGlobalExtensions'
 import {
   useSkills,
   effectiveEnabled,
@@ -29,6 +44,146 @@ import {
 } from '@/hooks/useSkills'
 import { normalizeAppError } from '@/utils/appError'
 import { isPluginSkill } from '@/lib/skillStore'
+
+function SkillListRow({
+  skill: s,
+  isSelected,
+  isEnabled,
+  isPlugin,
+  scope,
+  onSelect,
+  onToggleEnabled,
+  onScopeChange,
+  onDelete,
+  t,
+}: {
+  skill: { name: string; description?: string; plugin?: string }
+  isSelected: boolean
+  isEnabled: boolean
+  isPlugin: boolean
+  scope: Scope
+  onSelect: () => void
+  onToggleEnabled: () => void
+  onScopeChange: (scope: Scope) => void
+  onDelete: () => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      openRowMenu(e)
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onSelect()
+    }
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-current={isSelected ? 'true' : undefined}
+      className={cn(
+        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+        isSelected &&
+          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
+      )}
+      onClick={onSelect}
+      onContextMenu={openRowMenu}
+      onKeyDown={onRowKeyDown}
+    >
+      <FileText size={14} className="shrink-0 text-muted-foreground" aria-hidden />
+      <div className="flex-1 min-w-0">
+        <div className="truncate font-medium text-foreground">{s.name}</div>
+        {isPlugin && s.plugin && (
+          <div className="truncate text-xs text-muted-foreground">
+            {t('connections:skills.fromPlugin', { plugin: s.plugin })}
+          </div>
+        )}
+        {s.description && (
+          <div className="line-clamp-2 break-words text-xs text-muted-foreground">
+            {s.description}
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground">
+          {isEnabled
+            ? t('connections:skills.state.enabled')
+            : t('connections:skills.state.disabled')}
+          {' · '}
+          {scope === 'global' ? 'Global' : 'Workspace'}
+        </div>
+      </div>
+      {!isPlugin && (
+        <button
+          type="button"
+          className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive-tint hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:group-focus-within:opacity-100 pointer-coarse:size-11"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          title={t('common:skillDelete')}
+          aria-label={t('connections:skills.deleteSkill', { name: s.name })}
+        >
+          <Trash2 size={14} aria-hidden />
+        </button>
+      )}
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger className="sr-only" />
+        <DropdownMenuContent className="w-48" align="start">
+          <DropdownMenuItem onSelect={onSelect}>
+            <Pencil size={14} />
+            <span>{isPlugin ? t('connections:skills.view') : t('connections:skills.edit')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onToggleEnabled}>
+            {isEnabled ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>
+              {isEnabled
+                ? t('connections:skills.state.disable')
+                : t('connections:skills.state.enable')}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Globe size={14} />
+              <span>Scope</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => onScopeChange('workspace')}>
+                {scope === 'workspace' && <Check size={14} />}
+                <span>Workspace only</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onScopeChange('global')}>
+                {scope === 'global' && <Check size={14} />}
+                <span>Global (all workspaces)</span>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          {!isPlugin && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={onDelete}
+              >
+                <Trash2 size={14} />
+                <span>{t('common:skillDelete')}</span>
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
 
 export default function SkillsManagerDialog({
   open,
@@ -42,8 +197,9 @@ export default function SkillsManagerDialog({
   const currentId = useCoworkSessions((s) => s.currentId)
   const folder = sessions.find((s) => s.id === currentId)?.folder ?? null
 
-  const { skills, enabled, remove, write, read, hubList, hubImport } =
+  const { skills, enabled, setEnabled, remove, write, read, hubList, hubImport } =
     useSkills(folder)
+  const globalExt = useGlobalExtensions()
   const localNames = new Set(skills.map((s) => s.name))
   // Installed = listed here. Enabled = in the project's `[skills].enabled`
   // whitelist (empty whitelist = all), which is what the agent is offered.
@@ -159,6 +315,16 @@ export default function SkillsManagerDialog({
     }
   }
 
+  const toggleSkillEnabled = (skillName: string) => {
+    const allNames = skills.map((s) => s.name)
+    const current = effectiveEnabled(enabled, allNames)
+    if (current.has(skillName)) {
+      void setEnabled(enabled.filter((n) => n !== skillName))
+    } else {
+      void setEnabled([...enabled, skillName])
+    }
+  }
+
   const editing = isNew || selected !== null
   // A plugin's skill is shown, never saved: the backend refuses writes to it,
   // and the place to change it is the plugin's own source.
@@ -232,66 +398,19 @@ export default function SkillsManagerDialog({
                   </p>
                 ) : (
                   skills.map((s) => (
-                    <div
+                    <SkillListRow
                       key={s.name}
-                      role="button"
-                      tabIndex={0}
-                      aria-current={
-                        !hubMode && selected === s.name ? 'true' : undefined
-                      }
-                      className={cn(
-                        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
-                        !hubMode &&
-                          selected === s.name &&
-                          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
-                      )}
-                      onClick={() => openSkill(s.name)}
-                      onKeyDown={(e) => {
-                        if (e.target !== e.currentTarget) return
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          openSkill(s.name)
-                        }
-                      }}
-                    >
-                      <FileText size={14} className="shrink-0 text-muted-foreground" aria-hidden />
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium text-foreground">{s.name}</div>
-                        {isPluginSkill(s) && (
-                          <div className="truncate text-xs text-muted-foreground">
-                            {t('connections:skills.fromPlugin', {
-                              plugin: s.plugin,
-                            })}
-                          </div>
-                        )}
-                        {s.description && (
-                          <div className="line-clamp-2 break-words text-xs text-muted-foreground">
-                            {s.description}
-                          </div>
-                        )}
-                        <div className="text-xs text-muted-foreground">
-                          {enabledNames.has(s.name)
-                            ? t('connections:skills.state.enabled')
-                            : t('connections:skills.state.disabled')}
-                        </div>
-                      </div>
-                      {!isPluginSkill(s) && (
-                      <button
-                        type="button"
-                        className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive-tint hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:group-focus-within:opacity-100 pointer-coarse:size-11"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(s.name)
-                        }}
-                        title={t('common:skillDelete')}
-                        aria-label={t('connections:skills.deleteSkill', {
-                          name: s.name,
-                        })}
-                      >
-                        <Trash2 size={14} aria-hidden />
-                      </button>
-                      )}
-                    </div>
+                      skill={s}
+                      isSelected={!hubMode && selected === s.name}
+                      isEnabled={enabledNames.has(s.name)}
+                      isPlugin={isPluginSkill(s)}
+                      scope={globalExt.getSkillScope(s.name)}
+                      onSelect={() => openSkill(s.name)}
+                      onToggleEnabled={() => toggleSkillEnabled(s.name)}
+                      onScopeChange={(sc) => globalExt.setSkillScope(s.name, sc)}
+                      onDelete={() => handleDelete(s.name)}
+                      t={t}
+                    />
                   ))
                 )}
               </div>

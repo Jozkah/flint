@@ -13,12 +13,21 @@ import type { SubagentRun } from '@/types/coworkSession'
 import {
   ChevronLeft,
   ChevronRight,
+  Copy,
   Loader,
   Paperclip,
   Play,
   RefreshCw,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 /**
  * Message actions appear on hover or keyboard focus, and stay visible on a
@@ -116,6 +125,13 @@ export const MessageItem = memo(
       url: string
       filename?: string
     } | null>(null)
+    const [ctxMenuOpen, setCtxMenuOpen] = useState(false)
+
+    const openContextMenu = useCallback((e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setCtxMenuOpen(true)
+    }, [])
 
     const handleRegenerate = useCallback(() => {
       onRegenerate?.(message.id)
@@ -580,6 +596,7 @@ export const MessageItem = memo(
           'w-full mb-5 group/message',
           message.role === 'user' && !isFirstMessage && 'mt-6'
         )}
+        onContextMenu={openContextMenu}
       >
         {/* A small, quiet line naming who answered and when. */}
         {message.role === 'assistant' && (
@@ -776,6 +793,52 @@ export const MessageItem = memo(
             <TokenSpeedIndicator streaming={isStreaming} metadata={metadata} />
           </div>
         )}
+
+        {/* Right-click context menu */}
+        <DropdownMenu open={ctxMenuOpen} onOpenChange={setCtxMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <span className="sr-only">Message actions</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onClick={() => navigator.clipboard.writeText(getFullTextContent())}
+            >
+              <Copy className="mr-2 size-4" />
+              {t('chat:actions.copy')}
+            </DropdownMenuItem>
+
+            {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
+              <DropdownMenuItem onClick={handleRegenerate}>
+                <RefreshCw className="mr-2 size-4" />
+                {t('chat:actions.regenerate')}
+              </DropdownMenuItem>
+            )}
+
+            {selectedModel &&
+              onContinue &&
+              isLastMessage &&
+              isStopped &&
+              !isStreaming && (
+                <DropdownMenuItem onClick={handleContinue}>
+                  <Play className="mr-2 size-4" />
+                  {t('chat:actions.continue')}
+                </DropdownMenuItem>
+              )}
+
+            {onDelete && !isStreaming && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  {t('chat:actions.delete')}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Image Preview Dialog */}
         {previewImage && (

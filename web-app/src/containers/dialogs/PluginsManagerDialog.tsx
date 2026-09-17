@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  Check,
+  Eye,
+  EyeOff,
   FolderOpen,
+  Globe,
   Loader2,
   OctagonAlert,
   Plus,
@@ -16,6 +20,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +38,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useGlobalExtensions, type Scope } from '@/hooks/useGlobalExtensions'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { invalidateSkills } from '@/hooks/useSkills'
 import {
@@ -60,6 +75,125 @@ const newOperationId = () =>
     ? crypto.randomUUID()
     : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
+function PluginListRow({
+  plugin: p,
+  isSelected,
+  sourceLabel: srcLabel,
+  toggling,
+  scope,
+  onSelect,
+  onToggle,
+  onScopeChange,
+  onRequestRemove,
+  t,
+}: {
+  plugin: InstalledPlugin
+  isSelected: boolean
+  sourceLabel: string
+  toggling: boolean
+  scope: Scope
+  onSelect: () => void
+  onToggle: (enabled: boolean) => void
+  onScopeChange: (scope: Scope) => void
+  onRequestRemove: () => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      openRowMenu(e)
+    }
+  }
+
+  return (
+    <div role="listitem" onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
+      <button
+        type="button"
+        aria-current={isSelected ? 'true' : undefined}
+        className={cn(
+          'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+          isSelected &&
+            'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
+        )}
+        onClick={onSelect}
+      >
+        <Puzzle size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="flex-1 min-w-0">
+          <span className="flex items-baseline gap-1.5">
+            <span className="truncate font-medium text-foreground">{p.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {t('plugins:version', { version: p.version })}
+            </span>
+          </span>
+          {p.description && (
+            <span className="block line-clamp-2 break-words text-xs text-muted-foreground">
+              {p.description}
+            </span>
+          )}
+          <span className="block text-xs text-muted-foreground">
+            {p.enabled ? t('plugins:state.enabled') : t('plugins:state.disabled')}
+            {' · '}
+            {scope === 'global' ? 'Global' : 'Workspace'}
+            {' · '}
+            {t('plugins:counts', {
+              skills: p.skills,
+              commands: p.commands,
+              agents: p.agents,
+            })}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {srcLabel}
+            {p.source ? `: ${p.source}` : ''}
+          </span>
+        </span>
+      </button>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger className="sr-only" />
+        <DropdownMenuContent className="w-52" align="start">
+          <DropdownMenuItem
+            disabled={toggling}
+            onSelect={() => onToggle(!p.enabled)}
+          >
+            {p.enabled ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>{p.enabled ? t('plugins:toggle.disable') : t('plugins:toggle.enable')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Globe size={14} />
+              <span>Scope</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => onScopeChange('workspace')}>
+                {scope === 'workspace' && <Check size={14} />}
+                <span>Workspace only</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onScopeChange('global')}>
+                {scope === 'global' && <Check size={14} />}
+                <span>Global (all workspaces)</span>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={onRequestRemove}
+          >
+            <Trash2 size={14} />
+            <span>{t('plugins:remove.button')}</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
 /**
  * Manage the plugins installed in the current Cowork session's project folder:
  * list, inspect, install (local folder, git URL, or a configured marketplace),
@@ -78,6 +212,8 @@ export default function PluginsManagerDialog({
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const folder = sessions.find((s) => s.id === currentId)?.folder ?? null
+
+  const globalExt = useGlobalExtensions()
 
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
   const [loading, setLoading] = useState(false)
@@ -150,15 +286,18 @@ export default function PluginsManagerDialog({
   }, [folder])
 
   const loadDetails = useCallback(
-    async (id: string) => {
-      if (!folder) return
+    async (id: string): Promise<PluginDetails | null> => {
+      if (!folder) return null
       setDetails(null)
       setDetailsError(null)
       try {
-        setDetails(await getPluginDetails(folder, id))
+        const d = await getPluginDetails(folder, id)
+        setDetails(d)
+        return d
       } catch (e) {
         setDetailsError(pluginErrorText(tRef.current, e))
         if (toPluginError(e).code === 'not_installed') void refresh()
+        return null
       }
     },
     [folder, refresh]
@@ -400,47 +539,24 @@ export default function PluginsManagerDialog({
           <p className="text-xs text-muted-foreground px-1 py-2">{t('plugins:loading')}</p>
         ) : (
           plugins.map((p) => (
-            <div role="listitem" key={p.id}>
-              <button
-                type="button"
-                aria-current={selectedId === p.id ? 'true' : undefined}
-                className={cn(
-                  'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
-                  selectedId === p.id &&
-                    mode === 'browse' &&
-                    'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
-                )}
-                onClick={() => select(p.id)}
-              >
-                <Puzzle size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-baseline gap-1.5">
-                    <span className="truncate font-medium text-foreground">{p.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {t('plugins:version', { version: p.version })}
-                    </span>
-                  </span>
-                  {p.description && (
-                    <span className="block line-clamp-2 break-words text-xs text-muted-foreground">
-                      {p.description}
-                    </span>
-                  )}
-                  <span className="block text-xs text-muted-foreground">
-                    {p.enabled ? t('plugins:state.enabled') : t('plugins:state.disabled')}
-                    {' · '}
-                    {t('plugins:counts', {
-                      skills: p.skills,
-                      commands: p.commands,
-                      agents: p.agents,
-                    })}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {sourceLabel(p)}
-                    {p.source ? `: ${p.source}` : ''}
-                  </span>
-                </span>
-              </button>
-            </div>
+            <PluginListRow
+              key={p.id}
+              plugin={p}
+              isSelected={selectedId === p.id && mode === 'browse'}
+              sourceLabel={sourceLabel(p)}
+              toggling={toggling === p.id}
+              scope={globalExt.getPluginScope(p.id)}
+              onSelect={() => select(p.id)}
+              onToggle={(enabled) => void toggle(p, enabled)}
+              onScopeChange={(s) => globalExt.setPluginScope(p.id, s)}
+              onRequestRemove={() => {
+                select(p.id)
+                void loadDetails(p.id).then((d) => {
+                  if (d) setConfirmRemove(d)
+                })
+              }}
+              t={t}
+            />
           ))
         )}
       </div>

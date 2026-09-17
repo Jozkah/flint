@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { FileText, Trash2, UploadIcon } from 'lucide-react'
+import { Copy, FileText, Trash2, UploadIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
 import {
   Tooltip,
@@ -298,6 +305,90 @@ async function getFilesFromDirectory(
     console.warn(`Failed to read directory ${dirPath}:`, e)
   }
   return files
+}
+
+type FileRowProps = {
+  file: ProjectFile
+  onDelete: (id: string) => void
+  t: ReturnType<typeof useTranslation>['t']
+}
+
+function FileRow({ file, onDelete, t }: FileRowProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const openContextMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      openContextMenu(e)
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 p-2 rounded-md',
+        'bg-card border border-border',
+        'group hover:bg-sunken transition-colors'
+      )}
+      onContextMenu={openContextMenu}
+      onKeyDown={onRowKeyDown}
+    >
+      <div className="shrink-0">
+        <Paperclip className="size-4 text-muted-foreground" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="text-sm font-medium truncate">{file.name}</p>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">{file.name}</p>
+          </TooltipContent>
+        </Tooltip>
+        <p className="text-xs text-muted-foreground">
+          {file.size
+            ? formatBytes(file.size, {
+                decimals: (_, unit) => (unit === 'B' ? 0 : 1),
+              })
+            : ''}
+          {file.chunk_count > 0 &&
+            ` · ${t('common:files.chunksCount', { count: file.chunk_count })}`}
+        </p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
+        onClick={() => onDelete(file.id)}
+      >
+        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+      </Button>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger className="sr-only" tabIndex={-1} />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() => navigator.clipboard.writeText(file.name ?? '')}
+          >
+            <Copy className="size-4 mr-2" />
+            {t('common:copyFileName')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDelete(file.id)}
+          >
+            <Trash2 className="size-4 mr-2" />
+            {t('common:delete')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }
 
 export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
@@ -637,45 +728,12 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDrop={handleDrop}
         >
           {files.map((file) => (
-            <div
+            <FileRow
               key={file.id}
-              className={cn(
-                'flex items-center gap-2 p-2 rounded-md',
-                'bg-card border border-border',
-                'group hover:bg-sunken transition-colors'
-              )}
-            >
-              <div className="shrink-0">
-                <Paperclip className="size-4 text-muted-foreground" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className="text-sm font-medium truncate">{file.name}</p>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">{file.name}</p>
-                  </TooltipContent>
-                </Tooltip>
-                <p className="text-xs text-muted-foreground">
-                  {file.size
-                    ? formatBytes(file.size, {
-                        decimals: (_, unit) => (unit === 'B' ? 0 : 1),
-                      })
-                    : ''}
-                  {file.chunk_count > 0 &&
-                    ` · ${t('common:files.chunksCount', { count: file.chunk_count })}`}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
-                onClick={() => handleDeleteFile(file.id)}
-              >
-                <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
-              </Button>
-            </div>
+              file={file}
+              onDelete={handleDeleteFile}
+              t={t}
+            />
           ))}
 
           <div

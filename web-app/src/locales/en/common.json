@@ -95,6 +95,7 @@
   "rename": "Rename",
   "delete": "Delete",
   "copied": "Copied!",
+  "copyFileName": "Copy file name",
   "dataFolder": "Data Folder",
   "others": "Other",
   "language": "Language",

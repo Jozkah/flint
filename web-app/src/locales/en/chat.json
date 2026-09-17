@@ -31,8 +31,10 @@
     "description": "Indexing the attached files so they can be searched and cited. This may take a moment for large documents."
   },
   "actions": {
+    "copy": "Copy",
     "regenerate": "Regenerate response",
-    "continue": "Continue generating"
+    "continue": "Continue generating",
+    "delete": "Delete"
   },
   "done": "Done",
   "webSources": "{{count}} source(s)",

@@ -64,6 +64,8 @@
   "connection": {
     "statusLabel": "Status:",
     "toggleLabel": "Turn {{serverName}} on or off",
+    "enable": "Enable Server",
+    "disable": "Disable Server",
     "state": {
       "notInstalled": "Not configured",
       "disabled": "Off",

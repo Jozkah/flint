@@ -32,6 +32,7 @@ import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 // Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
 import '@/lib/rooms/e2eHooks'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -74,6 +75,7 @@ const secondaryStores = [
   useOnboardingGuide,
   useSessionMessaging,
   useSplitConversation,
+  useGlobalExtensions,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

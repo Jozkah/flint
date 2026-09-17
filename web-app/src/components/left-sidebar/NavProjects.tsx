@@ -50,8 +50,23 @@ function ProjectItem({
     select: (params) => params.projectId,
   })
 
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const openRowMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault()
+      setMenuOpen(true)
+    }
+  }
+
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <SidebarMenuButton asChild isActive={currentProjectId === item.id}>
         <Link
           to="/project/$projectId"
@@ -61,7 +76,7 @@ function ProjectItem({
           <span className="truncate" title={item.name}>{item.name}</span>
         </Link>
       </SidebarMenuButton>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           {/* Visible on touch screens, which cannot hover to reveal it. */}
           <SidebarMenuAction

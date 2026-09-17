@@ -18,6 +18,13 @@ import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
 import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { Switch } from '@/components/ui/switch'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -143,6 +150,13 @@ function MCPServersDesktop() {
 
   // Per-server log dialog state (AH-140)
   const [logServer, setLogServer] = useState<string | null>(null)
+
+  // Right-click context menu state
+  const [ctxMenu, setCtxMenu] = useState<{
+    key: string
+    x: number
+    y: number
+  } | null>(null)
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -908,7 +922,14 @@ function MCPServersDesktop() {
                 ? serverTools[key]
                 : undefined
               return (
-              <Card key={`${key}-${index}`}>
+              <div
+                key={`${key}-${index}`}
+                onContextMenu={(e: React.MouseEvent) => {
+                  e.preventDefault()
+                  setCtxMenu({ key, x: e.clientX, y: e.clientY })
+                }}
+              >
+              <Card>
                 <CardItem
                   align="start"
                   title={
@@ -1126,8 +1147,94 @@ function MCPServersDesktop() {
                   }
                 />
               </Card>
+              </div>
               )
             })
+          )}
+
+          {ctxMenu && (
+            <DropdownMenu
+              open
+              onOpenChange={(open) => {
+                if (!open) setCtxMenu(null)
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <span
+                  className="pointer-events-none fixed"
+                  style={{ left: ctxMenu.x, top: ctxMenu.y }}
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="bottom"
+                align="start"
+                className="min-w-[180px]"
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setLogServer(ctxMenu.key)
+                    setCtxMenu(null)
+                  }}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {t('mcp-servers:serverLog.title', { serverName: ctxMenu.key })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    handleEdit(ctxMenu.key)
+                    setCtxMenu(null)
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  {t('mcp-servers:editServer')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    const snap = deriveConnectionState({
+                      installed: true,
+                      enabled: !!mcpServers[ctxMenu.key]?.active,
+                      connected: connectedServers.includes(ctxMenu.key),
+                      runtime: runtime[ctxMenu.key],
+                      authStatus: authStatuses[ctxMenu.key],
+                      transport: deriveMcpServerProfile(
+                        mcpServers[ctxMenu.key],
+                        authStatuses[ctxMenu.key]
+                      ).transport,
+                    })
+                    toggleServer(ctxMenu.key, !snap.switchOn)
+                    setCtxMenu(null)
+                  }}
+                >
+                  {(() => {
+                    const snap = deriveConnectionState({
+                      installed: true,
+                      enabled: !!mcpServers[ctxMenu.key]?.active,
+                      connected: connectedServers.includes(ctxMenu.key),
+                      runtime: runtime[ctxMenu.key],
+                      authStatus: authStatuses[ctxMenu.key],
+                      transport: deriveMcpServerProfile(
+                        mcpServers[ctxMenu.key],
+                        authStatuses[ctxMenu.key]
+                      ).transport,
+                    })
+                    return snap.switchOn
+                      ? t('mcp-servers:connection.disable')
+                      : t('mcp-servers:connection.enable')
+                  })()}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => {
+                    handleDeleteClick(ctxMenu.key)
+                    setCtxMenu(null)
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t('mcp-servers:deleteServer.title')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </SettingsPageBody>
       </div>

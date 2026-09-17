@@ -51,6 +51,8 @@
   },
   "toggle": {
     "label": "Enable {{name}} for this project",
+    "enable": "Enable",
+    "disable": "Disable",
     "enabled": "{{name}} enabled",
     "disabled": "{{name}} disabled",
     "failed": "Could not change {{name}}: {{error}}"

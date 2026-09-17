@@ -7,8 +7,12 @@
     "summary": "{{enabled}} of {{installed}} installed skills enabled",
     "state": {
       "enabled": "Enabled",
-      "disabled": "Off"
+      "disabled": "Off",
+      "enable": "Enable",
+      "disable": "Disable"
     },
+    "view": "View",
+    "edit": "Edit",
     "importFailed": "Could not import {{name}}: {{error}}",
     "loadHubFailed": "Could not load the skill hub: {{error}}",
     "deleteSkill": "Delete skill {{name}}",
