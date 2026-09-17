@@ -4262,6 +4262,7 @@ impl App {
             cont: " ",
             gutter: Style::new().light_magenta().bold(),
             body: vec![Span::styled(label, Style::new().cyan().bold())],
+            bg: None,
         });
     }
 
@@ -5038,31 +5039,19 @@ impl App {
                     }
                     // A standalone edit/write or intervening display block can
                     // close a group before its batch's results arrive.
-                    for group in &mut self.groups {
+                    // Owned by a group already closed (e.g. by the reasoning
+                    // flush above): update its retained call and rewrite the
+                    // row so a late error reads as `✗`, not `✓`.
+                    for group in self.groups.iter_mut() {
                         if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
                             call.is_error = is_error;
                             call.diff = diff;
                             call.content = Some(content);
                             group.last_result_error = Some(is_error);
-                            self.transcript[group.idx] = group.row(GroupRow::Closed);
+                            let idx = group.idx;
+                            let row = group.row(GroupRow::Closed);
+                            self.transcript[idx] = row;
                             break;
-                        }
-                        self.refresh_group_row();
-                    } else {
-                        // Owned by a group already closed (e.g. by the reasoning
-                        // flush above): update its retained call and rewrite the
-                        // row so a late error reads as `✗`, not `✓`.
-                        for group in self.groups.iter_mut() {
-                            if let Some(call) = group.calls.iter_mut().find(|c| c.id == id) {
-                                call.is_error = is_error;
-                                call.diff = diff;
-                                call.content = Some(content);
-                                group.last_result_error = Some(is_error);
-                                let idx = group.idx;
-                                let row = group.row(GroupRow::Closed);
-                                self.transcript[idx] = row;
-                                break;
-                            }
                         }
                     }
                     return;
@@ -13091,17 +13080,11 @@ fn agent_picker_items(subagents: &[SubagentPanel]) -> Vec<PickerItem> {
     subagents
         .iter()
         .map(|p| {
-            let work = p
-                .work_id
-                .as_ref()
-                .map(|w| format!(" · {w}"))
-                .unwrap_or_default();
             PickerItem {
                 label: format!(
-                    "{}  ·  {}t{}  ·  {}",
+                    "{}  ·  {}t  ·  {}",
                     p.name,
                     p.calls.len(),
-                    work,
                     panel_activity_summary(p)
                 ),
                 value: p.run_id.clone(),
@@ -13169,9 +13152,6 @@ fn agent_detail_lines(
         Span::styled(format!("  ({})", panel.run_id), dim),
     ])];
     let mut stats = format!("{} tools · {} req", panel.calls.len(), panel.requests);
-    if let Some(w) = &panel.work_id {
-        stats.push_str(&format!(" · {w}"));
-    }
     if panel.queued {
         stats.push_str(&format!(" · queued ({})", panel.waiting));
     }
