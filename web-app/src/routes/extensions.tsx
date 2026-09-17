@@ -6,6 +6,8 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import PluginsTab from '@/containers/extensions/PluginsTab'
 import SkillsTab from '@/containers/extensions/SkillsTab'
+import ImportFromClaudeCodeDialog from '@/containers/extensions/ImportFromClaudeCodeDialog'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +24,7 @@ function ExtensionsPage() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ExtensionsTab>('plugins')
   const [scope, setScope] = useState<ExtensionsScope>('global')
+  const [importOpen, setImportOpen] = useState(false)
 
   const tabClass = (active: boolean) =>
     cn(
@@ -48,7 +51,7 @@ function ExtensionsPage() {
               onClick={() => setTab('plugins')}
               data-testid="extensions-tab-plugins"
             >
-              {t('common:extensions.plugins')}
+              {t('common:extensionsManager.plugins')}
             </button>
             <button
               type="button"
@@ -58,32 +61,44 @@ function ExtensionsPage() {
               onClick={() => setTab('skills')}
               data-testid="extensions-tab-skills"
             >
-              {t('common:extensions.skills')}
+              {t('common:extensionsManager.skills')}
             </button>
           </div>
-          <div
-            role="group"
-            aria-label={t('common:extensions.scope')}
-            className="flex items-center gap-0.5 rounded-md bg-sunken p-0.5"
-          >
-            {(['global', 'project'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={scope === s}
-                onClick={() => setScope(s)}
-                className={cn(
-                  'h-7 shrink-0 cursor-pointer rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                  scope === s
-                    ? 'bg-card text-foreground shadow-[0_0_0_1px_var(--border)]'
-                    : 'text-ink-2 hover:text-foreground'
-                )}
-              >
-                {t(`common:extensions.scope${s === 'global' ? 'Global' : 'Project'}`)}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div
+              role="group"
+              aria-label={t('common:extensionsManager.scope')}
+              className="flex items-center gap-0.5 rounded-md bg-sunken p-0.5"
+            >
+              {(['global', 'project'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={scope === s}
+                  onClick={() => setScope(s)}
+                  className={cn(
+                    'h-7 shrink-0 cursor-pointer rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                    scope === s
+                      ? 'bg-card text-foreground shadow-[0_0_0_1px_var(--border)]'
+                      : 'text-ink-2 hover:text-foreground'
+                  )}
+                >
+                  {t(`common:extensionsManager.scope${s === 'global' ? 'Global' : 'Project'}`)}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="extensions-import-cc-button"
+              onClick={() => setImportOpen(true)}
+            >
+              {t('common:extensionsManager.import.button')}
+            </Button>
           </div>
         </div>
+
+        <ImportFromClaudeCodeDialog open={importOpen} onOpenChange={setImportOpen} />
 
         {tab === 'plugins' ? (
           <div

@@ -44,7 +44,7 @@ describe('SkillsTab', () => {
     await waitFor(() => {
       expect(screen.getByText('global-skill')).toBeInTheDocument()
     })
-    expect(screen.getByText('common:extensions.global')).toBeInTheDocument()
+    expect(screen.getByText('common:extensionsManager.global')).toBeInTheDocument()
   })
 
   it('renders a per-project group header and that project skills', async () => {

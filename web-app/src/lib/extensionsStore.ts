@@ -71,3 +71,37 @@ export const listProjects = () => call<ProjectEntry[]>('agent_projects_list', {}
 
 export const registerProject = (folder: string) =>
   call<ProjectEntry>('agent_projects_register', { folder })
+
+/** One skill or plugin found on disk by a Claude Code import scan. */
+export interface CcItem {
+  kind: ExtensionKind
+  name: string
+  sourcePath: string
+  origin: string
+  alreadyExists: boolean
+}
+
+export interface CcScan {
+  items: CcItem[]
+}
+
+/**
+ * The subset of a `CcItem` sent back to `agent_cc_import`. `sourcePath` must
+ * always come from a prior scan result -- never a user-typed path -- since the
+ * backend trusts it as a filesystem location to copy from.
+ */
+export type CcImportSelection = Pick<CcItem, 'kind' | 'name' | 'sourcePath'>
+
+export interface CcImportResult {
+  imported: string[]
+  skipped: string[]
+  errors: string[]
+}
+
+/** Scan `root` (or the backend's default) for importable Claude Code skills/plugins. */
+export const ccScan = (root?: string) =>
+  call<CcScan>('agent_cc_scan', root ? { root } : {})
+
+/** Import the selected scan items, optionally overwriting existing ones. */
+export const ccImport = (items: CcImportSelection[], overwrite: boolean) =>
+  call<CcImportResult>('agent_cc_import', { items, overwrite })

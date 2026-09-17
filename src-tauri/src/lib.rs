@@ -153,6 +153,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_skill_hub_import,
         core::agent::commands::agent_skill_enabled_get,
         core::agent::commands::agent_skill_enabled_set,
+        core::agent::cc_import::agent_cc_scan,
+        core::agent::cc_import::agent_cc_import,
         core::agent::commands::agent_plugin_list,
         core::agent::commands::agent_plugin_details,
         core::agent::commands::agent_plugin_sources,

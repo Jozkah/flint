@@ -43,6 +43,8 @@ vi.mock('@/lib/skillStore', () => ({
 
 vi.mock('@/lib/extensionsStore', () => ({
   listProjects: vi.fn().mockResolvedValue([]),
+  ccScan: vi.fn().mockResolvedValue({ items: [] }),
+  ccImport: vi.fn(),
 }))
 
 vi.mock('@/lib/pluginStore', async () => {
@@ -68,10 +70,10 @@ describe('ExtensionsPage route', () => {
   it('renders both the Plugins and Skills tabs', () => {
     renderComponent()
     expect(screen.getByTestId('extensions-tab-plugins')).toHaveTextContent(
-      'common:extensions.plugins'
+      'common:extensionsManager.plugins'
     )
     expect(screen.getByTestId('extensions-tab-skills')).toHaveTextContent(
-      'common:extensions.skills'
+      'common:extensionsManager.skills'
     )
   })
 
@@ -87,6 +89,14 @@ describe('ExtensionsPage route', () => {
     expect(
       screen.queryByTestId('extensions-panel-plugins')
     ).not.toBeInTheDocument()
+  })
+
+  it('opens the Import from Claude Code dialog from its header button', () => {
+    renderComponent()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('extensions-import-cc-button'))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
 
