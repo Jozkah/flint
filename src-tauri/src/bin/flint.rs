@@ -13,6 +13,7 @@ use app_lib::core::agent::plugins::InstalledPlugin;
 use app_lib::core::cli::mcp::{self, split_kv, McpServerEntry};
 use app_lib::core::cli::providers::{load_provider_configs, ProviderOverrides};
 use app_lib::core::cli::run_report::OutputFormat;
+use app_lib::core::cli::stream_input::InputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
@@ -396,6 +397,12 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+        /// `stream-json` reads newline-delimited `user` and `permission`
+        /// messages from stdin while the run is in flight; it requires
+        /// `--output-format stream-json`. `text` (the default) does not read
+        /// stdin.
+        #[arg(long, value_enum, default_value_t = InputFormat::Text)]
+        input_format: InputFormat,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -1503,6 +1510,7 @@ async fn handle_agent(cmd: AgentCommands) {
             sandbox,
             resume,
             output_format,
+            input_format,
             events,
             profile,
             output_density,
@@ -1548,6 +1556,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 },
                 resume.into_target(),
                 output_format,
+                input_format,
             )
             .await
         }
