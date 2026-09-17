@@ -60,6 +60,49 @@ pub(crate) fn user_skill_store() -> Option<PathBuf> {
     TEST_USER_SKILLS.with(|d| d.borrow().clone())
 }
 
+/// The user's own plugins, shared by every workspace:
+/// `<jan_data_folder>/agent-workspace/plugins`. Sibling of `user_skills_dir`.
+#[cfg(not(test))]
+pub(crate) fn user_plugins_dir() -> Option<PathBuf> {
+    user_skill_store().map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
+}
+
+// Tests point the user plugins scope at a temp store directly, mirroring
+// TEST_USER_SKILLS, so a global plugins store can be set up independently of
+// the skills store in a given test.
+#[cfg(test)]
+thread_local! {
+    static TEST_USER_PLUGINS: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_user_plugins(store: Option<PathBuf>) {
+    TEST_USER_PLUGINS.with(|d| *d.borrow_mut() = store);
+}
+
+#[cfg(test)]
+pub(crate) fn user_plugins_dir() -> Option<PathBuf> {
+    TEST_USER_PLUGINS
+        .with(|d| d.borrow().clone())
+        .map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
+}
+
+/// Global plugins' skills, tagged like project plugin skills. A project (or
+/// project-scoped) plugin of the same directory name shadows a global one.
+pub(crate) fn discover_user_plugins(project: &[SkillEntry]) -> Vec<SkillEntry> {
+    let Some(dir) = user_plugins_dir() else {
+        return Vec::new();
+    };
+    tauri_plugin_agent_tools::skills::scan_plugins_at(&dir)
+        .into_iter()
+        .filter(|u| {
+            !project
+                .iter()
+                .any(|p| p.plugin == u.plugin && p.name == u.name)
+        })
+        .collect()
+}
+
 /// User skills, minus any a project skill of the same name shadows.
 fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
     let Some(dir) = user_skills_dir() else {
@@ -1036,22 +1079,41 @@ mod tests {
         for tag in ["proj-a", "proj-b"] {
             let root = temp_root(tag);
             let names: Vec<String> = discover_all(&root).iter().map(qualified_name).collect();
-            assert!(names.contains(&"house-style".to_string()), "{tag}: {names:?}");
-            assert!(read_raw(&root, "house-style").unwrap().contains("Use the imperative."));
+            assert!(
+                names.contains(&"house-style".to_string()),
+                "{tag}: {names:?}"
+            );
+            assert!(read_raw(&root, "house-style")
+                .unwrap()
+                .contains("Use the imperative."));
             let listed = catalog(&root, &[]);
-            let meta = listed.iter().find(|m| m.name == "house-style").expect("in the catalog");
+            let meta = listed
+                .iter()
+                .find(|m| m.name == "house-style")
+                .expect("in the catalog");
             assert_eq!(meta.description, "How this user writes commit messages");
         }
 
         // A project skill with the same name shadows the user's.
         let root = temp_root("proj-shadow");
-        project_skill(&root, "deploy", "---\ndescription: project deploy\n---\nproject deploy body\n");
-        let deploys: Vec<SkillEntry> = discover_all(&root).into_iter().filter(|e| e.name == "deploy").collect();
+        project_skill(
+            &root,
+            "deploy",
+            "---\ndescription: project deploy\n---\nproject deploy body\n",
+        );
+        let deploys: Vec<SkillEntry> = discover_all(&root)
+            .into_iter()
+            .filter(|e| e.name == "deploy")
+            .collect();
         assert_eq!(deploys.len(), 1, "one deploy, not both");
-        assert!(read_raw(&root, "deploy").unwrap().contains("project deploy body"));
+        assert!(read_raw(&root, "deploy")
+            .unwrap()
+            .contains("project deploy body"));
 
         // The enabled whitelist still applies to user skills.
-        assert!(catalog(&root, &["deploy".to_string()]).iter().all(|m| m.name != "house-style"));
+        assert!(catalog(&root, &["deploy".to_string()])
+            .iter()
+            .all(|m| m.name != "house-style"));
 
         TEST_USER_SKILLS.with(|d| *d.borrow_mut() = None);
         let root = temp_root("proj-none");
@@ -1270,7 +1332,12 @@ mod tests {
     fn plugin_rules_match_the_tool_crate() {
         let root = temp_root("parity");
         project_skill(&root, "deploy", "---\ndescription: ship\n---\nbody\n");
-        plugin_skill(&root, "release", "prepare", "---\ndescription: prep\n---\nbody\n");
+        plugin_skill(
+            &root,
+            "release",
+            "prepare",
+            "---\ndescription: prep\n---\nbody\n",
+        );
         plugin_skill(&root, "release", "changelog", "log body\n");
         plugin_skill(&root, "muted", "hush", "muted body\n");
         single_plugin(&root, "triage", "---\ndescription: t\n---\nbody\n");
@@ -1291,7 +1358,10 @@ mod tests {
         ];
         for wl in whitelists {
             let enabled: Vec<String> = wl.iter().map(|s| s.to_string()).collect();
-            let cli: Vec<String> = catalog(&root, &enabled).into_iter().map(|m| m.name).collect();
+            let cli: Vec<String> = catalog(&root, &enabled)
+                .into_iter()
+                .map(|m| m.name)
+                .collect();
             let tools: Vec<String> = tool_skills::catalog(&store, &enabled)
                 .into_iter()
                 .map(|m| m.name)
@@ -1318,5 +1388,26 @@ mod tests {
             tool_skills::load_config(&store).disabled_plugins
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn discover_user_plugins_are_tagged_and_shadowed_by_project() {
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let gdir = tauri_plugin_agent_tools::skills::plugins_dir(&store).join("caveman");
+        std::fs::create_dir_all(gdir.join("skills")).unwrap();
+        std::fs::write(
+            gdir.join("skills").join("SKILL.md"),
+            "---\ndescription: g\n---\nbody",
+        )
+        .unwrap();
+        set_test_user_plugins(Some(store));
+
+        let project: Vec<SkillEntry> = Vec::new();
+        let got = discover_user_plugins(&project);
+        assert!(
+            got.iter().any(|e| e.plugin.as_deref() == Some("caveman")),
+            "global plugin skill not discovered: {got:?}"
+        );
     }
 }
