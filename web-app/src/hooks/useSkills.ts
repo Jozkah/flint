@@ -115,6 +115,9 @@ export function useSkills(folder: string | null) {
       setSkills(list)
       setEnabledState(en)
       enabledRef.current = en
+    } catch (e) {
+      // A discovery failure must be actionable, not a silently empty list (#8878).
+      toast.error(String(e))
     } finally {
       setLoading(false)
     }

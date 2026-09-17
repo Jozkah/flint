@@ -77,6 +77,7 @@ import {
   startEngine,
   eraseThreadSlotState,
   getEngineInfo as pluginGetEngineInfo,
+  getEngineVersion as pluginGetEngineVersion,
   reloadEngineModels,
   engineDevices,
   generateApiKey as pluginGenerateApiKey,
@@ -89,6 +90,7 @@ import {
   EmbeddingResponse,
   ModelProps,
   DeviceList,
+  EngineVersion,
 } from '@janhq/tauri-plugin-llamacpp-api'
 import { getSystemUsage, getSystemInfo } from '@janhq/tauri-plugin-hardware-api'
 
@@ -119,6 +121,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'batch_size',
   'ubatch_size',
   'n_cpu_moe',
+  'n_cpu_ffn',
   'no_kv_offload',
   'device',
   'split_mode',
@@ -143,6 +146,9 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'no_op_offload',
   'ctx_checkpoints',
   'checkpoint_min_step',
+  'kv_unified_per_slot',
+  'reasoning_preserve',
+  'lazy_mode',
 ])
 
 
@@ -317,6 +323,14 @@ const MODEL_SETTINGS_YAML_MAPPING: Record<
       return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
     },
   },
+  n_cpu_ffn: {
+    yamlKey: 'n_cpu_ffn',
+    coerce: (v) => {
+      if (v === '' || v == null) return null
+      const n = typeof v === 'number' ? v : Number(v)
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : null
+    },
+  },
   no_kv_offload: {
     yamlKey: 'no_kv_offload',
     coerce: (v) => (v === true ? true : null),
@@ -435,6 +449,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   private enginePort?: number
   private engineApiKey?: string
+  private engineVersion?: EngineVersion
   private presetPath?: string
   private engineStartLock: Promise<void> | null = null
   private userModelsMax: number = 1
@@ -663,7 +678,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             if (nextValue !== prevValue) {
               changed.push({ key: s.key, value: nextValue })
             }
-            ;(s.controllerProps as { value?: unknown }).value = nextValue
+            return {
+              ...s,
+              controllerProps: { ...s.controllerProps, value: nextValue },
+            } as SettingComponentProps
           }
           return s
         })
@@ -678,8 +696,29 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           return arr
         })()
     await writeSettingsFile(updated)
+    const previousConfig = { ...this.config }
+    const previousTimeout = this.timeout
+    const previousEnv = this.llamacpp_env
     for (const { key, value } of changed) {
       this.onSettingUpdate(key, value)
+    }
+    if (this.presetRefreshTimer) {
+      clearTimeout(this.presetRefreshTimer)
+      this.presetRefreshTimer = null
+      // Startup migrations are included in the initial preset. Once loaded,
+      // an awaited settings save must include engine application, not merely
+      // schedule it after the caller has already sent its next request.
+      if (this.backgroundInit) {
+        try {
+          await this.refreshEnginePreset()
+        } catch (error) {
+          this.config = previousConfig
+          this.timeout = previousTimeout
+          this.llamacpp_env = previousEnv
+          await writeSettingsFile(current)
+          throw error
+        }
+      }
     }
   }
 
@@ -919,6 +958,18 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       logger.warn('get_engine_info failed:', e)
     }
     return null
+  }
+
+  /**
+   * The bundled engine's identity. Cached after the first call: these are
+   * compile-time constants of the plugin, so they cannot change while the app
+   * is running, and the settings screen asks on every mount.
+   */
+  async getEngineVersion(): Promise<EngineVersion> {
+    if (!this.engineVersion) {
+      this.engineVersion = await pluginGetEngineVersion()
+    }
+    return this.engineVersion
   }
 
   /**
@@ -1259,6 +1310,16 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       embedding: isEmbedding,
       template_kwargs: templateKwargs,
     } as modelInfo
+  }
+
+  async getModelContextLimit(modelId: string): Promise<number | undefined> {
+    const config = await invoke<ModelConfig>('read_yaml', {
+      path: await joinPath([await this.getProviderPath(), 'models', modelId, 'model.yml']),
+    })
+    const path = await joinPath([await getJanDataFolderPath(), config.model_path])
+    const { metadata } = await readGgufMetadata(path)
+    const limit = Number(metadata?.[`${metadata?.['general.architecture']}.context_length`])
+    return Number.isInteger(limit) && limit > 0 ? limit : undefined
   }
 
   /**
@@ -2425,10 +2486,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   /**
-   * Persist a per-model setting from the sidebar into `model.yml`, regenerate
-   * the router preset, and restart the router so the next inference picks up
-   * the new args. In router mode the router reads args exclusively from
-   * `router.preset.ini`, so updating Zustand alone has no effect on inference.
+   * Persist a per-model setting into `model.yml` and apply the engine preset
+   * before resolving. A failed application restores the saved configuration
+   * and rejects so the caller can report the error.
    *
    * Sidebar keys are mapped to the canonical `model.yml` / preset keys here.
    * Keys not in the mapping are silently ignored — they're either Flint-side
@@ -2451,6 +2511,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const cfg = (await invoke<ModelConfig>('read_yaml', {
       path: configPath,
     })) as ModelConfig & Record<string, unknown>
+    const previousConfig = { ...cfg }
 
     let touched = false
     for (const [sidebarKey, value] of Object.entries(patch)) {
@@ -2475,10 +2536,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     try {
       await this.refreshEnginePreset()
     } catch (e) {
-      logger.warn(
-        `Failed to restart router after model settings update for ${modelId}`,
-        e
-      )
+      await invoke<void>('write_yaml', {
+        data: previousConfig,
+        savePath: configPath,
+      })
+      throw e
     }
   }
 

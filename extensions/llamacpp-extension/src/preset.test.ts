@@ -240,6 +240,65 @@ describe('generatePreset parallel reservation', () => {
   })
 })
 
+describe('generatePreset 0.4.0 keys', () => {
+  it('emits n-cpu-ffn when set, and omits it at 0', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { n_cpu_ffn: 12 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('n-cpu-ffn = 12')
+
+    await generatePreset('/p', '/jan', { n_cpu_ffn: 0 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('n-cpu-ffn')
+  })
+
+  it('emits a per-model n-cpu-ffn override', async () => {
+    setupModel('llama', { n_cpu_ffn: 4 })
+    await generatePreset('/p', '/jan', {} as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('n-cpu-ffn = 4')
+  })
+
+  // auto is upstream's own default, so naming it would pin a value that is
+  // meant to track the engine.
+  it('emits lazy-mode only when it is not auto', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { lazy_mode: 'auto' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('lazy-mode')
+
+    await generatePreset('/p', '/jan', { lazy_mode: 'off' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('lazy-mode = off')
+
+    await generatePreset('/p', '/jan', { lazy_mode: 'on' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('lazy-mode = on')
+  })
+
+  it('emits kv-unified-per-slot when set, and omits it at 0', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { kv_unified_per_slot: 4096 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain(
+      'kv-unified-per-slot = 4096'
+    )
+
+    await generatePreset('/p', '/jan', { kv_unified_per_slot: 0 } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain(
+      'kv-unified-per-slot'
+    )
+  })
+
+  // Enabled is the engine's default since 0.4.0, so only the off case is
+  // written; emitting `true` would be a no-op line that outlives the default.
+  it('emits reasoning-preserve only to turn it off', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { reasoning_preserve: true } as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain(
+      'reasoning-preserve'
+    )
+
+    await generatePreset('/p', '/jan', { reasoning_preserve: false } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain(
+      'reasoning-preserve = false'
+    )
+  })
+})
+
 describe('generatePreset kv-unified', () => {
   it('enables unified KV on auto when an explicit parallel is emitted', async () => {
     setupModel('llama', {})
@@ -818,5 +877,55 @@ describe('generatePreset spec type', () => {
     expect(writtenFiles['/p/router.preset.ini']).toContain(
       'spec-type = draft-mtp'
     )
+  })
+})
+
+describe('threadCacheDir separator handling', () => {
+  const WIN_EXT = '\\\\?\\C:\\Users\\u\\AppData\\Roaming\\Jan-nightly\\data\\llamacpp'
+
+  it('joins a POSIX path with a forward slash', () => {
+    expect(threadCacheDir('/p')).toBe('/p/thread-cache')
+    expect(threadCacheDir('/home/u/.local/share/Jan/data/llamacpp')).toBe(
+      '/home/u/.local/share/Jan/data/llamacpp/thread-cache'
+    )
+  })
+
+  it('joins a Windows extended path with a backslash', () => {
+    // Win32 normalizes `/` to `\` for ordinary paths but not for `\\?\` ones,
+    // where a `/` is a literal name character -- so create_dir_all fails with
+    // ERROR_INVALID_NAME (os error 123) and the worker exits 7 before serving.
+    expect(threadCacheDir(WIN_EXT)).toBe(`${WIN_EXT}\\thread-cache`)
+    expect(threadCacheDir(WIN_EXT)).not.toContain('/')
+  })
+
+  it('joins a plain Windows path with a backslash', () => {
+    expect(threadCacheDir('C:\\Users\\u\\llamacpp')).toBe(
+      'C:\\Users\\u\\llamacpp\\thread-cache'
+    )
+  })
+
+  it('does not read a backslash in a POSIX name as a Windows separator', () => {
+    // `\` is a legal filename character on Linux, so the separator follows the
+    // path's root rather than whether a backslash appears anywhere in it.
+    expect(threadCacheDir('/home/u/od\\d/llamacpp')).toBe(
+      '/home/u/od\\d/llamacpp/thread-cache'
+    )
+  })
+
+  it('does not double an existing trailing separator', () => {
+    expect(threadCacheDir('/p/')).toBe('/p/thread-cache')
+    expect(threadCacheDir('C:\\p\\')).toBe('C:\\p\\thread-cache')
+  })
+
+  it('is the one definition the preset and the erase path both use', async () => {
+    // index.ts's forgetThreadCache passes threadCacheDir(providerPath) as
+    // cacheDir, and llama.cpp joins state file names onto slot-save-path, so a
+    // preset that derived the directory differently would erase from a
+    // directory the worker never wrote to.
+    await generatePreset(WIN_EXT, 'C:\\jan', CONFIG)
+    const ini = Object.entries(writtenFiles).find(([p]) =>
+      p.endsWith('router.preset.ini')
+    )?.[1] as string
+    expect(ini).toContain(`slot-save-path = ${threadCacheDir(WIN_EXT)}`)
   })
 })
