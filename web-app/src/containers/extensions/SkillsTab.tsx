@@ -18,6 +18,7 @@ import {
   type SkillScope,
 } from '@/lib/skillStore'
 import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
+import EnablementGrid from '@/containers/extensions/EnablementGrid'
 
 /**
  * A skills group is either the global store or one registered project.
@@ -146,6 +147,20 @@ export default function SkillsTab() {
 
   const editing = isNew || selected !== null
 
+  // The matrix id rule from `resolve_extensions`: a plugin skill is keyed by
+  // its plugin id, a standalone skill by its own name. Only global-store
+  // skills have matrix entries (project skills always resolve enabled), so
+  // the grid only applies when editing a global one.
+  const selectedGlobalMeta =
+    openGroup === 'global' && selected !== null
+      ? globalSkills.find((s) => s.name === selected)
+      : undefined
+  const enablementTarget = selectedGlobalMeta
+    ? isPluginSkill(selectedGlobalMeta)
+      ? { kind: 'plugin' as const, id: selectedGlobalMeta.plugin as string }
+      : { kind: 'skill' as const, id: selectedGlobalMeta.name }
+    : null
+
   const renderSkillRow = (
     group: GroupKey,
     s: SkillMeta,
@@ -263,6 +278,14 @@ export default function SkillsTab() {
               placeholder={t('common:skillNamePlaceholder')}
               disabled={!isNew}
             />
+            {enablementTarget && (
+              <div>
+                <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                  {t('common:extensions.enablement.title', undefined) ?? 'Enabled on'}
+                </div>
+                <EnablementGrid kind={enablementTarget.kind} id={enablementTarget.id} />
+              </div>
+            )}
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}

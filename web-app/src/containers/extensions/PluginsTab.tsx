@@ -29,6 +29,7 @@ import {
   type PluginSourceKind,
   type PluginSources,
 } from '@/lib/pluginStore'
+import EnablementGrid from '@/containers/extensions/EnablementGrid'
 
 const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
 
@@ -454,6 +455,12 @@ export default function PluginsTab() {
               <dt className="text-muted-foreground">{t('plugins:details.installedPath')}</dt>
               <dd className="break-all">{details.installedPath}</dd>
             </dl>
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                {t('common:extensions.enablement.title', undefined) ?? 'Enabled on'}
+              </div>
+              <EnablementGrid kind="plugin" id={plugin.id} />
+            </div>
             <div>
               <Button
                 variant="destructive"

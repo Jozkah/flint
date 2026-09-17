@@ -50,6 +50,23 @@ export const setMatrix = (
     enabled,
   })
 
+/**
+ * Replace an item's ENTIRE surface list in one shot (the full-vector
+ * counterpart to `setMatrix`'s single-cell toggle), for grid UIs where one
+ * checkbox click recomputes the whole boolean vector. `surfaces: null`
+ * clears the item back to its default (enabled everywhere).
+ */
+export const setItemSurfaces = (
+  kind: ExtensionKind,
+  id: string,
+  surfaces: string[] | null
+) =>
+  call<ExtensionsMatrix>('agent_extensions_matrix_set_item', {
+    kind,
+    id,
+    surfaces,
+  })
+
 export const listProjects = () => call<ProjectEntry[]>('agent_projects_list', {})
 
 export const registerProject = (folder: string) =>

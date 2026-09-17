@@ -164,6 +164,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_resolve_extensions,
         core::agent::commands::agent_extensions_matrix_get,
         core::agent::commands::agent_extensions_matrix_set,
+        core::agent::commands::agent_extensions_matrix_set_item,
         core::agent::commands::agent_projects_list,
         core::agent::commands::agent_projects_register,
         core::agent::commands::agent_git_branch,

@@ -161,6 +161,20 @@ impl Matrix {
             entry.surfaces.retain(|s| s != &key);
         }
     }
+
+    /// Replaces `id`'s entire surface list with exactly `surfaces` (creating
+    /// the entry if absent). A full-vector set for grid UIs, where toggling
+    /// one cell recomputes the whole boolean vector rather than one surface.
+    pub fn set_item(&mut self, kind: ItemKind, id: &str, surfaces: Vec<String>) {
+        self.map_mut(kind)
+            .insert(id.to_string(), ItemEntry { surfaces });
+    }
+
+    /// Removes `id`'s entry entirely, returning it to the default: enabled on
+    /// every surface.
+    pub fn clear_item(&mut self, kind: ItemKind, id: &str) {
+        self.map_mut(kind).remove(id);
+    }
 }
 
 /// The matrix's namespace + item id for a resolved skill meta: a plugin skill
@@ -227,6 +241,39 @@ mod tests {
             "foo",
             &Surface::Cowork("proj1".to_string())
         ));
+    }
+
+    #[test]
+    fn set_item_replaces_full_surface_vector() {
+        let mut m = Matrix::default();
+        m.set_item(
+            ItemKind::Skill,
+            "caveman",
+            vec!["rooms".to_string(), "cowork:p1".to_string()],
+        );
+        assert!(m.is_enabled(ItemKind::Skill, "caveman", &Surface::Rooms));
+        assert!(m.is_enabled(
+            ItemKind::Skill,
+            "caveman",
+            &Surface::Cowork("p1".to_string())
+        ));
+        assert!(!m.is_enabled(ItemKind::Skill, "caveman", &Surface::Home));
+
+        // Replacing again overwrites the previous list wholesale.
+        m.set_item(ItemKind::Skill, "caveman", vec!["home".to_string()]);
+        assert!(m.is_enabled(ItemKind::Skill, "caveman", &Surface::Home));
+        assert!(!m.is_enabled(ItemKind::Skill, "caveman", &Surface::Rooms));
+    }
+
+    #[test]
+    fn clear_item_returns_to_default_enabled_everywhere() {
+        let mut m = Matrix::default();
+        m.set_item(ItemKind::Plugin, "octo", vec!["home".to_string()]);
+        assert!(!m.is_enabled(ItemKind::Plugin, "octo", &Surface::Rooms));
+        m.clear_item(ItemKind::Plugin, "octo");
+        assert!(m.is_enabled(ItemKind::Plugin, "octo", &Surface::Home));
+        assert!(m.is_enabled(ItemKind::Plugin, "octo", &Surface::Rooms));
+        assert!(m.is_enabled(ItemKind::Plugin, "octo", &Surface::Cowork("p1".to_string())));
     }
 
     #[test]
@@ -338,7 +385,11 @@ mod tests {
         let ext_store = tempfile::tempdir().expect("tempdir");
         set_test_extensions_root(Some(ext_store.path().to_path_buf()));
 
-        for surface in [Surface::Home, Surface::Rooms, Surface::Cowork("p1".to_string())] {
+        for surface in [
+            Surface::Home,
+            Surface::Rooms,
+            Surface::Cowork("p1".to_string()),
+        ] {
             let resolved = resolve_extensions(&surface, None);
             assert!(
                 resolved.iter().any(|m| m.name == "always-on"),
