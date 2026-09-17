@@ -288,6 +288,8 @@ gtk = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 libc = "0.2.172"
+webview2-com = "0.38.2"
+windows-core = "0.61"
 windows-sys = { version = "0.60.2", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
