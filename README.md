@@ -8,12 +8,9 @@ A private, local-first AI workspace for your desktop: chat with models on your o
 
 The Jan name and identifiers are retained wherever they carry legal attribution or keep your existing data compatible (see [Migration from JAN](#migration-from-jan) and [License](#license)). Features below are Flint's own unless the text says they are inherited from Jan.
 
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="Flint Cowork with parallel agents and a live timeline" width="100%">
-
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#getting-started">Getting started</a> ·
-  <a href="#a-visual-tour">Visual tour</a> ·
   <a href="#features">Features</a> ·
   <a href="#build-from-source">Build from source</a>
 </p>
@@ -78,46 +75,6 @@ existing data paths, `JAN_*` environment variables (with `FLINT_*` preferred),
 the `jan://` protocol (alongside `flint://`), and `JAN.md` project files
 (alongside `FLINT.md`) all continue to work. Provider API keys stay in the OS
 keyring and are not copied into plaintext.
-
-## A visual tour
-
-Screenshots of the real app with demo content. Phone layouts are the same app in a 390×844 window.
-
-### Chat
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-chat-conversation.png" alt="A conversation with a formatted table and code" width="100%">
-<sub>**Conversations.** Replies render tables, lists and code, and everything stays on your computer.</sub>
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-split-conversations.png" alt="Two independent conversations side by side" width="100%">
-<sub>**Split conversations.** Two chats side by side, each with its own model, draft and stream.</sub>
-
-### Cowork: agents that work on your files
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-managed-worktree-review.png" alt="Reviewing an agent's changes from a managed worktree" width="100%">
-<sub>**Managed worktrees and review.** The agent works in an isolated copy of your project. You review each file and hunk, then apply what you want or reject it.</sub>
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="A team of agents working in parallel with a live timeline" width="100%">
-<sub>**Parallel agents.** Explorer, security, reviewer and planner roles work at the same time, and the timeline shows each dispatch as it happens.</sub>
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-tool-call-timeline.png" alt="The execution timeline with tool call details" width="100%">
-<sub>**Tool call history.** Every call is recorded with its phases, approvals, duration, input and output, and the diff it produced.</sub>
-
-### Context and token usage
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What Flint is using panel" width="100%">
-<sub>**What Flint is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.</sub>
-
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-message-token-usage.png" alt="Token usage for one message" width="100%">
-<sub>**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.</sub>
-
-### Phone-sized windows
-
-<p>
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-chat.png" alt="A conversation on a phone-sized window" width="240">
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-split-switch.png" alt="Switching between split panes on a phone-sized window" width="240">
-<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-navigation.png" alt="The navigation sheet on a phone-sized window" width="240">
-</p>
-<sub>**Phone-sized windows.** A conversation, switching between split panes, and the navigation sheet.</sub>
 
 ## Features
 
