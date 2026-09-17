@@ -61,10 +61,12 @@ pub mod workspace;
 
 #[cfg(feature = "tauri")]
 mod commands;
-/// Session-scoped write grants. Only the Tauri command layer issues, resolves
-/// and revokes them, so the module follows that feature: a CLI build has no
-/// grant surface and would otherwise carry the whole module as dead code.
-#[cfg(feature = "tauri")]
+/// Session-scoped write grants. The grant machinery is gated internally to
+/// `feature = "tauri"` (or tests), so a CLI build compiles only the pure
+/// `child_session_id`/`CHILD_SEP` helpers it re-exports and carries none of the
+/// grant surface as dead code. The module itself must stay unconditional
+/// because `child_session_id` is re-exported (and used by the CLI subagent /
+/// team-children paths).
 mod grants;
 
 /// Runs the confined-spawn helper and exits, when this process was re-exec'd as

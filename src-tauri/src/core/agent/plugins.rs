@@ -485,6 +485,7 @@ fn global_agent_toml_path() -> PathBuf {
 #[derive(Debug, Clone)]
 pub(crate) enum PluginScope {
     Project(PathBuf),
+    #[cfg_attr(feature = "cli", allow(dead_code))]
     Global,
 }
 
