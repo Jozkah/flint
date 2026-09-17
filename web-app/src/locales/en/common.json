@@ -1508,6 +1508,27 @@
     "surfaces": {
       "home": "Home",
       "rooms": "Rooms"
+    },
+    "import": {
+      "button": "Import from Claude Code",
+      "title": "Import from Claude Code",
+      "description": "Scan a folder for Claude Code skills and plugins, then import them into Jan.",
+      "root": "Scan folder",
+      "rootPlaceholder": "Desktop/Coding",
+      "scan": "Scan",
+      "scanning": "Scanning...",
+      "scanFailed": "Scan failed: {{error}}",
+      "empty": "No skills or plugins found.",
+      "installed": "installed",
+      "overwrite": "Overwrite existing",
+      "importSelected": "Import selected",
+      "importing": "Importing...",
+      "importFailed": "Import failed: {{error}}",
+      "done": "Imported {{imported}}, skipped {{skipped}}",
+      "doneErrors": "{{count}} error(s)",
+      "originSkills": "Claude Code (skills)",
+      "originPlugins": "Claude Code (plugins)",
+      "originProject": "Project: {{name}}"
     }
   },
   "statusBar": {
