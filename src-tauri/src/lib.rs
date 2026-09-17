@@ -301,6 +301,36 @@ fn is_proxy_server_running<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool
         .unwrap_or(false)
 }
 
+/// Auto-accept the WebView2 "Reload site?" beforeunload confirmation so it
+/// never interrupts the user. This desktop app has no page-level form state
+/// worth guarding; the dialog only blocks HMR reloads and extension operations.
+#[cfg(all(not(feature = "cli"), windows))]
+fn suppress_beforeunload_dialog(window: &tauri::WebviewWindow) {
+    window
+        .with_webview(|webview| {
+            use webview2_com::AddScriptToExecuteOnDocumentCreatedCompletedHandler;
+            use windows_core::HSTRING;
+            let controller = webview.controller();
+            let core = unsafe { controller.CoreWebView2().unwrap() };
+            let js = String::from(
+                "Object.defineProperty(window,'onbeforeunload',\
+                 {get(){return null},set(){}});\
+                 window.addEventListener('beforeunload',\
+                 function(e){e.stopImmediatePropagation();delete e.returnValue},\
+                 true);",
+            );
+            let _ = AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+                Box::new(move |handler| unsafe {
+                    let js = HSTRING::from(js);
+                    core.AddScriptToExecuteOnDocumentCreated(&js, &handler)
+                        .map_err(Into::into)
+                }),
+                Box::new(|e, _| e),
+            );
+        })
+        .unwrap_or_else(|e| log::warn!("could not suppress beforeunload dialog: {e}"));
+}
+
 #[cfg(not(feature = "cli"))]
 fn reemit_busy_if_any<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     let busy = BUSY_MODELS.lock().map(|g| g.clone()).unwrap_or_default();
@@ -541,6 +571,7 @@ pub fn build_app() -> tauri::App {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 core::window_state::restore_and_show(&window, &data_folder);
                 core::window_state::install(&window, data_folder);
+                suppress_beforeunload_dialog(&window);
             }
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
