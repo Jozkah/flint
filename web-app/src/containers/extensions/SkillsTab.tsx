@@ -217,7 +217,7 @@ export default function SkillsTab() {
         <div>
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase text-muted-foreground">
-              {t('common:extensions.global')}
+              {t('common:extensionsManager.global')}
             </div>
             <Button
               variant="outline"
@@ -281,7 +281,7 @@ export default function SkillsTab() {
             {enablementTarget && (
               <div>
                 <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  {t('common:extensions.enablement.title', undefined) ?? 'Enabled on'}
+                  {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
                 </div>
                 <EnablementGrid kind={enablementTarget.kind} id={enablementTarget.id} />
               </div>

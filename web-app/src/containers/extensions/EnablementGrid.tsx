@@ -73,8 +73,8 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
   }, [refresh])
 
   const columns: Column[] = [
-    { key: 'home', label: t('common:extensions.surfaces.home', undefined) ?? 'Home' },
-    { key: 'rooms', label: t('common:extensions.surfaces.rooms', undefined) ?? 'Rooms' },
+    { key: 'home', label: t('common:extensionsManager.surfaces.home', undefined) ?? 'Home' },
+    { key: 'rooms', label: t('common:extensionsManager.surfaces.rooms', undefined) ?? 'Rooms' },
     ...projects.map((p) => ({ key: `cowork:${p.id}`, label: p.name || p.folder })),
   ]
 

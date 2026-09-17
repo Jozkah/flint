@@ -1492,7 +1492,7 @@
     "system": "System",
     "settings": "Settings"
   },
-  "extensions": {
+  "extensionsManager": {
     "plugins": "Plugins",
     "skills": "Skills",
     "global": "Global",

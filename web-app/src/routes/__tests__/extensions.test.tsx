@@ -68,10 +68,10 @@ describe('ExtensionsPage route', () => {
   it('renders both the Plugins and Skills tabs', () => {
     renderComponent()
     expect(screen.getByTestId('extensions-tab-plugins')).toHaveTextContent(
-      'common:extensions.plugins'
+      'common:extensionsManager.plugins'
     )
     expect(screen.getByTestId('extensions-tab-skills')).toHaveTextContent(
-      'common:extensions.skills'
+      'common:extensionsManager.skills'
     )
   })
 

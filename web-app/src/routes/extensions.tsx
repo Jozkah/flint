@@ -48,7 +48,7 @@ function ExtensionsPage() {
               onClick={() => setTab('plugins')}
               data-testid="extensions-tab-plugins"
             >
-              {t('common:extensions.plugins')}
+              {t('common:extensionsManager.plugins')}
             </button>
             <button
               type="button"
@@ -58,12 +58,12 @@ function ExtensionsPage() {
               onClick={() => setTab('skills')}
               data-testid="extensions-tab-skills"
             >
-              {t('common:extensions.skills')}
+              {t('common:extensionsManager.skills')}
             </button>
           </div>
           <div
             role="group"
-            aria-label={t('common:extensions.scope')}
+            aria-label={t('common:extensionsManager.scope')}
             className="flex items-center gap-0.5 rounded-md bg-sunken p-0.5"
           >
             {(['global', 'project'] as const).map((s) => (
@@ -79,7 +79,7 @@ function ExtensionsPage() {
                     : 'text-ink-2 hover:text-foreground'
                 )}
               >
-                {t(`common:extensions.scope${s === 'global' ? 'Global' : 'Project'}`)}
+                {t(`common:extensionsManager.scope${s === 'global' ? 'Global' : 'Project'}`)}
               </button>
             ))}
           </div>
