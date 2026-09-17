@@ -3867,7 +3867,16 @@ fn build_run_system_prompt(
             )
             .0
         }
-        None => base.map(str::to_string),
+        None => {
+            let base = base.map(str::to_string);
+            match crate::core::agent::context::load_global_skills() {
+                Some(block) => Some(match base {
+                    Some(b) => format!("{b}\n\n{block}"),
+                    None => block,
+                }),
+                None => base,
+            }
+        }
     }
 }
 
