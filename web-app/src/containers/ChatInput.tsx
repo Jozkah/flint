@@ -58,6 +58,7 @@ import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
 import {
   EFFORT_SETTING_KEY,
   effortOf,
+  isOpenAICompatibleReasoningProvider,
   supportedEffortLevels,
 } from '@/lib/modelEffort'
 import { isOverridden, resolveModel } from '@/lib/modelOverrides'
@@ -2932,12 +2933,27 @@ const ChatInput = memo(function ChatInput({
                     selectedProvider === 'google' ||
                     selectedProvider === 'gemini' ||
                     selectedProvider === 'anthropic' ||
-                    selectedProvider === 'openai') &&
+                    selectedProvider === 'openai' ||
+                    isOpenAICompatibleReasoningProvider(
+                      selectedProvider,
+                      selectedModel
+                    )) &&
                   (() => {
                     // The token-budget submenu only applies to local llama.cpp
                     // (budget resolved against live n_ctx). Cloud providers size
                     // their own budget dynamically, so on/off/auto is enough.
                     const showThinkingBudget = selectedProvider === 'llamacpp'
+                    // Auto/On/Off writes the `reasoning` setting, which only the
+                    // first-party providers wire into a request. A remote
+                    // OpenAI-compatible model reaches this menu solely for the
+                    // effort bar, so it must not show reasoning items that would
+                    // do nothing.
+                    const showReasoningModes =
+                      selectedProvider === 'llamacpp' ||
+                      selectedProvider === 'google' ||
+                      selectedProvider === 'gemini' ||
+                      selectedProvider === 'anthropic' ||
+                      selectedProvider === 'openai'
                     const reasoningValue =
                       (selectedModel?.settings?.reasoning?.controller_props
                         ?.value as 'auto' | 'on' | 'off' | undefined) ?? 'auto'
@@ -3123,33 +3139,41 @@ const ChatInput = memo(function ChatInput({
                                   }
                                 />
                               </div>
-                              <DropdownMenuSeparator />
+                              {showReasoningModes && <DropdownMenuSeparator />}
                             </>
                           )}
-                          <DropdownMenuItem onClick={() => setReasoning('auto')}>
-                            Auto
-                            {reasoningValue === 'auto' && (
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                ✓
-                              </span>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setReasoning('on')}>
-                            On
-                            {reasoningValue === 'on' && (
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                ✓
-                              </span>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setReasoning('off')}>
-                            Off
-                            {reasoningValue === 'off' && (
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                ✓
-                              </span>
-                            )}
-                          </DropdownMenuItem>
+                          {showReasoningModes && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => setReasoning('auto')}
+                              >
+                                Auto
+                                {reasoningValue === 'auto' && (
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    ✓
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setReasoning('on')}>
+                                On
+                                {reasoningValue === 'on' && (
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    ✓
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setReasoning('off')}
+                              >
+                                Off
+                                {reasoningValue === 'off' && (
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    ✓
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           {showThinkingBudget && (
                             <>
                               <DropdownMenuSeparator />

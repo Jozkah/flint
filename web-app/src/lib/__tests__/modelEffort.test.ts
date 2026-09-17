@@ -8,7 +8,10 @@ import {
   supportedEffortLevels,
   supportsEffort,
 } from '@/lib/modelEffort'
-import { buildReasoningProviderOptions } from '@/lib/reasoningProviderOptions'
+import {
+  buildReasoningBodyParams,
+  buildReasoningProviderOptions,
+} from '@/lib/reasoningProviderOptions'
 
 const model = (id: string, effort?: string): Model =>
   ({
@@ -24,6 +27,13 @@ const model = (id: string, effort?: string): Model =>
           },
         }
       : {},
+  }) as unknown as Model
+
+/** A model that declares (or omits) the `reasoning` capability. */
+const reasoningModel = (id: string, reasoning: boolean, effort?: string): Model =>
+  ({
+    ...(model(id, effort) as unknown as Record<string, unknown>),
+    capabilities: reasoning ? ['completion', 'reasoning'] : ['completion'],
   }) as unknown as Model
 
 describe('which levels a provider actually honours', () => {
@@ -71,6 +81,36 @@ describe('which levels a provider actually honours', () => {
     expect(supportedEffortLevels(undefined, undefined)).toEqual([])
   })
 
+  it('offers all four for a remote OpenAI-compatible reasoning model', () => {
+    // pxa-27b and any other remote reached through the OpenAI-compatible
+    // factory: each level maps to a distinct reasoning_effort in the body.
+    for (const provider of ['pxa', 'openrouter', 'vllm']) {
+      expect(
+        supportedEffortLevels(provider, reasoningModel('pxa-27b', true)),
+        provider
+      ).toEqual(EFFORT_LEVELS)
+    }
+  })
+
+  it('offers none for a remote model that does not declare reasoning', () => {
+    // Sending reasoning_effort to a model that ignores it is a no-op control,
+    // or a 400 on a strict server. The capability tag is the honest gate.
+    expect(supportedEffortLevels('pxa', reasoningModel('pxa-7b', false))).toEqual(
+      []
+    )
+    expect(supportsEffort('pxa', reasoningModel('pxa-7b', false))).toBe(false)
+  })
+
+  it('offers none for mistral/xai even when the model reasons', () => {
+    // Those use their own AI SDK factory, not the OpenAI-compatible one, so a
+    // reasoning_effort body field would never reach them.
+    expect(supportedEffortLevels('mistral', reasoningModel('magistral', true)))
+      .toEqual([])
+    expect(supportedEffortLevels('xai', reasoningModel('grok-4', true))).toEqual(
+      []
+    )
+  })
+
   /**
    * The control and the request must agree. A level is worth offering only if
    * choosing it changes what the provider receives — so for every provider
@@ -97,6 +137,38 @@ describe('which levels a provider actually honours', () => {
         `${provider}/${id}: request changes=${changes}`
       ).toBe(changes)
     }
+  })
+
+  /**
+   * The same agreement, for the OpenAI-compatible body path: where the bar is
+   * offered, two levels must produce two different request bodies; where it is
+   * not, the body must not carry an effort at all.
+   */
+  it('offers compat levels exactly where they change the request body', () => {
+    const withLevel = (m: Model, level: string): Model =>
+      ({
+        ...(m as unknown as Record<string, unknown>),
+        settings: {
+          [EFFORT_SETTING_KEY]: { controller_props: { value: level } },
+        },
+      }) as unknown as Model
+
+    const reasoner = reasoningModel('pxa-27b', true)
+    const plain = reasoningModel('pxa-7b', false)
+
+    const low = JSON.stringify(
+      buildReasoningBodyParams('pxa', withLevel(reasoner, 'low')) ?? null
+    )
+    const high = JSON.stringify(
+      buildReasoningBodyParams('pxa', withLevel(reasoner, 'xhigh')) ?? null
+    )
+    expect(low).not.toEqual(high)
+    expect(supportsEffort('pxa', reasoner)).toBe(true)
+
+    expect(
+      buildReasoningBodyParams('pxa', withLevel(plain, 'high'))
+    ).toBeUndefined()
+    expect(supportsEffort('pxa', plain)).toBe(false)
   })
 })
 

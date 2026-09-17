@@ -62,7 +62,10 @@ import {
   tokensForThinkingBudgetLevel,
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
-import { buildReasoningProviderOptions } from '@/lib/reasoningProviderOptions'
+import {
+  buildReasoningProviderOptions,
+  buildReasoningBodyParams,
+} from '@/lib/reasoningProviderOptions'
 import { resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
@@ -1605,6 +1608,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (isPredefinedRemoteProvider(effectiveProviderName)) {
         for (const key of Object.keys(paramsSettings)) delete mergedParams[key]
       }
+      // A remote OpenAI-compatible reasoning model takes its effort as a
+      // `reasoning_effort` body field. Unlike the first-party providers (which
+      // go through the AI SDK's native providerOptions below), this reaches the
+      // server through the request body, so it is merged in here — after the
+      // sampling-param strip above, since it is not one of those params.
+      // `selectedModel` is already resolved with this chat's overrides (above),
+      // so a per-chat effort applies. See `buildReasoningBodyParams`.
+      const reasoningBodyParams = buildReasoningBodyParams(
+        providerId,
+        selectedModel
+      )
+      if (reasoningBodyParams) Object.assign(mergedParams, reasoningBodyParams)
       // Pin chat to the chat slot so llama-server reuses this thread's cached
       // KV prefix across turns; background tasks use BACKGROUND_SLOT_ID and
       // can't evict it.
