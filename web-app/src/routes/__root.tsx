@@ -20,6 +20,7 @@ import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionD
 import GlobalError from '@/containers/GlobalError'
 import { GlobalEventHandler } from '@/providers/GlobalEventHandler'
 import { ServiceHubProvider } from '@/providers/ServiceHubProvider'
+import { WebPreviewHost } from '@/containers/WebPreviewHost'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LeftSidebar } from '@/components/left-sidebar'
 import { AppRail } from '@/components/shell/AppRail'
@@ -90,6 +91,7 @@ const AppLayout = () => {
         </SidebarInset>
       </SidebarProvider>
       <StatusBar />
+      <WebPreviewHost />
     </div>
   )
 }
