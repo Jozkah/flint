@@ -4140,6 +4140,43 @@ on_failure = \"warn\"
     }
 
     #[tokio::test]
+    async fn edit_replace_all_swaps_every_occurrence() {
+        let root = unique_root();
+        std::fs::write(root.join("r.txt"), b"x x x").unwrap();
+        // Without replace_all a non-unique match is refused (guarded elsewhere);
+        // with it, every occurrence is replaced in one edit.
+        let ok = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "r.txt", "edits": [
+                {"old_string": "x", "new_string": "y", "replace_all": true}
+            ]}),
+            &root,
+        )
+        .await;
+        assert_eq!(ok, "Applied 1 edit(s) to r.txt");
+        assert_eq!(std::fs::read_to_string(root.join("r.txt")).unwrap(), "y y y");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn edit_without_replace_all_still_rejects_non_unique() {
+        let root = unique_root();
+        std::fs::write(root.join("ru.txt"), b"x x").unwrap();
+        let out = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "ru.txt", "edits": [{"old_string": "x", "new_string": "y"}]}),
+            &root,
+        )
+        .await;
+        assert!(
+            out.starts_with("ERROR: ru.txt: edit 1: old_string not unique"),
+            "unexpected: {out}"
+        );
+        assert_eq!(std::fs::read_to_string(root.join("ru.txt")).unwrap(), "x x");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
     async fn edit_errors_without_partial_write() {
         let root = unique_root();
         std::fs::write(root.join("d.txt"), b"one two two").unwrap();
@@ -5005,6 +5042,40 @@ on_failure = \"warn\"
         assert!(
             out.contains(".jan/"),
             "must list .jan when unconfined: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The Cowork filesystem-discovery path: the agent locates a driver file by
+    /// name through the real `find` tool dispatch and gets its path back. This is
+    /// the read-only "locate a .sys" task exercised through `execute_builtin`,
+    /// hermetically (a decoy under a temp workspace, no system file touched).
+    #[tokio::test]
+    async fn find_locates_a_sys_file_by_name_through_the_tool_path() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("drivers/nested")).unwrap();
+        std::fs::write(root.join("drivers/nested/EAC.sys"), b"\x00decoy").unwrap();
+        std::fs::write(root.join("drivers/other.txt"), b"x").unwrap();
+
+        // A case-insensitive-name search the model would issue.
+        let by_name =
+            execute_builtin(lookup("find").unwrap(), &json!({"pattern": "**/EAC.sys"}), &root)
+                .await;
+        assert!(
+            by_name.contains("drivers/nested/EAC.sys"),
+            "the tool returns the located path: {by_name}"
+        );
+
+        // A broader `*.sys` sweep finds it too and not the unrelated file.
+        let by_ext =
+            execute_builtin(lookup("find").unwrap(), &json!({"pattern": "**/*.sys"}), &root).await;
+        assert!(by_ext.contains("EAC.sys"), "{by_ext}");
+        assert!(!by_ext.contains("other.txt"), "{by_ext}");
+
+        // The read is a discovery only: the file's bytes are unchanged.
+        assert_eq!(
+            std::fs::read(root.join("drivers/nested/EAC.sys")).unwrap(),
+            b"\x00decoy"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

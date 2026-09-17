@@ -19,11 +19,13 @@ pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod compaction;
+pub mod compaction_policy;
 pub mod consensus;
 pub mod context;
 pub mod context_pressure;
 pub mod diagnostics;
 pub mod durable_subagent;
+pub mod hooks;
 pub mod events;
 pub mod extensions;
 pub mod fixtures;
