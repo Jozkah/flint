@@ -24,6 +24,24 @@ vi.mock('@/containers/HeaderPage', () => ({
   ),
 }))
 
+// PluginsTab pulls in useSkills, which resolves to the unbuilt
+// `@janhq/tauri-plugin-agent-tools-api` package outside a Tauri build; stub
+// it so this route test doesn't need that package.
+vi.mock('@/hooks/useSkills', () => ({
+  invalidateSkills: vi.fn(),
+}))
+
+vi.mock('@/lib/pluginStore', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/pluginStore')>(
+    '@/lib/pluginStore'
+  )
+  return {
+    ...actual,
+    listPlugins: vi.fn().mockResolvedValue([]),
+    getPluginSources: vi.fn().mockResolvedValue({ marketplace: null, gitAvailable: true }),
+  }
+})
+
 import { Route } from '../extensions'
 import { RAIL_ITEMS } from '@/lib/shellNavigation'
 
