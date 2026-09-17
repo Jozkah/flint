@@ -32,9 +32,9 @@ describe('EnablementGrid', () => {
     render(<EnablementGrid kind="skill" id="caveman" />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.home')).toBeInTheDocument()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.home')).toBeInTheDocument()
     })
-    expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeInTheDocument()
+    expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).toBeInTheDocument()
     expect(screen.getByLabelText('My Project')).toBeInTheDocument()
   })
 
@@ -45,9 +45,9 @@ describe('EnablementGrid', () => {
     render(<EnablementGrid kind="skill" id="caveman" />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.home')).toBeChecked()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.home')).toBeChecked()
     })
-    expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeChecked()
+    expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).toBeChecked()
   })
 
   it('unchecking Rooms calls setItemSurfaces with the surfaces minus rooms', async () => {
@@ -59,10 +59,10 @@ describe('EnablementGrid', () => {
     render(<EnablementGrid kind="skill" id="caveman" />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeChecked()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).toBeChecked()
     })
 
-    await user.click(screen.getByLabelText('common:extensions.surfaces.rooms'))
+    await user.click(screen.getByLabelText('common:extensionsManager.surfaces.rooms'))
 
     await waitFor(() => {
       expect(mockedSetItemSurfaces).toHaveBeenCalledWith('skill', 'caveman', ['home'])
@@ -81,11 +81,11 @@ describe('EnablementGrid', () => {
     render(<EnablementGrid kind="skill" id="caveman" />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.home')).toBeChecked()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.home')).toBeChecked()
     })
-    expect(screen.getByLabelText('common:extensions.surfaces.rooms')).not.toBeChecked()
+    expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).not.toBeChecked()
 
-    await user.click(screen.getByLabelText('common:extensions.surfaces.rooms'))
+    await user.click(screen.getByLabelText('common:extensionsManager.surfaces.rooms'))
 
     await waitFor(() => {
       expect(mockedSetItemSurfaces).toHaveBeenCalledWith('skill', 'caveman', null)
@@ -108,23 +108,23 @@ describe('EnablementGrid', () => {
     render(<EnablementGrid kind="skill" id="caveman" />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeChecked()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).toBeChecked()
     })
 
-    await user.click(screen.getByLabelText('common:extensions.surfaces.rooms'))
+    await user.click(screen.getByLabelText('common:extensionsManager.surfaces.rooms'))
 
     // The write is still in flight: every checkbox, not just Rooms, must be
     // disabled so a second rapid click can't compute from a stale snapshot.
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.home')).toBeDisabled()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.home')).toBeDisabled()
     })
-    expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeDisabled()
+    expect(screen.getByLabelText('common:extensionsManager.surfaces.rooms')).toBeDisabled()
     expect(screen.getByLabelText('My Project')).toBeDisabled()
 
     resolveWrite({ skills: {}, plugins: {} })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('common:extensions.surfaces.home')).not.toBeDisabled()
+      expect(screen.getByLabelText('common:extensionsManager.surfaces.home')).not.toBeDisabled()
     })
   })
 })
