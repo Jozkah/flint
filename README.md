@@ -324,6 +324,27 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 
 ## Build from source
 
+### Fastest path on Windows (one command)
+
+New to this, or new to Git? You need [Git](https://git-scm.com/download/win)
+installed once; everything else is handled for you. Open **PowerShell**, then:
+
+```powershell
+git clone https://github.com/Jozkah/jan.git
+cd jan
+powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
+```
+
+`build-windows.ps1` checks for the tools Flint needs (Node.js, Rust and the
+Visual Studio C++ Build Tools), installs the missing ones with `winget`,
+installs the project dependencies, and builds the installer. It is safe to run
+again at any time. When it finishes it prints the path to your installer under
+`src-tauri/target/release/bundle/` and to the app itself at
+`src-tauri/target/release/Flint.exe`.
+
+If a tool was just installed and the script says it is not on `PATH`, open a
+new PowerShell window and re-run with `-SkipInstall`.
+
 ### Prerequisites
 
 - Node.js 20 or newer and Yarn 4.5.3 (`corepack enable`)
