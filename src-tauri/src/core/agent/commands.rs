@@ -328,13 +328,15 @@ pub async fn agent_plugin_remove(
 }
 
 /// Search the configured plugin marketplace (contacts the index URL).
+/// `scope == "global"` searches the marketplace set in the user's own global
+/// agent config rather than `project`'s.
 #[tauri::command]
 pub async fn agent_plugin_search(
     project: String,
     query: String,
+    scope: Option<String>,
 ) -> Result<Vec<plugins::MarketEntry>, plugins::PluginError> {
-    let root = std::path::PathBuf::from(&project);
-    plugins::search_typed(&root, &query).await
+    plugins::search_typed_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &query).await
 }
 
 /// Map a surface string from the frontend ("home" | "rooms" | "cowork") to

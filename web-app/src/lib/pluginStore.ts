@@ -190,13 +190,11 @@ export interface MarketEntry {
   ref: string | null
 }
 
-/** Search the configured plugin marketplace (contacts the index URL). Scope
- *  is accepted for API symmetry with the other wrappers; the backend command
- *  does not currently branch on it. */
-export const searchPlugins = (query: string, scope?: PluginScope) => {
-  void scope
-  return call<MarketEntry[]>('agent_plugin_search', { project: '', query })
-}
+/** Search the configured plugin marketplace (contacts the index URL).
+ *  `scope: 'global'` searches the marketplace set in the user's own global
+ *  agent config rather than a project's. */
+export const searchPlugins = (query: string, scope?: PluginScope) =>
+  call<MarketEntry[]>('agent_plugin_search', { project: '', query, ...scopeArgs(scope) })
 
 export type GitUrlCheck =
   | { ok: true; host: string }

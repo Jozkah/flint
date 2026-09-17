@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, OctagonAlert, Plus, Puzzle, Search, Trash2 } from 'lucide-react'
+import { FolderOpen, Loader2, OctagonAlert, Plus, Puzzle, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { invalidateSkills } from '@/hooks/useSkills'
 import {
+  checkGitUrl,
   getPluginDetails,
   getPluginSources,
   installPlugin,
@@ -18,9 +21,12 @@ import {
   searchPlugins,
   setPluginEnabled,
   toPluginError,
+  urlHost,
+  type InstallSource,
   type InstalledPlugin,
   type MarketEntry,
   type PluginDetails,
+  type PluginSourceKind,
   type PluginSources,
 } from '@/lib/pluginStore'
 
@@ -34,6 +40,7 @@ const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
  */
 export default function PluginsTab() {
   const { t } = useTranslation()
+  const serviceHub = useServiceHub()
 
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
   const [loading, setLoading] = useState(false)
@@ -46,12 +53,23 @@ export default function PluginsTab() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
-  const [mode, setMode] = useState<'list' | 'browse'>('list')
+  const [mode, setMode] = useState<'list' | 'browse' | 'install'>('list')
   const [query, setQuery] = useState('')
   const [entries, setEntries] = useState<MarketEntry[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [installingName, setInstallingName] = useState<string | null>(null)
+
+  // Install-by-source form: local folder / git URL / marketplace name.
+  // Works regardless of whether a global marketplace is configured (only
+  // the "marketplace" kind depends on one).
+  const [installKind, setInstallKind] = useState<PluginSourceKind>('local')
+  const [localPath, setLocalPath] = useState('')
+  const [gitUrl, setGitUrl] = useState('')
+  const [marketName, setMarketName] = useState('')
+  const [installFieldError, setInstallFieldError] = useState<string | null>(null)
+  const [installBusy, setInstallBusy] = useState(false)
+  const [installError, setInstallError] = useState<string | null>(null)
 
   const [confirmRemove, setConfirmRemove] = useState<PluginDetails | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -161,7 +179,7 @@ export default function PluginsTab() {
     setSelectedId(null)
     setDetails(null)
     setSearchError(null)
-    void runSearch()
+    if (sources?.marketplace) void runSearch()
   }
 
   const runSearch = async () => {
@@ -204,8 +222,96 @@ export default function PluginsTab() {
   const sourceLabel = (p: InstalledPlugin) =>
     p.sourceKind ? t(`plugins:source.${p.sourceKind}`) : t('plugins:source.unknown')
 
+  const openInstall = () => {
+    setMode('install')
+    setSelectedId(null)
+    setDetails(null)
+    setInstallFieldError(null)
+    setInstallError(null)
+  }
+
+  const chooseFolder = async () => {
+    const picked = await serviceHub.dialog().open({ directory: true })
+    const path = Array.isArray(picked) ? picked[0] : picked
+    if (path) {
+      setLocalPath(path)
+      setInstallFieldError(null)
+    }
+  }
+
+  const gitCheck = checkGitUrl(gitUrl)
+  const gitHost = gitCheck.ok ? gitCheck.host : null
+
+  const buildInstallSource = (): InstallSource | null => {
+    if (installKind === 'local') {
+      if (!localPath.trim()) {
+        setInstallFieldError(t('plugins:install.errors.pathRequired'))
+        return null
+      }
+      return { kind: 'local', path: localPath.trim() }
+    }
+    if (installKind === 'git') {
+      if (!gitCheck.ok) {
+        setInstallFieldError(
+          t(
+            gitCheck.reason === 'empty'
+              ? 'plugins:install.errors.urlRequired'
+              : 'plugins:install.errors.urlFormat'
+          )
+        )
+        return null
+      }
+      return { kind: 'git', url: gitUrl.trim() }
+    }
+    if (!marketName.trim()) {
+      setInstallFieldError(t('plugins:install.errors.nameRequired'))
+      return null
+    }
+    return { kind: 'marketplace', name: marketName.trim() }
+  }
+
+  const submitInstall = async () => {
+    if (installBusy) return
+    setInstallFieldError(null)
+    setInstallError(null)
+    const source = buildInstallSource()
+    if (!source) return
+    const operationId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setInstallBusy(true)
+    try {
+      const plugin = await installPlugin('', source, operationId, 'global')
+      invalidateSkills()
+      toast.success(t('plugins:install.done', { name: plugin.name }))
+      await refresh()
+      select(plugin.id)
+    } catch (e) {
+      setInstallError(t('plugins:install.failed', { error: pluginErrorText(t, e) }))
+    } finally {
+      setInstallBusy(false)
+    }
+  }
+
   const renderList = () => (
     <div className="flex max-h-[40vh] min-h-0 flex-col gap-2 border-b border-border pb-3 sm:max-h-none sm:w-1/3 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0">
+      <div className="flex gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="plugins-install-button"
+          aria-pressed={mode === 'install'}
+          className={cn(
+            'flex-1 gap-1.5 justify-start',
+            mode === 'install' && 'bg-accent text-foreground'
+          )}
+          onClick={openInstall}
+        >
+          <Plus size={14} aria-hidden />
+          {t('plugins:installButton')}
+        </Button>
+      </div>
       <Button
         variant="outline"
         size="sm"
@@ -372,7 +478,13 @@ export default function PluginsTab() {
     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1">
       <div className="text-sm font-medium">{t('plugins:browseButton')}</div>
       {!sources?.marketplace ? (
-        <p className="text-xs text-muted-foreground">{t('plugins:install.gitUnavailable')}</p>
+        <div
+          data-testid="plugins-browse-unconfigured"
+          className="flex flex-col gap-1 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground"
+        >
+          <p>{t('plugins:browse.notConfigured')}</p>
+          <p>{t('plugins:browse.notConfiguredHint')}</p>
+        </div>
       ) : (
         <>
           <form
@@ -437,12 +549,157 @@ export default function PluginsTab() {
     </div>
   )
 
+  const gitDisabled = sources !== null && !sources.gitAvailable
+
+  const renderInstall = () => (
+    <form
+      className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void submitInstall()
+      }}
+    >
+      <div className="text-sm font-medium">{t('plugins:install.title')}</div>
+      <fieldset className="flex flex-col gap-2" disabled={installBusy}>
+        <legend className="text-xs text-muted-foreground mb-1">
+          {t('plugins:install.sourceLabel')}
+        </legend>
+        <RadioGroup
+          value={installKind}
+          onValueChange={(v) => {
+            setInstallKind(v as PluginSourceKind)
+            setInstallFieldError(null)
+          }}
+          className="gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <RadioGroupItem id="global-plugin-source-local" value="local" />
+            <Label htmlFor="global-plugin-source-local">{t('plugins:install.local')}</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem
+              id="global-plugin-source-git"
+              value="git"
+              disabled={gitDisabled}
+            />
+            <Label htmlFor="global-plugin-source-git">{t('plugins:install.git')}</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem id="global-plugin-source-marketplace" value="marketplace" />
+            <Label htmlFor="global-plugin-source-marketplace">
+              {t('plugins:install.marketplace')}
+            </Label>
+          </div>
+        </RadioGroup>
+      </fieldset>
+
+      {installKind === 'local' && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="global-plugin-local-path">{t('plugins:install.localPathLabel')}</Label>
+          <div className="flex gap-2">
+            <Input
+              id="global-plugin-local-path"
+              value={localPath}
+              disabled={installBusy}
+              placeholder={t('plugins:install.localPathPlaceholder')}
+              onChange={(e) => {
+                setLocalPath(e.target.value)
+                setInstallFieldError(null)
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              disabled={installBusy}
+              onClick={() => void chooseFolder()}
+            >
+              <FolderOpen size={14} />
+              {t('plugins:install.chooseFolder')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {installKind === 'git' && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="global-plugin-git-url">{t('plugins:install.gitUrlLabel')}</Label>
+          <Input
+            id="global-plugin-git-url"
+            value={gitUrl}
+            disabled={installBusy}
+            placeholder={t('plugins:install.gitUrlPlaceholder')}
+            onChange={(e) => {
+              setGitUrl(e.target.value)
+              setInstallFieldError(null)
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            {gitHost
+              ? t('plugins:install.gitNotice', { host: gitHost })
+              : t('plugins:install.gitNoticeNoHost')}
+          </p>
+        </div>
+      )}
+
+      {installKind === 'marketplace' && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="global-plugin-market-name">
+            {t('plugins:install.marketplaceNameLabel')}
+          </Label>
+          <Input
+            id="global-plugin-market-name"
+            value={marketName}
+            disabled={installBusy}
+            onChange={(e) => {
+              setMarketName(e.target.value)
+              setInstallFieldError(null)
+            }}
+          />
+          {sources?.marketplace ? (
+            <p className="text-xs text-muted-foreground">
+              {t('plugins:install.marketplaceNotice', { host: urlHost(sources.marketplace) })}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t('plugins:browse.notConfigured')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {installFieldError && (
+        <p role="alert" className={ALERT}>
+          <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{installFieldError}</span>
+        </p>
+      )}
+      {installError && (
+        <p role="alert" className={ALERT}>
+          <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{installError}</span>
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setMode('list')}>
+          {t('plugins:install.back')}
+        </Button>
+        <Button type="submit" size="sm" disabled={installBusy}>
+          {installBusy && <Loader2 className="motion-safe:animate-spin" size={14} aria-hidden />}
+          {t('plugins:install.submit')}
+        </Button>
+      </div>
+    </form>
+  )
+
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col gap-3 sm:h-full sm:flex-row sm:gap-4 sm:overflow-hidden">
         {renderList()}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
-          {mode === 'browse' ? renderBrowse() : renderDetails()}
+          {mode === 'install' ? renderInstall() : mode === 'browse' ? renderBrowse() : renderDetails()}
         </div>
       </div>
 

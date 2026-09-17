@@ -65,11 +65,19 @@ pub(crate) fn set_test_user_skills(store: Option<PathBuf>) {
     TEST_USER_SKILLS.with(|d| *d.borrow_mut() = store);
 }
 
+/// The store root the user's plugins (and their global agent config) live
+/// under: `<jan_data_folder>/agent-workspace`, the same store `user_skills_dir`
+/// resolves against.
+#[cfg(not(test))]
+pub(crate) fn user_plugin_store_root() -> Option<PathBuf> {
+    user_skill_store()
+}
+
 /// The user's own plugins, shared by every workspace:
 /// `<jan_data_folder>/agent-workspace/plugins`. Sibling of `user_skills_dir`.
 #[cfg(not(test))]
 pub(crate) fn user_plugins_dir() -> Option<PathBuf> {
-    user_skill_store().map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
+    user_plugin_store_root().map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
 }
 
 // Tests point the user plugins scope at a temp store directly, mirroring
@@ -86,10 +94,13 @@ pub(crate) fn set_test_user_plugins(store: Option<PathBuf>) {
 }
 
 #[cfg(test)]
+pub(crate) fn user_plugin_store_root() -> Option<PathBuf> {
+    TEST_USER_PLUGINS.with(|d| d.borrow().clone())
+}
+
+#[cfg(test)]
 pub(crate) fn user_plugins_dir() -> Option<PathBuf> {
-    TEST_USER_PLUGINS
-        .with(|d| d.borrow().clone())
-        .map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
+    user_plugin_store_root().map(|store| tauri_plugin_agent_tools::skills::plugins_dir(&store))
 }
 
 /// Global plugins' skills, tagged like project plugin skills. A project (or

@@ -5,7 +5,10 @@ import '@testing-library/jest-dom'
 import React from 'react'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts ? `${key}:${JSON.stringify(opts)}` : key,
+  }),
 }))
 
 vi.mock('sonner', () => ({
@@ -14,6 +17,11 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/hooks/useSkills', () => ({
   invalidateSkills: vi.fn(),
+}))
+
+const dialogOpen = vi.fn()
+vi.mock('@/hooks/useServiceHub', () => ({
+  useServiceHub: () => ({ dialog: () => ({ open: dialogOpen }) }),
 }))
 
 const listPlugins = vi.fn()
@@ -60,7 +68,6 @@ describe('PluginsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     listPlugins.mockResolvedValue([stubPlugin])
-    getPluginSources.mockResolvedValue({ marketplace: 'https://example.com/index.json', gitAvailable: true })
     getPluginDetails.mockResolvedValue({
       ...stubPlugin,
       installedPath: '/path/to/demo',
@@ -79,6 +86,7 @@ describe('PluginsTab', () => {
   })
 
   it('lists a stubbed global plugin from listPlugins(scope: global)', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
     render(<PluginsTab />)
 
     await waitFor(() => {
@@ -87,15 +95,47 @@ describe('PluginsTab', () => {
     expect(await screen.findByText('Demo Plugin')).toBeInTheDocument()
   })
 
-  it('calls searchPlugins when the Browse action is used', async () => {
+  it('with a configured global marketplace, Browse renders results and searchPlugins is called with global scope', async () => {
+    getPluginSources.mockResolvedValue({
+      marketplace: 'https://example.com/index.json',
+      gitAvailable: true,
+    })
     render(<PluginsTab />)
     await waitFor(() => expect(listPlugins).toHaveBeenCalled())
+    await waitFor(() => expect(getPluginSources).toHaveBeenCalledWith('', 'global'))
 
     fireEvent.click(screen.getByTestId('plugins-browse-button'))
 
     await waitFor(() => {
-      expect(searchPlugins).toHaveBeenCalled()
+      expect(searchPlugins).toHaveBeenCalledWith(expect.any(String), 'global')
     })
     expect(await screen.findByText('market-plugin')).toBeInTheDocument()
+    expect(screen.queryByTestId('plugins-browse-unconfigured')).not.toBeInTheDocument()
+  })
+
+  it('with no global marketplace configured, Browse shows an honest configure-it state and never calls searchPlugins', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    render(<PluginsTab />)
+    await waitFor(() => expect(listPlugins).toHaveBeenCalled())
+    await waitFor(() => expect(getPluginSources).toHaveBeenCalledWith('', 'global'))
+
+    fireEvent.click(screen.getByTestId('plugins-browse-button'))
+
+    expect(await screen.findByTestId('plugins-browse-unconfigured')).toBeInTheDocument()
+    expect(searchPlugins).not.toHaveBeenCalled()
+    expect(screen.queryByText('market-plugin')).not.toBeInTheDocument()
+  })
+
+  it('install-by-source (local/git/marketplace name) is available regardless of marketplace configuration', async () => {
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+    render(<PluginsTab />)
+    await waitFor(() => expect(listPlugins).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByTestId('plugins-install-button'))
+    expect(screen.getByText('plugins:install.title')).toBeInTheDocument()
+    // Local and git radio options are present and usable without a marketplace.
+    expect(screen.getByLabelText('plugins:install.local')).toBeInTheDocument()
+    expect(screen.getByLabelText('plugins:install.git')).toBeInTheDocument()
+    expect(screen.getByLabelText('plugins:install.marketplace')).toBeInTheDocument()
   })
 })

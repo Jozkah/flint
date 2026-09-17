@@ -444,14 +444,34 @@ fn plugins_section(root: &Path) -> PluginsSection {
         .unwrap_or_default()
 }
 
-/// [`plugins_section`], generalized to a [`PluginScope`]. `Global` has no
-/// `agent.toml` to read, so it is always the default (no marketplace
-/// configured, nothing disabled) -- a global marketplace is not something
-/// this task adds.
+/// [`plugins_section`], generalized to a [`PluginScope`]. `Global` reads
+/// `<store>/agent.toml` -- the global agent config, sibling of the global
+/// `plugins/`/`skills/` directories under the same store -- rather than any
+/// project's `.jan/agent/agent.toml`. Missing/malformed still falls back to
+/// defaults (no marketplace, nothing disabled), same as a project without one.
 fn plugins_section_for_scope(scope: &PluginScope) -> PluginsSection {
     match scope {
         PluginScope::Project(root) => plugins_section(root),
-        PluginScope::Global => PluginsSection::default(),
+        PluginScope::Global => {
+            crate::core::agent::project::load_agent_config_at(&global_agent_toml_path())
+                .ok()
+                .map(|c| c.plugins)
+                .unwrap_or_default()
+        }
+    }
+}
+
+/// Path to the global agent config: `<store>/agent.toml`, where `<store>` is
+/// the same store `plugin_root_dir`'s `Global` arm and `user_plugins_dir`
+/// resolve under (`<jan_data_folder>/agent-workspace` outside tests, or the
+/// `set_test_user_plugins` override inside them).
+fn global_agent_toml_path() -> PathBuf {
+    match skills::user_plugin_store_root() {
+        Some(store) => store.join("agent.toml"),
+        None => {
+            let data = crate::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::workspace::permanent_store(&data).join("agent.toml")
+        }
     }
 }
 
@@ -2144,8 +2164,9 @@ pub(crate) async fn install_from_source(
 }
 
 /// [`install_from_source`], generalized to a [`PluginScope`]. `Global` skips
-/// the project-folder existence check (there is no project folder) and has no
-/// marketplace of its own (see [`plugins_section_for_scope`]).
+/// the project-folder existence check (there is no project folder) and reads
+/// its own marketplace from the global agent config (see
+/// [`plugins_section_for_scope`]).
 pub(crate) async fn install_from_source_scoped(
     scope: &PluginScope,
     source: InstallSource,
@@ -2217,7 +2238,16 @@ pub(crate) async fn search_typed(
     root: &Path,
     query: &str,
 ) -> Result<Vec<MarketEntry>, PluginError> {
-    let url = plugins_section(root).marketplace.ok_or_else(|| {
+    search_typed_scoped(&PluginScope::Project(root.to_path_buf()), query).await
+}
+
+/// [`search_typed`], generalized to a [`PluginScope`]: `Global` searches the
+/// marketplace configured in the global agent config, not any project's.
+pub(crate) async fn search_typed_scoped(
+    scope: &PluginScope,
+    query: &str,
+) -> Result<Vec<MarketEntry>, PluginError> {
+    let url = plugins_section_for_scope(scope).marketplace.ok_or_else(|| {
         PluginError::new(
             PluginErrorCode::MarketplaceNotConfigured,
             "no marketplace configured - set [plugins] marketplace in agent.toml",
@@ -3766,5 +3796,39 @@ mod scope_tests {
         assert_ne!(plugin_root_dir(&project_scope), expected);
 
         skills::set_test_user_plugins(None);
+    }
+
+    /// `sources_scoped(Global)` reads its marketplace from `<store>/agent.toml`
+    /// -- the global agent config -- not from any project, and not always the
+    /// default `PluginsSection` the old stub returned.
+    #[test]
+    fn global_sources_reads_marketplace_from_the_permanent_store_agent_toml() {
+        let store = std::env::temp_dir().join(format!(
+            "jan_plugin_global_agent_toml_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&store);
+        std::fs::create_dir_all(&store).unwrap();
+        skills::set_test_user_plugins(Some(store.clone()));
+
+        // No agent.toml yet: falls back to defaults, same as an unconfigured
+        // project -- not an error, and not a hidden/blocked state.
+        let empty = sources_scoped(&PluginScope::Global);
+        assert_eq!(empty.marketplace, None);
+
+        std::fs::write(
+            store.join("agent.toml"),
+            "[plugins]\nmarketplace = \"https://example.com/plugins.json\"\n",
+        )
+        .unwrap();
+
+        let configured = sources_scoped(&PluginScope::Global);
+        assert_eq!(
+            configured.marketplace.as_deref(),
+            Some("https://example.com/plugins.json")
+        );
+
+        skills::set_test_user_plugins(None);
+        let _ = std::fs::remove_dir_all(&store);
     }
 }
