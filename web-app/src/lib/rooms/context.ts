@@ -6,6 +6,7 @@
  */
 import { estimateTokens } from '@/lib/context-manager'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
 import type { Participant, Room, RoomMessage } from './types'
@@ -270,12 +271,29 @@ export type BuildPromptInput = {
   summaryCache?: Map<string, string>
 }
 
+/**
+ * Render the resolved skills into a catalog block, matching the agent's own
+ * skill catalog rendering exactly (`## Skill: <name>` per entry, description
+ * on the next paragraph when present). Returns null when there is nothing to
+ * advertise, so callers append nothing rather than an empty header.
+ */
+export function renderSkillsCatalog(skills: SkillMeta[]): string | null {
+  if (skills.length === 0) return null
+  const list = skills
+    .map((s) => (s.description ? `## Skill: ${s.name}\n\n${s.description}` : `## Skill: ${s.name}`))
+    .join('\n\n')
+  return `# Skills\n\n${list}`
+}
+
 export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt> {
   const window =
     input.contextWindow && input.contextWindow > 0
       ? input.contextWindow
       : FALLBACK_CONTEXT_WINDOW
-  const system = buildSystemPrompt(input.room, input.speaker)
+  let system = buildSystemPrompt(input.room, input.speaker)
+  const skills = await resolveExtensions('rooms')
+  const catalog = renderSkillsCatalog(skills)
+  if (catalog) system = `${system}\n\n${catalog}`
   const cue = turnCue(input.room, input.speaker, input.instruction)
   const fixed = estimateTokens(system) + estimateTokens(cue) + SAFETY_MARGIN_TOKENS
   let budget = Math.max(0, window - input.maxOutputTokens - fixed)

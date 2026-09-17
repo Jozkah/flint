@@ -597,11 +597,14 @@ pub fn scan_skill_dir(dir: &Path) -> Vec<SkillEntry> {
     out
 }
 
-/// Skills shipped by the plugins installed in `store`, qualified with their
-/// plugin id and sorted by qualified name. Plugins named in `disabled` are
-/// skipped, as are interrupted `.installing-*` staging directories.
-pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
-    let Ok(rd) = std::fs::read_dir(plugins_dir(store)) else {
+/// Every plugin skill found directly under `dir` (a `<store_root>/plugins`
+/// directory), qualified with the plugin id and sorted by qualified name.
+/// Interrupted `.installing-*` staging directories are skipped. Callers that
+/// need `[plugins].disabled` honored (e.g. [`discover_plugins`]) filter the
+/// result themselves; this scan makes no scope-specific judgment so a global
+/// user-plugins store can reuse the identical on-disk convention.
+pub fn scan_plugins_at(dir: &Path) -> Vec<SkillEntry> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut out: Vec<SkillEntry> = Vec::new();
@@ -615,9 +618,6 @@ pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
         };
         // A partially-copied plugin must not leak its skills during an install.
         if plugin.starts_with(".installing-") {
-            continue;
-        }
-        if disabled.iter().any(|d| d == plugin) {
             continue;
         }
         for e in scan_skill_dir(&path.join(KIND)) {
@@ -638,6 +638,20 @@ pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
+}
+
+/// Skills shipped by the plugins installed in `store`, qualified with their
+/// plugin id and sorted by qualified name. Plugins named in `disabled` are
+/// skipped, as are interrupted `.installing-*` staging directories.
+pub fn discover_plugins(store: &Path, disabled: &[String]) -> Vec<SkillEntry> {
+    scan_plugins_at(&plugins_dir(store))
+        .into_iter()
+        .filter(|e| {
+            !disabled
+                .iter()
+                .any(|d| Some(d.as_str()) == e.plugin.as_deref())
+        })
+        .collect()
 }
 
 /// Store skills followed by the skills of every enabled installed plugin, with
@@ -1095,7 +1109,11 @@ pub fn catalog_for_model_with_user(
     };
     if let Some(project) = project {
         let config = load_config(project);
-        take(catalog(project, &config.enabled), discover_all(project), &mut out);
+        take(
+            catalog(project, &config.enabled),
+            discover_all(project),
+            &mut out,
+        );
     }
     take(
         side_catalog(store, enabled, |p| p.model_invocable, project.is_none()),
@@ -1218,8 +1236,13 @@ mod tests {
     /// What is not a version is refused, never guessed at.
     #[test]
     fn what_is_not_a_version_is_not_read_as_one() {
-        for text in ["", "   ", "latest", "1.x", "-1", "1.2.3.4", "1..2", "one.two"] {
-            assert!(parse_version(text).is_none(), "{text:?} was read as a version");
+        for text in [
+            "", "   ", "latest", "1.x", "-1", "1.2.3.4", "1..2", "one.two",
+        ] {
+            assert!(
+                parse_version(text).is_none(),
+                "{text:?} was read as a version"
+            );
         }
     }
 
@@ -1341,10 +1364,7 @@ mod tests {
     #[test]
     fn requirements_are_followed_through_and_a_cycle_ends() {
         let store = store_with(&[
-            (
-                "top",
-                "---\nname: top\nrequires:\n  - middle\n---\n\nbody",
-            ),
+            ("top", "---\nname: top\nrequires:\n  - middle\n---\n\nbody"),
             (
                 "middle",
                 "---\nname: middle\nrequires:\n  - bottom\n---\n\nbody",
@@ -1355,7 +1375,10 @@ mod tests {
         let parsed = parse(&read_raw(&store, "top").unwrap());
         let unmet = unmet_requirements("top", &parsed, &lookup_in(&store), None);
         assert_eq!(unmet.len(), 1, "{unmet:?}");
-        assert!(unmet[0].contains("'middle' requires the skill 'bottom'"), "{unmet:?}");
+        assert!(
+            unmet[0].contains("'middle' requires the skill 'bottom'"),
+            "{unmet:?}"
+        );
 
         let parsed = parse(&read_raw(&store, "a").unwrap());
         assert!(
@@ -1392,8 +1415,14 @@ mod tests {
     #[test]
     fn the_catalogue_carries_a_declared_version() {
         let store = store_with(&[
-            ("deploy", "---\nname: deploy\ndescription: Ship it\nversion: 2.4.0\n---\n\nbody"),
-            ("plain", "---\nname: plain\ndescription: Ordinary\n---\n\nbody"),
+            (
+                "deploy",
+                "---\nname: deploy\ndescription: Ship it\nversion: 2.4.0\n---\n\nbody",
+            ),
+            (
+                "plain",
+                "---\nname: plain\ndescription: Ordinary\n---\n\nbody",
+            ),
         ]);
         let metas = list_meta(&store);
         let deploy = metas.iter().find(|m| m.name == "deploy").expect("deploy");
@@ -1638,17 +1667,30 @@ mod tests {
     fn enabled_plugin_skills_are_listed_with_provenance() {
         let store = plugin_store("list");
         write(&store, "deploy", "---\ndescription: ship\n---\nbody").unwrap();
-        plugin_skill(&store, "release", "prepare", "---\ndescription: prep\n---\nsteps");
+        plugin_skill(
+            &store,
+            "release",
+            "prepare",
+            "---\ndescription: prep\n---\nsteps",
+        );
         // A single-skill plugin: SKILL.md at the plugin root.
         std::fs::create_dir_all(plugins_dir(&store).join("triage")).unwrap();
         std::fs::write(plugins_dir(&store).join("triage/SKILL.md"), "triage body").unwrap();
 
         let listed = list_meta(&store);
-        assert_eq!(names(&listed), vec!["deploy", "release:prepare", "triage:triage"]);
+        assert_eq!(
+            names(&listed),
+            vec!["deploy", "release:prepare", "triage:triage"]
+        );
         let prep = listed.iter().find(|m| m.name == "release:prepare").unwrap();
         assert_eq!(prep.plugin.as_deref(), Some("release"));
         assert_eq!(prep.description, "prep");
-        assert!(listed.iter().find(|m| m.name == "deploy").unwrap().plugin.is_none());
+        assert!(listed
+            .iter()
+            .find(|m| m.name == "deploy")
+            .unwrap()
+            .plugin
+            .is_none());
 
         // Serialized provenance: present for plugin skills, absent otherwise.
         let json = serde_json::to_value(&listed).unwrap();
@@ -1657,7 +1699,10 @@ mod tests {
 
         // Model side too, and readable by qualified and unique plain name.
         assert!(names(&catalog(&store, &[])).contains(&"release:prepare".to_string()));
-        assert_eq!(parse(&read_raw(&store, "release:prepare").unwrap()).body, "steps");
+        assert_eq!(
+            parse(&read_raw(&store, "release:prepare").unwrap()).body,
+            "steps"
+        );
         assert_eq!(parse(&read_raw(&store, "prepare").unwrap()).body, "steps");
         let _ = std::fs::remove_dir_all(&store);
     }
@@ -1713,7 +1758,10 @@ mod tests {
             let enabled: Vec<String> = enabled.iter().map(|s| s.to_string()).collect();
             names(&catalog(&store, &enabled))
         };
-        assert_eq!(model(&["release"]), vec!["release:changelog", "release:prepare"]);
+        assert_eq!(
+            model(&["release"]),
+            vec!["release:changelog", "release:prepare"]
+        );
         assert_eq!(model(&["release:prepare"]), vec!["release:prepare"]);
         assert_eq!(model(&["changelog"]), vec!["release:changelog"]);
         assert_eq!(model(&["deploy"]), vec!["deploy"]);
@@ -1733,11 +1781,16 @@ mod tests {
         plugin_skill(&store, "release", "prepare", "original");
 
         let err = write(&store, "release:prepare", "overwritten").unwrap_err();
-        assert!(err.contains("read-only") && err.contains("release"), "{err}");
+        assert!(
+            err.contains("read-only") && err.contains("release"),
+            "{err}"
+        );
         let err = delete(&store, "release:prepare").unwrap_err();
         assert!(err.contains("read-only"), "{err}");
         assert_eq!(read_raw(&store, "release:prepare").unwrap(), "original");
-        assert!(plugins_dir(&store).join("release/skills/prepare/SKILL.md").is_file());
+        assert!(plugins_dir(&store)
+            .join("release/skills/prepare/SKILL.md")
+            .is_file());
         let _ = std::fs::remove_dir_all(&store);
     }
 
@@ -1756,7 +1809,12 @@ mod tests {
         let store = plugin_store("escape");
         std::fs::create_dir_all(skills_dir(&store)).unwrap();
         std::fs::write(store.join("outside.md"), "outside").unwrap();
-        for name in ["..:outside", "release:../../outside", "a/b:c", "release:..\\x"] {
+        for name in [
+            "..:outside",
+            "release:../../outside",
+            "a/b:c",
+            "release:..\\x",
+        ] {
             assert!(read_raw(&store, name).is_err(), "{name}");
         }
         let _ = std::fs::remove_dir_all(&store);
@@ -1819,7 +1877,8 @@ mod tests {
         write(&user, "personal", "user personal").unwrap();
         write(&user, "jan", "user jan").unwrap();
 
-        let read = |name: &str| read_for_model_with_user(Some(&project), &store, Some(&user), &[], name);
+        let read =
+            |name: &str| read_for_model_with_user(Some(&project), &store, Some(&user), &[], name);
         assert_eq!(read("deploy").unwrap(), "project deploy");
         // Hidden in the project: neither the store's nor the user's copy.
         let off = read("off");
@@ -1831,7 +1890,12 @@ mod tests {
         assert!(read("nowhere").is_err());
         assert!(read("user:personal").is_err());
 
-        let listed = names(&catalog_for_model_with_user(Some(&project), &store, Some(&user), &[]));
+        let listed = names(&catalog_for_model_with_user(
+            Some(&project),
+            &store,
+            Some(&user),
+            &[],
+        ));
         assert_eq!(listed, vec!["deploy", "style", "personal"]);
 
         // Without a project: the store shadows the user, and a name the store
@@ -1848,13 +1912,23 @@ mod tests {
         assert_eq!(bare(&only_personal, "personal").unwrap(), "user personal");
         // The whitelist governs the user layer too.
         assert!(bare(&only_personal, "deploy").is_err());
-        let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &only_personal));
+        let listed = names(&catalog_for_model_with_user(
+            None,
+            &store,
+            Some(&user),
+            &only_personal,
+        ));
         assert_eq!(listed, vec!["personal"]);
         let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &[]));
         assert_eq!(listed, vec!["off", "style", "jan", "deploy", "personal"]);
 
         // A user store equal to the store (the desktop) adds nothing twice.
-        let same = names(&catalog_for_model_with_user(None, &store, Some(&store), &[]));
+        let same = names(&catalog_for_model_with_user(
+            None,
+            &store,
+            Some(&store),
+            &[],
+        ));
         assert_eq!(same, names(&catalog(&store, &[])));
         for dir in [&project, &store, &user] {
             let _ = std::fs::remove_dir_all(dir);

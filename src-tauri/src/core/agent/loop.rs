@@ -1444,7 +1444,9 @@ impl CompositeToolInvoker {
         };
         match name {
             "list_subagents" => {
-                let registry = SubagentRegistry::load(&self.project_root);
+                let surface =
+                    crate::core::agent::subagent::surface_for_project_root(&self.project_root);
+                let registry = SubagentRegistry::load_for(&self.project_root, surface);
                 format_subagent_list(&registry)
             }
             // AH-102: the run's own children, listed and cancelled one at a
@@ -1472,7 +1474,9 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_array())
                     .map(|list| list.iter().filter_map(|x| x.as_str()).map(|s| s.trim().to_string()).collect())
                     .unwrap_or_default();
-                let registry = SubagentRegistry::load(&self.project_root);
+                let surface =
+                    crate::core::agent::subagent::surface_for_project_root(&self.project_root);
+                let registry = SubagentRegistry::load_for(&self.project_root, surface);
                 // A saved subagent may sit on a gate only if every tool it may
                 // use reads: one that can write could change what it judges.
                 let is_read_only = |name: &str| -> Option<bool> {
@@ -3867,7 +3871,16 @@ fn build_run_system_prompt(
             )
             .0
         }
-        None => base.map(str::to_string),
+        None => {
+            let base = base.map(str::to_string);
+            match crate::core::agent::context::load_global_skills() {
+                Some(block) => Some(match base {
+                    Some(b) => format!("{b}\n\n{block}"),
+                    None => block,
+                }),
+                None => base,
+            }
+        }
     }
 }
 

@@ -471,8 +471,14 @@ pub(crate) fn agent_toml_path(project_root: &Path) -> PathBuf {
 
 /// Load + parse agent.toml. Err if missing or malformed (path included in message).
 pub(crate) fn load_agent_config(project_root: &Path) -> Result<AgentToml, String> {
-    let path = agent_toml_path(project_root);
-    let raw = std::fs::read_to_string(&path)
+    load_agent_config_at(&agent_toml_path(project_root))
+}
+
+/// [`load_agent_config`] at an explicit path rather than a project root's
+/// `.jan/agent/agent.toml` -- used for the global agent config, which lives
+/// directly at `<store>/agent.toml`.
+pub(crate) fn load_agent_config_at(path: &Path) -> Result<AgentToml, String> {
+    let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
     toml::from_str(&raw).map_err(|e| format!("Failed to parse {}: {e}", path.display()))
 }

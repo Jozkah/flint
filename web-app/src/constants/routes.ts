@@ -3,6 +3,7 @@ export const route = {
   home: '/',
   cowork: '/cowork',
   artifacts: '/artifacts',
+  extensions: '/extensions',
   appLogs: '/logs',
   project: '/project',
   projectDetail: '/project/$projectId',

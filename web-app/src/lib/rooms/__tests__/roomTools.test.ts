@@ -44,6 +44,12 @@ vi.mock('@/hooks/useToolAvailable', () => ({
   },
 }))
 
+const readSkill = vi.fn(async () => 'SKILL BODY')
+vi.mock('@/lib/skillStore', () => ({
+  readSkill: (...a: unknown[]) => readSkill(...a),
+  storeScope: { kind: 'store' },
+}))
+
 
 import { buildRoomTools, ROOM_READ_TOOLS } from '../roomTools'
 import type { RoomToolActivity } from '../types'
@@ -71,6 +77,20 @@ describe('buildRoomTools', () => {
     disabledTools = []
     trustedServers = []
     webSearchEnabled = false
+    readSkill.mockReset()
+    readSkill.mockResolvedValue('SKILL BODY')
+  })
+
+  it('adds a skill_read tool that loads a global skill body on demand', async () => {
+    getAgentToolSchemas.mockResolvedValue([])
+    const tools = await buildRoomTools(ctx)
+    expect(tools.skill_read).toBeDefined()
+
+    const out = await (tools.skill_read as { execute: (i: unknown) => Promise<string> }).execute({
+      name: 'caveman',
+    })
+    expect(out).toBe('SKILL BODY')
+    expect(readSkill).toHaveBeenCalledWith({ kind: 'store' }, 'caveman')
   })
 
   it('offers only the read-only built-ins and drops everything else', async () => {
@@ -81,7 +101,7 @@ describe('buildRoomTools', () => {
       schema('edit'),
     ])
     const tools = await buildRoomTools(ctx)
-    expect(Object.keys(tools).sort()).toEqual([...ROOM_READ_TOOLS].sort())
+    expect(Object.keys(tools).sort()).toEqual([...ROOM_READ_TOOLS, 'skill_read'].sort())
     // Schemas were built for the room's folder.
     expect(getAgentToolSchemas).toHaveBeenCalledWith('/work', undefined, 'thread')
   })
@@ -127,7 +147,7 @@ describe('buildRoomTools', () => {
     const tools = await buildRoomTools({ roomId: 'r1', folder: null, access: 'read' })
     // No folder -> no file schemas fetched, only web tools.
     expect(getAgentToolSchemas).not.toHaveBeenCalled()
-    expect(Object.keys(tools).sort()).toEqual(['web_fetch', 'web_search'])
+    expect(Object.keys(tools).sort()).toEqual(['skill_read', 'web_fetch', 'web_search'])
   })
 
   it('adds write tools with a folder-confined grant for edit access', async () => {
@@ -136,7 +156,7 @@ describe('buildRoomTools', () => {
     const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit' })
 
     expect(directEditAuthorize).toHaveBeenCalledWith('/data', 'r1', '/work')
-    expect(Object.keys(tools).sort()).toEqual(['edit', 'read', 'write'])
+    expect(Object.keys(tools).sort()).toEqual(['edit', 'read', 'skill_read', 'write'])
 
     await (tools.write as { execute: (i: unknown) => Promise<string> }).execute({
       path: 'a.txt',
@@ -156,7 +176,7 @@ describe('buildRoomTools', () => {
     directEditAuthorize.mockRejectedValueOnce(new Error('refused'))
     const tools = await buildRoomTools({ roomId: 'r1', folder: '/work', access: 'edit' })
     // Read still works; write is not offered without a grant.
-    expect(Object.keys(tools)).toEqual(['read'])
+    expect(Object.keys(tools).sort()).toEqual(['read', 'skill_read'])
   })
 
   it('advertises enabled MCP tools and routes calls through callTool', async () => {
@@ -172,7 +192,7 @@ describe('buildRoomTools', () => {
     const tools = await buildRoomTools(ctx, (a) => activity.push(a))
 
     // The disabled tool is dropped; the enabled one is offered alongside reads.
-    expect(Object.keys(tools).sort()).toEqual(['read', 'search_docs'])
+    expect(Object.keys(tools).sort()).toEqual(['read', 'search_docs', 'skill_read'])
 
     const out = await (tools.search_docs as { execute: (i: unknown) => Promise<string> }).execute({
       q: 'x',
@@ -214,7 +234,7 @@ describe('buildRoomTools', () => {
     ])
     // No trusted servers, no allow-all.
     const tools = await buildRoomTools(ctx)
-    expect(Object.keys(tools)).toEqual(['read'])
+    expect(Object.keys(tools).sort()).toEqual(['read', 'skill_read'])
     expect(tools.search_docs).toBeUndefined()
   })
 
@@ -228,6 +248,6 @@ describe('buildRoomTools', () => {
     ])
     const tools = await buildRoomTools(ctx)
     // 'shell' is not trusted, so its tool is withheld.
-    expect(Object.keys(tools).sort()).toEqual(['query_db', 'read', 'search_docs'])
+    expect(Object.keys(tools).sort()).toEqual(['query_db', 'read', 'search_docs', 'skill_read'])
   })
 })

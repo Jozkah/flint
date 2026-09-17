@@ -133,30 +133,68 @@ async function call<T>(command: string, args: Record<string, unknown>): Promise<
   }
 }
 
-export const listPlugins = (project: string) =>
-  call<InstalledPlugin[]>('agent_plugin_list', { project })
+/** Store a command targets: the project's `.jan/agent/plugins/` (default), or
+ *  the user's own global plugin store shared by every workspace. */
+export type PluginScope = 'project' | 'global'
 
-export const getPluginDetails = (project: string, id: string) =>
-  call<PluginDetails>('agent_plugin_details', { project, id })
+const scopeArgs = (scope: PluginScope | undefined) =>
+  scope === 'global' ? { scope: 'global' } : {}
 
-export const getPluginSources = (project: string) =>
-  call<PluginSources>('agent_plugin_sources', { project })
+export const listPlugins = (project: string, scope?: PluginScope) =>
+  call<InstalledPlugin[]>('agent_plugin_list', { project, ...scopeArgs(scope) })
+
+export const getPluginDetails = (project: string, id: string, scope?: PluginScope) =>
+  call<PluginDetails>('agent_plugin_details', { project, id, ...scopeArgs(scope) })
+
+export const getPluginSources = (project: string, scope?: PluginScope) =>
+  call<PluginSources>('agent_plugin_sources', { project, ...scopeArgs(scope) })
 
 export const installPlugin = (
   project: string,
   source: InstallSource,
-  operationId: string
-) => call<InstalledPlugin>('agent_plugin_install', { project, source, operationId })
+  operationId: string,
+  scope?: PluginScope
+) =>
+  call<InstalledPlugin>('agent_plugin_install', {
+    project,
+    source,
+    operationId,
+    ...scopeArgs(scope),
+  })
 
 /** Resolves false when no install with that id is running any more. */
 export const cancelPluginInstall = (operationId: string) =>
   call<boolean>('agent_plugin_install_cancel', { operationId })
 
-export const setPluginEnabled = (project: string, id: string, enabled: boolean) =>
-  call<InstalledPlugin>('agent_plugin_set_enabled', { project, id, enabled })
+export const setPluginEnabled = (
+  project: string,
+  id: string,
+  enabled: boolean,
+  scope?: PluginScope
+) =>
+  call<InstalledPlugin>('agent_plugin_set_enabled', {
+    project,
+    id,
+    enabled,
+    ...scopeArgs(scope),
+  })
 
-export const removePlugin = (project: string, id: string) =>
-  call<RemoveReport>('agent_plugin_remove', { project, id })
+export const removePlugin = (project: string, id: string, scope?: PluginScope) =>
+  call<RemoveReport>('agent_plugin_remove', { project, id, ...scopeArgs(scope) })
+
+/** A plugin entry on the configured marketplace index. */
+export interface MarketEntry {
+  name: string
+  description: string
+  repo: string
+  ref: string | null
+}
+
+/** Search the configured plugin marketplace (contacts the index URL).
+ *  `scope: 'global'` searches the marketplace set in the user's own global
+ *  agent config rather than a project's. */
+export const searchPlugins = (query: string, scope?: PluginScope) =>
+  call<MarketEntry[]>('agent_plugin_search', { project: '', query, ...scopeArgs(scope) })
 
 export type GitUrlCheck =
   | { ok: true; host: string }
