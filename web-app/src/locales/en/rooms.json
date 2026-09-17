@@ -52,9 +52,16 @@
   },
   "editor": {
     "heading": "Room settings",
+    "sectionGeneral": "General",
+    "sectionDiscussion": "Discussion & moderator",
     "lockedWhileRunning": "Settings are locked while the room is running. Pause or stop it to edit.",
     "title": "Title",
     "objective": "Objective",
+    "workingFolder": "Working folder",
+    "workingFolderHint": "Participants with tool access read files from this folder.",
+    "attachFolder": "Attach folder…",
+    "changeFolder": "Change",
+    "detachFolder": "Detach",
     "speakingMode": "Speaking mode",
     "moderator": "Moderator",
     "moderatorEnable": "Use a moderator",
@@ -71,7 +78,9 @@
     "toolAccess": "Tool access",
     "toolNone": "None",
     "toolRead": "Read-only",
-    "toolReadHint": "Read-only tools only. Approvals never apply in rooms: anything that needs approval is refused.",
+    "toolEdit": "Read & edit",
+    "toolReadHint": "Read-only tools only. Approvals never apply in rooms: anything that needs approval is refused. MCP tools appear only for servers you've already trusted in Settings.",
+    "toolEditHint": "Reads plus write/edit, confined to the room's working folder. Attach a folder for these tools to work. MCP tools appear only for servers you've already trusted in Settings.",
     "toolUnsupported": "This model does not support tools, so tool access stays off.",
     "pricing": "Pricing (optional)",
     "pricingHint": "Used only for the cost limit.",
@@ -141,6 +150,8 @@
     "interrupted": "Interrupted",
     "failed": "Failed",
     "streaming": "Speaking…",
+    "compacting": "Compacting…",
+    "compactingBody": "Summarising earlier messages that no longer fit the context window…",
     "voteCall": "Vote called",
     "vote": "Vote",
     "tally": "Agree {{agree}} · Disagree {{disagree}} · Abstain {{abstain}}",
@@ -155,7 +166,14 @@
     "noDissent": "No dissent recorded.",
     "moderatorNote": "Moderator note",
     "disagreements": "Disagreements",
-    "jumpToLatest": "Jump to latest"
+    "jumpToLatest": "Jump to latest",
+    "toolDetails": "Details",
+    "toolHide": "Hide",
+    "toolArgs": "Input",
+    "toolOutput": "Result",
+    "toolError": "Error",
+    "toolOk": "ok",
+    "toolFailed": "failed"
   },
   "controls": {
     "label": "Room controls",
@@ -197,6 +215,7 @@
     "limit": "limit reached ({{limit}})",
     "ceiling": "hard ceiling reached",
     "converged-moderator": "the moderator closed the discussion",
+    "converged-consensus": "the participants reached a conclusion",
     "converged-repetition": "participants started repeating themselves",
     "synthesized": "synthesis written",
     "no-participants": "fewer than two participants available",
@@ -206,10 +225,14 @@
   "composer": {
     "label": "Message to the room",
     "placeholder": "Write to the room…",
+    "placeholderExtend": "Add a message for the participants (optional)…",
     "to": "Send to",
     "toRoom": "Everyone",
     "toModerator": "Moderator",
     "send": "Send",
-    "hint": "Ctrl+Enter to send"
+    "hint": "Ctrl+Enter to send",
+    "limitReached": "The {{limit}} limit was reached. Continue the discussion?",
+    "extendBy": "More rounds",
+    "continue": "Continue"
   }
 }

@@ -95,8 +95,28 @@ const DEFAULT_SKILL_GUIDE: &str = include_str!("default_skill.md");
 /// skills pay no context load). Covers folder skills (`<name>/SKILL.md`) and
 /// legacy flat `<name>.md`. Returns None when no advertisable skill exists.
 pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
-    let enabled = crate::core::agent::project::enabled_skills(project_root);
-    let entries = crate::core::agent::skills::catalog(project_root, &enabled);
+    // Read-only lookup: never registers the project. An unregistered project
+    // resolves to `Cowork("")`, which matches no matrix entry, so every
+    // global skill/plugin defaults enabled -- today's unregistered behavior.
+    let project_id =
+        crate::core::agent::projects_registry::resolve_project_id(project_root).unwrap_or_default();
+    let surface = crate::core::agent::extensions::Surface::Cowork(project_id);
+    let entries = crate::core::agent::extensions::resolve_extensions(&surface, Some(project_root));
+    render_skills_block(&entries)
+}
+
+/// Same rendering `load_skills` uses, but sourced from the folderless Home
+/// surface's matrix-filtered global catalog. Drives the system prompt for
+/// runs with no project root (Home chat).
+pub(crate) fn load_global_skills() -> Option<String> {
+    let entries = crate::core::agent::extensions::resolve_extensions(
+        &crate::core::agent::extensions::Surface::Home,
+        None,
+    );
+    render_skills_block(&entries)
+}
+
+fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta]) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
@@ -536,6 +556,79 @@ mod tests {
         // Alphabetical: a_first precedes b_second.
         assert!(block.find("a_first").unwrap() < block.find("b_second").unwrap());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn home_run_emits_global_skills_block() {
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let sdir = tauri_plugin_agent_tools::skills::skills_dir(&store).join("caveman");
+        std::fs::create_dir_all(&sdir).unwrap();
+        std::fs::write(
+            sdir.join("SKILL.md"),
+            "---\ndescription: Talk terse\n---\nbody",
+        )
+        .unwrap();
+        crate::core::agent::skills::set_test_user_skills(Some(store));
+
+        let block = load_global_skills().expect("global skills block");
+        assert!(block.contains("## Skill: caveman"), "block: {block}");
+
+        crate::core::agent::skills::set_test_user_skills(None);
+    }
+
+    #[test]
+    fn cowork_run_honors_the_extensions_matrix() {
+        let user_store = tempfile::tempdir().unwrap();
+        let sdir = tauri_plugin_agent_tools::skills::skills_dir(user_store.path()).join("caveman");
+        std::fs::create_dir_all(&sdir).unwrap();
+        std::fs::write(
+            sdir.join("SKILL.md"),
+            "---\ndescription: Talk terse\n---\nbody",
+        )
+        .unwrap();
+        crate::core::agent::skills::set_test_user_skills(Some(user_store.path().to_path_buf()));
+        crate::core::agent::skills::set_test_user_plugins(None);
+
+        let registry_store = tempfile::tempdir().unwrap();
+        crate::core::agent::projects_registry::set_test_registry_root(Some(
+            registry_store.path().to_path_buf(),
+        ));
+        let project = tempfile::tempdir().unwrap();
+        let entry = crate::core::agent::projects_registry::register_folder(project.path());
+
+        let ext_store = tempfile::tempdir().unwrap();
+        crate::core::agent::extensions::set_test_extensions_root(Some(
+            ext_store.path().to_path_buf(),
+        ));
+
+        // Matrix empty -> today's unrestricted catalog output.
+        let block = load_skills(project.path()).expect("skills block with empty matrix");
+        assert!(block.contains("## Skill: caveman"));
+
+        // Restrict "caveman" to Rooms only -- excluded from this Cowork project.
+        let mut matrix = crate::core::agent::extensions::Matrix::load();
+        matrix.set(
+            crate::core::agent::extensions::ItemKind::Skill,
+            "caveman",
+            &crate::core::agent::extensions::Surface::Rooms,
+            true,
+        );
+        matrix.save();
+        let block = load_skills(project.path());
+        let absent = match &block {
+            None => true,
+            Some(b) => !b.contains("## Skill: caveman"),
+        };
+        assert!(
+            absent,
+            "matrix-excluded skill leaked into cowork run: {block:?}"
+        );
+        let _ = entry;
+
+        crate::core::agent::extensions::set_test_extensions_root(None);
+        crate::core::agent::projects_registry::set_test_registry_root(None);
+        crate::core::agent::skills::set_test_user_skills(None);
     }
 
     #[test]

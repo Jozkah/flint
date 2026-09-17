@@ -57,6 +57,21 @@ export function modelSupportsTools(ref: RoomModelRef, lookup: ProviderLookup): b
   return resolveModel(ref, lookup).model?.capabilities?.includes('tools') ?? false
 }
 
+/**
+ * Tool support as three states, so "not loaded yet" is not mistaken for "no
+ * tools". Forcing a participant to `none` on `unknown` (a provider whose model
+ * list has not resolved) silently and permanently strips tool access the user
+ * chose; only a resolved model that truly lacks the capability should.
+ */
+export function modelToolSupport(
+  ref: RoomModelRef,
+  lookup: ProviderLookup
+): 'yes' | 'no' | 'unknown' {
+  const { model } = resolveModel(ref, lookup)
+  if (!model) return 'unknown'
+  return model.capabilities?.includes('tools') ? 'yes' : 'no'
+}
+
 export type ModelProblem = { reason: ParticipantUnavailableReason; message: string }
 
 /** Why a model cannot be used right now, or null. */
@@ -169,23 +184,22 @@ export function markUnavailable(
 }
 
 /**
- * The tool access a participant actually runs with. Rooms advertise no tools
- * in this version: `read` is not yet available, so it runs as `none` and the
- * returned note says why. Global tool approvals are never consulted.
+ * A one-off room note about a participant's tools, or null when none is needed.
+ *
+ * The participant's `toolAccess` already carries what it runs with (the
+ * controller forces it to `none` on a model that cannot use tools). This only
+ * decides whether to announce something to the room once: a note is worth
+ * showing when a participant asked for tools but its model cannot use them.
+ * When tools are active the folder guidance lives in the system prompt instead,
+ * so no room note is needed.
  */
 export function effectiveToolAccess(
   p: Participant,
   lookup: ProviderLookup
-): { access: 'none'; note: string | null } {
-  if (p.toolAccess !== 'read') return { access: 'none', note: null }
+): { note: string | null } {
+  if (p.toolAccess === 'none') return { note: null }
   if (!modelSupportsTools(p.model, lookup)) {
-    return {
-      access: 'none',
-      note: `${p.name}'s model does not support tools, so ${p.name} runs without tools.`,
-    }
+    return { note: `${p.name}'s model does not support tools, so ${p.name} runs without tools.` }
   }
-  return {
-    access: 'none',
-    note: `Read-only tools are not yet available in rooms, so ${p.name} runs without tools.`,
-  }
+  return { note: null }
 }

@@ -10,4 +10,6 @@ export interface OpenerService {
   /** Hand a local path to the OS default application for its type; a folder
    * opens in the file manager. */
   openPath(path: string): Promise<void>
+  /** Hand an http(s) URL to the OS default browser. */
+  openUrl(url: string): Promise<void>
 }

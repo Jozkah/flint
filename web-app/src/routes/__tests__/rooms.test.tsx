@@ -134,7 +134,7 @@ describe('room detail route', () => {
     const { api } = createFakeApi({ room: makeRoom() })
     renderWithApi(<Detail />, api)
     const panel = screen.getByTestId('room-side-panel')
-    expect(panel).toHaveClass('w-full', 'lg:w-[360px]')
+    expect(panel).toHaveClass('w-full', 'lg:w-[384px]')
     expect(panel.className).not.toMatch(/(^|\s)min-w-\[/)
   })
 

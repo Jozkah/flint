@@ -4,6 +4,7 @@
 
 import {
   openPath as osOpenPath,
+  openUrl as osOpenUrl,
   revealItemInDir as osRevealItemInDir,
 } from '@tauri-apps/plugin-opener'
 import { DefaultOpenerService } from './default'
@@ -29,6 +30,15 @@ export class TauriOpenerService extends DefaultOpenerService {
       await osOpenPath(path)
     } catch (error) {
       console.error('Error opening path in Tauri:', error)
+      throw error
+    }
+  }
+
+  async openUrl(url: string): Promise<void> {
+    try {
+      await osOpenUrl(url)
+    } catch (error) {
+      console.error('Error opening url in Tauri:', error)
       throw error
     }
   }

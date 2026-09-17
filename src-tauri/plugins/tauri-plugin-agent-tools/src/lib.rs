@@ -61,6 +61,12 @@ pub mod workspace;
 
 #[cfg(feature = "tauri")]
 mod commands;
+/// Session-scoped write grants. The grant machinery is gated internally to
+/// `feature = "tauri"` (or tests), so a CLI build compiles only the pure
+/// `child_session_id`/`CHILD_SEP` helpers it re-exports and carries none of the
+/// grant surface as dead code. The module itself must stay unconditional
+/// because `child_session_id` is re-exported (and used by the CLI subagent /
+/// team-children paths).
 mod grants;
 
 /// Runs the confined-spawn helper and exits, when this process was re-exec'd as
@@ -69,6 +75,30 @@ mod grants;
 /// helper's whole job is to spawn and wait, so starting the app first would run a
 /// second copy of it per shell command.
 pub use tools::appcontainer::run_helper_if_requested as run_sandbox_helper_if_requested;
+
+/// Make the *test* binary a valid confined-spawn helper.
+///
+/// The Windows AppContainer backend confines a command by re-exec'ing the
+/// running binary with `--internal-sandbox-exec` (see [`tools::appcontainer`]),
+/// which the application's `main` intercepts before anything else. A libtest
+/// harness has no such `main`: it parses argv itself, rejects the unknown flag
+/// with "Unrecognized option", and every sandboxed `bash`/`proc` test fails at
+/// exit 101 instead of exercising the sandbox.
+///
+/// Registering the helper as a CRT static initializer runs it during process
+/// startup, before libtest sees argv — so a re-exec'd test binary performs the
+/// confined spawn and exits, while a normal test run finds no flag and returns
+/// immediately. Test-only and Windows-only; nothing about the shipping binary
+/// changes.
+#[cfg(all(test, windows))]
+#[used]
+#[link_section = ".CRT$XCU"]
+static RUN_SANDBOX_HELPER_ON_STARTUP: extern "C" fn() = {
+    extern "C" fn init() {
+        tools::appcontainer::run_helper_if_requested();
+    }
+    init
+};
 
 #[cfg(feature = "tauri")]
 pub use commands::{AgentToolsError, ToolResult};

@@ -46,14 +46,13 @@ export type RoomsUiState = {
 
 export type CreateRoomInput = { title: string; objective: string }
 
-export type NewParticipantInput = Pick<
-  Participant,
-  'name' | 'role' | 'model' | 'toolAccess' | 'pricing'
->
+export type NewParticipantInput = Pick<Participant, 'name' | 'role' | 'model' | 'pricing'> &
+  // Optional: omitted, the controller defaults it (read-only for a tool-capable model).
+  Partial<Pick<Participant, 'toolAccess'>>
 
 /** Fields only the user may change, through the editor. */
 export type RoomSettingsPatch = Partial<
-  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'participants'>
+  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'participants' | 'folder'>
 >
 
 export interface RoomsUiApi {
@@ -93,6 +92,7 @@ function inertApi(status: 'pending' | 'unavailable'): RoomsUiApi {
     stop: unavailable,
     selectNext: unavailable,
     sendUserMessage: unavailable,
+    extendLimit: unavailable,
     callVote: unavailable,
     requestFinalPositions: unavailable,
     synthesize: unavailable,

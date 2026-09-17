@@ -364,6 +364,34 @@ pub fn tool_schemas() -> Vec<serde_json::Value> {
     schema::builtin_tool_schemas()
 }
 
+/// The `bash` tool runs a real shell, but on a host where no POSIX shell can
+/// start inside the sandbox (every Windows AppContainer: the MSYS2 runtime Git
+/// Bash needs cannot initialise there) the command is handed to Windows
+/// PowerShell instead. The model does not know that and writes bash syntax --
+/// `cp a b && echo done` -- which Windows PowerShell 5.1 rejects at parse time
+/// (`&&` is not a statement separator), so the call fails and the follow-up that
+/// depended on it fails too. Telling the model the real shell, in the tool's own
+/// description, is what stops it: append a short PowerShell note to `bash`.
+fn note_non_posix_shell(mut value: serde_json::Value) -> serde_json::Value {
+    const NOTE: &str = " IMPORTANT (this machine): no POSIX shell is available \
+        inside the sandbox, so commands run in Windows PowerShell, not bash. \
+        Write PowerShell, not bash syntax: sequence commands with `;` -- Windows \
+        PowerShell 5.1 does NOT accept `&&` or `||`; use cmdlets or their aliases \
+        (cp/Copy-Item, mv/Move-Item, rm/Remove-Item, cat/Get-Content, \
+        ls/Get-ChildItem, New-Item); and write Windows paths with backslashes. To \
+        read a file, prefer the `read` tool over `cat`.";
+    if let Some(function) = value.get_mut("function").and_then(|f| f.as_object_mut()) {
+        if let Some(updated) = function
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(|s| format!("{s}{NOTE}"))
+        {
+            function.insert("description".into(), serde_json::Value::String(updated));
+        }
+    }
+    value
+}
+
 /// Whether this machine can confine a shell, and with what.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -479,6 +507,12 @@ pub async fn advertised_tool_schemas(
 ) -> Result<AdvertisedTools, AgentToolsError> {
     let report = environment_readiness(project_root, reported).await?;
     let session_scope = matches!(scope.unwrap_or_default(), WorkspaceScope::Session);
+    // A shell that runs but is not POSIX (Windows PowerShell/cmd) grants
+    // `shell.any` without `shell.posix`. When that is the case, `bash`'s
+    // description is amended to tell the model which shell it is really using.
+    let caps = report.capabilities();
+    let non_posix_shell = caps.contains(readiness::capability::SHELL_ANY)
+        && !caps.contains(readiness::capability::SHELL_POSIX);
     let mut schemas = Vec::new();
     let mut omitted = Vec::new();
     for value in schema::builtin_tool_schemas() {
@@ -495,7 +529,11 @@ pub async fn advertised_tool_schemas(
             continue;
         }
         match readiness::tool_availability(&report, name) {
-            readiness::ToolAvailability::Available => schemas.push(value.clone()),
+            readiness::ToolAvailability::Available => schemas.push(if name == "bash" && non_posix_shell {
+                note_non_posix_shell(value.clone())
+            } else {
+                value.clone()
+            }),
             readiness::ToolAvailability::Unavailable {
                 component,
                 reason,
@@ -706,7 +744,7 @@ async fn execute_tool_inner(
     let store = resolve_store(&data_folder, project.as_deref());
     // Plural from the outset so attaching a second folder later is not another
     // signature change.
-    let read_roots: Vec<PathBuf> = match read_only_project.as_deref() {
+    let mut read_roots: Vec<PathBuf> = match read_only_project.as_deref() {
         Some(path) => vec![workspace::validate_read_root(
             Path::new(path),
             &root,
@@ -736,6 +774,21 @@ async fn execute_tool_inner(
     // renderer is one the caller can choose not to send.
     let policy = crate::policy::load(read_only_project.as_deref().map(Path::new), allow_network);
     let permissions = policy.permissions.clone();
+    // Widen the read roots by any absolute directories the project's own allow
+    // rules make readable (e.g. `allow = ["read(C:/data/**)"]`), so a policy
+    // that opts into reading a host location does not then prompt on every read
+    // there. Each is validated like the attached project root; one that fails
+    // validation is skipped rather than failing the call, and deny rules still
+    // win at the gate.
+    for dir in permissions.sandbox_read_dirs() {
+        if let Ok(validated) =
+            workspace::validate_read_root(&dir, &root, Some(Path::new(&data_folder)))
+        {
+            if !read_roots.contains(&validated) {
+                read_roots.push(validated);
+            }
+        }
+    }
     let decision = gate::resolve_decision(
         tool,
         &args,
@@ -1602,6 +1655,21 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn note_non_posix_shell_amends_only_the_description() {
+        let bash = json!({
+            "type": "function",
+            "function": { "name": "bash", "description": "Run a shell command." }
+        });
+        let noted = note_non_posix_shell(bash);
+        let desc = noted["function"]["description"].as_str().unwrap();
+        assert!(desc.starts_with("Run a shell command."));
+        assert!(desc.contains("Windows PowerShell"));
+        assert!(desc.contains("does NOT accept `&&`"));
+        // The name is untouched; only the description grows.
+        assert_eq!(noted["function"]["name"], "bash");
+    }
 
     /// The output sink test's shared ledger: what was sent, tagged with call id.
     type Seen = Arc<Mutex<Vec<(u64, Option<String>, String)>>>;

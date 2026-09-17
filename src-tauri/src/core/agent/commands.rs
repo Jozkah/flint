@@ -214,17 +214,35 @@ async fn plugin_blocking<T: Send + 'static>(
 ) -> Result<T, plugins::PluginError> {
     tauri::async_runtime::spawn_blocking(f)
         .await
-        .map_err(|e| {
-            plugins::PluginError::new(plugins::PluginErrorCode::Io, e.to_string())
-        })?
+        .map_err(|e| plugins::PluginError::new(plugins::PluginErrorCode::Io, e.to_string()))?
+}
+
+/// Resolve the `scope`/`project` pair every `agent_plugin_*` command takes:
+/// `scope == "global"` targets the user's own plugin store, shared by every
+/// workspace; anything else (including the parameter being absent) targets
+/// `project`'s `.jan/agent/plugins/`, exactly as before this parameter
+/// existed. Kept out of the typed command signatures (an added `Option<String>`
+/// rather than a new required arg) so no existing caller breaks.
+fn resolve_plugin_scope(project: &str, scope: Option<&str>) -> plugins::PluginScope {
+    match scope {
+        Some(s) if s.eq_ignore_ascii_case("global") => plugins::PluginScope::Global,
+        _ => plugins::PluginScope::Project(std::path::PathBuf::from(project)),
+    }
 }
 
 /// List installed plugins with metadata, enabled state and component counts.
 #[tauri::command]
 pub async fn agent_plugin_list(
     project: String,
+    scope: Option<String>,
 ) -> Result<Vec<plugins::InstalledPlugin>, plugins::PluginError> {
-    plugin_blocking(move || Ok(plugins::installed(std::path::Path::new(&project)))).await
+    plugin_blocking(move || {
+        Ok(plugins::installed_scoped(&resolve_plugin_scope(
+            &project,
+            scope.as_deref(),
+        )))
+    })
+    .await
 }
 
 /// Full details of one installed plugin: identity, provenance, component
@@ -233,8 +251,12 @@ pub async fn agent_plugin_list(
 pub async fn agent_plugin_details(
     project: String,
     id: String,
+    scope: Option<String>,
 ) -> Result<plugins::PluginDetails, plugins::PluginError> {
-    plugin_blocking(move || plugins::details(std::path::Path::new(&project), &id)).await
+    plugin_blocking(move || {
+        plugins::details_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &id)
+    })
+    .await
 }
 
 /// Which install sources are usable: the configured marketplace (if any) and
@@ -242,8 +264,15 @@ pub async fn agent_plugin_details(
 #[tauri::command]
 pub async fn agent_plugin_sources(
     project: String,
+    scope: Option<String>,
 ) -> Result<plugins::PluginSources, plugins::PluginError> {
-    plugin_blocking(move || Ok(plugins::sources(std::path::Path::new(&project)))).await
+    plugin_blocking(move || {
+        Ok(plugins::sources_scoped(&resolve_plugin_scope(
+            &project,
+            scope.as_deref(),
+        )))
+    })
+    .await
 }
 
 /// Install a plugin from an explicit source (`local` folder copy, `git` clone,
@@ -255,10 +284,11 @@ pub async fn agent_plugin_install(
     project: String,
     source: plugins::InstallSource,
     operation_id: String,
+    scope: Option<String>,
 ) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
     let guard = plugins::begin_install(&operation_id)?;
-    let root = std::path::PathBuf::from(&project);
-    plugins::install_from_source(&root, source, guard.ctx()).await
+    let scope = resolve_plugin_scope(&project, scope.as_deref());
+    plugins::install_from_source_scoped(&scope, source, guard.ctx()).await
 }
 
 /// Cancel a running install. `false` when no install of that id is running.
@@ -274,9 +304,16 @@ pub async fn agent_plugin_set_enabled(
     project: String,
     id: String,
     enabled: bool,
+    scope: Option<String>,
 ) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
-    plugin_blocking(move || plugins::set_enabled(std::path::Path::new(&project), &id, enabled))
-        .await
+    plugin_blocking(move || {
+        plugins::set_enabled_scoped(
+            &resolve_plugin_scope(&project, scope.as_deref()),
+            &id,
+            enabled,
+        )
+    })
+    .await
 }
 
 /// Remove an installed plugin and the config entries that name it.
@@ -284,18 +321,138 @@ pub async fn agent_plugin_set_enabled(
 pub async fn agent_plugin_remove(
     project: String,
     id: String,
+    scope: Option<String>,
 ) -> Result<plugins::RemoveReport, plugins::PluginError> {
-    plugin_blocking(move || plugins::remove_plugin(std::path::Path::new(&project), &id)).await
+    plugin_blocking(move || {
+        plugins::remove_plugin_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &id)
+    })
+    .await
 }
 
 /// Search the configured plugin marketplace (contacts the index URL).
+/// `scope == "global"` searches the marketplace set in the user's own global
+/// agent config rather than `project`'s.
 #[tauri::command]
 pub async fn agent_plugin_search(
     project: String,
     query: String,
+    scope: Option<String>,
 ) -> Result<Vec<plugins::MarketEntry>, plugins::PluginError> {
-    let root = std::path::PathBuf::from(&project);
-    plugins::search_typed(&root, &query).await
+    plugins::search_typed_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &query).await
+}
+
+/// Map a surface string from the frontend ("home" | "rooms" | "cowork") to
+/// `extensions::Surface`. A `cowork` surface with no `project_id` uses the
+/// empty string as its key, matching no registered project.
+fn resolve_surface(
+    surface: &str,
+    project_id: Option<&str>,
+) -> crate::core::agent::extensions::Surface {
+    use crate::core::agent::extensions::Surface;
+    match surface {
+        "rooms" => Surface::Rooms,
+        "cowork" => Surface::Cowork(project_id.unwrap_or_default().to_string()),
+        _ => Surface::Home,
+    }
+}
+
+/// Resolve the extensions (skills + plugin-backed skills) visible on `surface`,
+/// filtered by the global enablement matrix. `project_id`, when the id is a
+/// known registered project, resolves to that project's folder so its own
+/// (project-scoped) skills are included too; Home/Rooms are always folderless.
+#[tauri::command]
+pub async fn agent_resolve_extensions(
+    surface: String,
+    project_id: Option<String>,
+) -> Result<Vec<agent_skills::SkillMeta>, String> {
+    use crate::core::agent::extensions::{resolve_extensions, Surface};
+    let resolved_surface = resolve_surface(&surface, project_id.as_deref());
+    let project_root = match &resolved_surface {
+        Surface::Cowork(id) if !id.is_empty() => {
+            crate::core::agent::projects_registry::list_projects()
+                .into_iter()
+                .find(|p| &p.id == id)
+                .map(|p| std::path::PathBuf::from(p.folder))
+        }
+        _ => None,
+    };
+    Ok(resolve_extensions(
+        &resolved_surface,
+        project_root.as_deref(),
+    ))
+}
+
+/// The raw global skills/plugins enablement matrix (`extensions.json`).
+#[tauri::command]
+pub async fn agent_extensions_matrix_get() -> Result<serde_json::Value, String> {
+    let matrix = crate::core::agent::extensions::Matrix::load();
+    serde_json::to_value(&matrix).map_err(|e| e.to_string())
+}
+
+/// Set one item's enabled state on one surface in the global matrix, then
+/// persist and return the resulting matrix.
+#[tauri::command]
+pub async fn agent_extensions_matrix_set(
+    kind: String,
+    id: String,
+    surface: String,
+    project_id: Option<String>,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    use crate::core::agent::extensions::{ItemKind, Matrix};
+    let item_kind = match kind.as_str() {
+        "plugin" => ItemKind::Plugin,
+        _ => ItemKind::Skill,
+    };
+    let resolved_surface = resolve_surface(&surface, project_id.as_deref());
+    let mut matrix = Matrix::load();
+    matrix.set(item_kind, &id, &resolved_surface, enabled);
+    matrix.save();
+    serde_json::to_value(&matrix).map_err(|e| e.to_string())
+}
+
+/// Set (or clear) one item's ENTIRE surface list in the global matrix in one
+/// shot -- the full-vector counterpart to `agent_extensions_matrix_set`'s
+/// single-cell toggle, used by the enablement grid where one checkbox click
+/// recomputes the whole boolean vector across all known surfaces.
+/// `surfaces: None` clears the item back to its default (enabled everywhere);
+/// `Some(list)` replaces its surface list with exactly `list`. Surface keys
+/// are pre-encoded by the caller ("home" | "rooms" | "cowork:<id>").
+#[tauri::command]
+pub async fn agent_extensions_matrix_set_item(
+    kind: String,
+    id: String,
+    surfaces: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    use crate::core::agent::extensions::{ItemKind, Matrix};
+    let item_kind = match kind.as_str() {
+        "plugin" => ItemKind::Plugin,
+        _ => ItemKind::Skill,
+    };
+    let mut matrix = Matrix::load();
+    match surfaces {
+        Some(list) => matrix.set_item(item_kind, &id, list),
+        None => matrix.clear_item(item_kind, &id),
+    }
+    matrix.save();
+    serde_json::to_value(&matrix).map_err(|e| e.to_string())
+}
+
+/// Every registered project (stable id, folder, display name).
+#[tauri::command]
+pub async fn agent_projects_list(
+) -> Result<Vec<crate::core::agent::projects_registry::ProjectEntry>, String> {
+    Ok(crate::core::agent::projects_registry::list_projects())
+}
+
+/// Register (or re-register) `folder` as a project, returning its stable entry.
+#[tauri::command]
+pub async fn agent_projects_register(
+    folder: String,
+) -> Result<crate::core::agent::projects_registry::ProjectEntry, String> {
+    Ok(crate::core::agent::projects_registry::register_folder(
+        std::path::Path::new(&folder),
+    ))
 }
 
 /// Return the git branch name for the project at `project`, or `None` when the
@@ -474,6 +631,37 @@ pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
     worktree::pending(&record.into())
 }
 
+/// Route one `jan-desktop` bridge tool call. The runtime entry point for the
+/// in-process desktop UI tools (open_file, get_terminal_contents, show_diff,
+/// diff_accepted, apply_settings): it binds the call to its window, workspace,
+/// conversation and session via a [`RequestContext`], and dispatches through the
+/// bridge's authorization layer.
+///
+/// The backend context supplies a settings-file-backed UI, so `apply_settings`
+/// works end to end; the editor/terminal/diff tools require a live window and
+/// are served by the desktop window layer's own UI implementation.
+#[tauri::command]
+pub fn agent_desktop_bridge(
+    data_folder: String,
+    session_id: String,
+    conversation_id: String,
+    workspace: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use crate::core::agent::desktop_bridge::{DesktopBridge, FileSettingsUi, RequestContext};
+    let settings_path = std::path::Path::new(&data_folder)
+        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
+    let mut bridge = DesktopBridge::new(FileSettingsUi::new(settings_path));
+    let ctx = RequestContext {
+        window_id: String::new(),
+        workspace_root: std::path::PathBuf::from(&workspace),
+        conversation_id,
+        session_id,
+    };
+    bridge.dispatch(&ctx, &tool, &args)
+}
+
 /// Every Flint-owned worktree of this repository that is on disk.
 ///
 /// The recovery surface. A session's own record dies with the process, so
@@ -491,6 +679,41 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
     // that left Git's record behind does not show a worktree that is not there.
     let _ = worktree::prune(repo);
     worktree::list(repo, &roots)
+}
+
+/// Apply opt-in optimizations to a worktree after it was created.
+///
+/// A separate, post-creation step on purpose: `ensure` stays the plain "make me
+/// an isolated checkout" operation, and narrowing it with a sparse checkout or
+/// sharing heavy directories into it is a choice made explicitly here. Both the
+/// sparse paths and the symlinked directories are repository-relative and
+/// validated as such, so neither can climb out of the worktree or reach into
+/// `.git`.
+///
+/// The record arrives over IPC, so the path is checked against the folder Flint
+/// owns before anything is done to it — the same boundary [`agent_worktree_discard`]
+/// uses, not a new one.
+#[tauri::command]
+pub fn agent_worktree_optimize(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    symlink_directories: Vec<String>,
+    sparse_paths: Vec<String>,
+) -> Result<(), String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    let record: worktree::WorktreeRecord = record.into();
+    if !std::path::Path::new(&record.path).starts_with(&roots) {
+        return Err(format!(
+            "{} is not a worktree Flint manages, so Flint will not optimize it",
+            record.path
+        ));
+    }
+    worktree::apply_optimizations(
+        std::path::Path::new(&record.path),
+        std::path::Path::new(&record.source_root),
+        &symlink_directories,
+        &sparse_paths,
+    )
 }
 
 /// Why a proposal command refused, with the conflicts when that is the reason,
@@ -595,8 +818,8 @@ fn proposal_from_worktree(
     agent: Option<String>,
 ) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
     use tauri_plugin_agent_tools::proposal;
-    let roots = worktree::absolute(&workspace::worktrees_dir(&data_folder))
-        .map_err(proposal_failure)?;
+    let roots =
+        worktree::absolute(&workspace::worktrees_dir(&data_folder)).map_err(proposal_failure)?;
     let record: worktree::WorktreeRecord = record.into();
     // Compared canonically: the data folder Flint resolves and the one the
     // renderer was handed can differ in form (a verbatim `\\?\` prefix, case)
@@ -1061,7 +1284,10 @@ async fn import_blocking<T: Send + 'static>(
 ) -> Result<T, crate::core::agent::bundle_import::ImportError> {
     use crate::core::agent::bundle_import::{ImportError, ImportErrorKind};
     tokio::task::spawn_blocking(work).await.map_err(|e| {
-        ImportError::new(ImportErrorKind::Io, format!("the import did not finish: {e}"))
+        ImportError::new(
+            ImportErrorKind::Io,
+            format!("the import did not finish: {e}"),
+        )
     })?
 }
 
@@ -1074,10 +1300,16 @@ pub async fn agent_bundle_import(
     token: String,
     bundle: String,
     destination: String,
-) -> Result<crate::core::agent::bundle_import::ImportView, crate::core::agent::bundle_import::ImportError> {
+) -> Result<
+    crate::core::agent::bundle_import::ImportView,
+    crate::core::agent::bundle_import::ImportError,
+> {
     use crate::core::agent::bundle_import::{self as bi, ImportError, ImportErrorKind};
     if !bi::valid_token(&token) {
-        return Err(ImportError::new(ImportErrorKind::Io, "an import needs a valid token"));
+        return Err(ImportError::new(
+            ImportErrorKind::Io,
+            "an import needs a valid token",
+        ));
     }
     let data_folder = get_jan_data_folder_path(app);
     import_blocking(move || {
@@ -1119,9 +1351,18 @@ pub fn agent_bundle_import_cancel(token: String) -> bool {
 pub async fn agent_bundle_imports_list(
     app: tauri::AppHandle,
     destination: String,
-) -> Result<Vec<crate::core::agent::bundle_import::ImportView>, crate::core::agent::bundle_import::ImportError> {
+) -> Result<
+    Vec<crate::core::agent::bundle_import::ImportView>,
+    crate::core::agent::bundle_import::ImportError,
+> {
     let data_folder = get_jan_data_folder_path(app);
-    import_blocking(move || Ok(crate::core::agent::bundle_import::list(&data_folder, &destination))).await
+    import_blocking(move || {
+        Ok(crate::core::agent::bundle_import::list(
+            &data_folder,
+            &destination,
+        ))
+    })
+    .await
 }
 
 /// Apply an approved import, re-checking everything it was bound to.
@@ -1129,7 +1370,10 @@ pub async fn agent_bundle_imports_list(
 pub async fn agent_bundle_apply(
     app: tauri::AppHandle,
     approval: crate::core::agent::bundle_import::BundleApproval,
-) -> Result<tauri_plugin_agent_tools::proposal::ApplyReport, crate::core::agent::bundle_import::ImportError> {
+) -> Result<
+    tauri_plugin_agent_tools::proposal::ApplyReport,
+    crate::core::agent::bundle_import::ImportError,
+> {
     let data_folder = get_jan_data_folder_path(app);
     import_blocking(move || crate::core::agent::bundle_import::apply(&data_folder, &approval)).await
 }
@@ -1139,7 +1383,10 @@ pub async fn agent_bundle_apply(
 pub async fn agent_bundle_abandon(
     app: tauri::AppHandle,
     id: String,
-) -> Result<crate::core::agent::bundle_import::ImportRecord, crate::core::agent::bundle_import::ImportError> {
+) -> Result<
+    crate::core::agent::bundle_import::ImportRecord,
+    crate::core::agent::bundle_import::ImportError,
+> {
     let data_folder = get_jan_data_folder_path(app);
     import_blocking(move || crate::core::agent::bundle_import::abandon(&data_folder, &id)).await
 }
@@ -1149,7 +1396,10 @@ async fn replay_blocking<T: Send + 'static>(
 ) -> Result<T, crate::core::agent::replay::ReplayError> {
     use crate::core::agent::replay::{ReplayError, ReplayErrorKind};
     tokio::task::spawn_blocking(work).await.map_err(|e| {
-        ReplayError::new(ReplayErrorKind::Io, format!("the replay operation did not finish: {e}"))
+        ReplayError::new(
+            ReplayErrorKind::Io,
+            format!("the replay operation did not finish: {e}"),
+        )
     })?
 }
 
@@ -1353,7 +1603,8 @@ pub async fn agent_replay_recorded(
     crate::core::agent::replay::ReplayError,
 > {
     let data_folder = get_jan_data_folder_path(app);
-    replay_blocking(move || crate::core::agent::replay::recorded(&data_folder, &session, &run)).await
+    replay_blocking(move || crate::core::agent::replay::recorded(&data_folder, &session, &run))
+        .await
 }
 
 /// Start a fresh replay of one request of a recorded run. AH-032.
@@ -1434,7 +1685,11 @@ pub async fn agent_replays_list(
 ) -> Result<Vec<crate::core::agent::replay::ReplayView>, crate::core::agent::replay::ReplayError> {
     let data_folder = get_jan_data_folder_path(app);
     replay_blocking(move || {
-        Ok(crate::core::agent::replay::list(&data_folder, &session, snapshot_id.as_deref()))
+        Ok(crate::core::agent::replay::list(
+            &data_folder,
+            &session,
+            snapshot_id.as_deref(),
+        ))
     })
     .await
 }
@@ -1479,7 +1734,8 @@ pub async fn agent_events_record(
     tokio::task::spawn_blocking(move || {
         let mut written = 0;
         for event in events.into_iter().take(256) {
-            tauri_plugin_agent_tools::event_log::append(&data_folder, event).map_err(|e| e.message())?;
+            tauri_plugin_agent_tools::event_log::append(&data_folder, event)
+                .map_err(|e| e.message())?;
             written += 1;
         }
         Ok(written)
@@ -1488,10 +1744,13 @@ pub async fn agent_events_record(
     .map_err(|e| e.to_string())?
 }
 
-fn event_export_cancels(
-) -> &'static std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>> {
+fn event_export_cancels() -> &'static std::sync::Mutex<
+    std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
+> {
     static MAP: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+        std::sync::Mutex<
+            std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
+        >,
     > = std::sync::OnceLock::new();
     MAP.get_or_init(Default::default)
 }
@@ -1505,21 +1764,42 @@ pub async fn agent_events_export(
     session: String,
     run: Option<String>,
     include_content: bool,
-) -> Result<tauri_plugin_agent_tools::event_export::ExportReport, tauri_plugin_agent_tools::event_export::ExportError> {
+) -> Result<
+    tauri_plugin_agent_tools::event_export::ExportReport,
+    tauri_plugin_agent_tools::event_export::ExportError,
+> {
     use tauri_plugin_agent_tools::event_export::{export, ExportError, ExportErrorKind};
     let data_folder = get_jan_data_folder_path(app);
     let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).insert(token.clone(), flag.clone());
-    let out = tokio::task::spawn_blocking(move || export(&data_folder, &session, run.as_deref(), include_content, &flag))
-        .await
-        .map_err(|e| ExportError::new(ExportErrorKind::Io, e.to_string()));
-    event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).remove(&token);
+    event_export_cancels()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(token.clone(), flag.clone());
+    let out = tokio::task::spawn_blocking(move || {
+        export(
+            &data_folder,
+            &session,
+            run.as_deref(),
+            include_content,
+            &flag,
+        )
+    })
+    .await
+    .map_err(|e| ExportError::new(ExportErrorKind::Io, e.to_string()));
+    event_export_cancels()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&token);
     out?
 }
 
 #[tauri::command]
 pub fn agent_events_export_cancel(token: String) -> bool {
-    match event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).get(&token) {
+    match event_export_cancels()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&token)
+    {
         Some(flag) => {
             flag.store(true, std::sync::atomic::Ordering::SeqCst);
             true
@@ -1564,7 +1844,11 @@ pub async fn agent_events_list(
         let cap = limit.unwrap_or(5000).clamp(1, 5000);
         let newer: Vec<_> = all.into_iter().filter(|e| e.seq > after).collect();
         let truncated = newer.len() > cap;
-        Ok(EventsPage { events: newer.into_iter().take(cap).collect(), last_seq, truncated })
+        Ok(EventsPage {
+            events: newer.into_iter().take(cap).collect(),
+            last_seq,
+            truncated,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1611,7 +1895,10 @@ pub async fn agent_events_run(
 #[tauri::command]
 pub async fn agent_events_inspect(
     path: String,
-) -> Result<tauri_plugin_agent_tools::event_export::InspectReport, tauri_plugin_agent_tools::event_export::ExportError> {
+) -> Result<
+    tauri_plugin_agent_tools::event_export::InspectReport,
+    tauri_plugin_agent_tools::event_export::ExportError,
+> {
     use tauri_plugin_agent_tools::event_export::{inspect, ExportError, ExportErrorKind};
     tokio::task::spawn_blocking(move || inspect(std::path::Path::new(&path)))
         .await
@@ -1874,3 +2161,186 @@ pub async fn payload_usage_lookup(
         session.as_deref(),
     )
 }
+
+/// Idle-time memory consolidation ("autoDream").
+///
+/// Folds the permanent store's memory notes into a single deduplicated,
+/// contradiction-resolved note. Off by default: the auto path (`manual = false`,
+/// driven by the frontend idle poller) only runs when the store's
+/// `consolidation.json` has enabled it and the machine is idle. A manual run
+/// (`manual = true`, the user pressing "run now") bypasses the enabled/idle
+/// gates, but every other guard still applies — the cross-process lock, the
+/// path-safety check, and the atomic write. The backend is the real gate; the
+/// hook merely schedules.
+///
+/// Uses the deterministic [`memory_consolidation::HeuristicMerger`] (passing
+/// `None` for the model): consolidation reuses no second server, and wiring a
+/// live model is a matter of handing `run_consolidation` an invoker instead.
+#[tauri::command]
+pub async fn consolidate_memory(
+    idle_secs: u64,
+    manual: bool,
+) -> Result<memory_consolidation::ConsolidationOutcome, String> {
+    use crate::core::agent::memory_consolidation as mc;
+
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let store = workspace::permanent_store(&data_folder);
+    let dir = tauri_plugin_agent_tools::memory::memory_dir(&store);
+
+    // The persisted config carries the enabled flag (default: off); the caller's
+    // `idle_secs` overrides the idle threshold for this evaluation.
+    let mut config = mc::ConsolidationConfig::load(&dir);
+    config.idle_threshold_secs = idle_secs;
+
+    // The renderer is the only idle sensor (it sees pointer/keyboard); the hook
+    // calls the auto path only after `idle_secs` of inactivity. The snapshot
+    // encodes that contract — last activity was at least `idle_secs` ago — so
+    // the backend's `is_idle` gate exercises the same threshold and passes
+    // exactly when the caller's claim holds. `enabled` (default off), the lock,
+    // path safety, atomic write and the new-since checkpoint remain the real
+    // backend gates. A `manual` call bypasses the enabled/idle gates only.
+    let now = mc::now_ms();
+    let snapshot = mc::ActivitySnapshot {
+        last_activity_ms: now.saturating_sub(idle_secs.saturating_mul(1000)),
+    };
+    mc::run_consolidation(&dir, &config, snapshot, now, manual, None).await
+}
+
+#[cfg(test)]
+mod extensions_command_tests {
+    use super::*;
+    use crate::core::agent::extensions::set_test_extensions_root;
+    use crate::core::agent::projects_registry::set_test_registry_root;
+
+    fn write_global_skill(dir: &std::path::Path, name: &str, body: &str) {
+        let skills_dir = tauri_plugin_agent_tools::skills::skills_dir(dir).join(name);
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(skills_dir.join("SKILL.md"), body).unwrap();
+    }
+
+    /// `agent_resolve_extensions("home", None)` returns a global skill set up
+    /// through the same test thread-locals `extensions::tests` uses, proving the
+    /// command wrapper actually calls `resolve_extensions` rather than stubbing
+    /// something else out.
+    #[tokio::test]
+    async fn resolve_extensions_home_returns_global_skill() {
+        let user_store = tempfile::tempdir().unwrap();
+        write_global_skill(
+            user_store.path(),
+            "caveman",
+            "---\ndescription: caveman talk\n---\nbody\n",
+        );
+        agent_skills::set_test_user_skills(Some(user_store.path().to_path_buf()));
+        agent_skills::set_test_user_plugins(None);
+        let ext_store = tempfile::tempdir().unwrap();
+        set_test_extensions_root(Some(ext_store.path().to_path_buf()));
+
+        let result = agent_resolve_extensions("home".to_string(), None)
+            .await
+            .expect("resolve_extensions must not fail");
+        assert!(
+            result.iter().any(|m| m.name == "caveman"),
+            "expected the global skill on the home surface: {:?}",
+            result.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
+
+        set_test_extensions_root(None);
+        agent_skills::set_test_user_skills(None);
+    }
+
+    /// `agent_extensions_matrix_set` then `agent_extensions_matrix_get` round
+    /// trips through the persisted matrix: the surface key set by `_set` is
+    /// visible in the JSON `_get` returns.
+    #[tokio::test]
+    async fn matrix_set_then_get_round_trips_surface_key() {
+        let ext_store = tempfile::tempdir().unwrap();
+        set_test_extensions_root(Some(ext_store.path().to_path_buf()));
+
+        let after_set = agent_extensions_matrix_set(
+            "skill".to_string(),
+            "caveman".to_string(),
+            "rooms".to_string(),
+            None,
+            true,
+        )
+        .await
+        .expect("matrix_set must not fail");
+        assert_eq!(
+            after_set["skills"]["caveman"]["surfaces"][0], "rooms",
+            "matrix_set's own return value must carry the surface: {after_set}"
+        );
+
+        let fetched = agent_extensions_matrix_get()
+            .await
+            .expect("matrix_get must not fail");
+        assert_eq!(
+            fetched["skills"]["caveman"]["surfaces"][0], "rooms",
+            "matrix_get must reload what matrix_set persisted: {fetched}"
+        );
+
+        set_test_extensions_root(None);
+    }
+
+    /// `agent_extensions_matrix_set_item` replaces the whole surface vector,
+    /// and `surfaces: None` clears the entry back to default-enabled.
+    #[tokio::test]
+    async fn matrix_set_item_full_vector_then_clear_round_trips() {
+        let ext_store = tempfile::tempdir().unwrap();
+        set_test_extensions_root(Some(ext_store.path().to_path_buf()));
+
+        let after_set = agent_extensions_matrix_set_item(
+            "skill".to_string(),
+            "caveman".to_string(),
+            Some(vec!["rooms".to_string(), "cowork:p1".to_string()]),
+        )
+        .await
+        .expect("matrix_set_item must not fail");
+        let surfaces = after_set["skills"]["caveman"]["surfaces"]
+            .as_array()
+            .expect("surfaces must be an array");
+        assert_eq!(surfaces.len(), 2, "unexpected surfaces: {after_set}");
+
+        let fetched = agent_extensions_matrix_get()
+            .await
+            .expect("matrix_get must not fail");
+        assert_eq!(
+            fetched["skills"]["caveman"]["surfaces"], after_set["skills"]["caveman"]["surfaces"],
+            "matrix_get must reload what matrix_set_item persisted: {fetched}"
+        );
+
+        let after_clear =
+            agent_extensions_matrix_set_item("skill".to_string(), "caveman".to_string(), None)
+                .await
+                .expect("matrix_set_item clear must not fail");
+        assert!(
+            after_clear["skills"].get("caveman").is_none(),
+            "clear_item must remove the entry entirely: {after_clear}"
+        );
+
+        set_test_extensions_root(None);
+    }
+
+    /// Registering a folder then listing projects returns it, and
+    /// `agent_resolve_extensions("cowork", Some(id))` resolves that id back to
+    /// the folder (rather than treating an unknown/empty id as folderless).
+    #[tokio::test]
+    async fn projects_register_then_list_round_trips() {
+        let registry_store = tempfile::tempdir().unwrap();
+        set_test_registry_root(Some(registry_store.path().to_path_buf()));
+        let project_dir = tempfile::tempdir().unwrap();
+
+        let entry = agent_projects_register(project_dir.path().to_string_lossy().to_string())
+            .await
+            .expect("register must not fail");
+
+        let listed = agent_projects_list().await.expect("list must not fail");
+        assert!(
+            listed.iter().any(|p| p.id == entry.id),
+            "registered project must appear in the list"
+        );
+
+        set_test_registry_root(None);
+    }
+}
+
+use crate::core::agent::memory_consolidation;

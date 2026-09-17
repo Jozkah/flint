@@ -35,6 +35,9 @@
       "resources/bin/uv"
     ],
     "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      },
       "webviewInstallMode": {
         "silent": true,
         "type": "downloadBootstrapper"

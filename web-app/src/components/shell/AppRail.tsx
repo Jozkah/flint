@@ -5,6 +5,7 @@ import {
   Box,
   Folder,
   MessagesSquare,
+  Puzzle,
   Search,
   Settings,
   Wrench,
@@ -22,6 +23,7 @@ const ICONS: Record<RailArea, LucideIcon> = {
   library: BookOpen,
   models: Box,
   tools: Wrench,
+  extensions: Puzzle,
   search: Search,
   system: Activity,
   settings: Settings,
@@ -73,7 +75,7 @@ export function AppRail({ onNavigate, className }: AppRailProps) {
           that is itself wider than the tile guarantees nothing ever overflows —
           without truncating, so no label text is hidden.
         */}
-        <span className="w-full text-center leading-[1.1] [overflow-wrap:anywhere]">{label}</span>
+        <span className="w-full text-center text-[10px] leading-[1.1] tracking-[-0.01em] [overflow-wrap:normal] [word-break:keep-all]">{label}</span>
       </>
     )
     const testId = LEGACY_TEST_IDS[item.id] ?? `rail-${item.id}`

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { Address, Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { checkLimits } from '@/lib/rooms/limits'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,6 +27,20 @@ export function RoomComposer({ room }: { room: Room }) {
   const [to, setTo] = useState('room')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<RoomsUiError | null>(null)
+  const [extendBy, setExtendBy] = useState(3)
+
+  // The room is not running and continuing would immediately hit a soft limit
+  // (whether it stopped on that limit or concluded while already at it). A plain
+  // message would only re-trip it, so offer to raise that limit and continue.
+  // The hard 'ceiling' is not extendable.
+  const blocking =
+    room.status === 'running'
+      ? null
+      : checkLimits(room, Date.now(), { activeSince: Date.now(), callsMade: 0, speaking: true })
+  // Any soft limit blocks; 'ceiling' is the hard cap and cannot be extended.
+  const limitStop = blocking && blocking !== 'ceiling' ? blocking : null
+  // Continue is measured in rounds regardless of which limit was hit.
+  const limitCeiling = ROOM_LIMIT_CEILINGS.maxRounds
 
   const send = async () => {
     const body = text.trim()
@@ -42,14 +57,39 @@ export function RoomComposer({ room }: { room: Room }) {
     }
   }
 
+  const extend = async () => {
+    if (sending) return
+    setSending(true)
+    setError(null)
+    try {
+      const body = text.trim()
+      await api.controller.extendLimit(
+        room.id,
+        extendBy,
+        body || undefined,
+        body ? fromValue(to) : undefined
+      )
+      setText('')
+    } catch (err) {
+      setError(normalizeError(err))
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <form
       className="flex flex-col gap-2 border-t border-border bg-card p-3"
       onSubmit={(e) => {
         e.preventDefault()
-        void send()
+        void (limitStop ? extend() : send())
       }}
     >
+      {limitStop && (
+        <p className="text-xs text-muted-foreground" data-testid="room-limit-notice">
+          {t('rooms:composer.limitReached', { limit: t(`rooms:limits.${limitStop}`) })}
+        </p>
+      )}
       <label htmlFor={`${id}-text`} className="sr-only">
         {t('rooms:composer.label')}
       </label>
@@ -58,13 +98,13 @@ export function RoomComposer({ room }: { room: Room }) {
         value={text}
         rows={2}
         maxLength={ROOM_LIMIT_CEILINGS.maxTextLength}
-        placeholder={t('rooms:composer.placeholder')}
+        placeholder={t(limitStop ? 'rooms:composer.placeholderExtend' : 'rooms:composer.placeholder')}
         aria-describedby={`${id}-hint`}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault()
-            void send()
+            void (limitStop ? extend() : send())
           }
         }}
       />
@@ -93,9 +133,29 @@ export function RoomComposer({ room }: { room: Room }) {
         <span id={`${id}-hint`} className="hidden text-xs text-muted-foreground sm:inline">
           {t('rooms:composer.hint')}
         </span>
-        <Button type="submit" size="sm" className="ml-auto" disabled={!text.trim() || sending}>
-          {t('rooms:composer.send')}
-        </Button>
+        {limitStop ? (
+          <div className="ml-auto flex items-center gap-2">
+            <label htmlFor={`${id}-extend`} className="text-xs text-muted-foreground">
+              {t('rooms:composer.extendBy')}
+            </label>
+            <input
+              id={`${id}-extend`}
+              type="number"
+              min={1}
+              max={limitCeiling}
+              value={extendBy}
+              onChange={(e) => setExtendBy(Math.max(1, Number(e.target.value) || 1))}
+              className={`${selectClassName} h-8 w-16`}
+            />
+            <Button type="submit" size="sm" disabled={sending}>
+              {t('rooms:composer.continue')}
+            </Button>
+          </div>
+        ) : (
+          <Button type="submit" size="sm" className="ml-auto" disabled={!text.trim() || sending}>
+            {t('rooms:composer.send')}
+          </Button>
+        )}
       </div>
       {error && (
         <p role="alert" className="text-xs text-destructive">

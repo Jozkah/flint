@@ -156,6 +156,10 @@ pub enum SpeakingMode {
 pub enum ToolAccess {
     None,
     Read,
+    /// Read plus write/edit, confined to the room's attached folder by a
+    /// direct-edit grant. Requires a folder; falls back to read behaviour with
+    /// none.
+    Edit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -243,6 +247,7 @@ pub struct RoomUsage {
 pub enum ConvergedBy {
     Moderator,
     Repetition,
+    Consensus,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -268,6 +273,11 @@ pub struct Room {
     pub mode: SpeakingMode,
     pub moderator: ModeratorConfig,
     pub participants: Vec<Participant>,
+    /// An optional working folder the room's tool-capable participants read
+    /// from. Absent on rooms created before this existed, and on rooms that
+    /// have not attached one (serde default keeps those loading unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,
@@ -405,6 +415,27 @@ pub struct RoomMessage {
     pub dissent: Option<Vec<RoomDissent>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directive: Option<ModeratorDirective>,
+    /// The read-only tools a tool-capable participant used to produce this
+    /// reply. Absent on messages from participants without tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<RoomToolCall>>,
+}
+
+/// One tool a participant used in its turn, journaled for the transcript.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomToolCall {
+    pub name: String,
+    pub ok: bool,
+    /// The tool's input, kept for the transcript's expandable advanced view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    /// The tool's output (truncated on the frontend), for the advanced view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// The tool came from an MCP server, for the transcript's colouring.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

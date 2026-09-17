@@ -13,11 +13,12 @@ use app_lib::core::agent::plugins::InstalledPlugin;
 use app_lib::core::cli::mcp::{self, split_kv, McpServerEntry};
 use app_lib::core::cli::providers::{load_provider_configs, ProviderOverrides};
 use app_lib::core::cli::run_report::OutputFormat;
+use app_lib::core::cli::stream_input::InputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
-    cli_plugin_remove, cli_plugin_search, ResumeTarget, SessionFlags,
+    cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
 };
 use std::fmt::Write as _;
 
@@ -107,6 +108,28 @@ impl SandboxArgs {
     }
 }
 
+/// Whether this run works in its own git worktree. `None` from neither flag
+/// defers to `[agent].worktree`, then the global `worktree`, then off.
+#[derive(Args, Clone, Copy)]
+struct WorktreeArgs {
+    /// Work in a dedicated git worktree instead of the project directory
+    #[arg(long)]
+    worktree: bool,
+    /// Work in the project directory, overriding a persistent worktree setting
+    #[arg(long, conflicts_with = "worktree")]
+    no_worktree: bool,
+}
+
+impl WorktreeArgs {
+    fn into_flag(self) -> Option<bool> {
+        match (self.worktree, self.no_worktree) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        }
+    }
+}
+
 /// Session-resume selection, shared by the bare TUI and `flint cli agent run`.
 /// Threads are per-project (`<project>/.jan/agent/threads`), so resuming from a
 /// different working directory simply finds nothing there.
@@ -118,11 +141,15 @@ struct ResumeArgs {
     /// Resume the most recent session (alias for a bare --resume)
     #[arg(long = "continue", short = 'c', conflicts_with = "resume")]
     continue_session: bool,
+    /// Branch the resumed session into a new one rather than continuing it in
+    /// place; alone, forks the most recent session
+    #[arg(long = "fork-session")]
+    fork_session: bool,
 }
 
 impl ResumeArgs {
-    fn into_target(self) -> Option<ResumeTarget> {
-        ResumeTarget::from_flags(self.resume, self.continue_session)
+    fn into_request(self) -> Option<ResumeRequest> {
+        ResumeRequest::from_flags(self.resume, self.continue_session, self.fork_session)
     }
 }
 
@@ -142,11 +169,15 @@ struct ResumeRunArgs {
     /// such a session; completed tool calls are kept either way (AH-026)
     #[arg(long, value_enum, value_name = "CHOICE")]
     interrupted: Option<app_lib::core::cli::inflight::InterruptedChoice>,
+    /// Branch the resumed session into a new one rather than continuing it in
+    /// place; alone, forks the most recent session
+    #[arg(long = "fork-session")]
+    fork_session: bool,
 }
 
 impl ResumeRunArgs {
-    fn into_target(self) -> Option<ResumeTarget> {
-        ResumeTarget::from_flags(self.resume, self.continue_session)
+    fn into_request(self) -> Option<ResumeRequest> {
+        ResumeRequest::from_flags(self.resume, self.continue_session, self.fork_session)
     }
 }
 
@@ -201,6 +232,13 @@ enum Commands {
         /// Directory for the archive (default: <data folder>/diagnostics)
         #[arg(long, value_name = "DIR")]
         out: Option<std::path::PathBuf>,
+    },
+    /// Show system hardware info (CPU, memory, GPUs) and check readiness
+    #[command(display_order = 7)]
+    Doctor {
+        /// Print as JSON instead of a human-readable table
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -391,11 +429,19 @@ enum AgentCommands {
         #[command(flatten)]
         sandbox: SandboxArgs,
         #[command(flatten)]
+        worktree: WorktreeArgs,
+        #[command(flatten)]
         resume: ResumeRunArgs,
         /// `text` streams the answer as it arrives; `json` prints one result
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+        /// `stream-json` reads newline-delimited `user` and `permission`
+        /// messages from stdin while the run is in flight; it requires
+        /// `--output-format stream-json`. `text` (the default) does not read
+        /// stdin.
+        #[arg(long, value_enum, default_value_t = InputFormat::Text)]
+        input_format: InputFormat,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -853,6 +899,28 @@ enum ModelsCommands {
         #[arg(long, default_value = ".")]
         project: String,
     },
+    /// List locally downloaded models (in the llamacpp/models directory)
+    ListLocal {
+        /// Print as JSON instead of a table
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show metadata for a local model directory
+    Info {
+        /// Model ID (directory name in llamacpp/models/) or path to a .gguf file
+        path: String,
+        /// Print as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a locally downloaded model
+    Delete {
+        /// Model ID (directory name in llamacpp/models/)
+        id: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 // ── MCP subcommands ────────────────────────────────────────────────────────
@@ -1045,7 +1113,7 @@ async fn run() {
                 sandbox: cli.sandbox.into_flag(),
                 ..Default::default()
             },
-            cli.resume.into_target(),
+            cli.resume.into_request(),
         )
         .await
         {
@@ -1082,6 +1150,7 @@ async fn run() {
             yes,
             out,
         } => handle_bug_report(thread, show, yes, out),
+        Commands::Doctor { json } => handle_doctor(json),
     }
 }
 
@@ -1501,8 +1570,10 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            worktree,
             resume,
             output_format,
+            input_format,
             events,
             profile,
             output_density,
@@ -1523,6 +1594,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 SessionFlags {
                     auto_approve: !safe,
                     sandbox: sandbox.into_flag(),
+                    worktree: worktree.into_flag(),
                     profile,
                     density: match output_density
                         .as_deref()
@@ -1546,8 +1618,9 @@ async fn handle_agent(cmd: AgentCommands) {
                     interrupted: resume.interrupted,
                     ..Default::default()
                 },
-                resume.into_target(),
+                resume.into_request(),
                 output_format,
+                input_format,
             )
             .await
         }
@@ -2486,6 +2559,186 @@ async fn handle_models(cmd: ModelsCommands) {
                 );
             }
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        }
+        ModelsCommands::ListLocal { json } => handle_models_list_local(json),
+        ModelsCommands::Info { path, json } => handle_models_info(&path, json),
+        ModelsCommands::Delete { id, yes } => handle_models_delete(&id, yes),
+    }
+}
+
+fn models_dir() -> std::path::PathBuf {
+    app_lib::core::app::commands::resolve_jan_data_folder()
+        .join("llamacpp")
+        .join("models")
+}
+
+fn handle_models_list_local(json: bool) {
+    let dir = models_dir();
+    if !dir.is_dir() {
+        if json {
+            println!("[]");
+        } else {
+            eprintln!("No local models directory: {}", dir.display());
+        }
+        return;
+    }
+    let Ok(readdir) = std::fs::read_dir(&dir) else {
+        eprintln!("Error: cannot read {}", dir.display());
+        std::process::exit(1);
+    };
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    for entry in readdir.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        let gguf = path.join("model.gguf");
+        let (size_bytes, modified) = if gguf.is_file() {
+            let meta = std::fs::metadata(&gguf).ok();
+            (
+                meta.as_ref().map(|m| m.len()),
+                meta.and_then(|m| m.modified().ok()).map(|t| {
+                    chrono::DateTime::<chrono::Utc>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                }),
+            )
+        } else {
+            (None, None)
+        };
+        entries.push(serde_json::json!({
+            "id": id,
+            "path": path.to_string_lossy(),
+            "has_gguf": gguf.is_file(),
+            "size_bytes": size_bytes,
+            "modified": modified,
+        }));
+    }
+    entries.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&entries).unwrap());
+    } else if entries.is_empty() {
+        println!("No local models found in {}", dir.display());
+    } else {
+        let bold = Style::new().bold();
+        println!("{}", bold.apply_to("Local models:"));
+        for e in &entries {
+            let id = e["id"].as_str().unwrap_or("?");
+            let size = e["size_bytes"]
+                .as_u64()
+                .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
+                .unwrap_or_else(|| "no .gguf".into());
+            let modified = e["modified"].as_str().unwrap_or("-");
+            println!("  {id}  ({size}, {modified})");
+        }
+    }
+}
+
+fn handle_models_info(path_or_id: &str, json: bool) {
+    let path = if path_or_id.contains('/')
+        || path_or_id.contains('\\')
+        || path_or_id.ends_with(".gguf")
+    {
+        std::path::PathBuf::from(path_or_id)
+    } else {
+        models_dir().join(path_or_id)
+    };
+
+    if !path.exists() {
+        eprintln!("Error: not found: {}", path.display());
+        std::process::exit(1);
+    }
+
+    let gguf = if path.is_dir() {
+        path.join("model.gguf")
+    } else {
+        path.clone()
+    };
+
+    let meta = std::fs::metadata(&gguf).ok();
+    let info = serde_json::json!({
+        "path": path.to_string_lossy(),
+        "gguf_path": gguf.to_string_lossy(),
+        "exists": gguf.is_file(),
+        "size_bytes": meta.as_ref().map(|m| m.len()),
+        "modified": meta.and_then(|m| m.modified().ok())
+            .map(|t| chrono::DateTime::<chrono::Utc>::from(t).format("%Y-%m-%d %H:%M:%S").to_string()),
+    });
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        println!("Path:     {}", info["path"].as_str().unwrap_or("?"));
+        println!(
+            "GGUF:     {}",
+            if gguf.is_file() { "present" } else { "missing" }
+        );
+        if let Some(size) = info["size_bytes"].as_u64() {
+            println!("Size:     {:.1} GB", size as f64 / 1_073_741_824.0);
+        }
+        if let Some(modified) = info["modified"].as_str() {
+            println!("Modified: {modified}");
+        }
+    }
+}
+
+fn handle_models_delete(id: &str, yes: bool) {
+    let dir = models_dir().join(id);
+    if !dir.is_dir() {
+        eprintln!("Error: model directory not found: {}", dir.display());
+        std::process::exit(1);
+    }
+    if !yes {
+        eprint!("Delete model '{}' at {}? [y/N] ", id, dir.display());
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).ok();
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        eprintln!("Error deleting {}: {e}", dir.display());
+        std::process::exit(1);
+    }
+    println!("Deleted model '{id}'.");
+}
+
+// ── Doctor handler ──────────────────────────────────────────────────────
+
+fn handle_doctor(json: bool) {
+    let info = tauri_plugin_hardware::get_system_info();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        let bold = Style::new().bold();
+        println!("{}", bold.apply_to("System Information"));
+        println!("  OS:     {} ({})", info.os_name, info.os_type);
+        println!(
+            "  CPU:    {} ({} cores, {})",
+            info.cpu.name, info.cpu.core_count, info.cpu.arch
+        );
+        if !info.cpu.extensions.is_empty() {
+            println!("  ISA:    {}", info.cpu.extensions.join(", "));
+        }
+        println!("  Memory: {} MiB", info.total_memory);
+        if info.gpus.is_empty() {
+            println!("  GPUs:   none detected");
+        } else {
+            println!("{}", bold.apply_to("GPUs"));
+            for gpu in &info.gpus {
+                let vram = if gpu.total_memory > 0 {
+                    format!("{} MiB", gpu.total_memory)
+                } else {
+                    "unknown".into()
+                };
+                println!(
+                    "  {} ({:?}, VRAM {}, driver {})",
+                    gpu.name, gpu.vendor, vram, gpu.driver_version
+                );
+            }
         }
     }
 }

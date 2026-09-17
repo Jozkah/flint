@@ -11,6 +11,7 @@ import type {
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +21,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { normalizeError, useRoomsApi, useRoomsState, type RoomsUiError } from './roomsBindings'
 import { activeParticipants, clampLimit, isEditable, limitCeiling } from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
+import { RoomSection } from './RoomSection'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -151,6 +153,7 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
+  const serviceHub = useServiceHub()
   const { pendingAction } = useRoomsState()
   const providers = useModelProvider((s) => s.providers)
   const uid = useId()
@@ -227,13 +230,16 @@ export function RoomEditor({ room }: { room: Room }) {
       const nextParticipants = room.participants.map((p) => {
         const d = participants.find((x) => x.id === p.id)
         if (!d) return p
-        const tools = modelSupportsTools(findModel(providers, d.model))
+        // Send the chosen access as-is; the controller drops it to 'none' only
+        // when the model resolves and truly lacks tools. Forcing 'none' here
+        // when the provider's model list has not loaded (findModel undefined)
+        // would silently and permanently strip access the user set.
         return {
           ...p,
           name: d.name.trim(),
           role: d.role.trim(),
           model: d.model,
-          toolAccess: tools ? d.toolAccess : ('none' as const),
+          toolAccess: d.toolAccess,
           pricing: parsePricing(d),
         }
       })
@@ -271,7 +277,8 @@ export function RoomEditor({ room }: { room: Room }) {
         name: newName.trim(),
         role: newRole.trim(),
         model: newModel,
-        toolAccess: 'none',
+        // Omitted so the controller applies its default (read-only for a
+        // tool-capable model), rather than starting the participant tool-less.
       })
       setNewName('')
       setNewRole('')
@@ -290,6 +297,26 @@ export function RoomEditor({ room }: { room: Room }) {
     }
   }
 
+  const attachFolder = async () => {
+    setError(null)
+    try {
+      const picked = await serviceHub.dialog().open({ directory: true })
+      const path = Array.isArray(picked) ? picked[0] : picked
+      if (!path) return
+      await api.updateRoomSettings(room, { folder: path })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const detachFolder = async () => {
+    setError(null)
+    try {
+      await api.updateRoomSettings(room, { folder: null })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+
   return (
     <form
       aria-labelledby={`${uid}-heading`}
@@ -299,30 +326,77 @@ export function RoomEditor({ room }: { room: Room }) {
         void save()
       }}
     >
-      <h2 id={`${uid}-heading`} className="text-sm font-semibold">
-        {t('rooms:editor.heading')}
-      </h2>
+      <div className="px-1">
+        <h2 id={`${uid}-heading`} className="text-sm font-semibold text-foreground">
+          {t('rooms:editor.heading')}
+        </h2>
+      </div>
       {locked && (
-        <p role="note" className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+        <p
+          role="note"
+          className="rounded-lg border border-border bg-muted/60 p-2.5 text-xs text-muted-foreground"
+        >
           {t('rooms:editor.lockedWhileRunning')}
         </p>
       )}
 
-      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
-          <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
-          <Textarea
-            id={`${uid}-objective`}
-            rows={3}
-            value={objective}
-            onChange={(e) => edit(setObjective)(e.target.value)}
-          />
-        </div>
+      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
+        <RoomSection title={t('rooms:editor.sectionGeneral')} collapsible defaultOpen>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
+            <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
+            <Textarea
+              id={`${uid}-objective`}
+              rows={3}
+              value={objective}
+              onChange={(e) => edit(setObjective)(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t('rooms:editor.workingFolder')}</Label>
+            <p className="text-xs text-muted-foreground">
+              {t('rooms:editor.workingFolderHint')}
+            </p>
+            {room.folder ? (
+              <div className="flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2 py-1 text-xs">
+                  {room.folder}
+                </code>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void attachFolder()}
+                >
+                  {t('rooms:editor.changeFolder')}
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => void detachFolder()}
+                >
+                  {t('rooms:editor.detachFolder')}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => void attachFolder()}
+              >
+                {t('rooms:editor.attachFolder')}
+              </Button>
+            )}
+          </div>
+        </RoomSection>
 
+        <RoomSection title={t('rooms:editor.sectionDiscussion')} collapsible>
         <div className="flex flex-col gap-2">
           <span id={`${uid}-mode`} className="text-sm font-medium">
             {t('rooms:editor.speakingMode')}
@@ -348,7 +422,10 @@ export function RoomEditor({ room }: { room: Room }) {
           <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
         </div>
 
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-mod-heading`}>
+        <section
+          className="flex flex-col gap-2 border-t border-border pt-4"
+          aria-labelledby={`${uid}-mod-heading`}
+        >
           <h3 id={`${uid}-mod-heading`} className="text-sm font-medium">
             {t('rooms:editor.moderator')}
           </h3>
@@ -392,14 +469,16 @@ export function RoomEditor({ room }: { room: Room }) {
             </div>
           )}
         </section>
+        </RoomSection>
 
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-p-heading`}>
-          <h3 id={`${uid}-p-heading`} className="text-sm font-medium">
-            {t('rooms:editor.participants')}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-          </p>
+        <RoomSection
+          title={`${t('rooms:editor.participants')} · ${participants.length}`}
+          description={t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
+          collapsible
+          defaultOpen
+          contentClassName="gap-2"
+        >
+        <section className="flex flex-col gap-2">
           {participants.length === 0 && (
             <p className="text-sm text-muted-foreground">{t('rooms:editor.noParticipants')}</p>
           )}
@@ -413,7 +492,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 <li
                   key={p.id}
                   data-testid="room-participant"
-                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-card p-3"
+                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-background p-3"
                 >
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="flex min-w-0 flex-col gap-1.5">
@@ -472,17 +551,27 @@ export function RoomEditor({ room }: { room: Room }) {
                       onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
                       className="flex flex-wrap gap-4"
                     >
-                      {(['none', 'read'] as const).map((v) => (
+                      {(['none', 'read', 'edit'] as const).map((v) => (
                         <div key={v} className="flex items-center gap-2">
                           <RadioGroupItem id={`${pid}-tools-${v}`} value={v} />
                           <Label htmlFor={`${pid}-tools-${v}`}>
-                            {t(v === 'none' ? 'rooms:editor.toolNone' : 'rooms:editor.toolRead')}
+                            {t(
+                              v === 'none'
+                                ? 'rooms:editor.toolNone'
+                                : v === 'read'
+                                  ? 'rooms:editor.toolRead'
+                                  : 'rooms:editor.toolEdit'
+                            )}
                           </Label>
                         </div>
                       ))}
                     </RadioGroup>
                     <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
-                      {tools ? t('rooms:editor.toolReadHint') : t('rooms:editor.toolUnsupported')}
+                      {!tools
+                        ? t('rooms:editor.toolUnsupported')
+                        : p.toolAccess === 'edit'
+                          ? t('rooms:editor.toolEditHint')
+                          : t('rooms:editor.toolReadHint')}
                     </p>
                   </div>
 
@@ -533,7 +622,7 @@ export function RoomEditor({ room }: { room: Room }) {
             })}
           </ul>
 
-          <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-dashed border-border p-3">
+          <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-dashed border-border bg-background/60 p-3">
             <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
             {atMax ? (
               <p className="text-xs text-muted-foreground">
@@ -585,11 +674,13 @@ export function RoomEditor({ room }: { room: Room }) {
           </div>
         </section>
 
-        <section className="flex flex-col gap-2" aria-labelledby={`${uid}-l-heading`}>
-          <h3 id={`${uid}-l-heading`} className="text-sm font-medium">
-            {t('rooms:editor.limits')}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t('rooms:editor.limitsHint')}</p>
+        </RoomSection>
+
+        <RoomSection
+          title={t('rooms:editor.limits')}
+          description={t('rooms:editor.limitsHint')}
+          collapsible
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             {LIMIT_KEYS.map((key) => {
               const lid = `${uid}-limit-${key}`
@@ -629,14 +720,14 @@ export function RoomEditor({ room }: { room: Room }) {
               )
             })}
           </div>
-        </section>
+        </RoomSection>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm">
+        <div className="flex flex-col items-stretch gap-2 pt-1">
+          <Button type="submit" className="w-full">
             {t('rooms:editor.save')}
           </Button>
           {saved && (
-            <span role="status" className="text-xs text-muted-foreground">
+            <span role="status" className="text-center text-xs text-muted-foreground">
               {t('rooms:editor.saved')}
             </span>
           )}

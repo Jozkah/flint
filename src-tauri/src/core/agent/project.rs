@@ -37,6 +37,13 @@ pub(crate) struct AgentToml {
     /// `[[routing]]` -- which model answers what (AH-194).
     #[serde(default)]
     pub routing: Vec<crate::core::agent::routing::RoutingRule>,
+    /// `[models]` -- an allowlist and alias map over the model a run may use,
+    /// applied at model-id finalization.
+    #[serde(default)]
+    pub models: crate::core::agent::routing::ModelPolicy,
+    /// `[auto_mode]` -- the autonomous-mode safety classifier, off by default.
+    #[serde(default)]
+    pub auto_mode: crate::core::agent::auto_mode::AutoModePolicy,
     /// `[output]` -- how much a run says about itself (AH-181).
     #[cfg(feature = "cli")]
     #[serde(default)]
@@ -314,6 +321,11 @@ pub(crate) struct AgentSection {
     /// out of the context budget.
     #[serde(default)]
     pub send_reasoning: Option<bool>,
+    /// Give each session in this project its own git worktree, so the agent's
+    /// edits land in a separate checkout instead of the user's. `None` = defer
+    /// to the global `worktree` setting, then the default, off.
+    #[serde(default)]
+    pub worktree: Option<bool>,
 }
 
 // `default`/`allow`/`deny`/`allow_write` are consumed by `permissions_from`,
@@ -459,8 +471,14 @@ pub(crate) fn agent_toml_path(project_root: &Path) -> PathBuf {
 
 /// Load + parse agent.toml. Err if missing or malformed (path included in message).
 pub(crate) fn load_agent_config(project_root: &Path) -> Result<AgentToml, String> {
-    let path = agent_toml_path(project_root);
-    let raw = std::fs::read_to_string(&path)
+    load_agent_config_at(&agent_toml_path(project_root))
+}
+
+/// [`load_agent_config`] at an explicit path rather than a project root's
+/// `.jan/agent/agent.toml` -- used for the global agent config, which lives
+/// directly at `<store>/agent.toml`.
+pub(crate) fn load_agent_config_at(path: &Path) -> Result<AgentToml, String> {
+    let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
     toml::from_str(&raw).map_err(|e| format!("Failed to parse {}: {e}", path.display()))
 }
@@ -485,6 +503,11 @@ pub(crate) struct RunSettings {
     pub sandbox: Option<bool>,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
+    /// `[agent].worktree`: give each session its own git checkout. Merged with
+    /// the global setting and the `--worktree` flag by the caller. CLI-only,
+    /// like the `[agent]` section it comes from.
+    #[cfg(feature = "cli")]
+    pub worktree: Option<bool>,
 }
 
 /// A missing or malformed config yields defaults rather than an error: a project
@@ -506,6 +529,8 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
+        #[cfg(feature = "cli")]
+        worktree: cfg.agent.worktree,
     }
 }
 

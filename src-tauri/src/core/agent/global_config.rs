@@ -22,6 +22,9 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 # sandbox = true                      # run `bash` under OS confinement (same as
 #                                     # passing --sandbox); off by default, so
 #                                     # shell commands run with your own access
+# worktree = true                     # run each session in its own git worktree
+#                                     # (same as passing --worktree); off by
+#                                     # default, so the agent edits your checkout
 # think_tags = false                  # stop treating <think> tags in model
 #                                     # content as reasoning; they render and
 #                                     # are resent as ordinary prose. On by
@@ -29,6 +32,9 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 # stream_reasoning = false            # stop streaming reasoning into the TUI
 #                                     # live tail while it folds; only the
 #                                     # [thinking] badge shows it. On by default
+# theme = "light"                     # force the TUI colour theme: "light",
+#                                     # "dark", or "auto" (the default), which
+#                                     # detects the terminal background
 # ask_timeout_secs = 60             # auto-answer an unanswered `ask` prompt
 #                                     # after this many seconds, choosing each
 #                                     # question's recommended option (else its
@@ -71,6 +77,10 @@ struct GlobalConfigToml {
     /// `--sandbox` flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sandbox: Option<bool>,
+    /// Give each session its own git worktree to work in. `None` = the
+    /// default, off. The "permanently on" answer to `--worktree`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    worktree: Option<bool>,
     /// Parse `<think>` tags in model *content* as reasoning. `None` = the
     /// default, on. Native `reasoning_content` streaming is a separate
     /// mechanism and is unaffected.
@@ -81,6 +91,11 @@ struct GlobalConfigToml {
     /// reasoning for good.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stream_reasoning: Option<bool>,
+    /// TUI colour theme: `"light"`, `"dark"`, or `"auto"`. `None` = the default,
+    /// auto, which detects the terminal background. Any other string also reads
+    /// as auto so a typo degrades to detection rather than an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    theme: Option<String>,
     /// Auto-answer an unanswered `ask` tool prompt after this many seconds,
     /// selecting each question's recommended option (or its first option when
     /// none is recommended). `None` = the default, and `0` is treated the same:
@@ -316,6 +331,13 @@ pub(crate) fn sandbox_setting() -> Option<bool> {
     load_raw().ok().and_then(|config| config.sandbox)
 }
 
+/// Whether a session gets its own git worktree by default (`worktree` in
+/// `~/.jan/config.toml`). `None` when unset, so a project's `agent.toml` or the
+/// `--worktree` flag decides first. Unreadable config yields `None`, like
+/// [`sandbox_setting`]: a preference must not block a session from starting.
+pub(crate) fn worktree_setting() -> Option<bool> {
+    load_raw().ok().and_then(|config| config.worktree)
+}
 /// Whether inline `<think>` tags in model content are parsed as reasoning
 /// (`think_tags` in `~/.jan/config.toml`), defaulting to on. `false` makes the
 /// tags ordinary prose: rendered verbatim, kept in the answer sent back as
@@ -341,6 +363,14 @@ pub(crate) fn stream_reasoning_enabled() -> bool {
         .ok()
         .and_then(|config| config.stream_reasoning)
         .unwrap_or(true)
+}
+
+/// The TUI colour-theme preference (`theme` in `~/.jan/config.toml`): `"light"`,
+/// `"dark"`, or `"auto"`. `None` when unset, which the TUI treats as auto-detect
+/// from the terminal background. An unreadable or malformed config yields `None`
+/// so a display preference never blocks startup.
+pub(crate) fn theme_setting() -> Option<String> {
+    load_raw().ok().and_then(|config| config.theme)
 }
 
 /// How long an unanswered `ask` prompt waits before it auto-answers with each
@@ -425,6 +455,7 @@ const ROOT_KEYS: &[&str] = &[
     "sandbox",
     "think_tags",
     "stream_reasoning",
+    "theme",
     "ask_timeout_secs",
     "terminal_hint",
     "wave",
@@ -1084,6 +1115,23 @@ mod tests {
                 stream_reasoning_enabled(),
                 "an unreadable config keeps the default"
             );
+        });
+    }
+
+    #[test]
+    fn theme_defaults_unset_and_reads_the_toml_key() {
+        with_temp_home(|_| {
+            assert_eq!(theme_setting(), None, "missing file -> auto (unset)");
+            let path = ensure_global_config().expect("ensure");
+            assert_eq!(theme_setting(), None, "scaffolded file only comments it");
+
+            std::fs::write(&path, "theme = \"light\"\n").unwrap();
+            assert_eq!(theme_setting().as_deref(), Some("light"));
+            std::fs::write(&path, "theme = \"dark\"\n").unwrap();
+            assert_eq!(theme_setting().as_deref(), Some("dark"));
+
+            std::fs::write(&path, "not valid toml [[[").unwrap();
+            assert_eq!(theme_setting(), None, "an unreadable config reads as auto");
         });
     }
 

@@ -444,6 +444,67 @@ fn plugins_section(root: &Path) -> PluginsSection {
         .unwrap_or_default()
 }
 
+/// [`plugins_section`], generalized to a [`PluginScope`]. `Global` reads
+/// `<store>/agent.toml` -- the global agent config, sibling of the global
+/// `plugins/`/`skills/` directories under the same store -- rather than any
+/// project's `.jan/agent/agent.toml`. Missing/malformed still falls back to
+/// defaults (no marketplace, nothing disabled), same as a project without one.
+fn plugins_section_for_scope(scope: &PluginScope) -> PluginsSection {
+    match scope {
+        PluginScope::Project(root) => plugins_section(root),
+        PluginScope::Global => {
+            crate::core::agent::project::load_agent_config_at(&global_agent_toml_path())
+                .ok()
+                .map(|c| c.plugins)
+                .unwrap_or_default()
+        }
+    }
+}
+
+/// Path to the global agent config: `<store>/agent.toml`, where `<store>` is
+/// the same store `plugin_root_dir`'s `Global` arm and `user_plugins_dir`
+/// resolve under (`<jan_data_folder>/agent-workspace` outside tests, or the
+/// `set_test_user_plugins` override inside them).
+fn global_agent_toml_path() -> PathBuf {
+    match skills::user_plugin_store_root() {
+        Some(store) => store.join("agent.toml"),
+        None => {
+            let data = crate::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::workspace::permanent_store(&data).join("agent.toml")
+        }
+    }
+}
+
+/// Where a plugin manager operation targets its `plugins/` directory: a
+/// single project's `.jan/agent/plugins/`, or the user's own global store
+/// shared by every workspace (`<jan_data_folder>/agent-workspace/plugins/`,
+/// same store `skills::user_plugins_dir` discovers from). `Project` is the
+/// default everywhere for backward compatibility -- every existing caller
+/// keeps installing, listing and removing per-project unless it opts into
+/// `Global`.
+#[derive(Debug, Clone)]
+pub(crate) enum PluginScope {
+    Project(PathBuf),
+    #[cfg_attr(feature = "cli", allow(dead_code))]
+    Global,
+}
+
+/// The `plugins/` directory a scope resolves to. `Global` honours the same
+/// `skills::set_test_user_plugins` override the discovery tests use, so a
+/// test can point it at a temp store without touching the real data folder;
+/// outside tests it is `<jan_data_folder>/agent-workspace/plugins`.
+pub(crate) fn plugin_root_dir(scope: &PluginScope) -> PathBuf {
+    match scope {
+        PluginScope::Project(root) => skills::plugins_dir(root),
+        PluginScope::Global => skills::user_plugins_dir().unwrap_or_else(|| {
+            let data = crate::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::skills::plugins_dir(
+                &tauri_plugin_agent_tools::workspace::permanent_store(&data),
+            )
+        }),
+    }
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -464,6 +525,8 @@ fn read_install_record(plugin_dir: &Path) -> Option<InstallRecord> {
 /// Every installed plugin, sorted by display name. Staging directories from
 /// interrupted installs are intentionally excluded. Disabled plugins are
 /// listed (with `enabled: false`) and keep their component counts.
+// (cli-only) the desktop path now goes through `installed_scoped`.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn installed(root: &Path) -> Vec<InstalledPlugin> {
     installed_entries(root)
         .into_iter()
@@ -545,6 +608,82 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
     out
 }
 
+/// [`installed_entries`], generalized to a [`PluginScope`]. `Project` behaves
+/// exactly as before. `Global` has no `agent.toml` of its own, so a global
+/// plugin has no disabled list to consult (always `enabled: true`) and no
+/// project-scoped skill/command/agent discovery to count against (those
+/// counts are `0`; `agent_plugin_details` still lists names for a global
+/// plugin by reading its directory directly).
+fn installed_entries_scoped(scope: &PluginScope) -> Vec<(String, InstalledPlugin)> {
+    if let PluginScope::Project(root) = scope {
+        return installed_entries(root);
+    }
+    let dir = plugin_root_dir(scope);
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let Some(directory) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if directory.starts_with(STAGING_PREFIX) {
+            continue;
+        }
+        let manifest = read_manifest(&path);
+        let record = read_install_record(&path);
+        out.push((
+            directory.to_string(),
+            InstalledPlugin {
+                id: directory.to_string(),
+                name: manifest.name.unwrap_or_else(|| directory.to_string()),
+                description: manifest.description.unwrap_or_default(),
+                version: manifest.version.unwrap_or_else(|| "0.0.0".to_string()),
+                repo: manifest
+                    .repo
+                    .or_else(|| {
+                        record
+                            .as_ref()
+                            .filter(|r| r.source_kind != "local")
+                            .map(|r| r.source.clone())
+                    })
+                    .unwrap_or_default(),
+                skills: 0,
+                commands: 0,
+                agents: 0,
+                enabled: true,
+                source_kind: record.as_ref().map(|r| r.source_kind.clone()),
+                source: record.map(|r| r.source),
+            },
+        ));
+    }
+    out.sort_by(|a, b| a.1.name.cmp(&b.1.name));
+    out
+}
+
+/// [`installed`], scoped to a project or the global store.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn installed_scoped(scope: &PluginScope) -> Vec<InstalledPlugin> {
+    installed_entries_scoped(scope)
+        .into_iter()
+        .map(|(_, plugin)| plugin)
+        .collect()
+}
+
+/// [`find_installed`], scoped to a project or the global store.
+fn find_installed_scoped(scope: &PluginScope, query: &str) -> Option<(String, InstalledPlugin)> {
+    let query = skills::safe_stem(query).ok()?;
+    let entries = installed_entries_scoped(scope);
+    if let Some(hit) = entries.iter().find(|(directory, _)| directory == &query) {
+        return Some(hit.clone());
+    }
+    entries.into_iter().find(|(_, plugin)| plugin.name == query)
+}
+
 /// Resolve an installed plugin by id (directory name), erroring when absent.
 fn require_installed(root: &Path, id: &str) -> Result<(String, InstalledPlugin), PluginError> {
     skills::safe_stem(id).map_err(|_| {
@@ -591,6 +730,42 @@ pub(crate) fn details(root: &Path, id: &str) -> Result<PluginDetails, PluginErro
         skill_names,
         command_names,
         agent_names,
+        has_mcp_config: dir.join(".mcp.json").is_file(),
+        executable_file_count: executables.len(),
+        executable_files: executables
+            .into_iter()
+            .take(MAX_LISTED_EXECUTABLES)
+            .collect(),
+        plugin,
+    })
+}
+
+/// [`details`], scoped to a project or the global store. `Global` has no
+/// per-project skill/command/agent discovery to name, so those lists are
+/// empty; the identity, provenance and executable-file listing (all
+/// directory reads) are unaffected.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn details_scoped(scope: &PluginScope, id: &str) -> Result<PluginDetails, PluginError> {
+    let root = match scope {
+        PluginScope::Project(root) => return details(root, id),
+        PluginScope::Global => plugin_root_dir(scope),
+    };
+    let (directory, plugin) = find_installed_scoped(scope, id).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::NotInstalled,
+            format!("plugin '{id}' is not installed"),
+        )
+    })?;
+    let dir = root.join(&directory);
+    let record = read_install_record(&dir);
+    let executables = executable_files(&dir);
+    Ok(PluginDetails {
+        installed_path: dir.display().to_string(),
+        installed_at_ms: record.as_ref().map(|r| r.installed_at_ms),
+        git_ref: record.as_ref().and_then(|r| r.git_ref.clone()),
+        skill_names: Vec::new(),
+        command_names: Vec::new(),
+        agent_names: Vec::new(),
         has_mcp_config: dir.join(".mcp.json").is_file(),
         executable_file_count: executables.len(),
         executable_files: executables
@@ -701,6 +876,24 @@ pub(crate) fn set_enabled(
         })
 }
 
+/// [`set_enabled`], scoped to a project or the global store. `Global` has no
+/// `agent.toml` to persist a disabled list into -- a global plugin is always
+/// enabled -- so this refuses rather than silently doing nothing.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn set_enabled_scoped(
+    scope: &PluginScope,
+    id: &str,
+    enabled: bool,
+) -> Result<InstalledPlugin, PluginError> {
+    match scope {
+        PluginScope::Project(root) => set_enabled(root, id, enabled),
+        PluginScope::Global => Err(PluginError::new(
+            PluginErrorCode::ProjectUnavailable,
+            "global plugins have no per-project enable/disable state",
+        )),
+    }
+}
+
 /// Remove an installed plugin: delete its directory, then drop its id from
 /// `[plugins].disabled` and every `[skills].enabled` entry naming it.
 ///
@@ -778,11 +971,58 @@ pub(crate) fn remove(root: &Path, name: &str) -> Result<(), String> {
     remove_plugin(root, name).map(|_| ()).map_err(String::from)
 }
 
-/// Which sources the project can install from.
+/// [`remove_plugin`], scoped to a project or the global store. `Global` has
+/// no `agent.toml`, so removal is just deleting the plugin directory -- there
+/// is no `[plugins].disabled` or `[skills].enabled` entry naming a global
+/// plugin to clean up.
 #[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn remove_plugin_scoped(
+    scope: &PluginScope,
+    query: &str,
+) -> Result<RemoveReport, PluginError> {
+    if let PluginScope::Project(root) = scope {
+        return remove_plugin(root, query);
+    }
+    let (directory, plugin) = find_installed_scoped(scope, query).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::NotInstalled,
+            format!("plugin '{query}' is not installed"),
+        )
+    })?;
+    let target = plugin_root_dir(scope).join(&directory);
+    std::fs::remove_dir_all(&target)
+        .map_err(|e| PluginError::io(format!("could not remove {}: {e}", target.display())))?;
+    Ok(RemoveReport {
+        id: directory,
+        name: plugin.name,
+        removed_path: target.display().to_string(),
+        removed_from_disabled: false,
+        removed_skill_entries: Vec::new(),
+    })
+}
+
+/// Which sources the project can install from.
+// (dead in both configs now: the desktop path goes through `sources_scoped`,
+// and no CLI surface calls this directly either) kept for API stability.
+#[allow(dead_code)]
 pub(crate) fn sources(root: &Path) -> PluginSources {
     PluginSources {
         marketplace: plugins_section(root).marketplace,
+        git_available: git_command()
+            .arg("--version")
+            .stdin(Stdio::null())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false),
+    }
+}
+
+/// [`sources`], scoped to a project or the global store (which has no
+/// marketplace of its own; see [`plugins_section_for_scope`]).
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn sources_scoped(scope: &PluginScope) -> PluginSources {
+    PluginSources {
+        marketplace: plugins_section_for_scope(scope).marketplace,
         git_available: git_command()
             .arg("--version")
             .stdin(Stdio::null())
@@ -1272,7 +1512,7 @@ struct Staged {
 /// for more than one (interactive CLI). Already-installed plugins are skipped,
 /// not reported as errors.
 fn install_git(
-    root: &Path,
+    scope: &PluginScope,
     url: &str,
     r#ref: Option<&str>,
     collection: CollectionChoice,
@@ -1280,7 +1520,7 @@ fn install_git(
     source_kind: &str,
 ) -> Result<GitInstall, PluginError> {
     let source = parse_git_source(url)?;
-    let plugins = skills::plugins_dir(root);
+    let plugins = plugin_root_dir(scope);
     std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
     ctx.check()?;
     let tmp = new_staging(&plugins);
@@ -1337,13 +1577,13 @@ fn install_git(
             installed_at_ms: 0,
         },
     };
-    finish_install(root, &plugins, staged, collection, ctx, &source.url)
+    finish_install(scope, &plugins, staged, collection, ctx, &source.url)
 }
 
 /// Copy a local folder into a staging dir, then install from it. Nothing is
 /// cloned, fetched or executed. `on_file` runs after each copied file.
 fn install_local(
-    root: &Path,
+    scope: &PluginScope,
     src: &Path,
     collection: CollectionChoice,
     ctx: &InstallCtx,
@@ -1355,7 +1595,7 @@ fn install_local(
             format!("folder does not exist: {}", src.display()),
         ));
     }
-    let plugins = skills::plugins_dir(root);
+    let plugins = plugin_root_dir(scope);
     std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
     // Copying a folder that contains the plugins directory (the project root,
     // say) would copy the staging directory into itself.
@@ -1391,13 +1631,13 @@ fn install_local(
         },
         display,
     };
-    finish_install(root, &plugins, staged, collection, ctx, &src.display().to_string())
+    finish_install(scope, &plugins, staged, collection, ctx, &src.display().to_string())
 }
 
 /// Discover which plugin(s) in a staged source to install and move each one
 /// into place under its final name. The staging directory is always removed.
 fn finish_install(
-    root: &Path,
+    scope: &PluginScope,
     plugins: &Path,
     staged: Staged,
     collection: CollectionChoice,
@@ -1405,13 +1645,13 @@ fn finish_install(
     source_url: &str,
 ) -> Result<GitInstall, PluginError> {
     let tmp = staged.tmp.clone();
-    let result = select_and_install(root, plugins, &staged, collection, ctx, source_url);
+    let result = select_and_install(scope, plugins, &staged, collection, ctx, source_url);
     remove_staging(&tmp);
     result
 }
 
 fn select_and_install(
-    root: &Path,
+    scope: &PluginScope,
     plugins: &Path,
     staged: &Staged,
     collection: CollectionChoice,
@@ -1582,7 +1822,7 @@ fn select_and_install(
             ..staged.record.clone()
         };
         let outcome = install_payload_dir_with(
-            root,
+            scope,
             plugins,
             &staged.tmp,
             &dir,
@@ -1624,7 +1864,7 @@ enum PayloadOutcome {
 
 #[cfg(all(test, feature = "cli"))]
 fn install_payload_dir(
-    root: &Path,
+    scope: &PluginScope,
     plugins: &Path,
     tmp: &Path,
     payload: &Path,
@@ -1633,7 +1873,7 @@ fn install_payload_dir(
     source_url: &str,
 ) -> Result<PayloadOutcome, PluginError> {
     install_payload_dir_with(
-        root,
+        scope,
         plugins,
         tmp,
         payload,
@@ -1658,7 +1898,7 @@ fn install_payload_dir(
 /// several payloads out of one clone; the caller removes it once at the end.
 #[allow(clippy::too_many_arguments)]
 fn install_payload_dir_with(
-    root: &Path,
+    scope: &PluginScope,
     plugins: &Path,
     tmp: &Path,
     payload: &Path,
@@ -1702,7 +1942,7 @@ fn install_payload_dir_with(
     let move_from = if payload_narrowed { payload } else { tmp };
     std::fs::rename(move_from, &target).map_err(PluginError::io)?;
 
-    let entry = installed_entries(root)
+    let entry = installed_entries_scoped(scope)
         .into_iter()
         .find(|(directory, _)| directory == &stem)
         .map(|(_, plugin)| plugin);
@@ -1773,7 +2013,8 @@ async fn fetch_index_cancellable(
 // rather than `cfg`'d out so it stays available in both configs.
 #[allow(dead_code)]
 pub(crate) async fn install(root: &Path, spec: &str) -> Result<InstalledPlugin, String> {
-    match install_with(root, spec, CollectionChoice::ListError, InstallCtx::interactive())
+    let scope = PluginScope::Project(root.to_path_buf());
+    match install_with(&scope, spec, CollectionChoice::ListError, InstallCtx::interactive())
         .await?
     {
         GitInstall::Installed(plugins) => plugins
@@ -1793,7 +2034,8 @@ pub(crate) async fn install_interactive(
     root: &Path,
     spec: &str,
 ) -> Result<Vec<InstalledPlugin>, String> {
-    match install_with(root, spec, CollectionChoice::Prompt, InstallCtx::interactive()).await? {
+    let scope = PluginScope::Project(root.to_path_buf());
+    match install_with(&scope, spec, CollectionChoice::Prompt, InstallCtx::interactive()).await? {
         GitInstall::Installed(plugins) => Ok(plugins),
         GitInstall::Collection(_) => unreachable!("Prompt never returns a collection listing"),
     }
@@ -1807,7 +2049,8 @@ pub(crate) async fn install_interactive(
 // (cli-only)
 #[cfg(feature = "cli")]
 pub(crate) async fn list_collection(root: &Path, spec: &str) -> Result<GitInstall, String> {
-    install_with(root, spec, CollectionChoice::List, InstallCtx::interactive())
+    let scope = PluginScope::Project(root.to_path_buf());
+    install_with(&scope, spec, CollectionChoice::List, InstallCtx::interactive())
         .await
         .map_err(String::from)
 }
@@ -1822,7 +2065,8 @@ pub(crate) async fn install_selected(
     spec: &str,
     paths: Vec<String>,
 ) -> Result<Vec<InstalledPlugin>, String> {
-    match install_with(root, spec, CollectionChoice::Only(paths), InstallCtx::interactive())
+    let scope = PluginScope::Project(root.to_path_buf());
+    match install_with(&scope, spec, CollectionChoice::Only(paths), InstallCtx::interactive())
         .await?
     {
         GitInstall::Installed(plugins) => Ok(plugins),
@@ -1835,7 +2079,7 @@ pub(crate) async fn install_selected(
 /// work runs off the async runtime (the TUI render loop must keep repainting
 /// during a large clone).
 async fn install_with(
-    root: &Path,
+    scope: &PluginScope,
     spec: &str,
     collection: CollectionChoice,
     ctx: InstallCtx,
@@ -1844,18 +2088,18 @@ async fn install_with(
     validate_spec(spec)?;
     match classify_spec(spec) {
         SpecKind::Local => {
-            let root = root.to_path_buf();
+            let scope = scope.clone();
             let path = PathBuf::from(spec);
-            spawn_blocking(move || install_local(&root, &path, collection, &ctx, &mut || {}))
+            spawn_blocking(move || install_local(&scope, &path, collection, &ctx, &mut || {}))
                 .await
         }
         SpecKind::Git => {
-            let root = root.to_path_buf();
+            let scope = scope.clone();
             let spec = spec.to_string();
-            spawn_blocking(move || install_git(&root, &spec, None, collection, &ctx, "git")).await
+            spawn_blocking(move || install_git(&scope, &spec, None, collection, &ctx, "git")).await
         }
         SpecKind::Marketplace => {
-            install_marketplace(root, spec, collection, ctx, false).await
+            install_marketplace(scope, spec, collection, ctx, false).await
         }
     }
 }
@@ -1869,13 +2113,13 @@ async fn spawn_blocking<T: Send + 'static>(
 }
 
 async fn install_marketplace(
-    root: &Path,
+    scope: &PluginScope,
     name: &str,
     collection: CollectionChoice,
     ctx: InstallCtx,
     desktop: bool,
 ) -> Result<GitInstall, PluginError> {
-    let marketplace = plugins_section(root).marketplace.ok_or_else(|| {
+    let marketplace = plugins_section_for_scope(scope).marketplace.ok_or_else(|| {
         PluginError::new(
             PluginErrorCode::MarketplaceNotConfigured,
             if desktop {
@@ -1893,10 +2137,10 @@ async fn install_marketplace(
         )
     })?;
     // Marketplace installs clone a git repo too: same blocking-work treatment.
-    let root = root.to_path_buf();
+    let scope = scope.clone();
     spawn_blocking(move || {
         install_git(
-            &root,
+            &scope,
             &entry.repo,
             entry.r#ref.as_deref(),
             collection,
@@ -1909,17 +2153,33 @@ async fn install_marketplace(
 
 /// Install from an explicit desktop source. Exactly one plugin: a collection
 /// is refused with the list of plugins inside it.
-#[cfg_attr(feature = "cli", allow(dead_code))]
+// Kept for API stability; the desktop command now calls
+// `install_from_source_scoped` directly.
+#[allow(dead_code)]
 pub(crate) async fn install_from_source(
     root: &Path,
     source: InstallSource,
     ctx: InstallCtx,
 ) -> Result<InstalledPlugin, PluginError> {
-    if !root.is_dir() {
-        return Err(PluginError::new(
-            PluginErrorCode::ProjectUnavailable,
-            format!("project folder does not exist: {}", root.display()),
-        ));
+    install_from_source_scoped(&PluginScope::Project(root.to_path_buf()), source, ctx).await
+}
+
+/// [`install_from_source`], generalized to a [`PluginScope`]. `Global` skips
+/// the project-folder existence check (there is no project folder) and reads
+/// its own marketplace from the global agent config (see
+/// [`plugins_section_for_scope`]).
+pub(crate) async fn install_from_source_scoped(
+    scope: &PluginScope,
+    source: InstallSource,
+    ctx: InstallCtx,
+) -> Result<InstalledPlugin, PluginError> {
+    if let PluginScope::Project(root) = scope {
+        if !root.is_dir() {
+            return Err(PluginError::new(
+                PluginErrorCode::ProjectUnavailable,
+                format!("project folder does not exist: {}", root.display()),
+            ));
+        }
     }
     let result = match source {
         InstallSource::Local { path } => {
@@ -1937,9 +2197,9 @@ pub(crate) async fn install_from_source(
                     format!("folder path must be absolute: {}", path.display()),
                 ));
             }
-            let root = root.to_path_buf();
+            let scope = scope.clone();
             spawn_blocking(move || {
-                install_local(&root, &path, CollectionChoice::ListError, &ctx, &mut || {})
+                install_local(&scope, &path, CollectionChoice::ListError, &ctx, &mut || {})
             })
             .await?
         }
@@ -1952,16 +2212,16 @@ pub(crate) async fn install_from_source(
                     format!("'{url}' is not a git URL (expected https://, ssh:// or git@host:path)"),
                 ));
             }
-            let root = root.to_path_buf();
+            let scope = scope.clone();
             spawn_blocking(move || {
-                install_git(&root, &url, None, CollectionChoice::ListError, &ctx, "git")
+                install_git(&scope, &url, None, CollectionChoice::ListError, &ctx, "git")
             })
             .await?
         }
         InstallSource::Marketplace { name } => {
             let name = name.trim().to_string();
             validate_spec(&name)?;
-            install_marketplace(root, &name, CollectionChoice::ListError, ctx, true).await?
+            install_marketplace(scope, &name, CollectionChoice::ListError, ctx, true).await?
         }
     };
     match result {
@@ -1979,7 +2239,16 @@ pub(crate) async fn search_typed(
     root: &Path,
     query: &str,
 ) -> Result<Vec<MarketEntry>, PluginError> {
-    let url = plugins_section(root).marketplace.ok_or_else(|| {
+    search_typed_scoped(&PluginScope::Project(root.to_path_buf()), query).await
+}
+
+/// [`search_typed`], generalized to a [`PluginScope`]: `Global` searches the
+/// marketplace configured in the global agent config, not any project's.
+pub(crate) async fn search_typed_scoped(
+    scope: &PluginScope,
+    query: &str,
+) -> Result<Vec<MarketEntry>, PluginError> {
+    let url = plugins_section_for_scope(scope).marketplace.ok_or_else(|| {
         PluginError::new(
             PluginErrorCode::MarketplaceNotConfigured,
             "no marketplace configured - set [plugins] marketplace in agent.toml",
@@ -2590,6 +2859,7 @@ mod tests {
     fn batch_install_lands_each_payload_and_reports_already_installed() {
         let root = unique_root("batchskip");
         let _ = std::fs::remove_dir_all(&root);
+        let scope = PluginScope::Project(root.clone());
         let plugins = skills::plugins_dir(&root);
         std::fs::create_dir_all(&plugins).unwrap();
         let tmp = plugins.join(".installing-batchskip");
@@ -2617,7 +2887,7 @@ mod tests {
         // first move for the second to succeed.
         for (dir, name) in [(&alpha, "alpha"), (&beta, "beta")] {
             let outcome =
-                install_payload_dir(&root, &plugins, &tmp, dir, true, Some(name), "http://x")
+                install_payload_dir(&scope, &plugins, &tmp, dir, true, Some(name), "http://x")
                     .unwrap();
             match outcome {
                 PayloadOutcome::Installed(p) => {
@@ -2632,7 +2902,7 @@ mod tests {
         // A second payload claiming an installed name is skipped, not an error.
         let again = stage("alpha");
         match install_payload_dir(
-            &root,
+            &scope,
             &plugins,
             &tmp,
             &again,
@@ -3005,7 +3275,8 @@ mod lifecycle_tests {
         let ctx = ctx();
         let flag = ctx.cancel.clone();
         let mut copied = 0;
-        let err = install_local(&root, &src, CollectionChoice::ListError, &ctx, &mut || {
+        let scope = PluginScope::Project(root.clone());
+        let err = install_local(&scope, &src, CollectionChoice::ListError, &ctx, &mut || {
             copied += 1;
             // Cancel after the first file has landed in staging.
             flag.store(true, Ordering::SeqCst);
@@ -3042,8 +3313,9 @@ mod lifecycle_tests {
         .unwrap();
         let ctx = ctx();
         ctx.cancel.store(true, Ordering::SeqCst);
+        let scope = PluginScope::Project(root.clone());
         let err = install_git(
-            &root,
+            &scope,
             &format!("file://{}", repo.display()),
             None,
             CollectionChoice::ListError,
@@ -3477,5 +3749,87 @@ mod lifecycle_tests {
             format!("{:?}", project::permissions_from(&before)),
             format!("{:?}", project::permissions_from(&after))
         );
+    }
+}
+
+/// `PluginScope` / `plugin_root_dir` tests: plain `#[cfg(test)]`, not gated
+/// behind `feature = "cli"` like the module above, so they run under the
+/// desktop's own test build (`--features test-tauri`) too.
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    /// `Project(root)` resolves to that project's own `.jan/agent/plugins/`,
+    /// exactly like the unscoped `skills::plugins_dir`.
+    #[test]
+    fn project_scope_resolves_to_the_project_plugins_dir() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_plugin_scope_project_{}",
+            std::process::id()
+        ));
+        let scope = PluginScope::Project(root.clone());
+        assert_eq!(plugin_root_dir(&scope), skills::plugins_dir(&root));
+    }
+
+    /// `Global` resolves under the permanent store, not any project -- and
+    /// honours the same `set_test_user_plugins` override the discovery tests
+    /// use, so this is deterministic and hermetic (no real data folder).
+    #[test]
+    fn global_scope_resolves_under_the_permanent_store() {
+        let data = std::env::temp_dir().join(format!(
+            "jan_plugin_scope_global_{}",
+            std::process::id()
+        ));
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(&data);
+        skills::set_test_user_plugins(Some(store.clone()));
+
+        let expected = tauri_plugin_agent_tools::skills::plugins_dir(&store);
+        assert_eq!(plugin_root_dir(&PluginScope::Global), expected);
+
+        // A project scope in the same process is unaffected by the global
+        // override: the two stores never collapse into one.
+        let project_root = std::env::temp_dir().join(format!(
+            "jan_plugin_scope_project_for_global_{}",
+            std::process::id()
+        ));
+        let project_scope = PluginScope::Project(project_root.clone());
+        assert_eq!(plugin_root_dir(&project_scope), skills::plugins_dir(&project_root));
+        assert_ne!(plugin_root_dir(&project_scope), expected);
+
+        skills::set_test_user_plugins(None);
+    }
+
+    /// `sources_scoped(Global)` reads its marketplace from `<store>/agent.toml`
+    /// -- the global agent config -- not from any project, and not always the
+    /// default `PluginsSection` the old stub returned.
+    #[test]
+    fn global_sources_reads_marketplace_from_the_permanent_store_agent_toml() {
+        let store = std::env::temp_dir().join(format!(
+            "jan_plugin_global_agent_toml_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&store);
+        std::fs::create_dir_all(&store).unwrap();
+        skills::set_test_user_plugins(Some(store.clone()));
+
+        // No agent.toml yet: falls back to defaults, same as an unconfigured
+        // project -- not an error, and not a hidden/blocked state.
+        let empty = sources_scoped(&PluginScope::Global);
+        assert_eq!(empty.marketplace, None);
+
+        std::fs::write(
+            store.join("agent.toml"),
+            "[plugins]\nmarketplace = \"https://example.com/plugins.json\"\n",
+        )
+        .unwrap();
+
+        let configured = sources_scoped(&PluginScope::Global);
+        assert_eq!(
+            configured.marketplace.as_deref(),
+            Some("https://example.com/plugins.json")
+        );
+
+        skills::set_test_user_plugins(None);
+        let _ = std::fs::remove_dir_all(&store);
     }
 }

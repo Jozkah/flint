@@ -188,6 +188,125 @@ pub fn render(rules: &[Rule]) -> String {
     out
 }
 
+/// `[models]` -- an allowlist and alias map over the model a run may use.
+///
+/// This is the allowlist/alias/override capability the old `model_routing.rs`
+/// provided, reimplemented on the current architecture *alongside* the redirect
+/// `[[routing]]` rules above rather than replacing them: routing redirects a
+/// request to a different model, while this restricts and renames the model a
+/// request finally lands on.
+///
+/// Both lists empty is a project that has restricted nothing: [`resolve`]
+/// returns the requested model unchanged, so a project with no `[models]`
+/// section behaves exactly as before.
+///
+/// ```toml
+/// [models]
+/// allowed = ["provider/careful", "provider/fast"]
+///
+/// [models.aliases]
+/// default = "provider/careful"
+/// quick = "provider/fast"
+/// ```
+///
+/// [`resolve`]: ModelPolicy::resolve
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+pub struct ModelPolicy {
+    /// Canonical model ids a run may use. Empty means no restriction.
+    #[serde(default)]
+    pub allowed: Vec<String>,
+    /// `alias = "target"`, applied transitively (cycle-guarded) before the
+    /// allowlist is checked, so a project can pin a friendly name to a concrete
+    /// id and move it in one place.
+    #[serde(default)]
+    pub aliases: std::collections::BTreeMap<String, String>,
+}
+
+/// The outcome of resolving a requested model against a [`ModelPolicy`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedModel {
+    /// The concrete model id to use.
+    pub model: String,
+    /// Whether an alias was followed to reach it, for logging.
+    pub via_alias: bool,
+}
+
+/// Why a model could not be resolved. Reported to the user rather than silently
+/// switched: a run that quietly went to a model nobody chose is the failure the
+/// allowlist exists to prevent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelPolicyError {
+    /// An alias chain that never terminates, naming where it loops.
+    AliasCycle(String),
+    /// A model outside a non-empty allowlist.
+    NotAllowed { requested: String, resolved: String },
+}
+
+impl std::fmt::Display for ModelPolicyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModelPolicyError::AliasCycle(at) => {
+                write!(f, "the model alias chain loops at {at:?}")
+            }
+            ModelPolicyError::NotAllowed { requested, resolved } => {
+                if requested == resolved {
+                    write!(f, "model {requested:?} is not in this project's allowed models")
+                } else {
+                    write!(
+                        f,
+                        "model {requested:?} resolves to {resolved:?}, which is not in \
+                         this project's allowed models"
+                    )
+                }
+            }
+        }
+    }
+}
+
+impl ModelPolicy {
+    /// Whether this policy restricts anything at all.
+    pub fn is_empty(&self) -> bool {
+        self.allowed.is_empty() && self.aliases.is_empty()
+    }
+
+    /// Follow the alias chain (cycle-guarded), then enforce the allowlist.
+    ///
+    /// An empty allowlist restricts nothing, so only the alias mapping applies.
+    pub fn resolve(&self, requested: &str) -> Result<ResolvedModel, ModelPolicyError> {
+        let mut current = requested.trim().to_string();
+        let mut via_alias = false;
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(next) = self.aliases.get(&current) {
+            if !seen.insert(current.clone()) {
+                return Err(ModelPolicyError::AliasCycle(current));
+            }
+            current = next.trim().to_string();
+            via_alias = true;
+        }
+        if !self.allowed.is_empty() && !self.allowed.iter().any(|m| m.trim() == current) {
+            return Err(ModelPolicyError::NotAllowed {
+                requested: requested.trim().to_string(),
+                resolved: current,
+            });
+        }
+        Ok(ResolvedModel { model: current, via_alias })
+    }
+
+    /// Startup validation: every alias chain terminates and, when an allowlist
+    /// exists, resolves into it. Returns all problems, so a person fixing a
+    /// config sees them at once rather than one run at a time.
+    pub fn validate(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for start in self.aliases.keys() {
+            match self.resolve(start) {
+                Err(err) => problems.push(err.to_string()),
+                Ok(_) => {}
+            }
+        }
+        problems
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +406,89 @@ mod tests {
 
         let err = rules(&declared(&[("role:smol", "  ")])).unwrap_err();
         assert!(err.message().contains("says nothing to use"), "{err}");
+    }
+
+    // ---- [models] allowlist / aliases -------------------------------------
+
+    fn policy(allowed: &[&str], aliases: &[(&str, &str)]) -> ModelPolicy {
+        ModelPolicy {
+            allowed: allowed.iter().map(|s| s.to_string()).collect(),
+            aliases: aliases
+                .iter()
+                .map(|(a, t)| (a.to_string(), t.to_string()))
+                .collect(),
+        }
+    }
+
+    /// No `[models]` section restricts nothing: the request is unchanged.
+    #[test]
+    fn an_empty_model_policy_passes_through() {
+        let p = ModelPolicy::default();
+        assert!(p.is_empty());
+        let r = p.resolve("provider/anything").expect("passes through");
+        assert_eq!(r.model, "provider/anything");
+        assert!(!r.via_alias);
+    }
+
+    /// An alias maps to its target, transitively, and reports it was followed.
+    #[test]
+    fn an_alias_resolves_transitively() {
+        let p = policy(&[], &[("default", "fast"), ("fast", "provider/fast")]);
+        let r = p.resolve("default").expect("resolves");
+        assert_eq!(r.model, "provider/fast");
+        assert!(r.via_alias);
+    }
+
+    /// A model outside a non-empty allowlist is refused, not switched.
+    #[test]
+    fn a_model_outside_the_allowlist_is_refused() {
+        let p = policy(&["provider/a", "provider/b"], &[]);
+        assert_eq!(
+            p.resolve("provider/a").expect("allowed").model,
+            "provider/a"
+        );
+        let err = p.resolve("provider/c").unwrap_err();
+        assert_eq!(
+            err,
+            ModelPolicyError::NotAllowed {
+                requested: "provider/c".to_string(),
+                resolved: "provider/c".to_string(),
+            }
+        );
+    }
+
+    /// An alias that resolves into the allowlist is allowed.
+    #[test]
+    fn an_alias_into_the_allowlist_is_allowed() {
+        let p = policy(&["provider/careful"], &[("default", "provider/careful")]);
+        assert_eq!(
+            p.resolve("default").expect("allowed").model,
+            "provider/careful"
+        );
+    }
+
+    /// A cyclic alias chain is refused rather than looping forever.
+    #[test]
+    fn a_cyclic_alias_is_refused() {
+        let p = policy(&[], &[("a", "b"), ("b", "a")]);
+        assert!(matches!(
+            p.resolve("a"),
+            Err(ModelPolicyError::AliasCycle(_))
+        ));
+    }
+
+    /// `validate` surfaces a dangling alias and a cycle up front.
+    #[test]
+    fn validate_reports_config_problems() {
+        let cycle = policy(&[], &[("a", "b"), ("b", "a")]);
+        assert!(!cycle.validate().is_empty());
+
+        let dangling = policy(&["provider/a"], &[("x", "provider/missing")]);
+        let problems = dangling.validate();
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("not in this project's allowed models"));
+
+        let clean = policy(&["provider/a"], &[("x", "provider/a")]);
+        assert!(clean.validate().is_empty());
     }
 }

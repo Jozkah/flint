@@ -50,12 +50,12 @@ pub(crate) fn discover_including_disabled(root: &Path) -> Vec<CommandEntry> {
     scan(root, &[])
 }
 
-fn scan(root: &Path, disabled: &[String]) -> Vec<CommandEntry> {
-    let dir = crate::core::agent::skills::plugins_dir(root);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Vec::new();
+/// Scan one plugins directory (project or global) for command files,
+/// skipping disabled plugins and interrupted `.installing-*` staging dirs.
+fn scan_dir(dir: &Path, disabled: &[String], out: &mut Vec<CommandEntry>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
     };
-    let mut out = Vec::new();
     for entry in rd.flatten() {
         let path = entry.path();
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -82,6 +82,27 @@ fn scan(root: &Path, disabled: &[String]) -> Vec<CommandEntry> {
                 hints: template_hints(&parsed.body),
             });
         });
+    }
+}
+
+fn scan(root: &Path, disabled: &[String]) -> Vec<CommandEntry> {
+    let mut out = Vec::new();
+    scan_dir(
+        &crate::core::agent::skills::plugins_dir(root),
+        disabled,
+        &mut out,
+    );
+    if let Some(dir) = crate::core::agent::skills::user_plugins_dir() {
+        let mut global = Vec::new();
+        scan_dir(&dir, disabled, &mut global);
+        let kept: Vec<CommandEntry> = global
+            .into_iter()
+            .filter(|g| {
+                !out.iter()
+                    .any(|p| p.plugin == g.plugin && p.name == g.name)
+            })
+            .collect();
+        out.extend(kept);
     }
     out.sort_by(|a, b| (&a.plugin, &a.name).cmp(&(&b.plugin, &b.name)));
     out
@@ -284,6 +305,27 @@ mod tests {
         // Placeholders in the template surface as hints, numbered first.
         let release = discovered.iter().find(|e| e.name == "release").unwrap();
         assert_eq!(release.hints, vec!["$1", "$ARGUMENTS"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn scan_includes_global_plugin_commands() {
+        let root = temp_root("global");
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let cdir = tauri_plugin_agent_tools::skills::plugins_dir(&store)
+            .join("caveman")
+            .join("commands");
+        std::fs::create_dir_all(&cdir).unwrap();
+        std::fs::write(cdir.join("commit.md"), "do commit").unwrap();
+        crate::core::agent::skills::set_test_user_plugins(Some(store));
+
+        let got = discover(&root);
+        assert!(got
+            .iter()
+            .any(|c| c.plugin == "caveman" && c.name == "commit"));
+
+        crate::core::agent::skills::set_test_user_plugins(None);
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -38,7 +38,7 @@ export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected
  * callback, so nothing that needs approval can ever execute inside a room.
  * Models without the `tools` capability are forced to `none`.
  */
-export type ToolAccess = 'none' | 'read'
+export type ToolAccess = 'none' | 'read' | 'edit'
 
 export type ParticipantAvailability =
   | { state: 'unknown' }
@@ -145,7 +145,7 @@ export type RoomUsage = {
 export type StopReason =
   | { kind: 'user' }
   | { kind: 'limit'; limit: keyof RoomLimits | 'ceiling' }
-  | { kind: 'converged'; by: 'moderator' | 'repetition' }
+  | { kind: 'converged'; by: 'moderator' | 'repetition' | 'consensus' }
   | { kind: 'synthesized' }
   | { kind: 'no-participants'; message: string }
   | { kind: 'interrupted-by-restart' }
@@ -160,6 +160,11 @@ export type Room = {
   mode: SpeakingMode
   moderator: ModeratorConfig
   participants: Participant[]
+  /**
+   * An optional working folder the room's tool-capable participants read from.
+   * `null`/absent when no folder is attached. Persisted with the room.
+   */
+  folder?: string | null
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */
@@ -221,6 +226,22 @@ export type RoomMessage = {
   dissent?: Array<{ participantId: string; name: string; position: string }>
   /** For moderator notes: the parsed directive, when one was produced. */
   directive?: ModeratorDirective
+  /** The read-only tools a tool-capable participant used to produce this reply. */
+  toolCalls?: RoomToolActivity[]
+}
+
+/**
+ * One tool a participant used in its turn, for the transcript. `name`/`ok` drive
+ * the simple chip; `args`/`output` are captured for the expandable advanced view
+ * (`output` is truncated to keep the transcript small).
+ */
+export type RoomToolActivity = {
+  name: string
+  ok: boolean
+  args?: unknown
+  output?: string
+  /** The tool came from an MCP server (colours the chip like Cowork's). */
+  mcp?: boolean
 }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
@@ -263,6 +284,13 @@ export interface RoomController {
   /** user-selected mode, or an override in any mode while not mid-turn */
   selectNext(roomId: string, participantId: string): Promise<void>
   sendUserMessage(roomId: string, text: string, to: Address): Promise<void>
+  /**
+   * Raise the limit that stopped the room by `addUnits` and continue it,
+   * optionally posting `text` (addressed by `to`) first. For a room stopped
+   * because a limit was reached, since a plain message alone would only
+   * re-trip the same limit.
+   */
+  extendLimit(roomId: string, addUnits: number, text?: string, to?: Address): Promise<void>
   callVote(roomId: string, proposal: string): Promise<void>
   requestFinalPositions(roomId: string): Promise<void>
   synthesize(roomId: string): Promise<void>
@@ -277,4 +305,7 @@ export type LiveTurn = {
   author: RoomAuthor
   text: string
   startedAt: number
+  /** The turn is pausing to compact (summarise) earlier messages that no longer
+   * fit the model's context window, before it speaks. */
+  compacting?: boolean
 }

@@ -249,7 +249,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         // user trusts, the tool everywhere, or the tool in this thread --
         // except for a tool that must be asked about every time.
         const alwaysAsk = ALWAYS_ASK_TOOLS.has(toolName)
-        if (!alwaysAsk && settings.allowAllMCPPermissions) {
+        // "Allow all MCP permissions" is an MCP-server setting (that is what its
+        // label promises), so it only auto-approves a server's tool -- never a
+        // built-in agent tool (write/edit/bash, no serverName), which must still
+        // be asked about in Ask mode.
+        if (!alwaysAsk && serverName && settings.allowAllMCPPermissions) {
           approve()
           return
         }

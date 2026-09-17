@@ -169,6 +169,12 @@ const CHILD_SEP: &str = "--child-";
 ///
 /// Deterministic, so the same child asked for twice is the same destination
 /// rather than a second one beside it.
+///
+/// Currently exercised only by the grant-isolation tests below, which use it to
+/// build the child ids they assert [`resolve`] refuses across owners. It is the
+/// canonical derivation for that id, so it stays here rather than being inlined
+/// into the tests; the narrow allow covers only non-test builds.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn child_session_id(parent: &str, child: &str) -> String {
     let safe: String = child
         .chars()

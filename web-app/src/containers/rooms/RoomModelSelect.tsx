@@ -2,6 +2,7 @@
 import type { RoomModelRef } from '@/lib/rooms/types'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
+import { offersModels } from '@/lib/providerOffers'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 
@@ -60,12 +61,14 @@ export function RoomModelSelect({
 }: RoomModelSelectProps) {
   const { t } = useTranslation()
   const providers = useModelProvider((s) => s.providers)
+  // The same set of models the Home/Cowork model bar offers: active providers
+  // that `offersModels` would surface, with embedding models excluded. Shared
+  // so the Rooms picker cannot drift from the rest of the app.
   const groups = providers
+    .filter((p) => p.active && offersModels(p))
     .map((p) => ({
       provider: p,
-      models: p.models.filter(
-        (m) => !m.embedding && !m.capabilities?.includes('embeddings')
-      ),
+      models: p.models.filter((m) => !m.embedding),
     }))
     .filter((g) => g.models.length > 0)
 

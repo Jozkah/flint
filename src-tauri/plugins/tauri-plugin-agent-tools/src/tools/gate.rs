@@ -20,6 +20,10 @@ pub enum PromptKind {
     /// exists.
     WriteEscape,
     Exec,
+    /// A call an `ask` rule marks for confirmation every time. Unlike the
+    /// others it is never satisfied by a session grant, so "allow always" does
+    /// not silence it -- that is the point of the tier.
+    Ask,
 }
 
 /// The user's answer to a permission prompt (wire shape for a later IPC command).
@@ -82,6 +86,8 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape,
             // Exec coverage is command-specific; use `covers_command`.
             PromptKind::Exec => false,
+            // Confirm every time: a session grant never covers an ask.
+            PromptKind::Ask => false,
         }
     }
 
@@ -108,6 +114,8 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape = true,
             // No-op: exec is granted per command via `grant_command`.
             PromptKind::Exec => {}
+            // No-op: an ask is never remembered, by design.
+            PromptKind::Ask => {}
         }
     }
 
@@ -364,6 +372,12 @@ pub fn resolve_decision(
             .unwrap_or(false);
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
+    }
+    // Ask sits between deny and allow: a matching ask rule overrides an allow
+    // and forces a prompt every time (deny above still wins). Inert unless the
+    // project wrote an `ask` list.
+    if perms.asks_call(tool.name, &resources, subject).is_some() {
+        return Decision::Prompt(PromptKind::Ask);
     }
     if perms.allows_call(tool.name, &resources, subject).is_some() {
         return Decision::Allow;
@@ -1279,6 +1293,73 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// The #4b path merge, end to end, in the real desktop shape. A
+    /// project-relative `allow = ["read(drivers/**)"]` rule does two things: it
+    /// grants the read tool the discovery read at the gate, and — via
+    /// `sandbox_read_dirs`, resolved against the attached project — it yields the
+    /// concrete directory the desktop command merges into the sandbox read roots
+    /// so the *sandboxed shell* can reach the same path. Both come from one rule;
+    /// nothing else about the sandbox is loosened, and a path the rule does not
+    /// name still escapes.
+    #[test]
+    fn a_policy_read_rule_opens_its_path_through_the_sandbox_merge() {
+        let root = unique_root(); // ephemeral thread workspace
+        let project = unique_root(); // attached project (base for patterns)
+        std::fs::create_dir_all(project.join("drivers")).unwrap();
+        std::fs::write(project.join("drivers/EAC.sys"), b"decoy").unwrap();
+
+        // An absolute allow(read) rule naming the project's drivers dir; only an
+        // absolute literal pattern contributes to the sandbox read-dir merge.
+        let drivers = project.join("drivers");
+        let pattern = format!("read({}/**)", drivers.to_string_lossy().replace('\\', "/"));
+        let perms =
+            ToolPermissions::new(PermissionDefault::ReadOnly, &s(&[pattern.as_str()]), &[], &[]);
+
+        // 1. The rule yields the concrete read directory the command feeds the
+        //    sandbox (so bash, bound by read roots, can reach it too).
+        let read_roots = perms.sandbox_read_dirs();
+        assert_eq!(
+            read_roots,
+            vec![drivers.clone()],
+            "the allow(read) rule yields the concrete project read dir"
+        );
+
+        // 2. The read tool's discovery read of the .sys file is granted by the
+        //    rule at the gate.
+        let target = project.join("drivers/EAC.sys");
+        let allowed = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({"path": target.to_string_lossy()}),
+            &root,
+            None,
+            &read_roots,
+            &perms,
+            &SessionGrants::default(),
+            true,
+            &crate::subject::Subject::MainAgent,
+        );
+        assert_eq!(allowed, Decision::Allow);
+
+        // 3. A path the rule does NOT name is not granted: still an escape prompt.
+        let other = project.join("other/data.bin");
+        let denied = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({"path": other.to_string_lossy()}),
+            &root,
+            None,
+            &read_roots,
+            &perms,
+            &SessionGrants::default(),
+            true,
+            &crate::subject::Subject::MainAgent,
+        );
+        assert_eq!(denied, Decision::Prompt(PromptKind::ReadEscape));
+
+        for d in [&root, &project] {
+            let _ = std::fs::remove_dir_all(d);
+        }
     }
 
     #[test]

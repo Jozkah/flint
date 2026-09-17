@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { asJournal, makeMessage, makeRoom } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
@@ -8,6 +8,14 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
   return { useTranslation: () => ({ t: u.t }) }
 })
+
+// The markdown renderer is defer-rendered and covered by its own tests; here we
+// only care that the transcript delegates to it and never emits raw HTML. The
+// stub renders the (already mention-linkified) content as text.
+vi.mock('@/containers/RenderMarkdown', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RenderMarkdown: ({ content }: any) => <div data-testid="render-markdown">{content}</div>,
+}))
 
 const byKind = (kind: string) =>
   screen.getAllByTestId('room-message').filter((el) => el.getAttribute('data-kind') === kind)
@@ -90,16 +98,17 @@ describe('RoomTranscript', () => {
     expect(within(error).getByTestId('message-error')).toHaveTextContent('Rate limit hit')
   })
 
-  it('renders model text as plain text, never as HTML or markdown', () => {
+  it('renders message text through the markdown renderer, never as raw HTML or scripts', () => {
     const text = '<script>window.__pwned = true</script>\n**bold** <img src=x onerror=alert(1)>'
     const { container } = render(
       <RoomTranscript room={makeRoom()} journal={asJournal([makeMessage({ text })])} liveTurn={null} />
     )
+    // Delegated to the shared markdown renderer (so **bold** etc. format), which
+    // has its own rendering + sanitization tests.
+    expect(screen.getAllByTestId('render-markdown').length).toBeGreaterThan(0)
+    // Raw HTML and scripts never become live elements or execute.
     expect(container.querySelector('script')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
-    expect(container.querySelector('strong')).toBeNull()
-    const p = screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text)
-    expect(p).toHaveClass('whitespace-pre-wrap')
     expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined()
   })
 
@@ -136,12 +145,78 @@ describe('RoomTranscript', () => {
     const liveTurn = screen.getByTestId('room-live-turn')
     expect(log).not.toContainElement(liveTurn)
     expect(liveTurn).toHaveTextContent('Bob · expert · tool-model')
-    expect(liveTurn).toHaveTextContent('partial <b>reply</b>')
+    // The live turn renders as markdown too; raw HTML is never emitted.
+    expect(liveTurn).toHaveTextContent('partial')
+    expect(liveTurn).toHaveTextContent('reply')
     expect(liveTurn.querySelector('b')).toBeNull()
   })
 
   it('shows an empty state', () => {
     render(<RoomTranscript room={makeRoom()} journal={[]} liveTurn={null} />)
     expect(screen.getByText('Nothing has been said yet.')).toBeInTheDocument()
+  })
+
+  it('drops the redundant "[name to user]:" attribution prefix from the body', () => {
+    const msg = makeMessage({ text: '[b to User]: Here is my point.' })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const md = screen.getByTestId('render-markdown')
+    expect(md.textContent).toBe('Here is my point.')
+  })
+
+  it('shows a compacting indicator on the live turn', () => {
+    const live = {
+      roomId: 'r1',
+      turnId: 't9',
+      author: { kind: 'participant' as const, participantId: 'p2', name: 'Bob' },
+      text: '',
+      startedAt: 1,
+      compacting: true,
+    }
+    render(
+      <RoomTranscript
+        room={makeRoom()}
+        journal={asJournal([makeMessage({ text: 'earlier' })])}
+        liveTurn={live}
+      />
+    )
+    expect(screen.getByText(/^Compacting/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Summarising earlier messages that no longer fit/)
+    ).toBeInTheDocument()
+  })
+
+  it('repairs pseudo <bash> tool blocks into a real code fence', () => {
+    const msg = makeMessage({ text: 'Let me check: <bash> ```bash ls -la ``` </bash> done.' })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    const md = screen.getByTestId('render-markdown')
+    // The wrapper tags are gone and the fence is reflowed onto its own lines.
+    expect(md.textContent).not.toContain('<bash>')
+    expect(md.textContent).toContain('```bash\nls -la\n```')
+  })
+
+  it('shows tool chips and expands them to the advanced input/output view', () => {
+    const msg = makeMessage({
+      text: 'Looked it up.',
+      toolCalls: [
+        { name: 'read', ok: true, args: { path: 'notes.md' }, output: 'FILE BODY' },
+        { name: 'grep', ok: false, args: { pattern: 'x' }, output: 'ERROR: nope' },
+      ],
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+
+    const tools = screen.getByTestId('message-tools')
+    // Simple view: a chip per call, details collapsed.
+    expect(within(tools).getByText('read')).toBeInTheDocument()
+    expect(within(tools).getByText('grep')).toBeInTheDocument()
+    expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('tool-trace-toggle'))
+
+    const details = screen.getByTestId('tool-trace-details')
+    // Args render as a label/value table: the key and its value each appear.
+    expect(within(details).getByText('path')).toBeInTheDocument()
+    expect(within(details).getByText('notes.md')).toBeInTheDocument()
+    expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
+    expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
   })
 })

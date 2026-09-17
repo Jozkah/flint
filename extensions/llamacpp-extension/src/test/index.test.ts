@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import llamacpp_extension from '../index'
+import { fs, getJanDataFolderPath, joinPath } from '@janhq/core'
+import { invoke } from '@tauri-apps/api/core'
+import {
+  readGgufMetadata,
+  reloadEngineModels,
+  startEngine,
+} from '@janhq/tauri-plugin-llamacpp-api'
+import type { ReloadReport } from '@janhq/tauri-plugin-llamacpp-api'
+import { generatePreset } from '../preset'
+import * as store from '../settings-store'
 
 import { getBackendSetting, setBackendSetting } from '../backend-settings'
 
@@ -41,6 +51,7 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', async () => {
       models_max: 1,
     }),
     engineDevices: vi.fn().mockResolvedValue([]),
+    eraseThreadSlotState: vi.fn().mockResolvedValue(0),
   }
 })
 
@@ -548,6 +559,117 @@ describe('llamacpp_extension', () => {
       const result = await extension.getLoadedModels()
 
       expect(result).toEqual(['model1', 'model2'])
+    })
+  })
+
+  it('reads the architecture-specific context limit without inventing an unknown limit', async () => {
+    vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+    vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+    vi.mocked(invoke).mockResolvedValue({ model_path: 'model.gguf' })
+    vi.mocked(readGgufMetadata).mockResolvedValueOnce({
+      version: 3, tensor_count: 1,
+      metadata: { 'general.architecture': 'qwen3', 'qwen3.context_length': '65536' },
+    })
+    expect(await extension.getModelContextLimit('model')).toBe(65536)
+    vi.mocked(readGgufMetadata).mockResolvedValueOnce({
+      version: 3, tensor_count: 1, metadata: {},
+    })
+    expect(await extension.getModelContextLimit('model')).toBeUndefined()
+  })
+
+  describe('settings application', () => {
+    const fitSetting = {
+      key: 'fit',
+      title: 'Fit',
+      description: '',
+      controllerType: 'checkbox' as const,
+      controllerProps: { value: false },
+    }
+    let savedSettings = [structuredClone(fitSetting)]
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      savedSettings = [structuredClone(fitSetting)]
+      vi.spyOn(store, 'readSettingsFile').mockImplementation(async () =>
+        structuredClone(savedSettings)
+      )
+      vi.spyOn(store, 'writeSettingsFile').mockImplementation(async (settings) => {
+        savedSettings = settings.map((setting) => ({
+          ...fitSetting,
+          controllerProps: { value: setting.controllerProps.value === true },
+        }))
+      })
+      vi.mocked(generatePreset).mockResolvedValue({
+        path: '/jan/llamacpp/router.preset.ini',
+        embeddingCount: 0,
+      })
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+      vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+      extension['config'] = { ...extension['config'], fit: false }
+      extension['backgroundInit'] = Promise.resolve()
+    })
+
+    afterEach(() => {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    })
+
+    it('keeps the save pending until the engine has applied fit', async () => {
+      const reload = Promise.withResolvers<ReloadReport>()
+      vi.mocked(reloadEngineModels).mockReturnValueOnce(reload.promise)
+      let completed = false
+      const save = extension.updateSettings([{
+        ...fitSetting,
+        controllerProps: { value: true },
+      }]).then(() => { completed = true })
+
+      await vi.waitFor(() => expect(reloadEngineModels).toHaveBeenCalled())
+      expect(completed).toBe(false)
+      reload.resolve({ added: [], changed: ['model'], removed: [], kept: [], models_max: 1 })
+      await save
+      expect((await extension.getSettings())[0].controllerProps.value).toBe(true)
+    })
+
+    it('rejects a failed fit application and restores the saved value', async () => {
+      vi.mocked(reloadEngineModels).mockRejectedValueOnce(new Error('reload failed'))
+      vi.mocked(startEngine).mockRejectedValueOnce(new Error('engine unavailable'))
+
+      await expect(extension.updateSettings([{
+        ...fitSetting,
+        controllerProps: { value: true },
+      }])).rejects.toThrow('engine unavailable')
+      expect((await extension.getSettings())[0].controllerProps.value).toBe(false)
+      expect(extension['config'].fit).toBe(false)
+    })
+
+    it('leaves startup migrations to the initial engine load', async () => {
+      extension['backgroundInit'] = undefined
+      await extension.updateSettings([{
+        ...fitSetting,
+        controllerProps: { value: true },
+      }])
+      await vi.advanceTimersByTimeAsync(600)
+
+      expect(reloadEngineModels).not.toHaveBeenCalled()
+      expect(startEngine).not.toHaveBeenCalled()
+      expect((await extension.getSettings())[0].controllerProps.value).toBe(true)
+    })
+
+    it('rejects a failed context application and restores model.yml', async () => {
+      let savedModel: Record<string, unknown> = { ctx_size: 4096 }
+      vi.mocked(fs.existsSync).mockResolvedValue(true)
+      vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'read_yaml') return structuredClone(savedModel)
+        if (command === 'write_yaml' && args && 'data' in args) {
+          savedModel = structuredClone(args.data as Record<string, unknown>)
+        }
+      })
+      vi.mocked(reloadEngineModels).mockRejectedValueOnce(new Error('reload failed'))
+      vi.mocked(startEngine).mockRejectedValueOnce(new Error('engine unavailable'))
+
+      await expect(extension.updateModelSettings('model', { ctx_len: 8192 }))
+        .rejects.toThrow('engine unavailable')
+      expect(savedModel.ctx_size).toBe(4096)
     })
   })
 
@@ -1144,5 +1266,46 @@ describe('import deduplication', () => {
     runImport.mockResolvedValue(undefined as never)
     await extension.import('m', { modelPath: 'u' } as never)
     expect(runImport).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('forgetThreadCache', () => {
+  let extension: llamacpp_extension
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    extension = new llamacpp_extension('http://localhost', 'llamacpp')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // The worker resolves state file names against slot-save-path, so erasing
+  // has to name the very directory the preset named. On Windows the provider
+  // path is extended (`\\?\C:\...`), where a `/` is a literal name character
+  // rather than a separator.
+  it('erases from the directory the preset names, on a Windows provider path', async () => {
+    const { getJanDataFolderPath, joinPath } = await import('@janhq/core')
+    const { eraseThreadSlotState } = await import(
+      '@janhq/tauri-plugin-llamacpp-api'
+    )
+    const { threadCacheDir } = await import('../preset')
+    const providerPath = '\\\\?\\C:\\Users\\u\\AppData\\Roaming\\Jan-nightly\\data\\llamacpp'
+
+    vi.mocked(getJanDataFolderPath).mockResolvedValue(
+      '\\\\?\\C:\\Users\\u\\AppData\\Roaming\\Jan-nightly\\data'
+    )
+    vi.mocked(joinPath).mockResolvedValue(providerPath)
+
+    await extension.forgetThreadCache('t1')
+
+    expect(eraseThreadSlotState).toHaveBeenCalledWith({
+      threadId: 't1',
+      cacheDir: threadCacheDir(providerPath),
+    })
+    expect(
+      vi.mocked(eraseThreadSlotState).mock.calls[0][0].cacheDir
+    ).not.toContain('/')
   })
 })

@@ -762,6 +762,13 @@ export function ThreadConversation({
               // it narrows that against the user's configured ceiling.
               const ctxLen = getModelSelection().selectedModel?.settings
                 ?.ctx_len?.controller_props?.value
+              // A tool the user disabled must not run even if the model re-emits
+              // a call it saw earlier in history: the disabled list only filters
+              // what is advertised, not what executes.
+              const disabledKey = `${serverForTool(toolName) ?? 'unknown'}::${toolName}`
+              if (useToolAvailable.getState().getDisabledTools().includes(disabledKey)) {
+                return { error: `Tool '${toolName}' is disabled.` }
+              }
               // AH-041. The backend keeps the record of which servers the user
               // trusts and refuses a call to any other, so an approval that
               // happened here has to be handed over as something it issued.

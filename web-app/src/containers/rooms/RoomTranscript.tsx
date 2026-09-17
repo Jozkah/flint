@@ -1,6 +1,15 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown } from 'lucide-react'
-import type { LiveTurn, Room, RoomAuthor, RoomJournalRecord, RoomMessage } from '@/lib/rooms/types'
+import { ArrowDown, ChevronDown, Globe, Search, Wrench } from 'lucide-react'
+import { toneForTool, TONE_CLASSES } from '@/lib/semanticTone'
+import { stripConclusion } from '@/lib/rooms/consensus'
+import type {
+  LiveTurn,
+  Room,
+  RoomAuthor,
+  RoomJournalRecord,
+  RoomMessage,
+  RoomToolActivity,
+} from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import {
@@ -8,9 +17,12 @@ import {
   findParticipant,
   messagesOf,
   participantAttribution,
+  participantColor,
+  participantColorsByName,
   voteTallies,
   type VoteTally,
 } from './roomUi'
+import { RoomMessageText } from './RoomMessageText'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -30,6 +42,22 @@ function authorLabel(author: RoomAuthor, room: Room | null, t: T): string {
     case 'system':
       return t('rooms:transcript.system')
   }
+}
+
+/**
+ * The message author in the transcript header. Each participant reads in their
+ * own stable color (the same color their `@mentions` get), with the role and
+ * model kept muted beside the name so the name is what the color highlights.
+ */
+function AuthorName({ author, room, t }: { author: RoomAuthor; room: Room | null; t: T }) {
+  if (author.kind === 'participant') {
+    return (
+      <span className="font-semibold" style={{ color: participantColor(author.participantId) }}>
+        {authorLabel(author, room, t)}
+      </span>
+    )
+  }
+  return <span className="font-medium text-foreground">{authorLabel(author, room, t)}</span>
 }
 
 /** Model output is untrusted: always plain text, whitespace preserved. */
@@ -78,18 +106,188 @@ function KindLabel({ message, t }: { message: RoomMessage; t: T }) {
   }
 }
 
+/** The lucide icon for a tool row, matching Cowork's choices. */
+function toolIcon(name: string) {
+  if (name === 'web_search') return Search
+  if (name === 'web_fetch') return Globe
+  return Wrench
+}
+
+/** The Cowork tone for one room tool call: kind colours it, failure outranks. */
+function toneFor(c: RoomToolActivity) {
+  return toneForTool({
+    name: c.name,
+    state: c.ok ? 'output-available' : 'output-error',
+    isMcp: c.mcp,
+  })
+}
+
+/** Args as label/value rows for the table view; a non-object shows as one row. */
+function argRows(args: unknown): Array<[string, string]> {
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    return Object.entries(args as Record<string, unknown>).map(([k, v]) => [
+      k,
+      typeof v === 'string' ? v : JSON.stringify(v),
+    ])
+  }
+  if (args === undefined) return []
+  return [['', typeof args === 'string' ? args : JSON.stringify(args, null, 2)]]
+}
+
+/**
+ * The tools a participant used. Simple view: one tone-coloured chip per call,
+ * the same palette as the Cowork tab (built-in indigo, read cyan, write amber,
+ * MCP violet, failures red). Advanced view (the Details toggle) expands each
+ * call into a tidy Input table and a Result/Error block.
+ */
+function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
+
+  return (
+    <div className="mb-1.5" data-testid="message-tools">
+      <div className="flex flex-wrap items-center gap-1">
+        {calls.map((c, i) => {
+          const tone = TONE_CLASSES[toneFor(c)]
+          const Icon = toolIcon(c.name)
+          // Match Cowork: a neutral chip whose icon carries the tool's kind
+          // colour, and a red tint only when the call failed.
+          return (
+            <span
+              key={`${c.name}-${i}`}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+                c.ok ? 'bg-sunken text-ink-2' : 'bg-destructive-tint text-destructive'
+              )}
+            >
+              <Icon
+                className={cn('size-3 shrink-0', c.ok ? tone.icon : 'text-destructive')}
+                aria-hidden
+              />
+              {c.name}
+            </span>
+          )
+        })}
+        {hasDetails && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            data-testid="tool-trace-toggle"
+            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronDown
+              className={cn(
+                'size-3 shrink-0 transition-transform',
+                expanded ? 'rotate-0' : '-rotate-90'
+              )}
+              aria-hidden
+            />
+            {expanded ? t('rooms:transcript.toolHide') : t('rooms:transcript.toolDetails')}
+          </button>
+        )}
+      </div>
+      {expanded && hasDetails && (
+        <div
+          className="mt-2 ml-1.5 space-y-3 border-l border-border pl-3"
+          data-testid="tool-trace-details"
+        >
+          {calls.map((c, i) => {
+            const tone = TONE_CLASSES[toneFor(c)]
+            const Icon = toolIcon(c.name)
+            const rows = argRows(c.args)
+            const isError = !c.ok
+            return (
+              <div key={`${c.name}-detail-${i}`} className="min-w-0 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
+                  <span className="text-foreground">{c.name}</span>
+                  <span
+                    className={cn(
+                      'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      isError
+                        ? 'bg-destructive-tint text-destructive'
+                        : 'bg-success-tint text-success'
+                    )}
+                  >
+                    {isError ? t('rooms:transcript.toolFailed') : t('rooms:transcript.toolOk')}
+                  </span>
+                </div>
+                {rows.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {t('rooms:transcript.toolArgs')}
+                    </p>
+                    <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-code px-3 py-2">
+                      {rows.map(([k, v], r) => (
+                        <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
+                          {k ? (
+                            <dt className="truncate font-mono text-[11px] text-muted-foreground">
+                              {k}
+                            </dt>
+                          ) : (
+                            <dt className="sr-only">value</dt>
+                          )}
+                          <dd
+                            className={cn(
+                              'min-w-0 max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground',
+                              k ? '' : 'col-span-2'
+                            )}
+                          >
+                            {v}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+                {c.output && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {isError ? t('rooms:transcript.toolError') : t('rooms:transcript.toolOutput')}
+                    </p>
+                    <pre
+                      className={cn(
+                        'max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
+                        isError
+                          ? 'border border-destructive/30 bg-destructive-tint text-destructive'
+                          : 'bg-code text-foreground'
+                      )}
+                    >
+                      {c.output}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MessageBody({
   message,
   tally,
+  mentionColors,
   t,
 }: {
   message: RoomMessage
   tally: VoteTally | undefined
+  mentionColors: Map<string, string>
   t: T
 }) {
   return (
     <>
-      <PlainText text={message.text} />
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <ToolTrace calls={message.toolCalls} t={t} />
+      )}
+      <RoomMessageText
+        text={stripConclusion(message.text).text}
+        mentionColors={mentionColors}
+        className="text-sm"
+      />
       {message.kind === 'vote-call' && (
         <p className="mt-1 text-xs text-muted-foreground" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
@@ -160,6 +358,9 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
   const tallies = useMemo(() => voteTallies(messages), [messages])
+  // Name -> color for the participants, so an @mention of one is painted in the
+  // same color as that participant's name. Rebuilt only when the roster changes.
+  const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -255,9 +456,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
               )}
             >
               <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="font-medium text-foreground">
-                  {authorLabel(m.author, room, t)}
-                </span>
+                <AuthorName author={m.author} room={room} t={t} />
                 {chip && (
                   <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">
                     {chip}
@@ -276,7 +475,12 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                   </span>
                 )}
               </header>
-              <MessageBody message={m} tally={tallies.get(m.id)} t={t} />
+              <MessageBody
+                message={m}
+                tally={tallies.get(m.id)}
+                mentionColors={mentionColors}
+                t={t}
+              />
             </article>
           )
         })}
@@ -288,12 +492,21 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           className="min-w-0 rounded-lg border border-dashed border-border bg-card p-3"
         >
           <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-medium text-foreground">{authorLabel(live.author, room, t)}</span>
+            <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
-              {t('rooms:transcript.streaming')}
+              {t(live.compacting ? 'rooms:transcript.compacting' : 'rooms:transcript.streaming')}
             </span>
           </header>
-          <PlainText text={live.text} />
+          {live.compacting ? (
+            <p className="text-sm text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+          ) : (
+            <RoomMessageText
+              text={stripConclusion(live.text).text}
+              mentionColors={mentionColors}
+              isStreaming
+              className="text-sm"
+            />
+          )}
         </article>
       )}
       </div>

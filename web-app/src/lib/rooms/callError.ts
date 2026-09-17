@@ -11,7 +11,23 @@ import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { classifyFailure, type FailureClass, type FailureFacts } from '@/lib/runRetry'
 import { redactSecrets } from '@/lib/redact'
 import type { PromptMessage } from './context'
-import type { RoomModelRef } from './types'
+import type { RoomModelRef, RoomToolActivity, ToolAccess } from './types'
+
+export type { RoomToolActivity }
+
+/**
+ * What a tool-capable participant may read while it takes its turn. Present only
+ * when the room has a working folder and the participant has tool access; the
+ * model adapter turns it into the read-only built-in tools, executed against the
+ * folder. Kept as plain data so the engine need not load the AI SDK or the tool
+ * plumbing.
+ */
+export type RoomToolContext = {
+  roomId: string
+  /** The folder file-read tools resolve against, or null for none. */
+  folder: string | null
+  access: ToolAccess
+}
 
 export type StreamReplyInput = {
   model: RoomModelRef
@@ -21,12 +37,18 @@ export type StreamReplyInput = {
   signal: AbortSignal
   /** Text deltas only; reasoning is never passed here. */
   onText: (delta: string) => void
+  /** Read-only tools for this turn, when the participant may use them. */
+  toolContext?: RoomToolContext
+  /** Reports each tool the participant runs, for the live/settled transcript. */
+  onToolActivity?: (activity: RoomToolActivity) => void
 }
 
 export type StreamReplyResult = {
   text: string
   usage?: { inputTokens?: number; outputTokens?: number }
   finishReason: string
+  /** The tools the participant used, in call order. */
+  toolActivity?: RoomToolActivity[]
 }
 
 export type StreamReply = (input: StreamReplyInput) => Promise<StreamReplyResult>

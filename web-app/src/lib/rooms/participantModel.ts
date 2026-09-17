@@ -6,15 +6,24 @@
  * transport or any tool/approval store, and it advertises no tools. Only text
  * deltas become the reply; reasoning is never collected.
  */
-import { streamText, type LanguageModel } from 'ai'
+import {
+  streamText,
+  stepCountIs,
+  InvalidToolInputError,
+  type LanguageModel,
+  type Tool,
+} from 'ai'
+import { salvageToolArgs } from '@/lib/coworkRunner'
 import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
+import { buildRoomTools, ROOM_TOOL_MAX_STEPS } from './roomTools'
 import {
   RoomCallError,
   cleanErrorMessage,
   toRoomCallError,
+  type RoomToolActivity,
   type StreamReplyInput,
   type StreamReplyResult,
 } from './callError'
@@ -104,6 +113,17 @@ export async function streamParticipantReply(
 
   let text = ''
   let streamError: unknown = null
+  // Read-only tools for this turn, when the participant may use them. Absent
+  // means the historical behaviour: a single text-only reply, no tools.
+  const toolActivity: RoomToolActivity[] = []
+  let tools: Record<string, Tool> | undefined
+  if (input.toolContext) {
+    tools = await buildRoomTools(input.toolContext, (a) => {
+      toolActivity.push(a)
+      input.onToolActivity?.(a)
+    })
+    if (Object.keys(tools).length === 0) tools = undefined
+  }
   try {
     const result = stream({
       model: languageModel,
@@ -111,7 +131,24 @@ export async function streamParticipantReply(
       messages: input.messages,
       maxOutputTokens: input.maxOutputTokens,
       abortSignal: input.signal,
-      // No tools are advertised in rooms.
+      // Read-only built-in tools, executed by the SDK's own loop, bounded so a
+      // turn cannot spin. Absent unless the room has a folder and the
+      // participant has tool access.
+      ...(tools
+        ? {
+            tools,
+            stopWhen: stepCountIs(ROOM_TOOL_MAX_STEPS),
+            // Salvage a tool call whose arguments the model emitted with trailing
+            // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
+            // parse rejects. Recover the first complete object rather than fail the
+            // turn -- the same recovery Cowork does on its own tool path.
+            experimental_repairToolCall: async ({ toolCall, error }) => {
+              if (!InvalidToolInputError.isInstance(error)) return null
+              const fixed = salvageToolArgs(toolCall.input)
+              return fixed ? { ...toolCall, input: JSON.stringify(fixed) } : null
+            },
+          }
+        : {}),
       onError: ({ error }) => {
         streamError = error
       },
@@ -144,7 +181,12 @@ export async function streamParticipantReply(
     } catch {
       // keep the default
     }
-    return { text, usage, finishReason }
+    return {
+      text,
+      usage,
+      finishReason,
+      toolActivity: toolActivity.length ? toolActivity : undefined,
+    }
   } catch (e) {
     throw toRoomCallError(e, input.signal)
   }

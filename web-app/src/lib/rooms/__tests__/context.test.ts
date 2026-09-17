@@ -1,14 +1,23 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+let resolvedSkills: Array<{ name: string; description: string }> = []
+const resolveExtensions = vi.fn(async () => resolvedSkills)
+vi.mock('@/lib/extensionsStore', () => ({
+  resolveExtensions: (...a: unknown[]) => resolveExtensions(...a),
+}))
+
 import {
   FRAMING_NOTICE,
   buildPrompt,
   buildSystemPrompt,
   projectHistory,
   quoteText,
+  renderSkillsCatalog,
   transcriptText,
   UNTRUSTED_NOTICE,
 } from '../context'
 import { synthesisPrompt } from '../synthesis'
+import { CONCLUDE_SIGNAL } from '../consensus'
 import { makeRoom } from './helpers'
 import { ROOM_SCHEMA_VERSION, type RoomMessage } from '../types'
 
@@ -34,6 +43,45 @@ describe('context projection', () => {
   const alice = { kind: 'participant' as const, participant: room.participants[0] }
   const bob = { kind: 'participant' as const, participant: room.participants[1] }
 
+  beforeEach(() => {
+    resolvedSkills = []
+    resolveExtensions.mockClear()
+  })
+
+  it('injects the resolved skills catalog into the built system prompt', async () => {
+    resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    const built = await buildPrompt({
+      room,
+      messages: [],
+      speaker: alice,
+      contextWindow: 32000,
+      maxOutputTokens: 512,
+    })
+    expect(resolveExtensions).toHaveBeenCalledWith('rooms')
+    expect(built.system).toContain('## Skill: caveman')
+    expect(built.system).toContain('Talk terse.')
+  })
+
+  it('leaves the prompt unchanged when the resolver returns no skills', async () => {
+    resolvedSkills = []
+    const built = await buildPrompt({
+      room,
+      messages: [],
+      speaker: alice,
+      contextWindow: 32000,
+      maxOutputTokens: 512,
+    })
+    expect(built.system).toBe(buildSystemPrompt(room, alice))
+    expect(built.system).not.toContain('# Skills')
+  })
+
+  it('renderSkillsCatalog renders name + description, and null for an empty list', () => {
+    expect(renderSkillsCatalog([])).toBeNull()
+    const block = renderSkillsCatalog([{ name: 'caveman', description: 'Talk terse.' } as never])
+    expect(block).toContain('## Skill: caveman')
+    expect(block).toContain('Talk terse.')
+  })
+
   it('system prompt carries objective, roles, addressing rules and the untrusted notice', () => {
     const s = buildSystemPrompt(room, alice)
     expect(s).toContain('You are Alice (optimist)')
@@ -42,6 +90,26 @@ describe('context projection', () => {
     expect(s).not.toContain('- Alice')
     expect(s).toContain('@moderator')
     expect(s).toContain(UNTRUSTED_NOTICE)
+  })
+
+  it('tells a tool-capable participant to use full paths under the working folder', () => {
+    const withFolder = { ...room, folder: 'C:\\tmp\\rooms-demo', mode: 'round-robin' as const }
+    const speaker = {
+      kind: 'participant' as const,
+      participant: { ...room.participants[0], toolAccess: 'edit' as const },
+    }
+    const s = buildSystemPrompt(withFolder, speaker)
+    expect(s).toContain('The working folder is: C:\\tmp\\rooms-demo')
+    expect(s).toContain('C:\\tmp\\rooms-demo\\notes.md')
+    expect(s).toContain('will not resolve')
+    expect(s).toContain('write and edit')
+  })
+
+  it('offers the conclude signal in non-moderator modes and omits tool guidance without access', () => {
+    const rr = { ...room, mode: 'round-robin' as const }
+    const s = buildSystemPrompt(rr, alice)
+    expect(s).toContain(CONCLUDE_SIGNAL)
+    expect(s).not.toContain('working folder')
   })
 
   it('own speech is assistant; others are user with attribution prefixes', () => {

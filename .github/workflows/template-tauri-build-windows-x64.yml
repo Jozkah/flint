@@ -116,6 +116,22 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The self-hosted CUDA images carry neither Git for Windows nor make, and
+      # every later step (dtolnay's included) is bash. No-op on hosted images.
+      - name: Provision Git Bash and make on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'C:\Program Files\Git\bin\bash.exe')) {
+            choco install git -y --no-progress
+            Add-Content $env:GITHUB_PATH 'C:\Program Files\Git\cmd'
+            Add-Content $env:GITHUB_PATH 'C:\Program Files\Git\bin'
+          }
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+            Add-Content $env:GITHUB_PATH 'C:\ProgramData\chocolatey\bin'
+          }
+
       - name: Replace Icons for Beta Build
         if: inputs.channel != 'stable'
         shell: bash
@@ -294,6 +310,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           JAN_SIGNING_KEY: ${{ secrets.JAN_SIGNING_KEY }}
+
+      - name: Report ccache statistics
+        if: success() || failure()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then ccache -s; else echo "ccache not available"; fi
 
       # The engine build is fifteen minutes of cmake whose output cargo only
       # surfaces as a tail. When it fails, the whole log is the artifact worth

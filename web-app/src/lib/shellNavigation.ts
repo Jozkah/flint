@@ -12,6 +12,7 @@ export type RailArea =
   | 'library'
   | 'models'
   | 'tools'
+  | 'extensions'
   | 'search'
   | 'system'
   | 'settings'
@@ -36,6 +37,7 @@ export const RAIL_ITEMS: readonly RailItem[] = [
     to: route.settings.model_providers,
   },
   { id: 'tools', labelKey: 'common:appRail.tools', group: 'top', to: route.settings.mcp_servers },
+  { id: 'extensions', labelKey: 'common:appRail.extensions', group: 'top', to: route.extensions },
   { id: 'search', labelKey: 'common:appRail.search', group: 'bottom' },
   { id: 'system', labelKey: 'common:appRail.system', group: 'bottom', to: route.systemMonitor },
   { id: 'settings', labelKey: 'common:appRail.settings', group: 'bottom', to: route.settings.general },
@@ -59,6 +61,7 @@ export function areaForPath(pathname: string): RailArea {
   const path = pathname.replace(/\/+$/, '') || '/'
   if (within(path, route.rooms)) return 'rooms'
   if (within(path, route.artifacts)) return 'library'
+  if (within(path, route.extensions)) return 'extensions'
   if (within(path, route.settings.model_providers) || within(path, route.settings.hardware))
     return 'models'
   if (TOOLS_PAGES.some((p) => within(path, p))) return 'tools'

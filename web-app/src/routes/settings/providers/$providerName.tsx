@@ -19,6 +19,7 @@ import { DialogEditModel } from '@/containers/dialogs/EditModel'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { ImportMlxModelDialog } from '@/containers/dialogs/ImportMlxModelDialog'
 import { ModelSetting } from '@/containers/ModelSetting'
+import { LlamacppEngineInfo } from '@/containers/LlamacppEngineInfo'
 import { DialogDeleteModel } from '@/containers/dialogs/DeleteModel'
 import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
@@ -898,6 +899,8 @@ function ProviderDetail() {
               </span>
             </div>
           )}
+
+        {isLlamacpp && <LlamacppEngineInfo />}
 
         {provider?.provider === 'mlx' && (
           <div className="flex items-start gap-2 rounded-md border border-border bg-warning-tint px-3 py-2 text-xs text-ink-2">

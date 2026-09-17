@@ -15,11 +15,11 @@ import {
 } from './engine'
 import {
   defaultProviderLookup,
-  modelSupportsTools,
+  modelToolSupport,
   type ProviderLookup,
 } from './availability'
 import { parseAddress } from './addressing'
-import { clampLimits, emptyUsage } from './limits'
+import { checkLimits, clampLimits, emptyUsage, extendedLimits } from './limits'
 import { activeParticipants } from './policy'
 import {
   getRoomPersistence,
@@ -78,6 +78,8 @@ export type RoomSettingsPatch = {
   moderator?: Partial<ModeratorConfig>
   limits?: Partial<RoomLimits>
   participants?: ParticipantPatch[]
+  /** The working folder, or `null` to detach it. */
+  folder?: string | null
 }
 
 export interface RoomEditor {
@@ -109,6 +111,31 @@ export type ControllerDeps = {
 
 function roomError(code: RoomError['code'], message: string): RoomError {
   return { code, message }
+}
+
+/**
+ * Whether a user message should make a non-running room pick up and respond,
+ * rather than only be recorded. Paused, awaiting-user, completed and
+ * user/converged-stopped rooms resume -- but only when continuing would not
+ * immediately hit a limit. A room at (or past) a limit is left as it is so the
+ * composer can offer to extend it (see `extendLimit`); otherwise it would
+ * resume and re-stop in the same instant, swallowing the message.
+ */
+function canResumeOnMessage(room: Room, now: number): boolean {
+  switch (room.status) {
+    case 'paused':
+    case 'awaiting-user':
+    case 'completed':
+    case 'stopped':
+      break
+    default:
+      return false
+  }
+  // The single source of truth for "would continuing help": if no limit blocks,
+  // resume; if one does, leave it for the composer's extend prompt. Keying off
+  // stopReason instead would strand a limit-stopped room whose limit the user
+  // has since raised in the editor -- the message would be swallowed.
+  return checkLimits(room, now, { activeSince: now, callsMade: 0, speaking: true }) === null
 }
 
 export function defaultNewId(): string {
@@ -232,15 +259,22 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       } finally {
         if (s.run === run) s.run = null
         store().setRunning(roomId, false)
-        // Messages sent after the run's last drain are still recorded.
+        // Messages sent after the run's last drain are still recorded -- and if
+        // the room can act on them, it resumes so they are not left unanswered.
         const leftovers = s.userQueue.splice(0)
         if (leftovers.length) {
+          let resume = false
           void enqueue(roomId, async () => {
             const { room } = await persistence().getRoom(roomId)
             for (const m of leftovers) {
               await appendMessage(roomId, userMessage(roomId, room.round, m.text, m.to))
             }
-          }).catch(reportError)
+            resume = canResumeOnMessage(room, now())
+          })
+            .then(() => {
+              if (resume) void launch(roomId, { kind: 'discuss' }, (r) => r.status !== 'running')
+            })
+            .catch(reportError)
         }
       }
     })
@@ -289,7 +323,14 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
   ): Participant => {
     const name = input.name.trim()
     if (!name) throw roomError('invalid_room', 'A participant needs a name.')
-    const wantsRead = input.toolAccess === 'read'
+    // A new participant (no toolAccess given) defaults to read-only, so a
+    // tool-capable model can use tools the moment the room has a folder or a
+    // trusted MCP server -- without that default, every room silently started
+    // tool-less and users hit "I have no tools". An explicit 'none' is still
+    // honoured. 'read'/'edit' both need a tool-capable model, and any choice is
+    // dropped to 'none' when the model has no tools.
+    const requested: ToolAccess = input.toolAccess ?? 'read'
+    const wantsTools = requested === 'read' || requested === 'edit'
     let pricing: Participant['pricing']
     if (input.pricing) {
       const i = Number(input.pricing.inputPerMTokUsd)
@@ -303,8 +344,14 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       name: name.slice(0, 80),
       role: (input.role ?? '').trim().slice(0, 200),
       model: { provider: input.model.provider, id: input.model.id },
-      // Forced to none when the model lacks the tools capability.
-      toolAccess: wantsRead && modelSupportsTools(input.model, lookup) ? 'read' : 'none',
+      // Forced to none only when the model resolves and truly lacks tools; an
+      // unresolved model (provider not loaded yet) keeps the requested access
+      // rather than being silently and permanently downgraded. The engine gates
+      // tools again at run time, when the model is resolvable.
+      toolAccess:
+        wantsTools && modelToolSupport(input.model, lookup) !== 'no'
+          ? (requested as 'read' | 'edit')
+          : 'none',
       removed: input.removed ?? false,
       order: input.order,
       availability: { state: 'unknown' },
@@ -420,6 +467,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           s.userQueue.push({ text: body, to })
           return
         }
+        // Whether the room should pick the message up and act on it, rather than
+        // just record it. A room stopped by a limit is left alone: resuming it
+        // would only re-trip the same limit, so the UI offers to extend instead.
+        let resume = false
         await enqueue(roomId, async () => {
           const { room } = await persistence().getRoom(roomId)
           const address =
@@ -427,7 +478,40 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
               : to
           await appendMessage(roomId, userMessage(roomId, room.round, body, address))
+          // In user-selected mode the room waits for the user to pick who speaks
+          // next, so a message only resumes when it names a participant (that one
+          // answers); a message to everyone/moderator leaves the room waiting.
+          if (room.mode === 'user-selected' && room.status === 'awaiting-user') {
+            if (address.kind === 'participant') {
+              await saveRoom({ ...room, nextSpeakerId: address.participantId })
+              resume = true
+            }
+            return
+          }
+          resume = canResumeOnMessage(room, now())
         })
+        if (resume) void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
+      }),
+
+    extendLimit: (roomId, addRounds, text, to) =>
+      guarded('extendLimit', async () => {
+        await enqueue(roomId, async () => {
+          const { room } = await persistence().getRoom(roomId)
+          // Raise every limit together so the room can actually run the extra
+          // rounds -- extending one limit by a small count re-trips instantly on
+          // the token/time/cost limits or on whatever limit is next.
+          const limits = extendedLimits(room, addRounds)
+          await saveRoom({ ...room, limits, stopReason: null })
+          const body = text?.trim()
+          if (body && to) {
+            const address =
+              to.kind === 'room'
+                ? parseAddress(body, room.participants, room.moderator.enabled ? room.moderator.name : null)
+                : to
+            await appendMessage(roomId, userMessage(roomId, room.round, body, address))
+          }
+        })
+        void launch(roomId, { kind: 'discuss' }, (room) => room.status !== 'running')
       }),
 
     callVote: (roomId, proposal) =>
@@ -526,7 +610,13 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           objective: patch.objective !== undefined ? patch.objective.trim() : room.objective,
           mode: patch.mode ?? room.mode,
           moderator: patch.moderator ? normaliseModerator(patch.moderator, room.moderator) : room.moderator,
+          folder:
+            patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
+          // Raising a limit that stopped the room clears the stop, so a message
+          // resumes it instead of being stranded by a limit that no longer binds.
+          stopReason:
+            patch.limits && room.stopReason?.kind === 'limit' ? null : room.stopReason,
           participants,
         }
         return saveRoom(updated)

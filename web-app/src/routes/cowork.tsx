@@ -2330,6 +2330,13 @@ function CoworkPage() {
      * events of the calls it asked for.
      */
     let stepSnapshot: PromptSnapshotRef | undefined
+    // Per-step generation timing, so a provider that reports no llama.cpp
+    // `timings` (every remote model, including pxa-27b) still gets a
+    // tokens/sec figure -- computed from output tokens over the streaming
+    // span, the same fallback the Chat transport uses. First and last delta of
+    // the current step; reset when the step settles.
+    let genFirstAt = 0
+    let genLastAt = 0
     const run: RunContext = {
       sessionId: sid,
       runId,
@@ -2343,6 +2350,12 @@ function CoworkPage() {
 
     const sink: StreamSink = {
       onText: (delta) => {
+        // Mark the generation span for this step's tokens/sec fallback: the
+        // first delta starts it, every delta extends it. Tool execution emits
+        // no text, so it is excluded from the span.
+        const now = Date.now()
+        if (genFirstAt === 0) genFirstAt = now
+        genLastAt = now
         const last = runTurns[runTurns.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
@@ -3340,18 +3353,46 @@ function CoworkPage() {
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
             const liveStats = useAppState.getState().liveTokenStatsByThread[sid]
+            // Prefer llama.cpp's reported generation speed; otherwise derive it
+            // from output tokens over the streaming span, so remote providers
+            // (pxa-27b and every other non-llama.cpp model) still show a
+            // tokens/sec figure -- matching what the Chat transport does.
+            const genDurationSec =
+              genFirstAt > 0 && genLastAt > genFirstAt
+                ? (genLastAt - genFirstAt) / 1000
+                : 0
+            const stepOutputTokens =
+              liveStats?.completionTokens ??
+              fromCoworkUsage(result.usage)?.outputTokens ??
+              0
+            const liveTps = liveStats?.tokensPerSecond ?? 0
+            const computedTps =
+              liveTps > 0
+                ? liveTps
+                : genDurationSec > 0 && stepOutputTokens > 0
+                  ? stepOutputTokens / genDurationSec
+                  : 0
             const settledTurns = turns.map((turn) =>
-              turn.role === 'assistant' && turn.content === result.text && liveStats
+              turn.role === 'assistant' &&
+              turn.content === result.text &&
+              computedTps > 0
                 ? {
                     ...turn,
                     tokenSpeed: {
-                      tokenSpeed: liveStats.tokensPerSecond ?? 0,
-                      promptSpeed: liveStats.promptPerSecond ?? undefined,
-                      tokenCount: liveStats.completionTokens,
+                      tokenSpeed: computedTps,
+                      promptSpeed: liveStats?.promptPerSecond ?? undefined,
+                      tokenCount: stepOutputTokens || undefined,
+                      durationMs:
+                        genDurationSec > 0
+                          ? Math.round(genDurationSec * 1000)
+                          : undefined,
                     },
                   }
                 : turn
             )
+            // Reset the generation span so the next step measures its own.
+            genFirstAt = 0
+            genLastAt = 0
             pushLive(settledTurns, stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
@@ -4398,6 +4439,10 @@ function CoworkPage() {
                   />
                 }
                 tokenSource={tokenSource}
+                // Token usage is shown per turn in the transcript
+                // (TurnUsageDetails); hide the composer's counter so the same
+                // number is not reported in two places.
+                hideTokenCounter
                 surfaceControls={
                   <>
                     {phone && sessionControls}

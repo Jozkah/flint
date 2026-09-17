@@ -153,6 +153,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_skill_hub_import,
         core::agent::commands::agent_skill_enabled_get,
         core::agent::commands::agent_skill_enabled_set,
+        core::agent::cc_import::agent_cc_scan,
+        core::agent::cc_import::agent_cc_import,
         core::agent::commands::agent_plugin_list,
         core::agent::commands::agent_plugin_details,
         core::agent::commands::agent_plugin_sources,
@@ -161,12 +163,20 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_set_enabled,
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
+        core::agent::commands::agent_resolve_extensions,
+        core::agent::commands::agent_extensions_matrix_get,
+        core::agent::commands::agent_extensions_matrix_set,
+        core::agent::commands::agent_extensions_matrix_set_item,
+        core::agent::commands::agent_projects_list,
+        core::agent::commands::agent_projects_register,
         core::agent::commands::agent_git_branch,
         core::agent::commands::agent_worktree_ensure,
         core::agent::commands::agent_worktree_state,
         core::agent::commands::agent_worktree_discard,
         core::agent::commands::agent_worktree_pending,
+        core::agent::commands::agent_desktop_bridge,
         core::agent::commands::agent_worktree_list,
+        core::agent::commands::agent_worktree_optimize,
         core::agent::commands::agent_proposal_from_worktree,
         core::agent::commands::agent_proposal_list,
         core::agent::commands::agent_proposal_apply,
@@ -182,6 +192,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_subagent_list,
+        core::agent::commands::consolidate_memory,
         // Remote provider commands
         core::server::remote_provider_commands::register_provider_config,
         core::server::remote_provider_commands::unregister_provider_config,
@@ -291,6 +302,36 @@ fn is_proxy_server_running<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool
     app.try_state::<AppState>()
         .and_then(|s| s.server_handle.try_lock().ok().map(|g| g.is_some()))
         .unwrap_or(false)
+}
+
+/// Auto-accept the WebView2 "Reload site?" beforeunload confirmation so it
+/// never interrupts the user. This desktop app has no page-level form state
+/// worth guarding; the dialog only blocks HMR reloads and extension operations.
+#[cfg(all(not(feature = "cli"), windows))]
+fn suppress_beforeunload_dialog(window: &tauri::WebviewWindow) {
+    window
+        .with_webview(|webview| {
+            use webview2_com::AddScriptToExecuteOnDocumentCreatedCompletedHandler;
+            use windows_core::HSTRING;
+            let controller = webview.controller();
+            let core = unsafe { controller.CoreWebView2().unwrap() };
+            let js = String::from(
+                "Object.defineProperty(window,'onbeforeunload',\
+                 {get(){return null},set(){}});\
+                 window.addEventListener('beforeunload',\
+                 function(e){e.stopImmediatePropagation();delete e.returnValue},\
+                 true);",
+            );
+            let _ = AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+                Box::new(move |handler| unsafe {
+                    let js = HSTRING::from(js);
+                    core.AddScriptToExecuteOnDocumentCreated(&js, &handler)
+                        .map_err(Into::into)
+                }),
+                Box::new(|e, _| e),
+            );
+        })
+        .unwrap_or_else(|e| log::warn!("could not suppress beforeunload dialog: {e}"));
 }
 
 #[cfg(not(feature = "cli"))]
@@ -412,7 +453,7 @@ pub fn build_app() -> tauri::App {
         app_builder = app_builder.plugin(tauri_plugin_mlx::init());
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(all(feature = "hardware", not(any(target_os = "android", target_os = "ios"))))]
     {
         app_builder = app_builder.plugin(tauri_plugin_hardware::init());
     }
@@ -533,6 +574,7 @@ pub fn build_app() -> tauri::App {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 core::window_state::restore_and_show(&window, &data_folder);
                 core::window_state::install(&window, data_folder);
+                suppress_beforeunload_dialog(&window);
             }
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());

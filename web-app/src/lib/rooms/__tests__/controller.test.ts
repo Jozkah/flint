@@ -15,6 +15,12 @@ import {
 } from './helpers'
 import type { StreamReplyInput } from '../callError'
 import type { StreamReply } from '../callError'
+import { CONCLUDE_SIGNAL } from '../consensus'
+
+// buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
+// controller tests exercise turn-taking, not extension resolution, so stub
+// it to return no skills rather than pulling in a real invoke bridge.
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }))
 
 const initialStore = useRoomsStore.getState()
 
@@ -90,6 +96,32 @@ describe('room editor', () => {
     expect(persistence.rooms.get(room.id)).toEqual(room)
   })
 
+  it('a new participant defaults to read-only for a tool-capable model', async () => {
+    const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    // No toolAccess given: the controller applies its default.
+    const room = await ctl.createRoom({
+      title: 'Defaults',
+      participants: [
+        { name: 'Alice', model: models.a }, // tool-capable -> read
+        { name: 'Bob', model: models.b }, // no tools -> none
+      ],
+    })
+    expect(room.participants.map((p) => p.toolAccess)).toEqual(['read', 'none'])
+
+    const added = await ctl.addParticipant(room, { name: 'Cara', model: models.a })
+    expect(added.participants.find((p) => p.name === 'Cara')?.toolAccess).toBe('read')
+
+    // An explicit 'none' is still honoured.
+    const room2 = await ctl.createRoom({
+      title: 'Explicit none',
+      participants: [
+        { name: 'Dan', model: models.a, toolAccess: 'none' },
+        { name: 'Eve', model: models.b },
+      ],
+    })
+    expect(room2.participants.map((p) => p.toolAccess)).toEqual(['none', 'none'])
+  })
+
   it('rejects duplicate names', async () => {
     const { ctl } = setup(scriptedStream(() => ({ text: 'x' })).fn)
     await expect(
@@ -111,7 +143,8 @@ describe('room editor', () => {
     expect(updated.title).toBe('Renamed')
     expect(updated.limits.maxRounds).toBe(50)
     expect(updated.participants.map((p) => [p.name, p.toolAccess])).toEqual([
-      ['Alice', 'none'],
+      // Alice (tool-capable model) kept her default read-only from createRoom.
+      ['Alice', 'read'],
       ['Robert', 'none'],
       ['Carol', 'read'],
     ])
@@ -154,6 +187,69 @@ describe('room controller', () => {
     expect(state.runningRoomIds).toEqual([])
     expect(state.liveTurn).toBeNull()
     expect(approvals).not.toHaveBeenCalled()
+  })
+
+  it('a limit-stopped room is not resumed by a message, but extendLimit continues it', async () => {
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl) // maxTurns: 2
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!.stopReason).toEqual({ kind: 'limit', limit: 'maxTurns' })
+    const afterLimit = calls.length
+
+    // A plain message records but does not resume (it would only re-trip it).
+    await ctl.sendUserMessage(room.id, 'please continue', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(ctl.isRunning(room.id)).toBe(false)
+    expect(calls.length).toBe(afterLimit)
+    expect(persistence.rooms.get(room.id)!.status).toBe('stopped')
+
+    // Extending raises the blocking limit(s) for more rounds and continues,
+    // carrying the message; the room actually runs further, not re-stops.
+    await ctl.extendLimit(room.id, 3, 'go on', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(calls.length).toBeGreaterThan(afterLimit)
+    const saved = persistence.rooms.get(room.id)!
+    expect(saved.limits.maxTurns).toBeGreaterThan(2)
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'go on')).toBe(true)
+  })
+
+  it('a message resumes a room that had concluded', async () => {
+    // Conclude on the 3rd turn: a lone or first-round conclusion is ignored, so
+    // the signal must land after a full round has been spoken.
+    let n = 0
+    const { fn, calls } = scriptedStream(() =>
+      n++ === 2 ? { text: `We agree. ${CONCLUDE_SIGNAL}` } : { text: uniqueText() }
+    )
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { limits: { maxTurns: 6 } })
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(persistence.rooms.get(room.id)!).toMatchObject({
+      status: 'completed',
+      stopReason: { kind: 'converged', by: 'consensus' },
+    })
+    const afterConclude = calls.length
+
+    await ctl.sendUserMessage(room.id, 'one more question', { kind: 'room' })
+    await ctl.whenIdle(room.id)
+    expect(calls.length).toBeGreaterThan(afterConclude)
+    expect(messagesOf(persistence, room.id).some((m) => m.text === 'one more question')).toBe(true)
+  })
+
+  it('pauses to awaiting-user when a whole round is stuck waiting on the user', async () => {
+    // Both participants keep addressing @user (asking for input they lack),
+    // which would otherwise loop forever in round-robin.
+    const { fn, calls } = scriptedStream(() => ({ text: `@user please paste the file ${uniqueText()}` }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl, { limits: { maxTurns: 20 } })
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    const saved = persistence.rooms.get(room.id)!
+    expect(saved.status).toBe('awaiting-user')
+    // It stopped after roughly one round, not after burning every turn.
+    expect(calls.length).toBeLessThanOrEqual(3)
   })
 
   it.each([

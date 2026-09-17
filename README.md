@@ -85,7 +85,8 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 
 - **Session-to-session messaging:** agent sessions in the same project can message one another through a backend mailbox. Messages are attributed to the sender, replies are addressed back, and delivery is project-scoped and fenced against prompt injection.
 - **`stop_session`:** a permission-safe way to stop a running peer session in the same project, gated by explicit user approval, with protection against acting on a run that already ended.
-- **Multi-model Discussion Rooms:** put several providers and models in one room with moderator and speaking policies, a shared transcript with addressed replies, per-room budgets and limits, persistence, restart recovery, termination, and synthesis.
+- **Multi-model Discussion Rooms:** put several providers and models in one room with moderator and speaking policies, a shared transcript with addressed replies, per-room budgets and limits, persistence, restart recovery, termination, and synthesis. Participants have their own colours, `@mentions` are colour-matched, and messages render Markdown.
+- **Tool-using rooms:** give a participant read-only or read/edit access and attach a working folder — writes are confined to it by a direct-edit grant. Participants can also use your trusted MCP-server tools (routed to the exact server) and web search. Every call shows as a colour-coded chip that expands to its input and result, just like Cowork. A participant can conclude a discussion early; a stopped room resumes when you message it and offers to continue past a limit; and long discussions compact themselves to fit each model's context window.
 - **First-launch JAN migration assistant:** see [Migration from JAN](#migration-from-jan).
 
 </details>
@@ -322,6 +323,52 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 - A full screen-reader pass has not been done.
 
 ## Build from source
+
+### Quick start on Windows (copy-paste commands)
+
+New to this, or new to Git? Every step is a command you can paste into
+**PowerShell**. Do the steps in order.
+
+**1. Install the tools** (once per machine). Windows 10/11 ships `winget`;
+these commands fetch everything Flint needs:
+
+```powershell
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Rustlang.Rustup
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Then make Rust use the MSVC toolchain (needed to link on Windows):
+
+```powershell
+rustup default stable-msvc
+```
+
+**Close and reopen PowerShell** so the newly installed tools are on your
+`PATH`.
+
+**2. Get the code and enable Yarn:**
+
+```powershell
+git clone https://github.com/Jozkah/jan.git
+cd jan
+corepack enable
+```
+
+**3. Install dependencies and build the app:**
+
+```powershell
+yarn install
+yarn build
+```
+
+The first build compiles Rust and can take 10–30 minutes. When it finishes,
+your installers are in `src-tauri\target\release\bundle\` (an `.exe` under
+`nsis\` and an `.msi` under `msi\`), and the app itself is at
+`src-tauri\target\release\Flint.exe`.
+
+To run Flint in development instead of building an installer, use `yarn dev`.
 
 ### Prerequisites
 

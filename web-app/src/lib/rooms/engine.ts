@@ -19,6 +19,7 @@ import {
   defaultProviderLookup,
   effectiveToolAccess,
   markUnavailable,
+  modelSupportsTools,
   preflightParticipants,
   type ProviderLookup,
 } from './availability'
@@ -59,6 +60,7 @@ import {
 } from './policy'
 import { messagesFromJournal, repairJournal } from './recovery'
 import { isRepetitive, recentSpeech } from './repetition'
+import { stripConclusion } from './consensus'
 import {
   composeSynthesisText,
   computeDissent,
@@ -161,6 +163,10 @@ class RoomRun {
   activeSince: number | null = null
   readonly errorStreaks = new Map<string, number>()
   readonly summaryCache = new Map<string, string>()
+  /** The live turn in flight, so compaction can flag itself on it. */
+  private activeLive: LiveTurn | null = null
+  /** Consecutive speech turns addressed to the user, to break a wait-loop. */
+  private consecutiveUserWaits = 0
   readonly toolNoted = new Set<string>()
   droppedNoted = false
   readonly lookup: ProviderLookup
@@ -355,6 +361,15 @@ class RoomRun {
         ? this.room.moderator.model
         : speakerModel
     this.calls++
+    // Tell the UI this turn is compacting, so a "Compacting earlier messages…"
+    // note shows instead of a silent pause while the summary is written.
+    if (this.activeLive) {
+      this.emit({
+        type: 'live',
+        roomId: this.roomId,
+        live: { ...this.activeLive, text: '', compacting: true },
+      })
+    }
     try {
       if (this.deps.summarize) {
         return await this.deps.summarize({ room: this.room, older, model, signal: this.signal })
@@ -407,11 +422,13 @@ class RoomRun {
       summaryCache: this.summaryCache,
       summarize: (older) => this.summarizeOlder(older, model),
     })
-    if (built.trimmed?.kind === 'dropped' && !this.droppedNoted) {
+    if (built.trimmed && !this.droppedNoted) {
       this.droppedNoted = true
       const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
       await this.system(
-        `The discussion is longer than ${who}'s context window; the oldest ${built.trimmed.count} message(s) were left out of that prompt.`
+        built.trimmed.kind === 'summarized'
+          ? `The discussion outgrew ${who}'s context window, so the oldest ${built.trimmed.count} message(s) were compacted into a summary.`
+          : `The discussion is longer than ${who}'s context window; the oldest ${built.trimmed.count} message(s) were left out of that prompt.`
       )
     }
     return built
@@ -440,6 +457,8 @@ class RoomRun {
       text: '',
       startedAt: this.deps.now(),
     }
+    // Shared with summarizeOlder so it can flag "compacting" on this same turn.
+    this.activeLive = live
     this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
 
     const pricing = args.participant?.pricing ?? pricingForModel(this.room.participants, args.model)
@@ -453,6 +472,24 @@ class RoomRun {
           await this.system(tools.note)
         }
       }
+
+      // Read-only tools for this turn, when the participant has tool access.
+      // File tools need the room's folder; web tools do not, so a participant
+      // can research even with no folder attached. With no access the context
+      // is absent and the turn behaves exactly as before.
+      const toolContext =
+        args.participant &&
+        args.participant.toolAccess !== 'none' &&
+        // Guard against a model whose tools capability changed after the
+        // participant was saved: sending tools to a model that cannot use them
+        // is a provider error that would suspend the participant.
+        modelSupportsTools(args.participant.model, this.lookup)
+          ? {
+              roomId: this.roomId,
+              folder: this.room.folder ?? null,
+              access: args.participant.toolAccess,
+            }
+          : undefined
 
       let shrink = false
       let attempt = 0
@@ -489,6 +526,7 @@ class RoomRun {
               live.text += delta
               this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
             },
+            ...(toolContext ? { toolContext } : {}),
           })
           if (this.signal.aborted) throw new RunAborted()
           const raw = typeof res.text === 'string' ? res.text : live.text
@@ -500,9 +538,21 @@ class RoomRun {
           this.room = { ...this.room, usage: addCallUsage(this.room.usage, usage, pricing) }
           if (args.participant) this.errorStreaks.set(args.participant.id, 0)
           const extra = args.finalize ? args.finalize(raw) : {}
+          const message = this.message({
+            ...base,
+            text: raw,
+            usage,
+            ...extra,
+            ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
+          })
+          // The conclude signal is a control token, never transcript prose:
+          // strip it from every turn kind (final position and synthesis emit it
+          // too, and their finalize does not clean the text). Detection of it
+          // stays with the speech turn, on the raw reply.
+          message.text = stripConclusion(message.text).text
           // Stored after the provider `try`: a write failure is a persistence
           // error, never a provider error to classify or retry.
-          completed = { raw, message: this.message({ ...base, text: raw, usage, ...extra }) }
+          completed = { raw, message }
         } catch (e) {
           if (isRoomPersistenceError(e)) throw e
           if (e instanceof RunAborted || isAbortLike(e, this.signal)) {
@@ -748,11 +798,24 @@ class RoomRun {
       const speaker = choice.participant
       const request = choice.via === 'moderator' && directive?.request ? directive.request : null
       const before = this.messages.length
+      // A participant may end the discussion early by concluding it, but never
+      // when a moderator is the one deciding when to stop, and never as a lone
+      // voice (with fewer than two participants "consensus" is one opinion) or
+      // before a full round has been spoken.
+      const allowConsensus =
+        this.room.mode !== 'moderator-selected' &&
+        activeParticipants(this.room).length >= 2 &&
+        this.room.usage.turns >= activeParticipants(this.room).length
+      let concluded = false
       const outcome = await this.participantTurn(
         speaker,
         'speech',
         request ? `The moderator asks you: ${quoteText(request)}` : null,
-        (raw) => ({ to: parseAddressFor(raw, this.room) })
+        (raw) => {
+          const c = stripConclusion(raw)
+          concluded = c.concluded && allowConsensus
+          return { to: parseAddressFor(c.text, this.room), text: c.text }
+        }
       )
 
       this.room = markSpoken(this.room, speaker.id)
@@ -775,12 +838,44 @@ class RoomRun {
         }
         converged = consecutiveRepetitive >= limits.maxRepetitiveTurns
       }
+      // Track a wait-loop: turns addressed to the user, when the participants
+      // are asking for input rather than talking to each other.
+      const addressedUser = outcome.kind === 'complete' && outcome.message.to?.kind === 'user'
+      this.consecutiveUserWaits = addressedUser ? this.consecutiveUserWaits + 1 : 0
       await this.save()
 
       if (!(await this.ensureEnough(2))) return
+      if (concluded) {
+        // The participant's own message is the conclusion, so stop cleanly here
+        // rather than running close()'s final-positions round and synthesis --
+        // those only restate a point already made and read as noise after
+        // "concluded". Moderator/repetition convergence still synthesises,
+        // where an automatic summary earns its place.
+        await this.system('A participant concluded the discussion; the objective is met.')
+        await this.save({
+          status: 'completed',
+          stopReason: { kind: 'converged', by: 'consensus' },
+          nextSpeakerId: null,
+        })
+        return
+      }
       if (converged) {
         await this.system('Recent turns repeat earlier ones; the discussion has converged.')
         return this.close({ kind: 'converged', by: 'repetition' })
+      }
+      // A whole round of participants all waiting on the user (e.g. every model
+      // asking for a file or a tool it lacks): stop churning and hand back to the
+      // user instead of looping. A reply resumes it.
+      if (
+        this.consecutiveUserWaits >= 2 &&
+        this.consecutiveUserWaits >= activeParticipants(this.room).length
+      ) {
+        this.consecutiveUserWaits = 0
+        await this.system(
+          'Every participant is waiting for your input, so the room paused. Reply — or attach a folder / enable a tool they need — and it will continue.'
+        )
+        await this.save({ status: 'awaiting-user', nextSpeakerId: null })
+        return
       }
       if (this.room.mode === 'user-selected') {
         await this.save({ status: 'awaiting-user', nextSpeakerId: null })

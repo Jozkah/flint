@@ -5,7 +5,10 @@
  * `user` content, fitted to the speaker's own context window.
  */
 import { estimateTokens } from '@/lib/context-manager'
+import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
+import { CONCLUDE_SIGNAL } from './consensus'
 import type { Participant, Room, RoomMessage } from './types'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
@@ -87,8 +90,55 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
   } else {
     lines.push('The user is also present.')
   }
+  if (speaker.kind === 'participant') {
+    lines.push(
+      speaker.participant.toolAccess === 'none'
+        ? 'You have no tools in this discussion. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
+        : toolGuidance(room, speaker.participant.toolAccess)
+    )
+  }
+  if (speaker.kind === 'participant' && room.mode !== 'moderator-selected') {
+    lines.push(
+      `When the objective is fully met and further turns would only repeat what has been said, end your message with a final line containing exactly ${CONCLUDE_SIGNAL}. This closes the discussion, so use it only at genuine consensus or once the task is done — not to end a live disagreement.`
+    )
+  }
   lines.push(ADDRESSING_RULES, FRAMING_NOTICE, UNTRUSTED_NOTICE)
   return lines.join('\n')
+}
+
+/** Example child path under a folder, honouring its own separator. */
+function childPath(folder: string, name: string): string {
+  const sep = folder.includes('\\') && !folder.includes('/') ? '\\' : '/'
+  return `${folder.replace(/[\\/]+$/, '')}${sep}${name}`
+}
+
+/**
+ * How a tool-capable participant should reach its files. The built-in file
+ * tools attach the working folder read-only (or read/write with `edit`); they
+ * do not make it the current directory, so a bare `notes.md` resolves nowhere.
+ * The model must use full paths under the folder — spell that out, with the
+ * folder's real path, or it lists an empty sandbox and gives up.
+ */
+function toolGuidance(room: Room, access: 'read' | 'edit'): string {
+  const web = useWebSearchConfig.getState().webSearchEnabled
+  if (!room.folder) {
+    // No folder means no file tools; whether any tools exist depends on web
+    // search and connected MCP servers. Don't promise tools that aren't there.
+    const webNote = web
+      ? ' You do have web tools (web_search / web_fetch), plus any connected MCP tools.'
+      : ' Unless connected MCP tools are available, you have no tools this turn; do not attempt file or command tools.'
+    return `No working folder is attached, so file tools are unavailable.${webNote}`
+  }
+  const example = childPath(room.folder, 'notes.md')
+  const verbs =
+    access === 'edit'
+      ? 'read, list, write and edit files in your working folder'
+      : 'read and list files in your working folder (read-only)'
+  return [
+    `You can ${verbs}. The working folder is: ${room.folder}`,
+    `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
+    'Do not invent file contents: if a read fails, say so instead of guessing.',
+  ].join('\n')
 }
 
 function authorPrefix(room: Room, m: RoomMessage): string {
@@ -221,12 +271,29 @@ export type BuildPromptInput = {
   summaryCache?: Map<string, string>
 }
 
+/**
+ * Render the resolved skills into a catalog block, matching the agent's own
+ * skill catalog rendering exactly (`## Skill: <name>` per entry, description
+ * on the next paragraph when present). Returns null when there is nothing to
+ * advertise, so callers append nothing rather than an empty header.
+ */
+export function renderSkillsCatalog(skills: SkillMeta[]): string | null {
+  if (skills.length === 0) return null
+  const list = skills
+    .map((s) => (s.description ? `## Skill: ${s.name}\n\n${s.description}` : `## Skill: ${s.name}`))
+    .join('\n\n')
+  return `# Skills\n\n${list}`
+}
+
 export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt> {
   const window =
     input.contextWindow && input.contextWindow > 0
       ? input.contextWindow
       : FALLBACK_CONTEXT_WINDOW
-  const system = buildSystemPrompt(input.room, input.speaker)
+  let system = buildSystemPrompt(input.room, input.speaker)
+  const skills = await resolveExtensions('rooms')
+  const catalog = renderSkillsCatalog(skills)
+  if (catalog) system = `${system}\n\n${catalog}`
   const cue = turnCue(input.room, input.speaker, input.instruction)
   const fixed = estimateTokens(system) + estimateTokens(cue) + SAFETY_MARGIN_TOKENS
   let budget = Math.max(0, window - input.maxOutputTokens - fixed)

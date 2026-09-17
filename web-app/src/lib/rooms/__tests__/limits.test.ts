@@ -6,10 +6,47 @@ import {
   clampLimits,
   costIsEnforceable,
   emptyUsage,
+  extendedLimits,
   measureCall,
 } from '../limits'
 import { ROOM_LIMIT_CEILINGS } from '../types'
 import { makeRoom, participant } from './helpers'
+
+describe('extendedLimits', () => {
+  it('gives real headroom on every blocking limit so the room can continue', () => {
+    // A room parked at its token limit, having spent 12 rounds / 24 turns.
+    const room = makeRoom({
+      limits: { maxRounds: 12, maxTurns: 40, maxTotalTokens: 200_000 },
+    })
+    room.usage = {
+      ...emptyUsage(),
+      rounds: 6,
+      turns: 24,
+      inputTokens: 120_000,
+      outputTokens: 80_000, // 200k total, at the cap
+      activeMs: 6 * 60_000,
+    }
+    // Before: at the token limit.
+    expect(checkLimits(room, 0, { activeSince: 0 })).toBe('maxTotalTokens')
+
+    const next = extendedLimits(room, 3)
+    const extended = { ...room, limits: next }
+    // After: no limit blocks, so the room can actually run on.
+    expect(checkLimits(extended, 0, { activeSince: 0, speaking: true })).toBeNull()
+    // Tokens got meaningful room (not a +3), and rounds/turns advanced too.
+    expect(next.maxTotalTokens).toBeGreaterThan(200_000)
+    expect(next.maxRounds).toBeGreaterThan(6)
+    expect(next.maxTurns).toBeGreaterThan(24)
+  })
+
+  it('never lowers a limit and stays within the ceilings', () => {
+    const room = makeRoom({ limits: { maxRounds: 40, maxTotalTokens: 2_000_000 } })
+    const next = extendedLimits(room, 5)
+    expect(next.maxRounds).toBeGreaterThanOrEqual(40)
+    expect(next.maxTotalTokens).toBeLessThanOrEqual(ROOM_LIMIT_CEILINGS.maxTotalTokens)
+    expect(next.maxRounds).toBeLessThanOrEqual(ROOM_LIMIT_CEILINGS.maxRounds)
+  })
+})
 
 describe('clampLimits', () => {
   it('clamps absurd values to the code ceilings', () => {

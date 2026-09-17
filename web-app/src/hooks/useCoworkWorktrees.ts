@@ -70,6 +70,21 @@ type WorktreesState = {
     dataFolder: string,
     force?: boolean
   ) => Promise<{ ok: true } | { ok: false; reason: string }>
+  /**
+   * Apply opt-in optimizations to a session's worktree after it was created.
+   *
+   * A separate step from `ensure`: narrowing the checkout to `sparsePaths` and
+   * sharing heavy directories in `symlinkDirectories` (each a repository-relative
+   * path, e.g. `node_modules`) is a choice made here, not part of creating the
+   * worktree. The backend validates every path and refuses to overwrite anything
+   * already in the worktree, so a bad entry comes back as a reason rather than
+   * silently changing the tree.
+   */
+  optimize: (
+    sessionId: string,
+    dataFolder: string,
+    options: { symlinkDirectories?: string[]; sparsePaths?: string[] }
+  ) => Promise<{ ok: true } | { ok: false; reason: string }>
   /** What a worktree holds that removing it would destroy. */
   pending: (record: WorktreeRecord) => Promise<string[]>
   /**
@@ -152,6 +167,24 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
       return { bySession: next }
     })
     return { ok: true }
+  },
+
+  optimize: async (sessionId, dataFolder, options) => {
+    const record = get().bySession[sessionId]
+    if (!record) return { ok: false, reason: 'no worktree for this session' }
+    try {
+      await invoke('agent_worktree_optimize', {
+        dataFolder,
+        record,
+        symlinkDirectories: options.symlinkDirectories ?? [],
+        sparsePaths: options.sparsePaths ?? [],
+      })
+      return { ok: true }
+    } catch (e) {
+      // The refusal names what the backend would not do — a path that climbed
+      // out, an entry that already existed — so the user can act on it.
+      return { ok: false, reason: messageOf(e) }
+    }
   },
 
   pending: async (record) => {

@@ -74,7 +74,7 @@ default = [
 # Builds the `cowork-smoke` binary, which drives the real Tauri app and its
 # real WebView. Never enabled for release bundles.
 cowork-smoke = ["desktop"]
-hardware = ["dep:tauri-plugin-hardware"]
+hardware = ["tauri-plugin-hardware/tauri"]
 deep-link = ["dep:tauri-plugin-deep-link"]
 # WebDriver e2e only. Runs an embedded WebDriver server inside the app so
 # @wdio/tauri-service can drive it. Opt-in so release builds never ship a
@@ -179,7 +179,7 @@ tar = "0.4"
 zip = "0.6"
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1.4", optional = true }
-tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", optional = true }
+tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", default-features = false }
 tauri-plugin-llamacpp = { path = "./plugins/tauri-plugin-llamacpp", optional = true }
 # The CLI consumes only these plugins' tauri-free cores (`db`, `provider`, the
 # agent toolset); the desktop feature turns their Tauri command surface back on.
@@ -288,6 +288,8 @@ gtk = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 libc = "0.2.172"
+webview2-com = "0.38.2"
+windows-core = "0.61"
 windows-sys = { version = "0.60.2", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",

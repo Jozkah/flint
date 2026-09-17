@@ -9,6 +9,11 @@
   "loadFailed": "Could not load plugins: {{error}}",
   "retry": "Retry",
   "installButton": "Install plugin",
+  "browseButton": "Browse marketplace",
+  "browse": {
+    "notConfigured": "No global marketplace is configured.",
+    "notConfiguredHint": "Set [plugins] marketplace in agent-workspace/agent.toml to browse it here. You can still install a plugin by local folder, git URL or marketplace name."
+  },
   "listLabel": "Installed plugins",
   "empty": {
     "title": "No plugins installed",

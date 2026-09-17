@@ -604,6 +604,152 @@ pub fn prune(repo: &Path) -> Result<(), String> {
     run(repo, &["worktree", "prune"]).map(|_| ())
 }
 
+/// Refuse a path that is not a plain entry inside the worktree.
+///
+/// Both the directories a run wants symlinked and the paths it wants a sparse
+/// checkout narrowed to are repository-relative, and both are attacker-reachable
+/// through persisted state, so both pass through here. The refusals are the ones
+/// that would otherwise let an entry name something outside the worktree or the
+/// repository's own bookkeeping:
+///
+/// - an absolute path (`/etc/...`), a Windows drive (`C:\...`, `C:/...`) or a
+///   UNC path (`\\server\share`) — all of which name somewhere other than a
+///   place inside the worktree;
+/// - a backslash anywhere, which is both the Windows separator and the lead-in
+///   for the two cases above — a repository-relative path is written with `/`;
+/// - a `..` component, which climbs out of the worktree;
+/// - a `.git` component, in any case, which reaches into the repository's own
+///   directory rather than its working tree.
+///
+/// A rejected entry fails the whole call. Silently skipping it would apply an
+/// optimization the caller did not get to see refused.
+pub fn validate_repo_rel(p: &str) -> Result<(), String> {
+    if p.is_empty() {
+        return Err("an empty path is not a valid entry".to_string());
+    }
+    if p.contains('\\') {
+        return Err(format!(
+            "{p} contains a backslash; a path inside the worktree is written with forward slashes"
+        ));
+    }
+    if p.starts_with('/') {
+        return Err(format!("{p} is absolute; only paths inside the worktree are allowed"));
+    }
+    let bytes = p.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        return Err(format!("{p} names a drive; only paths inside the worktree are allowed"));
+    }
+    for segment in p.split('/') {
+        if segment == ".." {
+            return Err(format!("{p} climbs out of the worktree with `..`"));
+        }
+        if segment.eq_ignore_ascii_case(".git") {
+            return Err(format!("{p} reaches into the repository's .git directory"));
+        }
+    }
+    Ok(())
+}
+
+/// Create a directory link at `link` that points at `target`.
+///
+/// A link rather than a copy so a heavy directory — `node_modules`, a build
+/// cache — is shared with the source rather than duplicated for every worktree.
+#[cfg(unix)]
+fn link_dir(target: &Path, link: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(target, link).map_err(|e| {
+        format!("could not link {} -> {}: {e}", link.display(), target.display())
+    })
+}
+
+/// As [`link_dir`], on Windows.
+///
+/// A directory symlink is preferred, but creating one needs a privilege the
+/// user may not hold (`SeCreateSymbolicLinkPrivilege`), so a denied symlink
+/// falls back to a junction, which needs no privilege and shares the directory
+/// just as well.
+#[cfg(windows)]
+fn link_dir(target: &Path, link: &Path) -> Result<(), String> {
+    if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+        return Ok(());
+    }
+    // `mklink /J <link> <target>` is a `cmd` builtin, so it runs through `cmd`.
+    let out = Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("could not create a junction at {}: {e}", link.display()))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "could not link {} -> {}: {}",
+            link.display(),
+            target.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// Apply opt-in optimizations to an already-created worktree.
+///
+/// Two independent optimizations, applied in a fixed order:
+///
+/// 1. **Sparse checkout, first.** When `sparse_paths` is non-empty the worktree
+///    is switched to cone-mode sparse checkout and narrowed to those paths. This
+///    happens before any link because `sparse-checkout set` rewrites the working
+///    tree to match the cone — materialising and pruning tracked paths. A link
+///    placed first could sit in a directory that a later checkout then removes or
+///    collides with; narrowing the tracked tree first leaves each link in a spot
+///    git will not touch again.
+///
+/// 2. **Directory links, after.** Each entry in `symlink_dirs` becomes a link
+///    inside the worktree pointing at the same relative directory in the source
+///    working tree, so a heavy directory is shared rather than recopied. An entry
+///    whose path already exists in the worktree is an error, never an overwrite:
+///    the run may have created it or the sparse checkout just materialised it,
+///    and replacing it with a link would discard it.
+///
+/// Every entry in both lists is validated with [`validate_repo_rel`] up front, so
+/// a bad entry fails the call before anything is written.
+pub fn apply_optimizations(
+    worktree: &Path,
+    source_root: &Path,
+    symlink_dirs: &[String],
+    sparse_paths: &[String],
+) -> Result<(), String> {
+    for entry in sparse_paths.iter().chain(symlink_dirs.iter()) {
+        validate_repo_rel(entry)?;
+    }
+
+    if !sparse_paths.is_empty() {
+        run(worktree, &["sparse-checkout", "init", "--cone"])?;
+        let mut args: Vec<&str> = vec!["sparse-checkout", "set"];
+        args.extend(sparse_paths.iter().map(String::as_str));
+        run(worktree, &args)?;
+    }
+
+    for rel in symlink_dirs {
+        let link = worktree.join(rel);
+        let target = source_root.join(rel);
+        // `symlink_metadata` rather than `exists`, so a path that is already a
+        // (possibly broken) link is caught too, not just a real directory.
+        if link.symlink_metadata().is_ok() {
+            return Err(format!(
+                "{} already exists in the worktree; refusing to replace it with a link",
+                link.display()
+            ));
+        }
+        if let Some(parent) = link.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+        }
+        link_dir(&target, &link)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1050,5 +1196,99 @@ mod tests {
             worktree_path(&f.worktrees, &id, a),
             worktree_path(&f.worktrees, &id, a)
         );
+    }
+
+    #[test]
+    fn validate_repo_rel_accepts_ordinary_entries() {
+        assert!(validate_repo_rel("node_modules").is_ok());
+        assert!(validate_repo_rel("src").is_ok());
+        assert!(validate_repo_rel("packages/app/dist").is_ok());
+    }
+
+    #[test]
+    fn validate_repo_rel_refuses_absolute_drive_and_unc() {
+        assert!(validate_repo_rel("/etc/passwd").is_err());
+        assert!(validate_repo_rel("C:\\Windows").is_err());
+        assert!(validate_repo_rel("C:/Windows").is_err());
+        assert!(validate_repo_rel("\\\\server\\share").is_err());
+    }
+
+    #[test]
+    fn validate_repo_rel_refuses_traversal_and_dot_git() {
+        assert!(validate_repo_rel("..").is_err());
+        assert!(validate_repo_rel("../secret").is_err());
+        assert!(validate_repo_rel("a/../../b").is_err());
+        assert!(validate_repo_rel(".git").is_err());
+        assert!(validate_repo_rel(".git/config").is_err());
+        // Case-insensitive: a Windows filesystem would still reach .git.
+        assert!(validate_repo_rel(".GIT/hooks").is_err());
+    }
+
+    #[test]
+    fn optimize_refuses_an_entry_that_climbs_or_touches_git() {
+        let f = fixture();
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let wt = PathBuf::from(&record.path);
+        let src = PathBuf::from(&record.source_root);
+        // A rejected entry fails the call rather than being skipped.
+        assert!(apply_optimizations(&wt, &src, &["../escape".to_string()], &[]).is_err());
+        assert!(apply_optimizations(&wt, &src, &[], &[".git".to_string()]).is_err());
+    }
+
+    #[test]
+    fn optimize_will_not_clobber_an_existing_path() {
+        let f = fixture();
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let wt = PathBuf::from(&record.path);
+        let src = PathBuf::from(&record.source_root);
+        // a.txt is a committed file already present in the worktree.
+        let err = apply_optimizations(&wt, &src, &["a.txt".to_string()], &[])
+            .expect_err("must refuse to overwrite");
+        assert!(err.contains("already exists"), "{err}");
+        // And it was left exactly as it was.
+        assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "one");
+    }
+
+    #[test]
+    fn optimize_shares_a_directory_by_linking_it() {
+        let f = fixture();
+        // A heavy directory that lives only in the source, untracked, as
+        // node_modules would be.
+        std::fs::create_dir_all(f.repo.join("node_modules")).unwrap();
+        std::fs::write(f.repo.join("node_modules/lib.txt"), "shared").unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let wt = PathBuf::from(&record.path);
+        let src = PathBuf::from(&record.source_root);
+        apply_optimizations(&wt, &src, &["node_modules".to_string()], &[]).expect("link");
+        // The worktree reaches the source's directory through the link, with no
+        // second copy of it.
+        assert_eq!(
+            std::fs::read_to_string(wt.join("node_modules/lib.txt")).unwrap(),
+            "shared"
+        );
+    }
+
+    #[test]
+    fn optimize_narrows_the_tree_with_sparse_checkout_first() {
+        let f = fixture();
+        // Two tracked directories; the cone keeps one and drops the other.
+        std::fs::create_dir_all(f.repo.join("keep")).unwrap();
+        std::fs::create_dir_all(f.repo.join("drop")).unwrap();
+        std::fs::write(f.repo.join("keep/k.txt"), "k").unwrap();
+        std::fs::write(f.repo.join("drop/d.txt"), "d").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "dirs"]);
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let wt = PathBuf::from(&record.path);
+        let src = PathBuf::from(&record.source_root);
+        // Sparse first, then a link into the narrowed tree, in one call.
+        std::fs::create_dir_all(f.repo.join("cache")).unwrap();
+        std::fs::write(f.repo.join("cache/c.txt"), "c").unwrap();
+        apply_optimizations(&wt, &src, &["cache".to_string()], &["keep".to_string()])
+            .expect("optimize");
+        assert!(wt.join("keep/k.txt").exists(), "kept path should be present");
+        assert!(!wt.join("drop/d.txt").exists(), "dropped path should be outside the cone");
+        // The link was placed after the narrowing, and reaches the source.
+        assert_eq!(std::fs::read_to_string(wt.join("cache/c.txt")).unwrap(), "c");
     }
 }

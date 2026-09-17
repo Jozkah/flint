@@ -126,6 +126,73 @@ export function participantAttribution(p: Participant | undefined, fallbackName:
   return [p.name, p.role.trim(), p.model.id].filter(Boolean).join(' · ')
 }
 
+/**
+ * A palette of distinct colors for room participants, chosen to stay legible on
+ * both the light and dark card backgrounds (mid-tone solids, not tints).
+ */
+const PARTICIPANT_COLORS = [
+  '#e5484d', // red
+  '#d6409f', // magenta
+  '#8e4ec6', // violet
+  '#3e63dd', // indigo
+  '#0091ff', // blue
+  '#12a594', // teal
+  '#46a758', // green
+  '#e5622d', // orange
+] as const
+
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
+/**
+ * A stable, distinct color for a participant, so their name in the transcript
+ * header and every `@mention` of them read in one consistent color. Keyed by a
+ * seed (the participant id) so a rename keeps the color.
+ */
+export function participantColor(seed: string): string {
+  return PARTICIPANT_COLORS[hashString(seed) % PARTICIPANT_COLORS.length]
+}
+
+/**
+ * Colors for the non-participant mention targets -- the whole room and the
+ * human -- kept distinct from the participant palette so `@room` and `@user`
+ * read differently from a person being addressed.
+ */
+const SPECIAL_MENTION_COLORS: Record<string, string> = {
+  room: '#eab308', // gold: everyone in the room
+  everyone: '#eab308',
+  all: '#eab308',
+  // The human is the app's own accent color (the settings accent drives
+  // `--primary`), so @user always matches whatever accent is set.
+  user: 'var(--primary)',
+  you: 'var(--primary)',
+  moderator: '#64748b', // slate: the moderator model
+  mod: '#64748b',
+}
+
+/**
+ * Name -> color for every mention target in the room: each participant (by
+ * their own stable color) plus the special `@room`/`@user`/`@moderator`
+ * targets. Names are lower-cased so a mention matches regardless of case. A
+ * participant literally named "room" keeps their own color (set last).
+ */
+export function participantColorsByName(room: Room | null): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [name, color] of Object.entries(SPECIAL_MENTION_COLORS)) {
+    out.set(name, color)
+  }
+  for (const p of room?.participants ?? []) {
+    const name = p.name.trim().toLowerCase()
+    if (name) out.set(name, participantColor(p.id))
+  }
+  return out
+}
+
 export function addressLabel(to: Address, room: Room | null, t: T): string | null {
   switch (to.kind) {
     case 'room':
@@ -150,9 +217,9 @@ export function stopReasonText(reason: StopReason, t: T): string {
         ? t('rooms:stopReason.ceiling')
         : t('rooms:stopReason.limit', { limit: t(`rooms:limits.${reason.limit}`) })
     case 'converged':
-      return reason.by === 'moderator'
-        ? t('rooms:stopReason.converged-moderator')
-        : t('rooms:stopReason.converged-repetition')
+      if (reason.by === 'moderator') return t('rooms:stopReason.converged-moderator')
+      if (reason.by === 'consensus') return t('rooms:stopReason.converged-consensus')
+      return t('rooms:stopReason.converged-repetition')
     case 'synthesized':
       return t('rooms:stopReason.synthesized')
     case 'no-participants':

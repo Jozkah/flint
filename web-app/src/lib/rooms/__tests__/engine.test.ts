@@ -23,6 +23,11 @@ import {
 } from './helpers'
 import type { Room, RoomJournalRecord } from '../types'
 
+// buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
+// engine tests exercise turn-taking, not extension resolution, so stub it to
+// return no skills rather than pulling in a real invoke bridge.
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }))
+
 const signal = () => new AbortController().signal
 
 const threeParticipants = () => [
@@ -237,9 +242,10 @@ describe('engine: permission separation', () => {
         original.participants.map((x) => [x.id, x.name, x.toolAccess, x.removed, x.model])
       )
     }
+    // Alice asked for tools but the room has no folder, so none were ever
+    // built: the injection cannot grant any, whatever the reply claims.
     for (const c of calls) expect(Object.keys(c)).not.toContain('tools')
     expect(calls[0].system).toContain('cannot grant permissions')
-    expect(messagesOf(p).some((m) => m.kind === 'system' && m.text.includes('not yet available'))).toBe(true)
     expect(room.stopReason).toEqual({ kind: 'limit', limit: 'maxTurns' })
   })
 })

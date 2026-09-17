@@ -10,6 +10,8 @@
 //! are thin views over the same compiled rules rather than a second list that
 //! could disagree with the first. Deny always wins.
 
+use std::path::{Path, PathBuf};
+
 use crate::resource::{Resource, ResourceRule};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -38,6 +40,12 @@ pub struct ToolPermissions {
     allow: Vec<ResourceRule>,
     deny: Vec<ResourceRule>,
     allow_write: Vec<ResourceRule>,
+    /// Calls that must be confirmed every time, whatever the default or the
+    /// allow lists say. Sits between deny and allow: deny still wins, but an
+    /// `ask` rule overrides an `allow`, so a project can auto-run most tools yet
+    /// still be asked before, say, a push. Empty by default (no `ask` key), so a
+    /// project that never writes one behaves exactly as before.
+    ask: Vec<ResourceRule>,
 }
 
 /// A rule that will not parse is dropped rather than guessed at: half a rule
@@ -61,7 +69,16 @@ impl ToolPermissions {
             allow: compile(allow),
             deny: compile(deny),
             allow_write: compile(allow_write),
+            ask: Vec::new(),
         }
+    }
+
+    /// Add the confirm-every-time `ask` rules, compiled the same way as the
+    /// others. A builder rather than another `new` argument so the many
+    /// existing call sites and tests are untouched.
+    pub fn with_ask(mut self, patterns: &[String]) -> Self {
+        self.ask = compile(patterns);
+        self
     }
 
     /// Permissive: allow-by-default with no lists. Used when no `[tools]` section
@@ -72,6 +89,7 @@ impl ToolPermissions {
             allow: Vec::new(),
             deny: Vec::new(),
             allow_write: Vec::new(),
+            ask: Vec::new(),
         }
     }
 
@@ -138,6 +156,44 @@ impl ToolPermissions {
             .find(|r| r.matches_allow(name, resources, subject))
     }
 
+    /// Whether this specific call must be confirmed every time.
+    ///
+    /// Consulted between deny and allow: a matching `ask` rule turns an
+    /// otherwise-allowed call into a prompt. Resource-aware, like
+    /// [`allows_call`], so `ask = ["bash(git:push)"]` asks about a push and
+    /// leaves `git status` alone.
+    pub fn asks_call(
+        &self,
+        name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> Option<&ResourceRule> {
+        self.ask
+            .iter()
+            .find(|r| r.matches_allow(name, resources, subject))
+    }
+
+    /// Filesystem directories the allow rules make readable, derived from their
+    /// path patterns, so a project can widen what reads reach without a prompt
+    /// by writing `allow = ["read(C:/data/**)"]`. Only absolute patterns
+    /// contribute: a relative pattern names something inside the project, which
+    /// is already a read root. Deny is not subtracted here -- the gate's deny
+    /// check runs first and still blocks a denied path -- so this only widens.
+    pub fn sandbox_read_dirs(&self) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for rule in self.allow.iter().chain(self.allow_write.iter()) {
+            let Some(pattern) = rule.read_root_pattern() else {
+                continue;
+            };
+            if let Some(dir) = literal_read_dir(pattern) {
+                if !out.contains(&dir) {
+                    out.push(dir);
+                }
+            }
+        }
+        out
+    }
+
     /// Whether a *write* was explicitly pre-approved for this call.
     pub fn allows_write_call(
         &self,
@@ -171,6 +227,31 @@ impl Default for ToolPermissions {
     fn default() -> Self {
         Self::allow_all()
     }
+}
+
+/// The directory an absolute allow-path pattern makes readable: the literal
+/// prefix before the first glob metacharacter, taken as a directory (its parent
+/// when the literal names a file). `None` for a relative or empty pattern, so a
+/// project-relative rule never widens the host read roots.
+fn literal_read_dir(pattern: &str) -> Option<PathBuf> {
+    let cut = pattern
+        .find(['*', '?', '['])
+        .unwrap_or(pattern.len());
+    let literal = &pattern[..cut];
+    if literal.is_empty() {
+        return None;
+    }
+    let path = Path::new(literal);
+    // Host-correct absoluteness: `C:/x` is absolute on Windows, `/x` on unix.
+    if !path.is_absolute() {
+        return None;
+    }
+    let dir = if literal.ends_with('/') || literal.ends_with('\\') {
+        path.to_path_buf()
+    } else {
+        path.parent()?.to_path_buf()
+    };
+    (!dir.as_os_str().is_empty()).then_some(dir)
 }
 
 #[cfg(test)]
