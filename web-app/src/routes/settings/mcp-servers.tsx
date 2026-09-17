@@ -5,7 +5,16 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
-import { Braces, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  Braces,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import {
   useMCPServers,
   MCPServerConfig,
@@ -143,6 +152,23 @@ function MCPServersDesktop() {
 
   // Per-server log dialog state (AH-140)
   const [logServer, setLogServer] = useState<string | null>(null)
+
+  // Search query to filter the server list by name.
+  const [searchQuery, setSearchQuery] = useState('')
+  // Servers the user has expanded; collapsed (compact) is the default so the
+  // page stays scannable with many servers installed.
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
+  const toggleExpanded = (serverKey: string) => {
+    setExpandedServers((prev) => {
+      const next = new Set(prev)
+      if (next.has(serverKey)) {
+        next.delete(serverKey)
+      } else {
+        next.add(serverKey)
+      }
+      return next
+    })
+  }
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -893,7 +919,33 @@ function MCPServersDesktop() {
               {t('mcp-servers:noServers')}
             </div>
           ) : (
-            Object.entries(mcpServers).map(([key, config], index) => {
+            (() => {
+              const query = searchQuery.trim().toLowerCase()
+              const filtered = Object.entries(mcpServers).filter(([key]) =>
+                key.toLowerCase().includes(query)
+              )
+              return (
+                <>
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      placeholder={t('mcp-servers:searchPlaceholder')}
+                      aria-label={t('mcp-servers:searchPlaceholder')}
+                      className="pl-9"
+                    />
+                  </div>
+                  {filtered.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-line-strong bg-card px-4 py-8 text-center font-medium text-muted-foreground">
+                      {t('mcp-servers:noSearchResults', { query: searchQuery })}
+                    </div>
+                  ) : (
+                    filtered.map(([key, config], index) => {
               const authStatus = authStatuses[key]
               const profile = deriveMcpServerProfile(config, authStatus)
               const snapshot = deriveConnectionState({
@@ -907,6 +959,7 @@ function MCPServersDesktop() {
               const toolNames = snapshot.connected
                 ? serverTools[key]
                 : undefined
+              const expanded = expandedServers.has(key)
               return (
               <Card key={`${key}-${index}`}>
                 <CardItem
@@ -931,6 +984,7 @@ function MCPServersDesktop() {
                     </div>
                   }
                   descriptionOutside={
+                    !expanded ? undefined : (
                     <div className="min-w-0 pt-2 text-sm text-muted-foreground">
                       <div className="mb-1">
                         Transport:{' '}
@@ -1051,9 +1105,39 @@ function MCPServersDesktop() {
                         </p>
                       )}
                     </div>
+                    )
                   }
                   actions={
                     <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end">
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="pointer-coarse:size-11"
+                        onClick={() => toggleExpanded(key)}
+                        aria-expanded={expanded}
+                        title={t(
+                          expanded
+                            ? 'mcp-servers:collapseServer'
+                            : 'mcp-servers:expandServer'
+                        )}
+                        aria-label={t(
+                          expanded
+                            ? 'mcp-servers:collapseServer'
+                            : 'mcp-servers:expandServer'
+                        )}
+                      >
+                        {expanded ? (
+                          <ChevronUp
+                            className="text-muted-foreground"
+                            aria-hidden
+                          />
+                        ) : (
+                          <ChevronDown
+                            className="text-muted-foreground"
+                            aria-hidden
+                          />
+                        )}
+                      </Button>
                       <Button
                         size="icon-sm"
                         variant="ghost"
@@ -1127,7 +1211,11 @@ function MCPServersDesktop() {
                 />
               </Card>
               )
-            })
+                    })
+                  )}
+                </>
+              )
+            })()
           )}
         </SettingsPageBody>
       </div>
