@@ -1,0 +1,57 @@
+import { create } from 'zustand'
+import { isPreviewableUrl } from '@/lib/webPreview'
+
+export type PreviewSurface = 'side' | 'pip'
+
+type WebPreviewState = {
+  open: boolean
+  surface: PreviewSurface
+  history: string[]
+  index: number
+  url: () => string
+  canGoBack: () => boolean
+  canGoForward: () => boolean
+  openUrl: (url: string) => void
+  navigate: (url: string) => void
+  close: () => void
+  setSurface: (s: PreviewSurface) => void
+  back: () => void
+  forward: () => void
+}
+
+/**
+ * Global state for the in-app web preview. Holds a small browsing history so
+ * the toolbar can offer back/forward; `surface` is a per-session preference
+ * kept across close/reopen. Non-http URLs are ignored, never shown.
+ */
+export const useWebPreview = create<WebPreviewState>((set, get) => ({
+  open: false,
+  surface: 'side',
+  history: [],
+  index: -1,
+  url: () => {
+    const { history, index } = get()
+    return index >= 0 ? history[index] : ''
+  },
+  canGoBack: () => get().index > 0,
+  canGoForward: () => get().index < get().history.length - 1,
+  openUrl: (url) => {
+    if (!isPreviewableUrl(url)) return
+    set((s) => {
+      const history = [...s.history.slice(0, s.index + 1), url]
+      return { open: true, history, index: history.length - 1 }
+    })
+  },
+  navigate: (url) => {
+    if (!isPreviewableUrl(url)) return
+    set((s) => {
+      const history = [...s.history.slice(0, s.index + 1), url]
+      return { history, index: history.length - 1 }
+    })
+  },
+  close: () => set({ open: false }),
+  setSurface: (surface) => set({ surface }),
+  back: () => set((s) => ({ index: Math.max(0, s.index - 1) })),
+  forward: () =>
+    set((s) => ({ index: Math.min(s.history.length - 1, s.index + 1) })),
+}))
