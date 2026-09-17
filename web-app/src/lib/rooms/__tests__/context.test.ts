@@ -1,10 +1,18 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+let resolvedSkills: Array<{ name: string; description: string }> = []
+const resolveExtensions = vi.fn(async () => resolvedSkills)
+vi.mock('@/lib/extensionsStore', () => ({
+  resolveExtensions: (...a: unknown[]) => resolveExtensions(...a),
+}))
+
 import {
   FRAMING_NOTICE,
   buildPrompt,
   buildSystemPrompt,
   projectHistory,
   quoteText,
+  renderSkillsCatalog,
   transcriptText,
   UNTRUSTED_NOTICE,
 } from '../context'
@@ -34,6 +42,45 @@ describe('context projection', () => {
   const room = makeRoom()
   const alice = { kind: 'participant' as const, participant: room.participants[0] }
   const bob = { kind: 'participant' as const, participant: room.participants[1] }
+
+  beforeEach(() => {
+    resolvedSkills = []
+    resolveExtensions.mockClear()
+  })
+
+  it('injects the resolved skills catalog into the built system prompt', async () => {
+    resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    const built = await buildPrompt({
+      room,
+      messages: [],
+      speaker: alice,
+      contextWindow: 32000,
+      maxOutputTokens: 512,
+    })
+    expect(resolveExtensions).toHaveBeenCalledWith('rooms')
+    expect(built.system).toContain('## Skill: caveman')
+    expect(built.system).toContain('Talk terse.')
+  })
+
+  it('leaves the prompt unchanged when the resolver returns no skills', async () => {
+    resolvedSkills = []
+    const built = await buildPrompt({
+      room,
+      messages: [],
+      speaker: alice,
+      contextWindow: 32000,
+      maxOutputTokens: 512,
+    })
+    expect(built.system).toBe(buildSystemPrompt(room, alice))
+    expect(built.system).not.toContain('# Skills')
+  })
+
+  it('renderSkillsCatalog renders name + description, and null for an empty list', () => {
+    expect(renderSkillsCatalog([])).toBeNull()
+    const block = renderSkillsCatalog([{ name: 'caveman', description: 'Talk terse.' } as never])
+    expect(block).toContain('## Skill: caveman')
+    expect(block).toContain('Talk terse.')
+  })
 
   it('system prompt carries objective, roles, addressing rules and the untrusted notice', () => {
     const s = buildSystemPrompt(room, alice)

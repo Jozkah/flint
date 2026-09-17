@@ -21,6 +21,7 @@ import { getAgentToolSchemas, executeAgentTool } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
+import { readSkill, storeScope } from '@/lib/skillStore'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -154,6 +155,33 @@ export async function buildRoomTools(
       execute: webRun('web_fetch'),
     } as Tool
   }
+
+  // skill_read: loads a global skill's full body on demand (progressive
+  // disclosure -- the system prompt catalog advertises name + description
+  // only). Rooms have no project folder, so this always reads from the
+  // permanent store (`storeScope`), the same root the catalog resolves
+  // global skills from -- there is no per-room/per-project skill scope here.
+  tools['skill_read'] = {
+    description:
+      "Read a skill's full instructions by name. Use this before applying a skill listed in the system prompt's skills catalog.",
+    inputSchema: jsonSchema({
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Skill name, exactly as listed in the catalog.' } },
+      required: ['name'],
+    } as Record<string, unknown>),
+    execute: async (input: unknown) => {
+      const name = (input as { name?: string } | undefined)?.name ?? ''
+      try {
+        const body = await readSkill(storeScope, name)
+        onActivity?.({ name: 'skill_read', ok: true, args: input, output: capOutput(body) })
+        return body
+      } catch (e) {
+        const output = `ERROR: ${e instanceof Error ? e.message : String(e)}`
+        onActivity?.({ name: 'skill_read', ok: false, args: input, output })
+        return output
+      }
+    },
+  } as Tool
 
   // MCP tools from the user's connected servers -- no folder required. Same set
   // the main chat exposes, minus the globally disabled ones. A built-in tool of
