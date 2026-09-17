@@ -78,7 +78,7 @@ keyring and are not copied into plaintext.
 
 ## Features
 
-Everything below is implemented in this fork, on top of upstream Jan. Each agent capability maps to an item in the [agent harness feature registry](docs/AGENT_HARNESS_FEATURE_REGISTRY.md) (208 of its 211 items are implemented). Open a section to see the full list.
+Everything below is implemented in this fork, on top of upstream Jan. Open a section to see the full list.
 
 <details>
 <summary><strong>Multi-agent collaboration</strong> (Flint)</summary>
@@ -370,10 +370,6 @@ On Windows, if an engine build fails with an nvcc "Could not open output file" e
 
 ## Documentation in this repository
 
-- `docs/ATELIER_IMPLEMENTATION.md` — the design system, shell and feature map
-- `docs/BEGINNER_WORKFLOWS_HANDOFF.md` — onboarding, permissions, results and model-fit behaviour
-- `docs/IMPLEMENTATION_BASELINE.md` — contracts the interface relies on
-- `docs/AGENT_HARNESS_FEATURE_REGISTRY.md` — the agent capability registry
 - `CONTRIBUTING.md` — how to contribute
 
 ## License

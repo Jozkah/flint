@@ -87,3 +87,21 @@ JAN.md
 src-tauri/plugins/tauri-plugin-llamacpp/vendor/
 target-windows-final/
 .upstream-cache/
+
+# Generated planning / handoff / session docs (not source-of-truth)
+docs/AGENT_HARNESS_ARCHITECTURE.md
+docs/AGENT_HARNESS_FEATURE_REGISTRY.md
+docs/AGENT_HARNESS_ROADMAP.md
+docs/AGENT_HARNESS_VERIFICATION.md
+docs/ATELIER_IMPLEMENTATION.md
+docs/BEGINNER_WORKFLOWS_HANDOFF.md
+docs/CONSOLIDATION_*.md
+docs/COWORK_HARNESS_BLUEPRINT.md
+docs/COWORK_REWORK_PLAN.md
+docs/DISCUSSION_ROOMS.md
+docs/DISCUSSION_ROOMS_UI_HUNKS.md
+docs/GRAPHITE_IMPLEMENTATION.md
+docs/IMPLEMENTATION_BASELINE.md
+docs/JAN_AUDIT_HANDOFF.md
+docs/SESSION_MESSAGING.md
+docs/SESSION_MESSAGING_UI_HUNKS.md
