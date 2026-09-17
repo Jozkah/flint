@@ -1310,15 +1310,19 @@ mod tests {
         std::fs::create_dir_all(project.join("drivers")).unwrap();
         std::fs::write(project.join("drivers/EAC.sys"), b"decoy").unwrap();
 
+        // An absolute allow(read) rule naming the project's drivers dir; only an
+        // absolute literal pattern contributes to the sandbox read-dir merge.
+        let drivers = project.join("drivers");
+        let pattern = format!("read({}/**)", drivers.to_string_lossy().replace('\\', "/"));
         let perms =
-            ToolPermissions::new(PermissionDefault::ReadOnly, &s(&["read(drivers/**)"]), &[], &[]);
+            ToolPermissions::new(PermissionDefault::ReadOnly, &s(&[pattern.as_str()]), &[], &[]);
 
         // 1. The rule yields the concrete read directory the command feeds the
         //    sandbox (so bash, bound by read roots, can reach it too).
-        let read_roots = perms.sandbox_read_dirs(&project);
+        let read_roots = perms.sandbox_read_dirs();
         assert_eq!(
             read_roots,
-            vec![project.join("drivers")],
+            vec![drivers.clone()],
             "the allow(read) rule yields the concrete project read dir"
         );
 
@@ -1334,6 +1338,7 @@ mod tests {
             &perms,
             &SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(allowed, Decision::Allow);
 
@@ -1348,6 +1353,7 @@ mod tests {
             &perms,
             &SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(denied, Decision::Prompt(PromptKind::ReadEscape));
 

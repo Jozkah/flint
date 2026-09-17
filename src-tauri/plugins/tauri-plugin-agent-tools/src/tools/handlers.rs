@@ -4140,6 +4140,43 @@ on_failure = \"warn\"
     }
 
     #[tokio::test]
+    async fn edit_replace_all_swaps_every_occurrence() {
+        let root = unique_root();
+        std::fs::write(root.join("r.txt"), b"x x x").unwrap();
+        // Without replace_all a non-unique match is refused (guarded elsewhere);
+        // with it, every occurrence is replaced in one edit.
+        let ok = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "r.txt", "edits": [
+                {"old_string": "x", "new_string": "y", "replace_all": true}
+            ]}),
+            &root,
+        )
+        .await;
+        assert_eq!(ok, "Applied 1 edit(s) to r.txt");
+        assert_eq!(std::fs::read_to_string(root.join("r.txt")).unwrap(), "y y y");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn edit_without_replace_all_still_rejects_non_unique() {
+        let root = unique_root();
+        std::fs::write(root.join("ru.txt"), b"x x").unwrap();
+        let out = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "ru.txt", "edits": [{"old_string": "x", "new_string": "y"}]}),
+            &root,
+        )
+        .await;
+        assert!(
+            out.starts_with("ERROR: ru.txt: edit 1: old_string not unique"),
+            "unexpected: {out}"
+        );
+        assert_eq!(std::fs::read_to_string(root.join("ru.txt")).unwrap(), "x x");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
     async fn edit_errors_without_partial_write() {
         let root = unique_root();
         std::fs::write(root.join("d.txt"), b"one two two").unwrap();

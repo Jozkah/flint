@@ -11,17 +11,22 @@ pub mod agent_bundle;
 pub mod agent_import;
 pub mod auto_mode;
 pub mod bundle_import;
+// Claude Code import exposes only Tauri commands (desktop-only); the `cli`
+// build has no `tauri` crate linked, so gate it out like `commands`.
+#[cfg(not(feature = "cli"))]
 pub mod cc_import;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod compaction;
+pub mod compaction_policy;
 pub mod consensus;
 pub mod context;
 pub mod context_pressure;
 pub mod desktop_bridge;
 pub mod diagnostics;
 pub mod durable_subagent;
+pub mod hooks;
 pub mod events;
 pub mod extensions;
 pub mod fixtures;
