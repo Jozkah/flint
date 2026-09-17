@@ -1471,9 +1471,19 @@
     "library": "Library",
     "models": "Models",
     "tools": "Tools",
+    "extensions": "Extensions",
     "search": "Search",
     "system": "System",
     "settings": "Settings"
+  },
+  "extensions": {
+    "plugins": "Plugins",
+    "skills": "Skills",
+    "scope": "Scope",
+    "scopeGlobal": "Global",
+    "scopeProject": "Project",
+    "pluginsPlaceholder": "Plugin management is coming soon.",
+    "skillsPlaceholder": "Skill management is coming soon."
   },
   "statusBar": {
     "label": "Status",

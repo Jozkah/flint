@@ -10,6 +10,7 @@ describe('areaForPath', () => {
     ['/rooms', 'rooms'],
     ['/rooms/room-1', 'rooms'],
     ['/artifacts', 'library'],
+    ['/extensions', 'extensions'],
     ['/settings/providers', 'models'],
     ['/settings/providers/llama.cpp', 'models'],
     ['/settings/hardware', 'models'],
@@ -44,6 +45,7 @@ describe('RAIL_ITEMS', () => {
       'library',
       'models',
       'tools',
+      'extensions',
     ])
     expect(RAIL_ITEMS.filter((i) => i.group === 'bottom').map((i) => i.id)).toEqual([
       'search',
