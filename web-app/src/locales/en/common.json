@@ -1504,6 +1504,10 @@
     "enablement": {
       "title": "Enabled on",
       "pluginNote": "Governs this plugin's skills and subagents on each surface. Its slash commands are not yet filtered by this toggle."
+    },
+    "surfaces": {
+      "home": "Home",
+      "rooms": "Rooms"
     }
   },
   "statusBar": {
