@@ -219,12 +219,32 @@ async fn plugin_blocking<T: Send + 'static>(
         })?
 }
 
+/// Resolve the `scope`/`project` pair every `agent_plugin_*` command takes:
+/// `scope == "global"` targets the user's own plugin store, shared by every
+/// workspace; anything else (including the parameter being absent) targets
+/// `project`'s `.jan/agent/plugins/`, exactly as before this parameter
+/// existed. Kept out of the typed command signatures (an added `Option<String>`
+/// rather than a new required arg) so no existing caller breaks.
+fn resolve_plugin_scope(project: &str, scope: Option<&str>) -> plugins::PluginScope {
+    match scope {
+        Some(s) if s.eq_ignore_ascii_case("global") => plugins::PluginScope::Global,
+        _ => plugins::PluginScope::Project(std::path::PathBuf::from(project)),
+    }
+}
+
 /// List installed plugins with metadata, enabled state and component counts.
 #[tauri::command]
 pub async fn agent_plugin_list(
     project: String,
+    scope: Option<String>,
 ) -> Result<Vec<plugins::InstalledPlugin>, plugins::PluginError> {
-    plugin_blocking(move || Ok(plugins::installed(std::path::Path::new(&project)))).await
+    plugin_blocking(move || {
+        Ok(plugins::installed_scoped(&resolve_plugin_scope(
+            &project,
+            scope.as_deref(),
+        )))
+    })
+    .await
 }
 
 /// Full details of one installed plugin: identity, provenance, component
@@ -233,8 +253,12 @@ pub async fn agent_plugin_list(
 pub async fn agent_plugin_details(
     project: String,
     id: String,
+    scope: Option<String>,
 ) -> Result<plugins::PluginDetails, plugins::PluginError> {
-    plugin_blocking(move || plugins::details(std::path::Path::new(&project), &id)).await
+    plugin_blocking(move || {
+        plugins::details_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &id)
+    })
+    .await
 }
 
 /// Which install sources are usable: the configured marketplace (if any) and
@@ -242,8 +266,15 @@ pub async fn agent_plugin_details(
 #[tauri::command]
 pub async fn agent_plugin_sources(
     project: String,
+    scope: Option<String>,
 ) -> Result<plugins::PluginSources, plugins::PluginError> {
-    plugin_blocking(move || Ok(plugins::sources(std::path::Path::new(&project)))).await
+    plugin_blocking(move || {
+        Ok(plugins::sources_scoped(&resolve_plugin_scope(
+            &project,
+            scope.as_deref(),
+        )))
+    })
+    .await
 }
 
 /// Install a plugin from an explicit source (`local` folder copy, `git` clone,
@@ -255,10 +286,11 @@ pub async fn agent_plugin_install(
     project: String,
     source: plugins::InstallSource,
     operation_id: String,
+    scope: Option<String>,
 ) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
     let guard = plugins::begin_install(&operation_id)?;
-    let root = std::path::PathBuf::from(&project);
-    plugins::install_from_source(&root, source, guard.ctx()).await
+    let scope = resolve_plugin_scope(&project, scope.as_deref());
+    plugins::install_from_source_scoped(&scope, source, guard.ctx()).await
 }
 
 /// Cancel a running install. `false` when no install of that id is running.
@@ -274,9 +306,12 @@ pub async fn agent_plugin_set_enabled(
     project: String,
     id: String,
     enabled: bool,
+    scope: Option<String>,
 ) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
-    plugin_blocking(move || plugins::set_enabled(std::path::Path::new(&project), &id, enabled))
-        .await
+    plugin_blocking(move || {
+        plugins::set_enabled_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &id, enabled)
+    })
+    .await
 }
 
 /// Remove an installed plugin and the config entries that name it.
@@ -284,8 +319,12 @@ pub async fn agent_plugin_set_enabled(
 pub async fn agent_plugin_remove(
     project: String,
     id: String,
+    scope: Option<String>,
 ) -> Result<plugins::RemoveReport, plugins::PluginError> {
-    plugin_blocking(move || plugins::remove_plugin(std::path::Path::new(&project), &id)).await
+    plugin_blocking(move || {
+        plugins::remove_plugin_scoped(&resolve_plugin_scope(&project, scope.as_deref()), &id)
+    })
+    .await
 }
 
 /// Search the configured plugin marketplace (contacts the index URL).
