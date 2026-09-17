@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { buildReasoningProviderOptions } from '../reasoningProviderOptions'
+import {
+  buildReasoningBodyParams,
+  buildReasoningProviderOptions,
+} from '../reasoningProviderOptions'
 
 const modelWith = (settings: Record<string, unknown>, id?: string) =>
   ({ id, settings }) as unknown as Model
+
+/** A remote model that declares (or omits) the `reasoning` capability. */
+const remoteModel = (reasoning: boolean, settings: Record<string, unknown> = {}) =>
+  ({
+    id: 'pxa-27b',
+    capabilities: reasoning ? ['completion', 'reasoning'] : ['completion'],
+    settings,
+  }) as unknown as Model
 
 const reasoning = (value: string) => ({
   reasoning: { controller_props: { value } },
@@ -147,5 +158,48 @@ describe('buildReasoningProviderOptions', () => {
       ).toBeUndefined()
       expect(buildReasoningProviderOptions('openai', modelWith({}))).toBeUndefined()
     })
+  })
+})
+
+describe('buildReasoningBodyParams', () => {
+  it('sends reasoning_effort for a remote reasoning model with a level set', () => {
+    expect(
+      buildReasoningBodyParams('pxa', remoteModel(true, budget('high')))
+    ).toEqual({ reasoning_effort: 'high' })
+    // xhigh is a valid stop and must pass through verbatim.
+    expect(
+      buildReasoningBodyParams('openrouter', remoteModel(true, budget('xhigh')))
+    ).toEqual({ reasoning_effort: 'xhigh' })
+  })
+
+  it('sends nothing when no level is set, or the level is unlimited', () => {
+    expect(buildReasoningBodyParams('pxa', remoteModel(true))).toBeUndefined()
+    expect(
+      buildReasoningBodyParams('pxa', remoteModel(true, budget('unlimited')))
+    ).toBeUndefined()
+  })
+
+  it('sends nothing for a remote model that does not declare reasoning', () => {
+    expect(
+      buildReasoningBodyParams('pxa', remoteModel(false, budget('high')))
+    ).toBeUndefined()
+  })
+
+  it('sends nothing for the natively-wired providers (they use providerOptions or their own path)', () => {
+    for (const provider of [
+      'openai',
+      'anthropic',
+      'google',
+      'gemini',
+      'llamacpp',
+      'mlx',
+      'mistral',
+      'xai',
+    ]) {
+      expect(
+        buildReasoningBodyParams(provider, remoteModel(true, budget('high'))),
+        provider
+      ).toBeUndefined()
+    }
   })
 })

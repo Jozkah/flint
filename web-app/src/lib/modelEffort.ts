@@ -40,6 +40,47 @@ function anthropicTakesAnExplicitBudget(modelId: string): boolean {
 }
 
 /**
+ * Providers with their own reasoning wiring, handled explicitly elsewhere and
+ * so never routed through the generic OpenAI-compatible body path:
+ *
+ * - `openai` / `anthropic` / `google` / `gemini` take reasoning via the AI
+ *   SDK's native `providerOptions` (see `buildReasoningProviderOptions`).
+ * - `llamacpp` / `mlx` are local engines with their own budget resolution.
+ * - `mistral` / `xai` use their own AI SDK factories, not the OpenAI-compatible
+ *   one, so a `reasoning_effort` body field would not reach them.
+ */
+const NATIVELY_WIRED_REASONING_PROVIDERS = new Set([
+  'openai',
+  'anthropic',
+  'google',
+  'gemini',
+  'llamacpp',
+  'mlx',
+  'mistral',
+  'xai',
+])
+
+/**
+ * A remote provider reached through the OpenAI-compatible factory whose model
+ * declares the `reasoning` capability, so `reasoning_effort` in the request
+ * body is honoured. This is the honest signal — a discrete effort only belongs
+ * on screen where the model actually reasons on demand, and the capability tag
+ * is how the rest of the app already gates reasoning-only affordances. Sending
+ * the field to a model that ignores it would be a control that does nothing (or
+ * a strict server that rejects the unknown field).
+ */
+export function isOpenAICompatibleReasoningProvider(
+  providerId: string | null | undefined,
+  model: Model | null | undefined
+): boolean {
+  return (
+    !!providerId &&
+    !NATIVELY_WIRED_REASONING_PROVIDERS.has(providerId) &&
+    (model?.capabilities?.includes('reasoning') ?? false)
+  )
+}
+
+/**
  * The levels this provider and model will actually act on.
  *
  * Empty means no effort control belongs on screen:
@@ -52,6 +93,9 @@ function anthropicTakesAnExplicitBudget(modelId: string): boolean {
  *   effort and so is not offered here).
  * - **google / gemini** treat any level as a single on switch — the budget is
  *   dynamic — so there is nothing discrete to choose between.
+ * - **any other remote** provider (reached through the OpenAI-compatible
+ *   factory) gets all four when its model declares the `reasoning` capability,
+ *   since each level maps to a distinct `reasoning_effort` in the request body.
  */
 export function supportedEffortLevels(
   providerId: string | null | undefined,
@@ -65,8 +109,13 @@ export function supportedEffortLevels(
       return anthropicTakesAnExplicitBudget(model?.id ?? '')
         ? EFFORT_LEVELS
         : []
-    default:
+    case 'google':
+    case 'gemini':
       return []
+    default:
+      return isOpenAICompatibleReasoningProvider(providerId, model)
+        ? EFFORT_LEVELS
+        : []
   }
 }
 

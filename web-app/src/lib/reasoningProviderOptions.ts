@@ -3,6 +3,7 @@ import {
   isThinkingBudgetLevelKey,
   type ThinkingBudgetLevelKey,
 } from './thinkingBudget'
+import { isOpenAICompatibleReasoningProvider } from './modelEffort'
 
 type ReasoningChoice = 'auto' | 'on' | 'off' | undefined
 
@@ -104,6 +105,9 @@ export function buildReasoningProviderOptions(
     return undefined
   }
 
+  // Any other remote provider goes through the OpenAI-compatible factory, whose
+  // reasoning knob is the standard `reasoning_effort` body field — see
+  // `buildReasoningBodyParams`, not this native-`providerOptions` path.
   if (providerId === 'openai') {
     // Reasoning models always reason, so 'off' has no universal equivalent;
     // only a concrete effort level maps ('unlimited' = model default).
@@ -117,4 +121,29 @@ export function buildReasoningProviderOptions(
   }
 
   return undefined
+}
+
+/**
+ * The reasoning fields to merge into an OpenAI-compatible request BODY (not the
+ * AI SDK's native `providerOptions`, which only the first-party providers
+ * above understand).
+ *
+ * A remote OpenAI-compatible reasoning model takes a discrete `reasoning_effort`
+ * (`low`/`medium`/`high`/`xhigh`) — the same symbolic level this chat stored
+ * under `thinking_budget_tokens`, forwarded verbatim. Returns undefined unless
+ * the provider qualifies (see `isOpenAICompatibleReasoningProvider`) and a
+ * concrete level is set; `unlimited` is the absence of an effort, so it sends
+ * nothing and lets the model decide.
+ *
+ * Kept the sole source of truth for this path so the control on screen
+ * (`supportedEffortLevels`) and the request cannot drift apart.
+ */
+export function buildReasoningBodyParams(
+  providerId: string | null | undefined,
+  model: Model | null | undefined
+): Record<string, string> | undefined {
+  if (!isOpenAICompatibleReasoningProvider(providerId, model)) return undefined
+  const level = readBudgetLevel(model)
+  if (!level || level === 'unlimited') return undefined
+  return { reasoning_effort: level }
 }
