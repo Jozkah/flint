@@ -337,6 +337,9 @@ winget install -e --id Git.Git
 winget install -e --id OpenJS.NodeJS.LTS
 winget install -e --id Rustlang.Rustup
 winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install -e --id LLVM.LLVM
+winget install -e --id Kitware.CMake
+winget install -e --id Ninja-build.Ninja
 ```
 
 Then make Rust use the MSVC toolchain (needed to link on Windows):
@@ -356,7 +359,13 @@ cd jan
 corepack enable
 ```
 
+If `corepack enable` fails with a permissions error, run PowerShell as
+Administrator for that one command.
+
 **3. Install dependencies and build the app:**
+
+The build downloads sidecar binaries (bun, uv) from GitHub, so an
+internet connection is required for the first build.
 
 ```powershell
 yarn install
@@ -374,8 +383,8 @@ To run Flint in development instead of building an installer, use `yarn dev`.
 
 - Node.js 20 or newer and Yarn 4.5.3 (`corepack enable`)
 - Rust (stable) for Tauri
-- Make
-- Windows: Visual Studio 2022 Build Tools (MSVC x64 and Windows SDK), LLVM (`clang-cl`), Ninja and CMake; run `make` from Git Bash
+- Make (macOS/Linux only; Windows builds work without Make)
+- Windows: Visual Studio 2022 Build Tools (MSVC x64 and Windows SDK), LLVM (`clang-cl`), Ninja and CMake
 - macOS on Apple silicon: the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
 - CUDA Toolkit only for CUDA engine builds
 
