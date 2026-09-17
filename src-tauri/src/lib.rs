@@ -453,7 +453,7 @@ pub fn build_app() -> tauri::App {
         app_builder = app_builder.plugin(tauri_plugin_mlx::init());
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(all(feature = "hardware", not(any(target_os = "android", target_os = "ios"))))]
     {
         app_builder = app_builder.plugin(tauri_plugin_hardware::init());
     }

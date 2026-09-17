@@ -233,6 +233,13 @@ enum Commands {
         #[arg(long, value_name = "DIR")]
         out: Option<std::path::PathBuf>,
     },
+    /// Show system hardware info (CPU, memory, GPUs) and check readiness
+    #[command(display_order = 7)]
+    Doctor {
+        /// Print as JSON instead of a human-readable table
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Tokamak sign-in inspection and control.
@@ -892,6 +899,28 @@ enum ModelsCommands {
         #[arg(long, default_value = ".")]
         project: String,
     },
+    /// List locally downloaded models (in the llamacpp/models directory)
+    ListLocal {
+        /// Print as JSON instead of a table
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show metadata for a local model directory
+    Info {
+        /// Model ID (directory name in llamacpp/models/) or path to a .gguf file
+        path: String,
+        /// Print as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a locally downloaded model
+    Delete {
+        /// Model ID (directory name in llamacpp/models/)
+        id: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 // ── MCP subcommands ────────────────────────────────────────────────────────
@@ -1121,6 +1150,7 @@ async fn run() {
             yes,
             out,
         } => handle_bug_report(thread, show, yes, out),
+        Commands::Doctor { json } => handle_doctor(json),
     }
 }
 
@@ -2529,6 +2559,186 @@ async fn handle_models(cmd: ModelsCommands) {
                 );
             }
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        }
+        ModelsCommands::ListLocal { json } => handle_models_list_local(json),
+        ModelsCommands::Info { path, json } => handle_models_info(&path, json),
+        ModelsCommands::Delete { id, yes } => handle_models_delete(&id, yes),
+    }
+}
+
+fn models_dir() -> std::path::PathBuf {
+    app_lib::core::app::commands::resolve_jan_data_folder()
+        .join("llamacpp")
+        .join("models")
+}
+
+fn handle_models_list_local(json: bool) {
+    let dir = models_dir();
+    if !dir.is_dir() {
+        if json {
+            println!("[]");
+        } else {
+            eprintln!("No local models directory: {}", dir.display());
+        }
+        return;
+    }
+    let Ok(readdir) = std::fs::read_dir(&dir) else {
+        eprintln!("Error: cannot read {}", dir.display());
+        std::process::exit(1);
+    };
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    for entry in readdir.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        let gguf = path.join("model.gguf");
+        let (size_bytes, modified) = if gguf.is_file() {
+            let meta = std::fs::metadata(&gguf).ok();
+            (
+                meta.as_ref().map(|m| m.len()),
+                meta.and_then(|m| m.modified().ok()).map(|t| {
+                    chrono::DateTime::<chrono::Utc>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                }),
+            )
+        } else {
+            (None, None)
+        };
+        entries.push(serde_json::json!({
+            "id": id,
+            "path": path.to_string_lossy(),
+            "has_gguf": gguf.is_file(),
+            "size_bytes": size_bytes,
+            "modified": modified,
+        }));
+    }
+    entries.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&entries).unwrap());
+    } else if entries.is_empty() {
+        println!("No local models found in {}", dir.display());
+    } else {
+        let bold = Style::new().bold();
+        println!("{}", bold.apply_to("Local models:"));
+        for e in &entries {
+            let id = e["id"].as_str().unwrap_or("?");
+            let size = e["size_bytes"]
+                .as_u64()
+                .map(|b| format!("{:.1} GB", b as f64 / 1_073_741_824.0))
+                .unwrap_or_else(|| "no .gguf".into());
+            let modified = e["modified"].as_str().unwrap_or("-");
+            println!("  {id}  ({size}, {modified})");
+        }
+    }
+}
+
+fn handle_models_info(path_or_id: &str, json: bool) {
+    let path = if path_or_id.contains('/')
+        || path_or_id.contains('\\')
+        || path_or_id.ends_with(".gguf")
+    {
+        std::path::PathBuf::from(path_or_id)
+    } else {
+        models_dir().join(path_or_id)
+    };
+
+    if !path.exists() {
+        eprintln!("Error: not found: {}", path.display());
+        std::process::exit(1);
+    }
+
+    let gguf = if path.is_dir() {
+        path.join("model.gguf")
+    } else {
+        path.clone()
+    };
+
+    let meta = std::fs::metadata(&gguf).ok();
+    let info = serde_json::json!({
+        "path": path.to_string_lossy(),
+        "gguf_path": gguf.to_string_lossy(),
+        "exists": gguf.is_file(),
+        "size_bytes": meta.as_ref().map(|m| m.len()),
+        "modified": meta.and_then(|m| m.modified().ok())
+            .map(|t| chrono::DateTime::<chrono::Utc>::from(t).format("%Y-%m-%d %H:%M:%S").to_string()),
+    });
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        println!("Path:     {}", info["path"].as_str().unwrap_or("?"));
+        println!(
+            "GGUF:     {}",
+            if gguf.is_file() { "present" } else { "missing" }
+        );
+        if let Some(size) = info["size_bytes"].as_u64() {
+            println!("Size:     {:.1} GB", size as f64 / 1_073_741_824.0);
+        }
+        if let Some(modified) = info["modified"].as_str() {
+            println!("Modified: {modified}");
+        }
+    }
+}
+
+fn handle_models_delete(id: &str, yes: bool) {
+    let dir = models_dir().join(id);
+    if !dir.is_dir() {
+        eprintln!("Error: model directory not found: {}", dir.display());
+        std::process::exit(1);
+    }
+    if !yes {
+        eprint!("Delete model '{}' at {}? [y/N] ", id, dir.display());
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).ok();
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        eprintln!("Error deleting {}: {e}", dir.display());
+        std::process::exit(1);
+    }
+    println!("Deleted model '{id}'.");
+}
+
+// ── Doctor handler ──────────────────────────────────────────────────────
+
+fn handle_doctor(json: bool) {
+    let info = tauri_plugin_hardware::get_system_info();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        let bold = Style::new().bold();
+        println!("{}", bold.apply_to("System Information"));
+        println!("  OS:     {} ({})", info.os_name, info.os_type);
+        println!(
+            "  CPU:    {} ({} cores, {})",
+            info.cpu.name, info.cpu.core_count, info.cpu.arch
+        );
+        if !info.cpu.extensions.is_empty() {
+            println!("  ISA:    {}", info.cpu.extensions.join(", "));
+        }
+        println!("  Memory: {} MiB", info.total_memory);
+        if info.gpus.is_empty() {
+            println!("  GPUs:   none detected");
+        } else {
+            println!("{}", bold.apply_to("GPUs"));
+            for gpu in &info.gpus {
+                let vram = if gpu.total_memory > 0 {
+                    format!("{} MiB", gpu.total_memory)
+                } else {
+                    "unknown".into()
+                };
+                println!(
+                    "  {} ({:?}, VRAM {}, driver {})",
+                    gpu.name, gpu.vendor, vram, gpu.driver_version
+                );
+            }
         }
     }
 }
