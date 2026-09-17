@@ -6,6 +6,22 @@
     "unresolvedAssets_one": "1 asset reference can't load in the preview. Relative paths have no base URL to resolve against.",
     "unresolvedAssets_other": "{{count}} asset references can't load in the preview. Relative paths have no base URL to resolve against."
   },
+  "webPreview": {
+    "title": "Web preview",
+    "openExternal": "Open in browser",
+    "popOut": "Pop out to window",
+    "dockSide": "Dock to side",
+    "showAsPip": "Show as floating window",
+    "reload": "Reload",
+    "back": "Back",
+    "forward": "Forward",
+    "close": "Close preview",
+    "blockedBanner": "This site may block embedding. Open it in your browser or pop it out.",
+    "interceptSetting": "Open links in an in-app preview",
+    "interceptSettingDesc": "When on, clicking a web link opens it in a preview panel instead of your browser.",
+    "pipDrag": "Move preview window",
+    "pipResize": "Resize preview window"
+  },
   "assistants": "Assistants",
   "hardware": "Hardware",
   "mcp-servers": "MCP Servers",

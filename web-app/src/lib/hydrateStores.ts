@@ -14,6 +14,7 @@ import { useModelOrder } from '@/hooks/useModelOrder'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
@@ -59,6 +60,7 @@ const secondaryStores = [
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,
+  useWebPreviewSettings,
   useCoworkSessions,
   useClaudeCompat,
   useCoworkActivity,
