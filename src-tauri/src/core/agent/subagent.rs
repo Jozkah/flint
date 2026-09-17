@@ -139,15 +139,33 @@ pub struct SubagentRegistry {
 }
 
 impl SubagentRegistry {
+    /// Back-compat entry point: loads with the surface that matches
+    /// historical behavior (matrix-unaware). Since an empty matrix enables
+    /// every item on every surface, this is only observably different from
+    /// [`load_for`] once the caller's global plugins are matrix-restricted --
+    /// which is why every caller that has a real project root/surface should
+    /// prefer `load_for`. Kept for tests and call sites that have no surface
+    /// to offer.
+    pub fn load(project_root: &Path) -> Self {
+        Self::load_for(project_root, surface_for_project_root(project_root))
+    }
+
     /// Load plugin agents first (lowest precedence), then the user scope,
     /// then the project scope. `get` resolves the winning definition by
     /// reverse iteration, so a user/project TOML definition shadows a plugin
     /// agent of the same name. Malformed files are skipped with a warning
     /// rather than failing the whole run.
-    pub fn load(project_root: &Path) -> Self {
+    ///
+    /// `surface` gates GLOBAL plugin agents through the per-surface
+    /// enablement matrix (`extensions::Matrix`): a global plugin agent whose
+    /// plugin is disabled for `surface` is dropped entirely, so it cannot be
+    /// dispatched or listed there. Project-scoped plugin agents and user/
+    /// project subagents are unaffected -- the matrix only governs the
+    /// GLOBAL plugin store.
+    pub fn load_for(project_root: &Path, surface: crate::core::agent::extensions::Surface) -> Self {
         // Shipped roles first: every other scope shadows them by name.
         let mut defs = crate::core::agent::roles::definitions();
-        load_plugin_agents(project_root, &mut defs);
+        load_plugin_agents(project_root, &surface, &mut defs);
         if let Some(dir) = user_subagents_dir() {
             load_dir(&dir, SubagentScope::User, &mut defs);
         }
@@ -282,7 +300,11 @@ impl SubagentRegistry {
 /// `name` and `description` are used; `model` and `color` are Claude-runtime
 /// metadata and ignored (the parent's model runs the child); `tools` maps
 /// Claude tool names onto Flint tool names, dropping names with no equivalent.
-fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
+fn load_plugin_agents(
+    project_root: &Path,
+    surface: &crate::core::agent::extensions::Surface,
+    out: &mut Vec<SubagentDefinition>,
+) {
     // `[plugins].disabled` plugins stay installed but contribute no agents.
     let disabled = crate::core::agent::project::disabled_plugins(project_root);
     let mut project = Vec::new();
@@ -296,12 +318,41 @@ fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
         scan_plugins_root_for_agents(&dir, &disabled, &mut global);
     }
     out.extend(project.iter().map(|(_, d)| d.clone()));
+    // GLOBAL plugin agents only: gated through the per-surface enablement
+    // matrix, so toggling a global plugin off for this surface drops its
+    // subagents here too (they were leaking before this gate existed).
+    let matrix = crate::core::agent::extensions::Matrix::load();
     out.extend(global.into_iter().filter_map(|(plugin, def)| {
-        (!project
+        let shadowed = project
             .iter()
-            .any(|(p, d)| *p == plugin && d.name == def.name))
-        .then_some(def)
+            .any(|(p, d)| *p == plugin && d.name == def.name);
+        if shadowed {
+            return None;
+        }
+        matrix
+            .is_enabled(
+                crate::core::agent::extensions::ItemKind::Plugin,
+                &plugin,
+                surface,
+            )
+            .then_some(def)
     }));
+}
+
+/// The surface a headless/legacy caller should be treated as, derived
+/// read-only from `project_root`: an empty path (headless / no project, e.g.
+/// Home) maps to `Surface::Home`; otherwise the project's registered id
+/// (or the empty string if unregistered, matching `context.rs::load_skills`)
+/// maps to `Surface::Cowork(id)`.
+pub(crate) fn surface_for_project_root(
+    project_root: &Path,
+) -> crate::core::agent::extensions::Surface {
+    if project_root.as_os_str().is_empty() {
+        return crate::core::agent::extensions::Surface::Home;
+    }
+    let project_id =
+        crate::core::agent::projects_registry::resolve_project_id(project_root).unwrap_or_default();
+    crate::core::agent::extensions::Surface::Cowork(project_id)
 }
 
 /// Scan one plugins root (project or global) for `<plugin>/agents/**/*.md`
@@ -1305,7 +1356,8 @@ pub(crate) fn spawn_subagent(
     let project_root = parent_args.project_root.as_ref().ok_or_else(|| {
         SubagentError::Upstream("subagents require an active project".to_string())
     })?;
-    let registry = SubagentRegistry::load(project_root);
+    let surface = surface_for_project_root(project_root);
+    let registry = SubagentRegistry::load_for(project_root, surface);
     let resolved = resolve_dispatch(&registry, &req, &parent_args.permissions)?;
 
     let name = resolved.definition.name.clone();
@@ -3787,6 +3839,58 @@ mod tests {
             .expect("global plugin agent loaded");
         assert_eq!(def.scope, SubagentScope::Plugin);
 
+        crate::core::agent::skills::set_test_user_plugins(None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn global_plugin_agent_is_matrix_gated_by_surface() {
+        use crate::core::agent::extensions::{ItemKind, Matrix, Surface};
+
+        let root = unique_root("global-plugin-agent-matrix");
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let adir = tauri_plugin_agent_tools::skills::plugins_dir(&store)
+            .join("caveman")
+            .join("agents");
+        std::fs::create_dir_all(&adir).unwrap();
+        std::fs::write(
+            adir.join("cavecrew-builder.md"),
+            "---\nname: cavecrew-builder\ndescription: Builds\n---\nYou build.",
+        )
+        .unwrap();
+        crate::core::agent::skills::set_test_user_plugins(Some(store));
+
+        let ext_store = tempfile::tempdir().unwrap();
+        crate::core::agent::extensions::set_test_extensions_root(Some(
+            ext_store.path().to_path_buf(),
+        ));
+
+        // Unset in the matrix: enabled everywhere, matching today's behavior.
+        let reg = SubagentRegistry::load_for(&root, Surface::Rooms);
+        assert!(
+            reg.get("cavecrew-builder").is_some(),
+            "unset global plugin agent should be enabled on every surface"
+        );
+
+        // Restrict the "caveman" plugin to Home only.
+        let mut matrix = Matrix::load();
+        matrix.set(ItemKind::Plugin, "caveman", &Surface::Home, true);
+        matrix.save();
+
+        let reg_home = SubagentRegistry::load_for(&root, Surface::Home);
+        assert!(
+            reg_home.get("cavecrew-builder").is_some(),
+            "global plugin agent should be present on the enabled surface"
+        );
+
+        let reg_rooms = SubagentRegistry::load_for(&root, Surface::Rooms);
+        assert!(
+            reg_rooms.get("cavecrew-builder").is_none(),
+            "global plugin agent should be absent when its plugin is matrix-disabled for this surface"
+        );
+
+        crate::core::agent::extensions::set_test_extensions_root(None);
         crate::core::agent::skills::set_test_user_plugins(None);
         let _ = std::fs::remove_dir_all(&root);
     }
