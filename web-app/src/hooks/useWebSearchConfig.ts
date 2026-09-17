@@ -29,6 +29,21 @@ export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
     homepage: 'tavily.com',
   },
   {
+    id: 'brave',
+    label: 'Brave Search',
+    keyless: false,
+    secretKey: 'brave-api-key',
+    homepage: 'brave.com',
+  },
+  {
+    // Google results via the Serper API; `id` is the backend selector.
+    id: 'serper',
+    label: 'Google (Serper)',
+    keyless: false,
+    secretKey: 'serper-api-key',
+    homepage: 'serper.dev',
+  },
+  {
     id: 'searxng',
     label: 'SearXNG',
     keyless: true,
