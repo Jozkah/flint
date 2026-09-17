@@ -324,26 +324,51 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 
 ## Build from source
 
-### Fastest path on Windows (one command)
+### Quick start on Windows (copy-paste commands)
 
-New to this, or new to Git? You need [Git](https://git-scm.com/download/win)
-installed once; everything else is handled for you. Open **PowerShell**, then:
+New to this, or new to Git? Every step is a command you can paste into
+**PowerShell**. Do the steps in order.
+
+**1. Install the tools** (once per machine). Windows 10/11 ships `winget`;
+these commands fetch everything Flint needs:
+
+```powershell
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Rustlang.Rustup
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+Then make Rust use the MSVC toolchain (needed to link on Windows):
+
+```powershell
+rustup default stable-msvc
+```
+
+**Close and reopen PowerShell** so the newly installed tools are on your
+`PATH`.
+
+**2. Get the code and enable Yarn:**
 
 ```powershell
 git clone https://github.com/Jozkah/jan.git
 cd jan
-powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
+corepack enable
 ```
 
-`build-windows.ps1` checks for the tools Flint needs (Node.js, Rust and the
-Visual Studio C++ Build Tools), installs the missing ones with `winget`,
-installs the project dependencies, and builds the installer. It is safe to run
-again at any time. When it finishes it prints the path to your installer under
-`src-tauri/target/release/bundle/` and to the app itself at
-`src-tauri/target/release/Flint.exe`.
+**3. Install dependencies and build the app:**
 
-If a tool was just installed and the script says it is not on `PATH`, open a
-new PowerShell window and re-run with `-SkipInstall`.
+```powershell
+yarn install
+yarn build
+```
+
+The first build compiles Rust and can take 10–30 minutes. When it finishes,
+your installers are in `src-tauri\target\release\bundle\` (an `.exe` under
+`nsis\` and an `.msi` under `msi\`), and the app itself is at
+`src-tauri\target\release\Flint.exe`.
+
+To run Flint in development instead of building an installer, use `yarn dev`.
 
 ### Prerequisites
 
