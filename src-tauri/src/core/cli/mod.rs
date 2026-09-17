@@ -1032,6 +1032,7 @@ struct PersistTarget {
     history: Vec<serde_json::Value>,
     /// The checkout this run worked in, recorded on the thread so a later
     /// `--resume` reattaches to it.
+    #[cfg_attr(feature = "cli", allow(dead_code))]
     workspace: Option<worktree::Worktree>,
 }
 
@@ -1184,6 +1185,7 @@ fn latest_snapshot(thread: Option<&serde_json::Value>) -> Option<String> {
 /// Without this a resumed session branches a *fresh* worktree and the model
 /// reads a pristine tree, silently losing everything the run it is continuing
 /// did in there.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 fn worktree_metadata(
     agent_dir: &std::path::Path,
     thread_id: Option<&str>,

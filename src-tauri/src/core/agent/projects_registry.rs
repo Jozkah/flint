@@ -70,6 +70,7 @@ fn load_registry() -> Registry {
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
+#[cfg(not(feature = "cli"))]
 fn save_registry(registry: &Registry) {
     let Some(path) = registry_path() else {
         return;
@@ -85,6 +86,7 @@ fn save_registry(registry: &Registry) {
 }
 
 /// Every registered project, in registry order.
+#[cfg(not(feature = "cli"))]
 pub(crate) fn list_projects() -> Vec<ProjectEntry> {
     load_registry().projects
 }
@@ -99,6 +101,7 @@ fn read_marker(folder: &Path) -> Option<String> {
     (!id.is_empty()).then(|| id.to_string())
 }
 
+#[cfg(not(feature = "cli"))]
 fn write_marker(folder: &Path, id: &str) {
     let marker = marker_path(folder);
     if let Some(parent) = marker.parent() {
@@ -109,6 +112,7 @@ fn write_marker(folder: &Path, id: &str) {
     let _ = std::fs::write(&marker, id);
 }
 
+#[cfg(not(feature = "cli"))]
 fn folder_name(folder: &Path) -> String {
     folder
         .file_name()
@@ -137,6 +141,7 @@ pub(crate) fn resolve_project_id(folder: &Path) -> Option<String> {
 /// Registers `folder`, returning its stable entry. Idempotent: calling this
 /// again for the same folder (or the same marker after a move/rename)
 /// returns the same id, refreshing `folder`/`name` in place.
+#[cfg(not(feature = "cli"))]
 pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
     let folder_str = folder.to_string_lossy().to_string();
     let name = folder_name(folder);

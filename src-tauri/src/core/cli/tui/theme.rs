@@ -72,6 +72,7 @@ fn detect_is_light() -> Option<bool> {
 
 /// Perceived-luminance test (Rec. 601 weights) on an 8-bit colour. The midpoint
 /// is what separates a light terminal background from a dark one.
+#[cfg(unix)]
 fn luminance_is_light(r: u8, g: u8, b: u8) -> bool {
     let y = 299 * r as u32 + 587 * g as u32 + 114 * b as u32;
     y > 128_000
@@ -80,6 +81,7 @@ fn luminance_is_light(r: u8, g: u8, b: u8) -> bool {
 /// Parse an OSC 11 reply (`ESC ] 11 ; rgb:RRRR/GGGG/BBBB` then ST or BEL) into an
 /// 8-bit colour. Components may be 1-4 hex digits; each is scaled to its high
 /// byte so `ffff` and `ff` both read as 255.
+#[cfg(unix)]
 fn parse_osc11(reply: &str) -> Option<(u8, u8, u8)> {
     let start = reply.find("rgb:")? + "rgb:".len();
     let rest = &reply[start..];

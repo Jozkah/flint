@@ -18,7 +18,7 @@ use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
     cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
-    cli_plugin_remove, cli_plugin_search, ResumeRequest, ResumeTarget, SessionFlags,
+    cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
 };
 use std::fmt::Write as _;
 
