@@ -14,6 +14,8 @@ export interface WindowConfig {
   maximizable?: boolean
   closable?: boolean
   fullscreen?: boolean
+  /** Isolate the window's cookies/session from the app. */
+  incognito?: boolean
 }
 
 export interface WebviewWindowInstance {

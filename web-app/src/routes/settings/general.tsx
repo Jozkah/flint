@@ -13,6 +13,7 @@ import { useMigrationAssistant } from '@/stores/migration-assistant-store'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useEffect, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
@@ -41,6 +42,8 @@ function General() {
     huggingfaceToken,
     setHuggingfaceToken,
   } = useGeneralSetting()
+  const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
+  const setInterceptLinks = useWebPreviewSettings((s) => s.setInterceptLinks)
   const serviceHub = useServiceHub()
   const navigate = useNavigate()
 
@@ -450,6 +453,17 @@ function General() {
 
         {/* Other */}
         <Card title={t('common:others')}>
+          <CardItem
+            anchor="settings-general-web-preview"
+            title={t('common:webPreview.interceptSetting')}
+            description={t('common:webPreview.interceptSettingDesc')}
+            actions={
+              <Switch
+                checked={interceptLinks}
+                onCheckedChange={(e) => setInterceptLinks(e)}
+              />
+            }
+          />
           <CardItem
             anchor="settings-general-spell-check"
             title={t('settings:others.spellCheck', {

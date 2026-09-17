@@ -33,6 +33,9 @@ const EXA_REST_CONTENTS_URL: &str = "https://api.exa.ai/contents";
 const TAVILY_SEARCH_URL: &str = "https://api.tavily.com/search";
 const TAVILY_EXTRACT_URL: &str = "https://api.tavily.com/extract";
 
+const BRAVE_SEARCH_URL: &str = "https://api.search.brave.com/res/v1/web/search";
+const SERPER_SEARCH_URL: &str = "https://google.serper.dev/search";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchResult {
     pub title: String,
@@ -69,6 +72,9 @@ pub fn create_provider(
     match provider.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
         None | Some("") | Some("exa") => Ok(Box::new(ExaProvider::new(api_key)?)),
         Some("tavily") => Ok(Box::new(TavilyProvider::new(api_key)?)),
+        Some("brave") => Ok(Box::new(BraveProvider::new(api_key)?)),
+        // "google" is the user-facing name for the Serper-backed Google adapter.
+        Some("serper") | Some("google") => Ok(Box::new(SerperProvider::new(api_key)?)),
         Some("searxng") => Ok(Box::new(SearxngProvider::new(endpoint)?)),
         Some(other) => Err(format!("Unknown web search provider '{other}'")),
     }
@@ -600,32 +606,227 @@ impl SearchProvider for SearxngProvider {
     }
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| format!("SearXNG fetch request failed: {e}"))?;
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| format!("SearXNG fetch: failed to read response body: {e}"))?;
-        if !status.is_success() {
-            return Err(format!(
-                "SearXNG fetch failed with HTTP {}",
-                status.as_u16()
-            ));
-        }
-        let title = extract_html_title(&body).unwrap_or_default();
-        let (content, truncated) = bound_text(&body);
-        Ok(FetchedPage {
-            url: url.to_string(),
-            title,
-            content,
-            truncated,
+        http_get_page(&self.client, url, "SearXNG").await
+    }
+}
+
+/// Fetch a page over a plain HTTP GET and return bounded readable content.
+///
+/// Backends without a dedicated content-extraction endpoint (SearXNG, Brave,
+/// Serper) share this: there is nothing provider-specific about pulling a URL
+/// and reading its body, so the logic lives once.
+async fn http_get_page(
+    client: &reqwest::Client,
+    url: &str,
+    provider: &str,
+) -> Result<FetchedPage, String> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("{provider} fetch failed with HTTP {}", status.as_u16()));
+    }
+    let title = extract_html_title(&body).unwrap_or_default();
+    let (content, truncated) = bound_text(&body);
+    Ok(FetchedPage {
+        url: url.to_string(),
+        title,
+        content,
+        truncated,
+    })
+}
+
+/// Brave Search backend (key-only). Uses Brave's Web Search REST API,
+/// authenticated with the `X-Subscription-Token` header. Brave has no
+/// content-extraction endpoint, so `fetch` does a plain HTTP GET.
+pub struct BraveProvider {
+    api_key: String,
+    client: reqwest::Client,
+}
+
+impl BraveProvider {
+    pub fn new(api_key: Option<String>) -> Result<Self, String> {
+        Ok(Self {
+            api_key: require_key("Brave", api_key)?,
+            client: build_http_client("Brave")?,
         })
     }
+}
+
+#[async_trait]
+impl SearchProvider for BraveProvider {
+    async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        let resp = self
+            .client
+            .get(BRAVE_SEARCH_URL)
+            .header("X-Subscription-Token", &self.api_key)
+            .header("Accept", "application/json")
+            .query(&[
+                ("q", query.to_string()),
+                ("count", count.to_string()),
+            ])
+            .send()
+            .await
+            .map_err(|e| format!("Brave request failed: {e}"))?;
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
+        if !status.is_success() {
+            return Err(format!(
+                "Brave failed with HTTP {}: {}",
+                status.as_u16(),
+                text.chars().take(400).collect::<String>()
+            ));
+        }
+        let parsed: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Brave: invalid JSON response: {e}"))?;
+        Ok(normalize_brave_search(&parsed, count))
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        http_get_page(&self.client, url, "Brave").await
+    }
+}
+
+fn normalize_brave_search(body: &Value, count: u32) -> Vec<SearchResult> {
+    let Some(results) = body
+        .get("web")
+        .and_then(|w| w.get("results"))
+        .and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .take(count as usize)
+        .map(|r| {
+            let title = r.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let url = r.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            let snippet = r
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|t| clip_chars(&strip_html_tags(t), 500))
+                .unwrap_or_default();
+            let published_at = r
+                .get("page_age")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            SearchResult {
+                title: title.to_string(),
+                url: url.to_string(),
+                snippet,
+                published_at,
+            }
+        })
+        .collect()
+}
+
+/// Serper backend (key-only): Google's Search Engine Results via serper.dev.
+/// Posts to `/search` with an `X-API-KEY` header. No content-extraction
+/// endpoint, so `fetch` does a plain HTTP GET.
+pub struct SerperProvider {
+    api_key: String,
+    client: reqwest::Client,
+}
+
+impl SerperProvider {
+    pub fn new(api_key: Option<String>) -> Result<Self, String> {
+        Ok(Self {
+            api_key: require_key("Serper", api_key)?,
+            client: build_http_client("Serper")?,
+        })
+    }
+}
+
+#[async_trait]
+impl SearchProvider for SerperProvider {
+    async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        let resp = self
+            .client
+            .post(SERPER_SEARCH_URL)
+            .header("X-API-KEY", &self.api_key)
+            .header("content-type", "application/json")
+            .json(&json!({ "q": query, "num": count }))
+            .send()
+            .await
+            .map_err(|e| format!("Serper request failed: {e}"))?;
+        let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
+        if !status.is_success() {
+            return Err(format!(
+                "Serper failed with HTTP {}: {}",
+                status.as_u16(),
+                text.chars().take(400).collect::<String>()
+            ));
+        }
+        let parsed: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Serper: invalid JSON response: {e}"))?;
+        Ok(normalize_serper_search(&parsed, count))
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        http_get_page(&self.client, url, "Serper").await
+    }
+}
+
+fn normalize_serper_search(body: &Value, count: u32) -> Vec<SearchResult> {
+    let Some(results) = body.get("organic").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .take(count as usize)
+        .map(|r| {
+            let title = r.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            // Serper names the result URL `link`.
+            let url = r.get("link").and_then(|v| v.as_str()).unwrap_or("");
+            let snippet = r
+                .get("snippet")
+                .and_then(|v| v.as_str())
+                .map(|t| clip_chars(t, 500))
+                .unwrap_or_default();
+            let published_at = r
+                .get("date")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            SearchResult {
+                title: title.to_string(),
+                url: url.to_string(),
+                snippet,
+                published_at,
+            }
+        })
+        .collect()
+}
+
+/// Strip HTML tags from a snippet. Brave marks query terms with `<strong>`;
+/// the normalized contract is plain text, so the tags come out.
+fn strip_html_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
 }
 
 fn normalize_searxng_search(body: &Value, count: u32) -> Vec<SearchResult> {
@@ -731,9 +932,9 @@ mod tests {
 
     #[test]
     fn create_provider_rejects_unknown() {
-        match create_provider(Some("brave"), None, None) {
+        match create_provider(Some("nonesuch"), None, None) {
             Ok(_) => panic!("expected unknown provider to error"),
-            Err(e) => assert!(e.contains("brave")),
+            Err(e) => assert!(e.contains("nonesuch")),
         }
     }
 
@@ -744,6 +945,101 @@ mod tests {
             Err(e) => assert!(e.contains("Tavily")),
         }
         assert!(create_provider(Some("tavily"), Some("tvly-abc".into()), None).is_ok());
+    }
+
+    #[test]
+    fn create_provider_brave_requires_key() {
+        match create_provider(Some("brave"), None, None) {
+            Ok(_) => panic!("expected Brave to require a key"),
+            Err(e) => assert!(e.contains("Brave")),
+        }
+        assert!(create_provider(Some("brave"), Some("brv-abc".into()), None).is_ok());
+    }
+
+    #[test]
+    fn create_provider_serper_requires_key_and_google_alias() {
+        match create_provider(Some("serper"), None, None) {
+            Ok(_) => panic!("expected Serper to require a key"),
+            Err(e) => assert!(e.contains("Serper")),
+        }
+        assert!(create_provider(Some("serper"), Some("srp-abc".into()), None).is_ok());
+        // "google" is an alias for the Serper-backed adapter.
+        assert!(create_provider(Some("google"), Some("srp-abc".into()), None).is_ok());
+    }
+
+    #[test]
+    fn normalize_brave_search_maps_contract() {
+        let body = json!({
+            "web": {
+                "results": [
+                    {
+                        "title": "Example",
+                        "url": "https://example.com",
+                        "description": "A <strong>short</strong> excerpt.",
+                        "page_age": "2024-05-01T00:00:00"
+                    },
+                    { "title": "No date", "url": "https://example.org", "description": "Body." }
+                ]
+            }
+        });
+        let results = normalize_brave_search(&body, 5);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].url, "https://example.com");
+        assert_eq!(results[0].snippet, "A short excerpt.");
+        assert_eq!(results[0].published_at.as_deref(), Some("2024-05-01T00:00:00"));
+        assert!(results[1].published_at.is_none());
+    }
+
+    #[test]
+    fn normalize_brave_search_caps_and_empty() {
+        let body = json!({
+            "web": { "results": [
+                { "title": "1", "url": "https://a", "description": "" },
+                { "title": "2", "url": "https://b", "description": "" }
+            ]}
+        });
+        assert_eq!(normalize_brave_search(&body, 1).len(), 1);
+        assert!(normalize_brave_search(&json!({}), 5).is_empty());
+        assert!(normalize_brave_search(&json!({"web": {}}), 5).is_empty());
+    }
+
+    #[test]
+    fn normalize_serper_search_maps_contract() {
+        let body = json!({
+            "organic": [
+                {
+                    "title": "Example",
+                    "link": "https://example.com",
+                    "snippet": "A short excerpt.",
+                    "date": "May 1, 2024"
+                },
+                { "title": "No date", "link": "https://example.org", "snippet": "Body." }
+            ]
+        });
+        let results = normalize_serper_search(&body, 5);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].url, "https://example.com");
+        assert_eq!(results[0].snippet, "A short excerpt.");
+        assert_eq!(results[0].published_at.as_deref(), Some("May 1, 2024"));
+        assert!(results[1].published_at.is_none());
+    }
+
+    #[test]
+    fn normalize_serper_search_caps_and_empty() {
+        let body = json!({
+            "organic": [
+                { "title": "1", "link": "https://a", "snippet": "x" },
+                { "title": "2", "link": "https://b", "snippet": "y" }
+            ]
+        });
+        assert_eq!(normalize_serper_search(&body, 1).len(), 1);
+        assert!(normalize_serper_search(&json!({}), 5).is_empty());
+    }
+
+    #[test]
+    fn strip_html_tags_removes_markup() {
+        assert_eq!(strip_html_tags("a <strong>b</strong> c"), "a b c");
+        assert_eq!(strip_html_tags("plain"), "plain");
     }
 
     #[test]

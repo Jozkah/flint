@@ -52,6 +52,7 @@ export class TauriWindowService extends DefaultWindowService {
         closable: config.closable,
         fullscreen: config.fullscreen,
         theme: theme,
+        incognito: config.incognito,
       })
 
       // Setup theme listener for this window
