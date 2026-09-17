@@ -1484,7 +1484,11 @@
     "scopeGlobal": "Global",
     "scopeProject": "Project",
     "pluginsPlaceholder": "Plugin management is coming soon.",
-    "skillsPlaceholder": "Skill management is coming soon."
+    "skillsPlaceholder": "Skill management is coming soon.",
+    "enablement": {
+      "title": "Enabled on",
+      "pluginNote": "Governs this plugin's skills and subagents on each surface. Its slash commands are not yet filtered by this toggle."
+    }
   },
   "statusBar": {
     "label": "Status",

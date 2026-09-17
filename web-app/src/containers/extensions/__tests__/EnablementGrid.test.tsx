@@ -91,4 +91,40 @@ describe('EnablementGrid', () => {
       expect(mockedSetItemSurfaces).toHaveBeenCalledWith('skill', 'caveman', null)
     })
   })
+
+  it('disables every checkbox in the grid while a write is pending, not just the clicked one', async () => {
+    mockedGetMatrix.mockResolvedValue({ skills: {}, plugins: {} })
+    mockedListProjects.mockResolvedValue([
+      { id: 'p1', folder: '/path/proj', name: 'My Project' },
+    ])
+    let resolveWrite: (v: { skills: object; plugins: object }) => void = () => {}
+    mockedSetItemSurfaces.mockReturnValue(
+      new Promise((resolve) => {
+        resolveWrite = resolve
+      })
+    )
+
+    const user = userEvent.setup()
+    render(<EnablementGrid kind="skill" id="caveman" />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeChecked()
+    })
+
+    await user.click(screen.getByLabelText('common:extensions.surfaces.rooms'))
+
+    // The write is still in flight: every checkbox, not just Rooms, must be
+    // disabled so a second rapid click can't compute from a stale snapshot.
+    await waitFor(() => {
+      expect(screen.getByLabelText('common:extensions.surfaces.home')).toBeDisabled()
+    })
+    expect(screen.getByLabelText('common:extensions.surfaces.rooms')).toBeDisabled()
+    expect(screen.getByLabelText('My Project')).toBeDisabled()
+
+    resolveWrite({ skills: {}, plugins: {} })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('common:extensions.surfaces.home')).not.toBeDisabled()
+    })
+  })
 })

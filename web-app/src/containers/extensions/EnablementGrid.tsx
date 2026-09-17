@@ -48,7 +48,11 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
   const [matrix, setMatrix] = useState<ExtensionsMatrix | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [pendingKey, setPendingKey] = useState<string | null>(null)
+  // Disables every checkbox in the grid while a write is in flight, not just
+  // the one clicked: two rapid clicks on different cells would otherwise both
+  // compute `before` from the same stale `currentSurfaces` snapshot, and the
+  // second write-back would clobber the first.
+  const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -79,7 +83,7 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
     currentSurfaces === null ? true : currentSurfaces.includes(columnKey)
 
   const toggle = async (columnKey: string, checked: boolean) => {
-    if (!matrix) return
+    if (!matrix || busy) return
     const allKeys = columns.map((c) => c.key)
     const before = currentSurfaces === null ? [...allKeys] : [...currentSurfaces]
     const next = checked
@@ -103,7 +107,7 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
       },
     }
 
-    setPendingKey(columnKey)
+    setBusy(true)
     setError(null)
     setMatrix(optimistic)
     try {
@@ -115,7 +119,7 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
       setError(message)
       toast.error(message)
     } finally {
-      setPendingKey(null)
+      setBusy(false)
     }
   }
 
@@ -143,7 +147,7 @@ export default function EnablementGrid({ kind, id }: EnablementGridProps) {
                 id={checkboxId}
                 className="size-3.5 shrink-0"
                 checked={isChecked(col.key)}
-                disabled={pendingKey === col.key}
+                disabled={busy}
                 onChange={(e) => void toggle(col.key, e.target.checked)}
               />
               <Label htmlFor={checkboxId} className="text-xs font-normal">

@@ -460,6 +460,10 @@ export default function PluginsTab() {
                 {t('common:extensions.enablement.title', undefined) ?? 'Enabled on'}
               </div>
               <EnablementGrid kind="plugin" id={plugin.id} />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {t('common:extensions.enablement.pluginNote', undefined) ??
+                  "Governs this plugin's skills and subagents on each surface. Its slash commands are not yet filtered by this toggle."}
+              </p>
             </div>
             <div>
               <Button
