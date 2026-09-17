@@ -33,6 +33,7 @@ pub mod plan;
 pub mod plugin_commands;
 pub mod plugins;
 pub mod project;
+pub(crate) mod projects_registry;
 pub mod quota;
 pub mod proposals;
 pub mod reminder;
