@@ -5,6 +5,7 @@ import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import PluginsTab from '@/containers/extensions/PluginsTab'
+import SkillsTab from '@/containers/extensions/SkillsTab'
 import { cn } from '@/lib/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,15 +94,10 @@ function ExtensionsPage() {
           </div>
         ) : (
           <div
-            className="flex flex-1 flex-col items-start gap-1 rounded-lg border border-border bg-card p-5"
+            className="flex flex-1 min-h-0 flex-col gap-1 rounded-lg border border-border bg-card p-5"
             data-testid="extensions-panel-skills"
           >
-            <h2 className="text-sm font-semibold text-foreground">
-              {t('common:extensions.skills')}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {t('common:extensions.skillsPlaceholder')}
-            </p>
+            <SkillsTab />
           </div>
         )}
       </div>

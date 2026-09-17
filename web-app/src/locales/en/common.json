@@ -1479,6 +1479,7 @@
   "extensions": {
     "plugins": "Plugins",
     "skills": "Skills",
+    "global": "Global",
     "scope": "Scope",
     "scopeGlobal": "Global",
     "scopeProject": "Project",

@@ -31,6 +31,20 @@ vi.mock('@/hooks/useSkills', () => ({
   invalidateSkills: vi.fn(),
 }))
 
+vi.mock('@/lib/skillStore', () => ({
+  storeScope: { kind: 'store' },
+  projectScope: (folder: string) => ({ kind: 'project', folder }),
+  isPluginSkill: () => false,
+  listSkills: vi.fn().mockResolvedValue([]),
+  readSkill: vi.fn(),
+  writeSkill: vi.fn(),
+  deleteSkill: vi.fn(),
+}))
+
+vi.mock('@/lib/extensionsStore', () => ({
+  listProjects: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('@/lib/pluginStore', async () => {
   const actual = await vi.importActual<typeof import('@/lib/pluginStore')>(
     '@/lib/pluginStore'
