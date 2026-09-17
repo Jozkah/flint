@@ -17,6 +17,11 @@ import type { StreamReplyInput } from '../callError'
 import type { StreamReply } from '../callError'
 import { CONCLUDE_SIGNAL } from '../consensus'
 
+// buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
+// controller tests exercise turn-taking, not extension resolution, so stub
+// it to return no skills rather than pulling in a real invoke bridge.
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }))
+
 const initialStore = useRoomsStore.getState()
 
 function setup(streamReply: StreamReply) {

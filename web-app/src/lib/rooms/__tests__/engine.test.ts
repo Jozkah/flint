@@ -23,6 +23,11 @@ import {
 } from './helpers'
 import type { Room, RoomJournalRecord } from '../types'
 
+// buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
+// engine tests exercise turn-taking, not extension resolution, so stub it to
+// return no skills rather than pulling in a real invoke bridge.
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => []) }))
+
 const signal = () => new AbortController().signal
 
 const threeParticipants = () => [
