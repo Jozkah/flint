@@ -60,6 +60,11 @@ pub(crate) fn user_skill_store() -> Option<PathBuf> {
     TEST_USER_SKILLS.with(|d| d.borrow().clone())
 }
 
+#[cfg(test)]
+pub(crate) fn set_test_user_skills(store: Option<PathBuf>) {
+    TEST_USER_SKILLS.with(|d| *d.borrow_mut() = store);
+}
+
 /// The user's own plugins, shared by every workspace:
 /// `<jan_data_folder>/agent-workspace/plugins`. Sibling of `user_skills_dir`.
 #[cfg(not(test))]
@@ -468,12 +473,15 @@ pub(crate) fn list_meta(root: &Path) -> Vec<SkillMeta> {
 
 /// Filter discovered skills (project + plugins) by the `[skills].enabled`
 /// whitelist and one invocation side. Skills with neither a description nor a
-fn side_catalog(
-    root: &Path,
+/// Shared filtering/mapping body of `side_catalog`, factored out so
+/// `global_catalog` can run it over a different set of discovered entries
+/// (the user's own skills/plugins only, with no project involved).
+fn catalog_from_entries(
+    entries: Vec<SkillEntry>,
     enabled: &[String],
     side: impl Fn(&ParsedSkill) -> bool,
 ) -> Vec<SkillMeta> {
-    let mut skills: Vec<SkillMeta> = discover_all(root)
+    let mut skills: Vec<SkillMeta> = entries
         .into_iter()
         .filter(|e| is_enabled(enabled, e))
         .filter_map(|e| {
@@ -502,6 +510,24 @@ fn side_catalog(
         skills.push(default_jan_skill_meta());
     }
     skills
+}
+
+fn side_catalog(
+    root: &Path,
+    enabled: &[String],
+    side: impl Fn(&ParsedSkill) -> bool,
+) -> Vec<SkillMeta> {
+    catalog_from_entries(discover_all(root), enabled, side)
+}
+
+/// Global-only catalog: the user's own skills plus the user's own plugins,
+/// with no project involved at all (Home/Rooms, folderless surfaces). Same
+/// model-invocable filtering as `catalog`, just sourced from `discover_user`
+/// and `discover_user_plugins` instead of `discover_all(root)`.
+pub(crate) fn global_catalog() -> Vec<SkillMeta> {
+    let mut entries = discover_user(&[]);
+    entries.extend(discover_user_plugins(&[]));
+    catalog_from_entries(entries, &[], |p| p.model_invocable)
 }
 
 /// Skills worth advertising in the system prompt: name + description, skipping

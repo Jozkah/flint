@@ -163,6 +163,41 @@ impl Matrix {
     }
 }
 
+/// The matrix's namespace + item id for a resolved skill meta: a plugin skill
+/// is keyed by its plugin id, a standalone skill by its own name.
+fn kind_of(meta: &crate::core::agent::skills::SkillMeta) -> ItemKind {
+    if meta.plugin.is_some() {
+        ItemKind::Plugin
+    } else {
+        ItemKind::Skill
+    }
+}
+
+fn item_id(meta: &crate::core::agent::skills::SkillMeta) -> String {
+    meta.plugin.clone().unwrap_or_else(|| meta.name.clone())
+}
+
+/// The single loader behind Home/Rooms/Cowork's skill catalog: builds the base
+/// catalog (project-aware when `project_root` is given, global-only for
+/// folderless Home/Rooms), then filters it by the per-surface enablement
+/// matrix. Project items have no matrix entry, so they default enabled;
+/// global items are exactly what the `/extensions` UI toggles.
+pub(crate) fn resolve_extensions(
+    surface: &Surface,
+    project_root: Option<&Path>,
+) -> Vec<crate::core::agent::skills::SkillMeta> {
+    let mut catalog = match project_root {
+        Some(root) => {
+            let enabled = crate::core::agent::project::enabled_skills(root);
+            crate::core::agent::skills::catalog(root, &enabled)
+        }
+        None => crate::core::agent::skills::global_catalog(),
+    };
+    let matrix = Matrix::load();
+    catalog.retain(|meta| matrix.is_enabled(kind_of(meta), &item_id(meta), surface));
+    catalog
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,5 +281,72 @@ mod tests {
         assert!(m.is_enabled(ItemKind::Skill, "anything", &Surface::Home));
 
         set_test_extensions_root(None);
+    }
+
+    fn write_global_skill(dir: &Path, name: &str, body: &str) {
+        let skills_dir = tauri_plugin_agent_tools::skills::skills_dir(dir).join(name);
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(skills_dir.join("SKILL.md"), body).unwrap();
+    }
+
+    #[test]
+    fn resolve_extensions_filters_global_skill_by_surface() {
+        let user_store = tempfile::tempdir().expect("tempdir");
+        write_global_skill(
+            user_store.path(),
+            "caveman",
+            "---\ndescription: caveman talk\n---\nbody\n",
+        );
+        crate::core::agent::skills::set_test_user_skills(Some(user_store.path().to_path_buf()));
+        crate::core::agent::skills::set_test_user_plugins(None);
+
+        let ext_store = tempfile::tempdir().expect("tempdir");
+        let mut matrix = Matrix::default();
+        matrix.set(ItemKind::Skill, "caveman", &Surface::Rooms, true);
+        set_test_extensions_root(Some(ext_store.path().to_path_buf()));
+        matrix.save();
+
+        let home = resolve_extensions(&Surface::Home, None);
+        assert!(
+            !home.iter().any(|m| m.name == "caveman"),
+            "restricted-to-rooms skill leaked into home: {:?}",
+            home.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
+
+        let rooms = resolve_extensions(&Surface::Rooms, None);
+        assert!(
+            rooms.iter().any(|m| m.name == "caveman"),
+            "restricted-to-rooms skill missing from rooms: {:?}",
+            rooms.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
+
+        set_test_extensions_root(None);
+        crate::core::agent::skills::set_test_user_skills(None);
+    }
+
+    #[test]
+    fn resolve_extensions_unset_global_skill_appears_on_all_surfaces() {
+        let user_store = tempfile::tempdir().expect("tempdir");
+        write_global_skill(
+            user_store.path(),
+            "always-on",
+            "---\ndescription: always on\n---\nbody\n",
+        );
+        crate::core::agent::skills::set_test_user_skills(Some(user_store.path().to_path_buf()));
+        crate::core::agent::skills::set_test_user_plugins(None);
+
+        let ext_store = tempfile::tempdir().expect("tempdir");
+        set_test_extensions_root(Some(ext_store.path().to_path_buf()));
+
+        for surface in [Surface::Home, Surface::Rooms, Surface::Cowork("p1".to_string())] {
+            let resolved = resolve_extensions(&surface, None);
+            assert!(
+                resolved.iter().any(|m| m.name == "always-on"),
+                "unset global skill missing on {surface:?}"
+            );
+        }
+
+        set_test_extensions_root(None);
+        crate::core::agent::skills::set_test_user_skills(None);
     }
 }
