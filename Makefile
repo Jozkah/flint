@@ -25,9 +25,11 @@ else
 endif
 
 ifeq ($(RECIPE_SHELL_IS_CMD),yes)
-    MKDIR = if not exist "$(1)" mkdir "$(1)"
+    MKDIR = if not exist "$(subst /,\,$(1))" mkdir "$(subst /,\,$(1))"
+    CP = copy /Y "$(subst /,\,$(1))" "$(subst /,\,$(2))"
 else
     MKDIR = mkdir -p $(1)
+    CP = cp -f $(1) $(2)
 endif
 
 # Default target, does nothing
@@ -273,10 +275,12 @@ ifeq ($(DETECTED_OS),Darwin)
 	cp src-tauri/resources/bin/flint src-tauri/target/universal-apple-darwin/release/flint
 else ifeq ($(DETECTED_OS),Windows)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
-	copy src-tauri\target\release\flint.exe src-tauri\resources\bin\flint.exe
+	$(call MKDIR,src-tauri/resources/bin)
+	$(call CP,src-tauri/target/release/flint.exe,src-tauri/resources/bin/flint.exe)
 else
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint
-	cp src-tauri/target/release/flint src-tauri/resources/bin/flint
+	$(call MKDIR,src-tauri/resources/bin)
+	$(call CP,src-tauri/target/release/flint,src-tauri/resources/bin/flint)
 endif
 
 # ---------------------------------------------------------------------------
