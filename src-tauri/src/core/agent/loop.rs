@@ -4891,6 +4891,55 @@ fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
         .filter(|v| *v > 0)
 }
 
+/// Whether independent completion verification is required for this run. Opt-in
+/// via the request body; absent it, a run finishes exactly as before.
+fn body_verification_enabled(json_body: &serde_json::Value) -> bool {
+    json_body
+        .get("verify_completion")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// How many repair+verify rounds a run may take before finishing with the last
+/// verdict. Default 1.
+fn body_verification_retries(json_body: &serde_json::Value) -> u32 {
+    json_body
+        .get("verification_retries")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.min(5) as u32)
+        .unwrap_or(1)
+}
+
+/// Assemble the evidence for the verifier from the run: the task spec (the first
+/// user message), the worker's claims (its final answer), and the recent tool
+/// results as test/build evidence. All of it is untrusted data the verifier
+/// frames as such.
+fn assemble_verification_input(
+    conversation: &[serde_json::Value],
+    worker_claims: &str,
+) -> crate::core::agent::verification::VerificationInput {
+    let task_spec = conversation
+        .iter()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .and_then(|m| m.get("content").and_then(|c| c.as_str()))
+        .unwrap_or_default()
+        .to_string();
+    let test_build_output = conversation
+        .iter()
+        .rev()
+        .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+        .filter_map(|m| m.get("content").and_then(|c| c.as_str()))
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("\n---\n");
+    crate::core::agent::verification::VerificationInput {
+        task_spec,
+        diffs: String::new(),
+        test_build_output,
+        worker_claims: worker_claims.to_string(),
+    }
+}
+
 /// Offer the surface a boundary to hand over what the user typed meanwhile.
 /// Appends whatever comes back as ordinary user messages and returns how many
 /// arrived. Never blocks without a surface: none, or one that has gone away,
@@ -4971,6 +5020,15 @@ async fn run_turn_cycle(
     // an answer nor a tool call, so an empty turn is not reported as finished.
     let mut empty_retried = false;
 
+    // Independent completion verification (opt-in): when required, the run does
+    // not finish on the worker's own say-so — a separate verifier grades the
+    // work, and a non-PASS verdict with retries left sends the worker back with
+    // the verifier's evidence. Absent the trigger this stays inert.
+    let verify_completion = body_verification_enabled(json_body);
+    let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
+        body_verification_retries(json_body),
+    );
+
     while unlimited || turn < max_turns {
         // The safe boundary: every tool result of the last turn is in and the
         // next model call has not been made, so anything the user typed
@@ -5006,7 +5064,7 @@ async fn run_turn_cycle(
         // On a context-overflow error, compact the conversation and retry.
         // Compaction runs progressively (a smaller kept tail each attempt) and
         // the loop gives up if a pass fails to shrink the message list.
-        let completion = {
+        let mut completion = {
             let policy_options = crate::core::agent::compaction::CompactOptions::from_body(json_body);
             let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
@@ -5214,6 +5272,46 @@ async fn run_turn_cycle(
                     continue;
                 }
             }
+            // Independent completion verification. The worker does not grade
+            // itself: a separate verifier reads the task spec, the recent tool
+            // output, and the worker's final answer, and issues a verdict. A
+            // non-PASS verdict with retries left sends the worker back with the
+            // verifier's evidence rather than finishing; otherwise the verdict is
+            // attached to the completion so the response distinguishes the
+            // worker's claims, the automated test output, and the verdict.
+            if verify_completion && !awaiting_user {
+                use crate::core::agent::verification::{verify, CompletionSummary, Verdict};
+                let input = assemble_verification_input(&conversation_messages, &final_text);
+                let report = verify(model_id, &input, model).await;
+                if report.verdict != Verdict::Pass && verify_budget.may_retry() {
+                    verify_budget.spend();
+                    conversation_messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": final_text,
+                    }));
+                    crate::core::agent::reminder::attach(
+                        &mut conversation_messages,
+                        &format!(
+                            "Independent verification did not pass (verdict: {}). Evidence:\n{}\n\n\
+                             Address the gaps and continue. Do not claim completion until the work \
+                             actually satisfies the task; you cannot grade yourself.",
+                            report.verdict.as_str(),
+                            report.evidence
+                        ),
+                    );
+                    turn += 1;
+                    continue;
+                }
+                let summary =
+                    CompletionSummary::new(&final_text, &input.test_build_output, &report);
+                if let Some(obj) = completion.as_object_mut() {
+                    obj.insert(
+                        "verification".to_string(),
+                        serde_json::to_value(&summary).unwrap_or(serde_json::Value::Null),
+                    );
+                }
+            }
+
             // Every turn is finished and the run passed its token ceiling, so
             // the conversation is both complete and oversized. Compact it here,
             // while nothing is waiting on the result: the ceiling no longer
@@ -5612,6 +5710,34 @@ async fn run_turn_cycle(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The verifier's evidence is assembled from the run: the first user message
+    /// is the task spec, the final answer is the worker's claims, and recent tool
+    /// results are the test/build output.
+    #[test]
+    fn verification_input_is_assembled_from_the_run() {
+        let convo = vec![
+            json!({ "role": "system", "content": "you are jan" }),
+            json!({ "role": "user", "content": "add a /health endpoint" }),
+            json!({ "role": "assistant", "content": "on it" }),
+            json!({ "role": "tool", "content": "test health ... ok" }),
+        ];
+        let input = assemble_verification_input(&convo, "done, it passes");
+        assert_eq!(input.task_spec, "add a /health endpoint");
+        assert_eq!(input.worker_claims, "done, it passes");
+        assert!(input.test_build_output.contains("test health ... ok"));
+    }
+
+    /// Opt-in: verification is off unless the request asks for it, and the retry
+    /// budget defaults to 1 and is capped.
+    #[test]
+    fn verification_is_opt_in_with_a_bounded_retry_budget() {
+        assert!(!body_verification_enabled(&json!({})));
+        assert!(body_verification_enabled(&json!({ "verify_completion": true })));
+        assert_eq!(body_verification_retries(&json!({})), 1);
+        assert_eq!(body_verification_retries(&json!({ "verification_retries": 3 })), 3);
+        assert_eq!(body_verification_retries(&json!({ "verification_retries": 99 })), 5);
+    }
     use std::collections::VecDeque;
     use std::sync::Mutex as StdMutex;
 
