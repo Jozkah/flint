@@ -363,9 +363,12 @@ fn scan_plugin_skills(root: &Path, disabled: &[String]) -> Vec<SkillEntry> {
 /// same plain name: the project is the more specific scope.
 pub(crate) fn discover_all(root: &Path) -> Vec<SkillEntry> {
     let mut out = discover(root);
-    let user = discover_user(&out);
-    out.extend(user);
-    out.extend(discover_plugins(root));
+    let project_plugins = discover_plugins(root);
+    let user_skills = discover_user(&out);
+    let user_plugins = discover_user_plugins(&project_plugins);
+    out.extend(project_plugins);
+    out.extend(user_skills);
+    out.extend(user_plugins);
     out
 }
 
@@ -1409,5 +1412,24 @@ mod tests {
             got.iter().any(|e| e.plugin.as_deref() == Some("caveman")),
             "global plugin skill not discovered: {got:?}"
         );
+    }
+
+    #[test]
+    fn discover_all_includes_global_plugins_after_project() {
+        let proj = temp_root("gp");
+        let data = tempfile::tempdir().unwrap();
+        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
+        let gdir = tauri_plugin_agent_tools::skills::plugins_dir(&store).join("caveman");
+        std::fs::create_dir_all(gdir.join("skills")).unwrap();
+        std::fs::write(
+            gdir.join("skills").join("SKILL.md"),
+            "---\ndescription: g\n---\nb",
+        )
+        .unwrap();
+        set_test_user_plugins(Some(store));
+
+        let all = discover_all(&proj);
+        assert!(all.iter().any(|e| e.plugin.as_deref() == Some("caveman")));
+        let _ = std::fs::remove_dir_all(&proj);
     }
 }
