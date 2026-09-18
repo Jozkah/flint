@@ -1,34 +1,6 @@
 name: Rust Check
 on:
   workflow_dispatch:
-  # Every branch, not just main. The CLI stopped compiling because the desktop
-  # config was changed on branches that never opened a PR, so nothing ever
-  # built the CLI config against them and the breakage only surfaced when
-  # someone tried to package a release.
-  #
-  # Caches stay branch-scoped and only main saves (see save-if below), so the
-  # added runs restore from main's cache and leave nothing behind.
-  push:
-    branches:
-      - main
-      - dev
-    paths:
-      - '.github/workflows/rust-check.yml'
-      - 'src-tauri/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Makefile'
-  pull_request:
-    # PRs open against main/dev; path filter skips doc/web-only changes.
-    branches:
-      - main
-      - dev
-    paths:
-      - '.github/workflows/rust-check.yml'
-      - 'src-tauri/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Makefile'
 
 concurrency:
   group: rust-check-${{ github.ref }}

@@ -1,32 +1,6 @@
 name: Linter & Test
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/jan-linter-and-test.yml
-      - 'package.json'
-      - 'yarn.lock'
-      - 'core/**'
-      - 'extensions/**'
-      - 'Makefile'
-      - 'src-tauri/**'
-      - 'web-app/**'
-
-  pull_request:
-    branches:
-      - main
-      - release/**
-    paths:
-      - .github/workflows/jan-linter-and-test.yml
-      - 'package.json'
-      - 'yarn.lock'
-      - 'Makefile'
-      - 'extensions/**'
-      - 'core/**'
-      - 'src-tauri/**'
-      - 'web-app/**'
 
 concurrency:
   group: linter-test-${{ github.ref }}

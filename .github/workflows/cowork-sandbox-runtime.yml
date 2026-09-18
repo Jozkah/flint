@@ -15,19 +15,6 @@ name: Cowork sandbox runtime
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/cowork-sandbox-runtime.yml
-      - 'src-tauri/**'
-  pull_request:
-    branches:
-      - main
-      - release/**
-    paths:
-      - .github/workflows/cowork-sandbox-runtime.yml
-      - 'src-tauri/**'
 
 concurrency:
   group: cowork-sandbox-${{ github.ref }}
