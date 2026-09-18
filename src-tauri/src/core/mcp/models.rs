@@ -21,6 +21,11 @@ pub struct McpConfinement {
     pub repository: Option<std::path::PathBuf>,
     /// Writable, when the session holds a live direct-edit grant for it.
     pub writable_repository: Option<std::path::PathBuf>,
+    /// Extra folders attached to the session workspace, readable. The same set
+    /// the built-in tools' sandbox is given, so a confined MCP server can reach
+    /// an attached folder that is neither the workspace nor the repository.
+    /// Absent in older configs, where it is simply empty.
+    pub read_roots: Vec<std::path::PathBuf>,
     /// Flint's data folder, hidden from the server.
     pub jan_data: Option<std::path::PathBuf>,
     /// Environment names the user approved. Nothing else is passed through.
@@ -115,6 +120,17 @@ fn parse_confinement(obj: &serde_json::Map<String, Value>) -> Option<McpConfinem
         workspace: path("workspace")?,
         repository: path("repository"),
         writable_repository: path("writableRepository"),
+        read_roots: value
+            .get("readRoots")
+            .and_then(Value::as_array)
+            .map(|roots| {
+                roots
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(std::path::PathBuf::from)
+                    .collect()
+            })
+            .unwrap_or_default(),
         jan_data: path("janData"),
         allowed_env: value
             .get("allowedEnv")
