@@ -137,10 +137,12 @@ pub(super) fn confined_mcp_command(
         Some(repository) => McpAuthority::EditFolder {
             workspace: confinement.workspace.clone(),
             repository,
+            read_roots: confinement.read_roots.clone(),
         },
         None => McpAuthority::ReviewOnly {
             workspace: confinement.workspace.clone(),
             repository: confinement.repository.clone(),
+            read_roots: confinement.read_roots.clone(),
         },
     };
 
@@ -203,6 +205,7 @@ mod tests {
             workspace: std::env::temp_dir(),
             repository: None,
             writable_repository: None,
+            read_roots: vec![],
             jan_data: None,
             allowed_env: vec![],
         }

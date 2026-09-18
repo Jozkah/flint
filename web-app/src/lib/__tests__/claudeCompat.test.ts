@@ -14,6 +14,9 @@ import {
   manifestMatches,
   resolveCompatibility,
   toJanMcpConfig,
+  isFilesystemServer,
+  filesystemAllowedDirs,
+  FILESYSTEM_SERVER_PACKAGE,
   type CompatComponent,
   type CompatibilityManifest,
   type CompatProbes,
@@ -446,6 +449,86 @@ describe('imported MCP servers', () => {
       '; rm -rf /',
     ])
     expect(config?.command).toBe('npx')
+  })
+
+  /**
+   * The filesystem server refuses any path not on its own argv, so the folders
+   * the session attached have to be named on the command line as well as
+   * permitted by the sandbox. Detected by argv, never by the entry's name.
+   */
+  it('appends the attached folders to a filesystem server argv', () => {
+    const confinement = {
+      workspace: '/jan/sessions/session-a',
+      repository: ROOT,
+      readRoots: ['/home/dev/attached-notes'],
+      allowedEnv: [],
+    }
+    const config = toJanMcpConfig(
+      { ...local, args: ['-y', FILESYSTEM_SERVER_PACKAGE] },
+      confinement
+    )
+
+    expect(config?.args).toEqual([
+      '-y',
+      FILESYSTEM_SERVER_PACKAGE,
+      '/jan/sessions/session-a',
+      ROOT,
+      '/home/dev/attached-notes',
+    ])
+  })
+
+  it('does not append a folder a filesystem server already names', () => {
+    const confinement = {
+      workspace: '/jan/sessions/session-a',
+      repository: ROOT,
+      allowedEnv: [],
+    }
+    const config = toJanMcpConfig(
+      { ...local, args: ['-y', FILESYSTEM_SERVER_PACKAGE, ROOT] },
+      confinement
+    )
+
+    // ROOT is already present and is not duplicated; only the workspace is added.
+    expect(config?.args).toEqual([
+      '-y',
+      FILESYSTEM_SERVER_PACKAGE,
+      ROOT,
+      '/jan/sessions/session-a',
+    ])
+  })
+
+  it('leaves a non-filesystem server argv untouched', () => {
+    const confinement = {
+      workspace: '/jan/sessions/session-a',
+      repository: ROOT,
+      allowedEnv: [],
+    }
+    const config = toJanMcpConfig(
+      { ...local, args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] },
+      confinement
+    )
+
+    expect(config?.args).toEqual([
+      '-y',
+      '@modelcontextprotocol/server-sequential-thinking',
+    ])
+  })
+
+  it('detects the filesystem server by argv, including a pinned version', () => {
+    expect(isFilesystemServer(['-y', FILESYSTEM_SERVER_PACKAGE])).toBe(true)
+    expect(isFilesystemServer(['-y', `${FILESYSTEM_SERVER_PACKAGE}@2025.1.0`])).toBe(true)
+    expect(isFilesystemServer(['-y', '@browsermcp/mcp'])).toBe(false)
+  })
+
+  it('gathers the allowed dirs in stable order without duplicates', () => {
+    expect(
+      filesystemAllowedDirs({
+        workspace: '/ws',
+        repository: '/ws',
+        readRoots: ['/extra', '/ws'],
+        allowedEnv: [],
+      })
+    ).toEqual(['/ws', '/extra'])
   })
 
   // Values never travel here. The user supplies them through Jan's own

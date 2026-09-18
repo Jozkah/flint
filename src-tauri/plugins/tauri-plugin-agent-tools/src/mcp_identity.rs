@@ -22,8 +22,9 @@
 //! * environment variable *names* (sorted)
 //! * header *names* (lowercased, sorted)
 //! * whether Jan imported the server from a repository, and the confinement it
-//!   runs under (workspace, repository, writable repository, allowed
-//!   environment names), because those decide what the program can reach
+//!   runs under (workspace, repository, writable repository, attached read
+//!   roots, allowed environment names), because those decide what the program
+//!   can reach
 //!
 //! # What is deliberately not in it
 //!
@@ -97,10 +98,24 @@ pub fn identity_material(config: &Value) -> Value {
         .and_then(Value::as_object)
         .map(|c| {
             let path = |key: &str| c.get(key).and_then(Value::as_str).map(String::from);
+            let read_roots: Vec<String> = c
+                .get("readRoots")
+                .and_then(Value::as_array)
+                .map(|roots| {
+                    roots
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
             json!({
                 "workspace": path("workspace"),
                 "repository": path("repository"),
                 "writableRepository": path("writableRepository"),
+                // The attached read roots are part of what the server may reach,
+                // so a change to them is a change to the definition.
+                "readRoots": read_roots,
                 "allowedEnv": sorted_names(c.get("allowedEnv"), false),
             })
         });

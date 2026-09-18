@@ -33,11 +33,16 @@ pub enum McpAuthority {
     ReviewOnly {
         workspace: PathBuf,
         repository: Option<PathBuf>,
+        /// Extra folders attached to the session, readable only. The same set
+        /// the built-in tools' sandbox is given.
+        read_roots: Vec<PathBuf>,
     },
     /// One repository root is writable, because a live grant says so.
     EditFolder {
         workspace: PathBuf,
         repository: PathBuf,
+        /// Extra folders attached to the session, readable only.
+        read_roots: Vec<PathBuf>,
     },
 }
 
@@ -85,6 +90,13 @@ impl McpAuthority {
         }
     }
 
+    /// The extra attached folders, readable only.
+    fn extra_read_roots(&self) -> &[PathBuf] {
+        match self {
+            Self::ReviewOnly { read_roots, .. } | Self::EditFolder { read_roots, .. } => read_roots,
+        }
+    }
+
     /// Every root this session may see, readable or writable. The set a
     /// working directory has to fall inside.
     fn roots(&self) -> Vec<PathBuf> {
@@ -97,6 +109,7 @@ impl McpAuthority {
             }
             Self::EditFolder { repository, .. } => roots.push(repository.clone()),
         }
+        roots.extend(self.extra_read_roots().iter().cloned());
         roots
     }
 }
@@ -138,14 +151,26 @@ pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
         McpAuthority::EditFolder { repository, .. } => Some(repository.clone()),
     };
 
+    // Every read root the confined server gets, in one set: the chosen
+    // repository plus the folders attached to the session. `with_read_roots`
+    // replaces rather than appends, so they are gathered here and applied once.
+    // Writes are never widened — the workspace (and, under `EditFolder`, the one
+    // repository) stay the only writable roots.
+    let mut read_roots: Vec<PathBuf> = Vec::new();
     if let Some(repo) = repository.as_ref() {
-        // Mask first, read root second: the neighbours go dark and the chosen
-        // repository is allowed back.
+        // Mask first: the neighbours go dark and the chosen repository is
+        // allowed back by the read root below. An attached folder beside the
+        // repository is re-allowed the same way, because the later rule wins.
         if let Some(parent) = repo.parent() {
             policy = policy.with_mask_root(parent);
         }
-        policy = policy.with_read_roots(vec![repo.clone()]);
+        read_roots.push(repo.clone());
     }
+    read_roots.extend(authority.extra_read_roots().iter().cloned());
+    if !read_roots.is_empty() {
+        policy = policy.with_read_roots(read_roots);
+    }
+
     if matches!(authority, McpAuthority::EditFolder { .. }) {
         if let Some(repo) = repository {
             policy = policy.with_write_roots(vec![repo]);
@@ -254,6 +279,7 @@ mod tests {
         McpAuthority::ReviewOnly {
             workspace,
             repository: Some(repo),
+            read_roots: vec![],
         }
     }
 
@@ -262,6 +288,7 @@ mod tests {
         McpAuthority::EditFolder {
             workspace,
             repository: repo,
+            read_roots: vec![],
         }
     }
 
@@ -281,6 +308,39 @@ mod tests {
             "review-only must add no write root; the workspace is the only writable place"
         );
         assert_eq!(policy.workspace, workspace);
+    }
+
+    /// An attached folder is readable, but only readable: it joins the read
+    /// roots and never the write roots.
+    #[test]
+    fn attached_read_roots_are_readable_but_never_writable() {
+        let (repo, _, _, workspace) = roots();
+        let attached = PathBuf::from("/home/dev/attached-notes");
+
+        let review = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace: workspace.clone(),
+                repository: Some(repo.clone()),
+                read_roots: vec![attached.clone()],
+            },
+            None,
+        );
+        assert_eq!(review.read_roots, vec![repo.clone(), attached.clone()]);
+        assert!(review.write_roots.is_empty());
+
+        // Even under `EditFolder`, the attached folder is not made writable —
+        // only the one repository is.
+        let editing = policy_for(
+            &McpAuthority::EditFolder {
+                workspace,
+                repository: repo.clone(),
+                read_roots: vec![attached.clone()],
+            },
+            None,
+        );
+        assert_eq!(editing.read_roots, vec![repo.clone(), attached.clone()]);
+        assert_eq!(editing.write_roots, vec![repo]);
+        assert!(!editing.write_roots.contains(&attached));
     }
 
     #[test]
@@ -589,6 +649,7 @@ mod runtime_tests {
             McpAuthority::ReviewOnly {
                 workspace,
                 repository: Some(repo.clone()),
+                read_roots: vec![],
             },
             repo,
             sibling,
@@ -650,6 +711,7 @@ mod runtime_tests {
         let editing = McpAuthority::EditFolder {
             workspace: review.workspace().to_path_buf(),
             repository: repo.clone(),
+            read_roots: vec![],
         };
 
         let (repo_ok, out) =
