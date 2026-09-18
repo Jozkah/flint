@@ -4,20 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - dev
-      - main
-    paths:
-      - .github/workflows/engine-build.yml
-      - .github/actions/setup-engine-toolchain/action.yml
-      - Makefile
-      - src-tauri/build-utils/*engine*.sh
-      - src-tauri/plugins/tauri-plugin-llamacpp/build.rs
-      - src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml
-      - src-tauri/plugins/tauri-plugin-llamacpp/src/engine/**
-      - src-tauri/plugins/tauri-plugin-llamacpp/shim/**
-      - src-tauri/plugins/tauri-plugin-llamacpp/src/bin/**
 
 concurrency:
   group: engine-build-${{ github.ref }}

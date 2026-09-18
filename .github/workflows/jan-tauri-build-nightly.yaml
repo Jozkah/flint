@@ -1,8 +1,6 @@
 name: Tauri Builder - Nightly / Manual
 
 on:
-  schedule:
-    - cron: '0 20 * * 1,2,3' # At 8 PM UTC on Monday, Tuesday, and Wednesday which is 3 AM UTC+7 Tuesday, Wednesday, and Thursday
   workflow_dispatch:
     inputs:
       public_provider:
@@ -16,25 +14,6 @@ on:
         type: boolean
         description: 'If true, builds both .deb and .appimage but disables auto-updater'
         default: false
-  pull_request:
-    branches:
-      - release/**
-      - main
-    paths:
-      - '.github/workflows/jan-tauri-build-nightly.yaml'
-      - '.github/workflows/template-get-update-version.yml'
-      - '.github/workflows/template-tauri-build-macos.yml'
-      - '.github/workflows/template-tauri-build-windows-x64.yml'
-      - '.github/workflows/template-tauri-build-linux-x64.yml'
-      - '.github/workflows/template-noti-discord-and-update-url-readme.yml'
-      - 'src-tauri/**'
-      - 'core/**'
-      - 'web-app/**'
-      - 'extensions/**'
-      - 'scripts/**'
-      - 'pre-install/**'
-      - 'Makefile'
-      - 'package.json'
 
 
 concurrency:
