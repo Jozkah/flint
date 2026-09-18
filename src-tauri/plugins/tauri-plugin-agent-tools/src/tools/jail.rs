@@ -980,6 +980,13 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> (ProbeOutcome, Verdict)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW: the probe's stdio is piped, so keep it from flashing
+        // a console window while it tests sandbox usability at startup.
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
 
     let child = match command.spawn() {
         Ok(child) => child,
