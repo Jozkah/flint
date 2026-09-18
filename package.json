@@ -42,7 +42,7 @@
     "prepare:resources": "./scripts/stub-tauri-resources.sh && node ./scripts/check-tauri-resources.mjs",
     "build:mlx-server": "make build-mlx-server",
     "build:cli": "run-script-os",
-    "build:cli:win32": "cd src-tauri && cargo build --release --no-default-features --features cli --bin flint && if not exist resources\\bin mkdir resources\\bin && copy /Y target\\release\\flint.exe resources\\bin\\flint.exe",
+    "build:cli:win32": "cd src-tauri && cargo build --release --no-default-features --features cli --bin flint && node -e \"require('fs').mkdirSync('resources/bin',{recursive:true});require('fs').copyFileSync('target/release/flint.exe','resources/bin/flint.exe')\"",
     "build:cli:darwin": "make build-cli",
     "build:cli:linux": "make build-cli",
     "build:tauri:win32": "yarn download:bin && yarn build:cli && yarn check:sidecars && yarn tauri build",
