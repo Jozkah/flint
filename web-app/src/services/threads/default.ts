@@ -140,8 +140,13 @@ export class DefaultThreadsService implements ThreadsService {
           order: thread.order,
         },
         object: 'thread',
-        created: Date.now() / 1000,
-        updated: Date.now() / 1000,
+        // Persist the thread's real activity time, not the moment of the write.
+        // Hardcoding now() here rewrote `updated` on every modify (favorite
+        // toggle, model/assistant migrate, project assign), collapsing every
+        // row to ~the current time and scrambling the newest-first sidebar sort.
+        // Callers already bump `updated` on genuine activity, so pass it through.
+        created: (thread as { created?: number }).created ?? Date.now() / 1000,
+        updated: thread.updated ?? Date.now() / 1000,
       })
   }
 

@@ -711,7 +711,11 @@ fn set_process_group(cmd: &mut Command) {
 #[cfg(windows)]
 fn set_process_group(cmd: &mut Command) {
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    // CREATE_NO_WINDOW: the shell's stdio is piped, so it needs no console of
+    // its own. Without this every spawn (bash/cmd/powershell, including the
+    // AppContainer helper re-exec) flashes a visible console window.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
 }
 
 /// What happened when a process tree was signalled.

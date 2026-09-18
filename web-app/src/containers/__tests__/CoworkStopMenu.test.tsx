@@ -34,6 +34,7 @@ const report = (over: Partial<StopReport> = {}): StopReport => ({
 
 let onStop: ReturnType<typeof vi.fn>
 let onStopCurrent: ReturnType<typeof vi.fn>
+let onStopAll: ReturnType<typeof vi.fn>
 
 const mount = (props: Partial<React.ComponentProps<typeof CoworkStopMenu>> = {}) =>
   render(
@@ -42,6 +43,7 @@ const mount = (props: Partial<React.ComponentProps<typeof CoworkStopMenu>> = {})
       sessionId="s1"
       runId="r1"
       onStopCurrent={onStopCurrent}
+      onStopAll={onStopAll}
       onStop={onStop}
       {...props}
     />
@@ -50,6 +52,7 @@ const mount = (props: Partial<React.ComponentProps<typeof CoworkStopMenu>> = {})
 beforeEach(() => {
   onStop = vi.fn().mockResolvedValue(report())
   onStopCurrent = vi.fn()
+  onStopAll = vi.fn()
   toastSuccess.mockReset()
   toastError.mockReset()
 })
@@ -117,6 +120,9 @@ describe('CoworkStopMenu', () => {
     // Application scope is the absence of a scope, not a second command.
     expect(onStop).toHaveBeenCalledTimes(1)
     expect(onStopCurrent).not.toHaveBeenCalled()
+    // The renderer-side loops must be aborted too: the backend {} sweep only
+    // reaps subprocess Tokens and cannot reach the JS AbortControllers.
+    expect(onStopAll).toHaveBeenCalledTimes(1)
   })
 
   it('reports surviving processes instead of claiming success', async () => {
@@ -179,6 +185,7 @@ describe('CoworkStopMenu', () => {
         sessionId="s1"
         runId="r1"
         onStopCurrent={onStopCurrent}
+        onStopAll={onStopAll}
         onStop={onStop}
       />
     )

@@ -392,6 +392,21 @@ export function abortRun(sid: string, reason = 'cancelled'): void {
 }
 
 /**
+ * Abort every running session, not just one.
+ *
+ * "Stop all activity" must reach the renderer-side run loops the same way
+ * `abortRun` does — the Rust emergency-stop only sweeps subprocess Tokens and
+ * never touches these JS `AbortController`s, so without this the model stream,
+ * tool loop and subagents keep going after the user asked for everything to
+ * stop. Returns how many sessions were aborted.
+ */
+export function abortAll(reason = 'cancelled'): number {
+  const sids = [...handles.keys()]
+  for (const sid of sids) abortRun(sid, reason)
+  return sids.length
+}
+
+/**
  * Whether a rejection means "the user stopped this", not "this failed".
  *
  * Needed because the abort does not arrive as an `AbortError`: Flint streams
