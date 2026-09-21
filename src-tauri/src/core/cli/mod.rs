@@ -16,6 +16,8 @@ pub mod json_api;
 pub mod bench;
 pub mod login;
 pub mod mcp;
+/// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
+pub mod mcp_serve;
 mod model_capabilities;
 mod path_refs;
 pub mod providers;

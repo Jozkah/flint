@@ -2804,7 +2804,7 @@ fn hidden_path_msg(name: &str) -> String {
     )
 }
 
-fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path) -> String {
+pub(crate) fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path) -> String {
     match reason {
         DenyReason::NetworkOff => format!(
             "ERROR: tool '{name}' refused: this run has no network access, so nothing was \
