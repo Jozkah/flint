@@ -18356,6 +18356,7 @@ mod tests {
             compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
+            max_turns: None,
         };
         let app = App::new(
             "m".into(),
@@ -18685,6 +18686,7 @@ mod tests {
             compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
+                    max_turns: None,
                 },
                 false,
                 agent_dir,

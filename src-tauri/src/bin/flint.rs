@@ -93,6 +93,21 @@ struct Cli {
 /// (`sandbox` in `~/.jan/config.toml`, `[tools].sandbox` in agent.toml): with
 /// only `--sandbox` there would be no way to run unconfined once, and a user who
 /// turned it on permanently would have to edit a file to get out of it.
+/// Per-invocation cost limits for `flint cli agent run`. Both mirror the
+/// engine's own semantics: `0` means unbounded, and an unpassed flag leaves the
+/// config files (or, for turns, nothing at all) in charge.
+#[derive(Args, Clone, Copy)]
+struct BudgetArgs {
+    /// Fail the run after at most N agentic turns; bounds this run only, not
+    /// its subagents (0 = unbounded, the default)
+    #[arg(long, value_name = "N")]
+    max_turns: Option<u64>,
+    /// Token-spend ceiling for this run, overriding [budget].max_tokens
+    /// (0 = no ceiling)
+    #[arg(long, value_name = "N")]
+    max_session_tokens: Option<u64>,
+}
+
 #[derive(Args, Clone, Copy)]
 struct SandboxArgs {
     /// Run shell commands under OS confinement (bubblewrap, Seatbelt, AppContainer)
@@ -454,7 +469,7 @@ impl ProviderArgs {
 
 #[derive(Subcommand)]
 enum AgentCommands {
-    /// Run the agent loop to completion or the session token budget
+    /// Run the agent loop to completion, the session token budget, or a --max-turns cap
     Run {
         /// Project root containing .jan/agent/agent.toml
         #[arg(long, default_value = ".")]
@@ -471,6 +486,8 @@ enum AgentCommands {
         providers: ProviderArgs,
         #[command(flatten)]
         sandbox: SandboxArgs,
+        #[command(flatten)]
+        budget: BudgetArgs,
         #[command(flatten)]
         worktree: WorktreeArgs,
         #[command(flatten)]
@@ -1648,6 +1665,7 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            budget,
             worktree,
             resume,
             output_format,
@@ -1694,6 +1712,8 @@ async fn handle_agent(cmd: AgentCommands) {
                         None => None,
                     },
                     interrupted: resume.interrupted,
+                    max_turns: budget.max_turns,
+                    max_session_tokens: budget.max_session_tokens,
                     ..Default::default()
                 },
                 resume.into_request(),
@@ -3034,6 +3054,38 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    /// Parse `flint cli agent run <task> <extra...>` and pull out its budget args.
+    fn parsed_budget(extra: &[&str]) -> BudgetArgs {
+        let mut argv = vec!["flint", "cli", "agent", "run", "task"];
+        argv.extend_from_slice(extra);
+        match Cli::parse_from(argv).command {
+            Some(Commands::Cli {
+                cmd:
+                    CliCommands::Agent {
+                        cmd: AgentCommands::Run { budget, .. },
+                    },
+            }) => budget,
+            _ => panic!("expected `cli agent run`"),
+        }
+    }
+
+    /// An unpassed limit is `None` so the config files (or nothing, for turns)
+    /// decide; `0` must survive parsing as the engine's unbounded marker.
+    #[test]
+    fn run_limits_parse_and_default_to_unset() {
+        let none = parsed_budget(&[]);
+        assert_eq!(none.max_turns, None);
+        assert_eq!(none.max_session_tokens, None);
+
+        let set = parsed_budget(&["--max-turns", "5", "--max-session-tokens", "20000"]);
+        assert_eq!(set.max_turns, Some(5));
+        assert_eq!(set.max_session_tokens, Some(20_000));
+
+        let zero = parsed_budget(&["--max-turns", "0", "--max-session-tokens", "0"]);
+        assert_eq!(zero.max_turns, Some(0));
+        assert_eq!(zero.max_session_tokens, Some(0));
+    }
+
     #[test]
     fn mcp_serve_parses_and_defaults_to_read_only_stdio() {
         let cli = Cli::parse_from(["flint", "mcp", "serve"]);
