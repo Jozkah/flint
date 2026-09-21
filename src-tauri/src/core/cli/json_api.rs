@@ -511,7 +511,7 @@ async fn run_agent(
             serde_json::to_value(report.finish(None, &model, elapsed, None)).unwrap_or_default()
         }
         Some(result) => {
-            let persisted = super::persist_headless_run(persist, &result, conversation);
+            let persisted = super::persist_headless_run(persist, &result, conversation, None);
             if persisted.saved || result.is_ok() {
                 if let Some(writer) = checkpoint {
                     writer.finish();
