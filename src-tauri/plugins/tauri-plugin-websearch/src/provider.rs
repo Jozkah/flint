@@ -99,7 +99,18 @@ pub fn create_provider(
 }
 
 fn require_key(provider: &str, api_key: Option<String>) -> Result<String, String> {
-    normalize_key(api_key).ok_or_else(|| format!("{provider} requires an API key"))
+    normalize_key(api_key).ok_or_else(|| {
+        // Actionable rather than bare: it names where to fix the missing key and
+        // points at the keyless providers, so the caller has a way forward. It
+        // does NOT silently reroute the query to a different provider -- the
+        // configured provider is the user's choice, and sending their search to
+        // another third party without asking would bypass that configuration.
+        format!(
+            "{provider} requires an API key, and none is configured. Add one in \
+             Settings > Web Search (the key for {provider}), or switch the Web Search \
+             provider to Exa or You.com, which work with no API key."
+        )
+    })
 }
 
 fn build_http_client(provider: &str) -> Result<reqwest::Client, String> {
@@ -1226,6 +1237,38 @@ mod tests {
         assert!(create_provider(Some("serper"), Some("srp-abc".into()), None).is_ok());
         // "google" is an alias for the Serper-backed adapter.
         assert!(create_provider(Some("google"), Some("srp-abc".into()), None).is_ok());
+    }
+
+    /// A missing key is reported with the actionable guidance, not just "an
+    /// error": it names where to set the key and the keyless providers, so the
+    /// caller has a way forward rather than a dead end -- the exact gap the
+    /// screenshot's bare "Serper requires an API key" left.
+    #[test]
+    fn a_missing_key_error_is_actionable() {
+        let err = match create_provider(Some("serper"), None, None) {
+            Ok(_) => panic!("expected Serper to require a key"),
+            Err(e) => e,
+        };
+        // Still names the provider and the core reason (kept so existing
+        // matchers on "requires an API key" continue to hold).
+        assert!(err.contains("Serper"), "{err}");
+        assert!(err.contains("requires an API key"), "{err}");
+        // New: says the key is not configured, where to add it, and that Exa /
+        // You.com work with no key.
+        assert!(err.contains("none is configured"), "{err}");
+        assert!(err.contains("Settings > Web Search"), "{err}");
+        assert!(err.contains("Exa") && err.contains("You.com"), "{err}");
+        assert!(err.contains("no API key"), "{err}");
+        // Every keyed provider gets the same actionable shape.
+        for provider in ["tavily", "brave"] {
+            match create_provider(Some(provider), None, None) {
+                Ok(_) => panic!("expected {provider} to require a key"),
+                Err(e) => {
+                    assert!(e.contains("Settings > Web Search"), "{provider}: {e}");
+                    assert!(e.contains("no API key"), "{provider}: {e}");
+                }
+            }
+        }
     }
 
     #[test]

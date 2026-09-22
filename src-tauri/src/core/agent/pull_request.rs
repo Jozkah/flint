@@ -136,12 +136,14 @@ pub fn token_for(api: &reqwest::Url, env: &dyn Fn(&str) -> Option<String>) -> Re
 // ---- the change, from git --------------------------------------------------
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, HarnessError> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
         .args(crate::core::agent::vcs::HARDENED)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| refuse(ErrorKind::ToolUnavailable, format!("git would not run: {e}")))?;
     if out.status.success() {

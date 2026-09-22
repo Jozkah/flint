@@ -643,7 +643,8 @@ pub(crate) async fn execute_text(
         "skill_write" => skill_write(args, ctx),
         // Native web tools: compiled into the agent core, not an MCP server.
         "web_search" => crate::tools::web::web_search(args).await,
-        "web_fetch" => crate::tools::web::web_fetch(args).await,
+        "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
+        "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         // Cross-session messaging. Refuses unless the dispatcher bound this
         // call to a session and a mailbox (desktop, session scope only).
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {
@@ -1638,7 +1639,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // No confinement available means no shell either: running unsandboxed
         // would give the command the whole machine, which is never what the
         // caller asked for.
-        let selected = match jail::select_shell(&policy) {
+        let mut selected = match jail::select_shell(&policy) {
             Ok(selected) => selected,
             Err(detail) => {
                 return format!(
@@ -1671,9 +1672,50 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 );
             }
         }
+        // `&&`/`||` reach Windows PowerShell 5.1 as a parse error, not a clean
+        // failure. A chaining command that would land on it is not refused
+        // outright: it is re-selected onto a shell that keeps `&&`/`||`
+        // short-circuit semantics and exit codes -- `cmd.exe` on a Windows host
+        // with no bash or `pwsh`, which is always present and, unlike Windows
+        // PowerShell 5.1, chains. Safe here because a POSIX-only command was
+        // already refused above, so nothing `cmd` would misread reaches this
+        // point. Only when no usable shell can chain is the actionable refusal
+        // the last resort. Capability is read from the unwrapped program name,
+        // which tells Windows PowerShell (no chaining) from `pwsh` 7+.
+        if proc::requires_and_or_chaining(command).is_some()
+            && !proc::supports_and_or_chaining(&selected.report.cfg)
+        {
+            match jail::select_chaining_capable(&policy) {
+                Some(capable) => selected = capable,
+                None => {
+                    // Unreachable in practice on Windows -- `cmd.exe` is always a
+                    // candidate -- but if even it cannot be confined, refuse
+                    // clearly rather than run a shell that cannot parse the command.
+                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
+                    return proc::chaining_unavailable_error(operator, &selected.report.cfg);
+                }
+            }
+        }
         selected.wrapped
     } else {
-        proc::shell().clone()
+        // Off-sandbox the resolved shell can be Windows PowerShell 5.1 on a bare
+        // Windows host with no bash. Prefer an unconfined chaining-capable shell
+        // (cmd) for a chaining command, and only refuse if none exists.
+        let mut bare = proc::shell().clone();
+        if proc::requires_and_or_chaining(command).is_some() && !proc::supports_and_or_chaining(&bare)
+        {
+            match proc::candidates()
+                .into_iter()
+                .find(proc::supports_and_or_chaining)
+            {
+                Some(capable) => bare = capable,
+                None => {
+                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
+                    return proc::chaining_unavailable_error(operator, &bare);
+                }
+            }
+        }
+        bare
     };
 
     let sandbox_tmp = if ctx.sandbox {
@@ -2547,9 +2589,11 @@ pub async fn render_html_png(
          --window-size={width},{height} --screenshot={shot_quoted} {url_quoted}"
     );
     let shell = proc::shell();
+    use jan_process::CommandConsole;
     let mut child = match tokio::process::Command::new(shell.program.clone())
         .args(shell.args.clone())
         .arg(&cmd)
+        .background()
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -3510,6 +3554,95 @@ mod tests {
     ) -> Option<String> {
         let store = crate::workspace::project_store(root);
         super::preview_diff(tool, args, &ToolContext::new(root, &store, &[])).await
+    }
+
+    /// Integration coverage for the agent-loop wiring of `git_inspect`: the tool
+    /// is driven through the real `execute_builtin` dispatch (name -> handler ->
+    /// `ctx.read_roots`), not by calling the pure function directly, so the
+    /// schema/dispatch/scope path is exercised. `git_inspect` is scoped to the
+    /// run's read roots: a clone outside them must not be found.
+    mod git_inspect_wiring {
+        use super::*;
+        use std::process::Command;
+
+        fn git_init(dir: &std::path::Path, remote: &str) {
+            let git = crate::tools::git_native::discover_git().expect("git");
+            let run = |args: &[&str]| {
+                let mut c = Command::new(&git);
+                c.arg("-C").arg(dir).args(args);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.creation_flags(0x0800_0000);
+                }
+                c.output().unwrap();
+            };
+            run(&["init", "-q"]);
+            run(&["remote", "add", "origin", remote]);
+            std::fs::write(dir.join("README.md"), "x").unwrap();
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "i"]);
+        }
+
+        async fn run_git_inspect(url: &str, root: &Path, read_roots: &[PathBuf]) -> String {
+            let store = crate::workspace::project_store(root);
+            let ctx = ToolContext::new(root, &store, &[]).with_read_roots(read_roots);
+            super::super::execute_builtin(crate::tools::lookup("git_inspect").unwrap(), &json!({ "url": url }), &ctx)
+                .await
+                .0
+        }
+
+        #[tokio::test]
+        async fn one_attached_clone_is_inspected_through_the_dispatch() {
+            if crate::tools::git_native::discover_git().is_none() {
+                return;
+            }
+            let base = std::env::temp_dir().join(format!("jan gi wire {}", std::process::id()));
+            let root = base.join("workspace");
+            let clone = base.join("OBS Project");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::create_dir_all(&clone).unwrap();
+            git_init(&clone, "git@github.com:Jozkah/streamer.git");
+
+            let out = run_git_inspect(
+                "https://github.com/Jozkah/streamer",
+                &root,
+                &[clone.clone()],
+            )
+            .await;
+            assert!(out.contains("Recovered locally"), "{out}");
+            assert!(out.contains("OBS Project"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
+
+        #[tokio::test]
+        async fn a_clone_outside_the_read_roots_is_not_found() {
+            if crate::tools::git_native::discover_git().is_none() {
+                return;
+            }
+            let base = std::env::temp_dir().join(format!("jan gi scope {}", std::process::id()));
+            let root = base.join("workspace");
+            let clone = base.join("OBS Project");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::create_dir_all(&clone).unwrap();
+            git_init(&clone, "https://github.com/Jozkah/streamer.git");
+
+            // read_roots empty: the clone exists on disk but is NOT authorized,
+            // so the tool must not reach it -- it returns the user-choice payload.
+            let out = run_git_inspect("https://github.com/Jozkah/streamer", &root, &[]).await;
+            assert!(out.contains("no_local_clone"), "must not escape read roots: {out}");
+            assert!(out.contains("ask_user_to_attach_or_select_clone"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
+
+        #[tokio::test]
+        async fn a_non_github_url_is_rejected_by_the_tool() {
+            let base = std::env::temp_dir().join(format!("jan gi ng {}", std::process::id()));
+            std::fs::create_dir_all(&base).unwrap();
+            let out = run_git_inspect("https://example.com/o/r", &base, &[]).await;
+            assert!(out.starts_with("ERROR"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
     }
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);

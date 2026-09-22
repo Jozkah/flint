@@ -491,7 +491,7 @@ async fn execute(
     // start inside an AppContainer, and running the hook unconfined instead
     // would hand it the whole machine.
     let shell = if ctx.sandbox {
-        let selected = match jail::select_shell(&policy) {
+        let mut selected = match jail::select_shell(&policy) {
             Ok(selected) => selected,
             Err(detail) => {
                 return (
@@ -523,6 +523,29 @@ async fn execute(
                 );
             }
         }
+        // `&&`/`||` are a parse error in Windows PowerShell 5.1. A hook that
+        // chains is re-selected onto a shell that keeps their short-circuit
+        // semantics (cmd), the same way the bash tool is, and only refused when
+        // no usable shell can chain. Safe because a POSIX-only hook was already
+        // refused just above.
+        if proc::requires_and_or_chaining(&hook.command).is_some()
+            && !proc::supports_and_or_chaining(&selected.report.cfg)
+        {
+            match jail::select_chaining_capable(&policy) {
+                Some(capable) => selected = capable,
+                None => {
+                    let operator = proc::requires_and_or_chaining(&hook.command).unwrap_or("&&");
+                    return (
+                        false,
+                        String::new(),
+                        Some(HookError::new(
+                            HookErrorKind::ShellUnavailable,
+                            proc::chaining_unavailable_error(operator, &selected.report.cfg),
+                        )),
+                    );
+                }
+            }
+        }
         selected.wrapped
     } else {
         proc::shell().clone()
@@ -540,10 +563,14 @@ async fn execute(
     let tool_name = tool.unwrap_or_default().to_string();
 
     let work = async move {
+        use jan_process::CommandConsole;
         let mut cmd = tokio::process::Command::new(shell.program.clone());
         cmd.args(shell.args.clone())
             .arg(&command)
             .current_dir(&root)
+            // A hook runs on the app's behalf and is never shown; its own
+            // children inherit the hidden console.
+            .background_in_new_group()
             // What a hook is told, and all it is told. Not the prompt, not the
             // tool's arguments, not a provider key: a hook is a trigger, not a
             // window into the conversation.

@@ -355,11 +355,10 @@ fn read_changes(wt: &WorktreeRecord) -> Result<Vec<FileInput>, ChildError> {
 }
 
 fn head_of(path: &Path) -> String {
-    Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["rev-parse", "HEAD"])
-        .output()
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(path).args(["rev-parse", "HEAD"]);
+    jan_utils::system::hide_console_window(&mut cmd);
+    cmd.output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())

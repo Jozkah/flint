@@ -547,9 +547,11 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
     } else {
         // On Windows, set persistent user environment variables using setx
         for (key, value) in env_vars {
+            use jan_process::CommandConsole;
             let output = std::process::Command::new("setx")
                 .arg(key)
                 .arg(value)
+                .background()
                 .output()
                 .map_err(|e| e.to_string())?;
 
@@ -588,10 +590,9 @@ pub async fn check_jan_cli_installed() -> CliInstallStatus {
     let mut cmd = std::process::Command::new(which_cmd);
     cmd.arg(cli_binary_name());
 
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        use jan_process::CommandConsole;
+        cmd.background();
     }
 
     let path_from_which = match tokio::task::spawn_blocking(move || cmd.output()).await {
@@ -921,10 +922,9 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
         "-Command",
         "[Environment]::GetEnvironmentVariable('Path', 'User')",
     ]);
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        use jan_process::CommandConsole;
+        cmd.background();
     }
     let read_output = cmd
         .output()
@@ -978,10 +978,9 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
         ),
     ]);
 
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        cmd_write.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        use jan_process::CommandConsole;
+        cmd_write.background();
     }
 
     let write_output = cmd_write
@@ -1012,10 +1011,9 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
         "-Command",
         "[Environment]::GetEnvironmentVariable('Path', 'User')",
     ]);
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        use jan_process::CommandConsole;
+        cmd.background();
     }
     let read_output = cmd
         .output()
@@ -1042,10 +1040,9 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
             ),
         ]);
 
-        #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            cmd_write.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            use jan_process::CommandConsole;
+            cmd_write.background();
         }
 
         let write_output = cmd_write

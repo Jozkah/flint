@@ -326,6 +326,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
+  abortAll,
   beginRun,
   endRun,
   hasSubagent,
@@ -3594,6 +3595,22 @@ function CoworkPage() {
     if (session?.id) abortRun(session.id)
   }, [session?.id])
 
+  // "Stop all activity": abort every session's renderer-side run loop. The
+  // backend emergency-stop ({}) that runs alongside only reaps subprocess
+  // Tokens and cannot reach these JS AbortControllers, so without this the
+  // model streams and tool loops keep going after the user asked to stop.
+  const handleStopAll = useCallback(() => {
+    abortAll()
+  }, [])
+
+  // The run's real id (a per-run UUID), not the session id, is what the backend
+  // Tokens are scoped under. Passing the session id here made the scoped
+  // stop-current match no Token (janhq/jan#8905 scope check requires an exact
+  // run match), so only the local abort did anything.
+  const currentRunId = useCoworkRun((s) =>
+    session?.id ? s.runs[session.id]?.runId : undefined
+  )
+
   // Answered through the session that asked; another session's questions are
   // not reachable from here.
   const respondAsk = useCallback(
@@ -4434,8 +4451,9 @@ function CoworkPage() {
                   <CoworkStopMenu
                     running={running}
                     sessionId={session?.id}
-                    runId={session?.id}
+                    runId={currentRunId}
                     onStopCurrent={handleStop}
+                    onStopAll={handleStopAll}
                   />
                 }
                 tokenSource={tokenSource}

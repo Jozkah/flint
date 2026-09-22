@@ -52,15 +52,17 @@ impl From<String> for ChangesError {
 }
 
 fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
         .args(crate::core::agent::vcs::HARDENED)
         .args(["-c", "diff.external="])
         .env("GIT_TERMINAL_PROMPT", "0")
         // Paths are read as bytes and split on NUL; never quoted or escaped.
         .args(["-c", "core.quotepath=off"])
-        .args(args)
+        .args(args);
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {

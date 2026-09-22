@@ -40,8 +40,15 @@ export function useImportedMcp(input: {
   dataFolder: string | null
   /** The repository, writable, only where a live grant says so. */
   writableRepository: string | null
+  /**
+   * Extra folders attached to the session workspace, readable. The same set
+   * the built-in tools' sandbox is given; a confined server may reach these
+   * too. Absent or empty leaves confinement exactly as it was.
+   */
+  readRoots?: readonly string[]
 }) {
   const { folder, workspacePath, dataFolder, writableRepository } = input
+  const readRoots = input.readRoots ?? []
   /**
    * Allow one server and bring it up, or withdraw it and take it down.
    *
@@ -88,6 +95,9 @@ export function useImportedMcp(input: {
               ...(writableRepository
                 ? { writableRepository }
                 : {}),
+              // The extra attached folders, readable. Sent only when there are
+              // any, so a session with none is byte-for-byte what it was.
+              ...(readRoots.length ? { readRoots: [...readRoots] } : {}),
               ...(dataFolder ? { janData: dataFolder } : {}),
               // Names only. Values are supplied through Flint's own handling.
               allowedEnv: [...(probe.envNames ?? [])],
@@ -102,7 +112,7 @@ export function useImportedMcp(input: {
         confinement
       )
     },
-    [folder, workspacePath, dataFolder, writableRepository]
+    [folder, workspacePath, dataFolder, writableRepository, readRoots]
   )
 
   /**

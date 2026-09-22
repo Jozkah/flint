@@ -294,6 +294,17 @@ fn start_inner(
 
 /// Start a process that does not share this one's fate -- or its handles.
 ///
+/// On Windows the child is started in the background with a console that has
+/// no window (`CREATE_NO_WINDOW`) and in its own process group. It is
+/// deliberately *not* started with `DETACHED_PROCESS`: a detached child has no
+/// console at all, so every console program it starts -- `where.exe` while it
+/// looks for a shell, then the shell that runs the job -- is handed a brand new
+/// console, and a new console has a window. That was the burst of black
+/// windows a cowork job produced. A hidden console is inherited by the whole
+/// tree below the supervisor and keeps all of it off the screen; the
+/// supervisor still outlives the app, because a console's lifetime is tied to
+/// the processes attached to it, not to whoever created it.
+///
 /// The second half is the one that is easy to miss. A detached child still
 /// inherits whatever inheritable handles this process holds, and on Windows
 /// that includes the pipe a caller is capturing this process's output through.
@@ -306,17 +317,16 @@ fn start_inner(
 /// the spawn, and restored afterwards.
 #[cfg(windows)]
 fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<std::process::Child> {
-    use std::os::windows::process::CommandExt;
     use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
     use windows_sys::Win32::System::Console::{
         GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
     };
 
-    // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: no console to inherit and
-    // no group that a Ctrl-C or a parent's teardown reaches.
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP: a hidden console the
+    // supervisor's children inherit, and no group that a Ctrl-C or a parent's
+    // teardown reaches. See the note above on why not DETACHED_PROCESS.
+    use jan_process::CommandConsole;
+    cmd.background_in_new_group();
 
     let handles = unsafe {
         [
@@ -415,6 +425,15 @@ fn supervise_launch(
             cmd
         }
     };
+    // The job itself is background work too: no window of its own, and its
+    // own group so cancelling it stops the tree it started. The supervisor is
+    // a console program with a hidden console, so the job would inherit that
+    // anyway; saying it here keeps the job's fate independent of how the
+    // supervisor was started.
+    {
+        use jan_process::CommandConsole;
+        cmd.background_in_new_group();
+    }
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -637,20 +656,36 @@ pub fn supervisor_binary() -> Result<PathBuf, HarnessError> {
     let exe = std::env::current_exe().map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("this process has no path: {e}")).at(Stage::Job)
     })?;
-    let name = if cfg!(windows) { "jan.exe" } else { "jan" };
+    // The CLI is `flint`; `jan` is its name from before the rename, and an
+    // upgraded install can still have one lying beside the app. The current
+    // name wins wherever both are present, so a job never runs on stale code.
+    let names: &[&str] = if cfg!(windows) { &["flint.exe", "jan.exe"] } else { &["flint", "jan"] };
     // This binary itself, when it is already the CLI.
-    if exe.file_name().is_some_and(|f| f == name) {
+    if exe.file_name().is_some_and(|f| names.iter().any(|n| f == *n)) {
         return Ok(exe);
     }
-    let beside = exe.with_file_name(name);
-    if beside.exists() {
-        return Ok(beside);
+    // Beside the app, then where the Windows bundle ships it
+    // (`resources/bin/flint.exe`, per tauri.windows.conf.json).
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let mut looked = Vec::new();
+    for name in names {
+        for candidate in [dir.join(name), dir.join("resources").join("bin").join(name)] {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+            looked.push(candidate);
+        }
     }
     Err(HarnessError::new(
         ErrorKind::ToolUnavailable,
         format!(
-            "background work needs the {name} command line beside the app, and it is not at {}",
-            beside.display()
+            "background work needs the {} command line beside the app, and it is not at {}",
+            names[0],
+            looked
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" or ")
         ),
     )
     .at(Stage::Job))
@@ -809,6 +844,99 @@ mod tests {
         let refused = supervise_argv(&d, "job-3-argvbad3", owner, "t", "echo pwned").unwrap_err();
         assert_eq!(refused.kind(), ErrorKind::InvalidInput);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The desktop app has no console. Starting a job from it must not put a
+    /// console window on screen: not for the supervisor, not for the `where`
+    /// probes that find a shell, and not for the shell that runs the job.
+    /// Watched on the real desktop, from a console-less copy of this binary,
+    /// which is the app's situation.
+    #[cfg(windows)]
+    #[test]
+    fn a_supervised_job_opens_no_console_window() {
+        use jan_process::console_watch::{headless_case, Expect};
+        let name = std::thread::current().name().unwrap().to_string();
+        headless_case(
+            &name,
+            || {
+                let d = dir("nowindow");
+                let owner = "8c874013-e5ff-4005-beb5-86ea2ec185e7";
+                let id = "job-1-nowindow";
+                let mut record = JobRecord::started(id, owner, "ping", ProcessIdentity::default());
+                record.token_hash = hash("t");
+                crate::job_record::save(&d, &record).unwrap();
+                // Long enough for the watcher to catch a window that lives as
+                // long as the job's shell does.
+                let state = supervise(&d, id, owner, "t", "ping -n 2 127.0.0.1 >NUL").unwrap();
+                assert_eq!(state, JobState::Completed);
+                let _ = std::fs::remove_dir_all(&d);
+            },
+            Expect::NoWindow,
+        );
+    }
+
+    /// The other half of a job's start: the app spawning the supervisor. This
+    /// binary stands in for it (it accepts the arguments and exits), and the
+    /// point is that the spawn itself shows nothing.
+    #[cfg(windows)]
+    #[test]
+    fn starting_the_supervisor_opens_no_console_window() {
+        use jan_process::console_watch::{headless_case, Expect};
+        let name = std::thread::current().name().unwrap().to_string();
+        headless_case(
+            &name,
+            || {
+                let d = dir("startnowindow");
+                let owner = "8c874013-e5ff-4005-beb5-86ea2ec185e7";
+                let me = std::env::current_exe().unwrap();
+                let record = start(&d, &me, owner, "ping -n 2 127.0.0.1 >NUL", ("", "", "")).unwrap();
+                assert!(record.identity.pid != 0, "the supervisor was started");
+                // Wait for the stand-in supervisor to exit so the watcher saw
+                // its whole life.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                while crate::job_record::creation_time_of(record.identity.pid).is_some()
+                    && std::time::Instant::now() < deadline
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                let _ = std::fs::remove_dir_all(&d);
+            },
+            Expect::NoWindow,
+        );
+    }
+
+    /// The CLI's current name is found beside the app and under the bundle's
+    /// `resources/bin`; the old name still works, and never shadows the new.
+    #[test]
+    fn the_supervisor_is_the_flint_cli_beside_the_app_or_in_the_bundle() {
+        let exe = std::env::current_exe().unwrap();
+        let dir = exe.parent().unwrap();
+        let (new_name, old_name) = if cfg!(windows) { ("flint.exe", "jan.exe") } else { ("flint", "jan") };
+        let beside_new = dir.join(new_name);
+        let beside_old = dir.join(old_name);
+        let bundled = dir.join("resources").join("bin").join(new_name);
+        let clean = || {
+            let _ = std::fs::remove_file(&beside_new);
+            let _ = std::fs::remove_file(&beside_old);
+            let _ = std::fs::remove_file(&bundled);
+        };
+        clean();
+        // Nothing there: named, with every place that was looked at.
+        let err = supervisor_binary().unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ToolUnavailable);
+        assert!(err.to_string().contains(new_name), "{err}");
+        // The bundle location is enough.
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::write(&bundled, b"").unwrap();
+        assert_eq!(supervisor_binary().unwrap(), bundled);
+        // The old name beside the app is found when nothing newer is.
+        std::fs::remove_file(&bundled).unwrap();
+        std::fs::write(&beside_old, b"").unwrap();
+        assert_eq!(supervisor_binary().unwrap(), beside_old);
+        // The new name beside the app wins over the old one.
+        std::fs::write(&beside_new, b"").unwrap();
+        assert_eq!(supervisor_binary().unwrap(), beside_new);
+        clean();
     }
 
     /// The secret never leaves the claim: not in the record, not in a listing.

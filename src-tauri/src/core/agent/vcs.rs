@@ -157,10 +157,12 @@ fn is_git_lfs_filter(key: &str, value: &str) -> bool {
 /// every file they stage or check out -- refuse a repository whose own config
 /// names a filter, diff or merge program other than git-lfs's own commands.
 pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
-        .args(["config", "--local", "--includes", "--list", "-z"])
+        .args(["config", "--local", "--includes", "--list", "-z"]);
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("git would not run: {e}"))?;
     let listed = String::from_utf8_lossy(&out.stdout);
@@ -182,10 +184,12 @@ pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
 
 /// Refuse a repository whose own config names a program for git to run.
 pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
-        .args(["config", "--local", "--includes", "--list", "-z"])
+        .args(["config", "--local", "--includes", "--list", "-z"]);
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
     // No local config at all (not a repository) is for the caller to report.
@@ -205,12 +209,14 @@ pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
         .args(HARDENED)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
     if out.status.success() {
@@ -1209,15 +1215,17 @@ fn parse_backup(backup: &str) -> Result<(&'static str, String), VcsError> {
 
 /// git with no editor: continuing a rebase or a cherry-pick never opens one.
 fn git_no_editor(repo: &Path, args: &[&str]) -> Result<String, VcsError> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
         .args(HARDENED)
         .args(["-c", "core.editor=true"])
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
-        .env("GIT_SEQUENCE_EDITOR", "true")
+        .env("GIT_SEQUENCE_EDITOR", "true");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
     if out.status.success() {

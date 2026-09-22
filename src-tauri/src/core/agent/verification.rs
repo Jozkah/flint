@@ -261,7 +261,10 @@ mod tests {
             _request: &Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
         ) -> Result<Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
-            Err("verifier crashed".into())
+            Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::ToolUnavailable,
+                "verifier crashed",
+            ))
         }
     }
 

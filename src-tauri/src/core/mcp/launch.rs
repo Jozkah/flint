@@ -137,10 +137,12 @@ pub(super) fn confined_mcp_command(
         Some(repository) => McpAuthority::EditFolder {
             workspace: confinement.workspace.clone(),
             repository,
+            read_roots: confinement.read_roots.clone(),
         },
         None => McpAuthority::ReviewOnly {
             workspace: confinement.workspace.clone(),
             repository: confinement.repository.clone(),
+            read_roots: confinement.read_roots.clone(),
         },
     };
 
@@ -159,7 +161,8 @@ pub(super) fn confined_mcp_command(
     }
     #[cfg(windows)]
     {
-        confined.creation_flags(0x08000000);
+        use jan_process::CommandConsole;
+        confined.background();
     }
     #[cfg(unix)]
     {
@@ -203,6 +206,7 @@ mod tests {
             workspace: std::env::temp_dir(),
             repository: None,
             writable_repository: None,
+            read_roots: vec![],
             jan_data: None,
             allowed_env: vec![],
         }

@@ -256,12 +256,14 @@ impl HookRegistry {
         } else {
             ("sh", vec!["-c", command])
         };
-        let mut child = match std::process::Command::new(program)
+        let mut builder = std::process::Command::new(program);
+        builder
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        jan_utils::system::hide_console_window(&mut builder);
+        let mut child = match builder.spawn()
         {
             Ok(c) => c,
             Err(e) => {

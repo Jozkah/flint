@@ -33,6 +33,9 @@ export type CoworkStopMenuProps = {
   runId?: string
   /** Aborts the run in this process (the streaming request and its loop). */
   onStopCurrent: () => void
+  /** Aborts every run in this process. Required for "stop all" to actually
+   * stop the renderer-side loops the Rust emergency-stop cannot reach. */
+  onStopAll: () => void
   /** Injectable for tests; defaults to the real IPC command. */
   onStop?: (args: {
     session?: string
@@ -48,6 +51,7 @@ export function CoworkStopMenu({
   sessionId,
   runId,
   onStopCurrent,
+  onStopAll,
   onStop,
 }: CoworkStopMenuProps) {
   // The one cancellation backend, at whatever scope was chosen. Neither choice
@@ -111,7 +115,10 @@ export function CoworkStopMenu({
           onStopCurrent()
           report(choice, await stop({ session: sessionId, run: runId }))
         } else {
-          // No scope: everything, everywhere.
+          // No scope: everything, everywhere. Abort the renderer-side run loops
+          // first (the Rust emergency-stop only sweeps subprocess Tokens and
+          // never reaches these JS AbortControllers), then sweep the backend.
+          onStopAll()
           report(choice, await stop({}))
         }
         close()
@@ -122,7 +129,7 @@ export function CoworkStopMenu({
         setStopping(null)
       }
     },
-    [close, onStopCurrent, report, runId, sessionId, stop, stopping]
+    [close, onStopCurrent, onStopAll, report, runId, sessionId, stop, stopping]
   )
 
   /** Roving focus across the two choices. */

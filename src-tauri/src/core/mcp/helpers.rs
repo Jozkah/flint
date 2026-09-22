@@ -648,9 +648,11 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 cmd.arg("run");
                 cmd.env("UV_CACHE_DIR", cache_dir.to_str().unwrap());
             }
-            #[cfg(windows)]
             {
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: prevents shell window on Windows
+                // No console window on Windows; `npx`, `uvx` and whatever they
+                // start inherit the hidden console.
+                use jan_process::CommandConsole;
+                cmd.background();
             }
             // Make the child a process-group leader (pgid == pid) so teardown can
             // signal the whole tree; MCP bridges fork grandchildren that hold the
@@ -1125,13 +1127,11 @@ async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     use std::process::Command;
 
     #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
+    use jan_process::CommandConsole;
 
     let mut cmd = Command::new("taskkill");
     cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
-
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd.background();
 
     let output = cmd
         .output()

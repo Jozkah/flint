@@ -691,10 +691,54 @@ export type McpConfinementRequest = {
   repository?: string
   /** Writable, only where a live direct-edit grant says so. */
   writableRepository?: string
+  /**
+   * Extra folders attached to the session workspace, readable. The same set
+   * the built-in tools' sandbox is given, so a confined server can reach an
+   * attached folder that is neither the workspace nor the repository.
+   */
+  readRoots?: string[]
   /** Jan's data folder, hidden from the server. */
   janData?: string
   /** Environment names the user approved. Nothing else is passed through. */
   allowedEnv: string[]
+}
+
+/**
+ * The npm package name of the reference filesystem MCP server.
+ *
+ * Matched against argv, never against the server's display name: a repository
+ * can call the entry anything, but it is this program only when it runs this
+ * package.
+ */
+export const FILESYSTEM_SERVER_PACKAGE =
+  '@modelcontextprotocol/server-filesystem'
+
+/** Is this argv launching the reference filesystem MCP server? */
+export function isFilesystemServer(args: readonly string[]): boolean {
+  return args.some(
+    (arg) => arg === FILESYSTEM_SERVER_PACKAGE || arg.startsWith(`${FILESYSTEM_SERVER_PACKAGE}@`)
+  )
+}
+
+/**
+ * The folders a confined filesystem server should be allowed to reach.
+ *
+ * The `@modelcontextprotocol/server-filesystem` server enforces its own
+ * allow-list from its argv and refuses every path outside it, so the sandbox
+ * permitting a folder is not enough — the folder has to be named on the command
+ * line too. This is the same set the sandbox already permits: the workspace,
+ * the attached repository, and any extra attached read roots.
+ */
+export function filesystemAllowedDirs(
+  confinement: McpConfinementRequest
+): string[] {
+  const dirs = [
+    confinement.workspace,
+    ...(confinement.repository ? [confinement.repository] : []),
+    ...(confinement.readRoots ?? []),
+  ]
+  // Stable order, without duplicates.
+  return dirs.filter((dir, i) => dir && dirs.indexOf(dir) === i)
 }
 
 export function toJanMcpConfig(
@@ -725,9 +769,20 @@ export function toJanMcpConfig(
   }
   if (transport === 'stdio') {
     if (!probe.command) return null
+    const args = [...(probe.args ?? [])]
+    // The filesystem server refuses any path not named on its own argv, so the
+    // attached folders the sandbox permits are appended here — otherwise it
+    // reports "no access" to a folder the session deliberately attached. Only
+    // ones not already present are added, so a config that already names a
+    // folder is left as the user wrote it.
+    if (confinement && isFilesystemServer(args)) {
+      for (const dir of filesystemAllowedDirs(confinement)) {
+        if (!args.includes(dir)) args.push(dir)
+      }
+    }
     return {
       command: probe.command,
-      args: [...(probe.args ?? [])],
+      args,
       env: {},
       type: 'stdio',
       ...marks,

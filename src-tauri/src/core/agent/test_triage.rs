@@ -98,10 +98,9 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
+        use jan_process::CommandConsole;
+        process.background();
     }
     let mut child = process.spawn().map_err(|e| {
         failed(

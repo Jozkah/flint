@@ -1124,6 +1124,7 @@ mod mcp_confinement_tests {
             workspace: PathBuf::from("/tmp/jan-session"),
             repository: Some(PathBuf::from("/home/dev/obs-forwarder")),
             writable_repository: None,
+            read_roots: vec![],
             jan_data: Some(PathBuf::from("/home/dev/.jan")),
             allowed_env: vec!["API_TOKEN".to_string()],
         }
@@ -1241,6 +1242,7 @@ mod mcp_confinement_tests {
                 workspace: std::env::temp_dir(),
                 repository: None,
                 writable_repository: None,
+                read_roots: vec![],
                 jan_data: None,
                 allowed_env: vec!["API_TOKEN".to_string()],
             });
@@ -1285,6 +1287,7 @@ mod mcp_confinement_tests {
             workspace: workspace.clone(),
             repository: None,
             writable_repository: None,
+            read_roots: vec![],
             jan_data: None,
             allowed_env: vec!["API_TOKEN".to_string()],
         });
@@ -1354,6 +1357,7 @@ mod mcp_confinement_tests {
             "janConfinement": {
                 "workspace": "/tmp/jan-session",
                 "repository": "/home/dev/obs-forwarder",
+                "readRoots": ["/home/dev/attached-notes", "/data/shared"],
                 "allowedEnv": ["API_TOKEN"]
             }
         });
@@ -1367,10 +1371,41 @@ mod mcp_confinement_tests {
             std::path::PathBuf::from("/tmp/jan-session")
         );
         assert_eq!(confinement.allowed_env, vec!["API_TOKEN".to_string()]);
+        // The attached read roots round-trip from the `readRoots` array.
+        assert_eq!(
+            confinement.read_roots,
+            vec![
+                std::path::PathBuf::from("/home/dev/attached-notes"),
+                std::path::PathBuf::from("/data/shared"),
+            ]
+        );
         assert!(
             confinement.writable_repository.is_none(),
             "no write root unless one was granted"
         );
+    }
+
+    /// A confinement with no `readRoots` parses to an empty set — identical to
+    /// the behaviour before the field existed.
+    #[test]
+    fn a_confinement_without_read_roots_parses_to_an_empty_set() {
+        use super::super::models::extract_command_args;
+
+        let config = serde_json::json!({
+            "command": "node",
+            "args": [],
+            "janImported": true,
+            "janConfinement": {
+                "workspace": "/tmp/jan-session",
+                "allowedEnv": []
+            }
+        });
+
+        let confinement = extract_command_args(&config)
+            .expect("parse")
+            .confinement
+            .expect("confinement");
+        assert!(confinement.read_roots.is_empty());
     }
 
     /// An ordinary server carries neither, and is unaffected.
