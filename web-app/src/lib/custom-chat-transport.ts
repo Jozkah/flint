@@ -1,3 +1,4 @@
+import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { type UIMessage } from '@ai-sdk/react'
 import {
   convertToModelMessages,
@@ -1097,6 +1098,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         this.buildFilesSystemInstruction(messages),
         this.buildWebSearchSystemInstruction(),
         this.buildAgentToolsSystemInstruction(),
+        // Independent of the agent tools: which plugins are on is Flint's own
+        // state, and the answer to "is X enabled?" should never need a shell.
+        pluginInventoryLine(),
       ]
         .filter((s) => typeof s === 'string' && s.trim().length > 0)
         .join('\n\n') || undefined
@@ -1350,6 +1354,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // Built-in agent tools (filesystem reads plus skills/memory), provided by
       // the agent-tools plugin. Schemas come from Rust so they are never
       // re-typed here.
+      // Plugin state is Flint's own, not a workspace tool, so it is read and
+      // `list_plugins` offered whether or not the agent tools are on: without
+      // it a model asked "is <plugin> enabled?" goes digging through shells.
+      // Read before the system prompt is assembled, which names the enabled
+      // plugins from this cache.
+      await refreshPluginInventory()
+      if (!useAgentToolsConfig.getState().agentToolsEnabled) {
+        try {
+          const listPlugins = (await getAgentToolSchemas()).find(
+            (s) => s.function?.name === 'list_plugins'
+          )
+          if (listPlugins) {
+            toolsRecord.list_plugins = {
+              description: listPlugins.function.description,
+              inputSchema: jsonSchema(listPlugins.function.parameters),
+            } as Tool
+          }
+        } catch (error) {
+          console.warn('Failed to load list_plugins:', error)
+        }
+      }
       if (useAgentToolsConfig.getState().agentToolsEnabled) {
         try {
           for (const schema of await getAgentToolSchemas()) {
@@ -2298,6 +2323,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'directories include that location. Tool approval approves a call; it',
         'does not expand a tool\'s filesystem roots. Do not report an MCP path',
         'as denied until that MCP tool returns its own error.'
+      )
+      parts.push(
+        'When a file or folder outside the workspace is needed and a tool was',
+        'refused for it, call request_access with the narrowest absolute path and',
+        'a one-sentence reason; the user decides. If it is granted, retry the',
+        'refused call. If it is denied, do not ask again for that path: offer',
+        'another way (the user pastes or attaches it, or another source).'
       )
       parts.push(
         useAgentToolsConfig.getState().bashNetworkEnabled

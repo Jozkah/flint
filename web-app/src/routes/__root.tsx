@@ -16,6 +16,7 @@ import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
 import { TranslationProvider } from '@/i18n/TranslationContext'
 import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
+import AccessRequestDialog from '@/containers/dialogs/AccessRequestDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
 import GlobalError from '@/containers/GlobalError'
 import { GlobalEventHandler } from '@/providers/GlobalEventHandler'
@@ -153,6 +154,7 @@ function RootLayout() {
           <MissingDependenciesDialog />
           <MigrationAssistant />
           <OutOfContextPromiseModal />
+          <AccessRequestDialog />
         </TranslationProvider>
       </ServiceHubProvider>
     </Fragment>

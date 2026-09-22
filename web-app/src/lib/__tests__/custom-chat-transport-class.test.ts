@@ -97,6 +97,45 @@ describe('CustomChatTransport', () => {
     expect(result).toBeNull()
   })
 
+  it('puts the enabled plugin inventory and the request_access rule in the agent instruction', async () => {
+    const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+    const { setCachedPluginInventory } = await import('@/lib/pluginInventory')
+    const agentTools = await import('@/lib/agentTools')
+    vi.spyOn(agentTools, 'sandboxEnforces').mockReturnValue(true)
+    useAgentToolsConfig.setState({ agentToolsEnabled: true })
+    setCachedPluginInventory({
+      plugins: [
+        {
+          id: 'caveman',
+          name: 'caveman',
+          scope: 'global',
+          enabled: true,
+          version: '1.0.0',
+          description: '',
+          source: null,
+          skills: ['caveman'],
+          commands: [],
+          agents: [],
+          mcpServer: null,
+        },
+      ],
+      errors: [],
+    })
+    try {
+      const text = transport.buildAgentToolsSystemInstruction()
+      expect(text).toContain('call request_access with the narrowest absolute path')
+      // The inventory does not depend on the agent tools being on.
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      const prompt = (
+        transport as unknown as { buildSystemPrompt: (m: unknown[]) => string }
+      ).buildSystemPrompt([])
+      expect(prompt).toContain('Enabled Flint plugins: caveman (skills: caveman)')
+      expect(prompt).toContain('never search the filesystem for plugin settings')
+    } finally {
+      setCachedPluginInventory(null)
+    }
+  })
+
   it('mapUserInlineAttachments passes through non-user messages', () => {
     const messages = [
       { role: 'assistant', parts: [{ type: 'text', text: 'Hi' }], metadata: {} },

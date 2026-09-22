@@ -19,6 +19,8 @@ type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
+import { runAccessRequest } from '@/lib/accessRequests'
+import { listPluginsForModel } from '@/lib/pluginInventory'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -51,6 +53,10 @@ export const AGENT_TOOL_NAMES = new Set([
   // Cross-session messaging (docs/SESSION_MESSAGING.md). Read capability, no
   // paths. Only meaningful for a Cowork session: the chat transport drops them.
   ...SESSION_MESSAGING_TOOL_NAMES,
+  // Answered by the desktop, not the tool core: a prompt the user answers, and
+  // Flint's own plugin state. See `executeAgentTool`.
+  'request_access',
+  'list_plugins',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -262,6 +268,15 @@ export type AgentToolOptions = {
    * the change to no one -- or to the wrong one.
    */
   actor?: ChangeActorInput
+  /**
+   * The asking run's signal. A `request_access` prompt still on screen when it
+   * aborts is withdrawn, so a stopped run's question cannot be answered later.
+   */
+  signal?: AbortSignal
+  /** Shown in a `request_access` prompt: which conversation or task is asking. */
+  taskLabel?: string
+  /** Shown in a `request_access` prompt when a subagent or child is asking. */
+  origin?: string
 }
 
 export async function executeAgentTool(
@@ -273,6 +288,23 @@ export async function executeAgentTool(
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return { error: 'Flint data folder is unavailable' }
+    // Answered here, where the user and Flint's plugin state are reachable.
+    // Both return ordinary results: a denial is something the model acts on,
+    // not an error it retries.
+    if (toolName === 'request_access') {
+      return {
+        content: await runAccessRequest(input, threadId, {
+          dataFolder,
+          scope: options.scope,
+          signal: options.signal,
+          taskLabel: options.taskLabel,
+          origin: options.origin,
+        }),
+      }
+    }
+    if (toolName === 'list_plugins') {
+      return { content: await listPluginsForModel(options.readOnlyProject) }
+    }
     const args =
       input && typeof input === 'object'
         ? (input as Record<string, unknown>)

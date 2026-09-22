@@ -371,6 +371,30 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "request_access",
+                "description": "Ask the user to let you read (or, separately, write) one folder or file outside your workspace. Use it when a read/ls/grep/bash call was refused because the path is outside the workspace or the sandbox, and that exact content is needed for the task. Ask for the NARROWEST path that answers the question: one project folder or one file, never a home directory, drive root, `.ssh`, browser profile or credential store (those are refused without asking). Give a full absolute path; `..`, `~`, wildcards, UNC shares and device paths are refused. Default mode is read; ask for write only when you must change files there, as its own request. The user sees the resolved path, your reason and the mode, and answers. Returns JSON: `{\"status\":\"granted\"}` -- retry the call that failed, now; `{\"status\":\"denied\"}` -- do not ask again for the same path, offer another way (the user pastes or attaches the content, or a different source); `{\"status\":\"refused\"}` -- the path cannot be granted, the `code` says why; `{\"status\":\"unavailable\"}` -- nobody can answer here. Do not use this for Flint's own plugins, skills or memory: use list_plugins, skill_list and memory_list.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Absolute path of the folder or file you need, as narrow as possible." },
+                        "reason": { "type": "string", "description": "One sentence the user reads: what you need from it and why." },
+                        "access_mode": { "type": "string", "enum": ["read", "write"], "description": "Default read. Write is a separate, explicit request." }
+                    },
+                    "required": ["path", "reason"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_plugins",
+                "description": "List the Flint plugins installed for this conversation, read from Flint's own plugin state: id, name, enabled or disabled, version, source, and the skills, commands and agents each one provides. Use this to answer any question about which plugins are installed or enabled (e.g. \"is the caveman plugin on?\") instead of searching the filesystem or guessing settings paths. No arguments.",
+                "parameters": { "type": "object", "properties": {}, "required": [] }
+            }
+        }),
     ]
 }
 
@@ -385,7 +409,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 24);
+        assert_eq!(schemas.len(), 26);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

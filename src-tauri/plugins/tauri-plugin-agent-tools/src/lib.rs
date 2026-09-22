@@ -9,6 +9,7 @@
 //! available in both configurations; only `init()` and the IPC shims in
 //! `commands` are gated.
 
+pub mod access;
 pub mod activity;
 pub mod audit;
 pub mod compat_env;
@@ -122,6 +123,12 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::direct_edit_authorize,
             commands::direct_edit_revoke,
             commands::direct_edit_revoke_session,
+            commands::access_prepare,
+            commands::access_grant,
+            commands::access_record_decision,
+            commands::access_revoke,
+            commands::access_revoke_session,
+            commands::access_list,
             commands::secrets_redact,
             commands::skill_list,
             commands::skill_read,

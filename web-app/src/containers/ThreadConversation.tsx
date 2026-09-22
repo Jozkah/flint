@@ -734,7 +734,15 @@ export function ThreadConversation({
               const agentResult = await executeAgentTool(
                 toolName,
                 toolCall.input,
-                threadId
+                threadId,
+                {
+                  // Stopping the conversation withdraws a pending
+                  // `request_access` prompt instead of leaving it answerable.
+                  signal,
+                  taskLabel:
+                    useThreads.getState().threads[threadId]?.title ||
+                    'This conversation',
+                }
               )
               // The diff is display-only, so it goes to the runtime store rather
               // than into `result`: anything in `result` reaches the model, and a
