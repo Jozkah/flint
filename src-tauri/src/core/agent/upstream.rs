@@ -309,7 +309,64 @@ pub(crate) fn drop_malformed_tool_calls(messages: &mut Vec<serde_json::Value>) -
     dropped
 }
 
+/// Content of the most recently applied system node, if any -- the "live"
+/// system instruction the model last read.
+fn last_system_content(messages: &[serde_json::Value]) -> Option<&str> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("system"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+}
+
+/// Place the agent's stable system prompt without rewriting bytes the provider
+/// has already cached (jan#8960).
+///
+/// The tool array and the whole conversation sit *behind* index 0, so rewriting
+/// the head on any prompt change -- a skill installed mid-session, an edited
+/// `agent.toml`, the date line rolling over -- moves every byte after it and
+/// cold-caches the entire request. Providers reuse only a leading run of
+/// byte-identical bytes, so the prefix has to be a function of what was already
+/// sent. Three outcomes:
+///
+/// - the live system instruction already equals the new prompt: no mutation, so
+///   a turn that changed nothing cannot invalidate its own prefix;
+/// - a `system` node is already present and the prompt changed: append the new
+///   prompt as a `system` node at the tail, leaving every earlier index
+///   byte-identical. `genai_bridge::messages_from_body` concatenates system
+///   nodes in array order, so the appended prompt is the last system
+///   instruction the model reads;
+/// - no `system` node anywhere (fresh/empty): write it at index 0.
+///
+/// Unlike the previous retain-by-role behaviour, this never deletes a `system`
+/// node it did not write, so a compaction summary or a caller's own system
+/// message survives a prompt update. A session that keeps changing its prompt
+/// grows one node per change -- bounded, and far cheaper than re-sending the
+/// prefix. The API-server proxy path has no cross-turn session to keep stable
+/// and uses [`replace_system_prompt`] instead.
 pub(crate) fn set_system_prompt(messages: &mut Vec<serde_json::Value>, system_prompt: &str) {
+    if last_system_content(messages) == Some(system_prompt) {
+        return;
+    }
+    let has_system = messages
+        .iter()
+        .any(|m| m.get("role").and_then(|r| r.as_str()) == Some("system"));
+    let node = serde_json::json!({ "role": "system", "content": system_prompt });
+    if has_system {
+        messages.push(node);
+    } else {
+        messages.insert(0, node);
+    }
+}
+
+/// Replace-at-head system-prompt semantics for the API-server proxy path.
+///
+/// The proxy parses a caller-supplied body and applies the assistant's
+/// configured prompt to the caller's own `system` message. There is no session
+/// to keep byte-stable across turns there, so appending a second prompt would
+/// only add bytes to every request; the head is rewritten in place instead.
+pub(crate) fn replace_system_prompt(messages: &mut Vec<serde_json::Value>, system_prompt: &str) {
     messages.retain(|m| m.get("role").and_then(|r| r.as_str()) != Some("system"));
     messages.insert(
         0,
@@ -2081,6 +2138,117 @@ mod tests {
         assert_eq!(calls.get("zed_search").unwrap(), "search");
         assert_eq!(map.get("fs_search").unwrap(), "fs");
         assert_eq!(map.get("zed_search").unwrap(), "zed");
+    }
+
+    // --- system-prompt cache-friendly layout (jan#8960) ---
+
+    fn bytes(messages: &[serde_json::Value]) -> String {
+        serde_json::to_string(messages).unwrap()
+    }
+
+    /// A turn that changes nothing must not touch the array, or it would cold-
+    /// cache its own prefix at the head.
+    #[test]
+    fn a_repeated_turn_mutates_nothing() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "P" }),
+            json!({ "role": "user", "content": "hi" }),
+        ];
+        let before = bytes(&messages);
+        set_system_prompt(&mut messages, "P");
+        assert_eq!(bytes(&messages), before);
+    }
+
+    /// A changed prompt appends one node at the tail; every byte already sent
+    /// stays put, and the following identical turn adds nothing further.
+    #[test]
+    fn a_changed_system_prompt_appends_behind_bytes_already_sent() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "v1" }),
+            json!({ "role": "user", "content": "hi" }),
+        ];
+        let prefix = bytes(&messages);
+
+        set_system_prompt(&mut messages, "v2");
+        assert_eq!(messages.len(), 3);
+        // The two indices already sent are byte-identical.
+        assert_eq!(bytes(&messages[..2]), prefix);
+        assert_eq!(messages[2]["role"], "system");
+        assert_eq!(messages[2]["content"], "v2");
+
+        // The next turn with the same live prompt adds no second copy.
+        let after = bytes(&messages);
+        set_system_prompt(&mut messages, "v2");
+        assert_eq!(bytes(&messages), after);
+    }
+
+    /// The appended update is the newest system node, so once concatenated it is
+    /// the last system instruction the model reads.
+    #[test]
+    fn an_appended_update_is_the_last_system_node() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "v1" }),
+            json!({ "role": "user", "content": "hi" }),
+        ];
+        set_system_prompt(&mut messages, "v2");
+        assert_eq!(last_system_content(&messages), Some("v2"));
+    }
+
+    /// The appender never deletes a system node it did not write: a caller's own
+    /// system message survives.
+    #[test]
+    fn a_system_node_written_by_another_producer_is_not_deleted() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "P" }),
+            json!({ "role": "system", "content": "caller note" }),
+            json!({ "role": "user", "content": "hi" }),
+        ];
+        // Live prompt is "caller note"; applying "P" appends rather than deletes.
+        set_system_prompt(&mut messages, "P");
+        assert!(messages
+            .iter()
+            .any(|m| m["role"] == "system" && m["content"] == "caller note"));
+    }
+
+    #[test]
+    fn an_empty_conversation_places_the_prompt_first() {
+        let mut messages: Vec<serde_json::Value> = vec![];
+        set_system_prompt(&mut messages, "P");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "P");
+    }
+
+    /// A compaction summary is a `system` node carrying condensed history. A
+    /// later prompt update must leave its bytes untouched (jan#8962) -- the old
+    /// retain-by-role writer deleted it.
+    #[test]
+    fn compaction_summary_survives_a_system_prompt_update() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "P" }),
+            json!({ "role": "system", "content": "[Summary of earlier conversation]" }),
+            json!({ "role": "user", "content": "next" }),
+        ];
+        let prefix = bytes(&messages);
+        set_system_prompt(&mut messages, "P2");
+        // The summary and everything before the append are byte-identical.
+        assert_eq!(bytes(&messages[..3]), prefix);
+        assert!(messages
+            .iter()
+            .any(|m| m["content"] == "[Summary of earlier conversation]"));
+    }
+
+    /// The proxy path keeps replace-at-head semantics under its own name.
+    #[test]
+    fn replace_system_prompt_rewrites_the_head() {
+        let mut messages = vec![
+            json!({ "role": "system", "content": "old" }),
+            json!({ "role": "user", "content": "hi" }),
+        ];
+        replace_system_prompt(&mut messages, "new");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["content"], "new");
+        assert_eq!(messages[1]["role"], "user");
     }
 
     #[test]
