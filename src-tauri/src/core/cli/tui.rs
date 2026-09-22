@@ -18040,6 +18040,10 @@ mod tests {
         PROVIDERS_SETTINGS_ROW, SLASH_COMMANDS, SPINNER, SPINNER_ADVANCE_MS, THINKING_WORDS,
         WORKING_WORDS,
     };
+    // Worktree/fork/resume helpers exercised by the tests below; they are
+    // defined on the parent module but were missing from the import list.
+    use super::{fork_at, open_fork_picker, open_tree_picker, worktree_command, ResumeRequest};
+    use crate::core::cli::worktree::Worktree;
     use crate::core::agent::events::{StreamEvent, Usage};
     use crate::core::agent::r#loop::PermissionRegistry;
     use ratatui::buffer::Buffer;
@@ -29527,6 +29531,8 @@ mod tests {
                 prompt_tokens: Some(120),
                 completion_tokens: Some(8),
                 total_tokens: Some(128),
+                cached_prompt_tokens: None,
+                cache_write_tokens: None,
             }),
         );
         assert_eq!(app.turn_prompt_tokens, 120);
@@ -32073,7 +32079,7 @@ mod tests {
         let shown = rows.iter().filter(|r| r.contains("agent-")).count();
         assert!(shown < 9, "not every agent fits: {rows:?}");
         assert!(
-            rows.iter().any(|r| r.contains("more running")),
+            rows.iter().any(|r| r.contains("more · /agents")),
             "the rest are counted: {rows:?}"
         );
     }
@@ -32365,7 +32371,7 @@ mod tests {
     fn slash_bare_lists_all_commands() {
         let mut app = test_app();
         app.input = "/".into();
-        // All built-ins plus the always-advertised built-in jan skill.
+        // All built-ins plus the always-advertised built-in flint skill.
         assert_eq!(
             names(&app).len(),
             super::SLASH_COMMANDS.len() + 1,
@@ -32373,8 +32379,8 @@ mod tests {
             names(&app)
         );
         assert!(
-            names(&app).contains(&"/jan".to_string()),
-            "built-in jan skill row: {:?}",
+            names(&app).contains(&"/flint".to_string()),
+            "built-in flint skill row: {:?}",
             names(&app)
         );
     }
@@ -32549,14 +32555,17 @@ mod tests {
         let (mut app, root) =
             skill_test_app_fm("internal", "Agent-only ritual.", "user-invocable: false\n");
         let (mut app2, root2) = skill_test_app("open", "Everyone.");
-        app.input = "/int".into();
+        // Probe with "intern", not "int": the built-in "flint" skill contains
+        // the substring "int", so "int" would surface it and mask what this
+        // test is really checking (that the model-only "internal" is hidden).
+        app.input = "/intern".into();
         assert!(
             !names(&app).iter().any(|n| n.contains("internal")),
             "model-only skill offered to the user: {:?}",
             names(&app)
         );
         // The `/skill:` form is equally hidden.
-        app.input = "/skill:int".into();
+        app.input = "/skill:intern".into();
         assert!(names(&app).is_empty(), "{:?}", names(&app));
         // A normal skill is still offered alongside.
         app2.input = "/op".into();

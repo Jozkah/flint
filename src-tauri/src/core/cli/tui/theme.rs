@@ -182,6 +182,10 @@ fn query_osc11_is_light() -> Option<bool> {
 mod tests {
     use super::*;
 
+    // `luminance_is_light` and `parse_osc11` are `#[cfg(unix)]` (only the Unix
+    // OSC 11 path calls them), so their tests are Unix-only too; otherwise the
+    // Windows/`cli` test build cannot resolve them.
+    #[cfg(unix)]
     #[test]
     fn luminance_splits_at_the_midpoint() {
         assert!(luminance_is_light(255, 255, 255), "white is light");
@@ -190,6 +194,7 @@ mod tests {
         assert!(!luminance_is_light(40, 44, 52), "a dark editor bg is dark");
     }
 
+    #[cfg(unix)]
     #[test]
     fn parse_osc11_scales_any_component_width() {
         assert_eq!(
