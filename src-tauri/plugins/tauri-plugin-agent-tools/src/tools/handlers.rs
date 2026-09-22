@@ -707,7 +707,25 @@ fn apply_edits(
         let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         let count = content.matches(old_string).count();
         if count == 0 {
-            return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            // No exact hit: fall back to tolerant matching (line endings,
+            // typographic characters, indentation, near-identical text).
+            // replace_all stays exact-only apart from line endings.
+            if replace_all {
+                let eol_old = super::fuzzy_edit::in_file_ending(&content, old_string);
+                if eol_old != old_string && content.contains(&eol_old) {
+                    let eol_new = super::fuzzy_edit::in_file_ending(&content, new_string);
+                    content = content.replace(&eol_old, &eol_new);
+                    continue;
+                }
+                return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            }
+            match super::fuzzy_edit::resolve(&content, old_string, new_string) {
+                Ok(r) => {
+                    content.replace_range(r.range, &r.replacement);
+                    continue;
+                }
+                Err(e) => return Err(format!("ERROR: {shown}: edit {}: {e}", i + 1)),
+            }
         }
         if replace_all {
             // Rename-style replacement: every occurrence, no uniqueness guard.
