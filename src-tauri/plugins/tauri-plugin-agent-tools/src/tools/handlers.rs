@@ -3493,6 +3493,95 @@ mod tests {
         super::preview_diff(tool, args, &ToolContext::new(root, &store, &[])).await
     }
 
+    /// Integration coverage for the agent-loop wiring of `git_inspect`: the tool
+    /// is driven through the real `execute_builtin` dispatch (name -> handler ->
+    /// `ctx.read_roots`), not by calling the pure function directly, so the
+    /// schema/dispatch/scope path is exercised. `git_inspect` is scoped to the
+    /// run's read roots: a clone outside them must not be found.
+    mod git_inspect_wiring {
+        use super::*;
+        use std::process::Command;
+
+        fn git_init(dir: &std::path::Path, remote: &str) {
+            let git = crate::tools::git_native::discover_git().expect("git");
+            let run = |args: &[&str]| {
+                let mut c = Command::new(&git);
+                c.arg("-C").arg(dir).args(args);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.creation_flags(0x0800_0000);
+                }
+                c.output().unwrap();
+            };
+            run(&["init", "-q"]);
+            run(&["remote", "add", "origin", remote]);
+            std::fs::write(dir.join("README.md"), "x").unwrap();
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
+            run(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "i"]);
+        }
+
+        async fn run_git_inspect(url: &str, root: &Path, read_roots: &[PathBuf]) -> String {
+            let store = crate::workspace::project_store(root);
+            let ctx = ToolContext::new(root, &store, &[]).with_read_roots(read_roots);
+            super::super::execute_builtin(crate::tools::lookup("git_inspect").unwrap(), &json!({ "url": url }), &ctx)
+                .await
+                .0
+        }
+
+        #[tokio::test]
+        async fn one_attached_clone_is_inspected_through_the_dispatch() {
+            if crate::tools::git_native::discover_git().is_none() {
+                return;
+            }
+            let base = std::env::temp_dir().join(format!("jan gi wire {}", std::process::id()));
+            let root = base.join("workspace");
+            let clone = base.join("OBS Project");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::create_dir_all(&clone).unwrap();
+            git_init(&clone, "git@github.com:Jozkah/streamer.git");
+
+            let out = run_git_inspect(
+                "https://github.com/Jozkah/streamer",
+                &root,
+                &[clone.clone()],
+            )
+            .await;
+            assert!(out.contains("Recovered locally"), "{out}");
+            assert!(out.contains("OBS Project"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
+
+        #[tokio::test]
+        async fn a_clone_outside_the_read_roots_is_not_found() {
+            if crate::tools::git_native::discover_git().is_none() {
+                return;
+            }
+            let base = std::env::temp_dir().join(format!("jan gi scope {}", std::process::id()));
+            let root = base.join("workspace");
+            let clone = base.join("OBS Project");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::create_dir_all(&clone).unwrap();
+            git_init(&clone, "https://github.com/Jozkah/streamer.git");
+
+            // read_roots empty: the clone exists on disk but is NOT authorized,
+            // so the tool must not reach it -- it returns the user-choice payload.
+            let out = run_git_inspect("https://github.com/Jozkah/streamer", &root, &[]).await;
+            assert!(out.contains("no_local_clone"), "must not escape read roots: {out}");
+            assert!(out.contains("ask_user_to_attach_or_select_clone"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
+
+        #[tokio::test]
+        async fn a_non_github_url_is_rejected_by_the_tool() {
+            let base = std::env::temp_dir().join(format!("jan gi ng {}", std::process::id()));
+            std::fs::create_dir_all(&base).unwrap();
+            let out = run_git_inspect("https://example.com/o/r", &base, &[]).await;
+            assert!(out.starts_with("ERROR"), "{out}");
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     /// AH-148, through the function the approval flow actually calls. The

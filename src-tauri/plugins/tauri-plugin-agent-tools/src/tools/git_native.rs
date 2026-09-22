@@ -282,6 +282,22 @@ fn matching_clones(git: &Path, target: &RepoRef, read_roots: &[PathBuf]) -> Vec<
     hits
 }
 
+/// `(gh installed, gh authenticated)`. Native, no shell. `"unknown"` when `gh`
+/// is present but its auth state could not be read.
+fn gh_status() -> (bool, &'static str) {
+    let Some(gh) = on_path(if cfg!(windows) { "gh.exe" } else { "gh" }) else {
+        return (false, "unknown");
+    };
+    let mut cmd = Command::new(&gh);
+    cmd.args(["auth", "status"]);
+    hide_console(&mut cmd);
+    match cmd.output() {
+        Ok(out) if out.status.success() => (true, "yes"),
+        Ok(_) => (true, "no"),
+        Err(_) => (true, "unknown"),
+    }
+}
+
 /// A read-only Git operation the tool will run. Fixed argv per variant so no
 /// caller string reaches git as an option -- there is no arbitrary passthrough.
 fn op_args(op: &str) -> Option<Vec<&'static str>> {
@@ -419,6 +435,35 @@ pub fn web_fetch_recovery_note(url: &str, err: &str, read_roots: &[PathBuf]) -> 
             url
         )),
     }
+    // Structured metadata so the agent loop has machine-readable state, not only
+    // prose. Mirrors the RecoveryReport shape: reason, what was searched, what is
+    // available, and the ordered actions.
+    let (gh_available, gh_authenticated) = gh_status();
+    let recommended_actions: Vec<&str> = match clones.len() {
+        1 => vec!["call_git_inspect", "use_matching_local_clone"],
+        n if n > 1 => vec!["call_git_inspect", "ask_user_to_choose_clone"],
+        _ => vec![
+            "call_git_inspect",
+            "ask_user_to_attach_or_select_clone",
+            "use_authenticated_git",
+            "offer_install_or_auth_gh",
+            "ask_user_for_another_source",
+            "cancel",
+        ],
+    };
+    let report = json!({
+        "reason": "private_repository_or_not_found",
+        "repository": target.slug(),
+        "anonymous_web": true,
+        "local_clone_match": clones.first().map(|p| p.display().to_string()),
+        "additional_clone_matches": clones.iter().skip(1).map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        "git_available": git.is_some(),
+        "gh_available": gh_available,
+        "gh_authenticated": gh_authenticated,
+        "tool_to_call": "git_inspect",
+        "recommended_actions": recommended_actions,
+    });
+    note.push_str(&format!("\nRECOVERY_METADATA (structured): {report}"));
     Some(note)
 }
 
