@@ -276,13 +276,12 @@ fn find_process_using_port_windows(port: u16) -> Option<ProcessUsingPort> {
     use std::process::Command;
 
     #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
+    use jan_process::CommandConsole;
 
     let mut cmd = Command::new("netstat");
     cmd.args(&["-ano"]);
 
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd.background();
 
     let output = cmd.output().ok()?;
 
@@ -296,8 +295,7 @@ fn find_process_using_port_windows(port: u16) -> Option<ProcessUsingPort> {
                     let mut tasklist_cmd = Command::new("tasklist");
                     tasklist_cmd.args(&["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"]);
 
-                    #[cfg(windows)]
-                    tasklist_cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                    tasklist_cmd.background();
 
                     let name_output = tasklist_cmd.output().ok()?;
 
@@ -346,7 +344,7 @@ fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
     use std::process::Command;
 
     #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
+    use jan_process::CommandConsole;
 
     let mut cmd = Command::new("wmic");
     cmd.args(&[
@@ -358,8 +356,7 @@ fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
         "/format:list",
     ]);
 
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd.background();
 
     let output = cmd.output().ok()?;
 
@@ -428,7 +425,7 @@ fn get_process_info_by_pid_windows(pid: u32) -> Option<ProcessUsingPort> {
     use std::process::Command;
 
     #[cfg(windows)]
-    use std::os::windows::process::CommandExt;
+    use jan_process::CommandConsole;
 
     // Use wmic to get process info by PID
     let mut cmd = Command::new("wmic");
@@ -441,8 +438,7 @@ fn get_process_info_by_pid_windows(pid: u32) -> Option<ProcessUsingPort> {
         "/format:list",
     ]);
 
-    #[cfg(windows)]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd.background();
 
     let output = cmd.output().ok()?;
 

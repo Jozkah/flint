@@ -1335,10 +1335,9 @@ fn repo_dir_name(url: &str) -> Option<&str> {
 fn git_command() -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new("git");
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        use jan_process::CommandConsole;
+        cmd.background();
     }
     cmd
 }

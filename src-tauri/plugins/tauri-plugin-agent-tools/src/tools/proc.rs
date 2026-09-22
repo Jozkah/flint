@@ -527,7 +527,10 @@ pub(crate) fn which(name: &str) -> Option<PathBuf> {
     let finder = "which";
     #[cfg(windows)]
     let finder = "where";
-    let out = std::process::Command::new(finder).arg(name).output().ok()?;
+    // A one-shot lookup from a process with no console (the desktop app, or the
+    // job supervisor it starts) would otherwise open a console window per call.
+    use jan_process::CommandConsole;
+    let out = std::process::Command::new(finder).arg(name).background().output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -809,12 +812,11 @@ fn set_process_group(cmd: &mut Command) {
 
 #[cfg(windows)]
 fn set_process_group(cmd: &mut Command) {
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    // CREATE_NO_WINDOW: the shell's stdio is piped, so it needs no console of
-    // its own. Without this every spawn (bash/cmd/powershell, including the
-    // AppContainer helper re-exec) flashes a visible console window.
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    // Own process group, and a console with no window: the shell's stdio is
+    // piped, and without the flag every spawn (bash/cmd/powershell, including
+    // the AppContainer helper re-exec) flashes a visible console window.
+    use jan_process::CommandConsole;
+    cmd.background_in_new_group();
 }
 
 /// What happened when a process tree was signalled.

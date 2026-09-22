@@ -165,10 +165,9 @@ pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_change
         let which_cmd = if cfg!(windows) { "where" } else { "which" };
         let mut cmd = std::process::Command::new(which_cmd);
         cmd.arg("flint");
-        #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            use jan_process::CommandConsole;
+            cmd.background();
         }
         let on_path = cmd
             .output()

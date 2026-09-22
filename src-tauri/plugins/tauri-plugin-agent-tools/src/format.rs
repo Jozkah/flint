@@ -252,11 +252,9 @@ pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        // No console window on the desktop.
-        command.creation_flags(0x0800_0000);
+        use jan_process::CommandConsole;
+        command.background();
     }
     let mut child = match command.spawn() {
         Ok(child) => child,

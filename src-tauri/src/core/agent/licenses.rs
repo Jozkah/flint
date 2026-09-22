@@ -149,10 +149,9 @@ fn read_tree(program: &str, args: &[&str], project_root: &Path) -> Result<String
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        use jan_process::CommandConsole;
+        command.background();
     }
     let mut child = command.spawn().map_err(|e| {
         failed(
