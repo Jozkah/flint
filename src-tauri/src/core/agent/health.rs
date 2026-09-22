@@ -254,10 +254,9 @@ fn run(check: &Check, project_root: &Path) -> Result_ {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        use jan_process::CommandConsole;
+        command.background();
     }
     let spawned = command.spawn();
     let mut child = match spawned {

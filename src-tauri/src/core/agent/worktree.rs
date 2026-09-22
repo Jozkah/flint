@@ -785,11 +785,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Reopening a cowork session runs, from a process with no console, the
+    /// git helpers a restore needs: status, worktree prune/list/ensure/state,
+    /// a checkpoint, the folder identity, and the job reconcile. None of that
+    /// may put a console window on screen. Watched on the real desktop from a
+    /// console-less copy of this test binary.
+    #[cfg(windows)]
+    #[test]
+    fn restoring_a_session_opens_no_console_window() {
+        use jan_process::console_watch::{headless_case, Expect};
+        let name = std::thread::current().name().unwrap().to_string();
+        headless_case(
+            &name,
+            || {
+                let base = std::env::temp_dir().join(format!("jan-wt-restore {}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&base);
+                let repo = base.join("repo with space");
+                std::fs::create_dir_all(&repo).unwrap();
+                git_in(&repo, &["init", "-q", "-b", "main"]);
+                git_in(&repo, &["config", "user.email", "t@example.invalid"]);
+                git_in(&repo, &["config", "user.name", "Test"]);
+                std::fs::write(repo.join("f.txt"), "f\n").unwrap();
+                git_in(&repo, &["add", "-A"]);
+                git_in(&repo, &["commit", "-qm", "first"]);
+                std::fs::write(repo.join("f.txt"), "changed\n").unwrap();
+                let roots = base.join("worktrees");
+                let data = base.join("data");
+                std::fs::create_dir_all(&data).unwrap();
+                // A few times over, the way a restore that renders and
+                // re-renders does, so a window with a lifetime of milliseconds
+                // has many chances to be caught.
+                for _ in 0..3 {
+                    let status = super::super::git::status(&repo, super::super::git::DiffScope::All).unwrap();
+                    assert_eq!(status.branch.as_deref(), Some("main"));
+                    let _ = prune(&repo);
+                    let record = ensure(&repo, &roots, "059d197c-c025-57a1-90ec-b71420e584f0").unwrap();
+                    assert_eq!(state(&record), WorktreeState::Ready);
+                    assert_eq!(list(&repo, &roots).len(), 1);
+                    let made = super::super::checkpoint::capture(
+                        &repo,
+                        "059d197c-c025-57a1-90ec-b71420e584f0",
+                        None,
+                        "restore",
+                        &[PathBuf::from("f.txt")],
+                        super::super::checkpoint::Destination::UserCheckout,
+                    )
+                    .unwrap();
+                    assert!(!made.sha.is_empty());
+                    let _ = super::super::session_bundle::folder_identity(&repo);
+                    let _ = tauri_plugin_agent_tools::worker::reconcile_all(&data);
+                }
+                let _ = std::fs::remove_dir_all(&base);
+            },
+            Expect::NoWindow,
+        );
+    }
+
     fn git_in(dir: &Path, args: &[&str]) {
+        use jan_process::CommandConsole;
         let out = Command::new("git")
             .arg("-C")
             .arg(dir)
             .args(args)
+            // Test scaffolding, not the code under test: from a console-less
+            // process a plain `git` would open a window of its own and the
+            // window test below would blame the wrong thing.
+            .background()
             .env("GIT_AUTHOR_NAME", "T")
             .env("GIT_AUTHOR_EMAIL", "t@example.com")
             .env("GIT_COMMITTER_NAME", "T")

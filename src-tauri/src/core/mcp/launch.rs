@@ -161,7 +161,8 @@ pub(super) fn confined_mcp_command(
     }
     #[cfg(windows)]
     {
-        confined.creation_flags(0x08000000);
+        use jan_process::CommandConsole;
+        confined.background();
     }
     #[cfg(unix)]
     {

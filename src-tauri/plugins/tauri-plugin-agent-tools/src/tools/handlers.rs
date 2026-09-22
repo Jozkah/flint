@@ -2526,9 +2526,11 @@ pub async fn render_html_png(
          --window-size={width},{height} --screenshot={shot_quoted} {url_quoted}"
     );
     let shell = proc::shell();
+    use jan_process::CommandConsole;
     let mut child = match tokio::process::Command::new(shell.program.clone())
         .args(shell.args.clone())
         .arg(&cmd)
+        .background()
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()

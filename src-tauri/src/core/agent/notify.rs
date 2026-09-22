@@ -257,10 +257,9 @@ pub fn run_command(notify: &Notify, note: &Notification, project_root: &Path) ->
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        use jan_process::CommandConsole;
+        command.background();
     }
     let mut child = match command.spawn() {
         Ok(child) => child,

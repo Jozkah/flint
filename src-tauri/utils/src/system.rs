@@ -600,40 +600,25 @@ fn collect_flatpak_gl_paths(cuda_lib_paths: &mut std::collections::HashSet<Strin
     log::info!("Searched Flatpak GL extension paths for NVIDIA libraries");
 }
 
+/// A long-lived background worker (the llama.cpp worker, ...): hidden console
+/// on Windows, its own process group. Thin name over
+/// [`jan_process::CommandConsole::background_in_new_group`], kept so existing
+/// call sites read the same.
 pub fn setup_windows_process_flags(command: &mut tokio::process::Command) {
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = command; // Silence unused parameter warning on non-Windows platforms
-    }
+    use jan_process::CommandConsole;
+    command.background_in_new_group();
 }
 
 /// Keep a short-lived `std::process::Command` (git, cmd, ...) spawned from the
 /// GUI from flashing a console window on Windows.
 ///
-/// The desktop app has no console of its own, so every `git`/`cmd` helper it
-/// runs -- and it runs many when restoring or working a cowork session (status,
-/// snapshot, checkpoint, index) -- pops a black console window for its lifetime
-/// unless `CREATE_NO_WINDOW` is set. Unlike [`setup_windows_process_flags`] this
-/// sets no process-group flag: these are one-shot `.output()`/`.status()` calls,
-/// and the only goal is to suppress the window, matching what the agent-core
-/// spawns that already set a flag do.
+/// Thin name over [`jan_process::CommandConsole::background`], which is where
+/// the flags are decided; new code can call that directly on a std or tokio
+/// `Command`. Unlike [`setup_windows_process_flags`] this sets no process-group
+/// flag: these are one-shot `.output()`/`.status()` calls.
 pub fn hide_console_window(command: &mut std::process::Command) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = command; // Silence unused parameter warning on non-Windows platforms
-    }
+    use jan_process::CommandConsole;
+    command.background();
 }
 
 #[cfg(test)]

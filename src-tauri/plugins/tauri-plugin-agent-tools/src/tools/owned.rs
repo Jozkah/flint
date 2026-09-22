@@ -30,18 +30,8 @@ pub fn find_on_path(name: &str) -> Option<PathBuf> {
 /// Prepare `cmd` so the process tree it starts can be stopped as a unit, and so
 /// it opens no console window of its own on Windows.
 pub fn configure(cmd: &mut Command) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
-    }
+    use jan_process::CommandConsole;
+    cmd.background_in_new_group();
 }
 
 /// Whether a process with this id is running right now.

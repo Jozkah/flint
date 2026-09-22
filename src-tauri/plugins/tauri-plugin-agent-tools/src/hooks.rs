@@ -563,10 +563,14 @@ async fn execute(
     let tool_name = tool.unwrap_or_default().to_string();
 
     let work = async move {
+        use jan_process::CommandConsole;
         let mut cmd = tokio::process::Command::new(shell.program.clone());
         cmd.args(shell.args.clone())
             .arg(&command)
             .current_dir(&root)
+            // A hook runs on the app's behalf and is never shown; its own
+            // children inherit the hidden console.
+            .background_in_new_group()
             // What a hook is told, and all it is told. Not the prompt, not the
             // tool's arguments, not a provider key: a hook is a trigger, not a
             // window into the conversation.
