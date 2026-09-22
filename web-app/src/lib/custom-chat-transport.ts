@@ -2330,6 +2330,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
 
           if (message.parts.length > 0) {
+            // Return a fresh message with fresh text parts rather than
+            // overwriting `message.parts` in place. Mutating the input would
+            // both leak into the persisted transcript and, on a second mapping
+            // of the same array, append the inline content a second time
+            // (jan#9022). Non-text parts and metadata are carried over by
+            // reference without being touched.
             const parts = message.parts.map((part) => {
               if (part.type === 'text') {
                 return {
@@ -2339,7 +2345,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               }
               return part
             })
-            message.parts = parts
+            return { ...message, parts }
           }
         }
       }

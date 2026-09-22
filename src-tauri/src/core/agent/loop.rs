@@ -784,6 +784,10 @@ impl HttpModelInvoker {
 
 struct McpToolInvoker {
     tool_to_server: HashMap<String, String>,
+    /// Advertised name -> original MCP tool name, for tools renamed to resolve a
+    /// duplicate-name collision. Empty for the common case; consulted at
+    /// dispatch so a renamed tool still calls the server under its real name.
+    tool_call_names: HashMap<String, String>,
     mcp_servers: SharedMcpServers,
     mcp_settings: Arc<Mutex<McpSettings>>,
 }
@@ -795,6 +799,7 @@ impl ToolInvoker for McpToolInvoker {
         let results = execute_mcp_tool_calls(
             tool_calls,
             &self.tool_to_server,
+            &self.tool_call_names,
             &self.mcp_servers,
             &self.mcp_settings,
         )
@@ -3932,7 +3937,7 @@ pub(crate) async fn context_advertised_tools(
     ask_enabled: bool,
     todo_enabled: bool,
 ) -> Vec<serde_json::Value> {
-    let (mut tools, mut tool_to_server) =
+    let (mut tools, mut tool_to_server, _tool_call_names) =
         crate::core::agent::upstream::collect_mcp_openai_tools(mcp_servers, mcp_settings)
             .await
             .unwrap_or_default();
@@ -4254,7 +4259,7 @@ async fn orchestrate_inner(
         }
     };
 
-    let (mut openai_tools, mut tool_to_server) =
+    let (mut openai_tools, mut tool_to_server, tool_call_names) =
         collect_mcp_openai_tools(mcp_servers, mcp_settings).await?;
 
     // Optional per-run allowlist: when `allowed_tools` is present, expose only
@@ -4384,6 +4389,7 @@ async fn orchestrate_inner(
     };
     let mcp_tools = McpToolInvoker {
         tool_to_server,
+        tool_call_names,
         mcp_servers: mcp_servers.clone(),
         mcp_settings: mcp_settings.clone(),
     };
@@ -8144,6 +8150,7 @@ mod tests {
             sandbox: true,
             mcp: McpToolInvoker {
                 tool_to_server: HashMap::new(),
+                tool_call_names: HashMap::new(),
                 mcp_servers: Arc::new(Mutex::new(HashMap::new())),
                 mcp_settings: Arc::new(Mutex::new(McpSettings::default())),
             },

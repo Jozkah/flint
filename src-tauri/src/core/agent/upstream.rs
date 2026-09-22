@@ -657,11 +657,90 @@ fn reuse_last_good_listings(
     resolved
 }
 
+/// Provider-valid form of a tool name, used both to detect collisions and to
+/// build disambiguated names. OpenAI-compatible providers require
+/// `function.name` to match `^[a-zA-Z0-9_-]{1,64}$`; any other byte is folded to
+/// `_`. Two raw names that differ only in folded-away characters therefore share
+/// a key and are treated as colliding, so the array never advertises two
+/// functions a strict provider would read as the same name.
+fn sanitize_function_name(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    // Every retained byte is ASCII, so a byte truncation is a char truncation.
+    if out.len() > 64 {
+        out.truncate(64);
+    }
+    out
+}
+
+/// Advertised `function.name` for each entry of the already-sorted `flattened`
+/// list, guaranteeing every returned name is unique.
+///
+/// A tool whose sanitized name is unique across the request keeps its original
+/// name untouched. When two or more tools share a sanitized name -- the same
+/// name exposed by two servers (#8975), or two names that fold to the same
+/// provider-valid string -- each colliding tool is renamed to a namespaced
+/// `{server}_{tool}` form, sanitized, and, if that still clashes, suffixed `_2`,
+/// `_3`, ... Non-colliding names are reserved first so a namespaced name can
+/// never force an untouched tool to move. The whole assignment is a pure
+/// function of the sorted input, so it is byte-stable across runs.
+fn disambiguate_tool_names(flattened: &[(String, String, serde_json::Value)]) -> Vec<String> {
+    let mut freq: HashMap<String, usize> = HashMap::new();
+    for (_, tool_name, _) in flattened {
+        *freq.entry(sanitize_function_name(tool_name)).or_default() += 1;
+    }
+    let colliding =
+        |tool_name: &str| freq.get(&sanitize_function_name(tool_name)).copied() != Some(1);
+
+    // Reserve every non-colliding tool's raw name up front.
+    let mut used: std::collections::HashSet<String> = flattened
+        .iter()
+        .filter(|(_, tool_name, _)| !colliding(tool_name))
+        .map(|(_, tool_name, _)| tool_name.clone())
+        .collect();
+
+    flattened
+        .iter()
+        .map(|(server_name, tool_name, _)| {
+            if !colliding(tool_name) {
+                return tool_name.clone();
+            }
+            let base = sanitize_function_name(&format!("{server_name}_{tool_name}"));
+            let mut candidate = base.clone();
+            let mut n = 2;
+            while candidate.is_empty() || used.contains(&candidate) {
+                candidate = sanitize_function_name(&format!("{base}_{n}"));
+                n += 1;
+            }
+            used.insert(candidate.clone());
+            candidate
+        })
+        .collect()
+}
+
 /// Flatten the per-server listings into the advertised array, ordered by
-/// [`tool_sort_key`], with `tool_to_server` kept consistent with that order.
+/// [`tool_sort_key`], with unique provider-valid `function.name` values.
+///
+/// Returns the OpenAI tool array, `tool_to_server` (advertised name -> server),
+/// and `tool_call_names` (advertised name -> original MCP tool name) holding an
+/// entry only for tools that were renamed to resolve a collision. Dispatch reads
+/// `tool_call_names` so a renamed tool still calls the server under the name the
+/// server knows; both maps are kept consistent with the sorted array.
 fn assemble_tool_array(
     listings: Vec<(String, Vec<RenderedTool>)>,
-) -> (Vec<serde_json::Value>, HashMap<String, String>) {
+) -> (
+    Vec<serde_json::Value>,
+    HashMap<String, String>,
+    HashMap<String, String>,
+) {
     let mut flattened: Vec<(String, String, serde_json::Value)> = listings
         .into_iter()
         .flat_map(|(server_name, tools)| {
@@ -675,20 +754,41 @@ fn assemble_tool_array(
         tool_sort_key(a_server, a_tool).cmp(&tool_sort_key(b_server, b_tool))
     });
 
+    let advertised = disambiguate_tool_names(&flattened);
+
     let mut openai_tools = Vec::with_capacity(flattened.len());
     let mut tool_to_server: HashMap<String, String> = HashMap::new();
-    for (server_name, tool_name, tool) in flattened {
-        tool_to_server.insert(tool_name, server_name);
+    let mut tool_call_names: HashMap<String, String> = HashMap::new();
+    for ((server_name, tool_name, mut tool), advertised_name) in
+        flattened.into_iter().zip(advertised)
+    {
+        if advertised_name != tool_name {
+            if let Some(function) = tool.get_mut("function").and_then(|f| f.as_object_mut()) {
+                function.insert(
+                    "name".to_string(),
+                    serde_json::Value::String(advertised_name.clone()),
+                );
+            }
+            tool_call_names.insert(advertised_name.clone(), tool_name);
+        }
+        tool_to_server.insert(advertised_name, server_name);
         openai_tools.push(tool);
     }
 
-    (openai_tools, tool_to_server)
+    (openai_tools, tool_to_server, tool_call_names)
 }
 
 pub(crate) async fn collect_mcp_openai_tools(
     mcp_servers: &SharedMcpServers,
     mcp_settings: &Arc<Mutex<McpSettings>>,
-) -> Result<(Vec<serde_json::Value>, HashMap<String, String>), String> {
+) -> Result<
+    (
+        Vec<serde_json::Value>,
+        HashMap<String, String>,
+        HashMap<String, String>,
+    ),
+    String,
+> {
     let timeout_duration = mcp_settings.lock().await.tool_call_timeout_duration();
     let servers = mcp_servers.lock().await;
 
@@ -760,6 +860,7 @@ pub(crate) async fn collect_mcp_openai_tools(
 pub(crate) async fn execute_mcp_tool_calls(
     tool_calls: &[serde_json::Value],
     tool_to_server: &HashMap<String, String>,
+    tool_call_names: &HashMap<String, String>,
     mcp_servers: &SharedMcpServers,
     mcp_settings: &Arc<Mutex<McpSettings>>,
 ) -> Vec<(String, String)> {
@@ -831,8 +932,17 @@ pub(crate) async fn execute_mcp_tool_calls(
         }
         let server_cap = budget.result_cap(tool_output_cap);
 
+        // A tool renamed to resolve a collision is advertised under a
+        // namespaced name but must be called on the server under the name the
+        // server actually knows. Non-renamed tools have no entry and dispatch
+        // by their advertised name unchanged.
+        let call_name = tool_call_names
+            .get(&tool_name)
+            .cloned()
+            .unwrap_or_else(|| tool_name.clone());
+
         let tool_call = service.call_tool(
-            CallToolRequestParams::new(tool_name.clone()).with_arguments(args_map),
+            CallToolRequestParams::new(call_name).with_arguments(args_map),
         );
 
         let result = match tokio::time::timeout(timeout_duration, tool_call).await {
@@ -1843,8 +1953,8 @@ mod tests {
             ("fs".to_string(), vec![rendered("read"), rendered("write")]),
         ];
 
-        let (first, _) = assemble_tool_array(one);
-        let (second, _) = assemble_tool_array(two);
+        let (first, _, _) = assemble_tool_array(one);
+        let (second, _, _) = assemble_tool_array(two);
 
         assert_eq!(
             serde_json::to_string(&first).unwrap(),
@@ -1854,12 +1964,12 @@ mod tests {
         assert_eq!(advertised_names(&first), ["read", "write", "commit"]);
     }
 
-    /// Two servers exposing the same tool name is a pre-existing collision the
-    /// array does not dedupe - but which server wins `tool_to_server` used to
-    /// depend on iteration order, so the same call could route to either one
-    /// across restarts. Sorting makes it the last server by name, always.
+    /// Two servers exposing the same tool name used to advertise the name twice
+    /// (#8975), which a strict provider rejects and a lenient one misroutes. The
+    /// collision now renames both to a namespaced `{server}_{tool}`, and the
+    /// assignment stays byte-identical whichever order the servers are walked.
     #[test]
-    fn a_tool_name_exposed_by_two_servers_routes_the_same_way_every_run() {
+    fn a_tool_name_exposed_by_two_servers_gets_namespaced() {
         let listings = |flipped: bool| {
             let fs = ("fs".to_string(), vec![rendered("search")]);
             let zed = ("zed".to_string(), vec![rendered("search")]);
@@ -1870,21 +1980,112 @@ mod tests {
             }
         };
 
-        let (first, first_map) = assemble_tool_array(listings(false));
-        let (second, second_map) = assemble_tool_array(listings(true));
+        let (first, first_map, first_calls) = assemble_tool_array(listings(false));
+        let (second, second_map, second_calls) = assemble_tool_array(listings(true));
 
         assert_eq!(
             serde_json::to_string(&first).unwrap(),
             serde_json::to_string(&second).unwrap()
         );
-        assert_eq!(advertised_names(&first), ["search", "search"]);
-        assert_eq!(first_map.get("search").unwrap(), "zed");
+        // No duplicate `function.name` on the wire, and neither raw name survives.
+        assert_eq!(advertised_names(&first), ["fs_search", "zed_search"]);
+        assert_eq!(first_map.get("fs_search").unwrap(), "fs");
+        assert_eq!(first_map.get("zed_search").unwrap(), "zed");
+        // Each renamed tool still calls its server under the real name.
+        assert_eq!(first_calls.get("fs_search").unwrap(), "search");
+        assert_eq!(first_calls.get("zed_search").unwrap(), "search");
         assert_eq!(first_map, second_map);
+        assert_eq!(first_calls, second_calls);
+    }
+
+    /// Three servers exposing the same tool name each get a distinct namespaced
+    /// name, byte-stable across discovery order.
+    #[test]
+    fn three_servers_sharing_a_tool_name_all_get_distinct_names() {
+        let make = |order: &[&str]| {
+            order
+                .iter()
+                .map(|s| (s.to_string(), vec![rendered("run")]))
+                .collect::<Vec<_>>()
+        };
+        let (a, a_map, a_calls) = assemble_tool_array(make(&["alpha", "beta", "gamma"]));
+        let (b, ..) = assemble_tool_array(make(&["gamma", "alpha", "beta"]));
+
+        assert_eq!(
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap()
+        );
+        assert_eq!(
+            advertised_names(&a),
+            ["alpha_run", "beta_run", "gamma_run"]
+        );
+        assert_eq!(a_map.get("beta_run").unwrap(), "beta");
+        assert_eq!(a_calls.get("gamma_run").unwrap(), "run");
+        // Every advertised name is unique.
+        let names = advertised_names(&a);
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(unique.len(), names.len());
+    }
+
+    /// A non-colliding tool keeps its raw name even when it would sanitize; only
+    /// colliding tools are renamed, and renamed names are provider-valid.
+    #[test]
+    fn sanitized_name_collisions_are_disambiguated() {
+        // `a:b` and `a.b` both fold to `a_b`: a sanitized-name collision even
+        // though the raw names differ. `solo` is untouched.
+        let (tools, map, calls) = assemble_tool_array(vec![
+            ("x".to_string(), vec![rendered("a:b"), rendered("solo")]),
+            ("y".to_string(), vec![rendered("a.b")]),
+        ]);
+        let names = advertised_names(&tools);
+        assert!(names.contains(&"solo".to_string()));
+        // Neither raw colliding name is advertised as-is; both are namespaced
+        // and provider-valid (only [A-Za-z0-9_-]).
+        assert!(!names.contains(&"a:b".to_string()));
+        assert!(!names.contains(&"a.b".to_string()));
+        for n in &names {
+            assert!(
+                n.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+                "advertised name {n} is not provider-valid"
+            );
+        }
+        // The namespaced names route to the right server and call the raw name.
+        assert_eq!(map.get("x_a_b").unwrap(), "x");
+        assert_eq!(map.get("y_a_b").unwrap(), "y");
+        assert_eq!(calls.get("x_a_b").unwrap(), "a:b");
+        assert_eq!(calls.get("y_a_b").unwrap(), "a.b");
+    }
+
+    /// Dispatch of a renamed tool must reach the right server under the raw name.
+    /// `assemble_tool_array` is the single source of both the routing map and the
+    /// call-name map, so this asserts they agree for every advertised entry.
+    #[test]
+    fn renamed_tools_dispatch_to_the_exact_server_and_raw_name() {
+        let (tools, map, calls) = assemble_tool_array(vec![
+            ("fs".to_string(), vec![rendered("search"), rendered("read")]),
+            ("zed".to_string(), vec![rendered("search")]),
+        ]);
+
+        // `read` is unique: untouched, no call-name entry.
+        assert!(advertised_names(&tools).contains(&"read".to_string()));
+        assert_eq!(map.get("read").unwrap(), "fs");
+        assert!(!calls.contains_key("read"));
+
+        // Every advertised name resolves to a server, and every renamed name
+        // resolves to a raw name the server knows.
+        for name in advertised_names(&tools) {
+            assert!(map.contains_key(&name), "{name} has no server");
+        }
+        assert_eq!(calls.get("fs_search").unwrap(), "search");
+        assert_eq!(calls.get("zed_search").unwrap(), "search");
+        assert_eq!(map.get("fs_search").unwrap(), "fs");
+        assert_eq!(map.get("zed_search").unwrap(), "zed");
     }
 
     #[test]
     fn tool_to_server_stays_consistent_with_the_reordered_array() {
-        let (tools, tool_to_server) = assemble_tool_array(vec![
+        let (tools, tool_to_server, _) = assemble_tool_array(vec![
             ("git".to_string(), vec![rendered("commit")]),
             ("fs".to_string(), vec![rendered("read")]),
         ]);
@@ -1901,10 +2102,10 @@ mod tests {
     fn a_failed_listing_reuses_the_last_known_tools() {
         let mut cache = HashMap::new();
         let good = vec![("fs".to_string(), Some(vec![rendered("read")]))];
-        let (before, _) = assemble_tool_array(reuse_last_good_listings(&mut cache, good));
+        let (before, _, _) = assemble_tool_array(reuse_last_good_listings(&mut cache, good));
 
         let timed_out = vec![("fs".to_string(), None)];
-        let (after, mapping) = assemble_tool_array(reuse_last_good_listings(&mut cache, timed_out));
+        let (after, mapping, _) = assemble_tool_array(reuse_last_good_listings(&mut cache, timed_out));
 
         assert_eq!(
             serde_json::to_string(&before).unwrap(),
@@ -1917,7 +2118,7 @@ mod tests {
     fn a_server_that_never_listed_successfully_is_omitted() {
         let mut cache = HashMap::new();
         let resolved = reuse_last_good_listings(&mut cache, vec![("fs".to_string(), None)]);
-        let (tools, mapping) = assemble_tool_array(resolved);
+        let (tools, mapping, _) = assemble_tool_array(resolved);
 
         assert!(tools.is_empty());
         assert!(mapping.is_empty());
@@ -1937,7 +2138,7 @@ mod tests {
         );
 
         let resolved = reuse_last_good_listings(&mut cache, vec![("fs".to_string(), None)]);
-        let (tools, _) = assemble_tool_array(resolved);
+        let (tools, _, _) = assemble_tool_array(resolved);
 
         assert_eq!(advertised_names(&tools), ["read"]);
         assert!(!cache.contains_key("git"));
@@ -1963,12 +2164,12 @@ mod tests {
             &mut cache,
             vec![("fs".to_string(), Some(vec![rendered("read")]))],
         );
-        let (tools, mapping) = assemble_tool_array(relisted);
+        let (tools, mapping, _) = assemble_tool_array(relisted);
         assert_eq!(advertised_names(&tools), ["read"]);
         assert!(!mapping.contains_key("write"));
 
         // A later hiccup reuses that listing, not the pre-removal one.
-        let (after_hiccup, _) = assemble_tool_array(reuse_last_good_listings(
+        let (after_hiccup, _, _) = assemble_tool_array(reuse_last_good_listings(
             &mut cache,
             vec![("fs".to_string(), None)],
         ));

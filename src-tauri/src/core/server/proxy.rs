@@ -1333,7 +1333,7 @@ async fn proxy_request(
             };
 
             // Tool execution support (MCP only for now).
-            let (openai_tools, tool_to_server) =
+            let (openai_tools, tool_to_server, tool_call_names) =
                 match collect_mcp_openai_tools(&mcp_servers, &mcp_settings).await {
                     Ok(v) => v,
                     Err(e) => {
@@ -1468,6 +1468,7 @@ async fn proxy_request(
                 let tool_results = execute_mcp_tool_calls(
                     &tool_calls,
                     &tool_to_server,
+                    &tool_call_names,
                     &mcp_servers,
                     &mcp_settings,
                 )
