@@ -32,8 +32,8 @@ pub(crate) use crate::core::agent::r#loop::run_server_side_openai_orchestration;
 pub(crate) use crate::core::agent::upstream::{
     call_openai_chat_completions, collect_mcp_openai_tools, copy_optional_chat_params,
     execute_mcp_tool_calls, extract_choice_message, extract_tool_calls, load_assistant_config,
-    parse_openai_messages, repair_dangling_tool_calls, resolve_upstream_for_model,
-    set_system_prompt,
+    parse_openai_messages, repair_dangling_tool_calls, replace_system_prompt,
+    resolve_upstream_for_model,
 };
 use crate::core::openai_schema::{
     http_status_indicates_api_key_retry, normalize_openai_tools_in_chat_body,
@@ -1287,7 +1287,7 @@ async fn proxy_request(
                 };
 
             if let Some(sys) = assistant_instructions {
-                set_system_prompt(&mut conversation_messages, &sys);
+                replace_system_prompt(&mut conversation_messages, &sys);
             }
 
             // Resolve model to use for orchestration.
@@ -1333,7 +1333,7 @@ async fn proxy_request(
             };
 
             // Tool execution support (MCP only for now).
-            let (openai_tools, tool_to_server) =
+            let (openai_tools, tool_to_server, tool_call_names) =
                 match collect_mcp_openai_tools(&mcp_servers, &mcp_settings).await {
                     Ok(v) => v,
                     Err(e) => {
@@ -1468,6 +1468,7 @@ async fn proxy_request(
                 let tool_results = execute_mcp_tool_calls(
                     &tool_calls,
                     &tool_to_server,
+                    &tool_call_names,
                     &mcp_servers,
                     &mcp_settings,
                 )

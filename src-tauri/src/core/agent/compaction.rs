@@ -41,6 +41,21 @@ fn role(msg: &Value) -> &str {
     msg.get("role").and_then(|r| r.as_str()).unwrap_or("")
 }
 
+/// The marker prefix a compaction summary carries in its `content`.
+pub(crate) const SUMMARY_MARKER: &str = "[Summary of earlier conversation";
+
+/// True when a message is a compaction summary: a `system` node whose content
+/// begins with [`SUMMARY_MARKER`]. It is history condensed under the `system`
+/// role, so it must survive prompt rebuilding and be distinguished from a stable
+/// system prompt.
+pub(crate) fn is_compaction_summary(message: &Value) -> bool {
+    role(message) == "system"
+        && message
+            .get("content")
+            .and_then(|c| c.as_str())
+            .is_some_and(|text| text.starts_with(SUMMARY_MARKER))
+}
+
 /// Where the kept tail may begin, given the ideal boundary `target`. The tail
 /// must not open on an orphaned tool result whose `tool_calls` message sits in
 /// the dropped prefix, so the boundary moves to the nearest message that is not

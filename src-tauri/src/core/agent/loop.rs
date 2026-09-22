@@ -26,7 +26,7 @@ use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
-    load_assistant_config, parse_openai_messages, repair_dangling_tool_calls,
+    load_assistant_config, parse_openai_messages,
     resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
     stream_openai_chat_completions,
 };
@@ -784,6 +784,10 @@ impl HttpModelInvoker {
 
 struct McpToolInvoker {
     tool_to_server: HashMap<String, String>,
+    /// Advertised name -> original MCP tool name, for tools renamed to resolve a
+    /// duplicate-name collision. Empty for the common case; consulted at
+    /// dispatch so a renamed tool still calls the server under its real name.
+    tool_call_names: HashMap<String, String>,
     mcp_servers: SharedMcpServers,
     mcp_settings: Arc<Mutex<McpSettings>>,
 }
@@ -795,6 +799,7 @@ impl ToolInvoker for McpToolInvoker {
         let results = execute_mcp_tool_calls(
             tool_calls,
             &self.tool_to_server,
+            &self.tool_call_names,
             &self.mcp_servers,
             &self.mcp_settings,
         )
@@ -3932,7 +3937,7 @@ pub(crate) async fn context_advertised_tools(
     ask_enabled: bool,
     todo_enabled: bool,
 ) -> Vec<serde_json::Value> {
-    let (mut tools, mut tool_to_server) =
+    let (mut tools, mut tool_to_server, _tool_call_names) =
         crate::core::agent::upstream::collect_mcp_openai_tools(mcp_servers, mcp_settings)
             .await
             .unwrap_or_default();
@@ -4073,27 +4078,22 @@ async fn orchestrate_inner(
     let messages_value = json_body
         .get("messages")
         .ok_or("Missing required field 'messages'")?;
-    let mut conversation_messages = parse_openai_messages(messages_value)?;
-    // Drop tool calls a truncated stream left with unparsable arguments before
-    // anything else looks at the history. Such a call is persisted by the run
-    // that produced it and resent on every later turn, and an OpenAI-compatible
-    // upstream 422s the whole request over it -- so without this the session is
-    // wedged on its own history and cannot heal. Runs first so the dangling
-    // repair below sees the post-removal shape.
-    let poisoned = drop_malformed_tool_calls(&mut conversation_messages);
-    if poisoned > 0 {
-        log::warn!("agent: dropped {poisoned} tool call(s) with unparsable arguments from history");
-    }
-    // Self-heal a conversation an earlier interrupted run may have left with a
-    // tool_calls turn missing one of its results (e.g. the process was killed
-    // while an `ask`/permission prompt was still pending). Providers like
-    // Anthropic reject the entire request on a dangling tool_use, so repair
-    // it here -- the one place every incoming message array passes through --
-    // before it ever reaches a provider.
-    let repaired = repair_dangling_tool_calls(&mut conversation_messages);
-    if repaired > 0 {
-        log::warn!("agent: repaired {repaired} dangling tool call(s) with no prior result");
-    }
+    // Adopt the incoming history into the canonical accepted record -- the one
+    // place it heals before it can reach a provider: a tool call a truncated
+    // stream left with unparsable arguments is dropped with its result, a tool
+    // result whose call is absent from the history is removed, and a surviving
+    // call missing its result gets the synthetic error reply. Any of these
+    // shapes 422s an OpenAI-compatible upstream and wedges the session on its
+    // own history. Projecting the record back gives the healed wire history: a
+    // stable system prompt read back lands at the head, a compaction summary is
+    // kept in place. The per-turn system prompt is still applied below via
+    // `set_system_prompt`, and the loop appends turns to this projection as
+    // before.
+    let mut conversation_messages =
+        crate::core::agent::accepted_history::AcceptedHistory::from_history(
+            parse_openai_messages(messages_value)?,
+        )
+        .project_persisted();
 
     let assistant_id = json_body
         .get("assistant_id")
@@ -4124,7 +4124,48 @@ async fn orchestrate_inner(
         project_root.as_deref(),
         None,
     )?;
-    let annotated_body = attach_compaction(json_body, &compaction);
+    let mut annotated_body = attach_compaction(json_body, &compaction);
+    // jan#8976: resolve the proactive compaction thresholds from the model
+    // window and reserved output (profile-aware `[agent]` config, or the
+    // documented 128K/16K defaults when unconfigured) and carry them on the
+    // body, so the turn cycle can compact *before* a dispatch that would cross
+    // the threshold instead of only reacting to a provider overflow. The core
+    // `compaction_policy` module owns the math; a window that cannot produce a
+    // safe threshold refuses the run rather than compacting at a useless point.
+    {
+        use crate::core::agent::compaction_policy as cpol;
+        // Reserved output is the one feature-independent source: the resolved
+        // compaction Policy above (its `reserve_tokens` already folds in the
+        // legacy `[agent].compaction_reserve_tokens`). The context window is a
+        // CLI-only `[agent]` key; elsewhere the documented 128K default applies.
+        let reserve = Some(compaction.reserve_tokens);
+        #[cfg(feature = "cli")]
+        let ctx_window = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(
+                    root,
+                    profile.as_deref(),
+                )
+                .ok()
+            })
+            .and_then(|cfg| cfg.agent.context_window);
+        #[cfg(not(feature = "cli"))]
+        let ctx_window: Option<u64> = None;
+        let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
+        let resolved = cpol::thresholds(&window_cfg)
+            .map_err(|e| format!("[agent] compaction config: {e}"))?;
+        if let (Some(t), Some(obj)) = (resolved, annotated_body.as_object_mut()) {
+            obj.insert(
+                BODY_COMPACT_AT.to_string(),
+                serde_json::json!(t.compact_at),
+            );
+            obj.insert(
+                BODY_EFFECTIVE_WINDOW.to_string(),
+                serde_json::json!(t.effective_window),
+            );
+        }
+    }
     let json_body = &annotated_body;
 
     let system_prompt = build_run_system_prompt(
@@ -4254,7 +4295,7 @@ async fn orchestrate_inner(
         }
     };
 
-    let (mut openai_tools, mut tool_to_server) =
+    let (mut openai_tools, mut tool_to_server, tool_call_names) =
         collect_mcp_openai_tools(mcp_servers, mcp_settings).await?;
 
     // Optional per-run allowlist: when `allowed_tools` is present, expose only
@@ -4384,6 +4425,7 @@ async fn orchestrate_inner(
     };
     let mcp_tools = McpToolInvoker {
         tool_to_server,
+        tool_call_names,
         mcp_servers: mcp_servers.clone(),
         mcp_settings: mcp_settings.clone(),
     };
@@ -4617,7 +4659,9 @@ const MAX_COMPACTION_ATTEMPTS: usize = 4;
 /// `stripAssistantReasoningInBody`; kept in one place so every surface (TUI,
 /// headless, subagents) strips consistently. Only assistant messages carry the
 /// field, but the filter is defensive and targets just that role.
-fn strip_assistant_reasoning(messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
+pub(crate) fn strip_assistant_reasoning(
+    messages: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
     messages
         .iter()
         .map(|m| {
@@ -4970,6 +5014,24 @@ async fn receive_steering(
     received
 }
 
+/// Body keys carrying the proactive compaction thresholds resolved upstream
+/// (jan#8976). Private to the loop; absent means proactive compaction is off
+/// for this run (disabled by config, or a caller that never set them).
+pub(crate) const BODY_COMPACT_AT: &str = "jan_compaction_compact_at";
+pub(crate) const BODY_EFFECTIVE_WINDOW: &str = "jan_compaction_effective_window";
+
+/// Read the proactive compaction thresholds off the request body, if present.
+fn read_compaction_thresholds(
+    json_body: &serde_json::Value,
+) -> Option<crate::core::agent::compaction_policy::Thresholds> {
+    let compact_at = json_body.get(BODY_COMPACT_AT)?.as_u64()?;
+    let effective_window = json_body.get(BODY_EFFECTIVE_WINDOW)?.as_u64()?;
+    Some(crate::core::agent::compaction_policy::Thresholds {
+        effective_window,
+        compact_at,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_turn_cycle(
     events: &mpsc::UnboundedSender<StreamEvent>,
@@ -5020,6 +5082,17 @@ async fn run_turn_cycle(
     // an answer nor a tool call, so an empty turn is not reported as finished.
     let mut empty_retried = false;
 
+    // jan#8976: proactive compaction before dispatch. The thresholds are
+    // resolved upstream from the model window and carried on the body; absent
+    // means proactive compaction is off (disabled by config, or a caller such
+    // as a unit test that never set them), leaving only the reactive
+    // context-overflow path below. `RefillGuard` is the circuit breaker that
+    // stops the run compacting over and over without freeing meaningful room.
+    let compaction_thresholds = read_compaction_thresholds(json_body);
+    let mut refill_guard = crate::core::agent::compaction_policy::RefillGuard::new(
+        crate::core::agent::compaction_policy::RefillLimits::default(),
+    );
+
     // Independent completion verification (opt-in): when required, the run does
     // not finish on the worker's own say-so — a separate verifier grades the
     // work, and a non-PASS verdict with retries left sends the worker back with
@@ -5059,6 +5132,99 @@ async fn run_turn_cycle(
         let poisoned = drop_malformed_tool_calls(&mut conversation_messages);
         if poisoned > 0 {
             log::warn!("agent: dropped {poisoned} malformed tool call(s) from the live context");
+        }
+
+        // jan#8976: proactive compaction. Before the dispatch, if the projected
+        // request crosses the configured threshold, compact now rather than
+        // waiting for the provider to overflow. Microcompaction runs first --
+        // it condenses stale bulky tool results in place, preserving every
+        // tool-call/result pair and the recent working set -- and a full
+        // summarizing compaction follows only if the request is still over.
+        // The `RefillGuard` opens after repeated ineffective passes so a
+        // conversation that refills instantly can never loop here; the reactive
+        // overflow path below remains the safety net either way.
+        if let Some(thresholds) = compaction_thresholds {
+            use crate::core::agent::compaction_policy as cpol;
+            refill_guard.on_turn();
+            if cpol::should_compact(&conversation_messages, &thresholds) {
+                match refill_guard.decide() {
+                    cpol::CompactionDecision::Proceed => {
+                        let before = cpol::estimate_tokens(&conversation_messages);
+                        // 1. Microcompaction: cheap, in place, pairing-safe.
+                        let (mut projected, micro_stats) = cpol::microcompact(
+                            &conversation_messages,
+                            &cpol::MicrocompactConfig::default(),
+                        );
+                        // 2. Full compaction only if still over the threshold.
+                        let mut full_shrunk = false;
+                        if cpol::should_compact(&projected, &thresholds) {
+                            let opts =
+                                crate::core::agent::compaction::CompactOptions::from_body(json_body);
+                            match crate::core::agent::compaction::compact_conversation_with(
+                                &projected, model_id, model, &opts,
+                            )
+                            .await
+                            {
+                                Ok(full) if full.len() < projected.len() => {
+                                    projected = full;
+                                    full_shrunk = true;
+                                }
+                                // A full pass that could not shrink, or errored,
+                                // is not fatal here: the reactive path is still
+                                // the safety net. Record the miss for the guard.
+                                Ok(_) => {}
+                                Err(error) => {
+                                    if let Some(record) = record {
+                                        record.note(
+                                            "compaction.preflight_failed",
+                                            serde_json::json!({
+                                                "reason": "threshold",
+                                                "detail": bound_detail(error.message()),
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        let after = cpol::estimate_tokens(&projected);
+                        if projected.len() < conversation_messages.len() || after < before {
+                            let freed = before.saturating_sub(after);
+                            refill_guard.record_success(freed);
+                            if let Some(record) = record {
+                                record.note(
+                                    "compaction.preflight",
+                                    serde_json::json!({
+                                        "reason": "threshold",
+                                        "compactAt": thresholds.compact_at,
+                                        "from": conversation_messages.len(),
+                                        "to": projected.len(),
+                                        "tokensBefore": before,
+                                        "tokensAfter": after,
+                                        "condensed": micro_stats.condensed,
+                                        "full": full_shrunk,
+                                    }),
+                                );
+                            }
+                            conversation_messages = projected;
+                            let _ = events.send(StreamEvent::MessagesUpdated {
+                                messages: conversation_messages.clone(),
+                            });
+                        } else {
+                            // Nothing freed: a repeat with no progress trips the
+                            // breaker after the configured number of attempts.
+                            refill_guard.record_failure();
+                        }
+                    }
+                    cpol::CompactionDecision::Blocked(reason) => {
+                        if let Some(record) = record {
+                            record.note(
+                                "compaction.skipped",
+                                serde_json::json!({ "reason": reason }),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // On a context-overflow error, compact the conversation and retry.
@@ -5848,6 +6014,99 @@ mod tests {
                 }],
             }],
         }))
+    }
+
+    /// jan#8976: the proactive compaction policy is exercised through the real
+    /// request path. When the projected request crosses the configured
+    /// threshold carried on the body, the turn cycle compacts *before* the
+    /// dispatch -- microcompaction, then a full summarizing pass -- rather than
+    /// waiting for a provider overflow. Proven by the summarizer being invoked
+    /// and the dispatched turn carrying a shorter, compacted conversation.
+    #[tokio::test]
+    async fn preflight_compaction_runs_when_the_threshold_is_crossed() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        // A long conversation whose estimate is well over the tiny threshold.
+        let mut conversation = Vec::new();
+        for i in 0..40 {
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            conversation.push(json!({
+                "role": role,
+                "content": format!("message number {i} carrying a few words of content"),
+            }));
+        }
+        let original_len = conversation.len();
+        let model = MockModel::new(vec![
+            // 1. the summarizer the full compaction spawns
+            json!({"choices": [{"message": {"content": "CONDENSED SUMMARY OF EARLIER TURNS"}}]}),
+            // 2. the turn dispatch, which answers and stops
+            json!({"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}]}),
+        ]);
+        let mut body = serde_json::Map::new();
+        body.insert(BODY_COMPACT_AT.to_string(), json!(50));
+        body.insert(BODY_EFFECTIVE_WINDOW.to_string(), json!(100));
+        body.insert(
+            crate::core::agent::compaction::BODY_KEEP_RECENT.to_string(),
+            json!(4),
+        );
+        let body = serde_json::Value::Object(body);
+
+        let mut budget = SessionBudget::new(None);
+        let result = run_turn_cycle(
+            &events,
+            &body,
+            "m",
+            &[],
+            conversation,
+            4,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
+        let sent = model.requests.lock().unwrap();
+        assert_eq!(sent.len(), 2, "summarizer + turn dispatch, got {}", sent.len());
+        // The first request is the summarizer: full compaction ran.
+        let summarizer_sys = sent[0]["messages"][0]["content"].as_str().unwrap_or("");
+        assert!(
+            summarizer_sys.contains("Summarize"),
+            "the full-compaction summarizer was invoked: {summarizer_sys}"
+        );
+        // The turn dispatch carries the compacted (shorter) conversation.
+        let dispatched = sent[1]["messages"].as_array().unwrap();
+        assert!(
+            dispatched.len() < original_len,
+            "the conversation was compacted before dispatch: {} vs {original_len}",
+            dispatched.len()
+        );
+    }
+
+    /// The circuit breaker blocks proactive compaction once it has failed to
+    /// free meaningful context repeatedly, so a conversation that refills
+    /// instantly cannot loop the turn cycle. `decide` is the guard the loop
+    /// consults on every threshold crossing.
+    #[test]
+    fn refill_guard_opens_after_repeated_ineffective_compaction() {
+        use crate::core::agent::compaction_policy::{CompactionDecision, RefillGuard, RefillLimits};
+        let mut guard = RefillGuard::new(RefillLimits {
+            max_consecutive_failures: 2,
+            ..RefillLimits::default()
+        });
+        assert_eq!(guard.decide(), CompactionDecision::Proceed);
+        guard.record_failure();
+        assert_eq!(guard.decide(), CompactionDecision::Proceed);
+        guard.record_failure();
+        assert!(
+            matches!(guard.decide(), CompactionDecision::Blocked(_)),
+            "the breaker opens after the configured failures"
+        );
     }
 
     #[tokio::test]
@@ -8144,6 +8403,7 @@ mod tests {
             sandbox: true,
             mcp: McpToolInvoker {
                 tool_to_server: HashMap::new(),
+                tool_call_names: HashMap::new(),
                 mcp_servers: Arc::new(Mutex::new(HashMap::new())),
                 mcp_settings: Arc::new(Mutex::new(McpSettings::default())),
             },

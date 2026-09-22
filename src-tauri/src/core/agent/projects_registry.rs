@@ -43,7 +43,9 @@ thread_local! {
     static TEST_REGISTRY_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(test)]
+// Only the desktop (`not(cli)`) registry tests set this; gate it so the `cli`
+// test build does not carry an unused helper.
+#[cfg(all(test, not(feature = "cli")))]
 pub(crate) fn set_test_registry_root(store: Option<PathBuf>) {
     TEST_REGISTRY_ROOT.with(|d| *d.borrow_mut() = store);
 }
@@ -179,7 +181,10 @@ pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
     entry
 }
 
-#[cfg(test)]
+// The registry mutators under test (`register_folder`, `list_projects`, ...)
+// are `#[cfg(not(feature = "cli"))]` desktop-only, so their tests compile only
+// where the code they exercise exists.
+#[cfg(all(test, not(feature = "cli")))]
 mod tests {
     use super::*;
 

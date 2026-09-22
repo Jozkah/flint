@@ -2935,7 +2935,7 @@ mod tests {
         ];
         let id = cli_save_thread(&base, None, "m", &conversation, None).expect("saved");
 
-        let resumed = load_resume_history(&base, &ResumeTarget::Id(id.clone()))
+        let resumed = load_resume_history(&base, &ResumeRequest::resume(ResumeTarget::Id(id.clone())))
             .expect("the thread resumes");
         let roles: Vec<&str> = resumed
             .history
@@ -3101,7 +3101,7 @@ mod tests {
             .await
             .expect_err("the pairing is required");
             assert!(
-                err.contains("requires --output-format stream-json"),
+                err.to_string().contains("requires --output-format stream-json"),
                 "{err}"
             );
         }

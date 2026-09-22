@@ -505,6 +505,16 @@ const TEMP_ENV_KEYS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
 /// funnels through. Descriptor exhaustion is capped by `NOFILE` and disk fill
 /// through the unbounded workspace bind by `FSIZE`.
 ///
+/// `NOFILE` (65536) and `FSIZE` (16 GiB) are deliberately generous (adapted from
+/// janhq/jan#8978): toolchains (linkers, node, cargo) routinely want tens of
+/// thousands of descriptors, and a debug `cargo test` binary or incremental
+/// artifact can pass a gigabyte on its own, so caps that low break ordinary work
+/// long before they stop abuse. `FSIZE` is a per-file cap enforced with
+/// `SIGXFSZ`, so exceeding it kills the writer. Each target soft limit is bounded
+/// by the host's hard limit (read with `getrlimit`), and the hard limit is left
+/// at the host's value so a command that genuinely needs more can raise its own
+/// soft limit back up.
+///
 /// `NPROC` is charged to the whole Unix user, not to this shell tree, so on a
 /// busy workstation unrelated processes can use up the allowance and make an
 /// ordinary tool command fail at `fork()`. Linux keeps a finite fork-bomb
@@ -520,21 +530,32 @@ fn confine_limits(cmd: &mut Command) {
     // `tokio::process::Command::pre_exec` (unix) is the std `pre_exec`; the call
     // below is what mounts the limits.
     // # Safety: `pre_exec` runs in the forked child before exec. Only async-signal-
-    // safe calls are allowed; `setrlimit` is one. Errors fall back to the parent's
-    // values and are ignored (best effort), so a kernel that refuses a limit
-    // cannot wedge a launch.
+    // safe calls are allowed; `getrlimit`/`setrlimit` are. Errors fall back to the
+    // parent's values and are ignored (best effort), so a kernel that refuses a
+    // limit cannot wedge a launch.
     unsafe {
         cmd.pre_exec(|| {
             for (resource, limit) in [
                 #[cfg(target_os = "linux")]
                 (nix::libc::RLIMIT_NPROC, 8192_u64),
-                (nix::libc::RLIMIT_NOFILE, 2048_u64),
-                (nix::libc::RLIMIT_FSIZE, 1024_u64 * 1024_u64 * 1024_u64),
+                (nix::libc::RLIMIT_NOFILE, 65536_u64),
+                (nix::libc::RLIMIT_FSIZE, 16_u64 * 1024 * 1024 * 1024),
             ] {
-                let r = nix::libc::rlimit {
-                    rlim_cur: limit,
-                    rlim_max: limit,
+                let mut r = nix::libc::rlimit {
+                    rlim_cur: 0,
+                    rlim_max: 0,
                 };
+                if nix::libc::getrlimit(resource, &mut r) != 0 {
+                    continue;
+                }
+                // Never exceed the host's hard limit; setrlimit would refuse.
+                // The hard limit itself is left untouched.
+                let ceiling = if r.rlim_max == nix::libc::RLIM_INFINITY {
+                    limit
+                } else {
+                    limit.min(r.rlim_max)
+                };
+                r.rlim_cur = ceiling;
                 // Best effort: a setrlimit failure is intentionally ignored so a
                 // kernel that refuses a limit cannot wedge the launch.
                 let _ = nix::libc::setrlimit(resource, &r);
@@ -1551,17 +1572,45 @@ mod tests {
         child.wait_with_output().await.unwrap();
         unregister(pid);
 
-        // Spawn a shell that reports its own soft NOFILE limit; confine_limits
-        // sets it to 2048, which should be visible inside the sandbox.
-        let child = spawn(shell(), "ulimit -n", &tmp(), None).await.unwrap();
-        let pid = child.id().unwrap();
-        let out = child.wait_with_output().await.unwrap();
-        unregister(pid);
-        let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        assert_eq!(
-            val, "2048",
-            "NOFILE soft limit should be capped, got: {val}"
-        );
+        // Spawn a shell that reports its own soft limits; confine_limits raises
+        // each to the target, bounded by whatever hard limit the host allows.
+        // `ulimit -f` reports FSIZE in 1024-byte blocks, `-n` a raw count.
+        for (name, flag, resource, target, unit) in [
+            ("NOFILE", "-n", nix::libc::RLIMIT_NOFILE, 65536_u64, 1_u64),
+            (
+                "FSIZE",
+                "-f",
+                nix::libc::RLIMIT_FSIZE,
+                16 * 1024 * 1024 * 1024,
+                1024,
+            ),
+        ] {
+            let cmd = format!("ulimit {flag}");
+            let child = spawn(shell(), &cmd, &tmp(), None).await.unwrap();
+            let pid = child.id().unwrap();
+            let out = child.wait_with_output().await.unwrap();
+            unregister(pid);
+            let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+            let mut host = nix::libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            // # Safety: reads the calling process's own limit into a local.
+            unsafe {
+                nix::libc::getrlimit(resource, &mut host);
+            }
+            let want = if host.rlim_max == nix::libc::RLIM_INFINITY {
+                target
+            } else {
+                target.min(host.rlim_max)
+            };
+            assert_eq!(
+                val,
+                (want / unit).to_string(),
+                "{name} soft limit should be raised to the target, got: {val}"
+            );
+        }
     }
 }
 

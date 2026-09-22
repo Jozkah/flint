@@ -248,7 +248,7 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
             Ok(json!({ "choices": [{ "message": { "content": self.reply.clone() } }] }))
         }
     }
@@ -260,8 +260,8 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<Value, String> {
-            Err("verifier crashed".to_string())
+        ) -> Result<Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
+            Err("verifier crashed".into())
         }
     }
 

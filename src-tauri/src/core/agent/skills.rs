@@ -907,7 +907,7 @@ mod tests {
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
         assert_eq!(
             model,
-            vec!["both", "model_only", "jan"],
+            vec!["both", "model_only", "flint"],
             "model side: {model:?}"
         );
         let user: Vec<_> = user_catalog(&root, &[])
@@ -916,7 +916,7 @@ mod tests {
             .collect();
         assert_eq!(
             user,
-            vec!["both", "user_only", "jan"],
+            vec!["both", "user_only", "flint"],
             "user side: {user:?}"
         );
 

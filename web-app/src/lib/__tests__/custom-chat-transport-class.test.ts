@@ -173,6 +173,122 @@ describe('CustomChatTransport', () => {
     expect(result[0].parts[0].text).toBe('Check')
   })
 
+  // Regression for jan#9022: mapUserInlineAttachments must never mutate its
+  // input UIMessage objects or their parts, so mapping the same array twice
+  // (which happens when a request is retried) yields identical output without
+  // the attachment content being appended a second time.
+  it('mapUserInlineAttachments does not mutate the input message or parts', () => {
+    const originalPart = { type: 'text', text: 'Check this' }
+    const message = {
+      role: 'user',
+      parts: [originalPart],
+      metadata: {
+        inline_file_contents: [{ name: 'file.txt', content: 'hello world' }],
+      },
+    }
+    const messages = [message] as any
+
+    const result = transport.mapUserInlineAttachments(messages)
+
+    // Original object, its parts array, and each part are untouched.
+    expect(result[0]).not.toBe(message)
+    expect(message.parts).toHaveLength(1)
+    expect(message.parts[0]).toBe(originalPart)
+    expect(originalPart.text).toBe('Check this')
+    // The expansion landed on the copy only.
+    expect(result[0].parts[0].text).toContain('hello world')
+  })
+
+  it('mapUserInlineAttachments is idempotent across repeated calls', () => {
+    const messages = [
+      {
+        role: 'user',
+        parts: [{ type: 'text', text: 'Check this' }],
+        metadata: {
+          inline_file_contents: [{ name: 'file.txt', content: 'hello world' }],
+        },
+      },
+    ] as any
+
+    const first = transport.mapUserInlineAttachments(messages)
+    const second = transport.mapUserInlineAttachments(messages)
+
+    // Same output both times, and the attachment text appears exactly once.
+    expect(second[0].parts[0].text).toBe(first[0].parts[0].text)
+    const occurrences = (second[0].parts[0].text.match(/hello world/g) || [])
+      .length
+    expect(occurrences).toBe(1)
+  })
+
+  it('mapUserInlineAttachments appends every attachment and preserves non-text parts', () => {
+    const filePart = { type: 'file', url: 'blob:x', mediaType: 'image/png' }
+    const messages = [
+      {
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'one' },
+          filePart,
+          { type: 'text', text: 'two' },
+        ],
+        metadata: {
+          inline_file_contents: [
+            { name: 'a.txt', content: 'alpha' },
+            { name: 'b.txt', content: 'beta' },
+          ],
+        },
+      },
+    ] as any
+
+    const result = transport.mapUserInlineAttachments(messages)
+    const parts = result[0].parts
+
+    // Both text parts carry both attachments.
+    for (const idx of [0, 2]) {
+      expect(parts[idx].text).toContain('alpha')
+      expect(parts[idx].text).toContain('beta')
+    }
+    // The non-text part is carried over untouched, same reference.
+    expect(parts[1]).toBe(filePart)
+    // Original message untouched.
+    expect(messages[0].parts[0].text).toBe('one')
+    expect(messages[0].parts[2].text).toBe('two')
+  })
+
+  it('mapUserInlineAttachments returns messages without attachments unchanged', () => {
+    const message = {
+      role: 'user',
+      parts: [{ type: 'text', text: 'no files here' }],
+      metadata: { some: 'meta' },
+    }
+    const messages = [message] as any
+
+    const result = transport.mapUserInlineAttachments(messages)
+
+    // Nothing to expand: same reference, metadata preserved.
+    expect(result[0]).toBe(message)
+    expect(result[0].metadata).toEqual({ some: 'meta' })
+    expect(result[0].parts[0].text).toBe('no files here')
+  })
+
+  it('mapUserInlineAttachments leaves the persisted transcript unchanged', () => {
+    // The array handed in stands in for the stored transcript; projecting it
+    // for a request must not write the expansion back into it.
+    const transcript = [
+      {
+        role: 'user',
+        parts: [{ type: 'text', text: 'persisted' }],
+        metadata: {
+          inline_file_contents: [{ name: 'file.txt', content: 'secret' }],
+        },
+      },
+    ] as any
+    const snapshot = JSON.stringify(transcript)
+
+    transport.mapUserInlineAttachments(transcript)
+
+    expect(JSON.stringify(transcript)).toBe(snapshot)
+  })
+
   describe('inference params follow the thread assistant', () => {
     type Resolvable = {
       getActiveInferenceParams: () => Record<string, unknown>
