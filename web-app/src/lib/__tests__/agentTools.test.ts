@@ -579,3 +579,48 @@ describe('what reaches the backend command', () => {
     expect(callArgs().writeGrant).toBeUndefined()
   })
 })
+
+describe('agentTools host-answered tools', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    executeTool.mockReset()
+    invoke.mockReset()
+    getJanDataFolder.mockReset().mockResolvedValue('/data')
+  })
+
+  it('offers request_access and list_plugins', async () => {
+    const { AGENT_TOOL_NAMES } = await import('../agentTools')
+    expect(AGENT_TOOL_NAMES.has('request_access')).toBe(true)
+    expect(AGENT_TOOL_NAMES.has('list_plugins')).toBe(true)
+  })
+
+  it('answers list_plugins from Flint plugin state, not the tool core', async () => {
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === 'agent_plugin_list' ? [] : undefined)
+    )
+    const { executeAgentTool } = await import('../agentTools')
+    const out = await executeAgentTool('list_plugins', {}, 't1')
+    expect(executeTool).not.toHaveBeenCalled()
+    expect(JSON.parse(out.content as string).count).toBe(0)
+    expect(invoke.mock.calls.map(([c]) => c)).toContain('agent_plugin_list')
+  })
+
+  it('routes request_access to the prompt, never straight to the tool core', async () => {
+    invoke.mockResolvedValue({
+      status: 'refused',
+      code: 'drive_root',
+      message: 'root',
+      modelResult: '{"status":"refused","code":"drive_root"}',
+    })
+    const { executeAgentTool } = await import('../agentTools')
+    const out = await executeAgentTool(
+      'request_access',
+      { path: 'C:/', reason: 'look' },
+      't1'
+    )
+    expect(executeTool).not.toHaveBeenCalled()
+    expect(out.error).toBeUndefined()
+    expect(JSON.parse(out.content as string).code).toBe('drive_root')
+    expect(invoke.mock.calls[0][0]).toBe('plugin:agent-tools|access_prepare')
+  })
+})

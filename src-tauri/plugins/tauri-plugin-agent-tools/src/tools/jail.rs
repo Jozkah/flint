@@ -767,6 +767,52 @@ pub fn denial_hint(policy: &Policy) -> String {
     )
 }
 
+/// What a model is told when granting access would fix the failure.
+pub const REQUEST_ACCESS_ADVICE: &str = " Call request_access with the narrowest required path \
+     and explain why access is needed. Do not retry the same command before it is granted.";
+
+/// The note appended to a failed sandboxed command, chosen by why it failed.
+///
+/// Only a file-access denial gets the sandbox limits and the `request_access`
+/// advice. A PowerShell `2>nul`, a missing program, a path that does not exist
+/// or a device file is not something a grant can fix, and saying the sandbox
+/// did it sends the model after the wrong problem. A network refusal gets the
+/// limits (network is off) but no access advice: a folder grant opens no
+/// socket.
+pub fn failure_hint(policy: &Policy, class: &super::shell_diag::FailureClass) -> Option<String> {
+    use super::shell_diag::{powershell_equivalent, FailureClass};
+    match class {
+        FailureClass::FileAccessDenied => {
+            let mut hint = denial_hint(policy);
+            // Inside the closing bracket, so it reads as part of the note.
+            hint.pop();
+            hint.push_str(REQUEST_ACCESS_ADVICE);
+            hint.push(']');
+            Some(hint)
+        }
+        FailureClass::Network if !policy.allow_network => Some(denial_hint(policy)),
+        FailureClass::CmdNulRedirect(construct) => {
+            let fix = construct
+                .split(", ")
+                .map(|c| format!("`{c}` -> `{}`", powershell_equivalent(c)))
+                .collect::<Vec<_>>()
+                .join("; ");
+            Some(format!(
+                "\n[shell_syntax: this failed because `nul` is cmd.exe syntax and this shell \
+                 is PowerShell, where `nul` is a file name. It is not a sandbox restriction. \
+                 Use {fix}.]"
+            ))
+        }
+        FailureClass::DeviceFile => Some(
+            "\n[device_path: the failure is on a device path (such as the null device), \
+             not on a file the sandbox is hiding. Discard output with the shell's own null \
+             syntax instead.]"
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
 /// The program that performs the confined spawn.
 ///
 /// Normally this binary, re-exec'd with a helper argv -- the app and the CLI
@@ -1623,6 +1669,32 @@ mod tests {
             hint.contains(&format!("scratch dir ({})", expected.display())),
             "got: {hint}"
         );
+    }
+
+    #[test]
+    fn failure_hint_advises_request_access_only_for_file_denials() {
+        use crate::tools::shell_diag::FailureClass;
+        let p = policy();
+        let hint = failure_hint(&p, &FailureClass::FileAccessDenied).unwrap();
+        assert!(hint.contains("Call request_access with the narrowest required path"));
+        assert!(hint.ends_with(']'));
+        for class in [
+            FailureClass::CmdNulRedirect("2>nul".into()),
+            FailureClass::DeviceFile,
+            FailureClass::MissingCommand,
+            FailureClass::NotFound,
+            FailureClass::Network,
+            FailureClass::Other,
+        ] {
+            let h = failure_hint(&p, &class).unwrap_or_default();
+            assert!(!h.contains("request_access"), "{class:?}: {h}");
+        }
+        let nul = failure_hint(&p, &FailureClass::CmdNulRedirect("2>nul".into())).unwrap();
+        assert!(nul.contains("`2>$null`"));
+        assert!(nul.contains("not a sandbox restriction"));
+        assert!(!nul.contains("writes are limited"));
+        assert!(failure_hint(&p, &FailureClass::MissingCommand).is_none());
+        assert!(failure_hint(&Policy::new(Path::new("/w"), true), &FailureClass::Network).is_none());
     }
 
     #[test]

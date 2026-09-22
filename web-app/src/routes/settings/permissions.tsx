@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { OctagonAlert } from 'lucide-react'
 import { route } from '@/constants/routes'
 import { Card } from '@/containers/Card'
+import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -415,6 +416,9 @@ function PermissionsSettings() {
             </ul>
           )}
         </Card>
+
+        {/* Folders granted through request_access */}
+        <FolderAccessCard />
 
         {/* 3. Trusted MCP servers, with the state of each approval */}
         <Card

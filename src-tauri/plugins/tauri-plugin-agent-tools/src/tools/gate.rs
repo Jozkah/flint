@@ -393,6 +393,12 @@ pub fn resolve_decision(
     if crate::tools::is_mailbox_tool(tool.name) {
         return Decision::Allow;
     }
+    // `request_access` grants nothing by being called: the user is asked, and
+    // the path is vetted by `access::prepare`. `list_plugins` reads Flint's own
+    // plugin state. Neither touches a project file.
+    if crate::tools::is_host_tool(tool.name) {
+        return Decision::Allow;
+    }
     match tool.capability {
         Capability::Read => {
             // Read roots widen only this branch. The Write branch below keeps

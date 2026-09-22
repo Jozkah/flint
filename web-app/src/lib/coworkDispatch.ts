@@ -561,6 +561,11 @@ async function routeCoworkTool(
         // And who is making it, so every change it journals names its agent
         // (AH-110) -- the primary agent, a named subagent, or a role.
         actor: actorFor(ctx.activity),
+        // A `request_access` prompt is withdrawn when the run stops, and says
+        // which task is asking.
+        ...(toolName === 'request_access'
+          ? { signal, taskLabel: 'Cowork session' }
+          : {}),
       })
     } finally {
       shellDone?.()

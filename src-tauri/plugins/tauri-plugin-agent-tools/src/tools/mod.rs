@@ -18,6 +18,7 @@ pub mod proc;
 /// kernel-level confinement for spawned commands.
 pub mod sandbox;
 pub mod schema;
+pub mod shell_diag;
 pub mod web;
 /// Windows sandbox environment construction. Compiled on every host so its
 /// rules stay unit-testable off Windows; only the AppContainer backend calls it.
@@ -594,7 +595,29 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Write,
         path_args: &[],
     },
+    // Asks the user for a folder. `path` is deliberately not a path argument:
+    // the gate must not refuse the request for naming a path outside the
+    // workspace, which is the whole point of it. The path is vetted by
+    // `access::prepare` instead, and nothing is reachable until the user says
+    // yes.
+    BuiltinTool {
+        name: "request_access",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Reads Flint's plugin state; touches no project file.
+    BuiltinTool {
+        name: "list_plugins",
+        capability: Capability::Read,
+        path_args: &[],
+    },
 ];
+
+/// Tools the desktop answers itself (a prompt, or a store only the app can
+/// read). Auto-allowed by the gate like the workspace tools.
+pub fn is_host_tool(name: &str) -> bool {
+    matches!(name, "request_access" | "list_plugins")
+}
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
 /// still wins), offered only in session scope, and withheld from subagents.
@@ -662,7 +685,8 @@ mod tests {
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        assert_eq!(BUILTIN_TOOLS.len(), 24);
+        // + request_access and list_plugins, which the desktop answers itself.
+        assert_eq!(BUILTIN_TOOLS.len(), 26);
     }
 
     #[test]

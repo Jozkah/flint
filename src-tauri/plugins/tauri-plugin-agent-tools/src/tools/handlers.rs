@@ -649,7 +649,39 @@ pub(crate) async fn execute_text(
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {
             crate::session_mailbox::run_tool(tool.name, args, ctx).await
         }
+        "request_access" => request_access_without_prompt(args, ctx),
+        "list_plugins" => crate::access::result_json(
+            "unavailable",
+            serde_json::json!({
+                "message": "Plugin state is read by the Flint desktop app; this surface \
+                            cannot see it. Ask the user, or check the Plugins panel.",
+            }),
+        ),
         other => format!("ERROR: unknown built-in tool '{other}'"),
+    }
+}
+
+/// `request_access` reached the tool core, which has no way to ask anyone:
+/// the desktop answers it with a prompt before it gets here, so this is a
+/// headless surface. The path is still vetted, so a request that could never
+/// be granted says why rather than "nobody can answer".
+fn request_access_without_prompt(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let path = arg_str(args, "path").unwrap_or("");
+    let env = crate::access::Env::host(ctx.mask_root, Some(ctx.project_root));
+    let prepared = crate::access::AccessMode::parse(arg_str(args, "access_mode"))
+        .and_then(|mode| crate::access::prepare(path, mode, &env));
+    match prepared {
+        Err(refusal) => crate::access::refusal_result(&refusal),
+        Ok(p) => crate::access::result_json(
+            "unavailable",
+            serde_json::json!({
+                "path": p.display,
+                "message": "No one can approve access from here (no approval prompt on \
+                            this surface). Nothing was granted.",
+                "next": "Do not retry. Ask the user in your reply to paste or attach what \
+                         you need, or to start the run with that folder attached.",
+            }),
+        ),
     }
 }
 
@@ -1615,6 +1647,15 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 )
             }
         };
+        // cmd's `2>nul` in PowerShell writes to a file named `nul`, which the
+        // container refuses as `\\.\nul`. Refused before running: the fix is
+        // mechanical, and running it would half-execute a `;` chain.
+        if selected.report.cfg.flavor == proc::ShellFlavor::PowerShell {
+            let redirects = super::shell_diag::cmd_nul_redirects(command);
+            if !redirects.is_empty() {
+                return super::shell_diag::cmd_nul_refusal(&redirects);
+            }
+        }
         // A command written for bash is refused rather than handed to PowerShell
         // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
         // something, just not what was asked for.
@@ -1687,6 +1728,8 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // the resolved shell so it can adapt when the only shell on a Windows box
     // is cmd, instead of the tool silently presenting cmd as bash.
     let shell_description = shell.description;
+    let shell_flavor = shell.flavor;
+    let command_text = command.to_string();
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
         // The tree has exited (or been stopped): what it used is final.
@@ -1701,8 +1744,28 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // without this it retries the same command until it gives up. Only when
         // confined: unsandboxed, a denial is an ordinary filesystem permission
         // and the hint would name limits that are not in force.
-        if sandboxed && bash_result_failed(&out) && jail::looks_denied(&out) {
-            out.push_str(&jail::denial_hint(&policy));
+        // Classified first: a denial the shell caused (PowerShell given cmd's
+        // `2>nul`) must not be reported as the sandbox's doing.
+        if bash_result_failed(&out) {
+            let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
+            let hint = match class {
+                super::shell_diag::FailureClass::FileAccessDenied
+                | super::shell_diag::FailureClass::Network
+                    if !sandboxed =>
+                {
+                    None
+                }
+                ref c => jail::failure_hint(&policy, c),
+            };
+            if let Some(hint) = hint {
+                out.push_str(&hint);
+            }
+            // Which shell ran it, on a failure only: that is when the model is
+            // about to write the next command and most needs the syntax.
+            if let Some(banner) = super::shell_diag::shell_banner(shell_flavor, shell_description)
+            {
+                out.insert_str(0, &banner);
+            }
         }
         if shell_description == "cmd" {
             out.insert_str(

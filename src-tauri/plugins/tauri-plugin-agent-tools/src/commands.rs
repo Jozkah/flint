@@ -211,6 +211,154 @@ pub fn direct_edit_revoke_session(session_id: String) -> usize {
     crate::grants::revoke_session(&session_id)
 }
 
+/// A `request_access` request resolved to the exact scope a grant would cover,
+/// or the structured reason it cannot be offered.
+#[derive(Debug, Serialize)]
+#[serde(tag = "status")]
+pub enum AccessPrepareResult {
+    /// Show the prompt for this.
+    #[serde(rename = "ok")]
+    Ok {
+        #[serde(flatten)]
+        prepared: crate::access::Prepared,
+    },
+    /// Do not prompt. `modelResult` is what the tool call returns.
+    #[serde(rename = "refused")]
+    Refused {
+        code: String,
+        message: String,
+        #[serde(rename = "modelResult")]
+        model_result: String,
+    },
+}
+
+async fn access_env(
+    data_folder: &str,
+    session_id: &str,
+    scope: Option<WorkspaceScope>,
+) -> Result<crate::access::Env, AgentToolsError> {
+    let root = scope
+        .unwrap_or_default()
+        .ensure(Path::new(data_folder), session_id)
+        .await?;
+    Ok(crate::access::Env::host(Some(Path::new(data_folder)), Some(&root)))
+}
+
+/// Canonicalize and vet what a model asked `request_access` for, before the
+/// user is asked. The prompt shows `display`, which is what a grant enforces.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn access_prepare(
+    data_folder: String,
+    session_id: String,
+    path: String,
+    access_mode: Option<String>,
+    reason: Option<String>,
+    scope: Option<WorkspaceScope>,
+) -> Result<AccessPrepareResult, AgentToolsError> {
+    let env = access_env(&data_folder, &session_id, scope).await?;
+    let data = Path::new(&data_folder);
+    let prepared = crate::access::AccessMode::parse(access_mode.as_deref())
+        .and_then(|mode| crate::access::prepare(&path, mode, &env));
+    Ok(match prepared {
+        Ok(prepared) => {
+            crate::access::audit_event(
+                data,
+                &session_id,
+                "requested",
+                &prepared.display,
+                prepared.mode,
+                reason.as_deref().unwrap_or(""),
+            );
+            AccessPrepareResult::Ok { prepared }
+        }
+        Err(refusal) => {
+            crate::access::audit_event(
+                data,
+                &session_id,
+                "refused",
+                &path,
+                crate::access::AccessMode::Read,
+                refusal.code.as_str(),
+            );
+            AccessPrepareResult::Refused {
+                code: refusal.code.as_str().to_string(),
+                message: refusal.message.clone(),
+                model_result: crate::access::refusal_result(&refusal),
+            }
+        }
+    })
+}
+
+/// Issue a grant the user approved. The path is vetted again here, so a
+/// grant can only cover what the prompt showed.
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn access_grant(
+    data_folder: String,
+    session_id: String,
+    path: String,
+    access_mode: Option<String>,
+    reason: Option<String>,
+    persistent: Option<bool>,
+    ttl_secs: Option<u64>,
+    scope: Option<WorkspaceScope>,
+) -> Result<crate::access::AccessGrant, AgentToolsError> {
+    let env = access_env(&data_folder, &session_id, scope).await?;
+    let mode = crate::access::AccessMode::parse(access_mode.as_deref())
+        .map_err(|r| AgentToolsError::from(r.message))?;
+    crate::access::grant(
+        Path::new(&data_folder),
+        &env,
+        &session_id,
+        &path,
+        mode,
+        reason.as_deref().unwrap_or(""),
+        persistent.unwrap_or(false),
+        ttl_secs,
+    )
+    .map_err(|r| AgentToolsError::from(r.message))
+}
+
+/// Record that the user declined, or that the prompt was withdrawn.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn access_record_decision(
+    data_folder: String,
+    session_id: String,
+    path: String,
+    access_mode: Option<String>,
+    decision: String,
+) {
+    let mode = crate::access::AccessMode::parse(access_mode.as_deref())
+        .unwrap_or(crate::access::AccessMode::Read);
+    let event = if decision == "cancelled" { "cancelled" } else { "denied" };
+    crate::access::audit_event(Path::new(&data_folder), &session_id, event, &path, mode, "by user");
+}
+
+/// Withdraw one access grant, session or kept.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn access_revoke(data_folder: String, grant_id: String) -> bool {
+    crate::access::revoke(Path::new(&data_folder), &grant_id)
+}
+
+/// Withdraw every session access grant a session holds.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn access_revoke_session(data_folder: String, session_id: String) -> usize {
+    crate::access::revoke_session(Path::new(&data_folder), &session_id)
+}
+
+/// Grants in force: for one session, or every grant when `session_id` is absent.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn access_list(
+    data_folder: String,
+    session_id: Option<String>,
+) -> Vec<crate::access::AccessGrant> {
+    let now = crate::access::now_secs();
+    match session_id {
+        Some(s) => crate::access::list(Path::new(&data_folder), &s, now),
+        None => crate::access::list_all(Path::new(&data_folder), now),
+    }
+}
+
 /// Delete a Cowork session's sandbox, with its scratch.
 #[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn session_workspace_delete(
@@ -378,8 +526,10 @@ fn note_non_posix_shell(mut value: serde_json::Value) -> serde_json::Value {
         Write PowerShell, not bash syntax: sequence commands with `;` -- Windows \
         PowerShell 5.1 does NOT accept `&&` or `||`; use cmdlets or their aliases \
         (cp/Copy-Item, mv/Move-Item, rm/Remove-Item, cat/Get-Content, \
-        ls/Get-ChildItem, New-Item); and write Windows paths with backslashes. To \
-        read a file, prefer the `read` tool over `cat`.";
+        ls/Get-ChildItem, New-Item); and write Windows paths with backslashes. \
+        Discard output with `2>$null` or `| Out-Null` -- cmd's `2>nul`/`>nul` is \
+        refused here, because in PowerShell `nul` is a file name. To read a file, \
+        prefer the `read` tool over `cat`.";
     if let Some(function) = value.get_mut("function").and_then(|f| f.as_object_mut()) {
         if let Some(updated) = function
             .get("description")
@@ -761,6 +911,24 @@ async fn execute_tool_inner(
         .and_then(|id| crate::grants::resolve(id, &thread_id))
         .into_iter()
         .collect();
+    // Folders the user granted through `request_access`, re-resolved now so a
+    // grant whose folder has since become a link elsewhere no longer applies.
+    let (access_read, access_write) = crate::access::active_roots(
+        Path::new(&data_folder),
+        &thread_id,
+        crate::access::now_secs(),
+    );
+    let mut write_roots = write_roots;
+    for root in access_write {
+        if !write_roots.contains(&root) {
+            write_roots.push(root);
+        }
+    }
+    for root in access_read {
+        if !read_roots.contains(&root) {
+            read_roots.push(root);
+        }
+    }
     let grants = SessionGrants::default().with_write_roots(write_roots.clone());
 
     let tool = lookup(&name)
@@ -913,6 +1081,16 @@ async fn execute_tool_inner(
                     "tool '{name}' tried to write outside the agent workspace and was refused"
                 ),
             }
+            .into());
+        }
+        // Reading outside the workspace is what `request_access` exists for:
+        // say so, or the model concludes the file is unreachable.
+        Decision::Prompt(PromptKind::ReadEscape) => {
+            return Err(format!(
+                "tool '{name}' was refused: that path is outside the workspace and every \
+                 folder the user has granted. Call request_access with the narrowest \
+                 required path and explain why access is needed, then retry this call."
+            )
             .into());
         }
         Decision::Prompt(kind) => {
@@ -1667,6 +1845,7 @@ mod tests {
         assert!(desc.starts_with("Run a shell command."));
         assert!(desc.contains("Windows PowerShell"));
         assert!(desc.contains("does NOT accept `&&`"));
+        assert!(desc.contains("`2>$null`"));
         // The name is untouched; only the description grows.
         assert_eq!(noted["function"]["name"], "bash");
     }
@@ -2097,7 +2276,7 @@ mod tests {
         .await
         .expect_err("an escaping read must be refused");
         assert!(
-            err.message.contains("needs user approval"),
+            err.message.contains("is outside the workspace and every folder the user has granted"),
             "unexpected error {}",
             err.message
         );
@@ -2438,7 +2617,7 @@ mod tests {
         .await
         .expect_err("a relative climb-out to a sibling thread must be refused");
         assert!(
-            err.message.contains("needs user approval"),
+            err.message.contains("is outside the workspace and every folder the user has granted"),
             "unexpected: {}",
             err.message
         );
@@ -2590,7 +2769,7 @@ mod tests {
         .await
         .expect_err("memory must be unreachable from the sandbox");
         assert!(
-            err.message.contains("needs user approval"),
+            err.message.contains("is outside the workspace and every folder the user has granted"),
             "unexpected: {}",
             err.message
         );
@@ -2874,6 +3053,124 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&data);
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// The whole `request_access` round trip at the tool boundary: a read
+    /// outside the workspace is refused with advice to ask, the user grants
+    /// the folder, the very same call then succeeds -- and a write there is
+    /// still refused, because the grant was read-only. Revoking ends it.
+    #[tokio::test]
+    async fn a_granted_folder_becomes_readable_for_the_retried_call_only() {
+        let thread: &str = &unique_thread("a_granted_folder_becomes_readable");
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let repo = repo_outside_tmp("access");
+        std::fs::write(repo.join("notes.md"), b"remember the milk").unwrap();
+        let call = |name: &str, args: serde_json::Value| {
+            execute_tool(
+                df.clone(),
+                thread.into(),
+                None,
+                name.into(),
+                args,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        let read_args = json!({"path": repo.join("notes.md").to_string_lossy()});
+
+        let refused = call("read", read_args.clone()).await.expect_err("outside the workspace");
+        let msg = format!("{refused:?}");
+        assert!(msg.contains("Call request_access"), "{msg}");
+
+        let prepared = access_prepare(
+            df.clone(),
+            thread.into(),
+            repo.to_string_lossy().to_string(),
+            Some("read".into()),
+            Some("read the notes".into()),
+            None,
+        )
+        .await
+        .unwrap();
+        let display = match prepared {
+            AccessPrepareResult::Ok { prepared } => prepared.display,
+            AccessPrepareResult::Refused { message, .. } => panic!("refused: {message}"),
+        };
+        let grant = access_grant(
+            df.clone(),
+            thread.into(),
+            display,
+            Some("read".into()),
+            Some("read the notes".into()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let ok = call("read", read_args.clone()).await.unwrap();
+        assert!(!ok.is_error, "{}", ok.content);
+        assert!(ok.content.contains("remember the milk"), "{}", ok.content);
+
+        let write = call(
+            "write",
+            json!({"path": repo.join("evil.txt").to_string_lossy(), "content": "x"}),
+        )
+        .await;
+        assert!(write.is_err(), "a read grant must not allow writes");
+        assert!(!repo.join("evil.txt").exists());
+
+        // Another conversation does not inherit a session grant.
+        let other_thread: &str = &unique_thread("other-thread");
+        let other = execute_tool(
+            df.clone(),
+            other_thread.into(),
+            None,
+            "read".into(),
+            read_args.clone(),
+            None, None, None, None, None, None, None, None,
+        )
+        .await;
+        assert!(other.is_err(), "grant leaked to another session");
+
+        assert!(access_revoke(df.clone(), grant.id));
+        assert!(call("read", read_args).await.is_err(), "revoked grant still applied");
+
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[tokio::test]
+    async fn access_prepare_refuses_the_home_directory_without_prompting() {
+        let thread: &str = &unique_thread("access_prepare_refuses_home");
+        let data = unique_data_folder();
+        let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap();
+        let out = access_prepare(
+            data.to_string_lossy().to_string(),
+            thread.into(),
+            home,
+            None,
+            Some("look around".into()),
+            None,
+        )
+        .await
+        .unwrap();
+        match out {
+            AccessPrepareResult::Refused { code, model_result, .. } => {
+                assert_eq!(code, "home_directory");
+                assert!(model_result.contains("Do not repeat"));
+            }
+            AccessPrepareResult::Ok { .. } => panic!("the home directory was offered"),
+        }
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     /// Without an attached folder nothing outside the sandbox is readable, so
