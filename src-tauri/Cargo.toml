@@ -295,6 +295,9 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_Graphics_Gdi",
   "Win32_Storage_FileSystem",
   "Win32_System_Threading",
+  # Read the Git-for-Windows install path the installer records, so native Git
+  # is found even when it is not on PATH (core::agent::github_recovery).
+  "Win32_System_Registry",
   # Window placement (core::window_state): the OS's own record of the normal
   # frame, which survives maximise and minimise without guessing.
   "Win32_UI_WindowsAndMessaging",

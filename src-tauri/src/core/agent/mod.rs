@@ -34,7 +34,7 @@ pub mod genai_bridge;
 pub mod git;
 #[cfg(feature = "cli")]
 pub mod global_config;
-#[cfg(feature = "cli")]
+pub mod github_recovery;
 pub mod goal;
 pub mod health;
 pub mod impact;
