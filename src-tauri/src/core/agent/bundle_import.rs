@@ -525,14 +525,14 @@ fn check_path(raw: &str, limits: &Limits) -> Result<String, ImportError> {
 }
 
 fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = Command::new("git")
-        .args(args)
+    let mut cmd = Command::new("git");
+    cmd.args(args)
         .current_dir(repo)
         // Read-only commands, but still: no hooks, no pager, no prompts.
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_PAGER", "cat")
-        .output()
-        .map_err(|e| e.to_string())?;
+        .env("GIT_PAGER", "cat");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd.output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }

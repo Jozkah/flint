@@ -29,10 +29,12 @@ use std::process::Command;
 /// Run `git` with literal args (callers pass their own `-C`). Returns trimmed
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(crate::core::agent::vcs::HARDENED)
+    let mut cmd = Command::new("git");
+    cmd.args(crate::core::agent::vcs::HARDENED)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
@@ -98,6 +100,7 @@ fn exec(
     if let Some(idx) = index {
         cmd.env("GIT_INDEX_FILE", idx);
     }
+    jan_utils::system::hide_console_window(&mut cmd);
     let out = match stdin {
         None => cmd.output(),
         Some(input) => cmd

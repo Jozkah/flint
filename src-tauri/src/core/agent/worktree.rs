@@ -37,8 +37,8 @@ use std::process::Command;
 /// works on a fresh machine rather than failing with a message about
 /// configuring an identity the user has no reason to care about.
 fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo)
         .args(crate::core::agent::vcs::HARDENED)
         .args(args)
@@ -46,7 +46,9 @@ fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
         .env("GIT_AUTHOR_NAME", "Jan Agent")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
         .env("GIT_COMMITTER_NAME", "Jan Agent")
-        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai")
+        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
@@ -673,11 +675,13 @@ fn link_dir(target: &Path, link: &Path) -> Result<(), String> {
         return Ok(());
     }
     // `mklink /J <link> <target>` is a `cmd` builtin, so it runs through `cmd`.
-    let out = Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/C", "mklink", "/J"])
         .arg(link)
         .arg(target)
-        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("could not create a junction at {}: {e}", link.display()))?;
     if out.status.success() {

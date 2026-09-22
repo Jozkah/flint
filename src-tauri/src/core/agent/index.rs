@@ -198,12 +198,10 @@ fn modified_ms(meta: &std::fs::Metadata) -> u64 {
 
 /// The commit the checkout is on, when it is a git checkout at all.
 fn head_commit(project: &Path) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(project).args(["rev-parse", "HEAD"]);
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd.output().ok()?;
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())

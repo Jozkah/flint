@@ -245,13 +245,16 @@ pub fn run_and_parse(
 
     let started = std::time::Instant::now();
     let shell = proc::shell();
-    let mut child = std::process::Command::new(shell.program.clone())
+    let mut checker = std::process::Command::new(shell.program.clone());
+    checker
         .args(shell.args.clone())
         .arg(command)
         .current_dir(project_root)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    jan_utils::system::hide_console_window(&mut checker);
+    let mut child = checker
         .spawn()
         .map_err(|e| {
             DiagnosticsError::new(

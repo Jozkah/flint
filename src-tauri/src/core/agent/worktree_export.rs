@@ -139,10 +139,10 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn head_of(record: &WorktreeRecord) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(&record.path)
-        .output()
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["rev-parse", "HEAD"]).current_dir(&record.path);
+    jan_utils::system::hide_console_window(&mut cmd);
+    cmd.output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())

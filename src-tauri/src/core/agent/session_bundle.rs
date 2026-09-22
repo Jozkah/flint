@@ -106,13 +106,13 @@ pub struct FolderIdentity {
 
 pub fn folder_identity(folder: &std::path::Path) -> FolderIdentity {
     let git = |args: &[&str]| -> Option<String> {
-        let out = std::process::Command::new("git")
-            .arg("-C")
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("-C")
             .arg(folder)
             .args(args)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .ok()?;
+            .stdin(std::process::Stdio::null());
+        jan_utils::system::hide_console_window(&mut cmd);
+        let out = cmd.output().ok()?;
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
         (out.status.success() && !text.is_empty()).then_some(text)
     };

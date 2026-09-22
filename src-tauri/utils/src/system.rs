@@ -613,6 +613,29 @@ pub fn setup_windows_process_flags(command: &mut tokio::process::Command) {
     }
 }
 
+/// Keep a short-lived `std::process::Command` (git, cmd, ...) spawned from the
+/// GUI from flashing a console window on Windows.
+///
+/// The desktop app has no console of its own, so every `git`/`cmd` helper it
+/// runs -- and it runs many when restoring or working a cowork session (status,
+/// snapshot, checkpoint, index) -- pops a black console window for its lifetime
+/// unless `CREATE_NO_WINDOW` is set. Unlike [`setup_windows_process_flags`] this
+/// sets no process-group flag: these are one-shot `.output()`/`.status()` calls,
+/// and the only goal is to suppress the window, matching what the agent-core
+/// spawns that already set a flag do.
+pub fn hide_console_window(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = command; // Silence unused parameter warning on non-Windows platforms
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
