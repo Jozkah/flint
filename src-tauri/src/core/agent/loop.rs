@@ -24,13 +24,21 @@ use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 use crate::core::agent::events::{StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
-    collect_mcp_openai_tools, copy_optional_chat_params,
+    arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
-    load_assistant_config, normalize_tool_call_args, parse_openai_messages, parse_tool_args,
+    load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
+    parse_openai_messages, parse_tool_args, MalformedCall,
     resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
     stream_openai_chat_completions,
 };
 use crate::core::server::converters::{converter_for, UpstreamConverter};
+
+/// How many times in a row the model may repeat an identical unexecutable
+/// tool call after already receiving the error for it before the run stops.
+const MAX_REPEATED_BROKEN_TOOL_TURNS: usize = 5;
+/// Hard ceiling on consecutive turns with nothing executable, however the
+/// broken calls vary, so a run can never loop forever on malformed calls.
+const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
 #[cfg(not(feature = "cli"))]
 use crate::core::server::proxy::router_first_model;
 #[cfg(not(feature = "cli"))]
@@ -212,13 +220,33 @@ impl ToolOutcome {
     /// explicitly. Typed so records and tests branch on `refusal`, not on
     /// message text.
     fn refused_invalid_args(id: String, name: &str, raw: &str) -> Self {
-        let raw = raw.chars().take(300).collect::<String>();
+        Self::refused_invalid_args_because(
+            id,
+            name,
+            raw,
+            "its arguments are not a valid JSON object",
+        )
+    }
+
+    /// [`Self::refused_invalid_args`] with the specific reason the arguments
+    /// were rejected (see `upstream::malformed_arguments_reason`), which is
+    /// what lets a model correct the call instead of repeating it.
+    fn refused_invalid_args_because(id: String, name: &str, raw: &str, reason: &str) -> Self {
+        const MAX_ECHO_CHARS: usize = 300;
+        let excerpt = raw.chars().take(MAX_ECHO_CHARS).collect::<String>();
+        let ellipsis = if raw.chars().count() > MAX_ECHO_CHARS { "..." } else { "" };
+        let tool = if name.is_empty() {
+            "(unnamed tool)".to_string()
+        } else {
+            format!("'{name}'")
+        };
         Self {
             id,
             content: format!(
-                "ERROR: tool '{name}' was not run: its arguments are not a valid JSON object \
-                 (refused: invalid-args). You sent: {raw}\nRe-emit the call with the arguments \
-                 as a single JSON object, e.g. {{\"path\": \"...\"}}."
+                "ERROR: tool {tool} was not run (refused: invalid-args) because {reason}. \
+                 You sent: {excerpt}{ellipsis}\nRetry the call with `arguments` as a single \
+                 valid JSON object containing every required parameter, e.g. \
+                 {{\"path\": \"...\"}}."
             ),
             diff: None,
             images: Vec::new(),
@@ -5086,10 +5114,11 @@ async fn run_turn_cycle(
     // fixed turn cap.
     let unlimited = max_turns == 0;
     let mut turn: usize = 0;
-    /// How many turns in a row may produce nothing executable before the run
-    /// is stopped. See the check itself for why one is not enough.
-    const MAX_UNEXECUTABLE_TURNS: usize = 3;
-    let mut unexecutable_turns: usize = 0;
+    // Malformed tool calls stay in context with an error result, so a model
+    // normally corrects itself; see the check itself for the counting rule.
+    let mut repeated_broken_turns: usize = 0;
+    let mut consecutive_broken_turns: usize = 0;
+    let mut last_broken_signatures: Option<Vec<String>> = None;
     // Mid-run todo upkeep: after a long uninterrupted run of mutating tool
     // calls with no todo touch, nudge the model once to keep the list honest
     // rather than only ever reminding it at a full stop -- a task that never
@@ -5386,7 +5415,7 @@ async fn run_turn_cycle(
         }
         budget.record(&turn_usage);
 
-        let tool_calls = extract_tool_calls(&completion);
+        let mut tool_calls = extract_tool_calls(&completion);
 
         if tool_calls.is_empty() {
             // The model is about to hand control back. If it finished the work
@@ -5606,6 +5635,29 @@ async fn run_turn_cycle(
             return Ok(completion);
         }
 
+        // One boundary for malformed tool calls, applied before anything is
+        // shown, recorded or dispatched:
+        // 1. A call that is dirty but recoverable (a stray `}` after the
+        //    object, a bad-escaped Windows path) is normalised in place to the
+        //    recovered object, so the UI, the history and the dispatch sites all
+        //    see the same clean arguments.
+        // 2. A call that cannot be recovered stays in the live context, answered
+        //    by a typed invalid-args refusal that says what was wrong, so the
+        //    model can correct itself instead of being handed the same request
+        //    again. Its provider-visible arguments become `{}` so a strict
+        //    upstream accepts the history; it is never executed.
+        // A length-truncated turn keeps its own handling below.
+        let malformed: Vec<MalformedCall> = if stop_reason_of(&completion) == "length" {
+            Vec::new()
+        } else {
+            for tc in tool_calls.iter_mut() {
+                if let Some(healed) = normalize_tool_call_args(tc) {
+                    *tc = healed;
+                }
+            }
+            neutralize_malformed_tool_calls(&mut tool_calls, turn)
+        };
+
         for tc in &tool_calls {
             let _ = events.send(StreamEvent::ToolCall {
                 id: tc
@@ -5704,54 +5756,62 @@ async fn run_turn_cycle(
         // Invariant: a tool call whose arguments do not decode to a plain
         // JSON object is never executed. A truncated stream or a confused
         // model would otherwise run a tool with invented or empty arguments.
-        // A call that is dirty but recoverable (a stray `}` after the object)
-        // is normalised to the recovered object and executed -- the same
-        // object the dispatch sites parse. The call that cannot be recovered
-        // fails visibly with a typed refusal, and the per-request sanitizer
-        // keeps it out of the history the next request carries.
+        // Unrecoverable calls were neutralised above and are answered here
+        // with a typed invalid-args refusal naming the problem. Everything
+        // else was normalised to its recovered object; the executability
+        // check is kept as a second, independent guard.
+        let malformed_ids: std::collections::HashSet<&str> =
+            malformed.iter().map(|m| m.id.as_str()).collect();
         let executable: Vec<serde_json::Value> = tool_calls
             .iter()
-            .filter_map(|tc| normalize_tool_call_args(tc))
+            .filter(|tc| {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                !malformed_ids.contains(id) && arguments_are_executable(tc)
+            })
+            .cloned()
             .collect();
-        let mut error_outcomes: Vec<ToolOutcome> = tool_calls
+        let mut error_outcomes: Vec<ToolOutcome> = malformed
             .iter()
-            .filter(|tc| normalize_tool_call_args(tc).is_none())
-            .map(|tc| {
-                ToolOutcome::refused_invalid_args(
-                    tc.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    tc.get("function")
-                        .and_then(|f| f.get("name"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(""),
-                    &raw_args_str(tc),
-                )
+            .map(|m| {
+                ToolOutcome::refused_invalid_args_because(m.id.clone(), &m.name, &m.raw, &m.reason)
             })
             .collect();
-        // A turn where every call was unexecutable changed nothing: the
-        // malformed calls are dropped from the live context, so the next
-        // request is the one just sent, and the reply will be the one just
-        // received. Left alone this spins forever -- a real run reached turn
-        // 456 doing exactly that -- because the token budget is the only other
-        // guard and a provider reporting no usage never moves it. Three such
-        // turns is enough to tell a confused model from a stuck one.
+        // No-progress guard. A turn where nothing was executable counts toward
+        // stopping the run only when it repeats exactly the broken calls of the
+        // previous turn, i.e. the model already received the error for them and
+        // changed nothing. A model that is trying different fixes gets room to
+        // converge, but a hard ceiling on consecutive all-broken turns still
+        // makes an endless loop impossible: the token budget is the only other
+        // guard, and a provider reporting no usage never moves it.
         if executable.is_empty() && !error_outcomes.is_empty() {
-            unexecutable_turns += 1;
-            if unexecutable_turns >= MAX_UNEXECUTABLE_TURNS {
+            let mut signatures: Vec<String> =
+                malformed.iter().map(|m| m.signature.clone()).collect();
+            signatures.sort();
+            consecutive_broken_turns += 1;
+            if last_broken_signatures.as_ref() == Some(&signatures) {
+                repeated_broken_turns += 1;
+            } else {
+                repeated_broken_turns = 0;
+            }
+            last_broken_signatures = Some(signatures);
+            if repeated_broken_turns >= MAX_REPEATED_BROKEN_TOOL_TURNS
+                || consecutive_broken_turns >= MAX_CONSECUTIVE_BROKEN_TOOL_TURNS
+            {
                 return Err(HarnessError::new(
                     tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
                     format!(
-                        "the model emitted {MAX_UNEXECUTABLE_TURNS} turns in a row whose tool \
-                         calls could not be executed, and nothing changed between them; the run \
-                         was stopped rather than repeating the same request indefinitely"
+                        "the model kept emitting tool calls that could not be executed \
+                         ({consecutive_broken_turns} turns in a row, {repeated_broken_turns} \
+                         identical repeats after being told the error); the run was stopped \
+                         rather than repeating the same request indefinitely"
                     ),
                 )
                 .at(tauri_plugin_agent_tools::harness_error::Stage::Stream));
             }
         } else {
-            unexecutable_turns = 0;
+            repeated_broken_turns = 0;
+            consecutive_broken_turns = 0;
+            last_broken_signatures = None;
         }
         let mut tool_results: Vec<ToolOutcome> = if executable.is_empty() {
             Vec::new()
@@ -6825,8 +6885,8 @@ mod tests {
 
     /// The reported incident, end to end: mid-run, the model emits a tool
     /// call whose arguments are a JSON string literal containing JSON. The
-    /// call is never executed, and the poisoned turn never reaches a later
-    /// request -- the run continues from clean history instead of wedging.
+    /// call is never executed, its poisoned arguments never reach a later
+    /// request, and the model is told what was wrong instead of wedging.
     #[tokio::test]
     async fn a_mid_run_non_object_tool_call_is_never_executed_and_never_poisons_the_run() {
         let model = MockModel::new(vec![
@@ -6878,12 +6938,21 @@ mod tests {
         let requests = model.requests.lock().unwrap();
         assert_eq!(requests.len(), 2, "one poisoned turn, then a clean retry");
         let messages = requests[1]["messages"].as_array().unwrap();
-        assert!(
-            messages
-                .iter()
-                .all(|m| m.get("tool_calls").is_none() && m.get("role") != Some(&json!("tool"))),
-            "the poisoned call and its synthetic result never reach a later request: {messages:#?}"
-        );
+        // The call stays in context so the model sees its error, but with
+        // neutralized arguments a strict upstream accepts.
+        for m in messages {
+            for tc in m.get("tool_calls").and_then(|v| v.as_array()).into_iter().flatten() {
+                assert!(
+                    crate::core::agent::upstream::arguments_are_executable(tc),
+                    "no poisoned arguments reach a later request: {messages:#?}"
+                );
+            }
+        }
+        let result = messages
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "call_edit")
+            .unwrap_or_else(|| panic!("the call is answered with an error: {messages:#?}"));
+        assert!(result["content"].as_str().unwrap().contains("JSON string"));
     }
 
     /// End-to-end proof of the poisoned-history fix against an upstream that
@@ -7736,9 +7805,8 @@ mod tests {
         }
     }
 
-    /// A model whose tool calls cannot be executed changes nothing by making
-    /// them: they are dropped from the live context, so the next request is the
-    /// one just sent. Without a guard this repeats forever -- a real run
+    /// A model that keeps repeating the same unexecutable call after being
+    /// told the error is stuck. Without a guard this repeats forever -- a real run
     /// reached turn 456 doing it -- because a token budget is the only other
     /// ceiling and a provider reporting no usage never moves it.
     #[tokio::test]
@@ -7793,7 +7861,13 @@ mod tests {
             "{err}"
         );
         assert!(err.message().contains("could not be executed"), "{err}");
-        assert_eq!(*calls.lock().unwrap(), 3, "stopped on the third such turn");
+        // The first broken turn is answered with an error; only the identical
+        // repeats after it count, and the run stops on the fifth repeat.
+        assert_eq!(
+            *calls.lock().unwrap(),
+            1 + MAX_REPEATED_BROKEN_TOOL_TURNS,
+            "stopped on the fifth identical repeat"
+        );
         assert!(
             tool.calls.lock().unwrap().is_empty(),
             "nothing was executed, which is the whole point"
@@ -7920,6 +7994,259 @@ mod tests {
         assert!(content.contains("was not run"), "{content}");
         assert!(content.contains("invalid-args"), "{content}");
         assert!(content.len() < long_raw.len(), "the diagnostic is bounded");
+    }
+
+    /// Replies from a queue and records every request it was sent.
+    struct RecordingQueueModel {
+        replies: StdMutex<VecDeque<serde_json::Value>>,
+        requests: StdMutex<Vec<serde_json::Value>>,
+    }
+    #[async_trait]
+    impl ModelInvoker for RecordingQueueModel {
+        async fn invoke(
+            &self,
+            request: &serde_json::Value,
+            _events: &mpsc::UnboundedSender<StreamEvent>,
+        ) -> Result<serde_json::Value, HarnessError> {
+            self.requests.lock().unwrap().push(request.clone());
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| "mock exhausted".to_string().into())
+        }
+    }
+
+    fn tool_call_reply(id: &str, name: &str, arguments: &str) -> serde_json::Value {
+        json!({
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": id,
+                        "type": "function",
+                        "function": { "name": name, "arguments": arguments }
+                    }]
+                }
+            }]
+        })
+    }
+
+    /// A malformed call is kept in the live context and answered with an
+    /// error tool result naming the problem, and a model that fixes its
+    /// arguments on the next turn recovers: the fixed call runs and the run
+    /// finishes normally.
+    #[tokio::test]
+    async fn a_malformed_call_gets_an_error_result_and_the_model_can_recover() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    tool_call_reply("bad1", "write", "{\"path\": \"a.txt\", \"content\": "),
+                    tool_call_reply("good1", "write", "{\"path\": \"a.txt\", \"content\": \"x\"}"),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "do it" })];
+
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run recovers");
+
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        let second = requests[1]["messages"].as_array().expect("messages");
+        let call = second
+            .iter()
+            .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
+            .expect("the malformed call stays in context");
+        assert_eq!(call["tool_calls"][0]["id"], "bad1");
+        assert_eq!(
+            call["tool_calls"][0]["function"]["arguments"], "{}",
+            "provider-visible arguments are neutralized"
+        );
+        let result = second
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "bad1")
+            .expect("the malformed call is answered");
+        let text = result["content"].as_str().unwrap();
+        assert!(text.starts_with("ERROR:"), "{text}");
+        assert!(text.contains("not valid JSON"), "{text}");
+        assert!(text.contains("'write'"), "{text}");
+        assert!(text.contains("Retry"), "{text}");
+
+        let executed = tool.calls.lock().unwrap();
+        assert_eq!(executed.len(), 1, "only the fixed call ran");
+        assert_eq!(executed[0][0]["id"], "good1");
+    }
+
+    /// Different broken calls are not identical repeats, but a hard ceiling
+    /// still stops a run that never produces anything executable.
+    #[tokio::test]
+    async fn varying_broken_calls_still_stop_at_the_hard_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let replies: VecDeque<serde_json::Value> = (0..100)
+            .map(|i| tool_call_reply(&format!("c{i}"), "write", &format!("{{broken {i}")))
+            .collect();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(replies),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "do it" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the run is stopped");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse
+        );
+        assert_eq!(
+            model.requests.lock().unwrap().len(),
+            MAX_CONSECUTIVE_BROKEN_TOOL_TURNS
+        );
+        assert!(tool.calls.lock().unwrap().is_empty());
+    }
+
+    /// One turn mixing a recoverable call (trailing brace) with an
+    /// unrecoverable one (`{}{}`): the recoverable call runs once with the
+    /// healed arguments, the other is never dispatched, is answered with the
+    /// typed invalid-args refusal, and stays in history with `{}` arguments.
+    /// A turn with an executed call is progress, so the guard does not count it.
+    #[tokio::test]
+    async fn a_mixed_turn_heals_one_call_and_refuses_the_other() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    json!({
+                        "choices": [{
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    { "id": "ok", "type": "function",
+                                      "function": { "name": "read", "arguments": "{\"path\":\"C:\\\\a b\\\\c.txt\"}}" } },
+                                    { "id": "bad", "type": "function",
+                                      "function": { "name": "write", "arguments": "{}{}" } }
+                                ]
+                            }
+                        }]
+                    }),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "go" })];
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run completes");
+
+        let executed = tool.calls.lock().unwrap();
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].len(), 1, "only the healed call is dispatched");
+        assert_eq!(executed[0][0]["id"], "ok");
+        let healed: serde_json::Value =
+            serde_json::from_str(executed[0][0]["function"]["arguments"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(healed, json!({ "path": "C:\\a b\\c.txt" }));
+
+        let requests = model.requests.lock().unwrap();
+        let second = requests[1]["messages"].as_array().unwrap();
+        let assistant = second
+            .iter()
+            .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
+            .expect("tool-call turn kept");
+        let calls = assistant["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 2, "both calls stay in context");
+        assert_eq!(calls[1]["function"]["arguments"], "{}");
+        let refusal = second
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "bad")
+            .expect("the unrecoverable call is answered");
+        let text = refusal["content"].as_str().unwrap();
+        assert!(text.contains("refused: invalid-args"), "{text}");
+        assert!(text.contains("{}{}"), "the raw text is echoed: {text}");
+        // Exactly one result per call: no duplicate error feedback.
+        assert_eq!(
+            second
+                .iter()
+                .filter(|m| m["role"] == "tool" && m["tool_call_id"] == "bad")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn invalid_args_refusal_is_typed_and_bounded() {
+        let raw = "x".repeat(1000);
+        let out = ToolOutcome::refused_invalid_args_because(
+            "id".into(),
+            "write",
+            &raw,
+            "the arguments are not valid JSON",
+        );
+        assert_eq!(out.refusal, Some(HarnessRefusal::InvalidArgs));
+        assert!(out.content.starts_with("ERROR: tool 'write' was not run"));
+        assert!(out.content.contains("..."), "truncation is marked");
+        assert!(out.content.len() < 700, "the echo is capped");
+        let unnamed = ToolOutcome::refused_invalid_args_because("id".into(), "", "", "r");
+        assert!(unnamed.content.contains("(unnamed tool)"));
     }
 
     struct ResultQueueModel {
