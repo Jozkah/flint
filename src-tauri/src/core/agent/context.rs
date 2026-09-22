@@ -165,7 +165,14 @@ Returns the page's readable text with its title and source URL (bounded in lengt
 snippets alone for anything important.\n\
 3. Base your answer on what you read and cite the source URLs you used. If results are thin, refine the query and \
 search again. If a tool returns text starting with `ERROR`, read it, adjust your arguments, and retry or tell the \
-user what's wrong.";
+user what's wrong.\n\n\
+## Repositories and code hosts\n\n\
+`web_fetch` is an anonymous crawler with no GitHub/GitLab credentials, so it CANNOT read a private repository — a \
+private repo answers with a not-found error no matter which provider is configured, and retrying or switching \
+providers will not help. For repository data (issues, pull requests, file contents, CI status), prefer the \
+authenticated shell instead: use `gh` (e.g. `gh repo view`, `gh api repos/<owner>/<repo>`, `gh pr view <n>`, \
+`gh run list`) or plain `git` in the attached workspace folder. Use `web_fetch` on a code-host URL only when the \
+repository is public.";
 
 /// Guidance injected only when subagent tools are actually available, so the
 /// model delegates context-heavy exploration instead of exhausting its own
