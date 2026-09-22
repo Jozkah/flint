@@ -391,8 +391,15 @@ pub const PROBE_COMMAND: &str = "exit 0";
 /// Deliberately short. The cost of a false positive is a clear refusal naming
 /// bash; the cost of a false negative is `cmd` quietly doing something else
 /// with the user's command. Only constructs with no compatible reading in
-/// PowerShell or `cmd` are listed -- `&&` is absent because all three accept
-/// it, and `|` because all three pipe.
+/// PowerShell or `cmd` are listed. `|` is absent because all three pipe.
+///
+/// `&&` and `||` are handled separately by [`requires_and_or_chaining`], not
+/// listed here: `cmd`, PowerShell 7+ (`pwsh`) and POSIX shells all accept them,
+/// but *Windows PowerShell 5.1* (`powershell.exe`, the Desktop edition that is
+/// the sandbox fallback on Windows) does not -- it fails to parse with "token
+/// '&&' is not a valid statement separator in this version". Refusing them only
+/// on that one shell, rather than everywhere, keeps them working where they are
+/// valid.
 const POSIX_ONLY: &[(&str, &str)] = &[
     ("$(", "command substitution `$(...)`"),
     ("${", "parameter expansion `${...}`"),
@@ -435,6 +442,80 @@ pub fn posix_unavailable_error(construct: &str, available: &ShellConfig, why: &s
         available.description,
         available.flavor.as_str(),
         available.flavor.as_str()
+    )
+}
+
+/// Whether this shell accepts the `&&` / `||` command-chaining operators.
+///
+/// True for POSIX shells and `cmd.exe`, and for PowerShell **7+** (`pwsh`),
+/// which gained the operators in 6.0. False only for *Windows PowerShell 5.1*
+/// (`powershell.exe`, the Desktop edition), whose parser rejects them outright.
+/// The two PowerShells share [`ShellFlavor::PowerShell`], so they are told apart
+/// here by the executable's file stem: `pwsh` is always 6/7+, `powershell` is
+/// Windows PowerShell. A custom shell pointed at `pwsh` via `JAN_AGENT_SHELL`
+/// is likewise treated as chaining-capable.
+pub fn supports_and_or_chaining(cfg: &ShellConfig) -> bool {
+    match cfg.flavor {
+        ShellFlavor::Posix | ShellFlavor::Cmd => true,
+        ShellFlavor::PowerShell => cfg
+            .program
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|stem| stem.to_ascii_lowercase().starts_with("pwsh"))
+            .unwrap_or(false),
+    }
+}
+
+/// The chaining operator a command relies on at the top level (`&&` or `||`),
+/// or `None` when it uses neither there.
+///
+/// Only occurrences *outside* single and double quotes count: `echo "a && b"`
+/// is one argument, not a chain, and must not be refused. Detection only --
+/// the command string is never rewritten, so quoting, escaping and the
+/// short-circuit semantics of a real chain are left exactly as written. A lone
+/// `&` (background) or single `|` (pipe) is not a chain and is ignored; the
+/// operator must be doubled.
+pub fn requires_and_or_chaining(command: &str) -> Option<&'static str> {
+    let bytes = command.as_bytes();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match b {
+            b'\'' if !in_double => in_single = !in_single,
+            b'"' if !in_single => in_double = !in_double,
+            b'&' | b'|' if !in_single && !in_double && i + 1 < bytes.len() && bytes[i + 1] == b => {
+                return Some(if b == b'&' { "&&" } else { "||" });
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The refusal handed back when a command chains with `&&`/`||` but the only
+/// shell available is Windows PowerShell 5.1, which cannot parse them.
+///
+/// Actionable on purpose: it names the operator and the shell, and gives the
+/// PowerShell-valid alternatives. `;` is offered but flagged as *not*
+/// short-circuiting, because silently treating `a && b` as `a; b` would run `b`
+/// even after `a` failed -- a change of meaning the caller must make
+/// deliberately, not one this tool makes for them.
+pub fn chaining_unavailable_error(operator: &str, available: &ShellConfig) -> String {
+    let conditional = if operator == "&&" {
+        "run the next command only on success"
+    } else {
+        "run the next command only on failure"
+    };
+    format!(
+        "ERROR: `{operator}` is not valid in {} -- Windows PowerShell 5.1 rejects `&&` and \
+         `||` with \"token '{operator}' is not a valid statement separator in this version\".\n\
+         Rewrite for PowerShell: sequence unconditionally with `;` (note: `;` always runs the \
+         next command, it does NOT stop on failure like `{operator}`), or to {conditional} use \
+         `command1; if ($?) {{ command2 }}`. The read/ls/find/grep tools need no shell at all.",
+        available.description,
     )
 }
 
@@ -647,9 +728,27 @@ pub async fn spawn(
     scratch: Option<&Path>,
 ) -> std::io::Result<Child> {
     let mut cmd = Command::new(&cfg.program);
-    cmd.args(&cfg.args);
-    if !cfg.via_stdin {
-        cmd.arg(located(cfg.flavor, command, cwd));
+    // `cmd.exe` does not parse its command line with C-runtime quote rules, so
+    // std's cooked `.arg` (which escapes inner quotes as `\"`) mangles any
+    // command that contains quotes -- a chained `cd "path with spaces" && ...`
+    // arrives with broken quoting and the command fails. cmd is handed a raw
+    // line instead: `/S /C "<command>"`, where `/S` makes cmd strip exactly the
+    // outer quote pair and run the remainder verbatim, so inner quoting, `&&`
+    // short-circuiting and exit codes are all preserved. Every other shell uses
+    // C-runtime rules, where cooked `.arg` is correct.
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut handled_raw = false;
+    #[cfg(windows)]
+    if cfg.flavor == ShellFlavor::Cmd && !cfg.via_stdin {
+        let line = located(cfg.flavor, command, cwd);
+        cmd.raw_arg("/S").raw_arg("/C").raw_arg(format!("\"{line}\""));
+        handled_raw = true;
+    }
+    if !handled_raw {
+        cmd.args(&cfg.args);
+        if !cfg.via_stdin {
+            cmd.arg(located(cfg.flavor, command, cwd));
+        }
     }
     // Strip every inherited variable, then re-add only the allowlist so the
     // sandboxed process holds no host secrets regardless of which backend wraps
@@ -1731,5 +1830,169 @@ mod posix_tests {
                 ),
             }
         }
+    }
+}
+
+/// `&&`/`||` reach Windows PowerShell 5.1 as a parse error, never a clean
+/// failure, so a chained command is refused on that shell alone -- and left to
+/// run everywhere the operators are valid (`cmd`, `pwsh` 7+, POSIX). These
+/// tests pin both halves: what counts as a chain, and which shells accept one.
+#[cfg(test)]
+mod chaining_tests {
+    use super::*;
+
+    fn ps(program: &str) -> ShellConfig {
+        at(
+            PathBuf::from(program),
+            &["-NoProfile", "-NonInteractive", "-Command"],
+            "powershell",
+            ShellFlavor::PowerShell,
+        )
+    }
+
+    #[test]
+    fn top_level_chains_are_recognised() {
+        assert_eq!(requires_and_or_chaining("git add . && git commit"), Some("&&"));
+        assert_eq!(requires_and_or_chaining("cargo build || echo failed"), Some("||"));
+        // A build-then-test chain, the exact shape the screenshot showed failing.
+        assert_eq!(
+            requires_and_or_chaining("npm ci && npm run build && npm test"),
+            Some("&&")
+        );
+    }
+
+    #[test]
+    fn a_path_with_spaces_still_reveals_the_chain() {
+        // The quoted path is one argument; the `&&` after it is a real chain and
+        // must be seen despite the spaces and quotes before it.
+        assert_eq!(
+            requires_and_or_chaining("ls \"C:\\Program Files\" && echo done"),
+            Some("&&")
+        );
+    }
+
+    #[test]
+    fn operators_inside_quotes_are_not_a_chain() {
+        // A literal `&&`/`||` inside an argument is data, not a chain, and must
+        // not be refused -- refusing it would break a valid single command.
+        assert_eq!(requires_and_or_chaining("echo \"a && b\""), None);
+        assert_eq!(requires_and_or_chaining("echo 'x || y'"), None);
+        assert_eq!(requires_and_or_chaining("grep \"foo && bar\" file.txt"), None);
+        assert_eq!(
+            requires_and_or_chaining("git commit -m \"fix: a && b\""),
+            None
+        );
+    }
+
+    #[test]
+    fn single_ampersand_or_pipe_is_not_a_chain() {
+        // Background `&` and a single pipe `|` are not the doubled chaining
+        // operators and must be left alone.
+        assert_eq!(requires_and_or_chaining("sleep 1 & echo hi"), None);
+        assert_eq!(requires_and_or_chaining("cat file | grep x"), None);
+        assert_eq!(requires_and_or_chaining("git status"), None);
+    }
+
+    #[test]
+    fn windows_powershell_5_cannot_chain_but_pwsh_and_cmd_can() {
+        // Windows PowerShell 5.1: no chaining.
+        assert!(!supports_and_or_chaining(&ps("powershell.exe")));
+        assert!(!supports_and_or_chaining(&ps(
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        )));
+        // PowerShell 7+ (`pwsh`): chaining since 6.0.
+        assert!(supports_and_or_chaining(&ps("pwsh.exe")));
+        assert!(supports_and_or_chaining(&ps(r"C:\Program Files\PowerShell\7\pwsh.exe")));
+        // cmd and POSIX both chain.
+        assert!(supports_and_or_chaining(&c("cmd.exe", &["/C"], "cmd", ShellFlavor::Cmd)));
+        assert!(supports_and_or_chaining(&c("/bin/bash", &["-c"], "bash", ShellFlavor::Posix)));
+    }
+
+    #[test]
+    fn the_refusal_names_the_operator_the_shell_and_a_valid_rewrite() {
+        let msg = chaining_unavailable_error("&&", &ps("powershell.exe"));
+        assert!(msg.starts_with("ERROR:"), "{msg}");
+        assert!(msg.contains("&&"), "{msg}");
+        assert!(msg.contains("powershell"), "{msg}");
+        // Offers the PowerShell-valid alternatives.
+        assert!(msg.contains(';'), "{msg}");
+        assert!(msg.contains("if ($?)"), "{msg}");
+        // Warns that `;` does not short-circuit, so the caller is not misled
+        // into a change of meaning.
+        assert!(msg.to_lowercase().contains("does not stop on failure"), "{msg}");
+        // `||` gets its own conditional wording.
+        let or = chaining_unavailable_error("||", &ps("powershell.exe"));
+        assert!(or.contains("only on failure"), "{or}");
+    }
+
+    /// End-to-end proof of the fix's execution path: the representative command
+    /// `cd "path with spaces" && <second>` runs the second command through the
+    /// chaining-capable shell the selector falls back to (`cmd`), starting in
+    /// the spaced directory -- and does *not* run the second command when the
+    /// `cd` fails. This is what the pure refusal could not deliver: the original
+    /// workflow now succeeds, with quoting, spaces, short-circuit and exit codes
+    /// all preserved. `cmd` is spawned exactly as the selector wraps it.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_chained_cd_into_a_spaced_path_runs_end_to_end_on_cmd() {
+        let cfg = c("cmd.exe", &["/C"], "cmd", ShellFlavor::Cmd);
+        assert!(supports_and_or_chaining(&cfg), "cmd must be chaining-capable");
+        let base = std::env::temp_dir().join(format!("jan chain test {}", std::process::id()));
+        let spaced = base.join("dir with spaces");
+        std::fs::create_dir_all(&spaced).unwrap();
+
+        // Success: cd into the spaced path, then the second command runs, and it
+        // runs *in* that directory (cmd's `cd` with no args echoes the cwd).
+        let ok = format!("cd \"{}\" && echo MARKER_OK && cd", spaced.display());
+        let child = spawn(&cfg, &ok, &std::env::temp_dir(), None).await.unwrap();
+        let pid = child.id().unwrap();
+        let out = child.wait_with_output().await.unwrap();
+        unregister(pid);
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("MARKER_OK"), "second command did not run: {text}");
+        assert!(
+            text.contains("dir with spaces"),
+            "second command did not run in the spaced dir: {text}"
+        );
+        assert!(out.status.success(), "a successful chain must exit 0: {:?}", out.status);
+
+        // Failure propagation: cd into a missing spaced path fails, so the second
+        // command must not run, and the chain's exit code is non-zero.
+        let missing = base.join("no such directory here");
+        let bad = format!("cd \"{}\" && echo MARKER_SHOULD_NOT_RUN", missing.display());
+        let child = spawn(&cfg, &bad, &std::env::temp_dir(), None).await.unwrap();
+        let pid = child.id().unwrap();
+        let out = child.wait_with_output().await.unwrap();
+        unregister(pid);
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !text.contains("MARKER_SHOULD_NOT_RUN"),
+            "second command ran after the first failed: {text}"
+        );
+        assert!(!out.status.success(), "a chain whose first command fails must not exit 0");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Failure propagation is the whole point of `&&`: the second command must
+    /// not run when the first fails. Proven on `cmd`, a chaining-capable shell
+    /// that is always present on Windows, so the semantics we refuse to silently
+    /// drop are shown to be real.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn cmd_short_circuits_a_failed_chain() {
+        let cfg = c("cmd.exe", &["/C"], "cmd", ShellFlavor::Cmd);
+        // `exit /b 1` fails, so `echo RAN` after `&&` must not execute.
+        let child = spawn(&cfg, "cmd /c exit /b 1 && echo RAN", &std::env::temp_dir(), None)
+            .await
+            .unwrap();
+        let pid = child.id().unwrap();
+        let out = child.wait_with_output().await.unwrap();
+        unregister(pid);
+        assert!(
+            !String::from_utf8_lossy(&out.stdout).contains("RAN"),
+            "the second command ran after the first failed: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
     }
 }

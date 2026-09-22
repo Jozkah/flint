@@ -1606,7 +1606,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // No confinement available means no shell either: running unsandboxed
         // would give the command the whole machine, which is never what the
         // caller asked for.
-        let selected = match jail::select_shell(&policy) {
+        let mut selected = match jail::select_shell(&policy) {
             Ok(selected) => selected,
             Err(detail) => {
                 return format!(
@@ -1630,9 +1630,50 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 );
             }
         }
+        // `&&`/`||` reach Windows PowerShell 5.1 as a parse error, not a clean
+        // failure. A chaining command that would land on it is not refused
+        // outright: it is re-selected onto a shell that keeps `&&`/`||`
+        // short-circuit semantics and exit codes -- `cmd.exe` on a Windows host
+        // with no bash or `pwsh`, which is always present and, unlike Windows
+        // PowerShell 5.1, chains. Safe here because a POSIX-only command was
+        // already refused above, so nothing `cmd` would misread reaches this
+        // point. Only when no usable shell can chain is the actionable refusal
+        // the last resort. Capability is read from the unwrapped program name,
+        // which tells Windows PowerShell (no chaining) from `pwsh` 7+.
+        if proc::requires_and_or_chaining(command).is_some()
+            && !proc::supports_and_or_chaining(&selected.report.cfg)
+        {
+            match jail::select_chaining_capable(&policy) {
+                Some(capable) => selected = capable,
+                None => {
+                    // Unreachable in practice on Windows -- `cmd.exe` is always a
+                    // candidate -- but if even it cannot be confined, refuse
+                    // clearly rather than run a shell that cannot parse the command.
+                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
+                    return proc::chaining_unavailable_error(operator, &selected.report.cfg);
+                }
+            }
+        }
         selected.wrapped
     } else {
-        proc::shell().clone()
+        // Off-sandbox the resolved shell can be Windows PowerShell 5.1 on a bare
+        // Windows host with no bash. Prefer an unconfined chaining-capable shell
+        // (cmd) for a chaining command, and only refuse if none exists.
+        let mut bare = proc::shell().clone();
+        if proc::requires_and_or_chaining(command).is_some() && !proc::supports_and_or_chaining(&bare)
+        {
+            match proc::candidates()
+                .into_iter()
+                .find(proc::supports_and_or_chaining)
+            {
+                Some(capable) => bare = capable,
+                None => {
+                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
+                    return proc::chaining_unavailable_error(operator, &bare);
+                }
+            }
+        }
+        bare
     };
 
     let sandbox_tmp = if ctx.sandbox {

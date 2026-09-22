@@ -1165,6 +1165,36 @@ pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
     Err(message)
 }
 
+/// The first sandbox-usable shell that accepts the `&&`/`||` chaining operators,
+/// wrapped ready to spawn -- or `None` when none of the shells that can start
+/// under `policy` can chain.
+///
+/// Used when a command chains but the shell [`select_shell`] would pick cannot
+/// parse the operators (Windows PowerShell 5.1). Rather than refuse a command
+/// that has a perfectly good execution path, the run is handed to a shell that
+/// preserves `&&`/`||` short-circuit semantics and exit codes -- `cmd.exe` on a
+/// Windows host with no bash or `pwsh`, since it is always present and, unlike
+/// Windows PowerShell 5.1, chains. The candidate order (bash, pwsh, cmd; see
+/// [`proc::candidates`]) is honoured, so a POSIX shell or `pwsh` is still
+/// preferred when one can be confined.
+///
+/// Caller contract: only reach here once a POSIX-only command has already been
+/// refused ([`proc::requires_posix_shell`]). A chaining command that survives
+/// that check uses no construct `cmd` would misread, so running it there is
+/// safe; `cmd` given `foo $(bar)` is never produced by this path.
+pub fn select_chaining_capable(policy: &Policy) -> Option<SelectedShell> {
+    let reports = shell_reports(policy);
+    let usable = reports
+        .iter()
+        .find(|r| r.outcome.usable() && proc::supports_and_or_chaining(&r.cfg))?;
+    let wrapped = wrap(&usable.cfg, policy)?;
+    Some(SelectedShell {
+        report: usable.clone(),
+        wrapped,
+        posix_rejected: None,
+    })
+}
+
 #[cfg(test)]
 mod probe_cache_tests {
     use super::*;
