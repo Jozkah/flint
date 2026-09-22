@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 pub mod appcontainer;
 pub mod cmdscan;
 pub mod gate;
+pub mod git_native;
 pub mod handlers;
 pub mod image;
 pub mod jail;
@@ -490,6 +491,14 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     BuiltinTool {
         name: "bash",
         capability: Capability::Exec,
+        path_args: &[],
+    },
+    // Read-only: inspects an already-attached local clone with native Git and
+    // writes nothing. Scoped to the run's read roots inside the handler; it
+    // takes a repository URL, not a filesystem path, so there is no `path_args`.
+    BuiltinTool {
+        name: "git_inspect",
+        capability: Capability::Read,
         path_args: &[],
     },
     // Dedicated skill/memory tools. They operate on `.jan/agent/{skills,memory}/`

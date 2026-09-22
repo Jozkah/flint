@@ -63,7 +63,7 @@ pub async fn web_search(args: &Value) -> String {
 
 /// Execute the `web_fetch` built-in. Returns bounded readable content with its
 /// source URL/title; errors start with "ERROR".
-pub async fn web_fetch(args: &Value) -> String {
+pub async fn web_fetch(args: &Value, read_roots: &[std::path::PathBuf]) -> String {
     let Some(url) = args.get("url").and_then(|v| v.as_str()).map(str::trim) else {
         return "ERROR: web_fetch requires a 'url' string argument.".to_string();
     };
@@ -79,7 +79,19 @@ pub async fn web_fetch(args: &Value) -> String {
     };
     match provider.fetch(url).await {
         Ok(page) => render_fetched_page(&page),
-        Err(e) => format!("ERROR: {e}"),
+        Err(e) => {
+            // A private GitHub repo returns a not-found/auth failure to the
+            // anonymous crawler. Rather than leave the model to retry or switch
+            // provider, hand it the native-Git recovery: a matching attached
+            // clone to inspect, or the choices to offer the user.
+            let mut msg = format!("ERROR: {e}");
+            if let Some(note) =
+                crate::tools::git_native::web_fetch_recovery_note(url, &e, read_roots)
+            {
+                msg.push_str(&note);
+            }
+            msg
+        }
     }
 }
 
@@ -131,8 +143,8 @@ mod tests {
 
     #[tokio::test]
     async fn web_fetch_validates_url() {
-        assert!(web_fetch(&json!({})).await.starts_with("ERROR"));
-        assert!(web_fetch(&json!({"url": "ftp://x"}))
+        assert!(web_fetch(&json!({}), &[]).await.starts_with("ERROR"));
+        assert!(web_fetch(&json!({"url": "ftp://x"}), &[])
             .await
             .starts_with("ERROR"));
     }

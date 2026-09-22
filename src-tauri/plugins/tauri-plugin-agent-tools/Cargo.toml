@@ -58,6 +58,9 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_JobObjects",
   "Win32_System_Memory",
+  # Read the Git-for-Windows install path the installer records, so native Git
+  # is found for local-clone recovery even when it is not on PATH (git_native).
+  "Win32_System_Registry",
   "Win32_System_Threading",
   # AH-187: the machine's ProgramData folder, asked of Windows rather than of
   # the environment, which the process being constrained can set.
