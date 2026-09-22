@@ -70,9 +70,16 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
         return None;
     }
     // scp syntax: `[user@]github.com:owner/repo(.git)`.
-    if !s.contains("://") && s.contains(':') && !s.starts_with(|c: char| c.is_ascii_alphabetic() && s[1..].starts_with(":\\")) {
+    if !s.contains("://")
+        && s.contains(':')
+        && !s.starts_with(|c: char| c.is_ascii_alphabetic() && s[1..].starts_with(":\\"))
+    {
         if let Some((host_part, path)) = s.split_once(':') {
-            let host = host_part.rsplit('@').next().unwrap_or(host_part).to_ascii_lowercase();
+            let host = host_part
+                .rsplit('@')
+                .next()
+                .unwrap_or(host_part)
+                .to_ascii_lowercase();
             if host == "github.com" {
                 return two_segments(path).map(|(o, r)| RepoRef::new(o, r));
             }
@@ -86,7 +93,11 @@ pub fn parse_github_repo(input: &str) -> Option<RepoRef> {
     let after_scheme = s.split_once("://").map(|(_, rest)| rest)?;
     let after_userinfo = after_scheme.rsplit('@').next().unwrap_or(after_scheme);
     let (authority, path) = after_userinfo.split_once('/')?;
-    let host = authority.split(':').next().unwrap_or(authority).to_ascii_lowercase();
+    let host = authority
+        .split(':')
+        .next()
+        .unwrap_or(authority)
+        .to_ascii_lowercase();
     if !GITHUB_HOSTS.contains(&host.as_str()) {
         return None;
     }
@@ -173,7 +184,10 @@ fn on_path(name: &str) -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn git_from_registry() -> Option<PathBuf> {
-    for (root, sub) in [("HKLM", "SOFTWARE\\GitForWindows"), ("HKCU", "SOFTWARE\\GitForWindows")] {
+    for (root, sub) in [
+        ("HKLM", "SOFTWARE\\GitForWindows"),
+        ("HKCU", "SOFTWARE\\GitForWindows"),
+    ] {
         if let Some(install) = reg_read_string(root, sub, "InstallPath") {
             for tail in ["cmd\\git.exe", "bin\\git.exe"] {
                 let cand = Path::new(&install).join(tail);
@@ -199,13 +213,24 @@ fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
         _ => return None,
     };
     let wide = |s: &str| -> Vec<u16> {
-        std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     };
     let sub = wide(subkey);
     let val = wide(value);
     let mut len: u32 = 0;
     let rc = unsafe {
-        RegGetValueW(hkey, sub.as_ptr(), val.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), std::ptr::null_mut(), &mut len)
+        RegGetValueW(
+            hkey,
+            sub.as_ptr(),
+            val.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut len,
+        )
     };
     if rc != ERROR_SUCCESS || len == 0 {
         return None;
@@ -213,7 +238,15 @@ fn reg_read_string(root: &str, subkey: &str, value: &str) -> Option<String> {
     let mut buf = vec![0u16; (len as usize) / 2 + 1];
     let mut len2 = (buf.len() * 2) as u32;
     let rc = unsafe {
-        RegGetValueW(hkey, sub.as_ptr(), val.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buf.as_mut_ptr() as *mut _, &mut len2)
+        RegGetValueW(
+            hkey,
+            sub.as_ptr(),
+            val.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut _,
+            &mut len2,
+        )
     };
     if rc != ERROR_SUCCESS {
         return None;
@@ -230,7 +263,8 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
     cmd.arg("-C")
         .arg(repo_dir)
         // No hooks, no pager, no credential prompt that could hang unseen.
-        .arg("-c").arg("core.hooksPath=/dev/null")
+        .arg("-c")
+        .arg("core.hooksPath=/dev/null")
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_PAGER", "cat")
@@ -252,7 +286,11 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
 }
 
 fn git_remote_urls(git: &Path, repo_dir: &Path) -> Vec<String> {
-    let (ok, text) = run_git(git, repo_dir, &["config", "--get-regexp", "^remote\\..*\\.url$"]);
+    let (ok, text) = run_git(
+        git,
+        repo_dir,
+        &["config", "--get-regexp", "^remote\\..*\\.url$"],
+    );
     if !ok {
         return Vec::new();
     }
@@ -318,14 +356,23 @@ fn op_args(op: &str) -> Option<Vec<&'static str>> {
 /// when zero or several match, returns structured guidance so the model asks
 /// the user rather than stopping. `read_roots` are the only folders considered.
 pub async fn git_inspect(args: &Value, read_roots: &[PathBuf]) -> String {
-    let Some(url) = args.get("url").and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty())
+    let Some(url) = args
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
     else {
         return "ERROR: git_inspect requires a 'url' string (a GitHub repository URL or owner/repo).".to_string();
     };
     let Some(target) = parse_github_repo(url) else {
         return format!("ERROR: git_inspect 'url' is not a GitHub repository: {url}");
     };
-    let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("summary").trim().to_string();
+    let op = args
+        .get("op")
+        .and_then(|v| v.as_str())
+        .unwrap_or("summary")
+        .trim()
+        .to_string();
 
     let Some(git) = discover_git() else {
         return json!({
@@ -484,7 +531,16 @@ mod tests {
         std::fs::write(dir.join("README.md"), "hi").unwrap();
         for args in [
             vec!["-c", "user.email=t@t", "-c", "user.name=t", "add", "."],
-            vec!["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+            vec![
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                "init",
+            ],
         ] {
             let mut c = Command::new(&git);
             c.arg("-C").arg(dir).args(&args);
@@ -507,7 +563,12 @@ mod tests {
         ] {
             assert_eq!(parse_github_repo(f).as_ref(), Some(&want), "{f}");
         }
-        for f in ["https://example.com/o/r", "https://gitlab.com/o/r", "C:\\path\\repo", "not a url"] {
+        for f in [
+            "https://example.com/o/r",
+            "https://gitlab.com/o/r",
+            "C:\\path\\repo",
+            "not a url",
+        ] {
             assert_eq!(parse_github_repo(f), None, "{f}");
         }
     }
@@ -527,11 +588,21 @@ mod tests {
         init_repo(&other, "https://github.com/someone/else.git");
 
         let roots = vec![other.clone(), repo.clone()];
-        let out = git_inspect(&json!({ "url": "https://github.com/Jozkah/streamer" }), &roots).await;
+        let out = git_inspect(
+            &json!({ "url": "https://github.com/Jozkah/streamer" }),
+            &roots,
+        )
+        .await;
         assert!(out.contains("Recovered locally"), "{out}");
         assert!(out.contains("OBS Project"), "clone path: {out}");
-        assert!(out.contains("origin") && out.to_lowercase().contains("streamer"), "remote shown: {out}");
-        assert!(!out.contains("someone/else"), "must not pick the unrelated repo: {out}");
+        assert!(
+            out.contains("origin") && out.to_lowercase().contains("streamer"),
+            "remote shown: {out}"
+        );
+        assert!(
+            !out.contains("someone/else"),
+            "must not pick the unrelated repo: {out}"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -555,7 +626,11 @@ mod tests {
         std::fs::create_dir_all(&b).unwrap();
         init_repo(&a, "https://github.com/Jozkah/streamer.git");
         init_repo(&b, "git@github.com:Jozkah/streamer.git");
-        let out = git_inspect(&json!({ "url": "Jozkah/streamer" }), &[a.clone(), b.clone()]).await;
+        let out = git_inspect(
+            &json!({ "url": "Jozkah/streamer" }),
+            &[a.clone(), b.clone()],
+        )
+        .await;
         assert!(out.contains("multiple_local_clones"), "{out}");
         assert!(out.contains("ask_user_to_choose_clone"), "{out}");
         let _ = std::fs::remove_dir_all(&base);
@@ -566,13 +641,23 @@ mod tests {
         // Non-GitHub: no note.
         assert!(web_fetch_recovery_note("https://example.com/x", "CRAWL_NOT_FOUND", &[]).is_none());
         // GitHub but a non-private failure: no note.
-        assert!(web_fetch_recovery_note("https://github.com/o/r", "connection reset", &[]).is_none());
+        assert!(
+            web_fetch_recovery_note("https://github.com/o/r", "connection reset", &[]).is_none()
+        );
         // GitHub private failure, no clone: steer to git_inspect + user choices.
-        let n = web_fetch_recovery_note("https://github.com/Jozkah/streamer", "Error: CRAWL_NOT_FOUND", &[]).unwrap();
+        let n = web_fetch_recovery_note(
+            "https://github.com/Jozkah/streamer",
+            "Error: CRAWL_NOT_FOUND",
+            &[],
+        )
+        .unwrap();
         assert!(n.contains("git_inspect"), "{n}");
         assert!(n.contains("Do NOT retry web_fetch"), "{n}");
         // It instructs against a false "unreachable" conclusion rather than
         // asserting one.
-        assert!(n.contains("Do not conclude the repository is unreachable"), "{n}");
+        assert!(
+            n.contains("Do not conclude the repository is unreachable"),
+            "{n}"
+        );
     }
 }
