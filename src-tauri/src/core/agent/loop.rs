@@ -26,7 +26,7 @@ use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
-    load_assistant_config, parse_openai_messages, repair_dangling_tool_calls,
+    load_assistant_config, parse_openai_messages,
     resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
     stream_openai_chat_completions,
 };
@@ -4078,27 +4078,22 @@ async fn orchestrate_inner(
     let messages_value = json_body
         .get("messages")
         .ok_or("Missing required field 'messages'")?;
-    let mut conversation_messages = parse_openai_messages(messages_value)?;
-    // Drop tool calls a truncated stream left with unparsable arguments before
-    // anything else looks at the history. Such a call is persisted by the run
-    // that produced it and resent on every later turn, and an OpenAI-compatible
-    // upstream 422s the whole request over it -- so without this the session is
-    // wedged on its own history and cannot heal. Runs first so the dangling
-    // repair below sees the post-removal shape.
-    let poisoned = drop_malformed_tool_calls(&mut conversation_messages);
-    if poisoned > 0 {
-        log::warn!("agent: dropped {poisoned} tool call(s) with unparsable arguments from history");
-    }
-    // Self-heal a conversation an earlier interrupted run may have left with a
-    // tool_calls turn missing one of its results (e.g. the process was killed
-    // while an `ask`/permission prompt was still pending). Providers like
-    // Anthropic reject the entire request on a dangling tool_use, so repair
-    // it here -- the one place every incoming message array passes through --
-    // before it ever reaches a provider.
-    let repaired = repair_dangling_tool_calls(&mut conversation_messages);
-    if repaired > 0 {
-        log::warn!("agent: repaired {repaired} dangling tool call(s) with no prior result");
-    }
+    // Adopt the incoming history into the canonical accepted record -- the one
+    // place it heals before it can reach a provider: a tool call a truncated
+    // stream left with unparsable arguments is dropped with its result, a tool
+    // result whose call is absent from the history is removed, and a surviving
+    // call missing its result gets the synthetic error reply. Any of these
+    // shapes 422s an OpenAI-compatible upstream and wedges the session on its
+    // own history. Projecting the record back gives the healed wire history: a
+    // stable system prompt read back lands at the head, a compaction summary is
+    // kept in place. The per-turn system prompt is still applied below via
+    // `set_system_prompt`, and the loop appends turns to this projection as
+    // before.
+    let mut conversation_messages =
+        crate::core::agent::accepted_history::AcceptedHistory::from_history(
+            parse_openai_messages(messages_value)?,
+        )
+        .project_persisted();
 
     let assistant_id = json_body
         .get("assistant_id")
@@ -4623,7 +4618,9 @@ const MAX_COMPACTION_ATTEMPTS: usize = 4;
 /// `stripAssistantReasoningInBody`; kept in one place so every surface (TUI,
 /// headless, subagents) strips consistently. Only assistant messages carry the
 /// field, but the filter is defensive and targets just that role.
-fn strip_assistant_reasoning(messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
+pub(crate) fn strip_assistant_reasoning(
+    messages: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
     messages
         .iter()
         .map(|m| {

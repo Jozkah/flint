@@ -309,6 +309,47 @@ pub(crate) fn drop_malformed_tool_calls(messages: &mut Vec<serde_json::Value>) -
     dropped
 }
 
+/// True when a message is a `system`/`developer` node.
+pub(crate) fn is_system_node(message: &serde_json::Value) -> bool {
+    matches!(
+        message.get("role").and_then(|r| r.as_str()),
+        Some("system") | Some("developer")
+    )
+}
+
+/// Drop `role: "tool"` results whose `tool_call_id` matches no assistant tool
+/// call anywhere earlier in the history. A truncated client thread, or history
+/// stitched from two sources, can carry a result whose call was never recorded;
+/// a strict OpenAI-compatible upstream 422s the whole request over it. Removal
+/// is deterministic (a stable scan, first call id seen wins) and complements
+/// [`repair_dangling_tool_calls`], which handles the opposite orphan (a call
+/// with no result). Returns the number of results dropped.
+pub(crate) fn drop_orphaned_tool_results(messages: &mut Vec<serde_json::Value>) -> usize {
+    // Every tool-call id announced by an assistant turn, in order.
+    let mut known: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for msg in messages.iter() {
+        if let Some(calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
+            for tc in calls {
+                if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                    known.insert(id.to_string());
+                }
+            }
+        }
+    }
+    let before = messages.len();
+    messages.retain(|m| {
+        if m.get("role").and_then(|v| v.as_str()) != Some("tool") {
+            return true;
+        }
+        let id = m
+            .get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        known.contains(id)
+    });
+    before - messages.len()
+}
+
 /// Content of the most recently applied system node, if any -- the "live"
 /// system instruction the model last read.
 fn last_system_content(messages: &[serde_json::Value]) -> Option<&str> {
