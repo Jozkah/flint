@@ -551,6 +551,9 @@ pub const MAX_SNAPSHOTS: usize = 2_000;
 /// file beside it, then a rename. A crash mid-rewrite leaves the old log whole.
 /// Lines that no longer parse cannot be attributed to anyone and are kept.
 fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
+    // The lock every append takes (Jozkah/jan#287): without it a snapshot
+    // appended between the read and the rename below is lost.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(0);
@@ -599,6 +602,8 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
 /// pass over this log; a line that no longer parses is left exactly as it is,
 /// because text that cannot be attributed must not be edited either.
 pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<usize, String> {
+    // Same read-modify-rename as `rewrite`, under the same lock (Jozkah/jan#287).
+    let _guard = crate::retention::lock();
     let needles: Vec<&str> = needles
         .iter()
         .copied()
