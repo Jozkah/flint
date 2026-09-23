@@ -4932,6 +4932,37 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&outside);
     }
 
+    /// Jozkah/jan#239: a directory grep must not read the credential files
+    /// that `read` refuses (AH-044). It searches the rest and says what it
+    /// left out.
+    #[tokio::test]
+    async fn a_directory_grep_skips_credential_files() {
+        let root = unique_root();
+        std::fs::write(root.join("README.md"), "hello readme\n").unwrap();
+        std::fs::write(
+            root.join("deploy.pem"),
+            "-----BEGIN PRIVATE KEY-----\nPEMBODYSECRET\n",
+        )
+        .unwrap();
+        std::fs::write(root.join(".npmrc"), "//registry/:_authToken=NPMTOKENSECRET\n").unwrap();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/.env"), "API_KEY=ENVSECRET\n").unwrap();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let out = super::execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": ".", "path": "."}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.contains("hello readme"), "got: {out}");
+        for secret in ["PEMBODYSECRET", "NPMTOKENSECRET", "ENVSECRET"] {
+            assert!(!out.contains(secret), "grep returned {secret}: {out}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// With write confinement enabled, a `..` write is refused at the handler,
     /// independent of the gate -- the defense-in-depth layer.
     #[tokio::test]
