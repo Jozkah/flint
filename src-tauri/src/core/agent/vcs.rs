@@ -2153,4 +2153,37 @@ mod tests {
         assert_eq!(head(&work), here);
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    /// A repository's own config can name programs git runs while it reads
+    /// (`diff.external`, `diff.<driver>.textconv`, `filter.<driver>.clean`).
+    /// Reading what is staged or how far a branch has drifted runs none.
+    #[test]
+    fn a_read_runs_no_program_the_repository_names() {
+        for (i, (key, tail)) in [
+            ("diff.external", "true"),
+            ("diff.evil.textconv", "cat"),
+            ("filter.evil.clean", "cat"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for read in ["staged", "divergence"] {
+                let (base, work) = pair(&format!("progcfg-{i}-{read}"));
+                let marker = base.join("marker");
+                commit(&work, ".gitattributes", "*.txt diff=evil filter=evil\n", "attrs");
+                write(&work, "file.txt", "two\n");
+                run(&work, &["add", "file.txt"]);
+                write(&work, "file.txt", "three\n");
+                let m = marker.to_string_lossy().replace('\\', "/");
+                run(&work, &["config", key, &format!(": > '{m}'; {tail}")]);
+                let refused = match read {
+                    "staged" => staged(&work).is_err(),
+                    _ => divergence(&work).is_err(),
+                };
+                assert!(!marker.exists(), "{read} ran `{key}`");
+                assert!(refused, "{read} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
+    }
 }

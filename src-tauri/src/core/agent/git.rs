@@ -1903,3 +1903,104 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+/// A repository's own config can name programs git runs while it reads:
+/// `diff.external`, a `diff.<driver>.textconv`, or a `filter.<driver>.clean`
+/// selected by `.gitattributes`. The review panel reads status and diffs of
+/// whatever project is open, so none of those reads may run such a program.
+#[cfg(test)]
+mod program_config_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn sh(repo: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()
+            .expect("git runs in these tests");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// A repository with a committed file, a staged change and an unstaged
+    /// change to it, whose own config sets `key` to a command that leaves a
+    /// marker file behind. Returns the repository and the marker path.
+    fn planted(key: &str, tail: &str) -> (PathBuf, PathBuf) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let base = std::env::temp_dir().join(format!("jan_gitcfg_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let marker = base.join("marker");
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        sh(&repo, &["config", "user.email", "t@example.invalid"]);
+        sh(&repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join(".gitattributes"), "*.txt diff=evil filter=evil\n").unwrap();
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        sh(&repo, &["add", "-A"]);
+        sh(&repo, &["commit", "-qm", "first"]);
+        std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+        sh(&repo, &["add", "a.txt"]);
+        std::fs::write(repo.join("a.txt"), "three\n").unwrap();
+        let m = marker.to_string_lossy().replace('\\', "/");
+        sh(&repo, &["config", key, &format!(": > '{m}'; {tail}")]);
+        (base, marker)
+    }
+
+    fn cases() -> [(&'static str, &'static str); 3] {
+        [
+            ("diff.external", "true"),
+            ("diff.evil.textconv", "cat"),
+            ("filter.evil.clean", "cat"),
+        ]
+    }
+
+    #[test]
+    fn status_runs_no_program_the_repository_names() {
+        for (key, tail) in cases() {
+            for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+                let (base, marker) = planted(key, tail);
+                let result = status(&base.join("repo"), scope);
+                assert!(!marker.exists(), "status {scope:?} ran `{key}`");
+                assert!(result.is_err(), "status {scope:?} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
+    }
+
+    #[test]
+    fn file_diff_runs_no_program_the_repository_names() {
+        for (key, tail) in cases() {
+            for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+                let (base, marker) = planted(key, tail);
+                let result = file_diff(&base.join("repo"), "a.txt", scope, 1 << 20);
+                assert!(!marker.exists(), "file_diff {scope:?} ran `{key}`");
+                assert!(result.is_err(), "file_diff {scope:?} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
+    }
+
+    #[test]
+    fn an_ordinary_repository_still_reads() {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let repo = std::env::temp_dir().join(format!("jan_gitcfg_plain_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        sh(&repo, &["config", "user.email", "t@example.invalid"]);
+        sh(&repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        sh(&repo, &["add", "-A"]);
+        sh(&repo, &["commit", "-qm", "first"]);
+        std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+        let st = status(&repo, DiffScope::All).expect("status reads");
+        assert_eq!(st.files.len(), 1);
+        let d = file_diff(&repo, "a.txt", DiffScope::Working, 1 << 20).expect("diff reads");
+        assert!(d.diff.contains("+two"));
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+}
