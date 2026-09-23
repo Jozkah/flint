@@ -622,6 +622,20 @@ pub fn agent_worktree_discard(
     worktree::discard(&record, force)
 }
 
+/// Why a shell command would be asked about before it runs, or `None`.
+///
+/// The renderer's own port (`destructiveCommand.ts`) compares paths as text;
+/// this resolves every root and target through the filesystem first, so an
+/// absolute path inside an approved root is inside even when spelled through
+/// a symlink, a junction, mixed separators or `..`, and a link inside a root
+/// that leads out of it is outside. Roots that are not absolute are ignored;
+/// with none left the scope is unknown and every absolute path is outside.
+#[tauri::command]
+pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
+    let scope = crate::core::agent::destructive::Scope::new(roots.iter());
+    crate::core::agent::destructive::destructive_reason_in(&command, &scope)
+}
+
 /// What a worktree holds that removing it would destroy.
 ///
 /// Asked before offering to remove one, so the confirmation names the work

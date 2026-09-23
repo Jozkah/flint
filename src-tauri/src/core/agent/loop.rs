@@ -1165,6 +1165,34 @@ struct CompositeToolInvoker {
 /// Default for [`CompositeToolInvoker::auto_approve_limit`].
 pub const DEFAULT_AUTO_APPROVE_LIMIT: u32 = 50;
 
+/// Largest accepted [`CompositeToolInvoker::auto_approve_limit`]; higher
+/// values are clamped to it. Matches `MAX_AUTO_APPROVE_LIMIT` in
+/// `web-app/src/hooks/useAutoApproveLimit.ts`.
+pub const MAX_AUTO_APPROVE_LIMIT: u32 = 1000;
+
+/// The request body's `auto_approve_limit`, with the desktop setting's
+/// semantics (`normalizeAutoApproveLimit`): absent, null or unreadable is the
+/// default (never silently "off"); a number, or a numeric string, at or below
+/// zero turns the pause off; otherwise it is floored and clamped to
+/// [`MAX_AUTO_APPROVE_LIMIT`].
+pub(crate) fn normalize_auto_approve_limit(value: Option<&serde_json::Value>) -> u32 {
+    let n = match value {
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        Some(serde_json::Value::String(s)) if !s.trim().is_empty() => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    match n {
+        Some(n) if n.is_finite() => {
+            if n <= 0.0 {
+                0
+            } else {
+                n.floor().min(MAX_AUTO_APPROVE_LIMIT as f64) as u32
+            }
+        }
+        _ => DEFAULT_AUTO_APPROVE_LIMIT,
+    }
+}
+
 /// Default for the sandboxed shell's network namespace, used when
 /// `[tools].allow_network` is unset.
 ///
@@ -3179,7 +3207,16 @@ impl CompositeToolInvoker {
                 .then(|| args.get("command").and_then(|v| v.as_str()))
                 .flatten()
                 .and_then(|c| {
-                    crate::core::agent::destructive::destructive_reason(c, &self.project_root)
+                    // Inside the project or the run's own scratch directory is
+                    // ordinary work; both are resolved and canonicalised, so an
+                    // absolute path into either is not asked about.
+                    crate::core::agent::destructive::destructive_reason_in(
+                        c,
+                        &crate::core::agent::destructive::Scope::new([
+                            &self.project_root,
+                            &self.scratch_root,
+                        ]),
+                    )
                 });
             use std::sync::atomic::Ordering as StreakOrdering;
             // Said in the prompt, so the person knows why a call that would
@@ -4778,11 +4815,8 @@ async fn orchestrate_inner(
             .unwrap_or_default();
         // How many auto-approved calls in a row before the run checks in with
         // the user; `0` turns the pause off.
-        let auto_approve_limit_from_body = json_body
-            .get("auto_approve_limit")
-            .and_then(|v| v.as_u64())
-            .map(|n| n.min(u32::MAX as u64) as u32)
-            .unwrap_or(DEFAULT_AUTO_APPROVE_LIMIT);
+        let auto_approve_limit_from_body =
+            normalize_auto_approve_limit(json_body.get("auto_approve_limit"));
         let tools = CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
             auto_approve_limit: auto_approve_limit_from_body,
@@ -11158,6 +11192,86 @@ mod tests {
         drop(invoker);
         // Calls 1-2 auto, 3 asks; 4-5 auto, 6 asks.
         assert_eq!(asked.await.unwrap(), 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The body's `auto_approve_limit` follows the desktop setting's rules
+    /// (`normalizeAutoApproveLimit`): default 50, `0` off, clamped to 1000,
+    /// and anything unreadable falls back to the default rather than off.
+    #[test]
+    fn auto_approve_limit_from_the_body_is_normalized_like_the_setting() {
+        use serde_json::json;
+        let n = |v: serde_json::Value| normalize_auto_approve_limit(Some(&v));
+        // Default: absent, null.
+        assert_eq!(normalize_auto_approve_limit(None), DEFAULT_AUTO_APPROVE_LIMIT);
+        assert_eq!(n(json!(null)), 50);
+        // Disabled.
+        assert_eq!(n(json!(0)), 0);
+        assert_eq!(n(json!(-5)), 0);
+        assert_eq!(n(json!("0")), 0);
+        // Custom, floored; numeric strings accepted like the settings field.
+        assert_eq!(n(json!(7)), 7);
+        assert_eq!(n(json!(7.9)), 7);
+        assert_eq!(n(json!(" 12 ")), 12);
+        // Maximum.
+        assert_eq!(n(json!(1000)), MAX_AUTO_APPROVE_LIMIT);
+        assert_eq!(n(json!(5000)), 1000);
+        assert_eq!(n(json!(1e300)), 1000);
+        // Malformed: the default, never "off".
+        assert_eq!(n(json!("abc")), 50);
+        assert_eq!(n(json!("")), 50);
+        assert_eq!(n(json!(true)), 50);
+        assert_eq!(n(json!([3])), 50);
+        assert_eq!(n(json!({ "limit": 3 })), 50);
+    }
+
+    /// A limit of 0 never pauses, however long the auto-approved run.
+    #[tokio::test]
+    async fn a_zero_auto_approve_limit_never_pauses() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        invoker.auto_approve_limit = normalize_auto_approve_limit(Some(&serde_json::json!(0)));
+        for i in 0..8 {
+            let call = serde_json::json!({ "id": format!("w{i}"), "type": "function", "function": {
+                "name": "write",
+                "arguments": serde_json::json!({ "path": format!("f{i}.txt"), "content": "x" }).to_string()
+            } });
+            invoker.invoke(&[call]).await.unwrap();
+        }
+        drop(invoker);
+        let mut asked = 0;
+        while let Ok(event) = rx.try_recv() {
+            if matches!(event, StreamEvent::PermissionRequest { .. }) {
+                asked += 1;
+            }
+        }
+        assert_eq!(asked, 0, "the pause is off");
+        for i in 0..8 {
+            assert!(root.join(format!("f{i}.txt")).exists());
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An absolute path into the project is inside the approved scope, so an
+    /// auto-approved run deletes there without being asked; the same command
+    /// aimed at a sibling folder whose name merely starts with the project's
+    /// is still put to the user.
+    #[tokio::test]
+    async fn absolute_paths_inside_the_project_are_not_asked_about() {
+        let root = unique_project_root();
+        std::fs::create_dir_all(root.join("build")).unwrap();
+        let root_str = root.to_string_lossy().to_string();
+        let scope = crate::core::agent::destructive::Scope::new([&root]);
+        let inside = format!("rm -rf \"{}\"", root.join("build").to_string_lossy());
+        assert_eq!(
+            crate::core::agent::destructive::destructive_reason_in(&inside, &scope),
+            None
+        );
+        let sibling = format!("rm -rf \"{root_str}-other/build\"");
+        assert!(crate::core::agent::destructive::destructive_reason_in(&sibling, &scope).is_some());
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -130,32 +130,89 @@ function commandName(word: string): string {
 }
 
 /**
- * A deletion target that reaches beyond the project: the filesystem root,
- * home, a parent directory, an unresolved variable or substitution, or an
- * absolute path not under `workspace`. An empty `workspace` makes every
- * absolute path outside.
+ * The folders a command may delete inside without being asked about. Empty is
+ * the unknown scope: every absolute path counts as outside it.
  */
-export function outsideWorkspace(target: string, workspace: string): boolean {
+export type DeletionScope = readonly string[]
+
+const isAbsolutePath = (p: string) =>
+  p.startsWith('/') || (isDrive(p.slice(0, 2)) && p[2] === '/')
+
+/**
+ * A path in the form roots and targets are compared in: `/` separators, no
+ * verbatim `\\?\` prefix, no `.` segments or repeated or trailing separators,
+ * case-folded when it is a drive path. `null` when it holds `..`: text alone
+ * cannot tell where that leads once symlinks are involved, so it is never
+ * treated as inside. (The desktop resolves through the filesystem instead;
+ * see `agent_destructive_reason`.)
+ */
+function comparablePath(path: string): string | null {
+  let p = path.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '')
+  p = p.replace(/\\/g, '/')
+  const unc = p.startsWith('//')
+  const parts: string[] = []
+  for (const part of p.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') return null
+    parts.push(part)
+  }
+  const drive = parts.length > 0 && isDrive(parts[0])
+  const joined = drive
+    ? parts.join('/')
+    : `${unc ? '//' : '/'}${parts.join('/')}`
+  return drive ? joined.toLowerCase() : joined
+}
+
+/** Absolute roots in comparable form; `/` or a bare drive vouches for nothing. */
+function scopeRoots(scope: DeletionScope): string[] {
+  const out: string[] = []
+  for (const raw of scope) {
+    const slashed = raw
+      .replace(/^\\\\\?\\UNC\\/, '\\\\')
+      .replace(/^\\\\\?\\/, '')
+      .replace(/\\/g, '/')
+    if (!isAbsolutePath(slashed)) continue
+    const root = comparablePath(slashed)
+    if (!root || root === '/' || root === '//' || isDrive(root)) continue
+    out.push(root)
+  }
+  return out
+}
+
+/**
+ * A deletion target that reaches beyond the approved scope: the filesystem
+ * root, home, a parent directory, an unresolved variable or substitution, a
+ * drive-relative path, or an absolute path not under any root of `workspace`
+ * (a single root or several). An empty scope makes every absolute path
+ * outside. A sibling folder that merely starts with a root's name
+ * (`/proj-other` beside `/proj`) is outside.
+ */
+export function outsideWorkspace(
+  target: string,
+  workspace: string | DeletionScope
+): boolean {
   const t = target.replace(/^["']+|["']+$/g, '')
   if (!t) return false
   if (/^[~$%`]/.test(t)) return true
   const norm = t.replace(/\\/g, '/')
-  if (
-    norm === '..' ||
-    norm.startsWith('../') ||
-    norm.includes('/../') ||
-    norm.endsWith('/..')
-  ) {
-    return true
+  // `C:foo` is relative to that drive's current directory, which is unknown.
+  if (isDrive(norm.slice(0, 2)) && !isAbsolutePath(norm)) return true
+  if (!isAbsolutePath(norm)) {
+    return (
+      norm === '..' ||
+      norm.startsWith('../') ||
+      norm.includes('/../') ||
+      norm.endsWith('/..')
+    )
   }
-  const absolute = norm.startsWith('/') || isDrive(norm.slice(0, 2))
-  if (!absolute) return false
-  const root = workspace.replace(/\\/g, '/').replace(/\/+$/, '')
-  if (!root) return true
-  const ci = isDrive(norm.slice(0, 2)) || isDrive(root.slice(0, 2))
-  const n = (ci ? norm.toLowerCase() : norm).replace(/[/*]+$/, '')
-  const r = ci ? root.toLowerCase() : root
-  return !(n === r || n.startsWith(`${r}/`))
+  const n = comparablePath(norm.replace(/[/*]+$/, '') || '/')
+  if (n === null) return true
+  const ci = isDrive(n.slice(0, 2))
+  const roots = scopeRoots(typeof workspace === 'string' ? [workspace] : workspace)
+  return !roots.some((root) => {
+    const r = ci ? root.toLowerCase() : root
+    return n === r || n.startsWith(`${r}/`)
+  })
 }
 
 /** Recursive?, and the targets. POSIX flags and PowerShell parameters. */
@@ -213,7 +270,7 @@ function outsideReason(words: string[], target: string, verb: string): string {
 
 function firstOutside(
   targets: string[],
-  workspace: string
+  workspace: DeletionScope
 ): string | undefined {
   return (targets.length ? targets : ['.']).find((t) =>
     outsideWorkspace(t, workspace)
@@ -222,7 +279,7 @@ function firstOutside(
 
 function checkSegment(
   words: string[],
-  workspace: string,
+  workspace: DeletionScope,
   depth: number
 ): string | null {
   const cmd = commandName(words[0])
@@ -363,7 +420,7 @@ function checkSegment(
 
 function reasonAtDepth(
   command: string,
-  workspace: string,
+  workspace: DeletionScope,
   depth: number
 ): string | null {
   if (depth > MAX_DEPTH) return 'nests shells too deeply to check'
@@ -388,10 +445,19 @@ function reasonAtDepth(
   return phrase ? `runs \`${phrase.toUpperCase()}\`` : null
 }
 
-/** Why `command` looks destructive (or cannot be checked), or null. */
+/**
+ * Why `command` looks destructive (or cannot be checked), or null.
+ * `workspace` is the approved scope: one root or several (a project and its
+ * scratch folder, a chat's workspace). Deleting inside any of them is
+ * ordinary work; with none, every absolute path counts as outside.
+ */
 export function destructiveCommandReason(
   command: string,
-  workspace: string
+  workspace: string | DeletionScope
 ): string | null {
-  return reasonAtDepth(command, workspace, 0)
+  return reasonAtDepth(
+    command,
+    typeof workspace === 'string' ? [workspace] : workspace,
+    0
+  )
 }

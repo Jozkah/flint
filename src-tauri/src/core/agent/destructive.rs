@@ -48,10 +48,61 @@ const MAX_DEPTH: usize = 4;
 /// `workspace` is the project root: deleting inside it is ordinary work,
 /// deleting outside it is not.
 pub fn destructive_reason(command: &str, workspace: &Path) -> Option<String> {
-    reason_at_depth(command, workspace, 0)
+    destructive_reason_in(command, &Scope::new([workspace]))
 }
 
-fn reason_at_depth(command: &str, workspace: &Path, depth: usize) -> Option<String> {
+/// [`destructive_reason`] against every root of an approved scope (a project
+/// and its scratch directory, a chat's workspace, ...).
+pub fn destructive_reason_in(command: &str, scope: &Scope) -> Option<String> {
+    reason_at_depth(command, scope, 0)
+}
+
+/// The folders a command may delete inside without being asked about.
+///
+/// Each root is resolved once, up front: canonicalised through the filesystem
+/// when it exists (so a root reached through a symlink or junction compares
+/// by where it really is), lexically normalised otherwise. A root that is not
+/// an absolute path, or that normalises to the filesystem root, is dropped:
+/// it cannot vouch for anything. An empty scope is the unknown scope, in which
+/// every absolute path counts as outside.
+#[derive(Debug, Clone, Default)]
+pub struct Scope {
+    roots: Vec<String>,
+}
+
+impl Scope {
+    pub fn new<P: AsRef<Path>>(roots: impl IntoIterator<Item = P>) -> Self {
+        let roots = roots
+            .into_iter()
+            .filter_map(|root| {
+                // A root that was canonicalised on Windows arrives verbatim
+                // (`\\?\C:\...`); its plain spelling is the same folder.
+                let raw = root.as_ref().to_string_lossy();
+                let raw = match raw.strip_prefix(r"\\?\UNC\") {
+                    Some(rest) => format!(r"\\{rest}"),
+                    None => raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_string(),
+                };
+                let raw = raw.replace('\\', "/");
+                if !is_absolute_str(&raw) {
+                    return None;
+                }
+                let resolved = resolve_absolute(&raw)?;
+                // `/` or a bare drive would make everything "inside".
+                (resolved.contains('/') && !resolved.ends_with(':')).then_some(resolved)
+            })
+            .collect();
+        Self { roots }
+    }
+
+    /// Whether the resolved absolute `path` is one of the roots or under one.
+    fn contains(&self, path: &str) -> bool {
+        self.roots
+            .iter()
+            .any(|r| path == r || path.starts_with(&format!("{r}/")))
+    }
+}
+
+fn reason_at_depth(command: &str, workspace: &Scope, depth: usize) -> Option<String> {
     if depth > MAX_DEPTH {
         return Some("nests shells too deeply to check".to_string());
     }
@@ -92,7 +143,7 @@ fn command_name(word: &str) -> String {
     base.strip_suffix(".exe").unwrap_or(base).to_string()
 }
 
-fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<String> {
+fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<String> {
     let cmd = command_name(&words[0]);
     let args = &words[1..];
     let lower_args: Vec<String> = args.iter().map(|a| a.to_ascii_lowercase()).collect();
@@ -333,10 +384,85 @@ fn is_drive(a: &str) -> bool {
     b.len() == 2 && b[0].is_ascii_alphabetic() && b[1] == b':'
 }
 
-/// A deletion target that reaches beyond the project: the filesystem root,
-/// home, a parent directory, a variable or substitution we cannot resolve, or
-/// an absolute path not under `workspace`.
-fn outside_workspace(target: &str, workspace: &Path) -> bool {
+/// Whether a `/`-separated path is absolute: `/...` (POSIX, UNC as `//`) or a
+/// drive with a separator (`C:/...`), on every host, so the shared vectors give
+/// the same verdicts on Windows and POSIX.
+fn is_absolute_str(path: &str) -> bool {
+    path.starts_with('/') || (path.len() >= 3 && is_drive(&path[..2]) && &path[2..3] == "/")
+}
+
+/// A resolved path in the one form roots and targets are compared in: `/`
+/// separators, no verbatim (`\\?\`) prefix, no trailing separator, and
+/// case-folded where the filesystem is case-insensitive (Windows, or any
+/// drive-letter path).
+fn comparable(path: &str) -> String {
+    let path = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!("//{rest}")
+    } else {
+        path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+    };
+    let path = path.replace('\\', "/");
+    let path = path.trim_end_matches('/');
+    if cfg!(windows) || (path.len() >= 2 && is_drive(&path[..2])) {
+        path.to_ascii_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
+/// Append `rest` to an already-resolved `base`. `.` and empty components are
+/// dropped; `..` in a part that could not be resolved through the filesystem
+/// is refused (`None`), because whether it climbs out depends on symlinks that
+/// cannot be seen.
+fn join_rest(mut base: String, rest: &[&str]) -> Option<String> {
+    for part in rest {
+        match *part {
+            "" | "." => continue,
+            ".." => return None,
+            name => {
+                base.push('/');
+                base.push_str(name);
+            }
+        }
+    }
+    Some(comparable(&base))
+}
+
+/// Resolve an absolute `/`-separated path for comparison. The longest prefix
+/// that exists is canonicalised through the filesystem -- following symlinks
+/// and junctions, and applying `..` the way the OS will -- and the remainder,
+/// which does not exist yet, is appended lexically. `None` when the path
+/// cannot be resolved without guessing (a `..` below the part that exists).
+fn resolve_absolute(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').collect();
+    if Path::new(path).is_absolute() {
+        for i in (1..=parts.len()).rev() {
+            // A wildcard component names no one file, so nothing at or below
+            // it can be looked up.
+            if parts[..i].iter().any(|p| p.contains(['*', '?', '['])) {
+                continue;
+            }
+            let prefix = parts[..i].join("/");
+            let prefix = if prefix.is_empty() { "/".to_string() } else { prefix };
+            if let Ok(canonical) = std::fs::canonicalize(&prefix) {
+                return join_rest(comparable(&canonical.to_string_lossy()), &parts[i..]);
+            }
+        }
+    }
+    // Nothing exists (or this host does not treat the path as absolute, such
+    // as a drive path on POSIX): lexical only.
+    if parts.first().is_some_and(|p| is_drive(p)) {
+        join_rest(parts[0].to_string(), &parts[1..])
+    } else {
+        join_rest(String::new(), &parts)
+    }
+}
+
+/// A deletion target that reaches beyond the approved scope: the filesystem
+/// root, home, a parent directory, a variable or substitution we cannot
+/// resolve, a drive-relative path, or an absolute path that -- resolved and
+/// canonicalised -- is not under any root of `scope`.
+fn outside_workspace(target: &str, scope: &Scope) -> bool {
     let t = target.trim_matches(['"', '\'']);
     if t.is_empty() {
         return false;
@@ -345,28 +471,22 @@ fn outside_workspace(target: &str, workspace: &Path) -> bool {
         return true;
     }
     let norm = t.replace('\\', "/");
-    if norm == ".." || norm.starts_with("../") || norm.contains("/../") || norm.ends_with("/..") {
+    // `C:foo` is relative to that drive's current directory, which is unknown.
+    if norm.len() >= 2 && is_drive(&norm[..2]) && !is_absolute_str(&norm) {
         return true;
     }
-    let absolute = norm.starts_with('/') || (norm.len() >= 2 && is_drive(&norm[..2]));
-    if !absolute {
-        return false;
+    if !is_absolute_str(&norm) {
+        return norm == ".."
+            || norm.starts_with("../")
+            || norm.contains("/../")
+            || norm.ends_with("/..");
     }
-    let root = workspace.to_string_lossy().replace('\\', "/");
-    let root = root.trim_end_matches('/');
-    if root.is_empty() {
-        return true;
+    let trimmed = norm.trim_end_matches(['/', '*']);
+    let trimmed = if trimmed.is_empty() { "/" } else { trimmed };
+    match resolve_absolute(trimmed) {
+        Some(resolved) => !scope.contains(&resolved),
+        None => true,
     }
-    let (n, r) = if cfg!(windows)
-        || is_drive(&norm[..2.min(norm.len())])
-        || is_drive(&root[..2.min(root.len())])
-    {
-        (norm.to_ascii_lowercase(), root.to_ascii_lowercase())
-    } else {
-        (norm.clone(), root.to_string())
-    };
-    let n = n.trim_end_matches(['/', '*']).to_string();
-    !(n == r || n.starts_with(&format!("{r}/")))
 }
 
 /// A command line split into simple commands, plus the bodies of any command
@@ -546,5 +666,135 @@ mod tests {
             cmd = format!("echo $({cmd})");
         }
         assert!(destructive_reason(&cmd, ws).is_some());
+    }
+
+    fn temp_tree(tag: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "jan destructive {tag} {}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("proj dir").join("sub")).unwrap();
+        std::fs::create_dir_all(base.join("proj dir-other").join("sub")).unwrap();
+        std::fs::create_dir_all(base.join("outside")).unwrap();
+        base
+    }
+
+    fn rm(path: &std::path::Path) -> String {
+        format!("rm -rf \"{}\"", path.to_string_lossy())
+    }
+
+    /// Absolute paths inside any root are inside, with spaces, either
+    /// separator, a trailing separator or glob, and `..` that stays inside.
+    #[test]
+    fn absolute_paths_inside_the_scope_are_allowed() {
+        let base = temp_tree("inside");
+        let proj = base.join("proj dir");
+        let scratch = base.join("outside");
+        let scope = Scope::new([&proj, &scratch]);
+        let p = proj.to_string_lossy().to_string();
+        for target in [
+            proj.join("sub").to_string_lossy().to_string(),
+            format!("{p}/sub/"),
+            format!("{p}/sub/*"),
+            format!("{p}/sub/../sub/new-file"),
+            format!("{p}/not-yet-created/deeper"),
+            p.replace('\\', "/"),
+            // The second root counts as much as the first.
+            scratch.join("tmp").to_string_lossy().to_string(),
+        ] {
+            let cmd = format!("rm -rf \"{target}\"");
+            assert_eq!(destructive_reason_in(&cmd, &scope), None, "{cmd}");
+        }
+        if cfg!(windows) {
+            // Mixed separators and case.
+            let mixed = format!("{}\\sub/x", p.to_uppercase());
+            assert_eq!(destructive_reason_in(&format!("rm -rf \"{mixed}\""), &scope), None);
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Outside, unknown, ambiguous and escaping targets are still asked about.
+    #[test]
+    fn outside_unknown_and_ambiguous_targets_still_ask() {
+        let base = temp_tree("outside");
+        let proj = base.join("proj dir");
+        let scope = Scope::new([&proj]);
+        let p = proj.to_string_lossy().to_string();
+        for target in [
+            // A sibling whose name starts with the root's.
+            base.join("proj dir-other").join("sub").to_string_lossy().to_string(),
+            // Traversal out of the root, existing and not.
+            format!("{p}/../outside"),
+            format!("{p}/missing/../../outside"),
+            format!("{p}/sub/../../proj dir-other"),
+            base.to_string_lossy().to_string(),
+            "/".to_string(),
+            "~/x".to_string(),
+            "$HOME/x".to_string(),
+            "../x".to_string(),
+        ] {
+            let cmd = format!("rm -rf \"{target}\"");
+            assert!(destructive_reason_in(&cmd, &scope).is_some(), "{cmd}");
+        }
+        // Unknown scope: every absolute path is outside.
+        assert!(destructive_reason_in(&rm(&proj.join("sub")), &Scope::default()).is_some());
+        // A relative or root-level "root" vouches for nothing.
+        assert!(destructive_reason_in(&rm(&proj.join("sub")), &Scope::new(["proj"])).is_some());
+        assert!(destructive_reason_in("rm -rf /etc", &Scope::new(["/"])).is_some());
+        // Unparseable commands are asked about whatever the scope.
+        assert!(destructive_reason_in(&format!("rm -rf \"{p}/sub"), &scope).is_some());
+        if cfg!(windows) {
+            // Drive-relative: its base directory is unknown.
+            assert!(destructive_reason_in("rm -rf C:sub", &scope).is_some());
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A link inside the root that points outside is resolved before the
+    /// comparison, so deleting through it is asked about.
+    #[test]
+    fn a_link_escaping_the_root_is_outside() {
+        let base = temp_tree("link");
+        let proj = base.join("proj dir");
+        let link = proj.join("escape");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(base.join("outside"), &link).is_ok();
+        #[cfg(windows)]
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(base.join("outside"))
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !made {
+            eprintln!("skipping: could not create a link on this machine");
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        let scope = Scope::new([&proj]);
+        assert!(destructive_reason_in(&rm(&link.join("data")), &scope).is_some());
+        assert!(destructive_reason_in(&rm(&link), &scope).is_some());
+        // And a root reached through a link is compared by where it really is.
+        let via_link = Scope::new([&link]);
+        assert_eq!(destructive_reason_in(&rm(&base.join("outside").join("x")), &via_link), None);
+        #[cfg(windows)]
+        let _ = std::fs::remove_dir(&link);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A verbatim Windows root (as `canonicalize` returns it) is the same
+    /// folder as its plain spelling.
+    #[cfg(windows)]
+    #[test]
+    fn a_verbatim_root_matches_its_plain_spelling() {
+        let base = temp_tree("verbatim");
+        let proj = base.join("proj dir");
+        let canonical = std::fs::canonicalize(&proj).unwrap();
+        assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
+        let scope = Scope::new([&canonical]);
+        assert_eq!(destructive_reason_in(&rm(&proj.join("sub")), &scope), None);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

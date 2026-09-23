@@ -97,4 +97,73 @@ describe('destructiveCommandReason', () => {
     for (let i = 0; i < 8; i++) nested = `echo $(${nested})`
     expect(destructiveCommandReason(nested, WS)).not.toBeNull()
   })
+
+  describe('approved scope', () => {
+    const POSIX = ['/home/me/my project', '/tmp/scratch']
+    const WIN = [String.raw`C:\Users\me\my project`]
+    const rm = (p: string) => `rm -rf "${p}"`
+
+    it('treats absolute paths inside any root as inside', () => {
+      for (const p of [
+        '/home/me/my project/build',
+        '/home/me/my project/build/',
+        '/home/me/my project/build/*',
+        '/home/me/my project/./build',
+        '/home/me/my project//build',
+        '/tmp/scratch/out',
+      ]) {
+        expect(destructiveCommandReason(rm(p), POSIX), p).toBeNull()
+      }
+      for (const p of [
+        String.raw`C:\Users\me\my project\build`,
+        'c:/users/ME/My Project/build',
+        String.raw`C:/Users\me/my project\build\ `.trimEnd(),
+      ]) {
+        expect(destructiveCommandReason(rm(p), WIN), p).toBeNull()
+      }
+      // A verbatim root is the same folder as its plain spelling.
+      expect(
+        destructiveCommandReason(rm(String.raw`C:\Users\me\my project\x`), [
+          String.raw`\\?\C:\Users\me\my project`,
+        ])
+      ).toBeNull()
+    })
+
+    it('keeps asking outside the scope, for unknown scope and ambiguous paths', () => {
+      for (const p of [
+        // A sibling whose name starts with a root's.
+        '/home/me/my project-other/build',
+        '/home/me/my projectx',
+        // Traversal: text cannot tell where `..` leads through a link.
+        '/home/me/my project/../secrets',
+        '/home/me/my project/build/../../x',
+        '/home/me',
+        '/',
+      ]) {
+        expect(destructiveCommandReason(rm(p), POSIX), p).not.toBeNull()
+      }
+      expect(
+        destructiveCommandReason(rm(String.raw`C:\Users\me\my project-other`), WIN)
+      ).not.toBeNull()
+      // Drive-relative: its base directory is unknown.
+      expect(destructiveCommandReason('rm -rf C:build', WIN)).not.toBeNull()
+      // Unknown scope, and roots that vouch for nothing.
+      expect(destructiveCommandReason(rm('/home/me/my project/b'), [])).not.toBeNull()
+      expect(destructiveCommandReason(rm('/etc'), ['/'])).not.toBeNull()
+      expect(destructiveCommandReason(rm(String.raw`C:\Windows`), [String.raw`C:\ `.trim()])).not.toBeNull()
+      expect(
+        destructiveCommandReason(rm('/home/me/my project/b'), ['my project'])
+      ).not.toBeNull()
+      // Unparseable, whatever the scope.
+      expect(
+        destructiveCommandReason('rm -rf "/home/me/my project/b', POSIX)
+      ).not.toBeNull()
+    })
+
+    it('accepts a single root as before', () => {
+      expect(
+        destructiveCommandReason(rm('/home/me/my project/b'), '/home/me/my project')
+      ).toBeNull()
+    })
+  })
 })
