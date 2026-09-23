@@ -443,7 +443,11 @@ fn resolve_absolute(path: &str) -> Option<String> {
                 continue;
             }
             let prefix = parts[..i].join("/");
-            let prefix = if prefix.is_empty() { "/".to_string() } else { prefix };
+            let prefix = if prefix.is_empty() {
+                "/".to_string()
+            } else {
+                prefix
+            };
             if let Ok(canonical) = std::fs::canonicalize(&prefix) {
                 return join_rest(comparable(&canonical.to_string_lossy()), &parts[i..]);
             }
@@ -669,10 +673,8 @@ mod tests {
     }
 
     fn temp_tree(tag: &str) -> std::path::PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "jan destructive {tag} {}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("jan destructive {tag} {}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("proj dir").join("sub")).unwrap();
         std::fs::create_dir_all(base.join("proj dir-other").join("sub")).unwrap();
@@ -709,7 +711,10 @@ mod tests {
         if cfg!(windows) {
             // Mixed separators and case.
             let mixed = format!("{}\\sub/x", p.to_uppercase());
-            assert_eq!(destructive_reason_in(&format!("rm -rf \"{mixed}\""), &scope), None);
+            assert_eq!(
+                destructive_reason_in(&format!("rm -rf \"{mixed}\""), &scope),
+                None
+            );
         }
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -723,7 +728,10 @@ mod tests {
         let p = proj.to_string_lossy().to_string();
         for target in [
             // A sibling whose name starts with the root's.
-            base.join("proj dir-other").join("sub").to_string_lossy().to_string(),
+            base.join("proj dir-other")
+                .join("sub")
+                .to_string_lossy()
+                .to_string(),
             // Traversal out of the root, existing and not.
             format!("{p}/../outside"),
             format!("{p}/missing/../../outside"),
@@ -778,7 +786,10 @@ mod tests {
         assert!(destructive_reason_in(&rm(&link), &scope).is_some());
         // And a root reached through a link is compared by where it really is.
         let via_link = Scope::new([&link]);
-        assert_eq!(destructive_reason_in(&rm(&base.join("outside").join("x")), &via_link), None);
+        assert_eq!(
+            destructive_reason_in(&rm(&base.join("outside").join("x")), &via_link),
+            None
+        );
         #[cfg(windows)]
         let _ = std::fs::remove_dir(&link);
         let _ = std::fs::remove_dir_all(&base);

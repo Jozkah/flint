@@ -27,9 +27,8 @@ use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
     load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
-    parse_openai_messages, parse_tool_args, MalformedCall,
-    resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
-    stream_openai_chat_completions,
+    parse_openai_messages, parse_tool_args, resolve_api_type_for_model, resolve_upstream_for_model,
+    set_system_prompt, stream_openai_chat_completions, MalformedCall,
 };
 use crate::core::server::converters::{converter_for, UpstreamConverter};
 
@@ -381,7 +380,11 @@ impl ToolOutcome {
     fn refused_invalid_args_because(id: String, name: &str, raw: &str, reason: &str) -> Self {
         const MAX_ECHO_CHARS: usize = 300;
         let excerpt = raw.chars().take(MAX_ECHO_CHARS).collect::<String>();
-        let ellipsis = if raw.chars().count() > MAX_ECHO_CHARS { "..." } else { "" };
+        let ellipsis = if raw.chars().count() > MAX_ECHO_CHARS {
+            "..."
+        } else {
+            ""
+        };
         let tool = if name.is_empty() {
             "(unnamed tool)".to_string()
         } else {
@@ -3228,7 +3231,10 @@ impl CompositeToolInvoker {
                 Decision::Prompt(PromptKind::Write | PromptKind::Exec)
                     if self.auto_approve && destructive.is_none() =>
                 {
-                    let streak = self.auto_approved_streak.fetch_add(1, StreakOrdering::Relaxed) + 1;
+                    let streak = self
+                        .auto_approved_streak
+                        .fetch_add(1, StreakOrdering::Relaxed)
+                        + 1;
                     if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
                         forced_reason = Some(format!(
                             "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
@@ -3240,11 +3246,15 @@ impl CompositeToolInvoker {
                     }
                 }
                 Decision::Prompt(kind) if destructive.is_some() => {
-                    forced_reason = destructive.as_ref().map(|d| format!("Destructive command: {d}."));
+                    forced_reason = destructive
+                        .as_ref()
+                        .map(|d| format!("Destructive command: {d}."));
                     Decision::Prompt(kind)
                 }
                 Decision::Allow if destructive.is_some() => {
-                    forced_reason = destructive.as_ref().map(|d| format!("Destructive command: {d}."));
+                    forced_reason = destructive
+                        .as_ref()
+                        .map(|d| format!("Destructive command: {d}."));
                     Decision::Prompt(PromptKind::Exec)
                 }
                 other => other,
@@ -6149,7 +6159,11 @@ async fn run_turn_cycle(
                 .collect();
             let all_failed = !tool_results.is_empty() && failures.len() == tool_results.len();
             let last_error = failures.last().copied().unwrap_or("").to_string();
-            stuck.observe(StuckDetector::signature(&executable), all_failed, &last_error)
+            stuck.observe(
+                StuckDetector::signature(&executable),
+                all_failed,
+                &last_error,
+            )
         };
 
         let mut todo_touched_this_batch = false;
@@ -7293,7 +7307,12 @@ mod tests {
         // The call stays in context so the model sees its error, but with
         // neutralized arguments a strict upstream accepts.
         for m in messages {
-            for tc in m.get("tool_calls").and_then(|v| v.as_array()).into_iter().flatten() {
+            for tc in m
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+            {
                 assert!(
                     crate::core::agent::upstream::arguments_are_executable(tc),
                     "no poisoned arguments reach a later request: {messages:#?}"
@@ -8395,7 +8414,11 @@ mod tests {
             replies: StdMutex::new(
                 vec![
                     tool_call_reply("bad1", "write", "{\"path\": \"a.txt\", \"content\": "),
-                    tool_call_reply("good1", "write", "{\"path\": \"a.txt\", \"content\": \"x\"}"),
+                    tool_call_reply(
+                        "good1",
+                        "write",
+                        "{\"path\": \"a.txt\", \"content\": \"x\"}",
+                    ),
                     json!({ "choices": [{ "message": { "content": "done" } }] }),
                 ]
                 .into(),
@@ -11128,7 +11151,14 @@ mod tests {
         let asked = tokio::spawn(async move {
             let mut commands = Vec::new();
             while let Some(event) = rx.recv().await {
-                if let StreamEvent::PermissionRequest { request_id, command, reason, offers_always, .. } = event {
+                if let StreamEvent::PermissionRequest {
+                    request_id,
+                    command,
+                    reason,
+                    offers_always,
+                    ..
+                } = event
+                {
                     commands.push((command.unwrap_or_default(), reason, offers_always));
                     if let Some(sender) = answering.lock().await.remove(&request_id) {
                         let _ = sender.send(PermissionDecision::Deny);
@@ -11142,7 +11172,11 @@ mod tests {
             "arguments": serde_json::json!({ "command": "rm -rf ~/jan-destructive-guard-test" }).to_string()
         } });
         let out = invoker.invoke(&[call]).await.unwrap();
-        assert!(out[0].content.contains("ERROR") || out[0].content.to_lowercase().contains("denied"), "{}", out[0].content);
+        assert!(
+            out[0].content.contains("ERROR") || out[0].content.to_lowercase().contains("denied"),
+            "{}",
+            out[0].content
+        );
         drop(invoker);
         let commands = asked.await.unwrap();
         assert_eq!(commands.len(), 1, "{commands:?}");
@@ -11150,7 +11184,10 @@ mod tests {
         // The prompt says why, and offers no standing grant the check would
         // override anyway.
         let why = commands[0].1.as_deref().unwrap_or_default();
-        assert!(why.contains("Destructive command") && why.contains("~/jan-destructive-guard-test"), "{why}");
+        assert!(
+            why.contains("Destructive command") && why.contains("~/jan-destructive-guard-test"),
+            "{why}"
+        );
         assert!(!commands[0].2);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -11169,10 +11206,15 @@ mod tests {
         let asked = tokio::spawn(async move {
             let mut n = 0;
             while let Some(event) = rx.recv().await {
-                if let StreamEvent::PermissionRequest { request_id, reason, .. } = event {
+                if let StreamEvent::PermissionRequest {
+                    request_id, reason, ..
+                } = event
+                {
                     n += 1;
                     assert!(
-                        reason.as_deref().is_some_and(|r| r.contains("Auto-approval paused")),
+                        reason
+                            .as_deref()
+                            .is_some_and(|r| r.contains("Auto-approval paused")),
                         "{reason:?}"
                     );
                     if let Some(sender) = answering.lock().await.remove(&request_id) {
@@ -11203,7 +11245,10 @@ mod tests {
         use serde_json::json;
         let n = |v: serde_json::Value| normalize_auto_approve_limit(Some(&v));
         // Default: absent, null.
-        assert_eq!(normalize_auto_approve_limit(None), DEFAULT_AUTO_APPROVE_LIMIT);
+        assert_eq!(
+            normalize_auto_approve_limit(None),
+            DEFAULT_AUTO_APPROVE_LIMIT
+        );
         assert_eq!(n(json!(null)), 50);
         // Disabled.
         assert_eq!(n(json!(0)), 0);
@@ -11624,12 +11669,14 @@ mod tests {
 
     #[test]
     fn stuck_detector_flags_identical_calls_and_error_streaks() {
-        let call = |args: &str| {
-            json!([{ "id": "x", "function": { "name": "read", "arguments": args } }])
-        };
+        let call =
+            |args: &str| json!([{ "id": "x", "function": { "name": "read", "arguments": args } }]);
         let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
         // Argument key order does not change the identity of a call.
-        assert_eq!(sig(call("{\"a\":1,\"b\":2}")), sig(call("{\"b\":2,\"a\":1}")));
+        assert_eq!(
+            sig(call("{\"a\":1,\"b\":2}")),
+            sig(call("{\"b\":2,\"a\":1}"))
+        );
 
         let mut d = StuckDetector::default();
         assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
@@ -11642,15 +11689,29 @@ mod tests {
         let mut d = StuckDetector::default();
         assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
         assert_eq!(d.observe(sig(call("{\"p\":2}")), false, ""), None);
-        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None, "not consecutive");
+        assert_eq!(
+            d.observe(sig(call("{\"p\":1}")), false, ""),
+            None,
+            "not consecutive"
+        );
 
         let mut d = StuckDetector::default();
         assert_eq!(d.observe("a".into(), true, "ERROR: x"), None);
         assert_eq!(d.observe("b".into(), true, "ERROR: y"), None);
-        let reason = d.observe("c".into(), true, "ERROR: z").expect("three failing turns");
-        assert!(reason.summary().contains("ERROR: z"), "{}", reason.summary());
+        let reason = d
+            .observe("c".into(), true, "ERROR: z")
+            .expect("three failing turns");
+        assert!(
+            reason.summary().contains("ERROR: z"),
+            "{}",
+            reason.summary()
+        );
         d.reset();
-        assert_eq!(d.observe("c".into(), true, "ERROR: z"), None, "reset forgets history");
+        assert_eq!(
+            d.observe("c".into(), true, "ERROR: z"),
+            None,
+            "reset forgets history"
+        );
     }
 
     /// Without an interactive UI a run that repeats the same call is stopped
@@ -11771,7 +11832,10 @@ mod tests {
             reply: tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}"),
             calls: std::sync::Arc::new(StdMutex::new(0usize)),
         };
-        let tool = GuidedTool { answer: Some(UserGuidance::Stop), ..Default::default() };
+        let tool = GuidedTool {
+            answer: Some(UserGuidance::Stop),
+            ..Default::default()
+        };
         let mut budget = SessionBudget::new(None);
         let err = run_turn_cycle(
             &tx,

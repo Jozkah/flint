@@ -143,14 +143,23 @@ describe('destructiveCommandReason', () => {
         expect(destructiveCommandReason(rm(p), POSIX), p).not.toBeNull()
       }
       expect(
-        destructiveCommandReason(rm(String.raw`C:\Users\me\my project-other`), WIN)
+        destructiveCommandReason(
+          rm(String.raw`C:\Users\me\my project-other`),
+          WIN
+        )
       ).not.toBeNull()
       // Drive-relative: its base directory is unknown.
       expect(destructiveCommandReason('rm -rf C:build', WIN)).not.toBeNull()
       // Unknown scope, and roots that vouch for nothing.
-      expect(destructiveCommandReason(rm('/home/me/my project/b'), [])).not.toBeNull()
+      expect(
+        destructiveCommandReason(rm('/home/me/my project/b'), [])
+      ).not.toBeNull()
       expect(destructiveCommandReason(rm('/etc'), ['/'])).not.toBeNull()
-      expect(destructiveCommandReason(rm(String.raw`C:\Windows`), [String.raw`C:\ `.trim()])).not.toBeNull()
+      expect(
+        destructiveCommandReason(rm(String.raw`C:\Windows`), [
+          String.raw`C:\ `.trim(),
+        ])
+      ).not.toBeNull()
       expect(
         destructiveCommandReason(rm('/home/me/my project/b'), ['my project'])
       ).not.toBeNull()
@@ -162,7 +171,10 @@ describe('destructiveCommandReason', () => {
 
     it('accepts a single root as before', () => {
       expect(
-        destructiveCommandReason(rm('/home/me/my project/b'), '/home/me/my project')
+        destructiveCommandReason(
+          rm('/home/me/my project/b'),
+          '/home/me/my project'
+        )
       ).toBeNull()
     })
   })

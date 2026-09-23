@@ -452,13 +452,15 @@ pub(crate) fn malformed_arguments_reason(tc: &serde_json::Value) -> Option<Strin
             json_kind(args)
         ));
     };
-    Some(match serde_json::from_str::<serde_json::Value>(raw.trim()) {
-        Ok(v) => format!(
-            "the arguments decoded to a JSON {} instead of a JSON object",
-            json_kind(&v)
-        ),
-        Err(e) => format!("the arguments are not valid JSON ({e})"),
-    })
+    Some(
+        match serde_json::from_str::<serde_json::Value>(raw.trim()) {
+            Ok(v) => format!(
+                "the arguments decoded to a JSON {} instead of a JSON object",
+                json_kind(&v)
+            ),
+            Err(e) => format!("the arguments are not valid JSON ({e})"),
+        },
+    )
 }
 
 fn json_kind(v: &serde_json::Value) -> &'static str {
@@ -524,7 +526,11 @@ pub(crate) fn neutralize_malformed_tool_calls(
             Some(other) => other.to_string(),
             None => String::new(),
         };
-        let id = match call.get("id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        let id = match call
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             Some(id) => id.to_string(),
             None => format!("call_invalid_{turn}_{index}"),
         };
@@ -4001,7 +4007,11 @@ mod tests {
         assert_eq!(calls[1]["id"], "call_invalid_3_1");
         assert_eq!(out[0].raw, "{}{}");
         assert_eq!(out[2].raw, "7");
-        assert!(out[0].reason.contains("not valid JSON"), "{}", out[0].reason);
+        assert!(
+            out[0].reason.contains("not valid JSON"),
+            "{}",
+            out[0].reason
+        );
         assert!(out[1].reason.contains("JSON array"), "{}", out[1].reason);
         assert!(out[2].reason.contains("JSON number"), "{}", out[2].reason);
         for call in &calls {
@@ -4011,9 +4021,15 @@ mod tests {
         // The fingerprint is stable for an identical repeat and differs
         // when the model changes the arguments.
         let mut again = vec![call_with_args_string("{}{}")];
-        assert_eq!(neutralize_malformed_tool_calls(&mut again, 9)[0].signature, out[0].signature);
+        assert_eq!(
+            neutralize_malformed_tool_calls(&mut again, 9)[0].signature,
+            out[0].signature
+        );
         let mut changed = vec![call_with_args_string("{}{ }")];
-        assert_ne!(neutralize_malformed_tool_calls(&mut changed, 9)[0].signature, out[0].signature);
+        assert_ne!(
+            neutralize_malformed_tool_calls(&mut changed, 9)[0].signature,
+            out[0].signature
+        );
     }
 
     /// A literal streamed with raw backslashes keeps every backslash literal,

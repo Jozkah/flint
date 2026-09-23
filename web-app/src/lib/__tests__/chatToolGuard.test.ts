@@ -51,7 +51,9 @@ describe('chatToolGuard', () => {
       command: `rm -rf ${WS}/build`,
       roots: [WS],
     })
-    invoke.mockResolvedValueOnce('`rm -rf /x` deletes `/x`, outside the workspace')
+    invoke.mockResolvedValueOnce(
+      '`rm -rf /x` deletes `/x`, outside the workspace'
+    )
     expect(await chatDestructiveReason('rm -rf /x', [WS])).toMatch(/outside/)
   })
 
@@ -59,14 +61,20 @@ describe('chatToolGuard', () => {
     invoke.mockRejectedValue(new Error('unavailable'))
     expect(await chatDestructiveReason(`rm -rf ${WS}/build`, [WS])).toBeNull()
     expect(await chatDestructiveReason('rm -rf /etc', [WS])).not.toBeNull()
-    expect(await chatDestructiveReason(`rm -rf ${WS}/../x`, [WS])).not.toBeNull()
+    expect(
+      await chatDestructiveReason(`rm -rf ${WS}/../x`, [WS])
+    ).not.toBeNull()
     expect(await chatDestructiveReason(`rm -rf ${WS}/build`, [])).not.toBeNull()
   })
 
   it('an absolute path inside the workspace is not asked about', async () => {
     invoke.mockResolvedValue(null)
     expect(
-      await chatForcedPrompt('bash', { command: `rm -rf "${WS}/out dir"` }, 't1')
+      await chatForcedPrompt(
+        'bash',
+        { command: `rm -rf "${WS}/out dir"` },
+        't1'
+      )
     ).toBeNull()
     expect(invoke).toHaveBeenCalledWith('agent_destructive_reason', {
       command: `rm -rf "${WS}/out dir"`,
@@ -78,7 +86,9 @@ describe('chatToolGuard', () => {
     useAutoApproveLimit.getState().setLimit(2)
     invoke.mockResolvedValueOnce(null)
     expect(await chatForcedPrompt('bash', { command: 'ls' }, 't1')).toBeNull()
-    invoke.mockResolvedValueOnce('`rm -rf ~` deletes `~`, outside the workspace')
+    invoke.mockResolvedValueOnce(
+      '`rm -rf ~` deletes `~`, outside the workspace'
+    )
     const forced = await chatForcedPrompt('bash', { command: 'rm -rf ~' }, 't1')
     expect(forced?.reason).toMatch(/^Destructive command: /)
     // The count started over: two more run before the pause.
@@ -106,16 +116,20 @@ describe('chatToolGuard', () => {
 
   it('uses a custom limit, the maximum, and the default for malformed input', async () => {
     useAutoApproveLimit.getState().setLimit(3)
-    for (let i = 0; i < 3; i++) expect(await chatForcedPrompt('read', {}, 't1')).toBeNull()
+    for (let i = 0; i < 3; i++)
+      expect(await chatForcedPrompt('read', {}, 't1')).toBeNull()
     expect(await chatForcedPrompt('read', {}, 't1')).not.toBeNull()
 
     useAutoApproveLimit.getState().setLimit(99999)
     expect(useAutoApproveLimit.getState().limit).toBe(1000)
-    for (let i = 0; i < 1000; i++) expect(await chatForcedPrompt('read', {}, 't1')).toBeNull()
+    for (let i = 0; i < 1000; i++)
+      expect(await chatForcedPrompt('read', {}, 't1')).toBeNull()
     expect((await chatForcedPrompt('read', {}, 't1'))?.reason).toMatch(/^1000 /)
 
     useAutoApproveLimit.getState().setLimit('not a number')
-    expect(useAutoApproveLimit.getState().limit).toBe(DEFAULT_AUTO_APPROVE_LIMIT)
+    expect(useAutoApproveLimit.getState().limit).toBe(
+      DEFAULT_AUTO_APPROVE_LIMIT
+    )
   })
 
   it('counts each conversation separately', async () => {

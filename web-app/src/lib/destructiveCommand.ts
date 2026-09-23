@@ -208,7 +208,9 @@ export function outsideWorkspace(
   const n = comparablePath(norm.replace(/[/*]+$/, '') || '/')
   if (n === null) return true
   const ci = isDrive(n.slice(0, 2))
-  const roots = scopeRoots(typeof workspace === 'string' ? [workspace] : workspace)
+  const roots = scopeRoots(
+    typeof workspace === 'string' ? [workspace] : workspace
+  )
   return !roots.some((root) => {
     const r = ci ? root.toLowerCase() : root
     return n === r || n.startsWith(`${r}/`)
