@@ -1,5 +1,7 @@
 import type { JSONObject } from '@ai-sdk/provider'
 import {
+  anthropicTakesAnExplicitBudget,
+  clampAnthropicThinkingBudget,
   isThinkingBudgetLevelKey,
   type ThinkingBudgetLevelKey,
 } from './thinkingBudget'
@@ -85,13 +87,22 @@ export function buildReasoningProviderOptions(
       // with a 400 and require enabled + budget_tokens. `display` shipped with
       // 4.7, so it is omitted on the 4.6 family. Unknown ids get the
       // current-generation default (adaptive + summarized).
-      const isPre46 = /(opus|sonnet|haiku)-([0-3]|4-[0-5])\b/.test(id)
+      const isPre46 = anthropicTakesAnExplicitBudget(id)
       if (isPre46) {
         const budgetTokens =
           level && level !== 'unlimited'
             ? ANTHROPIC_LEVEL_BUDGET_TOKENS[level]
             : DEFAULT_ANTHROPIC_BUDGET_TOKENS
-        return { anthropic: { thinking: { type: 'enabled', budgetTokens } } }
+        return {
+          anthropic: {
+            thinking: {
+              type: 'enabled',
+              // Below the model's output ceiling, or the API refuses the
+              // request (budget_tokens must be < max_tokens).
+              budgetTokens: clampAnthropicThinkingBudget(budgetTokens, id),
+            },
+          },
+        }
       }
       const supportsDisplay = !/(opus|sonnet)-4-6\b/.test(id)
       return {

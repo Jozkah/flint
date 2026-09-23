@@ -127,6 +127,28 @@ describe('buildReasoningProviderOptions', () => {
         anthropic: { thinking: { type: 'enabled', budgetTokens: 16384 } },
       })
     })
+
+    it('keeps an enabled budget below the model output ceiling', () => {
+      // Opus 4.1 has 32000 output tokens; the xhigh budget (32768) would be
+      // refused (budget_tokens must be < max_tokens).
+      expect(
+        buildReasoningProviderOptions(
+          'anthropic',
+          modelWith({ ...budget('xhigh') }, 'claude-opus-4-1-20250805')
+        )
+      ).toEqual({
+        anthropic: { thinking: { type: 'enabled', budgetTokens: 25600 } },
+      })
+      // A dated 4.0 id is pre-4.6 too, and gets the same cap.
+      expect(
+        buildReasoningProviderOptions(
+          'anthropic',
+          modelWith({ ...budget('xhigh') }, 'claude-opus-4-20250514')
+        )
+      ).toEqual({
+        anthropic: { thinking: { type: 'enabled', budgetTokens: 25600 } },
+      })
+    })
   })
 
   describe('openai', () => {
