@@ -297,6 +297,45 @@ fn remove_target_if_present(target: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Build `target`'s new contents in a staging directory beside it, and only
+/// once that succeeded swap it in (Jozkah/jan#278). The old copy is moved
+/// aside rather than deleted first, and put back if the swap fails, so a
+/// missing source or an IO error part-way through never leaves the user with
+/// neither the old skill nor the new one.
+fn replace_dir(target: &Path, fill: impl FnOnce(&Path) -> std::io::Result<()>) -> Result<(), String> {
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let pid = std::process::id();
+    let staging = target.with_file_name(format!(".{name}.importing-{pid}"));
+    let aside = target.with_file_name(format!(".{name}.replaced-{pid}"));
+    let _ = remove_target_if_present(&staging);
+    let _ = remove_target_if_present(&aside);
+    if let Err(e) = fs::create_dir_all(&staging).and_then(|_| fill(&staging)) {
+        let _ = remove_target_if_present(&staging);
+        return Err(e.to_string());
+    }
+    let had_old = target.exists();
+    if had_old {
+        if let Err(e) = fs::rename(target, &aside) {
+            let _ = remove_target_if_present(&staging);
+            return Err(e.to_string());
+        }
+    }
+    if let Err(e) = fs::rename(&staging, target) {
+        if had_old {
+            let _ = fs::rename(&aside, target);
+        }
+        let _ = remove_target_if_present(&staging);
+        return Err(e.to_string());
+    }
+    if had_old {
+        let _ = remove_target_if_present(&aside);
+    }
+    Ok(())
+}
+
 fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<String, String> {
     let dest_root =
         user_skills_dir().ok_or_else(|| "no global skills store resolved".to_string())?;
@@ -304,18 +343,19 @@ fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<Strin
     if target.exists() && !overwrite {
         return Err("skipped".to_string());
     }
-    fs::create_dir_all(&dest_root).map_err(|e| e.to_string())?;
-    remove_target_if_present(&target).map_err(|e| e.to_string())?;
-
-    if source_path.is_dir() {
-        copy_dir_recursive(source_path, &target).map_err(|e| e.to_string())?;
-    } else if source_path.is_file() {
-        // Flat SKILL.md-only source: write it into `<target>/SKILL.md`.
-        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-        fs::copy(source_path, target.join("SKILL.md")).map_err(|e| e.to_string())?;
-    } else {
+    // Checked before anything at the destination is touched.
+    if !source_path.is_dir() && !source_path.is_file() {
         return Err(format!("source not found: {}", source_path.display()));
     }
+    fs::create_dir_all(&dest_root).map_err(|e| e.to_string())?;
+    replace_dir(&target, |staging| {
+        if source_path.is_dir() {
+            copy_dir_recursive(source_path, staging)
+        } else {
+            // Flat SKILL.md-only source: write it into `<target>/SKILL.md`.
+            fs::copy(source_path, staging.join("SKILL.md")).map(|_| ())
+        }
+    })?;
     Ok("imported".to_string())
 }
 
@@ -336,28 +376,28 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
         ));
     }
     fs::create_dir_all(&dest_root).map_err(|e| e.to_string())?;
-    remove_target_if_present(&target).map_err(|e| e.to_string())?;
-    fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-
-    for sub in PLUGIN_SUBDIRS {
-        let src_sub = source_path.join(sub);
-        if src_sub.is_dir() {
-            copy_dir_recursive(&src_sub, &target.join(sub)).map_err(|e| e.to_string())?;
+    replace_dir(&target, |staging| {
+        for sub in PLUGIN_SUBDIRS {
+            let src_sub = source_path.join(sub);
+            if src_sub.is_dir() {
+                copy_dir_recursive(&src_sub, &staging.join(sub))?;
+            }
         }
-    }
-    for f in PLUGIN_TOP_FILES {
-        let src_f = source_path.join(f);
-        if src_f.is_file() {
-            fs::copy(&src_f, target.join(f)).map_err(|e| e.to_string())?;
+        for f in PLUGIN_TOP_FILES {
+            let src_f = source_path.join(f);
+            if src_f.is_file() {
+                fs::copy(&src_f, staging.join(f))?;
+            }
         }
-    }
-    // `.claude-plugin/plugin.json` manifest.
-    let manifest = source_path.join(".claude-plugin").join("plugin.json");
-    if manifest.is_file() {
-        let dest_dir = target.join(".claude-plugin");
-        fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-        fs::copy(&manifest, dest_dir.join("plugin.json")).map_err(|e| e.to_string())?;
-    }
+        // `.claude-plugin/plugin.json` manifest.
+        let manifest = source_path.join(".claude-plugin").join("plugin.json");
+        if manifest.is_file() {
+            let dest_dir = staging.join(".claude-plugin");
+            fs::create_dir_all(&dest_dir)?;
+            fs::copy(&manifest, dest_dir.join("plugin.json"))?;
+        }
+        Ok(())
+    })?;
     Ok("imported".to_string())
 }
 
@@ -529,6 +569,51 @@ mod tests {
             .join("SKILL.md");
         assert!(target.is_file());
 
+        set_test_user_skills(None);
+    }
+
+    /// Jozkah/jan#278: an overwrite whose source is missing refuses and keeps
+    /// the existing skill; a successful one replaces it whole and leaves no
+    /// staging directory behind.
+    #[test]
+    fn an_overwrite_never_loses_the_existing_skill() {
+        let cc_home = tempdir().unwrap();
+        let global_store = tempdir().unwrap();
+        set_test_user_skills(Some(global_store.path().to_path_buf()));
+        set_test_user_plugins(None);
+        let skills = tauri_plugin_agent_tools::skills::skills_dir(global_store.path());
+        write_skill(&skills, "keep", "# mine");
+
+        let missing = cc_home.path().join("nowhere");
+        let result = tokio_test_block_on(agent_cc_import(
+            vec![CcImportSelection {
+                kind: CcItemKind::Skill,
+                name: "keep".to_string(),
+                source_path: missing.to_string_lossy().into_owned(),
+            }],
+            true,
+        ))
+        .unwrap();
+        assert!(result.imported.is_empty() && !result.errors.is_empty());
+        assert_eq!(std::fs::read_to_string(skills.join("keep").join("SKILL.md")).unwrap(), "# mine");
+
+        write_skill(&cc_home.path().join("src"), "keep", "# theirs");
+        tokio_test_block_on(agent_cc_import(
+            vec![CcImportSelection {
+                kind: CcItemKind::Skill,
+                name: "keep".to_string(),
+                source_path: cc_home.path().join("src").join("keep").to_string_lossy().into_owned(),
+            }],
+            true,
+        ))
+        .unwrap();
+        assert!(std::fs::read_to_string(skills.join("keep").join("SKILL.md")).unwrap().contains("theirs"));
+        let leftovers: Vec<_> = std::fs::read_dir(&skills)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with('.'))
+            .collect();
+        assert!(leftovers.is_empty(), "staging left behind");
         set_test_user_skills(None);
     }
 
