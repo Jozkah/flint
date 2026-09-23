@@ -559,8 +559,22 @@ export async function consumeStep(
           // Salvage the first complete object and dispatch it as a normal call.
           // An object that already reached the SDK failed for another reason --
           // an unavailable tool, a schema violation -- and is refused below.
+          // A call to an offered tool that arrived with no arguments at all
+          // (`null`, nothing, or an empty string) is a call with an empty
+          // object: the model meant `ls {}` or `skill_list {}`. Refusing it
+          // cost a turn and taught the model nothing. A tool that needs
+          // arguments still says which one is missing when it runs.
+          const empty =
+            raw === null ||
+            raw === undefined ||
+            (typeof raw === 'string' && /^\s*(null)?\s*$/.test(raw))
           const salvaged =
-            typeof raw === 'string' ? recoverToolArgs(raw) : undefined
+            empty &&
+            refusalKindOf(String(chunk.errorText ?? '')) !== 'tool-not-offered'
+              ? {}
+              : typeof raw === 'string'
+                ? recoverToolArgs(raw)
+                : undefined
           if (salvaged) {
             const call: PendingToolCall = {
               toolCallId: chunk.toolCallId,

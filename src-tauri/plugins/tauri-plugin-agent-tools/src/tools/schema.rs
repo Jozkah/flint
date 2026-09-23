@@ -424,7 +424,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 26);
+        assert_eq!(schemas.len(), 27);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }
@@ -432,7 +432,12 @@ mod tests {
             .iter()
             .map(|s| s["function"]["name"].as_str().unwrap())
             .collect();
-        let expected: Vec<&str> = BUILTIN_TOOLS.iter().map(|t| t.name).collect();
+        // The same set: the advertised order is the prompt's, kept stable for
+        // prefix caching, and need not follow the registry's.
+        let mut names = names;
+        let mut expected: Vec<&str> = BUILTIN_TOOLS.iter().map(|t| t.name).collect();
+        names.sort_unstable();
+        expected.sort_unstable();
         assert_eq!(names, expected);
     }
 

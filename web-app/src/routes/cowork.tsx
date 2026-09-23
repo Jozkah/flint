@@ -366,6 +366,7 @@ import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -2314,6 +2315,7 @@ function CoworkPage() {
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
+      worktreeBranch: worktree?.branch ?? null,
       gitBranch,
       projectInstructions,
       // Only what the resolver made active: a file that is present but not
@@ -2322,6 +2324,13 @@ function CoworkPage() {
       compatInstructions: compatInstructionBlocks(runCompat),
       projectTooling: runTooling,
       openingInspection: inspecting,
+      // What the shell can and cannot do, stated up front. Without it the
+      // model learned by failing: probing the disk for runtimes, trying POSIX
+      // syntax, and hunting for MCP servers Cowork never offers.
+      platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+      shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+      networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+      mcpServers: [],
     })
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
@@ -2575,8 +2584,13 @@ function CoworkPage() {
             // child never resolves its own access or its own
             // instructions.
             folderAccess: promptFolderAccess(origins),
+            worktreeBranch: worktree?.branch ?? null,
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
+            platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+            shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+            networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+            mcpServers: [],
           },
           signal: childAbort.signal,
           sessionTokens: 0,

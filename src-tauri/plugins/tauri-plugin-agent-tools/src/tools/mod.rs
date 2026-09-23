@@ -697,7 +697,7 @@ mod tests {
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
         // + request_access and list_plugins, which the desktop answers itself.
-        assert_eq!(BUILTIN_TOOLS.len(), 26);
+        assert_eq!(BUILTIN_TOOLS.len(), 27);
     }
 
     #[test]

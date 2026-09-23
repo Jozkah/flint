@@ -727,13 +727,13 @@ describe('missing reads in review mode', () => {
     executeAgentTool.mockReset()
   })
 
-  it('keeps the real error and says why read cannot create the file', async () => {
+  it('keeps the real error and says the file does not exist yet', async () => {
     executeAgentTool.mockResolvedValue(missing)
     const c = ctx({ mode: 'review', readFailures: new Map() })
     const out = await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
     expect(out.isError).toBe(true)
     expect(out.output.startsWith(missing.error)).toBe(true)
-    expect(out.output).toMatch(/cannot\s+create `index.html`/)
+    expect(out.output).toMatch(/`index.html` does not exist yet/)
     expect(c.onAsk).not.toHaveBeenCalled()
   })
 

@@ -421,6 +421,9 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
         | "skill_list" | "skill_read" | "message_check" => vec![capability::FS_READ],
+        // Reads a repository's own git data from disk, in process; no shell
+        // and no git binary.
+        "git_inspect" => vec![capability::FS_READ],
         // The mailbox is files under the data folder; nothing beyond a usable
         // local disk is needed. Scope (session only) is decided separately.
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {

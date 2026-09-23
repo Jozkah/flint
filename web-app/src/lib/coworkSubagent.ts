@@ -27,6 +27,8 @@ import {
 } from '@/lib/coworkRunner'
 import {
   buildSubagentSystemPrompt,
+  environmentOptions,
+  type CoworkEnvironmentOptions,
   type PromptFolderAccess,
 } from '@/lib/coworkPrompt'
 import { streamCutOff } from '@/lib/streamFinish'
@@ -335,7 +337,9 @@ export type RunSubagentOptions = {
      * dispatched it, in the same repository, in the same run.
      */
     compatInstructions?: readonly { name: string; content: string }[]
-  }
+    /** The managed worktree's own branch, handed down like the access. */
+    worktreeBranch?: string | null
+  } & CoworkEnvironmentOptions
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /** Who the child's calls are recorded as (see `RunDeps.activity`). */
@@ -430,6 +434,8 @@ export async function runSubagent(
       folderAccess: opts.system.folderAccess,
       projectInstructions: opts.system.projectInstructions,
       compatInstructions: opts.system.compatInstructions,
+      worktreeBranch: opts.system.worktreeBranch,
+      ...environmentOptions(opts.system),
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })

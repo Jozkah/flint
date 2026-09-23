@@ -424,6 +424,9 @@ export function buildSubagentSystemPrompt(
   return [
     definitionPrompt.trim(),
     workspaceBlock({ ...opts, planMode: false, subagentNames: [] }),
+    // A child probes for runtimes as readily as its parent, so it is told
+    // the same environment facts.
+    ...(environmentBlock({ ...opts, planMode: false, subagentNames: [] }) ?? []),
     ...(opts.webSearch ? [WEB_BLOCK] : []),
     [
       '# Scope',
