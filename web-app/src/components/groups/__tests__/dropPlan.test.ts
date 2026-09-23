@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planDrop, RECENTS_DROP, type DropContext } from '../dropPlan'
+import { planDrop, rankPointerHits, RECENTS_DROP, type DropContext } from '../dropPlan'
 
 const members: Record<string, string | null> = { a: 'g1', b: 'g1', c: 'g2', r1: null, r2: null }
 const ctx: DropContext = {
@@ -44,5 +44,18 @@ describe('planDrop', () => {
     expect(planDrop('item:a', 'grp:other-surface-group', ctx)).toBeNull()
     expect(planDrop('grp:foreign', 'grp:g1', ctx)).toBeNull()
     expect(planDrop('file:C:/x.txt', 'grp:g1', ctx)).toBeNull()
+  })
+})
+
+describe('rankPointerHits', () => {
+  it('prefers the innermost target under the pointer', () => {
+    const hits = [{ id: 'grp:g2' }, RECENTS_DROP, { id: 'drop:g2' }, { id: 'item:c' }].map((h) =>
+      typeof h === 'string' ? { id: h } : h
+    )
+    expect(rankPointerHits(hits).map((h) => h.id)).toEqual(['item:c', 'drop:g2', 'grp:g2', RECENTS_DROP])
+  })
+
+  it('keeps a lone group header hit', () => {
+    expect(rankPointerHits([{ id: 'grp:g1' }])).toEqual([{ id: 'grp:g1' }])
   })
 })

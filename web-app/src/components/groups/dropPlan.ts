@@ -68,3 +68,21 @@ export function planDrop(active: string, over: string | null, ctx: DropContext):
   if (target === null && current === null) return null
   return { kind: 'moveItem', itemId, groupId: target, toIndex }
 }
+
+/** Most specific first: a row, then a group's child list, then a group header, then Recents. */
+function specificity(id: string): number {
+  if (id.startsWith(ITEM_PREFIX)) return 0
+  if (id === RECENTS_DROP) return 3
+  if (id.startsWith(DROP_PREFIX)) return 1
+  if (id.startsWith(GROUP_PREFIX)) return 2
+  return 4
+}
+
+/**
+ * Orders pointer hits so the innermost target under the pointer wins. An
+ * expanded group's row is a tall box that also contains its children, so a
+ * center-distance rule alone can pick a neighbouring group.
+ */
+export function rankPointerHits<T extends { id: string | number }>(hits: T[]): T[] {
+  return [...hits].sort((a, b) => specificity(String(a.id)) - specificity(String(b.id)))
+}

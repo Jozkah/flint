@@ -24,6 +24,8 @@ import {
   PointerSensor,
   TouchSensor,
   closestCenter,
+  pointerWithin,
+  type CollisionDetection,
   useDroppable,
   useSensor,
   useSensors,
@@ -82,6 +84,7 @@ import {
   RECENTS_DROP,
   groupDropId,
   planDrop,
+  rankPointerHits,
   stripPrefix,
   type DropContext,
 } from './dropPlan'
@@ -120,6 +123,13 @@ export type GroupedNavProps<T> = {
 }
 
 const AUTO_EXPAND_MS = 600
+
+// What is under the pointer wins; closest center only when the pointer is
+// over no target (e.g. just outside the list while dragging).
+const collision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args)
+  return hits.length > 0 ? rankPointerHits(hits) : closestCenter(args)
+}
 
 export function GroupedNav<T>(props: GroupedNavProps<T>) {
   const {
@@ -369,7 +379,7 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
     <GroupedNavContext.Provider value={api}>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={collision}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={(e) => void onDragEnd(e)}
