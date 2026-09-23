@@ -449,6 +449,15 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
                         })
                         return
                       }
+                      // An explicit collapse also ends a navigation reveal,
+                      // or a group holding the selected item could never close.
+                      if (!group.collapsed && peeked.has(group.id)) {
+                        setPeeked((p) => {
+                          const n = new Set(p)
+                          n.delete(group.id)
+                          return n
+                        })
+                      }
                       void store().setCollapsed(surface, group.id, !group.collapsed)
                     }}
                     onRename={() => setEditingId(group.id)}

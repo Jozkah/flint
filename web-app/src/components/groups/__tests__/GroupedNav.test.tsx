@@ -219,6 +219,18 @@ describe('GroupedNav', () => {
     expect(groups().groups[0].collapsed).toBe(true)
   })
 
+  it('collapses an expanded group that holds the selected item when the user asks', async () => {
+    const g = await makeGroup('Alpha')
+    await act(() => useConversationGroups.getState().moveItem('cowork', 'i0', g))
+    renderNav(items(), { selectedId: 'i0' })
+    const row = screen.getByTestId(`group-row-${g}`)
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+    await act(async () => fireEvent.click(row))
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('row-i0')).not.toBeInTheDocument()
+    expect(groups().groups[0].collapsed).toBe(true)
+  })
+
   it('never offers another surface’s groups', async () => {
     const user = userEvent.setup()
     await makeGroup('Home only', 'home')
