@@ -7860,7 +7860,7 @@ mod tests {
     /// whose diagnostic carries the raw text, bounded, and the run goes on.
     #[tokio::test]
     async fn an_unrecoverable_tool_call_is_refused_typed_and_the_run_continues() {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         // Raw text well past the 300-char diagnostic bound: truncated JSON.
         let long_raw = format!("{{\"path\":\"{}", "\"x\"x".repeat(200));
         let model = MockModel::new(vec![
@@ -7907,16 +7907,17 @@ mod tests {
             tool.calls.lock().unwrap().is_empty(),
             "the refused call must never reach the invoker"
         );
-        // The refusal lands in the conversation as the tool message: typed,
-        // actionable, and bounded -- the raw text is capped, not dumped.
-        let requests = model.requests.lock().unwrap();
-        assert_eq!(requests.len(), 2);
-        let messages = requests[1]["messages"].as_array().unwrap();
-        let tool_msg = messages
-            .iter()
-            .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
-            .unwrap_or_else(|| panic!("no refusal tool message: {messages:#?}"));
-        let content = tool_msg["content"].as_str().unwrap();
+        // The refusal is surfaced as a typed, bounded tool result -- the raw
+        // text is capped, not dumped. The per-turn sanitizer then keeps the
+        // poisoned call and its result out of the next request.
+        assert_eq!(model.requests.lock().unwrap().len(), 2);
+        let mut content = None;
+        while let Ok(ev) = rx.try_recv() {
+            if let StreamEvent::ToolResult { content: c, is_error: true, .. } = ev {
+                content = Some(c);
+            }
+        }
+        let content = content.expect("no refusal tool result event");
         assert!(content.contains("was not run"), "{content}");
         assert!(content.contains("invalid-args"), "{content}");
         assert!(content.len() < long_raw.len(), "the diagnostic is bounded");

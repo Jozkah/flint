@@ -299,10 +299,12 @@ fn first_json_object(s: &str) -> Option<&str> {
     let mut esc = false;
     for (i, c) in s[start..].char_indices() {
         if in_str {
-            match c {
-                '\\' => esc = !esc,
-                '"' if !esc => in_str = false,
-                _ => {}
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
             }
             continue;
         }
@@ -3394,7 +3396,7 @@ mod tests {
     fn recover_args_salvages_trailing_braces() {
         // The two shapes from the field: extra closing braces after a complete
         // leading object, with or without an inner array.
-        let tc = call_with_args_string("{\"path\":\"C:\\repos\\jan\\package.json\"}}");
+        let tc = call_with_args_string(r#"{"path":"C:\\repos\\jan\\package.json"}}"#);
         assert_eq!(
             recover_tool_call_args(&tc).unwrap(),
             json!({ "path": "C:\\repos\\jan\\package.json" })
@@ -3825,12 +3827,12 @@ mod tests {
     }
     #[test]
     fn recovers_bad_escape_windows_paths() {
-        let tc = serde_json::json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\me\file.txt"}"#}});
+        let tc = serde_json::json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\me\data.txt"}"#}});
         let v = recover_tool_call_args(&tc).expect("recovered");
-        assert_eq!(v["path"], r"C:\Users\me\file.txt");
+        assert_eq!(v["path"], r"C:\Users\me\data.txt");
         let fixed = normalize_tool_call_args(&tc).expect("normalized");
         let s = fixed["function"]["arguments"].as_str().unwrap();
-        assert_eq!(serde_json::from_str::<Value>(s).unwrap()["path"], r"C:\Users\me\file.txt");
+        assert_eq!(serde_json::from_str::<Value>(s).unwrap()["path"], r"C:\Users\me\data.txt");
         let tc2 = serde_json::json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\x"}}"#}});
         assert_eq!(recover_tool_call_args(&tc2).unwrap()["path"], r"C:\Users\x");
     }
