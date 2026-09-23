@@ -207,7 +207,7 @@ export function NavRooms() {
         activeIds={activeIds}
         selectedId={currentRoomId}
         ownFoldersOf={roomFolders}
-        recentsLabel={t('common:recents', { defaultValue: 'Recents' })}
+        recentsLabel={t('common:recents')}
         renderItem={(room, row) => (
           <RoomItem
             key={room.id}

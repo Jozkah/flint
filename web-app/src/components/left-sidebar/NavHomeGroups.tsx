@@ -69,7 +69,7 @@ export function NavHomeGroups() {
       activeIds={activeIds}
       selectedId={selectedId}
       renderItem={renderItem}
-      recentsLabel={t('common:recents', { defaultValue: 'Recents' })}
+      recentsLabel={t('common:recents')}
       emptyRecents={
         isLoadingThreads ? (
           <div className="flex items-center justify-center py-2">

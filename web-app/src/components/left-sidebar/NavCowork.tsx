@@ -499,7 +499,7 @@ export function NavCowork() {
         activeIds={activeIds}
         selectedId={currentId}
         ownFoldersOf={sessionFolders}
-        recentsLabel={t('common:recents', { defaultValue: 'Recents' })}
+        recentsLabel={t('common:recents')}
         renderItem={(session, row) => (
           <SessionItem
             key={session.id}
