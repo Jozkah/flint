@@ -2142,9 +2142,8 @@ async fn proxy_request(
                     log::info!("Fallback to chat completions: {chat_url}");
 
                     // Create a fresh client for the fallback to avoid connection pool issues
-                    let fallback_client = crate::core::net::tls::apply12(Client::builder())
-                        .build()
-                        .expect("Failed to create fallback client");
+                    let fallback_client =
+                        upstream_client(None).expect("Failed to create fallback client");
 
                     let mut fallback_req = fallback_client.post(&chat_url);
 
@@ -2505,13 +2504,7 @@ async fn start_server_internal(
         cors_enabled,
     };
 
-    let client = crate::core::net::tls::apply12(
-        Client::builder()
-            .timeout(std::time::Duration::from_secs(proxy_timeout))
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(30)),
-    )
-    .build()?;
+    let client = upstream_client(Some(proxy_timeout))?;
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -3010,6 +3003,66 @@ async fn forward_non_streaming(
         if sender.send_data(bytes).await.is_err() {
             log::debug!("Client disconnected");
         }
+    }
+}
+
+/// The client every provider request is dispatched with (and the fresh one a
+/// fallback uses). It follows a redirect only on the same origin
+/// (Jozkah/jan#214): reqwest's default drops `Authorization` on a host change
+/// but keeps `x-api-key`, `x-goog-api-key` and every forwarded header, so a
+/// provider answering with a redirect could send the user's key anywhere.
+fn upstream_client(timeout_secs: Option<u64>) -> reqwest::Result<Client> {
+    let mut builder = Client::builder()
+        .redirect(crate::core::net::transport::same_origin_redirects());
+    if let Some(secs) = timeout_secs {
+        builder = builder
+            .timeout(std::time::Duration::from_secs(secs))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(std::time::Duration::from_secs(30));
+    }
+    crate::core::net::tls::apply12(builder).build()
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A provider that redirects to another server must not get the user's
+    /// key sent there: the second server never sees a connection.
+    #[tokio::test]
+    async fn a_cross_origin_redirect_is_not_followed_with_the_key() {
+        let thief = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let thief_port = thief.local_addr().unwrap().port();
+        let provider = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let provider_port = provider.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = provider.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = sock.read(&mut buf).await;
+                let reply = format!(
+                    "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:{thief_port}/steal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = sock.write_all(reply.as_bytes()).await;
+            }
+        });
+        for client in [super::upstream_client(Some(30)).unwrap(), super::upstream_client(None).unwrap()] {
+            // Bounded: a followed redirect would wait on the silent second
+            // server, and the check below is what reports that.
+            let sent = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                client
+                    .post(format!("http://127.0.0.1:{provider_port}/v1/messages"))
+                    .header("x-api-key", "sk-ant-THEKEY")
+                    .header("x-goog-api-key", "AIzaTHEKEY")
+                    .body("{}")
+                    .send(),
+            )
+            .await;
+            assert!(!matches!(sent, Ok(Ok(_))), "the cross-origin redirect was followed");
+        }
+        let reached =
+            tokio::time::timeout(std::time::Duration::from_millis(300), thief.accept()).await;
+        assert!(reached.is_err(), "the redirect target received the request");
     }
 }
 
