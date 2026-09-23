@@ -4,6 +4,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import {
   noteAutoApproved,
   resetAutoApproveStreak,
+  autoApprovePauseReason,
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
 import {
@@ -413,7 +414,7 @@ async function routeCoworkTool(
       : overLimit
         ? {
             alwaysAsk: true,
-            reason: `${useAutoApproveLimit.getState().limit} tool calls ran without asking. Continue?`,
+            reason: autoApprovePauseReason(useAutoApproveLimit.getState().limit),
           }
         : undefined
 

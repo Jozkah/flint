@@ -44,6 +44,32 @@ describe('useAutoApproveLimit', () => {
     expect(stored.state.limit).toBe(7)
   })
 
+  it('reads the stored limit back after a restart, normalized', async () => {
+    const restart = async (stored: unknown) => {
+      // A fresh in-memory store (writing it persists, so this comes first)...
+      useAutoApproveLimit.setState({ limit: DEFAULT_AUTO_APPROVE_LIMIT })
+      localStorage.setItem(
+        'auto-approve-limit',
+        JSON.stringify({ state: { limit: stored }, version: 0 })
+      )
+      // ...then what an app start does: read the store back from storage.
+      await useAutoApproveLimit.persist.rehydrate()
+      return useAutoApproveLimit.getState().limit
+    }
+    expect(await restart(7)).toBe(7)
+    expect(await restart(0)).toBe(0)
+    expect(await restart(5000)).toBe(MAX_AUTO_APPROVE_LIMIT)
+    expect(await restart('abc')).toBe(DEFAULT_AUTO_APPROVE_LIMIT)
+    expect(await restart(null)).toBe(DEFAULT_AUTO_APPROVE_LIMIT)
+    // A value set in the app survives the round trip.
+    useAutoApproveLimit.getState().setLimit(12)
+    const saved = localStorage.getItem('auto-approve-limit') ?? ''
+    useAutoApproveLimit.setState({ limit: DEFAULT_AUTO_APPROVE_LIMIT })
+    localStorage.setItem('auto-approve-limit', saved)
+    await useAutoApproveLimit.persist.rehydrate()
+    expect(useAutoApproveLimit.getState().limit).toBe(12)
+  })
+
   it('pauses after the limit and starts over once the user is asked', () => {
     const over = [1, 2, 3].map(() => noteAutoApproved('s1', 2))
     expect(over).toEqual([false, false, true])

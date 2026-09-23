@@ -74,3 +74,11 @@ export function noteAutoApproved(sessionId: string, limit: number): boolean {
 export function resetAutoApproveStreak(sessionId: string): void {
   streaks.delete(sessionId)
 }
+
+/**
+ * What the prompt says when a call is put to the user because the limit was
+ * reached. One wording for Chat and Cowork.
+ */
+export function autoApprovePauseReason(limit: number): string {
+  return `${limit} tool calls ran without asking. Continue?`
+}

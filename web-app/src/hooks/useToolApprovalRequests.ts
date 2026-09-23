@@ -6,6 +6,12 @@ import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
+import {
+  autoApprovePauseReason,
+  noteAutoApproved,
+  resetAutoApproveStreak,
+  useAutoApproveLimit,
+} from '@/hooks/useAutoApproveLimit'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -23,6 +29,28 @@ export type ApprovalRequestContext = {
   taskContext?: string
   /** Folder or project the call works in. */
   workspaceLabel?: string
+  /**
+   * The approved scope the destructive-command check compares paths against:
+   * every folder the call may delete inside without being asked. Takes
+   * precedence over `workspaceLabel`. Left out, the label is used when it is
+   * an absolute path, and otherwise the scope is unknown (every absolute path
+   * counts as outside, so the call is asked about).
+   */
+  workspaceRoots?: readonly string[]
+  /**
+   * The caller already ran the destructive-command check itself -- through the
+   * filesystem, with the real roots -- and reflected any finding in
+   * `alwaysAsk` and `taskContext`. The text-only check here is then skipped,
+   * so it cannot contradict the more accurate answer.
+   */
+  destructiveChecked?: boolean
+  /**
+   * Count a call a standing grant would answer toward the consecutive
+   * auto-approval limit, under this key (the conversation). Past the limit
+   * the call is put to the user instead; any prompt shown starts the count
+   * over. Callers that count on their own (Cowork) leave it out.
+   */
+  autoApproveStreak?: string
   /** The thread id is reused by the next conversation (temporary chat). */
   threadIsEphemeral?: boolean
   /**
@@ -153,23 +181,25 @@ type ToolApprovalRequestsState = {
 }
 
 /**
- * Why a `bash` call's command looks destructive, or null. `workspace` is used
- * only when it is an absolute path; a display label is ignored.
+ * Why a `bash` call's command looks destructive, or null. The scope is
+ * `workspaceRoots` when given; otherwise `workspaceLabel` when it is an
+ * absolute path (a display label is ignored); otherwise unknown.
  */
 function bashDestructiveReason(
   toolName: string,
   input: unknown,
-  workspace: string | undefined
+  context: ApprovalRequestContext | undefined
 ): string | null {
   if (toolName !== 'bash') return null
   const command = (input as { command?: unknown } | undefined)?.command
   if (typeof command !== 'string') return null
-  const root =
-    workspace &&
-    (/^[a-zA-Z]:[\\/]/.test(workspace) || workspace.startsWith('/'))
-      ? workspace
-      : ''
-  return destructiveCommandReason(command, root)
+  const label = context?.workspaceLabel
+  const roots =
+    context?.workspaceRoots ??
+    (label && (/^[a-zA-Z]:[\\/]/.test(label) || label.startsWith('/'))
+      ? [label]
+      : [])
+  return destructiveCommandReason(command, roots)
 }
 
 let nextRequest = 0
@@ -280,20 +310,35 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         // surface, whatever grant exists -- not only where the caller thought
         // to pass `alwaysAsk`. Without a known project path every absolute
         // path counts as outside it, which errs toward asking.
-        const destructive = bashDestructiveReason(
-          toolName,
-          context?.input,
-          context?.workspaceLabel
-        )
-        const alwaysAsk =
+        const destructive = context?.destructiveChecked
+          ? null
+          : bashDestructiveReason(toolName, context?.input, context)
+        let alwaysAsk =
           ALWAYS_ASK_TOOLS.has(toolName) ||
           context?.alwaysAsk === true ||
           destructive !== null
-        const taskContext =
+        let taskContext =
           context?.taskContext ??
           (destructive
             ? `Destructive command: ${destructive}. Asked even though this tool is otherwise allowed.`
             : undefined)
+        // A call a standing grant would answer counts toward the limit on
+        // consecutive unasked calls; past it, this one is put to the user.
+        const streakKey = context?.autoApproveStreak
+        if (!alwaysAsk && streakKey !== undefined) {
+          const wouldAutoApprove =
+            (serverName && settings.allowAllMCPPermissions) ||
+            useToolApproval
+              .getState()
+              .isToolApproved(threadId, toolName, serverName, serverFingerprint)
+          if (wouldAutoApprove) {
+            const limit = useAutoApproveLimit.getState().limit
+            if (noteAutoApproved(streakKey, limit)) {
+              alwaysAsk = true
+              taskContext = autoApprovePauseReason(limit)
+            }
+          }
+        }
         // "Allow all MCP permissions" is an MCP-server setting (that is what its
         // label promises), so it only auto-approves a server's tool -- never a
         // built-in agent tool (write/edit/bash, no serverName), which must still
@@ -311,6 +356,9 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           approve()
           return
         }
+        // A prompt is about to be shown: whoever answers it has answered for
+        // the streak so far, so the count starts over.
+        if (streakKey !== undefined) resetAutoApproveStreak(streakKey)
         const entry: PendingApproval = {
           requestId: newRequestId(),
           toolCallId,

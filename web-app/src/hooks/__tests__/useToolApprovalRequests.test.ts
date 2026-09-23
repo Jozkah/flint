@@ -129,6 +129,91 @@ describe('useToolApprovalRequests', () => {
     )
   })
 
+  it('judges absolute paths against the given workspace roots', async () => {
+    act(() => {
+      useToolApproval.getState().approveToolEverywhere('bash')
+    })
+    const { result } = renderHook(() => useToolApprovalRequests())
+    const ask = (id: string, command: string, roots?: string[]) =>
+      result.current.requestApproval(id, 'bash', 'thread-1', undefined, {
+        input: { command },
+        workspaceLabel: 'My project',
+        ...(roots ? { workspaceRoots: roots } : {}),
+      })
+
+    let inside: Promise<boolean>
+    act(() => {
+      // Inside the second root: runs on the grant.
+      inside = ask('tc-in', 'rm -rf "/data/ws one/build"', ['/p', '/data/ws one'])
+      // A sibling sharing the root's prefix, and unknown scope (a display
+      // label is not a path): both still ask.
+      void ask('tc-sib', 'rm -rf "/data/ws one-other"', ['/data/ws one'])
+      void ask('tc-unknown', 'rm -rf "/data/ws one/build"')
+    })
+    await expect(inside!).resolves.toBe(true)
+    expect(result.current.pending['tc-sib']).toBeDefined()
+    expect(result.current.pending['tc-unknown']).toBeDefined()
+  })
+
+  it('leaves the destructive check to a caller that already ran it', async () => {
+    act(() => {
+      useToolApproval.getState().approveToolEverywhere('bash')
+    })
+    const { result } = renderHook(() => useToolApprovalRequests())
+    let p: Promise<boolean>
+    act(() => {
+      p = result.current.requestApproval('tc1', 'bash', 'thread-1', undefined, {
+        input: { command: 'rm -rf "/ws/build"' },
+        destructiveChecked: true,
+      })
+    })
+    await expect(p!).resolves.toBe(true)
+  })
+
+  it('pauses a streak of grant-approved calls at the configured limit', async () => {
+    const { useAutoApproveLimit, resetAutoApproveStreak } = await import(
+      '../useAutoApproveLimit'
+    )
+    useAutoApproveLimit.getState().setLimit(2)
+    resetAutoApproveStreak('thread-1')
+    act(() => {
+      useToolApproval.getState().approveToolForThread('thread-1', 'tool-a')
+    })
+    const { result } = renderHook(() => useToolApprovalRequests())
+    const ask = (id: string) =>
+      result.current.requestApproval(id, 'tool-a', 'thread-1', undefined, {
+        autoApproveStreak: 'thread-1',
+      })
+
+    let first: Promise<boolean>, second: Promise<boolean>
+    act(() => {
+      first = ask('c1')
+      second = ask('c2')
+      void ask('c3')
+    })
+    await expect(first!).resolves.toBe(true)
+    await expect(second!).resolves.toBe(true)
+    expect(result.current.pending['c3']?.taskContext).toBe(
+      '2 tool calls ran without asking. Continue?'
+    )
+    // Being asked started the count over.
+    let fourth: Promise<boolean>
+    act(() => {
+      fourth = ask('c4')
+    })
+    await expect(fourth!).resolves.toBe(true)
+    // Without the key (Cowork counts on its own), nothing is counted here.
+    let uncounted: Promise<boolean>
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        uncounted = result.current.requestApproval(`u${i}`, 'tool-a', 'thread-1')
+      }
+    })
+    await expect(uncounted!).resolves.toBe(true)
+    useAutoApproveLimit.getState().setLimit(50)
+    resetAutoApproveStreak('thread-1')
+  })
+
   it('resolveApproval allow-once resolves true without persisting the tool', async () => {
     const { result } = renderHook(() => useToolApprovalRequests())
 

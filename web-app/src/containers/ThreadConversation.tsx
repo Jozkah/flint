@@ -92,6 +92,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { chatForcedPrompt } from '@/lib/chatToolGuard'
 import {
   recordToolActivity,
   resourceOf,
@@ -666,7 +667,14 @@ export function ThreadConversation({
               resource: resourceOf(toolCall.input),
             }
 
-            const needsApproval = !isAutoAllowedTool(toolName)
+            // A tool that runs without a prompt is still asked about when its
+            // command looks destructive in this thread's workspace, or when it
+            // would be one call past the consecutive auto-approval limit --
+            // the same two checks Cowork makes (see chatToolGuard.ts).
+            const forced = isAutoAllowedTool(toolName)
+              ? await chatForcedPrompt(toolName, toolCall.input, threadId)
+              : null
+            const needsApproval = !isAutoAllowedTool(toolName) || forced !== null
             if (needsApproval) {
               void recordToolActivity({
                 ...permissionEvent,
@@ -675,19 +683,41 @@ export function ThreadConversation({
             }
             const approved = !needsApproval
               ? true
-              : await (toolApprovalPromises.current.get(toolCall.toolCallId) ??
-                  useToolApprovalRequests
+              : forced
+                ? await useToolApprovalRequests
                     .getState()
                     .requestApproval(
                       toolCall.toolCallId,
                       toolName,
                       threadId,
-                      serverForTool(toolName),
+                      undefined,
                       {
                         input: toolCall.input,
+                        alwaysAsk: true,
+                        taskContext: forced.reason,
+                        // Checked above through the filesystem, with the
+                        // thread's real workspace.
+                        destructiveChecked: true,
                         threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                        signal,
                       }
-                    ))
+                    )
+                : await (toolApprovalPromises.current.get(
+                    toolCall.toolCallId
+                  ) ??
+                    useToolApprovalRequests
+                      .getState()
+                      .requestApproval(
+                        toolCall.toolCallId,
+                        toolName,
+                        threadId,
+                        serverForTool(toolName),
+                        {
+                          input: toolCall.input,
+                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                          autoApproveStreak: threadId,
+                        }
+                      ))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
@@ -972,6 +1002,7 @@ export function ThreadConversation({
               {
                 input: toolCall.input,
                 threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                autoApproveStreak: threadId,
               }
             )
         )
