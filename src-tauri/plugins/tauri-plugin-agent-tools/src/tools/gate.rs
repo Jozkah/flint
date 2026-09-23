@@ -241,6 +241,44 @@ fn secret_file_name(resource: &crate::resource::Resource) -> Option<String> {
     crate::project_browse::is_sensitive_name(&name).then_some(name)
 }
 
+/// For each path resource that a symlink redirects, the path it really
+/// resolves to. Paths that resolve to themselves, and paths that cannot be
+/// resolved, add nothing: the lexical checks already cover them, and the
+/// containment checks refuse what cannot be resolved.
+fn resolved_aliases(resources: &[crate::resource::Resource]) -> Vec<crate::resource::Resource> {
+    use crate::resource::Resource;
+    resources
+        .iter()
+        .filter_map(|r| {
+            let Resource::Path(lexical) = r else {
+                return None;
+            };
+            let real = crate::tools::sandbox::canonicalize_lenient(lexical).ok()?;
+            let real = crate::resource::normalize(&strip_verbatim(&real));
+            // The same file, only spelled the way the platform canonicalizes:
+            // resolve the parent alone and compare.
+            let unlinked = lexical
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|p| crate::resource::normalize(&strip_verbatim(&p)).join(lexical.file_name().unwrap_or_default()));
+            if unlinked.as_deref() == Some(real.as_path()) || real == *lexical {
+                return None;
+            }
+            Some(Resource::Path(real))
+        })
+        .collect()
+}
+
+/// `\\?\C:\x` as `C:\x`, so a resolved path reads like the paths rules are
+/// written against. Other paths are returned as they are.
+fn strip_verbatim(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow,
@@ -284,7 +322,15 @@ pub fn resolve_decision(
         Some(project_root),
     );
 
-    if perms.denies_call(tool.name, &resources, subject).is_some() {
+    // Where those paths really lead, when a symlink makes that somewhere else
+    // (Jozkah/jan#235). Allow rules keep matching only the lexical path, so a
+    // planted link cannot widen what one covers; deny rules and the secret
+    // guard below also look here, so a link cannot hide what it opens.
+    let resolved = resolved_aliases(&resources);
+
+    if perms.denies_call(tool.name, &resources, subject).is_some()
+        || (!resolved.is_empty() && perms.denies_call(tool.name, &resolved, subject).is_some())
+    {
         return Decision::HardDeny(DenyReason::Policy);
     }
 
@@ -317,6 +363,15 @@ pub fn resolve_decision(
     if let Some(secret) = resources.iter().find_map(secret_file_name) {
         let named = perms
             .allows_call(tool.name, &resources, subject)
+            .is_some_and(|rule| rule.source().contains('('));
+        if !named {
+            return Decision::HardDeny(DenyReason::SecretFile(secret));
+        }
+    }
+    // Reached through a link: only a rule naming the secret itself allows it.
+    if let Some(secret) = resolved.iter().find_map(secret_file_name) {
+        let named = perms
+            .allows_call(tool.name, &resolved, subject)
             .is_some_and(|rule| rule.source().contains('('));
         if !named {
             return Decision::HardDeny(DenyReason::SecretFile(secret));
@@ -1937,6 +1992,69 @@ mod security_corpus {
         std::fs::write(root.join("notsecrets/x"), b"x").unwrap();
         assert_eq!(
             decide("read", json!({ "path": "notsecrets/x" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+    }
+
+    // -- symlink aliases (Jozkah/jan#235) --------------------------------------
+
+    /// A file symlink at `at` naming `target`; `None` where the platform
+    /// refuses to make one (Windows without Developer Mode).
+    fn file_link(target: &Path, at: &Path) -> Option<()> {
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(target, at);
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(target, at);
+        made.map_err(|e| eprintln!("skipped: cannot create a symlink here: {e}"))
+            .ok()
+    }
+
+    #[test]
+    fn a_harmless_name_linked_to_a_secret_file_is_refused() {
+        let root = root();
+        std::fs::write(root.join(".env"), b"API_KEY=x").unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        if file_link(Path::new("../.env"), &root.join("docs/config.txt")).is_none() {
+            return;
+        }
+        let d = decide(
+            "read",
+            json!({ "path": "docs/config.txt" }),
+            &root,
+            &ToolPermissions::allow_all(),
+            &NetworkPolicy::open(),
+        );
+        assert!(matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))), "{d:?}");
+
+        // A rule naming the alias names the alias, not the secret behind it.
+        let named = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["read(docs/config.txt)".to_string()],
+            &[],
+            &[],
+        );
+        let d = decide("read", json!({ "path": "docs/config.txt" }), &root, &named, &NetworkPolicy::open());
+        assert!(matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))), "{d:?}");
+    }
+
+    #[test]
+    fn a_deny_rule_follows_a_link_to_the_file_it_names() {
+        let root = root();
+        std::fs::write(root.join("secret.txt"), b"x").unwrap();
+        std::fs::write(root.join("notes.txt"), b"x").unwrap();
+        if file_link(&root.join("secret.txt"), &root.join("alias.txt")).is_none()
+            || file_link(&root.join("notes.txt"), &root.join("link.txt")).is_none()
+        {
+            return;
+        }
+        let perms = denying(&["read(**/secret.txt)"]);
+        assert_eq!(
+            decide("read", json!({ "path": "alias.txt" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::HardDeny(DenyReason::Policy)
+        );
+        // An in-root link to an ordinary file is still just a read.
+        assert_eq!(
+            decide("read", json!({ "path": "link.txt" }), &root, &perms, &NetworkPolicy::open()),
             Decision::Allow
         );
     }
