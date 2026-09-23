@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   sanitizeInvalidJsonEscapes,
   repairToolArgs,
+  recoverToolArgs,
 } from '../toolCallRepair'
 
 describe('sanitizeInvalidJsonEscapes', () => {
@@ -89,5 +90,78 @@ describe('repairToolArgs', () => {
 
   it('returns null for array JSON', () => {
     expect(repairToolArgs('[1,2,3]')).toBeNull()
+  })
+})
+
+describe('recoverToolArgs', () => {
+  it('recovers a trailing } on a read path (the package.json case)', () => {
+    expect(
+      recoverToolArgs('{"path":"C:\\repos\\jan\\package.json"}}'),
+    ).toEqual({ path: 'C:\\repos\\jan\\package.json' })
+  })
+
+  it('recovers a trailing } on a nested-args shape (the where/git case)', () => {
+    expect(
+      recoverToolArgs('{"command":"where","args":["git"]}}'),
+    ).toEqual({ command: 'where', args: ['git'] })
+  })
+
+  it('refuses concatenated empty objects', () => {
+    expect(recoverToolArgs('{}{}')).toBeUndefined()
+  })
+
+  it('refuses two distinct concatenated objects', () => {
+    expect(recoverToolArgs('{"a":1}{"b":2}')).toBeUndefined()
+  })
+
+  it('recovers a valid object with trailing whitespace', () => {
+    expect(recoverToolArgs('{"a":1}   \n ')).toEqual({ a: 1 })
+  })
+
+  it('recovers a Windows path with bad backslash escapes', () => {
+    expect(
+      recoverToolArgs('{"path":"D:\\repos\\jan\\file.txt"}'),
+    ).toEqual({ path: 'D:\\repos\\jan\\file.txt' })
+  })
+
+  it('recovers a trailing } after braces inside a quoted string', () => {
+    expect(
+      recoverToolArgs('{"content":"fn main() {}","path":"a.rs"}}'),
+    ).toEqual({ content: 'fn main() {}', path: 'a.rs' })
+  })
+
+  it('recovers nested objects and arrays', () => {
+    expect(
+      recoverToolArgs('{"outer":{"inner":[1,2,3]},"n":5}'),
+    ).toEqual({ outer: { inner: [1, 2, 3] }, n: 5 })
+  })
+
+  it('refuses truncated JSON', () => {
+    expect(recoverToolArgs('{"path":"a.rs","co')).toBeUndefined()
+  })
+
+  it('refuses non-object JSON (primitives, arrays, null)', () => {
+    expect(recoverToolArgs('"just a string"')).toBeUndefined()
+    expect(recoverToolArgs('[1,2,3]')).toBeUndefined()
+    expect(recoverToolArgs('null')).toBeUndefined()
+    expect(recoverToolArgs('42')).toBeUndefined()
+  })
+
+  it('refuses text that is not JSON at all', () => {
+    expect(recoverToolArgs('{not json at all')).toBeUndefined()
+  })
+
+  it('refuses an empty string', () => {
+    expect(recoverToolArgs('')).toBeUndefined()
+    expect(recoverToolArgs('   ')).toBeUndefined()
+  })
+
+  it('passes a plain object input through unchanged', () => {
+    const obj = { path: 'a.rs' }
+    expect(recoverToolArgs(obj)).toBe(obj)
+  })
+
+  it('refuses an array input', () => {
+    expect(recoverToolArgs([1, 2])).toBeUndefined()
   })
 })

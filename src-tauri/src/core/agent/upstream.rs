@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use reqwest::Client;
+use serde_json::Value;
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 #[cfg(not(feature = "cli"))]
 use tauri_plugin_llamacpp::state::LlamacppState;
@@ -196,25 +197,130 @@ pub(crate) fn repair_dangling_tool_calls(messages: &mut Vec<serde_json::Value>) 
     repaired
 }
 
-/// Drops "poisoned" tool calls: an assistant `tool_calls` entry whose
-/// `function.arguments` is not parsable JSON. A model (observed with
-/// DeepSeek/vLLM) can end a stream mid-argument while still reporting
-/// `finish_reason: "tool_calls"`, so the truncated call is persisted into the
-/// thread. Every later turn resends it, and an OpenAI-compatible upstream
-/// rejects the whole request with 422 -- the session is wedged, because the
-/// poison is in the history the agent keeps replaying.
-///
-/// Removal, not reconstruction: a truncated argument cannot be recovered, and
-/// inventing one would run a tool the model never actually asked for. The call
-/// is dropped along with any `role: "tool"` reply carrying its `tool_call_id`,
-/// so no orphaned result is left behind. Valid sibling calls in the same turn
-/// survive; an assistant turn whose calls are ALL dropped keeps its text and
-/// loses only the `tool_calls` key (and is removed entirely if that leaves it
-/// empty, which would otherwise be a contentless assistant turn some providers
-/// reject). Returns the number of calls dropped.
-///
-/// Runs before [`repair_dangling_tool_calls`], so a surviving call that lost
-/// its result still gets the synthetic error reply from that pass.
+/// The first brace-balanced `{...}` substring of `s`, quote- and
+/// escape-aware, or None when the braces never balance. Braces inside string
+/// values (a path, a code snippet in a `content` field) do not end it.
+fn first_json_object(s: &str) -> Option<&str> {
+    let start = s.find('{')?;
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    for (i, c) in s[start..].char_indices() {
+        if in_str {
+            match c {
+                '\\' => esc = !esc,
+                '"' if !esc => in_str = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&s[start..start + i + 1]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Conservative recovery for a tool call's `function.arguments` string, the
+/// Rust twin of the JS `recoverToolArgs`:
+/// - absent/empty arguments are the providers' "no arguments" spelling -> `{}`;
+/// - arguments that already parse to a plain object -> that object, normalised
+///   so the history that resends them is well-formed JSON;
+/// - a first complete leading object whose remainder is only whitespace and
+///   unmatched trailing `}` (the stray-brace case, e.g. `{"path":"x"}}`) ->
+///   that object;
+/// - anything else (a second real object as in `{}{}`, truncation, an array, a
+///   scalar, malformed inside the object) -> None: the caller must refuse the
+///   call and tell the model, never run it with invented arguments.
+pub(crate) fn recover_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
+    let Some(function) = tc.get("function") else {
+        return None;
+    };
+    match function.get("arguments") {
+        // Absent and null are the providers' "no arguments" spelling: valid as-is.
+        None | Some(Value::Null) => Some(Value::Object(Default::default())),
+        Some(Value::String(raw)) => {
+            let t = raw.trim();
+            if t.is_empty() {
+                return Some(Value::Object(Default::default()));
+            }
+            if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(t) {
+                return Some(Value::Object(m));
+            }
+            let Some(first) = first_json_object(t) else {
+                return None;
+            };
+            let rest = t[first.len()..].trim_end();
+            if !rest.chars().all(|c| c == '}') {
+                return None;
+            }
+            serde_json::from_str::<Value>(first).ok().filter(|v| v.is_object())
+        }
+        // Off-wire shapes: an object is the arguments themselves; a list or
+        // scalar is poison.
+        Some(Value::Object(_)) => Some(function["arguments"].clone()),
+        Some(_) => None,
+    }
+}
+
+/// Parse a tool call's arguments for dispatch, with the conservative recovery
+/// above. None means the call must be refused (never executed with an invented
+/// empty argument set): the model is told so, and the loop guard bounds any
+/// repetition.
+pub(crate) fn parse_tool_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
+    recover_tool_call_args(tc)
+}
+
+/// A tool call rewritten so its `function.arguments` is clean, or `None` when the
+/// call is unrecoverable and must be refused. Well-formed calls (a string that
+/// already parses to an object, an absent/null/empty argument set, or an off-wire
+/// object) come back byte-for-byte unchanged; a recoverable-but-dirty call (e.g.
+/// a trailing `}` after the object) comes back with its arguments normalised to
+/// the recovered object, so the history resends well-formed JSON and every
+/// dispatch site that re-parses the string gets the same object.
+pub(crate) fn normalize_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
+    let Some(function) = tc.get("function") else {
+        return None;
+    };
+    match function.get("arguments") {
+        None | Some(Value::Null) | Some(Value::Object(_)) => Some(tc.clone()),
+        Some(Value::String(raw)) => {
+            let t = raw.trim();
+            if t.is_empty() {
+                return Some(tc.clone());
+            }
+            if let Ok(Value::Object(_)) = serde_json::from_str::<Value>(t) {
+                return Some(tc.clone());
+            }
+            let Some(first) = first_json_object(t) else {
+                return None;
+            };
+            let rest = t[first.len()..].trim_end();
+            if !rest.chars().all(|c| c == '}') {
+                return None;
+            }
+            let obj = serde_json::from_str::<Value>(first).ok().filter(|v| v.is_object())?;
+            let mut fixed = tc.clone();
+            if let Some(f) = fixed.get_mut("function").and_then(|v| v.as_object_mut()) {
+                f.insert(
+                    "arguments".to_string(),
+                    Value::String(serde_json::to_string(&obj).unwrap_or_default()),
+                );
+            }
+            Some(fixed)
+        }
+        Some(_) => None,
+    }
+}
+
 /// Whether a tool call's arguments are safe to execute and to keep in
 /// provider-visible history.
 ///
@@ -225,30 +331,38 @@ pub(crate) fn repair_dangling_tool_calls(messages: &mut Vec<serde_json::Value>) 
 /// truncated or confused model emits: it parses cleanly, so a parse-only
 /// check calls it safe, and the upstream rejects the whole request over it
 /// ("arguments must be a JSON object"). Absent, null, and empty arguments
-/// are the "no arguments" spelling.
+/// are the "no arguments" spelling. A stray trailing `}` after the object is
+/// recoverable (see [`recover_tool_call_args`]) and therefore executable: the
+/// harness recovers the object at dispatch, and the history sanitizer
+/// normalises the string so the upstream sees clean JSON.
 pub(crate) fn arguments_are_executable(tc: &serde_json::Value) -> bool {
-    let Some(args) = tc.get("function").and_then(|f| f.get("arguments")) else {
-        return true;
-    };
-    let Some(args) = args.as_str() else {
-        // Off-wire shapes: an object is equivalent to valid arguments; a
-        // list or scalar is poison; null means "no arguments".
-        return matches!(args, serde_json::Value::Object(_) | serde_json::Value::Null);
-    };
-    let args = args.trim();
-    if args.is_empty() {
-        return true;
-    }
-    matches!(
-        serde_json::from_str::<serde_json::Value>(args),
-        Ok(v) if v.is_object()
-    )
+    recover_tool_call_args(tc).is_some()
 }
 
+/// Drops "poisoned" tool calls: an assistant `tool_calls` entry whose
+/// `function.arguments` is not recoverable into a plain JSON object. A model
+/// (observed with DeepSeek/vLLM) can end a stream mid-argument while still
+/// reporting `finish_reason: "tool_calls"`, so the truncated call is persisted
+/// into the thread. Every later turn resends it, and an OpenAI-compatible
+/// upstream rejects the whole request with 422 -- the session is wedged,
+/// because the poison is in the history the agent keeps replaying.
+///
+/// Heal first, drop last: a call whose arguments carry only trailing junk
+/// (a stray `}` after the object) is rewritten in place to the recovered
+/// object and kept, so the call and its result survive the sanitise pass;
+/// the upstream then sees well-formed JSON. A call whose arguments cannot be
+/// recovered (a second real object, a truncation inside the object, a list,
+/// a scalar) is dropped along with any `role: "tool"` reply carrying its
+/// `tool_call_id`, so no orphaned result is left behind. Valid sibling calls
+/// in the same turn survive; an assistant turn whose calls are ALL dropped
+/// keeps its text and loses only the `tool_calls` key (and is removed
+/// entirely if that leaves it empty, which would otherwise be a contentless
+/// assistant turn some providers reject). Returns the number of calls
+/// dropped.
 pub(crate) fn drop_malformed_tool_calls(messages: &mut Vec<serde_json::Value>) -> usize {
-    // A call is poison when its arguments are not a plain JSON object. An
-    // absent or empty `arguments` is the well-formed "no arguments" spelling
-    // several providers use, and is left alone.
+    // A call is poison when its arguments cannot be recovered to a plain JSON
+    // object. An absent or empty `arguments` is the well-formed "no arguments"
+    // spelling several providers use, and is left alone.
     let is_malformed = |call: &serde_json::Value| !arguments_are_executable(call);
 
     let mut dropped_ids: Vec<String> = Vec::new();
@@ -268,7 +382,11 @@ pub(crate) fn drop_malformed_tool_calls(messages: &mut Vec<serde_json::Value>) -
                 }
                 dropped += 1;
             } else {
-                kept.push(call.clone());
+                // Heal in place when the call is dirty but recoverable, so the
+                // history (and the upstream that resends it) carries the clean
+                // object; a call that already parses to a plain object passes
+                // through byte-for-byte unchanged.
+                kept.push(normalize_tool_call_args(call).unwrap_or_else(|| call.clone()));
             }
         }
         let Some(obj) = msg.as_object_mut() else {
@@ -3164,6 +3282,116 @@ mod tests {
             .map(|c| c["id"].as_str().unwrap())
             .collect();
         assert_eq!(ids, vec!["keep"]);
+    }
+
+    fn call_with_args_string(raw: &str) -> serde_json::Value {
+        json!({ "id": "c1", "type": "function", "function": { "name": "read", "arguments": raw } })
+    }
+
+    #[test]
+    fn recover_args_reads_the_well_formed_case_unchanged() {
+        let tc = call_with_args_string("{\"path\":\"a.rs\"}");
+        assert_eq!(recover_tool_call_args(&tc).unwrap(), json!({ "path": "a.rs" }));
+        // Off-wire object, absent and null arguments: the "no arguments"
+        // spelling decodes to an empty object.
+        let offwire = json!({ "function": { "name": "x", "arguments": { "path": "a" } } });
+        assert_eq!(recover_tool_call_args(&offwire).unwrap(), json!({ "path": "a" }));
+        let absent = json!({ "function": { "name": "now" } });
+        assert_eq!(recover_tool_call_args(&absent).unwrap(), json!({}));
+        let null = json!({ "function": { "name": "now", "arguments": null } });
+        assert_eq!(recover_tool_call_args(&null).unwrap(), json!({}));
+        assert_eq!(recover_tool_call_args(&call_with_args_string("")).unwrap(), json!({}));
+        assert_eq!(recover_tool_call_args(&call_with_args_string("   ")).unwrap(), json!({}));
+    }
+
+    #[test]
+    fn recover_args_salvages_trailing_braces() {
+        // The two shapes from the field: extra closing braces after a complete
+        // leading object, with or without an inner array.
+        let tc = call_with_args_string("{\"path\":\"C:\\repos\\jan\\package.json\"}}");
+        assert_eq!(
+            recover_tool_call_args(&tc).unwrap(),
+            json!({ "path": "C:\\repos\\jan\\package.json" })
+        );
+        let tc = call_with_args_string("{\"command\":\"where\",\"args\":[\"git\"]}}");
+        assert_eq!(
+            recover_tool_call_args(&tc).unwrap(),
+            json!({ "command": "where", "args": ["git"] })
+        );
+        // Braces inside a quoted string do not end the first object.
+        let tc = call_with_args_string("{\"content\":\"fn main() {}\",\"path\":\"a.rs\"}}");
+        assert_eq!(
+            recover_tool_call_args(&tc).unwrap(),
+            json!({ "content": "fn main() {}", "path": "a.rs" })
+        );
+    }
+
+    #[test]
+    fn recover_args_refuses_the_unsafe_shapes() {
+        // Two concatenated objects: executing an arbitrary first object is
+        // exactly what this boundary must not do.
+        assert!(recover_tool_call_args(&call_with_args_string("{}{}")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("{\"a\":1}{\"b\":2}")).is_none());
+        // Truncated, scalar, array, and double-encoded shapes all refuse.
+        assert!(recover_tool_call_args(&call_with_args_string("{\"path\":\"a.rs\",\"co")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("[1,2,3]")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("42")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("\"{\\\"path\\\":\\\"a.rs\\\"}\"")).is_none());
+    }
+
+    #[test]
+    fn normalize_leaves_clean_calls_byte_identical() {
+        let tc = call_with_args_string("{\"path\":\"a.rs\"}");
+        assert_eq!(normalize_tool_call_args(&tc).unwrap(), tc);
+        let offwire = json!({ "function": { "name": "x", "arguments": { "path": "a" } } });
+        assert_eq!(normalize_tool_call_args(&offwire).unwrap(), offwire);
+        let absent = json!({ "function": { "name": "now" } });
+        assert_eq!(normalize_tool_call_args(&absent).unwrap(), absent);
+    }
+
+    #[test]
+    fn normalize_rewrites_a_trailing_brace_call_in_place() {
+        let tc = call_with_args_string("{\"path\":\"a.rs\"}}");
+        let healed = normalize_tool_call_args(&tc).unwrap();
+        assert_eq!(
+            healed["function"]["arguments"],
+            json!("{\"path\":\"a.rs\"}")
+        );
+        // The healed call now decodes on its own.
+        assert_eq!(
+            recover_tool_call_args(&healed).unwrap(),
+            json!({ "path": "a.rs" })
+        );
+        // Unrecoverable shapes stay None; the input is never mutated.
+        assert!(normalize_tool_call_args(&call_with_args_string("{}{}")).is_none());
+        assert!(normalize_tool_call_args(&call_with_args_string("{\"co")).is_none());
+    }
+
+    #[test]
+    fn sanitize_heals_recoverable_calls_instead_of_dropping_them() {
+        let mut messages = vec![
+            json!({ "role": "user", "content": "read the file" }),
+            json!({
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [
+                    { "id": "healed", "type": "function", "function": { "name": "read", "arguments": "{\"path\":\"a.rs\"}}" } },
+                    { "id": "poison", "type": "function", "function": { "name": "write", "arguments": "{}{}" } },
+                ]
+            }),
+            json!({ "role": "tool", "tool_call_id": "healed", "content": "ok" }),
+            json!({ "role": "tool", "tool_call_id": "poison", "content": "stale" }),
+        ];
+        // Only the unrecoverable call is dropped; the trailing-brace one is
+        // repaired and kept, so a replayed session loses nothing it can run.
+        assert_eq!(drop_malformed_tool_calls(&mut messages), 1);
+        let calls = messages[1]["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["id"], "healed");
+        assert_eq!(calls[0]["function"]["arguments"], json!("{\"path\":\"a.rs\"}"));
+        // The healed call's result survived; only the poison's is gone.
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[2]["tool_call_id"], "healed");
     }
 
     #[test]

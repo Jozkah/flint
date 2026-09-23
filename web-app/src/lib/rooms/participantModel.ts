@@ -13,7 +13,7 @@ import {
   type LanguageModel,
   type Tool,
 } from 'ai'
-import { salvageToolArgs } from '@/lib/coworkRunner'
+import { recoverToolArgs } from '@/lib/toolCallRepair'
 import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
@@ -144,7 +144,7 @@ export async function streamParticipantReply(
             // turn -- the same recovery Cowork does on its own tool path.
             experimental_repairToolCall: async ({ toolCall, error }) => {
               if (!InvalidToolInputError.isInstance(error)) return null
-              const fixed = salvageToolArgs(toolCall.input)
+              const fixed = recoverToolArgs(toolCall.input)
               return fixed ? { ...toolCall, input: JSON.stringify(fixed) } : null
             },
           }

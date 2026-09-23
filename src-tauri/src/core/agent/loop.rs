@@ -24,9 +24,9 @@ use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 use crate::core::agent::events::{StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
-    arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
+    collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
-    load_assistant_config, parse_openai_messages,
+    load_assistant_config, normalize_tool_call_args, parse_openai_messages, parse_tool_args,
     resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
     stream_openai_chat_completions,
 };
@@ -167,12 +167,16 @@ pub(crate) enum HarnessRefusal {
     /// A tool outside the run's allowlist (for a role, authority it does not
     /// hold). Asking for it does not grant it.
     ToolNotOffered,
+    /// A call whose arguments are not a plain JSON object and cannot be
+    /// recovered to one. It is never executed with invented arguments.
+    InvalidArgs,
 }
 
 impl HarnessRefusal {
     pub(crate) fn code(self) -> &'static str {
         match self {
             HarnessRefusal::ToolNotOffered => "tool-not-offered",
+            HarnessRefusal::InvalidArgs => "invalid-args",
         }
     }
 }
@@ -199,6 +203,26 @@ impl ToolOutcome {
             diff: None,
             images: Vec::new(),
             refusal: Some(refusal),
+        }
+    }
+
+    /// A call whose arguments are not a plain JSON object and cannot be
+    /// recovered to one. Bounded: the raw text the model sent is echoed back
+    /// (truncated) so it can see what it emitted, and the fix is named
+    /// explicitly. Typed so records and tests branch on `refusal`, not on
+    /// message text.
+    fn refused_invalid_args(id: String, name: &str, raw: &str) -> Self {
+        let raw = raw.chars().take(300).collect::<String>();
+        Self {
+            id,
+            content: format!(
+                "ERROR: tool '{name}' was not run: its arguments are not a valid JSON object \
+                 (refused: invalid-args). You sent: {raw}\nRe-emit the call with the arguments \
+                 as a single JSON object, e.g. {{\"path\": \"...\"}}."
+            ),
+            diff: None,
+            images: Vec::new(),
+            refusal: Some(HarnessRefusal::InvalidArgs),
         }
     }
 }
@@ -2458,6 +2482,17 @@ impl CompositeToolInvoker {
 /// found by running a real denial and reading what it said. The kind is stated
 /// too: a refusal is `permission_denied`, not a tool that failed, so nothing
 /// downstream has to guess from the words.
+/// The raw `function.arguments` text exactly as the model sent it, for the
+/// bounded diagnostic a refused invalid-args call carries. Never executed, and
+/// capped at the call site so an enormous blob cannot wedge the reply.
+fn raw_args_str(tc: &serde_json::Value) -> String {
+    tc.get("function")
+        .and_then(|f| f.get("arguments"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("(no arguments)")
+        .to_string()
+}
+
 fn denied_by_policy_msg(name: &str, project_root: &std::path::Path) -> String {
     let (org, _) = tauri_plugin_agent_tools::org_policy::load();
     let from_machine = org
@@ -2715,12 +2750,10 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let args: serde_json::Value = tc
-                    .get("function")
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|value| serde_json::from_str(value).ok())
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
                 let content = self.handle_ask_tool(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
@@ -2731,12 +2764,10 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let args: serde_json::Value = tc
-                    .get("function")
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|value| serde_json::from_str(value).ok())
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
                 let content = self.handle_todo_tool(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
@@ -2749,12 +2780,10 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let args: serde_json::Value = tc
-                    .get("function")
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|value| serde_json::from_str(value).ok())
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
                 let content = self.handle_lsp_tool(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
@@ -2785,12 +2814,10 @@ impl CompositeToolInvoker {
                     out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
                     continue;
                 }
-                let args: serde_json::Value = tc
-                    .get("function")
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| serde_json::from_str(s).ok())
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
                 // R16: these tools are left out of the offered set when the
                 // project denies them, but a model can call a tool it was not
                 // shown. The deny is enforced here too, as it is for MCP tools.
@@ -2855,12 +2882,10 @@ impl CompositeToolInvoker {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let args: serde_json::Value = tc
-                .get("function")
-                .and_then(|f| f.get("arguments"))
-                .and_then(|v| v.as_str())
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or(serde_json::Value::Object(Default::default()));
+            let Some(args) = parse_tool_args(tc) else {
+                out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                continue;
+            };
             let tool = lookup(name).expect("is_builtin implies lookup");
             // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
             // BEFORE the normal gate, without a permission prompt, and auto-approval
@@ -3212,12 +3237,11 @@ impl CompositeToolInvoker {
             if failed {
                 continue;
             }
-            let args: serde_json::Value = tc
-                .get("function")
-                .and_then(|f| f.get("arguments"))
-                .and_then(|v| v.as_str())
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default();
+            // A call whose arguments were refused as invalid never ran, so it
+            // touched nothing; skip it rather than reading a parsed empty set.
+            let Some(args) = parse_tool_args(tc) else {
+                continue;
+            };
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let relative = std::path::Path::new(path)
                     .strip_prefix(&self.project_root)
@@ -5595,12 +5619,9 @@ async fn run_turn_cycle(
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string(),
-                args: tc
-                    .get("function")
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| serde_json::from_str(s).ok())
-                    .unwrap_or(serde_json::Value::Null),
+                // Display only (never dispatched): show the recovered object
+                // when one exists, so the UI matches what will actually run.
+                args: parse_tool_args(tc).unwrap_or(serde_json::Value::Null),
             });
         }
 
@@ -5683,25 +5704,29 @@ async fn run_turn_cycle(
         // Invariant: a tool call whose arguments do not decode to a plain
         // JSON object is never executed. A truncated stream or a confused
         // model would otherwise run a tool with invented or empty arguments.
-        // The call fails visibly instead, and the per-request sanitizer keeps
-        // the malformed call out of the history the next request carries.
+        // A call that is dirty but recoverable (a stray `}` after the object)
+        // is normalised to the recovered object and executed -- the same
+        // object the dispatch sites parse. The call that cannot be recovered
+        // fails visibly with a typed refusal, and the per-request sanitizer
+        // keeps it out of the history the next request carries.
         let executable: Vec<serde_json::Value> = tool_calls
             .iter()
-            .filter(|tc| arguments_are_executable(tc))
-            .cloned()
+            .filter_map(|tc| normalize_tool_call_args(tc))
             .collect();
         let mut error_outcomes: Vec<ToolOutcome> = tool_calls
             .iter()
-            .filter(|tc| !arguments_are_executable(tc))
+            .filter(|tc| normalize_tool_call_args(tc).is_none())
             .map(|tc| {
-                ToolOutcome::plain(
+                ToolOutcome::refused_invalid_args(
                     tc.get("id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    "ERROR: tool-call arguments are not a plain JSON object; the call was not \
-                     executed. Re-emit it with the arguments as a JSON object."
-                        .to_string(),
+                    tc.get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                    &raw_args_str(tc),
                 )
             })
             .collect();
@@ -7773,6 +7798,128 @@ mod tests {
             tool.calls.lock().unwrap().is_empty(),
             "nothing was executed, which is the whole point"
         );
+    }
+
+    /// The reported incident shape: a complete leading object with an extra
+    /// closing brace the provider tacked on. The recovery boundary heals it,
+    /// so the tool runs exactly once with the clean arguments -- not zero,
+    /// not twice.
+    #[tokio::test]
+    async fn a_trailing_brace_tool_call_is_recovered_and_executed_once() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": serde_json::Value::Null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": { "name": "search", "arguments": "{\"q\":\"rust\"}}" }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            }),
+            json!({ "choices": [{ "message": { "content": "final answer" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["choices"][0]["message"]["content"], "final answer");
+        assert_eq!(tool.calls.lock().unwrap().len(), 1, "the call ran exactly once");
+        // The invoker saw the healed arguments, not the raw trailing-brace text.
+        assert_eq!(
+            tool.calls.lock().unwrap()[0][0]["function"]["arguments"],
+            json!("{\"q\":\"rust\"}")
+        );
+    }
+
+    /// The unrecoverable half of the same boundary: `{}{}` cannot be run
+    /// without guessing, so it is refused with a typed invalid-args result
+    /// whose diagnostic carries the raw text, bounded, and the run goes on.
+    #[tokio::test]
+    async fn an_unrecoverable_tool_call_is_refused_typed_and_the_run_continues() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // Raw text well past the 300-char diagnostic bound: truncated JSON.
+        let long_raw = format!("{{\"path\":\"{}", "\"x\"x".repeat(200));
+        let model = MockModel::new(vec![
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": serde_json::Value::Null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": { "name": "read", "arguments": long_raw }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            }),
+            json!({ "choices": [{ "message": { "content": "final answer" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["choices"][0]["message"]["content"], "final answer");
+        assert!(
+            tool.calls.lock().unwrap().is_empty(),
+            "the refused call must never reach the invoker"
+        );
+        // The refusal lands in the conversation as the tool message: typed,
+        // actionable, and bounded -- the raw text is capped, not dumped.
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        let messages = requests[1]["messages"].as_array().unwrap();
+        let tool_msg = messages
+            .iter()
+            .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
+            .unwrap_or_else(|| panic!("no refusal tool message: {messages:#?}"));
+        let content = tool_msg["content"].as_str().unwrap();
+        assert!(content.contains("was not run"), "{content}");
+        assert!(content.contains("invalid-args"), "{content}");
+        assert!(content.len() < long_raw.len(), "the diagnostic is bounded");
     }
 
     struct ResultQueueModel {
