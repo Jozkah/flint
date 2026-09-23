@@ -347,7 +347,19 @@ impl Resource {
         if tool_name == "bash" {
             match args.get("command") {
                 Some(serde_json::Value::String(line)) if !line.trim().is_empty() => {
-                    out.push(Resource::command(line))
+                    // One resource per command the line runs, not one for the
+                    // line (Jozkah/jan#227): deny, ask and the destructive-git
+                    // guard see each, and a resource-qualified allow must cover
+                    // every one.
+                    // A line that cannot be read as a whole (unbalanced quotes)
+                    // stays one `Unknown`, which fails closed.
+                    let whole = Resource::command(line);
+                    let commands = crate::tools::cmdscan::simple_commands(line);
+                    if commands.is_empty() || matches!(whole, Resource::Unknown { .. }) {
+                        out.push(whole);
+                    } else {
+                        out.extend(commands.iter().map(|c| Resource::command(c)));
+                    }
                 }
                 Some(_) => out.push(Resource::Unknown {
                     tool: tool_name.to_string(),
@@ -575,11 +587,31 @@ impl ResourceRule {
         self.subject.matches(subject)
     }
 
+    /// Whether an `ask` rule covers this call: as soon as *any* resource
+    /// matches, like deny -- asking is the cautious side, so one command in a
+    /// chain that the rule names is enough to ask about the whole line.
+    pub fn matches_ask(
+        &self,
+        tool_name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> bool {
+        if !self.covers_subject(subject) || !self.tool.matches(tool_name) {
+            return false;
+        }
+        match &self.resource {
+            None => true,
+            Some(pattern) => resources.iter().any(|r| resource_matches(pattern, r)),
+        }
+    }
+
     /// Whether this rule covers this call.
     ///
     /// A resource-qualified rule must match *some* resource of the call to
     /// allow it, and an unknown resource matches no pattern — so a call the
-    /// gate could not understand is never allowed by a specific rule.
+    /// gate could not understand is never allowed by a specific rule. For a
+    /// shell line it must match *every* command the line runs: a rule naming
+    /// `git status` does not vouch for what is chained after it (Jozkah/jan#227).
     pub fn matches_allow(
         &self,
         tool_name: &str,
@@ -596,6 +628,13 @@ impl ResourceRule {
                 .iter()
                 .any(|r| matches!(r, Resource::Unknown { .. }));
         };
+        let commands: Vec<&Resource> = resources
+            .iter()
+            .filter(|r| matches!(r, Resource::Command { .. }))
+            .collect();
+        if !commands.is_empty() {
+            return commands.iter().all(|r| resource_matches(pattern, r));
+        }
         resources.iter().any(|r| resource_matches(pattern, r))
     }
 

@@ -1954,9 +1954,9 @@ mod security_corpus {
             );
         }
         let ask = ToolPermissions::new(PermissionDefault::Allow, &["bash".to_string()], &[], &[])
-            .with_ask(&["bash(git:push)".to_string()]);
+            .with_ask(&["bash(npm publish*)".to_string()]);
         assert_eq!(
-            decide("bash", json!({ "command": "true; git push" }), &root, &ask, &NetworkPolicy::open()),
+            decide("bash", json!({ "command": "true; npm publish" }), &root, &ask, &NetworkPolicy::open()),
             Decision::Prompt(PromptKind::Ask)
         );
     }
