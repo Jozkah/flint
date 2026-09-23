@@ -2604,11 +2604,14 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, input, preview, signal) =>
+              onApprove: (callId, toolName, input, preview, signal, forced) =>
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(callId, toolName, sid, undefined, {
                     input,
+                    ...(forced
+                      ? { alwaysAsk: true, taskContext: forced.reason }
+                      : {}),
                     workspaceLabel:
                       (destination ? destination.path : current?.folder) ??
                       undefined,
@@ -2852,11 +2855,14 @@ function CoworkPage() {
                 // The prompt the chat surface already uses for tool approval,
                 // not a second one: it honours grants the user has already made
                 // and renders in the tool card the call is reported in.
-                onApprove: (callId, toolName, input, preview, signal) =>
+                onApprove: (callId, toolName, input, preview, signal, forced) =>
                   useToolApprovalRequests
                     .getState()
                     .requestApproval(callId, toolName, sid, undefined, {
                       input,
+                      ...(forced
+                        ? { alwaysAsk: true, taskContext: forced.reason }
+                        : {}),
                       workspaceLabel: current?.folder ?? undefined,
                       preview,
                       signal,
@@ -4567,6 +4573,11 @@ function CoworkPage() {
                 }
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
+                }
+                onPreviewDiff={(sha) =>
+                  useCoworkCheckpoints
+                    .getState()
+                    .previewDiff(session?.id ?? '', sha)
                 }
                 // Newer edits Flint made itself are not someone else's work, so
                 // only the rest need an explicit acknowledgement.

@@ -2826,8 +2826,13 @@ async fn print_event(
             path,
             command,
             diff,
+            reason,
             ..
         } => {
+            // Why a call auto-approval would have run is being asked about.
+            if let Some(reason) = &reason {
+                eprintln!("\x1b[33m[permission] {reason}\x1b[0m");
+            }
             let detail = command
                 .map(|c| format!(" ({c})"))
                 .or_else(|| path.map(|p| format!(" on {p}")))

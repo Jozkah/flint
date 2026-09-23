@@ -75,7 +75,12 @@ describe('agent activity status', () => {
     act(() => {
       vi.advanceTimersByTime(3000)
     })
-    expect(screen.getByText(/3s/)).toBeInTheDocument()
+    // The reasoning header runs its own live counter; this is the subagent row's.
+    expect(
+      screen
+        .getAllByText(/3s/)
+        .some((el) => el.getAttribute('data-testid') !== 'reasoning-elapsed')
+    ).toBe(true)
   })
 
   it('drops the row once the subagent finishes', () => {

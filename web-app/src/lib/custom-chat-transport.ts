@@ -60,6 +60,7 @@ import { engineFailure } from '@/lib/engineError'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import {
+  clampThinkingBudget,
   tokensForThinkingBudgetLevel,
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
@@ -1619,7 +1620,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           modelId
         )
         if (thinkingBudgetTokens !== undefined) {
-          modelSamplingDefaults.thinking_budget_tokens = thinkingBudgetTokens
+          // Reasoning must leave room for the answer inside the output limit.
+          const rawMax =
+            inferenceParams?.max_output_tokens ??
+            inferenceParams?.max_tokens ??
+            modelSamplingDefaults.max_tokens
+          const maxOut = typeof rawMax === 'number' ? rawMax : Number(rawMax)
+          modelSamplingDefaults.thinking_budget_tokens = clampThinkingBudget(
+            thinkingBudgetTokens,
+            Number.isFinite(maxOut) ? maxOut : undefined
+          )
         }
       }
 

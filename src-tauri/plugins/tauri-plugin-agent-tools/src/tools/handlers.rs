@@ -35,7 +35,9 @@ const BASH_MAX_LINES: usize = 10_000;
 const GREP_MAX_LINE: usize = 500;
 const LS_DEFAULT_LIMIT: usize = 500;
 const FIND_DEFAULT_LIMIT: usize = 1000;
-const GREP_DEFAULT_LIMIT: usize = 100;
+const GREP_DEFAULT_LIMIT: usize = 300;
+/// Hard ceiling on grep matches returned to the model, whatever `limit` asks.
+const GREP_MAX_RESULTS: usize = 300;
 /// How long a `bash` call waits for the command before backgrounding it, when
 /// the caller doesn't specify `timeout`.
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
@@ -707,7 +709,25 @@ fn apply_edits(
         let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         let count = content.matches(old_string).count();
         if count == 0 {
-            return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            // No exact hit: fall back to tolerant matching (line endings,
+            // typographic characters, indentation, near-identical text).
+            // replace_all stays exact-only apart from line endings.
+            if replace_all {
+                let eol_old = super::fuzzy_edit::in_file_ending(&content, old_string);
+                if eol_old != old_string && content.contains(&eol_old) {
+                    let eol_new = super::fuzzy_edit::in_file_ending(&content, new_string);
+                    content = content.replace(&eol_old, &eol_new);
+                    continue;
+                }
+                return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            }
+            match super::fuzzy_edit::resolve(&content, old_string, new_string) {
+                Ok(r) => {
+                    content.replace_range(r.range, &r.replacement);
+                    continue;
+                }
+                Err(e) => return Err(format!("ERROR: {shown}: edit {}: {e}", i + 1)),
+            }
         }
         if replace_all {
             // Rename-style replacement: every occurrence, no uniqueness guard.
@@ -2375,15 +2395,65 @@ fn bytecount_newlines(bytes: &[u8]) -> usize {
 }
 
 /// Drop control characters that would corrupt the model's view of the output
-/// (NUL, bell, ANSI escapes, etc.), keeping only tab and newline. Carriage
-/// returns are already resolved by [`collapse_carriage_returns`] beforehand.
+/// (NUL, bell, etc.), keeping only tab and newline. ANSI escape sequences are
+/// removed whole, so colour codes leave no `[31m`-style residue behind.
+/// Carriage returns are already resolved by [`collapse_carriage_returns`]
+/// beforehand. The live output stream to the UI does not pass through here, so
+/// the UI can still render colours.
 fn sanitize_control(s: &str) -> String {
     if !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n') {
         return s.to_string();
     }
-    s.chars()
+    strip_ansi(s)
+        .chars()
         .filter(|&c| !c.is_control() || c == '\t' || c == '\n')
         .collect()
+}
+
+/// Remove ANSI escape sequences: CSI (`ESC [ ... final`), OSC (`ESC ] ...`
+/// ended by BEL or `ESC \`), and two-character `ESC x` escapes. A C1 CSI
+/// (`U+009B`) is treated like `ESC [`.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => match chars.next() {
+                Some('[') => skip_csi(&mut chars),
+                Some(']') => {
+                    // OSC: skip to BEL or ST.
+                    while let Some(o) = chars.next() {
+                        if o == '\u{7}' {
+                            break;
+                        }
+                        if o == '\u{1b}' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                // Character-set designation: ESC ( B and friends.
+                Some('(' | ')' | '*' | '+') => {
+                    chars.next();
+                }
+                _ => {}
+            },
+            '\u{9b}' => skip_csi(&mut chars),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Consume a CSI's parameter and intermediate bytes and its final byte.
+fn skip_csi(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    for p in chars.by_ref() {
+        if ('\u{40}'..='\u{7e}').contains(&p) {
+            break;
+        }
+    }
 }
 
 /// Keep the last `max_lines` lines and last `max_bytes` bytes of `s` (trimming
@@ -2760,7 +2830,8 @@ async fn grep(
     let context = arg_u64(args, "context").map(|v| v as usize).unwrap_or(0);
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
-        .unwrap_or(GREP_DEFAULT_LIMIT);
+        .unwrap_or(GREP_DEFAULT_LIMIT)
+        .clamp(1, GREP_MAX_RESULTS);
     let base = resolve_path(root, scratch, &path);
     if symlink_escapes_any_root(root, scratch, read_roots, &base) {
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
@@ -2795,8 +2866,10 @@ async fn grep(
         };
 
         let is_file = base.is_file();
-        let mut matches: Vec<String> = Vec::new();
+        // Grouped per file, in walk order: (relative path, [(line no, is match, text)]).
+        let mut groups: Vec<(String, Vec<(usize, bool, String)>)> = Vec::new();
         let mut count = 0usize;
+        let mut truncated = false;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -2818,29 +2891,36 @@ async fn grep(
             };
             let rel = rel_to(rel_base, file);
             let lines: Vec<&str> = content.lines().collect();
+            let mut entries: Vec<(usize, bool, String)> = Vec::new();
+            let mut keep_going = true;
             for (i, line) in lines.iter().enumerate() {
-                if re.is_match(line) {
-                    if context > 0 {
-                        let start = i.saturating_sub(context);
-                        let end = (i + context + 1).min(lines.len());
-                        for (j, item) in lines.iter().enumerate().take(end).skip(start) {
-                            let text = truncate_line(item);
-                            if j == i {
-                                matches.push(format!("{rel}:{}:{text}", j + 1));
-                            } else {
-                                matches.push(format!("{rel}-{}-{text}", j + 1));
-                            }
-                        }
-                    } else {
-                        matches.push(format!("{rel}:{}:{}", i + 1, truncate_line(line)));
-                    }
-                    count += 1;
-                    if count >= limit {
-                        return false;
-                    }
+                if !re.is_match(line) {
+                    continue;
                 }
+                if count >= limit {
+                    // One match past the cap is enough to report "N+".
+                    truncated = true;
+                    keep_going = false;
+                    break;
+                }
+                let start = i.saturating_sub(context);
+                let end = (i + context + 1).min(lines.len());
+                for (j, item) in lines.iter().enumerate().take(end).skip(start) {
+                    let line_no = j + 1;
+                    // Overlapping context windows: never repeat a line, but
+                    // promote an already-emitted context line that matches.
+                    if let Some(prev) = entries.iter_mut().find(|e| e.0 == line_no) {
+                        prev.1 |= j == i;
+                        continue;
+                    }
+                    entries.push((line_no, j == i, truncate_line(item)));
+                }
+                count += 1;
             }
-            true
+            if !entries.is_empty() {
+                groups.push((rel, entries));
+            }
+            keep_going
         };
 
         if is_file {
@@ -2882,19 +2962,43 @@ async fn grep(
             }
         }
 
-        if matches.is_empty() {
+        if groups.is_empty() {
             "No matches.".to_string()
         } else {
-            cap_output(
-                &matches.join("\n"),
-                usize::MAX,
-                MAX_BYTES,
-                "\n[truncated: 64KB limit]",
-            )
+            let mut body = format_grep_groups(&groups);
+            if truncated {
+                body.push_str(&format!(
+                    "\n\n[Showing first {count} of {count}+ matches; narrow the pattern, path or glob to see the rest]"
+                ));
+            }
+            cap_output(&body, usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+/// Model-facing grep output: a header line per file (its relative path), then
+/// its lines as `  N: text` for matches and `  N- text` for context, with a
+/// blank line between files. Gaps inside one file are marked by `  --`.
+fn format_grep_groups(groups: &[(String, Vec<(usize, bool, String)>)]) -> String {
+    let mut out = String::new();
+    for (gi, (file, entries)) in groups.iter().enumerate() {
+        if gi > 0 {
+            out.push_str("\n\n");
+        }
+        out.push_str(file);
+        let mut prev: Option<usize> = None;
+        for (line_no, is_match, text) in entries {
+            if prev.is_some_and(|p| *line_no > p + 1) {
+                out.push_str("\n  --");
+            }
+            let sep = if *is_match { ':' } else { '-' };
+            out.push_str(&format!("\n  {line_no}{sep} {text}"));
+            prev = Some(*line_no);
+        }
+    }
+    out
 }
 
 fn truncate_line(line: &str) -> String {
@@ -5380,7 +5484,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(re.contains("code.rs:1:fn main"), "regex: {re}");
+        assert!(re.contains("code.rs\n  1: fn main"), "regex: {re}");
 
         // Literal: "1.5" as regex would match "1x5" too; literal must match exactly.
         let lit = execute_builtin(
@@ -5389,7 +5493,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(lit.contains("code.rs:2:"), "literal: {lit}");
+        assert!(lit.contains("  2: Let x"), "literal: {lit}");
 
         let ci = execute_builtin(
             lookup("grep").unwrap(),
@@ -5397,7 +5501,55 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(ci.contains("code.rs:2:"), "ignore_case: {ci}");
+        assert!(ci.contains("  2: Let x"), "ignore_case: {ci}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_groups_by_file_with_line_numbers_and_context() {
+        let root = unique_root();
+        std::fs::write(
+            root.join("a.txt"),
+            b"one\nneedle two\nthree\nfour\nfive\nneedle six",
+        )
+        .unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "needle", "context": 1}),
+            &root,
+        )
+        .await;
+        assert_eq!(
+            out,
+            "a.txt\n  1- one\n  2: needle two\n  3- three\n  --\n  5- five\n  6: needle six",
+            "grouped: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_caps_results_and_notes_the_overflow() {
+        let root = unique_root();
+        let body: String = (0..400).map(|i| format!("hit {i}\n")).collect();
+        std::fs::write(root.join("big.txt"), body).unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "hit", "limit": 5000}),
+            &root,
+        )
+        .await;
+        assert!(out.contains("  300: hit 299"), "{out}");
+        assert!(!out.contains("  301: hit 300"), "cap not applied");
+        assert!(out.contains("[Showing first 300 of 300+ matches"), "note missing");
+
+        let long = "x".repeat(800);
+        std::fs::write(root.join("big.txt"), format!("{long}\n")).unwrap();
+        let out = execute_builtin(lookup("grep").unwrap(), &json!({"pattern": "x"}), &root).await;
+        assert!(
+            out.contains(&format!("  1: {}...", "x".repeat(500))),
+            "line not truncated"
+        );
+        assert!(!out.contains(&"x".repeat(501)));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -5444,6 +5596,44 @@ on_failure = \"warn\"
         );
         // The return value still carries it, so the model's view is unchanged.
         assert!(out.contains("one") && out.contains("two"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The live stream keeps a command's colours for the terminal card; the
+    /// result the model (and the persisted tool result) gets has them removed
+    /// whole, and a non-zero exit is still reported in it.
+    #[tokio::test]
+    async fn streamed_output_keeps_ansi_but_the_result_is_clean_and_keeps_the_exit_code() {
+        let root = unique_root();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = {
+            let seen = seen.clone();
+            std::sync::Arc::new(move |chunk: String| {
+                seen.lock().unwrap().push_str(&chunk);
+            }) as crate::tools::OutputSink
+        };
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[])
+            .with_sandbox(false)
+            .with_output_sink(sink);
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "printf '\\033[31mred\\033[0m then plain\\n'; exit 3"}),
+            &ctx,
+        )
+        .await
+        .0;
+        let streamed = seen.lock().unwrap().clone();
+        if !streamed.contains("red") {
+            // No POSIX printf on this machine's unsandboxed shell.
+            eprintln!("skipped: shell did not run printf: {out}");
+            let _ = std::fs::remove_dir_all(&root);
+            return;
+        }
+        assert!(streamed.contains("\u{1b}[31m"), "the live view lost its colour: {streamed:?}");
+        assert!(out.contains("red then plain"), "{out}");
+        assert!(!out.contains('\u{1b}') && !out.contains("[31m") && !out.contains("[0m"), "{out:?}");
+        assert!(out.contains("[exit 3]"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -6119,7 +6309,21 @@ on_failure = \"warn\"
         assert!(!out.contains('\u{0}'), "NUL must be stripped");
         assert!(!out.contains('\u{7}'), "bell must be stripped");
         assert!(!out.contains('\u{1b}'), "escape must be stripped");
+        assert!(!out.contains("[31m") && !out.contains("[0m"), "no SGR residue: {out:?}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_osc_and_short_escapes() {
+        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m plain"), "red plain");
+        assert_eq!(strip_ansi("a\u{1b}]0;title\u{7}b"), "ab");
+        assert_eq!(
+            strip_ansi("a\u{1b}]8;;http://x\u{1b}\\link\u{1b}]8;;\u{1b}\\b"),
+            "alinkb"
+        );
+        assert_eq!(strip_ansi("x\u{1b}(By"), "xy");
+        assert_eq!(strip_ansi("\u{9b}32mgreen"), "green");
+        assert_eq!(strip_ansi("no escapes"), "no escapes");
     }
 
     #[tokio::test]

@@ -19102,6 +19102,7 @@ mod tests {
             patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
+            reason: None,
         });
         let p = app.pending().unwrap();
         assert_eq!(p.diff.as_deref(), Some("@@ created file @@\n+ hi"));
@@ -19140,6 +19141,7 @@ mod tests {
             patch: None,
             prompt_kind: "exec".into(),
             offers_always: true,
+            reason: None,
         });
         assert!(app.pending().unwrap().diff_preview(60).is_empty());
     }
@@ -25255,6 +25257,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             },
         ));
         assert_eq!(
@@ -25294,6 +25297,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             },
         ));
         // Second subagent's request arrives while the first is still pending.
@@ -25310,6 +25314,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "read".into(),
                 offers_always: false,
+                reason: None,
             },
         ));
 
@@ -27496,6 +27501,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             });
             app.pending_queue.clear(); // simulate approval
             app.apply(StreamEvent::ToolResult {

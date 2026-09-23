@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { OctagonAlert } from 'lucide-react'
 import { route } from '@/constants/routes'
-import { Card } from '@/containers/Card'
+import { Card, CardItem } from '@/containers/Card'
+import { Input } from '@/components/ui/input'
+import {
+  MAX_AUTO_APPROVE_LIMIT,
+  useAutoApproveLimit,
+} from '@/hooks/useAutoApproveLimit'
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -301,6 +306,9 @@ function PermissionsSettings() {
           </>
         }
       >
+        {/* 0. How long an auto-approved run goes before checking in */}
+        <AutoApproveLimitCard />
+
         {/* 1. Allowed in one conversation */}
         <Card
           anchor="settings-permissions-conversations"
@@ -690,5 +698,54 @@ function PermissionsSettings() {
         </Card>
       </SettingsPageBody>
     </div>
+  )
+}
+
+function AutoApproveLimitCard() {
+  const { t } = useTranslation()
+  const limit = useAutoApproveLimit((s) => s.limit)
+  const setLimit = useAutoApproveLimit((s) => s.setLimit)
+  const [draft, setDraft] = useState(String(limit))
+  useEffect(() => setDraft(String(limit)), [limit])
+  const commit = () => {
+    setLimit(draft)
+    // Show the value actually kept, e.g. 5000 clamped to the maximum.
+    setDraft(String(useAutoApproveLimit.getState().limit))
+  }
+  return (
+    <Card
+      anchor="settings-permissions-auto-approve-limit"
+      title={t('permissions:settings.autoApproveLimit')}
+    >
+      <CardItem
+        anchor="settings-permissions-auto-approve-limit-value"
+        title={t('permissions:settings.autoApproveLimitLabel')}
+        description={
+          limit === 0
+            ? t('permissions:settings.autoApproveLimitOff')
+            : t('permissions:settings.autoApproveLimitDesc', {
+                count: limit,
+                max: MAX_AUTO_APPROVE_LIMIT,
+              })
+        }
+        actions={
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={MAX_AUTO_APPROVE_LIMIT}
+            step={1}
+            aria-label={t('permissions:settings.autoApproveLimitLabel')}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commit()
+            }}
+            className="w-28"
+          />
+        }
+      />
+    </Card>
   )
 }

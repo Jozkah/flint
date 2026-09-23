@@ -25,6 +25,7 @@ pub mod consensus;
 pub mod context;
 pub mod context_pressure;
 pub mod desktop_bridge;
+pub mod destructive;
 pub mod diagnostics;
 pub mod durable_subagent;
 pub mod hooks;

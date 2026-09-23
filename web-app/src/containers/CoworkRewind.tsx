@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { CheckpointEntry, RewindPlan } from '@/hooks/useCoworkCheckpoints'
 import { pathsMatch } from '@/lib/coworkChangeSummary'
+import { cn } from '@/lib/utils'
 
 /**
  * Going back to how things were before a turn.
@@ -47,6 +48,13 @@ export type RewindProps = {
   ) => Promise<
     { ok: true; point: CheckpointEntry } | { ok: false; reason: string }
   >
+  /**
+   * The diff a restore would apply, for the "Preview diff" toggle in the
+   * confirmation. Optional: without it the toggle is not offered.
+   */
+  onPreviewDiff?: (
+    sha: string
+  ) => Promise<{ ok: true; diff: string } | { ok: false; reason: string }>
   /** Carries out a restore. Only ever called for a plan that said `restore`. */
   onRestore: (
     sha: string
@@ -60,6 +68,38 @@ export type RewindProps = {
   janAuthored?: readonly string[]
 }
 
+/** A unified diff, one line per row, additions and deletions tinted. */
+function RestoreDiffPreview({ diff }: { diff: string }) {
+  const { t } = useTranslation()
+  const text = diff.trim()
+  if (!text) {
+    return <p className="text-ink-2">{t('results:rewind.previewEmpty')}</p>
+  }
+  return (
+    <pre
+      data-testid="cowork-rewind-diff"
+      className="max-h-64 overflow-auto whitespace-pre rounded-md border border-border bg-sunken p-2 font-mono"
+    >
+      {text.split('\n').map((line, i) => (
+        <div
+          key={i}
+          className={cn(
+            line.startsWith('+') && !line.startsWith('+++')
+              ? 'text-success'
+              : line.startsWith('-') && !line.startsWith('---')
+                ? 'text-destructive'
+                : line.startsWith('@@')
+                  ? 'text-muted-foreground'
+                  : 'text-ink-2'
+          )}
+        >
+          {line || ' '}
+        </div>
+      ))}
+    </pre>
+  )
+}
+
 export function CoworkRewind(props: RewindProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState<{
@@ -70,6 +110,12 @@ export function CoworkRewind(props: RewindProps) {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [acknowledged, setAcknowledged] = useState(false)
+  const [preview, setPreview] = useState<
+    | { state: 'loading' }
+    | { state: 'ready'; diff: string }
+    | { state: 'failed'; reason: string }
+    | null
+  >(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
   const ids = useId()
@@ -85,6 +131,7 @@ export function CoworkRewind(props: RewindProps) {
   const close = () => {
     setOpen(null)
     setAcknowledged(false)
+    setPreview(null)
     returnFocus.current?.focus()
   }
 
@@ -94,6 +141,7 @@ export function CoworkRewind(props: RewindProps) {
     setFailure(null)
     setNotice(null)
     setAcknowledged(false)
+    setPreview(null)
     try {
       const planned = await props.onPlan(point.sha)
       if (!planned.ok) setFailure(planned.reason)
@@ -143,6 +191,21 @@ export function CoworkRewind(props: RewindProps) {
   }
 
   const files = open?.plan.kind === 'restore' ? open.plan.files : undefined
+
+  const togglePreview = async () => {
+    if (!open || !props.onPreviewDiff) return
+    if (preview) {
+      setPreview(null)
+      return
+    }
+    setPreview({ state: 'loading' })
+    const result = await props.onPreviewDiff(open.point.sha)
+    setPreview(
+      result.ok
+        ? { state: 'ready', diff: result.diff }
+        : { state: 'failed', reason: result.reason }
+    )
+  }
 
   return (
     <section
@@ -243,6 +306,35 @@ export function CoworkRewind(props: RewindProps) {
                     </ul>
                   </>
                 )}
+                {props.onPreviewDiff ? (
+                  <div className="grid gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-fit pointer-coarse:h-11"
+                      aria-expanded={preview !== null}
+                      disabled={busy || preview?.state === 'loading'}
+                      onClick={() => void togglePreview()}
+                    >
+                      {preview
+                        ? t('results:rewind.hideDiff')
+                        : t('results:rewind.previewDiff')}
+                    </Button>
+                    {preview?.state === 'loading' ? (
+                      <p className="text-ink-2">
+                        {t('results:rewind.previewLoading')}
+                      </p>
+                    ) : preview?.state === 'failed' ? (
+                      <p className="text-destructive">
+                        {t('results:rewind.previewFailed', {
+                          reason: preview.reason,
+                        })}
+                      </p>
+                    ) : preview?.state === 'ready' ? (
+                      <RestoreDiffPreview diff={preview.diff} />
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="text-ink-2">
                   {t('results:rewind.safetyNote')}
                 </p>

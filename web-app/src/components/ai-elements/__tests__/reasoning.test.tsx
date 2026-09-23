@@ -41,6 +41,28 @@ describe('Reasoning', () => {
     expect(screen.getByText('Some reasoning text')).toBeInTheDocument()
   })
 
+  it('counts elapsed seconds live while streaming', () => {
+    render(
+      <Reasoning isStreaming>
+        <ReasoningTrigger />
+      </Reasoning>
+    )
+    expect(screen.getByTestId('reasoning-elapsed')).toHaveTextContent('0s')
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    expect(screen.getByTestId('reasoning-elapsed')).toHaveTextContent('3s')
+  })
+
+  it('hides the live counter once streaming ends', () => {
+    render(
+      <Reasoning isStreaming={false} duration={4}>
+        <ReasoningTrigger />
+      </Reasoning>
+    )
+    expect(screen.queryByTestId('reasoning-elapsed')).toBeNull()
+  })
+
   it('shows "Thinking..." shimmer when isStreaming=true', () => {
     render(
       <Reasoning isStreaming>

@@ -24,13 +24,167 @@ use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 use crate::core::agent::events::{StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
-    collect_mcp_openai_tools, copy_optional_chat_params,
+    arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
     drop_malformed_tool_calls, execute_mcp_tool_calls, extract_choice_message, extract_tool_calls,
-    load_assistant_config, normalize_tool_call_args, parse_openai_messages, parse_tool_args,
-    resolve_api_type_for_model, resolve_upstream_for_model, set_system_prompt,
-    stream_openai_chat_completions,
+    load_assistant_config, neutralize_malformed_tool_calls, normalize_tool_call_args,
+    parse_openai_messages, parse_tool_args, resolve_api_type_for_model, resolve_upstream_for_model,
+    set_system_prompt, stream_openai_chat_completions, MalformedCall,
 };
 use crate::core::server::converters::{converter_for, UpstreamConverter};
+
+/// How many times in a row the model may repeat an identical unexecutable
+/// tool call after already receiving the error for it before the run stops.
+const MAX_REPEATED_BROKEN_TOOL_TURNS: usize = 5;
+/// Hard ceiling on consecutive turns with nothing executable, however the
+/// broken calls vary, so a run can never loop forever on malformed calls.
+const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
+/// Consecutive turns issuing the identical set of tool calls (same names and
+/// arguments), or consecutive turns whose every tool call failed, after which
+/// the run is considered stuck and the user is asked for guidance.
+pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+
+/// Why the loop decided the model is stuck.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum StuckReason {
+    /// The same tool calls, with the same arguments, `count` turns in a row.
+    RepeatedCalls { count: usize, calls: String },
+    /// Every tool call failed, `count` turns in a row.
+    RepeatedErrors { count: usize, last_error: String },
+}
+
+impl StuckReason {
+    pub(crate) fn summary(&self) -> String {
+        match self {
+            StuckReason::RepeatedCalls { count, calls } => format!(
+                "The agent has made the same tool call {count} times in a row without progress: {calls}"
+            ),
+            StuckReason::RepeatedErrors { count, last_error } => format!(
+                "The agent's tool calls have failed {count} turns in a row. Latest error: {last_error}"
+            ),
+        }
+    }
+}
+
+/// Tracks executed tool-call turns to notice a model going around in circles.
+#[derive(Debug, Default)]
+pub(crate) struct StuckDetector {
+    last_signature: Option<String>,
+    repeats: usize,
+    error_turns: usize,
+}
+
+impl StuckDetector {
+    /// Canonical identity of a turn's calls: name plus parsed arguments, sorted
+    /// so call order does not matter.
+    pub(crate) fn signature(calls: &[serde_json::Value]) -> String {
+        let mut parts: Vec<String> = calls
+            .iter()
+            .map(|tc| {
+                let f = tc.get("function");
+                let name = f
+                    .and_then(|f| f.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let args = match f.and_then(|f| f.get("arguments")) {
+                    Some(serde_json::Value::String(s)) => {
+                        serde_json::from_str::<serde_json::Value>(s)
+                            .map(|v| canonical_json(&v))
+                            .unwrap_or_else(|_| s.clone())
+                    }
+                    Some(v) => canonical_json(v),
+                    None => String::new(),
+                };
+                format!("{name}({args})")
+            })
+            .collect();
+        parts.sort();
+        parts.join(", ")
+    }
+
+    /// Record one turn. Returns a reason once a limit is reached.
+    pub(crate) fn observe(
+        &mut self,
+        signature: String,
+        all_failed: bool,
+        last_error: &str,
+    ) -> Option<StuckReason> {
+        if self.last_signature.as_deref() == Some(signature.as_str()) {
+            self.repeats += 1;
+        } else {
+            self.repeats = 1;
+        }
+        self.error_turns = if all_failed { self.error_turns + 1 } else { 0 };
+        let reason = if self.repeats >= STUCK_TURN_LIMIT {
+            Some(StuckReason::RepeatedCalls {
+                count: self.repeats,
+                calls: truncate_chars(&signature, 300),
+            })
+        } else if self.error_turns >= STUCK_TURN_LIMIT {
+            Some(StuckReason::RepeatedErrors {
+                count: self.error_turns,
+                last_error: truncate_chars(last_error, 300),
+            })
+        } else {
+            None
+        };
+        self.last_signature = Some(signature);
+        reason
+    }
+
+    /// Forget history, e.g. after the user has given guidance.
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+/// JSON text with object keys sorted at every level, so two argument objects
+/// that differ only in key order compare equal.
+fn canonical_json(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let body: Vec<String> = keys
+                .into_iter()
+                .map(|k| {
+                    let key = serde_json::Value::String(k.clone());
+                    format!("{key}:{}", canonical_json(&map[k]))
+                })
+                .collect();
+            format!("{{{}}}", body.join(","))
+        }
+        serde_json::Value::Array(items) => {
+            let body: Vec<String> = items.iter().map(canonical_json).collect();
+            format!("[{}]", body.join(","))
+        }
+        other => other.to_string(),
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let head: String = s.chars().take(max).collect();
+        format!("{head}...")
+    }
+}
+
+/// Result of asking the user for guidance outside of a model `ask` call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum UserGuidance {
+    /// No interactive UI is attached.
+    Unavailable,
+    /// The user dismissed the question or chose to stop.
+    Stop,
+    /// The user's answer, to hand to the model.
+    Answer(String),
+}
+
+/// Option label the user picks to end a stuck run.
+const STUCK_STOP_LABEL: &str = "Stop the run";
+/// Option label the user picks to let a stuck run continue.
+const STUCK_CONTINUE_LABEL: &str = "Try a different approach";
 #[cfg(not(feature = "cli"))]
 use crate::core::server::proxy::router_first_model;
 #[cfg(not(feature = "cli"))]
@@ -212,13 +366,37 @@ impl ToolOutcome {
     /// explicitly. Typed so records and tests branch on `refusal`, not on
     /// message text.
     fn refused_invalid_args(id: String, name: &str, raw: &str) -> Self {
-        let raw = raw.chars().take(300).collect::<String>();
+        Self::refused_invalid_args_because(
+            id,
+            name,
+            raw,
+            "its arguments are not a valid JSON object",
+        )
+    }
+
+    /// [`Self::refused_invalid_args`] with the specific reason the arguments
+    /// were rejected (see `upstream::malformed_arguments_reason`), which is
+    /// what lets a model correct the call instead of repeating it.
+    fn refused_invalid_args_because(id: String, name: &str, raw: &str, reason: &str) -> Self {
+        const MAX_ECHO_CHARS: usize = 300;
+        let excerpt = raw.chars().take(MAX_ECHO_CHARS).collect::<String>();
+        let ellipsis = if raw.chars().count() > MAX_ECHO_CHARS {
+            "..."
+        } else {
+            ""
+        };
+        let tool = if name.is_empty() {
+            "(unnamed tool)".to_string()
+        } else {
+            format!("'{name}'")
+        };
         Self {
             id,
             content: format!(
-                "ERROR: tool '{name}' was not run: its arguments are not a valid JSON object \
-                 (refused: invalid-args). You sent: {raw}\nRe-emit the call with the arguments \
-                 as a single JSON object, e.g. {{\"path\": \"...\"}}."
+                "ERROR: tool {tool} was not run (refused: invalid-args) because {reason}. \
+                 You sent: {excerpt}{ellipsis}\nRetry the call with `arguments` as a single \
+                 valid JSON object containing every required parameter, e.g. \
+                 {{\"path\": \"...\"}}."
             ),
             diff: None,
             images: Vec::new(),
@@ -237,6 +415,12 @@ pub(crate) trait ToolInvoker: Send + Sync {
     fn observe_conversation(&self, _messages: &[serde_json::Value]) {}
 
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError>;
+
+    /// Ask the user how to proceed when the run looks stuck. The default has no
+    /// UI to ask through.
+    async fn ask_user_guidance(&self, _summary: &str) -> UserGuidance {
+        UserGuidance::Unavailable
+    }
 }
 
 /// One provider request, as the canonical record names it (AH-004).
@@ -972,6 +1156,44 @@ struct CompositeToolInvoker {
     /// The language servers this run has started (AH-057/058). Owned by the
     /// invoker, so they end with the run.
     lsp: std::sync::Arc<crate::core::agent::lsp::LspPool>,
+    /// After this many consecutive auto-approved write/exec calls the next one
+    /// is put to the user instead, as a checkpoint on a long unattended run.
+    /// `0` disables the pause. Request body `auto_approve_limit` overrides
+    /// [`DEFAULT_AUTO_APPROVE_LIMIT`].
+    auto_approve_limit: u32,
+    /// Consecutive auto-approved calls since the user last answered a prompt.
+    auto_approved_streak: std::sync::atomic::AtomicU32,
+}
+
+/// Default for [`CompositeToolInvoker::auto_approve_limit`].
+pub const DEFAULT_AUTO_APPROVE_LIMIT: u32 = 50;
+
+/// Largest accepted [`CompositeToolInvoker::auto_approve_limit`]; higher
+/// values are clamped to it. Matches `MAX_AUTO_APPROVE_LIMIT` in
+/// `web-app/src/hooks/useAutoApproveLimit.ts`.
+pub const MAX_AUTO_APPROVE_LIMIT: u32 = 1000;
+
+/// The request body's `auto_approve_limit`, with the desktop setting's
+/// semantics (`normalizeAutoApproveLimit`): absent, null or unreadable is the
+/// default (never silently "off"); a number, or a numeric string, at or below
+/// zero turns the pause off; otherwise it is floored and clamped to
+/// [`MAX_AUTO_APPROVE_LIMIT`].
+pub(crate) fn normalize_auto_approve_limit(value: Option<&serde_json::Value>) -> u32 {
+    let n = match value {
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        Some(serde_json::Value::String(s)) if !s.trim().is_empty() => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    match n {
+        Some(n) if n.is_finite() => {
+            if n <= 0.0 {
+                0
+            } else {
+                n.floor().min(MAX_AUTO_APPROVE_LIMIT as f64) as u32
+            }
+        }
+        _ => DEFAULT_AUTO_APPROVE_LIMIT,
+    }
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -1348,6 +1570,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: true,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -1378,6 +1601,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: false,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -1408,6 +1632,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "subagent_create".to_string(),
             offers_always: false,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2601,6 +2826,31 @@ impl ToolInvoker for CompositeToolInvoker {
         }
         out
     }
+
+    async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
+        if self.ask_requests.is_none() {
+            return UserGuidance::Unavailable;
+        }
+        let args = serde_json::json!({
+            "questions": [{
+                "id": "stuck",
+                "question": format!("{summary}\n\nHow should the agent proceed?"),
+                "options": [
+                    { "label": STUCK_CONTINUE_LABEL, "description": "Continue, telling the agent to stop repeating itself" },
+                    { "label": STUCK_STOP_LABEL, "description": "End the run now" }
+                ],
+                "recommended": 0
+            }]
+        });
+        let answer = self.handle_ask_tool(&args).await;
+        if answer.starts_with("ERROR [interactive_ui_required]") {
+            UserGuidance::Unavailable
+        } else if answer.starts_with("ERROR") || answer.contains(STUCK_STOP_LABEL) {
+            UserGuidance::Stop
+        } else {
+            UserGuidance::Answer(answer)
+        }
+    }
 }
 
 impl CompositeToolInvoker {
@@ -2950,10 +3200,69 @@ impl CompositeToolInvoker {
             // project -- those reach host files no sandbox confines, gate.rs
             // documents them as never auto-approved, and a headless run with
             // nobody to ask them is refused.
+            //
+            // Two exceptions put the call to the user anyway, through the same
+            // prompt: a shell command that matches a destructive pattern
+            // (`rm -rf ~`, `git push --force`, ...), whatever grant or mode
+            // would otherwise allow it; and the call after a long streak of
+            // auto-approved ones, so an unattended run checks in periodically.
+            let destructive = (name == "bash")
+                .then(|| args.get("command").and_then(|v| v.as_str()))
+                .flatten()
+                .and_then(|c| {
+                    // Inside the project or the run's own scratch directory is
+                    // ordinary work; both are resolved and canonicalised, so an
+                    // absolute path into either is not asked about.
+                    crate::core::agent::destructive::destructive_reason_in(
+                        c,
+                        &crate::core::agent::destructive::Scope::new([
+                            &self.project_root,
+                            &self.scratch_root,
+                        ]),
+                    )
+                });
+            use std::sync::atomic::Ordering as StreakOrdering;
+            // Said in the prompt, so the person knows why a call that would
+            // otherwise have run on its own is in front of them. A forced prompt
+            // also offers no "always": it would record a grant this check
+            // overrides anyway.
+            let mut forced_reason: Option<String> = None;
             let decision = match decision {
-                Decision::Prompt(PromptKind::Write | PromptKind::Exec) if self.auto_approve => Decision::Allow,
+                Decision::Prompt(PromptKind::Write | PromptKind::Exec)
+                    if self.auto_approve && destructive.is_none() =>
+                {
+                    let streak = self
+                        .auto_approved_streak
+                        .fetch_add(1, StreakOrdering::Relaxed)
+                        + 1;
+                    if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
+                        forced_reason = Some(format!(
+                            "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
+                            self.auto_approve_limit
+                        ));
+                        Decision::Prompt(PromptKind::Exec)
+                    } else {
+                        Decision::Allow
+                    }
+                }
+                Decision::Prompt(kind) if destructive.is_some() => {
+                    forced_reason = destructive
+                        .as_ref()
+                        .map(|d| format!("Destructive command: {d}."));
+                    Decision::Prompt(kind)
+                }
+                Decision::Allow if destructive.is_some() => {
+                    forced_reason = destructive
+                        .as_ref()
+                        .map(|d| format!("Destructive command: {d}."));
+                    Decision::Prompt(PromptKind::Exec)
+                }
                 other => other,
             };
+            if matches!(decision, Decision::Prompt(_)) {
+                // Someone is about to be asked: the streak starts over.
+                self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
+            }
             // Read and Net tools are non-mutating and safe to run concurrently
             // once allowed: reads hit the filesystem, web tools do outbound HTTP.
             if matches!(decision, Decision::Allow)
@@ -3054,7 +3363,8 @@ impl CompositeToolInvoker {
                         diff,
                         patch: staged.as_ref().map(|(_, patch)| patch.view()),
                         prompt_kind: prompt_kind.to_string(),
-                        offers_always: true,
+                        offers_always: forced_reason.is_none(),
+                        reason: forced_reason.clone(),
                     });
                     // AH-023. The wait itself is cancellable: a run stopped
                     // while someone is deciding must not sit here until they
@@ -4513,8 +4823,14 @@ async fn orchestrate_inner(
             })
             .map(|cfg| cfg.auto_mode)
             .unwrap_or_default();
+        // How many auto-approved calls in a row before the run checks in with
+        // the user; `0` turns the pause off.
+        let auto_approve_limit_from_body =
+            normalize_auto_approve_limit(json_body.get("auto_approve_limit"));
         let tools = CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
+            auto_approve_limit: auto_approve_limit_from_body,
+            auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing,
             auto_mode,
             format_on_edit: settings.format_on_edit,
@@ -5086,10 +5402,13 @@ async fn run_turn_cycle(
     // fixed turn cap.
     let unlimited = max_turns == 0;
     let mut turn: usize = 0;
-    /// How many turns in a row may produce nothing executable before the run
-    /// is stopped. See the check itself for why one is not enough.
-    const MAX_UNEXECUTABLE_TURNS: usize = 3;
-    let mut unexecutable_turns: usize = 0;
+    // Malformed tool calls stay in context with an error result, so a model
+    // normally corrects itself; see the check itself for the counting rule.
+    let mut repeated_broken_turns: usize = 0;
+    let mut consecutive_broken_turns: usize = 0;
+    let mut last_broken_signatures: Option<Vec<String>> = None;
+    // Loops over well-formed calls: identical repeats, or nothing but errors.
+    let mut stuck = StuckDetector::default();
     // Mid-run todo upkeep: after a long uninterrupted run of mutating tool
     // calls with no todo touch, nudge the model once to keep the list honest
     // rather than only ever reminding it at a full stop -- a task that never
@@ -5102,6 +5421,12 @@ async fn run_turn_cycle(
     let mut mid_run_nudge_count: u32 = 0;
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
+    // Per-turn todo table / one-time "make a list" nudge; see `TodoReminderState`.
+    let todo_reminders_on = json_body
+        .get("todo_reminders")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(crate::core::agent::todo::TODO_REMINDERS_ENABLED_BY_DEFAULT);
+    let mut todo_reminders = crate::core::agent::todo::TodoReminderState::default();
     // janhq/jan#8712: one corrective retry per cycle for a reply with neither
     // an answer nor a tool call, so an empty turn is not reported as finished.
     let mut empty_retried = false;
@@ -5386,7 +5711,7 @@ async fn run_turn_cycle(
         }
         budget.record(&turn_usage);
 
-        let tool_calls = extract_tool_calls(&completion);
+        let mut tool_calls = extract_tool_calls(&completion);
 
         if tool_calls.is_empty() {
             // The model is about to hand control back. If it finished the work
@@ -5606,6 +5931,29 @@ async fn run_turn_cycle(
             return Ok(completion);
         }
 
+        // One boundary for malformed tool calls, applied before anything is
+        // shown, recorded or dispatched:
+        // 1. A call that is dirty but recoverable (a stray `}` after the
+        //    object, a bad-escaped Windows path) is normalised in place to the
+        //    recovered object, so the UI, the history and the dispatch sites all
+        //    see the same clean arguments.
+        // 2. A call that cannot be recovered stays in the live context, answered
+        //    by a typed invalid-args refusal that says what was wrong, so the
+        //    model can correct itself instead of being handed the same request
+        //    again. Its provider-visible arguments become `{}` so a strict
+        //    upstream accepts the history; it is never executed.
+        // A length-truncated turn keeps its own handling below.
+        let malformed: Vec<MalformedCall> = if stop_reason_of(&completion) == "length" {
+            Vec::new()
+        } else {
+            for tc in tool_calls.iter_mut() {
+                if let Some(healed) = normalize_tool_call_args(tc) {
+                    *tc = healed;
+                }
+            }
+            neutralize_malformed_tool_calls(&mut tool_calls, turn)
+        };
+
         for tc in &tool_calls {
             let _ = events.send(StreamEvent::ToolCall {
                 id: tc
@@ -5704,54 +6052,62 @@ async fn run_turn_cycle(
         // Invariant: a tool call whose arguments do not decode to a plain
         // JSON object is never executed. A truncated stream or a confused
         // model would otherwise run a tool with invented or empty arguments.
-        // A call that is dirty but recoverable (a stray `}` after the object)
-        // is normalised to the recovered object and executed -- the same
-        // object the dispatch sites parse. The call that cannot be recovered
-        // fails visibly with a typed refusal, and the per-request sanitizer
-        // keeps it out of the history the next request carries.
+        // Unrecoverable calls were neutralised above and are answered here
+        // with a typed invalid-args refusal naming the problem. Everything
+        // else was normalised to its recovered object; the executability
+        // check is kept as a second, independent guard.
+        let malformed_ids: std::collections::HashSet<&str> =
+            malformed.iter().map(|m| m.id.as_str()).collect();
         let executable: Vec<serde_json::Value> = tool_calls
             .iter()
-            .filter_map(|tc| normalize_tool_call_args(tc))
+            .filter(|tc| {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                !malformed_ids.contains(id) && arguments_are_executable(tc)
+            })
+            .cloned()
             .collect();
-        let mut error_outcomes: Vec<ToolOutcome> = tool_calls
+        let mut error_outcomes: Vec<ToolOutcome> = malformed
             .iter()
-            .filter(|tc| normalize_tool_call_args(tc).is_none())
-            .map(|tc| {
-                ToolOutcome::refused_invalid_args(
-                    tc.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    tc.get("function")
-                        .and_then(|f| f.get("name"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(""),
-                    &raw_args_str(tc),
-                )
+            .map(|m| {
+                ToolOutcome::refused_invalid_args_because(m.id.clone(), &m.name, &m.raw, &m.reason)
             })
             .collect();
-        // A turn where every call was unexecutable changed nothing: the
-        // malformed calls are dropped from the live context, so the next
-        // request is the one just sent, and the reply will be the one just
-        // received. Left alone this spins forever -- a real run reached turn
-        // 456 doing exactly that -- because the token budget is the only other
-        // guard and a provider reporting no usage never moves it. Three such
-        // turns is enough to tell a confused model from a stuck one.
+        // No-progress guard. A turn where nothing was executable counts toward
+        // stopping the run only when it repeats exactly the broken calls of the
+        // previous turn, i.e. the model already received the error for them and
+        // changed nothing. A model that is trying different fixes gets room to
+        // converge, but a hard ceiling on consecutive all-broken turns still
+        // makes an endless loop impossible: the token budget is the only other
+        // guard, and a provider reporting no usage never moves it.
         if executable.is_empty() && !error_outcomes.is_empty() {
-            unexecutable_turns += 1;
-            if unexecutable_turns >= MAX_UNEXECUTABLE_TURNS {
+            let mut signatures: Vec<String> =
+                malformed.iter().map(|m| m.signature.clone()).collect();
+            signatures.sort();
+            consecutive_broken_turns += 1;
+            if last_broken_signatures.as_ref() == Some(&signatures) {
+                repeated_broken_turns += 1;
+            } else {
+                repeated_broken_turns = 0;
+            }
+            last_broken_signatures = Some(signatures);
+            if repeated_broken_turns >= MAX_REPEATED_BROKEN_TOOL_TURNS
+                || consecutive_broken_turns >= MAX_CONSECUTIVE_BROKEN_TOOL_TURNS
+            {
                 return Err(HarnessError::new(
                     tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
                     format!(
-                        "the model emitted {MAX_UNEXECUTABLE_TURNS} turns in a row whose tool \
-                         calls could not be executed, and nothing changed between them; the run \
-                         was stopped rather than repeating the same request indefinitely"
+                        "the model kept emitting tool calls that could not be executed \
+                         ({consecutive_broken_turns} turns in a row, {repeated_broken_turns} \
+                         identical repeats after being told the error); the run was stopped \
+                         rather than repeating the same request indefinitely"
                     ),
                 )
                 .at(tauri_plugin_agent_tools::harness_error::Stage::Stream));
             }
         } else {
-            unexecutable_turns = 0;
+            repeated_broken_turns = 0;
+            consecutive_broken_turns = 0;
+            last_broken_signatures = None;
         }
         let mut tool_results: Vec<ToolOutcome> = if executable.is_empty() {
             Vec::new()
@@ -5784,6 +6140,32 @@ async fn run_turn_cycle(
         // Reset wins over any mutations counted in the same batch: touching
         // `todo` at all means the list was just reconciled, regardless of
         // what else ran alongside it.
+        let stuck_reason = if executable.is_empty() {
+            // All-broken turns have their own guard above.
+            None
+        } else {
+            let failures: Vec<&str> = tool_results
+                .iter()
+                .filter(|o| {
+                    let name = tool_names.get(o.id.as_str()).copied().unwrap_or("");
+                    tauri_plugin_agent_tools::harness_error::classify_tool(name, &o.content)
+                        .is_some()
+                        || (name == "bash"
+                            && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(
+                                &o.content,
+                            ))
+                })
+                .map(|o| o.content.as_str())
+                .collect();
+            let all_failed = !tool_results.is_empty() && failures.len() == tool_results.len();
+            let last_error = failures.last().copied().unwrap_or("").to_string();
+            stuck.observe(
+                StuckDetector::signature(&executable),
+                all_failed,
+                &last_error,
+            )
+        };
+
         let mut todo_touched_this_batch = false;
         for outcome in tool_results {
             let ToolOutcome {
@@ -5842,6 +6224,36 @@ async fn run_turn_cycle(
                 "content": wire_content
             }));
         }
+        if let Some(reason) = stuck_reason {
+            let summary = reason.summary();
+            match tools.ask_user_guidance(&summary).await {
+                UserGuidance::Answer(answer) => {
+                    stuck.reset();
+                    conversation_messages.push(serde_json::json!({
+                        "role": "user",
+                        "content": format!(
+                            "{summary}\nThe run was paused and the user was asked how to proceed.\n\
+                             {answer}\nDo not repeat the same call again; follow this guidance."
+                        ),
+                    }));
+                }
+                UserGuidance::Stop => {
+                    return Err(HarnessError::new(
+                        ErrorKind::Cancelled,
+                        format!("{summary}; the user chose to stop the run"),
+                    )
+                    .at(Stage::Stream));
+                }
+                UserGuidance::Unavailable => {
+                    return Err(HarnessError::new(
+                        ErrorKind::InvalidResponse,
+                        format!("{summary}; the run was stopped rather than looping"),
+                    )
+                    .at(Stage::Stream));
+                }
+            }
+        }
+        let mut mid_run_nudged = false;
         if todo_touched_this_batch {
             mutations_since_todo_touch = 0;
         } else if mutations_since_todo_touch >= MID_RUN_NUDGE_MUTATION_THRESHOLD
@@ -5866,6 +6278,7 @@ async fn run_turn_cycle(
                 None => 0,
             };
             if open_count > 0 {
+                mid_run_nudged = true;
                 mutations_since_todo_touch = 0;
                 mid_run_nudge_count += 1;
                 let plural = if open_count == 1 { "" } else { "s" };
@@ -5877,6 +6290,19 @@ async fn run_turn_cycle(
                          visible; otherwise just keep working."
                     ),
                 );
+            }
+        }
+        // Always advance the reminder state (it counts tool turns), but never
+        // stack a table on top of the mid-run nudge in the same turn.
+        if todo_reminders_on && run_mode == crate::core::agent::plan::RunMode::Normal {
+            if let Some(registry) = todo_registry {
+                let text = {
+                    let list = registry.lock().await;
+                    todo_reminders.after_tool_turn(&list)
+                };
+                if let Some(text) = text.filter(|_| !mid_run_nudged) {
+                    crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+                }
             }
         }
         // AH-026: the step's calls and their results are published as soon as
@@ -6825,8 +7251,8 @@ mod tests {
 
     /// The reported incident, end to end: mid-run, the model emits a tool
     /// call whose arguments are a JSON string literal containing JSON. The
-    /// call is never executed, and the poisoned turn never reaches a later
-    /// request -- the run continues from clean history instead of wedging.
+    /// call is never executed, its poisoned arguments never reach a later
+    /// request, and the model is told what was wrong instead of wedging.
     #[tokio::test]
     async fn a_mid_run_non_object_tool_call_is_never_executed_and_never_poisons_the_run() {
         let model = MockModel::new(vec![
@@ -6878,12 +7304,26 @@ mod tests {
         let requests = model.requests.lock().unwrap();
         assert_eq!(requests.len(), 2, "one poisoned turn, then a clean retry");
         let messages = requests[1]["messages"].as_array().unwrap();
-        assert!(
-            messages
-                .iter()
-                .all(|m| m.get("tool_calls").is_none() && m.get("role") != Some(&json!("tool"))),
-            "the poisoned call and its synthetic result never reach a later request: {messages:#?}"
-        );
+        // The call stays in context so the model sees its error, but with
+        // neutralized arguments a strict upstream accepts.
+        for m in messages {
+            for tc in m
+                .get("tool_calls")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+            {
+                assert!(
+                    crate::core::agent::upstream::arguments_are_executable(tc),
+                    "no poisoned arguments reach a later request: {messages:#?}"
+                );
+            }
+        }
+        let result = messages
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "call_edit")
+            .unwrap_or_else(|| panic!("the call is answered with an error: {messages:#?}"));
+        assert!(result["content"].as_str().unwrap().contains("JSON string"));
     }
 
     /// End-to-end proof of the poisoned-history fix against an upstream that
@@ -7136,7 +7576,7 @@ mod tests {
                     "tool_calls": [{
                         "id": id,
                         "type": "function",
-                        "function": { "name": name, "arguments": "{}" }
+                        "function": { "name": name, "arguments": json!({ "step": id }).to_string() }
                     }]
                 },
                 "finish_reason": "tool_calls"
@@ -7736,9 +8176,8 @@ mod tests {
         }
     }
 
-    /// A model whose tool calls cannot be executed changes nothing by making
-    /// them: they are dropped from the live context, so the next request is the
-    /// one just sent. Without a guard this repeats forever -- a real run
+    /// A model that keeps repeating the same unexecutable call after being
+    /// told the error is stuck. Without a guard this repeats forever -- a real run
     /// reached turn 456 doing it -- because a token budget is the only other
     /// ceiling and a provider reporting no usage never moves it.
     #[tokio::test]
@@ -7793,7 +8232,13 @@ mod tests {
             "{err}"
         );
         assert!(err.message().contains("could not be executed"), "{err}");
-        assert_eq!(*calls.lock().unwrap(), 3, "stopped on the third such turn");
+        // The first broken turn is answered with an error; only the identical
+        // repeats after it count, and the run stops on the fifth repeat.
+        assert_eq!(
+            *calls.lock().unwrap(),
+            1 + MAX_REPEATED_BROKEN_TOOL_TURNS,
+            "stopped on the fifth identical repeat"
+        );
         assert!(
             tool.calls.lock().unwrap().is_empty(),
             "nothing was executed, which is the whole point"
@@ -7921,6 +8366,263 @@ mod tests {
         assert!(content.contains("was not run"), "{content}");
         assert!(content.contains("invalid-args"), "{content}");
         assert!(content.len() < long_raw.len(), "the diagnostic is bounded");
+    }
+
+    /// Replies from a queue and records every request it was sent.
+    struct RecordingQueueModel {
+        replies: StdMutex<VecDeque<serde_json::Value>>,
+        requests: StdMutex<Vec<serde_json::Value>>,
+    }
+    #[async_trait]
+    impl ModelInvoker for RecordingQueueModel {
+        async fn invoke(
+            &self,
+            request: &serde_json::Value,
+            _events: &mpsc::UnboundedSender<StreamEvent>,
+        ) -> Result<serde_json::Value, HarnessError> {
+            self.requests.lock().unwrap().push(request.clone());
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| "mock exhausted".to_string().into())
+        }
+    }
+
+    fn tool_call_reply(id: &str, name: &str, arguments: &str) -> serde_json::Value {
+        json!({
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": id,
+                        "type": "function",
+                        "function": { "name": name, "arguments": arguments }
+                    }]
+                }
+            }]
+        })
+    }
+
+    /// A malformed call is kept in the live context and answered with an
+    /// error tool result naming the problem, and a model that fixes its
+    /// arguments on the next turn recovers: the fixed call runs and the run
+    /// finishes normally.
+    #[tokio::test]
+    async fn a_malformed_call_gets_an_error_result_and_the_model_can_recover() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    tool_call_reply("bad1", "write", "{\"path\": \"a.txt\", \"content\": "),
+                    tool_call_reply(
+                        "good1",
+                        "write",
+                        "{\"path\": \"a.txt\", \"content\": \"x\"}",
+                    ),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "do it" })];
+
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run recovers");
+
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        let second = requests[1]["messages"].as_array().expect("messages");
+        let call = second
+            .iter()
+            .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
+            .expect("the malformed call stays in context");
+        assert_eq!(call["tool_calls"][0]["id"], "bad1");
+        assert_eq!(
+            call["tool_calls"][0]["function"]["arguments"], "{}",
+            "provider-visible arguments are neutralized"
+        );
+        let result = second
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "bad1")
+            .expect("the malformed call is answered");
+        let text = result["content"].as_str().unwrap();
+        assert!(text.starts_with("ERROR:"), "{text}");
+        assert!(text.contains("not valid JSON"), "{text}");
+        assert!(text.contains("'write'"), "{text}");
+        assert!(text.contains("Retry"), "{text}");
+
+        let executed = tool.calls.lock().unwrap();
+        assert_eq!(executed.len(), 1, "only the fixed call ran");
+        assert_eq!(executed[0][0]["id"], "good1");
+    }
+
+    /// Different broken calls are not identical repeats, but a hard ceiling
+    /// still stops a run that never produces anything executable.
+    #[tokio::test]
+    async fn varying_broken_calls_still_stop_at_the_hard_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let replies: VecDeque<serde_json::Value> = (0..100)
+            .map(|i| tool_call_reply(&format!("c{i}"), "write", &format!("{{broken {i}")))
+            .collect();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(replies),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "do it" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the run is stopped");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse
+        );
+        assert_eq!(
+            model.requests.lock().unwrap().len(),
+            MAX_CONSECUTIVE_BROKEN_TOOL_TURNS
+        );
+        assert!(tool.calls.lock().unwrap().is_empty());
+    }
+
+    /// One turn mixing a recoverable call (trailing brace) with an
+    /// unrecoverable one (`{}{}`): the recoverable call runs once with the
+    /// healed arguments, the other is never dispatched, is answered with the
+    /// typed invalid-args refusal, and stays in history with `{}` arguments.
+    /// A turn with an executed call is progress, so the guard does not count it.
+    #[tokio::test]
+    async fn a_mixed_turn_heals_one_call_and_refuses_the_other() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    json!({
+                        "choices": [{
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    { "id": "ok", "type": "function",
+                                      "function": { "name": "read", "arguments": "{\"path\":\"C:\\\\a b\\\\c.txt\"}}" } },
+                                    { "id": "bad", "type": "function",
+                                      "function": { "name": "write", "arguments": "{}{}" } }
+                                ]
+                            }
+                        }]
+                    }),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "go" })];
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run completes");
+
+        let executed = tool.calls.lock().unwrap();
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].len(), 1, "only the healed call is dispatched");
+        assert_eq!(executed[0][0]["id"], "ok");
+        let healed: serde_json::Value =
+            serde_json::from_str(executed[0][0]["function"]["arguments"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(healed, json!({ "path": "C:\\a b\\c.txt" }));
+
+        let requests = model.requests.lock().unwrap();
+        let second = requests[1]["messages"].as_array().unwrap();
+        let assistant = second
+            .iter()
+            .find(|m| m["role"] == "assistant" && m.get("tool_calls").is_some())
+            .expect("tool-call turn kept");
+        let calls = assistant["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 2, "both calls stay in context");
+        assert_eq!(calls[1]["function"]["arguments"], "{}");
+        let refusal = second
+            .iter()
+            .find(|m| m["role"] == "tool" && m["tool_call_id"] == "bad")
+            .expect("the unrecoverable call is answered");
+        let text = refusal["content"].as_str().unwrap();
+        assert!(text.contains("refused: invalid-args"), "{text}");
+        assert!(text.contains("{}{}"), "the raw text is echoed: {text}");
+        // Exactly one result per call: no duplicate error feedback.
+        assert_eq!(
+            second
+                .iter()
+                .filter(|m| m["role"] == "tool" && m["tool_call_id"] == "bad")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn invalid_args_refusal_is_typed_and_bounded() {
+        let raw = "x".repeat(1000);
+        let out = ToolOutcome::refused_invalid_args_because(
+            "id".into(),
+            "write",
+            &raw,
+            "the arguments are not valid JSON",
+        );
+        assert_eq!(out.refusal, Some(HarnessRefusal::InvalidArgs));
+        assert!(out.content.starts_with("ERROR: tool 'write' was not run"));
+        assert!(out.content.contains("..."), "truncation is marked");
+        assert!(out.content.len() < 700, "the echo is capped");
+        let unnamed = ToolOutcome::refused_invalid_args_because("id".into(), "", "", "r");
+        assert!(unnamed.content.contains("(unnamed tool)"));
     }
 
     struct ResultQueueModel {
@@ -8535,6 +9237,8 @@ mod tests {
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::disabled()),
+            auto_approve_limit: DEFAULT_AUTO_APPROVE_LIMIT,
+            auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing: Vec::new(),
             format_on_edit: false,
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
@@ -10435,6 +11139,188 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A destructive shell command is put to the user even under
+    /// auto-approval, and is not run when they refuse.
+    #[tokio::test]
+    async fn auto_approval_still_asks_before_a_destructive_command() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut commands = Vec::new();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest {
+                    request_id,
+                    command,
+                    reason,
+                    offers_always,
+                    ..
+                } = event
+                {
+                    commands.push((command.unwrap_or_default(), reason, offers_always));
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                }
+            }
+            commands
+        });
+        let call = serde_json::json!({ "id": "b", "type": "function", "function": {
+            "name": "bash",
+            "arguments": serde_json::json!({ "command": "rm -rf ~/jan-destructive-guard-test" }).to_string()
+        } });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(
+            out[0].content.contains("ERROR") || out[0].content.to_lowercase().contains("denied"),
+            "{}",
+            out[0].content
+        );
+        drop(invoker);
+        let commands = asked.await.unwrap();
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        assert_eq!(commands[0].0, "rm -rf ~/jan-destructive-guard-test");
+        // The prompt says why, and offers no standing grant the check would
+        // override anyway.
+        let why = commands[0].1.as_deref().unwrap_or_default();
+        assert!(
+            why.contains("Destructive command") && why.contains("~/jan-destructive-guard-test"),
+            "{why}"
+        );
+        assert!(!commands[0].2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// After `auto_approve_limit` auto-approved calls in a row, the next one is
+    /// put to the user; answering resets the streak.
+    #[tokio::test]
+    async fn a_long_auto_approved_streak_pauses_to_ask() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        invoker.auto_approve_limit = 2;
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut n = 0;
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest {
+                    request_id, reason, ..
+                } = event
+                {
+                    n += 1;
+                    assert!(
+                        reason
+                            .as_deref()
+                            .is_some_and(|r| r.contains("Auto-approval paused")),
+                        "{reason:?}"
+                    );
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::AllowOnce);
+                    }
+                }
+            }
+            n
+        });
+        for i in 0..6 {
+            let call = serde_json::json!({ "id": format!("w{i}"), "type": "function", "function": {
+                "name": "write",
+                "arguments": serde_json::json!({ "path": format!("f{i}.txt"), "content": "x" }).to_string()
+            } });
+            invoker.invoke(&[call]).await.unwrap();
+        }
+        drop(invoker);
+        // Calls 1-2 auto, 3 asks; 4-5 auto, 6 asks.
+        assert_eq!(asked.await.unwrap(), 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The body's `auto_approve_limit` follows the desktop setting's rules
+    /// (`normalizeAutoApproveLimit`): default 50, `0` off, clamped to 1000,
+    /// and anything unreadable falls back to the default rather than off.
+    #[test]
+    fn auto_approve_limit_from_the_body_is_normalized_like_the_setting() {
+        use serde_json::json;
+        let n = |v: serde_json::Value| normalize_auto_approve_limit(Some(&v));
+        // Default: absent, null.
+        assert_eq!(
+            normalize_auto_approve_limit(None),
+            DEFAULT_AUTO_APPROVE_LIMIT
+        );
+        assert_eq!(n(json!(null)), 50);
+        // Disabled.
+        assert_eq!(n(json!(0)), 0);
+        assert_eq!(n(json!(-5)), 0);
+        assert_eq!(n(json!("0")), 0);
+        // Custom, floored; numeric strings accepted like the settings field.
+        assert_eq!(n(json!(7)), 7);
+        assert_eq!(n(json!(7.9)), 7);
+        assert_eq!(n(json!(" 12 ")), 12);
+        // Maximum.
+        assert_eq!(n(json!(1000)), MAX_AUTO_APPROVE_LIMIT);
+        assert_eq!(n(json!(5000)), 1000);
+        assert_eq!(n(json!(1e300)), 1000);
+        // Malformed: the default, never "off".
+        assert_eq!(n(json!("abc")), 50);
+        assert_eq!(n(json!("")), 50);
+        assert_eq!(n(json!(true)), 50);
+        assert_eq!(n(json!([3])), 50);
+        assert_eq!(n(json!({ "limit": 3 })), 50);
+    }
+
+    /// A limit of 0 never pauses, however long the auto-approved run.
+    #[tokio::test]
+    async fn a_zero_auto_approve_limit_never_pauses() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        invoker.auto_approve_limit = normalize_auto_approve_limit(Some(&serde_json::json!(0)));
+        for i in 0..8 {
+            let call = serde_json::json!({ "id": format!("w{i}"), "type": "function", "function": {
+                "name": "write",
+                "arguments": serde_json::json!({ "path": format!("f{i}.txt"), "content": "x" }).to_string()
+            } });
+            invoker.invoke(&[call]).await.unwrap();
+        }
+        drop(invoker);
+        let mut asked = 0;
+        while let Ok(event) = rx.try_recv() {
+            if matches!(event, StreamEvent::PermissionRequest { .. }) {
+                asked += 1;
+            }
+        }
+        assert_eq!(asked, 0, "the pause is off");
+        for i in 0..8 {
+            assert!(root.join(format!("f{i}.txt")).exists());
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An absolute path into the project is inside the approved scope, so an
+    /// auto-approved run deletes there without being asked; the same command
+    /// aimed at a sibling folder whose name merely starts with the project's
+    /// is still put to the user.
+    #[tokio::test]
+    async fn absolute_paths_inside_the_project_are_not_asked_about() {
+        let root = unique_project_root();
+        std::fs::create_dir_all(root.join("build")).unwrap();
+        let root_str = root.to_string_lossy().to_string();
+        let scope = crate::core::agent::destructive::Scope::new([&root]);
+        let inside = format!("rm -rf \"{}\"", root.join("build").to_string_lossy());
+        assert_eq!(
+            crate::core::agent::destructive::destructive_reason_in(&inside, &scope),
+            None
+        );
+        let sibling = format!("rm -rf \"{root_str}-other/build\"");
+        assert!(crate::core::agent::destructive::destructive_reason_in(&sibling, &scope).is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn prompt_deny_reports_error_and_skips_write() {
         let root = unique_project_root();
@@ -10779,6 +11665,201 @@ mod tests {
         assert!(
             closed.is_ok(),
             "the event channel never closed while a backgrounded bash job was still running"
+        );
+    }
+
+    #[test]
+    fn stuck_detector_flags_identical_calls_and_error_streaks() {
+        let call =
+            |args: &str| json!([{ "id": "x", "function": { "name": "read", "arguments": args } }]);
+        let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
+        // Argument key order does not change the identity of a call.
+        assert_eq!(
+            sig(call("{\"a\":1,\"b\":2}")),
+            sig(call("{\"b\":2,\"a\":1}"))
+        );
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert!(matches!(
+            d.observe(sig(call("{\"p\":1}")), false, ""),
+            Some(StuckReason::RepeatedCalls { count: 3, .. })
+        ));
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert_eq!(d.observe(sig(call("{\"p\":2}")), false, ""), None);
+        assert_eq!(
+            d.observe(sig(call("{\"p\":1}")), false, ""),
+            None,
+            "not consecutive"
+        );
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe("a".into(), true, "ERROR: x"), None);
+        assert_eq!(d.observe("b".into(), true, "ERROR: y"), None);
+        let reason = d
+            .observe("c".into(), true, "ERROR: z")
+            .expect("three failing turns");
+        assert!(
+            reason.summary().contains("ERROR: z"),
+            "{}",
+            reason.summary()
+        );
+        d.reset();
+        assert_eq!(
+            d.observe("c".into(), true, "ERROR: z"),
+            None,
+            "reset forgets history"
+        );
+    }
+
+    /// Without an interactive UI a run that repeats the same call is stopped
+    /// with an error rather than looping.
+    #[tokio::test]
+    async fn identical_calls_without_ui_stop_the_run() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let calls = std::sync::Arc::new(StdMutex::new(0usize));
+        let model = AlwaysModel {
+            reply: tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}"),
+            calls: calls.clone(),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the run is stopped");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
+            "{err}"
+        );
+        assert!(err.message().contains("same tool call 3 times"), "{err}");
+        assert_eq!(*calls.lock().unwrap(), STUCK_TURN_LIMIT);
+        assert_eq!(tool.calls.lock().unwrap().len(), STUCK_TURN_LIMIT);
+    }
+
+    /// A tool invoker with a UI: answers the stuck question with fixed text.
+    #[derive(Default)]
+    struct GuidedTool {
+        inner: MockTool,
+        asked: StdMutex<Vec<String>>,
+        answer: Option<UserGuidance>,
+    }
+    #[async_trait]
+    impl ToolInvoker for GuidedTool {
+        async fn invoke(
+            &self,
+            tool_calls: &[serde_json::Value],
+        ) -> Result<Vec<ToolOutcome>, HarnessError> {
+            self.inner.invoke(tool_calls).await
+        }
+        async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
+            self.asked.lock().unwrap().push(summary.to_string());
+            self.answer.clone().unwrap_or(UserGuidance::Unavailable)
+        }
+    }
+
+    /// With a UI the loop pauses, asks the user, feeds the answer back as
+    /// guidance, and the run continues.
+    #[tokio::test]
+    async fn identical_calls_with_ui_ask_the_user_and_continue() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let call = || tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}");
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    call(),
+                    call(),
+                    call(),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = GuidedTool {
+            answer: Some(UserGuidance::Answer(
+                "User response for \"stuck\": look in b.txt instead".into(),
+            )),
+            ..Default::default()
+        };
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run continues after guidance");
+        assert_eq!(tool.asked.lock().unwrap().len(), 1);
+        let requests = model.requests.lock().unwrap();
+        let last = requests.last().unwrap().to_string();
+        assert!(last.contains("look in b.txt instead"), "{last}");
+    }
+
+    /// The user choosing to stop ends the run as cancelled.
+    #[tokio::test]
+    async fn stuck_run_stops_when_the_user_says_so() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = AlwaysModel {
+            reply: tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}"),
+            calls: std::sync::Arc::new(StdMutex::new(0usize)),
+        };
+        let tool = GuidedTool {
+            answer: Some(UserGuidance::Stop),
+            ..Default::default()
+        };
+        let mut budget = SessionBudget::new(None);
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the user stopped it");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::Cancelled,
+            "{err}"
         );
     }
 }

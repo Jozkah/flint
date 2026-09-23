@@ -18,12 +18,15 @@ import {
 } from 'react'
 import { Streamdown } from 'streamdown'
 import { Shimmer } from './shimmer'
+import { useElapsedSeconds } from '@/hooks/useElapsedSeconds'
 
 type ReasoningContextValue = {
   isStreaming: boolean
   isOpen: boolean
   setIsOpen: (open: boolean) => void
   duration: number | undefined
+  /** Live whole seconds while streaming; undefined otherwise. */
+  elapsed: number | undefined
 }
 
 const ReasoningContext = createContext<ReasoningContextValue | null>(null)
@@ -81,6 +84,8 @@ export const Reasoning = memo(
       }
     }, [isStreaming, startTime, setDuration])
 
+    const elapsed = useElapsedSeconds(isStreaming ? startTime : null)
+
     const handleOpenChange = (newOpen: boolean) => {
       setIsOpen(newOpen)
     }
@@ -91,8 +96,9 @@ export const Reasoning = memo(
         isOpen,
         setIsOpen,
         duration,
+        elapsed,
       }),
-      [isStreaming, isOpen, setIsOpen, duration]
+      [isStreaming, isOpen, setIsOpen, duration, elapsed]
     )
 
     return (
@@ -133,7 +139,7 @@ export const ReasoningTrigger = memo(
     getThinkingMessage = defaultGetThinkingMessage,
     ...props
   }: ReasoningTriggerProps) => {
-    const { isStreaming, isOpen, duration } = useReasoning()
+    const { isStreaming, isOpen, duration, elapsed } = useReasoning()
 
     return (
       <CollapsibleTrigger
@@ -147,6 +153,14 @@ export const ReasoningTrigger = memo(
           <>
             <BrainIcon className="size-4" />
             {getThinkingMessage(isStreaming, duration)}
+            {isStreaming && elapsed !== undefined && (
+              <span
+                className="tabular-nums text-muted-foreground"
+                data-testid="reasoning-elapsed"
+              >
+                {elapsed}s
+              </span>
+            )}
             <ChevronDownIcon
               className={cn(
                 'size-4 transition-transform',

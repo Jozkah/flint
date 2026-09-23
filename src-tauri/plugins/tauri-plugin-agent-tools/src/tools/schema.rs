@@ -65,7 +65,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "grep",
-                "description": "Search file contents for a pattern and return matching lines with their file path and line number. Use this to find where something is defined or used across the tree; use `find` when you only care about file names. Honors .gitignore and is truncated to `limit` matches or 64KB. Prefer this over `bash` with `grep`/`rg`: it is sandbox-checked and its output is structured. The pattern is a regex by default — set `literal` when you want to match special characters verbatim.",
+                "description": "Search file contents for a pattern and return matching lines grouped by file (a path header, then `N: line` for matches and `N- line` for context). Use this to find where something is defined or used across the tree; use `find` when you only care about file names. Honors .gitignore and is truncated to `limit` matches (at most 300) or 64KB; lines are cut at 500 chars. Prefer this over `bash` with `grep`/`rg`: it is sandbox-checked and its output is structured. The pattern is a regex by default — set `literal` when you want to match special characters verbatim.",
                 "parameters": {
                     "type": "object",
                     "properties": {
