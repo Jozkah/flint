@@ -862,6 +862,35 @@ mod tests {
         assert!(!within(&climbing, &[ws.clone()]));
     }
 
+    /// Jozkah/jan#291: a directory on a journaled path replaced by a link to
+    /// somewhere outside the roots. Redo (and undo) judge the path by where it
+    /// really leads, refuse, and write nothing there.
+    #[test]
+    fn a_directory_swapped_for_a_link_out_of_the_roots_is_refused() {
+        let (data, ws) = dirs("linked");
+        let outside = ws.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let d = ws.join("d");
+        std::fs::create_dir_all(&d).unwrap();
+        let file = d.join("evil.desktop");
+        tool_write(&data, "run-1", &file, Some("M"));
+        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        assert!(!file.exists());
+
+        std::fs::remove_dir_all(&d).unwrap();
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&outside, &d);
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(&outside, &d);
+        if let Err(e) = made {
+            eprintln!("skipped: cannot create a symlink here: {e}");
+            return;
+        }
+        let err = redo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        assert!(matches!(err, UndoError::OutOfScope(_)), "{err:?}");
+        assert!(!outside.join("evil.desktop").exists(), "redo wrote through the link");
+    }
+
     /// The regression, found on Windows: with a relative data folder the
     /// journal recorded a relative path, and no root the session could write
     /// ever contained it, so every undo was refused as out of scope.
