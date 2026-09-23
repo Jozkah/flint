@@ -269,6 +269,51 @@ fn resolved_aliases(resources: &[crate::resource::Resource]) -> Vec<crate::resou
         .collect()
 }
 
+/// The pattern inside a rule's parentheses: `src/**` for `write(src/**)`.
+/// `None` for a bare tool rule such as `write`.
+fn rule_pattern(source: &str) -> Option<&str> {
+    // Past a subject qualifier: `agent(reviewer)/write(src/**)`.
+    let source = match source.split_once(")/") {
+        Some((subject, rest)) if !subject.contains('/') => rest,
+        _ => source,
+    };
+    let open = source.find('(')?;
+    let close = source.rfind(')')?;
+    (close > open).then(|| source[open + 1..close].trim())
+}
+
+/// Whether a path pattern is anchored on its own rather than relative to the
+/// project: `/x`, `**/x`, `~/x`, or a Windows drive or UNC path.
+fn is_absolute_pattern(pattern: &str) -> bool {
+    pattern.starts_with('/')
+        || pattern.starts_with("**")
+        || pattern.starts_with('~')
+        || pattern.starts_with('\\')
+        || pattern.as_bytes().get(1) == Some(&b':')
+}
+
+/// Whether a read or write call reaches outside every root it may use without
+/// an escape prompt -- the same test the Read and Write branches below make.
+fn call_escapes(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    project_root: &Path,
+    scratch: Option<&Path>,
+    read_roots: &[PathBuf],
+    grants: &SessionGrants,
+) -> bool {
+    let escapes = |p: &str| match tool.capability {
+        Capability::Read => escapes_read_roots(project_root, scratch, read_roots, p).unwrap_or(true),
+        Capability::Write => {
+            escapes_write_roots(project_root, scratch, grants.write_roots(), p).unwrap_or(true)
+        }
+        _ => false,
+    };
+    tool.path_args
+        .iter()
+        .any(|key| args.get(key).and_then(|v| v.as_str()).is_some_and(escapes))
+}
+
 /// `\\?\C:\x` as `C:\x`, so a resolved path reads like the paths rules are
 /// written against. Other paths are returned as they are.
 fn strip_verbatim(path: &Path) -> PathBuf {
@@ -434,8 +479,16 @@ pub fn resolve_decision(
     if perms.asks_call(tool.name, &resources, subject).is_some() {
         return Decision::Prompt(PromptKind::Ask);
     }
-    if perms.allows_call(tool.name, &resources, subject).is_some() {
-        return Decision::Allow;
+    if let Some(rule) = perms.allows_call(tool.name, &resources, subject) {
+        // A relative pattern (`write(src/**)`) names something in the project
+        // (Jozkah/jan#222). Its any-directory match exists so deny rules catch
+        // every `secrets/`; for an allow rule it would also cover every `src`
+        // on the host. So when such a rule matched a path outside the project,
+        // the escape prompt below still decides.
+        let relative = rule_pattern(rule.source()).is_some_and(|p| !is_absolute_pattern(p));
+        if !(relative && call_escapes(tool, args, project_root, scratch, read_roots, grants)) {
+            return Decision::Allow;
+        }
     }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
     // sanitized name, so they never prompt (deny above still wins).
@@ -1994,6 +2047,59 @@ mod security_corpus {
             decide("read", json!({ "path": "notsecrets/x" }), &root, &perms, &NetworkPolicy::open()),
             Decision::Allow
         );
+    }
+
+    // -- relative allow rules (Jozkah/jan#222) --------------------------------
+
+    /// `write(src/**)` names the project's `src`, not every `src` on the host.
+    /// Outside the project the escape prompt still applies.
+    #[test]
+    fn a_relative_allow_rule_does_not_reach_a_same_named_folder_elsewhere() {
+        let elsewhere = root();
+        let root = root();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(elsewhere.join("src")).unwrap();
+        std::fs::write(root.join("src/a.rs"), b"x").unwrap();
+        std::fs::write(elsewhere.join("src/x.txt"), b"x").unwrap();
+        let outside_write = elsewhere.join("src/a.rs").to_string_lossy().into_owned();
+        let outside_read = elsewhere.join("src/x.txt").to_string_lossy().into_owned();
+
+        let writes = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &[],
+            &["write(src/**)".to_string()],
+        );
+        assert_eq!(
+            decide("write", json!({"path": "src/a.rs", "content": "x"}), &root, &writes, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+        assert_eq!(
+            decide("write", json!({"path": outside_write, "content": "x"}), &root, &writes, &NetworkPolicy::open()),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+
+        let reads = ToolPermissions::new(PermissionDefault::ReadOnly, &["read(src/**)".to_string()], &[], &[]);
+        assert_eq!(
+            decide("read", json!({"path": "src/a.rs"}), &root, &reads, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+        assert_eq!(
+            decide("read", json!({"path": outside_read}), &root, &reads, &NetworkPolicy::open()),
+            Decision::Prompt(PromptKind::ReadEscape)
+        );
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn a_rule_pattern_is_read_past_a_subject_qualifier() {
+        assert_eq!(rule_pattern("write(src/**)"), Some("src/**"));
+        assert_eq!(rule_pattern("agent(reviewer)/write(src/**)"), Some("src/**"));
+        assert_eq!(rule_pattern("write"), None);
+        assert!(is_absolute_pattern("/proj/src/**"));
+        assert!(is_absolute_pattern("**/src/**"));
+        assert!(is_absolute_pattern("C:/work/**"));
+        assert!(!is_absolute_pattern("src/**"));
     }
 
     // -- symlink aliases (Jozkah/jan#235) --------------------------------------
