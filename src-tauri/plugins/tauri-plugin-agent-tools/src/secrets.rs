@@ -561,6 +561,27 @@ mod tests {
         }
     }
 
+    /// Jozkah/jan#275: base64 padding is not a separator, and a secret that
+    /// is not the first key on its line is still a secret.
+    #[test]
+    fn a_secret_is_found_wherever_it_sits_on_the_line() {
+        for (line, secret) in [
+            ("db_password: c2VjcmV0cGFzc3dvcmQ=", "c2VjcmV0cGFzc3dvcmQ"),
+            ("  password: cGFzc3dvcmQxMjM=", "cGFzc3dvcmQxMjM"),
+            (r#""client_secret": "c2VjcmV0cGFzc3dvcmQ=""#, "c2VjcmV0cGFzc3dvcmQ"),
+            (r#"{"id":1,"client_secret":"s3cr3tvalue123"}"#, "s3cr3tvalue123"),
+            ("export FOO=bar PASSWORD=hunter2seventeen", "hunter2seventeen"),
+        ] {
+            assert!(!scan_text(line).is_empty(), "missed: {line}");
+            let out = redact_secrets(line);
+            assert!(!out.contains(secret), "{line} -> {out}");
+        }
+        assert!(!scan_diff("+  db_password: c2VjcmV0cGFzc3dvcmQ=\n").is_empty());
+        // Still not secrets.
+        assert!(scan_text("url = https://example.com/a=b").is_empty());
+        assert!(scan_text("password: changeme-example").is_empty());
+    }
+
     #[test]
     fn finds_the_shapes_a_credential_actually_takes() {
         let findings = scan_text(
