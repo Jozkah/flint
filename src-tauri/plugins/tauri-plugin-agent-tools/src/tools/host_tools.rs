@@ -93,6 +93,22 @@ pub fn under_profile(path: &Path, profile: Option<&Path>) -> bool {
     !root.is_empty() && (p == root || p.starts_with(&format!("{root}\\")))
 }
 
+/// True for a folder of an MSYS2-based installation: Git for Windows (its
+/// `cmd`, `bin`, `mingw64\bin` and `usr\bin`) or MSYS2 itself. Its programs
+/// cannot work inside the AppContainer (the runtime needs the global object
+/// namespace, and Git cannot open the null device), so carrying them onto the
+/// sandbox `PATH` only turns "not recognized" into a confusing failure.
+/// Recognised by the MSYS runtime DLL in the folder or an installation root
+/// above it.
+pub fn is_msys_install(dir: &Path) -> bool {
+    if dir.join("msys-2.0.dll").is_file() {
+        return true;
+    }
+    dir.ancestors()
+        .take(4)
+        .any(|root| root.join("usr").join("bin").join("msys-2.0.dll").is_file())
+}
+
 /// Whether a folder's own ACL lets AppContainer processes read and execute
 /// what is in it. `None` where this cannot be told (not Windows, unreadable).
 #[cfg(windows)]
@@ -121,7 +137,11 @@ pub fn usable_host_dirs(
     };
     let mut out: Vec<PathBuf> = Vec::new();
     for dir in std::env::split_paths(host_path) {
-        if !dir.is_absolute() || !dir.is_dir() || under_profile(&dir, profile) {
+        if !dir.is_absolute()
+            || !dir.is_dir()
+            || under_profile(&dir, profile)
+            || is_msys_install(&dir)
+        {
             continue;
         }
         if already.iter().chain(out.iter()).any(|d| same(d, &dir)) {
@@ -144,6 +164,13 @@ pub fn unavailable_hint(
     can_execute: impl Fn(&Path) -> Option<bool>,
 ) -> String {
     let dir = found.parent().unwrap_or(found);
+    if is_msys_install(dir) {
+        return format!(
+            "
+[sandbox: `{name}` at {} is part of Git for Windows / MSYS2, which cannot run inside              this sandbox. For repository information use the `git_inspect` tool. For anything              else, tell the user to run the command themselves. Do not retry it here or look for              another copy.]",
+            found.display()
+        );
+    }
     let reason = if under_profile(dir, profile) {
         "it is installed inside the user profile, which the sandbox cannot read".to_string()
     } else if can_execute(dir) == Some(false) {
@@ -398,6 +425,32 @@ mod tests {
             |_| Some(true),
         );
         assert!(in_profile.contains("user profile"));
+    }
+
+    #[test]
+    fn msys_installations_are_recognised_and_kept_off_the_sandbox_path() {
+        let root = TempDir::new("msys");
+        let git = root.path().join("Git");
+        let usr_bin = git.join("usr").join("bin");
+        let cmd = git.join("cmd");
+        let mingw = git.join("mingw64").join("bin");
+        let other = root.path().join("Tools").join("bin");
+        for d in [&usr_bin, &cmd, &mingw, &other] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(usr_bin.join("msys-2.0.dll"), "x").unwrap();
+        assert!(is_msys_install(&usr_bin));
+        assert!(is_msys_install(&cmd));
+        assert!(is_msys_install(&mingw));
+        assert!(!is_msys_install(&other));
+        let host = std::env::join_paths([cmd.clone(), mingw.clone(), other.clone()]).unwrap();
+        assert_eq!(
+            usable_host_dirs(&host, None, &[], |_| Some(true)),
+            vec![other]
+        );
+        let hint = unavailable_hint("git", &cmd.join("git.exe"), None, |_| Some(true));
+        assert!(hint.contains("git_inspect"), "{hint}");
+        assert!(hint.contains("Do not retry"), "{hint}");
     }
 
     #[cfg(windows)]
