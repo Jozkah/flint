@@ -105,6 +105,9 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(record): one invocation id per request, replayed from the canonical record (AH-004, AH-032)
 - feat(replay): replay a recorded run, and a Chat turn records the payload it sent (AH-032, AH-078, AH-083)
 - feat(readiness): probe eight components independently and gate tools on them
+- perf(agent): keep the request prefix byte-stable so providers reuse the prompt cache - append a changed system prompt instead of rewriting the head, and project a canonical accepted history apart from the wire request
+- feat(agent): proactive compaction - compact before dispatch when the projected request crosses the resolved model context threshold, with in-place microcompaction of stale tool results and a refill circuit-breaker, keeping the reactive overflow path as a fallback
+- feat(agent-tools): `request_access`, `list_plugins`, and shell-aware failure hints
 
 ### Repository intelligence and version control
 - feat(agent): repository intelligence (#9)
@@ -126,6 +129,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): rules about which model answers what (AH-194)
 - feat(agent): answer "what should I run now", and a one-shot check that a project is in working order (AH-072)
 - feat(diagnostics): the compiler's answer, in the turn that caused it (AH-063/064)
+- feat(agent): native-git recovery for private GitHub repositories - a `git_inspect` tool, steering to `gh`/`git` over anonymous web crawling, and a structured RecoveryReport
 
 ### Discussion Rooms
 - feat(rooms): the Discussion Room engine, store and controller
@@ -156,6 +160,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(mcp): check server liveness with the protocol ping, and show per-server state, failures and explanations (AH-139)
 - feat(mcp): per-server logs and budgets, and portable agent bundles (AH-140, AH-144, AH-145)
 - feat(mcp): launch an imported server confined, or not at all
+- feat(mcp): let filesystem and jailed MCP servers read a session's attached folders
 
 ### Memory
 - feat(memory): one canonical record per scope, a precedence chain enforced and stated in every prompt (AH-081..085)
@@ -219,7 +224,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(providers): treat LAN endpoints as local, say what actually failed, and stop burying the reason
 - fix(models): stop dropping a provider's models from the model bar, and stop handing local providers a cloud model id
 - fix(models): say why the local model list is empty when the data folder was unusable (#8374)
-- chore(llamacpp): upgrade the bundled llama.cpp engine to b10809 (0.4.0)
+- chore(llamacpp): upgrade the bundled llama.cpp engine to b10964 (0.4.1)
+- feat(providers): add You.com as a native web search/fetch provider (#8921)
 - feat(llamacpp): per-model chat-template kwargs and backend selection improvements
 - fix(llamacpp): let an explicit GPU Layers setting reach the router
 
