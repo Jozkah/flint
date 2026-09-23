@@ -156,6 +156,10 @@
     "stateMissing": "Not configured",
     "stateUnknown": "Checking",
     "stateNeedsRenewal": "Needs renewing",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "autoApproveLimit": "Pause long unattended runs",
+    "autoApproveLimitLabel": "Check in after this many calls in a row",
+    "autoApproveLimitDesc": "When tool calls run without asking, Flint stops and asks you after {{count}} in a row. 0 turns the pause off (maximum {{max}}).",
+    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in."
   }
 }
