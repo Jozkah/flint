@@ -218,7 +218,17 @@ pub enum ProposalError {
     /// approval did not acknowledge.
     Unacknowledged(Vec<String>),
     Conflicts(Vec<Conflict>),
+    /// Failed before anything was written to the destination.
     Io(String),
+    /// A write failed part-way and the files written before it were put
+    /// back -- all of them, or all but `not_restored` (Jozkah/jan#264).
+    WriteFailed {
+        error: String,
+        not_restored: Vec<String>,
+    },
+    /// Every file was written, and then the proposal's own record could not
+    /// be saved: the change is on disk but the proposal still reads pending.
+    NotRecorded(String),
 }
 
 impl ProposalError {
@@ -261,7 +271,18 @@ impl ProposalError {
                 "{} selected change(s) overlap edits made since the proposal; nothing was written",
                 c.len()
             ),
-            ProposalError::Io(e) => format!("could not apply the change ({e}); nothing was left half-written"),
+            ProposalError::Io(e) => format!("could not apply the change ({e}); nothing was written"),
+            ProposalError::WriteFailed { error, not_restored } if not_restored.is_empty() => format!(
+                "could not apply the change ({error}); the files written before it were put back, so nothing was left half-written"
+            ),
+            ProposalError::WriteFailed { error, not_restored } => format!(
+                "could not apply the change ({error}), and {} could not be put back and may be half-applied: {}",
+                not_restored.len(),
+                not_restored.join(", ")
+            ),
+            ProposalError::NotRecorded(e) => format!(
+                "the change was written in full, but the proposal's record could not be saved ({e}); it may still show as pending"
+            ),
         }
     }
 }
@@ -1159,12 +1180,16 @@ pub fn apply(
     let mut written: Vec<&PlannedFile> = Vec::new();
     for file in &planned {
         if let Err(e) = write_file(dest_root, &file.path, file.content.as_deref()) {
-            // Put back everything already written, in reverse.
+            // Put back everything already written, in reverse, and say which
+            // could not be (Jozkah/jan#264).
+            let mut not_restored = Vec::new();
             for done in written.iter().rev() {
-                let _ = write_file(dest_root, &done.path, done.current.as_deref());
+                if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
+                    not_restored.push(done.path.clone());
+                }
             }
             audit(data_folder, &record, "rolled-back", format!("{}: {e}", file.path));
-            return Err(ProposalError::Io(e));
+            return Err(ProposalError::WriteFailed { error: e, not_restored });
         }
         written.push(file);
     }
@@ -1193,7 +1218,8 @@ pub fn apply(
         event: "applied".into(),
         detail: detail.clone(),
     });
-    save(data_folder, &record).map_err(ProposalError::Io)?;
+    // The files are already written: a failure here is not "nothing written".
+    save(data_folder, &record).map_err(ProposalError::NotRecorded)?;
     audit(data_folder, &record, "applied", detail);
     Ok(ApplyReport {
         proposal_id: record.id.clone(),
@@ -1298,6 +1324,22 @@ mod tests {
         assert_eq!(loaded, record);
         // The destination is untouched by creating a proposal.
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+    }
+
+    /// Jozkah/jan#264: the error only claims nothing was left half-written
+    /// when that is true.
+    #[test]
+    fn failure_messages_say_what_was_left_on_disk() {
+        let clean = ProposalError::WriteFailed { error: "disk full".into(), not_restored: vec![] };
+        assert!(clean.message().contains("nothing was left half-written"));
+        let dirty = ProposalError::WriteFailed {
+            error: "disk full".into(),
+            not_restored: vec!["a.txt".into()],
+        };
+        assert!(!dirty.message().contains("nothing was left"), "{}", dirty.message());
+        assert!(dirty.message().contains("a.txt"));
+        let unrecorded = ProposalError::NotRecorded("denied".into()).message();
+        assert!(unrecorded.contains("written in full") && !unrecorded.contains("nothing was"), "{unrecorded}");
     }
 
     /// Jozkah/jan#272: an empty file added (`__init__.py`, `.gitkeep`) or an
@@ -1585,7 +1627,7 @@ mod tests {
             &approve(&record, &dest, vec![all("a.txt"), all("b/c.txt")]),
         )
         .unwrap_err();
-        assert!(matches!(err, ProposalError::Io(_)));
+        assert!(matches!(&err, ProposalError::WriteFailed { not_restored, .. } if not_restored.is_empty()), "{err:?}");
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
     }
 
