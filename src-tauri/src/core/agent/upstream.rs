@@ -197,6 +197,98 @@ pub(crate) fn repair_dangling_tool_calls(messages: &mut Vec<serde_json::Value>) 
     repaired
 }
 
+/// Re-escape lone backslashes inside JSON string literals: a backslash not
+/// followed by a legal JSON escape (`"`, `\`, `/`, `b`, `f`, `n`, `r`, `t`, or
+/// `u` plus four hex digits) is doubled. Fixes Windows paths streamed raw
+/// (`C:\Users\...`, where `\U` is not a legal escape). Text outside string
+/// literals is left untouched.
+fn sanitize_invalid_json_escapes(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len() + 8);
+    let mut in_str = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if !in_str {
+            if c == '"' {
+                in_str = true;
+            }
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        match c {
+            '"' => {
+                in_str = false;
+                out.push(c);
+                i += 1;
+            }
+            '\\' => {
+                let next = chars.get(i + 1).copied();
+                let legal = match next {
+                    Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') => true,
+                    Some('u') => {
+                        chars.len() > i + 5
+                            && chars[i + 2..i + 6].iter().all(|h| h.is_ascii_hexdigit())
+                    }
+                    _ => false,
+                };
+                match (legal, next) {
+                    (true, Some(n)) => {
+                        out.push(c);
+                        out.push(n);
+                        i += 2;
+                    }
+                    _ => {
+                        out.push_str("\\\\");
+                        i += 1;
+                    }
+                }
+            }
+            _ => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Recover an arguments string into a plain object. `Some((obj, dirty))`, where
+/// `dirty` is false only when the text already parsed as an object untouched.
+/// Tries the text as-is, then with lone backslashes re-escaped; each pass also
+/// accepts a leading object followed only by unmatched trailing `}`.
+fn recover_args_str(t: &str) -> Option<(Value, bool)> {
+    if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(t) {
+        return Some((v, false));
+    }
+    let sanitized = sanitize_invalid_json_escapes(t);
+    for (idx, text) in [t, sanitized.as_str()].into_iter().enumerate() {
+        if idx == 1 {
+            if text == t {
+                break;
+            }
+            if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(text) {
+                return Some((v, true));
+            }
+        }
+        if !text.starts_with('{') {
+            continue;
+        }
+        let Some(first) = first_json_object(text) else {
+            continue;
+        };
+        let rest = text[first.len()..].trim_end();
+        if !rest.chars().all(|c| c == '}') {
+            continue;
+        }
+        if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(first) {
+            return Some((v, true));
+        }
+    }
+    None
+}
+
 /// The first brace-balanced `{...}` substring of `s`, quote- and
 /// escape-aware, or None when the braces never balance. Braces inside string
 /// values (a path, a code snippet in a `content` field) do not end it.
@@ -252,17 +344,7 @@ pub(crate) fn recover_tool_call_args(tc: &serde_json::Value) -> Option<serde_jso
             if t.is_empty() {
                 return Some(Value::Object(Default::default()));
             }
-            if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(t) {
-                return Some(Value::Object(m));
-            }
-            let Some(first) = first_json_object(t) else {
-                return None;
-            };
-            let rest = t[first.len()..].trim_end();
-            if !rest.chars().all(|c| c == '}') {
-                return None;
-            }
-            serde_json::from_str::<Value>(first).ok().filter(|v| v.is_object())
+            recover_args_str(t).map(|(v, _)| v)
         }
         // Off-wire shapes: an object is the arguments themselves; a list or
         // scalar is poison.
@@ -297,17 +379,10 @@ pub(crate) fn normalize_tool_call_args(tc: &serde_json::Value) -> Option<serde_j
             if t.is_empty() {
                 return Some(tc.clone());
             }
-            if let Ok(Value::Object(_)) = serde_json::from_str::<Value>(t) {
+            let (obj, dirty) = recover_args_str(t)?;
+            if !dirty {
                 return Some(tc.clone());
             }
-            let Some(first) = first_json_object(t) else {
-                return None;
-            };
-            let rest = t[first.len()..].trim_end();
-            if !rest.chars().all(|c| c == '}') {
-                return None;
-            }
-            let obj = serde_json::from_str::<Value>(first).ok().filter(|v| v.is_object())?;
             let mut fixed = tc.clone();
             if let Some(f) = fixed.get_mut("function").and_then(|v| v.as_object_mut()) {
                 f.insert(
@@ -1104,14 +1179,25 @@ pub(crate) async fn execute_mcp_tool_calls(
             .unwrap_or("")
             .to_string();
 
-        let args_str = tc
-            .get("function")
-            .and_then(|f| f.get("arguments"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("{}");
-
-        let args_value: serde_json::Value =
-            serde_json::from_str(args_str).unwrap_or_else(|_| serde_json::json!({}));
+        // Same conservative recovery as the native tools: unrecoverable
+        // arguments are refused, never sent to the server as `{}`.
+        let Some(args_value) = parse_tool_args(tc) else {
+            let raw: String = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .map(|v| v.as_str().map(String::from).unwrap_or_else(|| v.to_string()))
+                .unwrap_or_default()
+                .chars()
+                .take(300)
+                .collect();
+            results.push((
+                tool_call_id,
+                format!(
+                    "ERROR: invalid-args: the arguments for '{tool_name}' are not a valid JSON object and were not sent. Re-issue the call with well-formed JSON. Received: {raw}"
+                ),
+            ));
+            continue;
+        };
 
         let args_map: serde_json::Map<String, serde_json::Value> =
             if let Some(obj) = args_value.as_object() {
@@ -3737,4 +3823,24 @@ mod tests {
         let completion = acc.into_completion();
         assert_eq!(completion["choices"][0]["message"]["content"], "hi");
     }
+    #[test]
+    fn recovers_bad_escape_windows_paths() {
+        let tc = serde_json::json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\me\file.txt"}"#}});
+        let v = recover_tool_call_args(&tc).expect("recovered");
+        assert_eq!(v["path"], r"C:\Users\me\file.txt");
+        let fixed = normalize_tool_call_args(&tc).expect("normalized");
+        let s = fixed["function"]["arguments"].as_str().unwrap();
+        assert_eq!(serde_json::from_str::<Value>(s).unwrap()["path"], r"C:\Users\me\file.txt");
+        let tc2 = serde_json::json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\x"}}"#}});
+        assert_eq!(recover_tool_call_args(&tc2).unwrap()["path"], r"C:\Users\x");
+    }
+
+    #[test]
+    fn valid_escapes_are_preserved_and_leading_junk_refused() {
+        let tc = serde_json::json!({"function": {"name": "w", "arguments": r#"{"a":"x\ny\u0041"}"#}});
+        assert_eq!(recover_tool_call_args(&tc).unwrap()["a"], "x\nyA");
+        let junk = serde_json::json!({"function": {"name": "w", "arguments": r#"abc{"a":1}"#}});
+        assert!(recover_tool_call_args(&junk).is_none());
+    }
+
 }
