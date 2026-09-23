@@ -205,6 +205,24 @@ mod tests {
 
     /// A clean line is the common case on the log path: it comes back
     /// borrowed, with no allocation.
+    /// Jozkah/jan#276: `messages.jsonl` stores message text and tool
+    /// arguments as JSON strings, so a pasted config's credential arrives
+    /// escaped (`\"api_key\": \"...\"`). The rules must catch that form, and the
+    /// record must still parse afterwards.
+    #[test]
+    fn a_credential_inside_an_escaped_json_string_is_redacted() {
+        let record = serde_json::json!({
+            "role": "user",
+            "content": r#"my config is {"api_key": "abcdefghijklmnop1234", "token":"qrstuvwxyz567890abcd", "db_password":"hunter2seventeen", "Authorization": "Bearer zzzzzzzzzzzzzzzzzzzz"}"#,
+        })
+        .to_string();
+        let scrubbed = SHARED.scrub(&record);
+        for secret in ["abcdefghijklmnop1234", "qrstuvwxyz567890abcd", "hunter2seventeen", "zzzzzzzzzzzzzzzzzzzz"] {
+            assert!(!scrubbed.contains(secret), "{secret} survived: {scrubbed}");
+        }
+        serde_json::from_str::<serde_json::Value>(&scrubbed).expect("still valid JSON");
+    }
+
     #[test]
     fn scrub_borrows_a_clean_line() {
         let line = "agent: run finished outcome=ok elapsed=6022ms";
