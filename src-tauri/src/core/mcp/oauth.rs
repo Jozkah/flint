@@ -814,7 +814,19 @@ impl PendingAuth {
     /// single-use, so a failed exchange means starting over rather than
     /// retrying against spent state.
     pub async fn complete(mut self, data_folder: &Path) -> Result<StoredCredentials, String> {
-        let callback = tokio::time::timeout(CALLBACK_TIMEOUT, accept_callback(&self.listener))
+        // The state this flow issued, as the provider will echo it back.
+        let expected_state = url::Url::parse(&self.authorization_url)
+            .ok()
+            .and_then(|u| {
+                u.query_pairs()
+                    .find(|(k, _)| k == "state")
+                    .map(|(_, v)| v.into_owned())
+            })
+            .unwrap_or_default();
+        let callback = tokio::time::timeout(
+            CALLBACK_TIMEOUT,
+            accept_callback(&self.listener, &expected_state),
+        )
             .await
             .map_err(|_| "timed out waiting for the browser to come back".to_string())??;
 
@@ -854,7 +866,10 @@ struct Callback {
 /// connection, and favicon or `/` probes arrive on their own. So this loops
 /// until a request actually carries the parameters, answering anything else
 /// with a 404 rather than treating it as the redirect and failing the sign-in.
-async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback, String> {
+async fn accept_callback(
+    listener: &tokio::net::TcpListener,
+    expected_state: &str,
+) -> Result<Callback, String> {
     use http_body_util::Full;
     use hyper::body::Bytes;
     use hyper::server::conn::http1;
@@ -867,13 +882,15 @@ async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback,
             .await
             .map_err(|e| format!("callback connection failed: {e}"))?;
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let expected = expected_state.to_string();
 
         let serve = http1::Builder::new().serve_connection(
             TokioIo::new(stream),
             service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
                 let tx = tx.clone();
+                let expected = expected.clone();
                 async move {
-                    let outcome = parse_callback_query(req.uri().query().unwrap_or(""));
+                    let outcome = parse_callback_query(req.uri().query().unwrap_or(""), &expected);
                     let body = callback_page(&outcome);
                     let status = match &outcome {
                         Some(_) => 200,
@@ -917,7 +934,7 @@ async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback,
 /// Pull `code`/`state` (or the provider's `error`) out of a redirect query.
 /// `None` means this request was not the redirect at all, which is the caller's
 /// signal to keep waiting rather than to fail.
-fn parse_callback_query(query: &str) -> Option<Result<Callback, String>> {
+fn parse_callback_query(query: &str, expected_state: &str) -> Option<Result<Callback, String>> {
     let mut code = None;
     let mut state = None;
     let mut error = None;
@@ -931,10 +948,17 @@ fn parse_callback_query(query: &str) -> Option<Result<Callback, String>> {
             _ => {}
         }
     }
+    // Only the redirect for *this* flow carries the state it was issued
+    // (Jozkah/jan#218). Anything else -- a drive-by request to the open loopback
+    // port, whatever state it names -- is not the redirect, and must not abort a
+    // sign-in that is still in flight: keep waiting. An empty expected state
+    // (none could be read from the authorization URL) accepts any, as before.
+    if !expected_state.is_empty() && state.as_deref().is_some_and(|s| s != expected_state) {
+        return None;
+    }
     // An error is only believed when it carries the `state` it was issued
-    // against: a drive-by request to the open loopback port would otherwise abort
-    // a sign-in that is still in flight. Same reasoning that refuses a `code`
-    // with no `state` below -- unverifiable either way, so neither is acted on.
+    // against. Same reasoning that refuses a `code` with no `state` below --
+    // unverifiable either way, so neither is acted on.
     if let (Some(error), Some(_)) = (error, state.as_ref()) {
         let detail = description.map(|d| format!(": {d}")).unwrap_or_default();
         return Some(Err(format!(
@@ -1933,41 +1957,49 @@ mod tests {
 
     #[test]
     fn callback_query_parsing() {
-        let ok = parse_callback_query("code=abc&state=xyz").unwrap().unwrap();
+        let ok = parse_callback_query("code=abc&state=xyz", "").unwrap().unwrap();
         assert_eq!(ok.code, "abc");
         assert_eq!(ok.state, "xyz");
 
         // Percent-encoding is decoded, not passed through.
-        let enc = parse_callback_query("code=a%2Bb&state=s%2F1")
+        let enc = parse_callback_query("code=a%2Bb&state=s%2F1", "")
             .unwrap()
             .unwrap();
         assert_eq!(enc.code, "a+b");
         assert_eq!(enc.state, "s/1");
 
         // An unrelated request is not the redirect: keep waiting.
-        assert!(parse_callback_query("").is_none());
-        assert!(parse_callback_query("favicon=1").is_none());
+        assert!(parse_callback_query("", "").is_none());
+        assert!(parse_callback_query("favicon=1", "").is_none());
 
         // `Callback` deliberately has no `Debug` (it holds an authorization
         // code), so the error cases are matched rather than `unwrap_err`'d.
         let denied = err_of(parse_callback_query(
             "error=access_denied&error_description=nope&state=xyz",
+            "xyz",
         ));
         assert!(denied.contains("access_denied"), "{denied}");
         assert!(denied.contains("nope"), "{denied}");
 
-        let no_state = err_of(parse_callback_query("code=abc"));
+        let no_state = err_of(parse_callback_query("code=abc", ""));
         assert!(no_state.contains("state"), "{no_state}");
 
         // An unverifiable error must not kill a sign-in that is still in
         // flight: any request can reach the open loopback port.
-        assert!(parse_callback_query("error=access_denied").is_none());
+        assert!(parse_callback_query("error=access_denied", "").is_none());
+
+        // Jozkah/jan#218: a request naming some other state is not this
+        // flow's redirect, error or code alike -- keep waiting.
+        assert!(parse_callback_query("error=access_denied&state=forged", "issued").is_none());
+        assert!(parse_callback_query("code=abc&state=forged", "issued").is_none());
+        assert!(parse_callback_query("code=abc&state=issued", "issued").is_some());
     }
 
     #[test]
     fn the_callback_page_escapes_provider_text() {
         let outcome = parse_callback_query(
             "error=bad&error_description=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&state=s",
+            "s",
         );
         let page = callback_page(&outcome);
         assert!(!page.contains("<img"), "{page}");
@@ -1990,7 +2022,7 @@ mod tests {
                     .await
                     .unwrap();
             let port = listener.local_addr().unwrap().port();
-            let waiter = tokio::spawn(async move { accept_callback(&listener).await });
+            let waiter = tokio::spawn(async move { accept_callback(&listener, "s1").await });
 
             let client = reqwest::Client::new();
             // A probe that is not the redirect must not end the wait.
@@ -2000,6 +2032,17 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(probe.status(), 404);
+
+            // Jozkah/jan#218: a drive-by with a forged state, error or code,
+            // must not end the wait either.
+            for forged in ["error=access_denied&state=forged", "code=evil&state=forged"] {
+                let hit = client
+                    .get(format!("http://127.0.0.1:{port}/callback?{forged}"))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(hit.status(), 404, "{forged}");
+            }
 
             let hit = client
                 .get(format!("http://127.0.0.1:{port}/callback?code=c1&state=s1"))
