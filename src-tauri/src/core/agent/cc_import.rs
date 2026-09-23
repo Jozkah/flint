@@ -194,6 +194,15 @@ fn dir_exists(name: &str, base: Option<PathBuf>) -> bool {
     base.map(|b| b.join(name).is_dir()).unwrap_or(false)
 }
 
+/// Whether the skill store already holds `name`, in either form: the folder
+/// (`<name>/SKILL.md`) or a legacy flat `<name>.md` (Jozkah/jan#286). The
+/// folder form wins on lookup, so importing over a flat skill silently
+/// hides it unless this counts it as existing.
+fn skill_exists(name: &str, base: Option<PathBuf>) -> bool {
+    base.map(|b| b.join(name).is_dir() || b.join(format!("{name}.md")).is_file())
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
     let mut skill_hits: Vec<(String, PathBuf, String)> = Vec::new();
@@ -230,7 +239,7 @@ pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
     for (name, path, origin) in skill_hits {
         items.push(CcItem {
             kind: CcItemKind::Skill,
-            already_exists: dir_exists(&name, global_skills.clone()),
+            already_exists: skill_exists(&name, global_skills.clone()),
             name,
             source_path: path.to_string_lossy().into_owned(),
             origin,
@@ -340,7 +349,8 @@ fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<Strin
     let dest_root =
         user_skills_dir().ok_or_else(|| "no global skills store resolved".to_string())?;
     let target = dest_root.join(name);
-    if target.exists() && !overwrite {
+    let flat = dest_root.join(format!("{name}.md"));
+    if (target.exists() || flat.is_file()) && !overwrite {
         return Err("skipped".to_string());
     }
     // Checked before anything at the destination is touched.
@@ -356,6 +366,11 @@ fn import_skill(source_path: &Path, name: &str, overwrite: bool) -> Result<Strin
             fs::copy(source_path, staging.join("SKILL.md")).map(|_| ())
         }
     })?;
+    // An overwrite replaced the flat form too: left in place it would only
+    // be a shadowed copy the folder now hides.
+    if flat.is_file() {
+        let _ = fs::remove_file(&flat);
+    }
     Ok("imported".to_string())
 }
 
@@ -614,6 +629,34 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().starts_with('.'))
             .collect();
         assert!(leftovers.is_empty(), "staging left behind");
+        set_test_user_skills(None);
+    }
+
+    /// Jozkah/jan#286: a legacy flat `<name>.md` skill counts as existing, so
+    /// an import without overwrite skips it instead of hiding it.
+    #[test]
+    fn a_flat_skill_counts_as_existing() {
+        let cc_home = tempdir().unwrap();
+        let global_store = tempdir().unwrap();
+        set_test_user_skills(Some(global_store.path().to_path_buf()));
+        set_test_user_plugins(None);
+        let skills = tauri_plugin_agent_tools::skills::skills_dir(global_store.path());
+        fs::create_dir_all(&skills).unwrap();
+        fs::write(skills.join("foo.md"), "# flat").unwrap();
+        write_skill(&cc_home.path().join("src"), "foo", "# cc");
+        assert!(skill_exists("foo", Some(skills.clone())));
+        let result = tokio_test_block_on(agent_cc_import(
+            vec![CcImportSelection {
+                kind: CcItemKind::Skill,
+                name: "foo".to_string(),
+                source_path: cc_home.path().join("src").join("foo").to_string_lossy().into_owned(),
+            }],
+            false,
+        ))
+        .unwrap();
+        assert!(result.imported.is_empty(), "{result:?}");
+        assert!(!skills.join("foo").exists(), "the flat skill was shadowed");
+        assert_eq!(fs::read_to_string(skills.join("foo.md")).unwrap(), "# flat");
         set_test_user_skills(None);
     }
 
