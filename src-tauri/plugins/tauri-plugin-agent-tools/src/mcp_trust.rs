@@ -237,6 +237,21 @@ impl State {
         let parsed = std::fs::read_to_string(&path)
             .ok()
             .and_then(|text| parse(&text));
+        // A file that is there and cannot be read still holds the user's
+        // grants. Starting from nothing is the safe answer, but the next
+        // decision would save over it (Jozkah/jan#267), so it is moved aside,
+        // whole, for the user or a later version to recover.
+        if parsed.is_none() && path.exists() {
+            let aside = path.with_extension(format!("json.corrupt-{}", audit::now().replace(':', "-")));
+            match std::fs::rename(&path, &aside) {
+                Ok(()) => eprintln!(
+                    "mcp trust: {} could not be read; kept as {} and starting with nothing trusted",
+                    path.display(),
+                    aside.display()
+                ),
+                Err(e) => eprintln!("mcp trust: {} could not be read or kept aside: {e}", path.display()),
+            }
+        }
         self.loaded_from = Some(path);
         let Some((stored, legacy)) = parsed else {
             self.stored = Stored {
