@@ -38,20 +38,28 @@ import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ThreadMessage } from '@janhq/core'
+import type { GroupRowProps } from '@/components/groups/GroupedNav'
+import { useGroupedNav } from '@/components/groups/context'
+import { MoveToGroupMenu } from '@/components/groups/MoveToGroupMenu'
+import { ActiveDot } from '@/components/groups/ActiveDot'
+import { useConversationGroups } from '@/lib/groups/store'
 
 const ThreadItem = memo(
   ({
     thread,
     isMobile,
     currentProjectId,
+    row,
   }: {
     thread: Thread
     isMobile: boolean
     currentProjectId?: string
+    /** Drag/keyboard wiring when rendered inside the grouped sidebar. */
+    row?: GroupRowProps
   }) => {
+    const groupedNav = useGroupedNav()
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
-    const updateThread = useThreads((state) => state.updateThread)
     const getFolderById = useThreadManagement().getFolderById
     const { folders } = useThreadManagement()
     const { t } = useTranslation()
@@ -73,8 +81,10 @@ const ThreadItem = memo(
       getMessages(thread.id)
     )
 
-    // Fetch messages if not loaded yet
+    // Fetch messages if not loaded yet. Only the project page shows a message
+    // preview; the sidebar never loads transcripts just to render a row.
     useEffect(() => {
+      if (!currentProjectId) return
       const currentMessages = getMessages(thread.id)
 
       // Initial load: no messages yet, fetch them
@@ -104,7 +114,7 @@ const ThreadItem = memo(
         setLocalMessages(currentMessages)
         messagesLengthRef.current = currentMessages.length
       }
-    }, [thread.id, serviceHub, getMessages, setMessages])
+    }, [thread.id, currentProjectId, serviceHub, getMessages, setMessages])
 
     const lastUserMessageText = useMemo(() => {
       const userMessages = messages.filter((m) => m.role === 'user')
@@ -130,22 +140,14 @@ const ThreadItem = memo(
 
     const assignThreadToProject = (threadId: string, projectId: string) => {
       const project = getFolderById(projectId)
-      if (project && updateThread) {
-        const projectMetadata = {
-          id: project.id,
-          name: project.name,
-          updated_at: project.updated_at,
-        }
-
-        updateThread(threadId, {
-          metadata: {
-            ...thread.metadata,
-            project: projectMetadata,
-          },
+      if (!project) return
+      // Home groups are the source of truth; the mirror updates metadata.project.
+      void useConversationGroups
+        .getState()
+        .moveItem('home', threadId, projectId)
+        .then((ok) => {
+          if (ok) toast.success(`Thread assigned to "${project.name}" successfully`)
         })
-
-        toast.success(`Thread assigned to "${project.name}" successfully`)
-      }
     }
 
     const isAppStateActive = useIsThreadActive(thread.id)
@@ -182,8 +184,13 @@ const ThreadItem = memo(
 
     return (
       <SidebarMenuItem
+        {...row}
+        className={cn('relative', row?.className)}
         onContextMenu={openRowMenu}
-        onKeyDown={onRowKeyDown}
+        onKeyDown={(e) => {
+          row?.onKeyDown(e)
+          if (!e.defaultPrevented) onRowKeyDown(e)
+        }}
       >
         {currentProjectId ?
           <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11", isSelected && "bg-accent before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail")}>
@@ -202,10 +209,11 @@ const ThreadItem = memo(
           :
           <SidebarMenuButton asChild isActive={isSelected}>
             <Link to="/threads/$threadId" params={{ threadId: thread.id }}>
-              {isActive && (
+              {isActive && !row && (
                 <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />
               )}
               <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
+              {isActive && row && <ActiveDot label="Chat is running" className="ml-auto" />}
             </Link>
           </SidebarMenuButton>
         }
@@ -233,6 +241,10 @@ const ThreadItem = memo(
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
             </DropdownMenuItem>
+            {groupedNav ? (
+              <MoveToGroupMenu itemId={thread.id} />
+            ) : (
+            <>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />
@@ -270,21 +282,20 @@ const ThreadItem = memo(
                   onClick={(e) => {
                     e.stopPropagation()
                     const projectName = thread.metadata?.project?.name
-                    updateThread(thread.id, {
-                      metadata: {
-                        ...thread.metadata,
-                        project: undefined,
-                      },
-                    })
-                    toast.success(
-                      `Thread removed from "${projectName}" successfully`
-                    )
+                    void useConversationGroups
+                      .getState()
+                      .moveItem('home', thread.id, null)
+                      .then((ok) => {
+                        if (ok) toast.success(`Thread removed from "${projectName}" successfully`)
+                      })
                   }}
                 >
                   <X className="size-4" />
                   <span>Remove from project</span>
                 </DropdownMenuItem>
               </>
+            )}
+            </>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -361,4 +372,5 @@ function ThreadList({ threads, currentProjectId }: ThreadListProps) {
   )
 }
 
+export { ThreadItem }
 export default memo(ThreadList)

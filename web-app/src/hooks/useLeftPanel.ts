@@ -26,6 +26,9 @@ type LeftPanelStoreState = {
   open: boolean
   size: number
   width: string // Sidebar width in rem (e.g., "15rem")
+  /** Compact conversation groups: one row per group, children on demand. */
+  groupsCompact: boolean
+  setGroupsCompact: (value: boolean) => void
   setLeftPanel: (value: boolean) => void
   setLeftPanelSize: (value: number) => void
   setLeftPanelWidth: (value: string) => void
@@ -37,6 +40,8 @@ export const useLeftPanel = create<LeftPanelStoreState>()(
       open: true,
       size: 20, // Default size of 20%
       width: SIDEBAR_DEFAULT_WIDTH,
+      groupsCompact: false,
+      setGroupsCompact: (value) => set({ groupsCompact: value }),
       setLeftPanel: (value) => set({ open: value }),
       setLeftPanelSize: (value) => set({ size: value }),
       setLeftPanelWidth: (value) => set({ width: clampSidebarWidth(value) }),

@@ -3,8 +3,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuAction,
-  SidebarGroup,
-  SidebarGroupLabel,
   useSidebar,
 } from '@/components/ui/sidebar'
 import {
@@ -35,6 +33,29 @@ import {
 import type { RoomSummary } from '@/lib/rooms/types'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { GroupedNav, type GroupRowProps } from '@/components/groups/GroupedNav'
+import { MoveToGroupMenu } from '@/components/groups/MoveToGroupMenu'
+import { ActiveDot } from '@/components/groups/ActiveDot'
+import { folderBindingFor } from '@/lib/groups/folders'
+import { ID_SEP, useActiveIdSet } from '@/lib/groups/useActiveIdSet'
+import { useRoomsStore } from '@/lib/rooms/store'
+import { getRoomPersistence } from '@/lib/rooms/persistence'
+import { cn } from '@/lib/utils'
+
+const roomId = (r: RoomSummary) => r.id
+const roomLabel = (r: RoomSummary) => r.title
+
+/**
+ * A room's working folder, read-only: joining a group never changes it. The
+ * open room is already in memory; otherwise the room file is read once, only
+ * when the user moves the room into a group.
+ */
+async function roomFolders(r: RoomSummary) {
+  const open = useRoomsStore.getState().room
+  const folder =
+    open?.id === r.id ? open.folder : (await getRoomPersistence().getRoom(r.id)).room.folder
+  return folder ? [folderBindingFor(folder)] : []
+}
 
 const RoomItem = memo(function RoomItem({
   room,
@@ -42,12 +63,17 @@ const RoomItem = memo(function RoomItem({
   isMobile,
   onSelect,
   onRequestDelete,
+  running,
+  row,
 }: {
   room: RoomSummary
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
   onRequestDelete: (pending: { id: string; title: string }) => void
+  running?: boolean
+  /** Drag/keyboard wiring from the grouped sidebar. */
+  row?: GroupRowProps
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -64,12 +90,22 @@ const RoomItem = memo(function RoomItem({
   }
 
   return (
-    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
+    <SidebarMenuItem
+      {...row}
+      className={cn('relative', row?.className)}
+      onContextMenu={openRowMenu}
+      onKeyDown={(e) => {
+        row?.onKeyDown(e)
+        if (!e.defaultPrevented) onRowKeyDown(e)
+      }}
+    >
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(room.id)}
+        data-testid="room-item"
       >
         <span className="truncate">{room.title}</span>
+        {running && <ActiveDot label="Room is running" className="ml-auto" />}
       </SidebarMenuButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
@@ -91,6 +127,7 @@ const RoomItem = memo(function RoomItem({
             <span>Open</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <MoveToGroupMenu itemId={room.id} />
           <DropdownMenuItem
             variant="destructive"
             onSelect={() =>
@@ -120,6 +157,8 @@ export function NavRooms() {
     id: string
     title: string
   } | null>(null)
+  const runningKey = useRoomsStore((s) => s.runningRoomIds.join(ID_SEP))
+  const activeIds = useActiveIdSet(runningKey)
 
   useEffect(() => {
     if (api.status !== 'ready') return
@@ -160,23 +199,28 @@ export function NavRooms() {
         </SidebarMenuItem>
       </SidebarMenu>
 
-      {summaries.length > 0 && (
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Rooms</SidebarGroupLabel>
-          <SidebarMenu>
-            {summaries.map((room) => (
-              <RoomItem
-                key={room.id}
-                room={room}
-                isCurrent={room.id === currentRoomId}
-                isMobile={isMobile}
-                onSelect={selectRoom}
-                onRequestDelete={setPendingDelete}
-              />
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      )}
+      <GroupedNav<RoomSummary>
+        surface="rooms"
+        items={summaries}
+        getId={roomId}
+        getLabel={roomLabel}
+        activeIds={activeIds}
+        selectedId={currentRoomId}
+        ownFoldersOf={roomFolders}
+        recentsLabel={t('common:recents', { defaultValue: 'Recents' })}
+        renderItem={(room, row) => (
+          <RoomItem
+            key={room.id}
+            room={room}
+            isCurrent={room.id === currentRoomId}
+            isMobile={isMobile}
+            onSelect={selectRoom}
+            onRequestDelete={setPendingDelete}
+            running={activeIds.has(room.id)}
+            row={row}
+          />
+        )}
+      />
 
       <Dialog
         open={pendingDelete !== null}

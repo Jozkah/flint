@@ -24,6 +24,7 @@ import {
   type GroupFolderBinding,
   type GroupSurface,
   type GroupsState,
+  type ItemFolderContext,
   type SurfaceGroups,
 } from './types'
 
@@ -74,6 +75,18 @@ type GroupsStore = {
     surface: GroupSurface,
     groupId: string,
     bindings: GroupFolderBinding[]
+  ) => Promise<boolean>
+  /**
+   * Moves an item and applies a folder-resolution plan in one write: the
+   * membership, the item's folder context and the group's folders either all
+   * persist or all roll back.
+   */
+  moveWithPlan: (
+    surface: GroupSurface,
+    itemId: string,
+    groupId: string | null,
+    toIndex: number | undefined,
+    plan: { context?: ItemFolderContext; groupFolders?: GroupFolderBinding[] }
   ) => Promise<boolean>
   removeItem: (surface: GroupSurface, itemId: string) => Promise<void>
   pruneMissing: (surface: GroupSurface, liveIds: ReadonlySet<string>) => Promise<void>
@@ -220,6 +233,33 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
         (s) => domain.setGroupFolders(s, surface, groupId, bindings, env.now()),
         'Could not save group folders'
       ),
+
+    moveWithPlan: async (surface, itemId, groupId, toIndex, plan) => {
+      const ok = await commit(
+        surface,
+        (s) => {
+          let next = domain.moveItem(s, surface, itemId, groupId, toIndex)
+          if (plan.context) next = domain.setItemContext(next, surface, itemId, plan.context)
+          if (plan.groupFolders && groupId)
+            next = domain.setGroupFolders(next, surface, groupId, plan.groupFolders, env.now())
+          return next
+        },
+        'Could not move the item'
+      )
+      if (ok) {
+        const s = get().state.surfaces[surface]
+        const g = groupId ? s.groups.find((x) => x.id === groupId) : null
+        const extra = plan.context
+          ? plan.context.mode === 'inherit'
+            ? '. Folder context replaced by group folders; access still needs approval'
+            : '. Group folders added to folder context; access still needs approval'
+          : plan.groupFolders
+            ? '. Item folders added to the group'
+            : ''
+        announce(`${g ? `Moved to ${g.name}` : 'Moved to Recents'}${extra}`)
+      }
+      return ok
+    },
 
     removeItem: async (surface, itemId) => {
       await commit(surface, (s) => domain.removeItem(s, surface, itemId), 'Could not update groups')

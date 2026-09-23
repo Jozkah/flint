@@ -12,13 +12,14 @@ import {
   type GroupMembership,
   type GroupSurface,
   type GroupsState,
+  type ItemFolderContext,
   type SurfaceGroups,
   type SurfaceLayout,
 } from './types'
 
 export class GroupError extends Error {}
 
-export const emptySurface = (): SurfaceGroups => ({ groups: [], memberships: {} })
+export const emptySurface = (): SurfaceGroups => ({ groups: [], memberships: {}, contexts: {} })
 
 export const emptyGroupsState = (): GroupsState => ({
   version: GROUPS_SCHEMA_VERSION,
@@ -217,6 +218,7 @@ export function deleteGroup(
     Object.entries(s.memberships).filter(([, m]) => m.groupId !== groupId)
   )
   return withSurface(state, surface, {
+    ...s,
     groups: renumberGroups(sortedGroups(s).filter((g) => g.id !== groupId)),
     memberships,
   })
@@ -229,8 +231,27 @@ export function removeItem(
   itemId: string
 ): GroupsState {
   const s = state.surfaces[surface]
-  if (!s.memberships[itemId]) return state
-  return moveItem(state, surface, itemId, null)
+  if (!s.memberships[itemId] && !s.contexts[itemId]) return state
+  const next = s.memberships[itemId] ? moveItem(state, surface, itemId, null) : state
+  const ns = next.surfaces[surface]
+  const contexts = { ...ns.contexts }
+  delete contexts[itemId]
+  return withSurface(next, surface, { ...ns, contexts })
+}
+
+/** Sets or clears (null) the folder context an item took from a group. */
+export function setItemContext(
+  state: GroupsState,
+  surface: GroupSurface,
+  itemId: string,
+  context: ItemFolderContext | null
+): GroupsState {
+  const s = state.surfaces[surface]
+  const contexts = { ...s.contexts }
+  if (context) contexts[itemId] = { ...context, folders: dedupeBindings(context.folders) }
+  else if (contexts[itemId]) delete contexts[itemId]
+  else return state
+  return withSurface(state, surface, { ...s, contexts })
 }
 
 /** Drops memberships whose item no longer exists. No-op when nothing is stale. */
@@ -240,10 +261,12 @@ export function pruneMissingItems(
   liveIds: ReadonlySet<string>
 ): GroupsState {
   const s = state.surfaces[surface]
-  const stale = Object.keys(s.memberships).filter((id) => !liveIds.has(id))
-  if (stale.length === 0) return state
+  const stale = new Set(
+    [...Object.keys(s.memberships), ...Object.keys(s.contexts)].filter((id) => !liveIds.has(id))
+  )
+  if (stale.size === 0) return state
   let next = state
-  for (const id of stale) next = moveItem(next, surface, id, null)
+  for (const id of stale) next = removeItem(next, surface, id)
   return next
 }
 
@@ -360,8 +383,24 @@ export function sanitizeSurface(surface: GroupSurface, raw: unknown): SurfaceGro
       }
     }
   }
+  const contexts: Record<string, ItemFolderContext> = {}
+  if (isObj(raw.contexts)) {
+    for (const [itemId, c] of Object.entries(raw.contexts)) {
+      if (!isObj(c) || (c.mode !== 'inherit' && c.mode !== 'merge')) continue
+      contexts[itemId] = {
+        mode: c.mode,
+        folders: dedupeBindings(
+          (Array.isArray(c.folders) ? c.folders : [])
+            .map(sanitizeBinding)
+            .filter((b): b is GroupFolderBinding => b !== null)
+        ),
+        sourceGroupId: typeof c.sourceGroupId === 'string' ? c.sourceGroupId : '',
+        updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : 0,
+      }
+    }
+  }
   // Renumber each group's members densely.
-  const next: SurfaceGroups = { groups: ordered, memberships: {} }
+  const next: SurfaceGroups = { groups: ordered, memberships: {}, contexts }
   for (const g of ordered) {
     Object.values(memberships)
       .filter((m) => m.groupId === g.id)

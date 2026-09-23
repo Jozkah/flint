@@ -44,10 +44,24 @@ export type GroupMembership = {
   position: number
 }
 
+/**
+ * Folder context an item took from a group (inherit or merge). This is
+ * metadata the agent is told about, never a grant: the item's attached folder,
+ * access mode and grants are stored elsewhere and are not changed by it.
+ */
+export type ItemFolderContext = {
+  mode: 'inherit' | 'merge'
+  folders: GroupFolderBinding[]
+  sourceGroupId: string
+  updatedAt: number
+}
+
 export type SurfaceGroups = {
   groups: ConversationGroup[]
   /** Keyed by item id: an item belongs to zero or one group. */
   memberships: Record<string, GroupMembership>
+  /** Keyed by item id. Survives moving to Recents; dropped when the item is deleted. */
+  contexts: Record<string, ItemFolderContext>
 }
 
 export type GroupsState = {

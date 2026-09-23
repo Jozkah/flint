@@ -45,5 +45,5 @@ export function migrateProjects(
         memberships[t.id] = { groupId: gid, itemId: t.id, position }
       })
   }
-  return { groups, memberships }
+  return { groups, memberships, contexts: {} }
 }
