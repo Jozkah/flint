@@ -342,7 +342,7 @@ pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), 
 /// here: these are real commit objects, and diffing them is what makes the
 /// patch exact rather than reconstructed from the working tree.
 pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, String> {
-    run(repo, None, &["diff", from, to])
+    run(repo, None, &["diff", "--no-ext-diff", "--no-textconv", from, to])
 }
 
 /// Stage the working tree exactly as it stands into a scratch index.
@@ -1040,6 +1040,7 @@ fn untracked_counts(root: &str, rel: &str) -> Option<(u32, bool)> {
 /// `project` is not inside a git work tree (or git is unavailable).
 pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
     let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
     let root_s = root.to_string_lossy().to_string();
 
     let raw = git(&[
@@ -1057,13 +1058,13 @@ pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
     // Counts come from numstat for the same scope. `HEAD`-relative scopes fall
     // back to `--cached` on an unborn repo, where there is no `HEAD` to diff.
     let numstat_args: Vec<&str> = match scope {
-        DiffScope::Staged => vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"],
-        DiffScope::Working => vec!["-C", &root_s, "diff", "--numstat", "-z", "-M"],
+        DiffScope::Staged => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--cached", "--numstat", "-z", "-M"],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z", "-M"],
         DiffScope::All => {
             if head_born(&root_s) {
-                vec!["-C", &root_s, "diff", "HEAD", "--numstat", "-z", "-M"]
+                vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "HEAD", "--numstat", "-z", "-M"]
             } else {
-                vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"]
+                vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--cached", "--numstat", "-z", "-M"]
             }
         }
     };
@@ -1243,6 +1244,7 @@ pub fn file_diff(
 ) -> Result<GitFileDiff, String> {
     safe_rel(path)?;
     let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
     let root_s = root.to_string_lossy().to_string();
 
     let args: Vec<&str> = match scope {
@@ -1250,19 +1252,23 @@ pub fn file_diff(
             "-C",
             &root_s,
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--cached",
             "-M",
             "--no-color",
             "--",
             path,
         ],
-        DiffScope::Working => vec!["-C", &root_s, "diff", "-M", "--no-color", "--", path],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "-M", "--no-color", "--", path],
         DiffScope::All => {
             if head_born(&root_s) {
                 vec![
                     "-C",
                     &root_s,
                     "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
                     "HEAD",
                     "-M",
                     "--no-color",
@@ -1274,6 +1280,8 @@ pub fn file_diff(
                     "-C",
                     &root_s,
                     "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
                     "--cached",
                     "-M",
                     "--no-color",
@@ -1982,6 +1990,27 @@ mod program_config_tests {
                 let _ = std::fs::remove_dir_all(&base);
             }
         }
+    }
+
+    /// With `extensions.worktreeConfig` on, git also reads
+    /// `.git/config.worktree`, which `git config --local` never lists. A
+    /// filter planted there must be refused like one in `.git/config`.
+    #[test]
+    fn a_filter_in_worktree_config_is_refused_too() {
+        let (base, marker) = planted("core.autocrlf", "false");
+        let repo = base.join("repo");
+        sh(&repo, &["config", "--unset", "core.autocrlf"]);
+        sh(&repo, &["config", "extensions.worktreeConfig", "true"]);
+        let m = marker.to_string_lossy().replace('\\', "/");
+        sh(&repo, &["config", "--worktree", "filter.evil.clean", &format!(": > '{m}'; cat")]);
+        for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+            assert!(status(&repo, scope).is_err(), "status {scope:?} must refuse");
+            assert!(file_diff(&repo, "a.txt", scope, 1 << 20).is_err(), "file_diff {scope:?} must refuse");
+        }
+        assert!(crate::core::agent::vcs::staged(&repo).is_err());
+        assert!(crate::core::agent::vcs::divergence(&repo).is_err());
+        assert!(!marker.exists(), "a read ran the worktree-config filter");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
