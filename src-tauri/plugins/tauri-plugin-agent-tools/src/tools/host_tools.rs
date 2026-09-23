@@ -191,6 +191,51 @@ pub fn unavailable_hint(
     )
 }
 
+/// The note appended to a "not found" failure when the program is not on the
+/// host `PATH` either. Without it the model searched the disk and the user
+/// profile, tried to download an installer, and retried the same command.
+pub fn not_installed_hint(name: &str) -> String {
+    format!(
+        "\n[sandbox: `{name}` is not available in this sandbox. Do not search the disk or \
+         user profile for it, do not download or install it, and do not retry; tell the user \
+         the command to run themselves and treat the check as not run.]"
+    )
+}
+
+/// The note appended when a download fails on name resolution inside a
+/// sandbox that has no network: retrying cannot succeed.
+pub const NO_NETWORK_HINT: &str =
+    "\n[sandbox: the shell has no network access; do not retry downloads.]";
+
+/// True when the output is a name-resolution failure, the form a download
+/// takes in a sandbox without network.
+pub fn is_name_resolution_failure(output: &str) -> bool {
+    let lower = output.to_lowercase();
+    lower.contains("the remote name could not be resolved")
+        || lower.contains("no such host is known")
+}
+
+/// `py` when the command was run through the Windows Python launcher and it
+/// exited with one of its own "no Python found" codes (103: no suitable
+/// runtime, 109: the requested version is not installed). The launcher prints
+/// no "not recognized" line, so [`missing_program`] cannot see it, but for the
+/// model it is the same situation: there is no Python here.
+pub fn python_launcher_missing(command: &str, output: &str) -> Option<String> {
+    let first = command.split_whitespace().next()?;
+    let stem = first
+        .trim_matches(['"', '\''])
+        .trim_end_matches(".exe")
+        .to_ascii_lowercase();
+    if stem != "py" {
+        return None;
+    }
+    let launcher_code = output.lines().any(|l| {
+        let l = l.trim();
+        l == "[exit 103]" || l == "[exit 109]"
+    });
+    launcher_code.then(|| "py".to_string())
+}
+
 #[cfg(windows)]
 mod win {
     use std::ffi::OsStr;
@@ -294,6 +339,35 @@ mod win {
         };
         unsafe { LocalFree(sd) };
         result
+    }
+}
+
+#[cfg(test)]
+mod missing_hint_tests {
+    use super::*;
+
+    #[test]
+    fn a_program_missing_everywhere_gets_a_do_not_hunt_note() {
+        let h = not_installed_hint("node");
+        assert!(h.contains("`node` is not available in this sandbox"), "{h}");
+        assert!(h.contains("do not download or install it"), "{h}");
+        assert!(h.contains("treat the check as not run"), "{h}");
+    }
+
+    #[test]
+    fn the_python_launcher_codes_count_as_missing() {
+        assert_eq!(python_launcher_missing("py -3 x.py", "No suitable Python runtime found\n[exit 103]"), Some("py".into()));
+        assert_eq!(python_launcher_missing("py.exe --version", "[exit 109]"), Some("py".into()));
+        assert_eq!(python_launcher_missing("py x.py", "Traceback\n[exit 1]"), None);
+        assert_eq!(python_launcher_missing("python x.py", "[exit 103]"), None);
+    }
+
+    #[test]
+    fn name_resolution_failures_are_recognised() {
+        assert!(is_name_resolution_failure("Invoke-WebRequest : The remote name could not be resolved: 'x.org'"));
+        assert!(is_name_resolution_failure("No such host is known. (x.org:443)"));
+        assert!(!is_name_resolution_failure("404 Not Found"));
+        assert!(NO_NETWORK_HINT.contains("no network access"));
     }
 }
 
