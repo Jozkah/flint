@@ -1538,6 +1538,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     })
   }
 
+  /**
+   * The tool choice for the next request. A seam: Cowork asks for `none` on
+   * the closing turn after its loop guard stops a run.
+   */
+  protected toolChoiceForStep(): 'auto' | 'none' {
+    return 'auto'
+  }
+
   async sendMessages(
     options: {
       chatId: string
@@ -1920,7 +1928,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       messages: modelMessages,
       abortSignal: options.abortSignal,
       tools: shouldEnableTools ? this.tools : undefined,
-      toolChoice: shouldEnableTools ? 'auto' : undefined,
+      toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
       system: effectiveSystem,
       ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
       ...(reasoningProviderOptions

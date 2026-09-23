@@ -13,6 +13,7 @@ import {
   ACCESS_MODES,
   accessDescriptionKey,
   accessLabelKey,
+  effectiveDowngradeKey,
   type AccessMode,
   type EffectiveAccess,
 } from '@/lib/coworkAccess'
@@ -92,6 +93,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
   const [open, setOpen] = useState(false)
   const active = props.effective.access
   const Icon = ICONS[active]
+  const downgradeKey = effectiveDowngradeKey(props.effective)
 
   const choose = (option: AccessMode) => {
     if (blockedReason(option, props)) return
@@ -109,6 +111,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             variant="outline"
             size="xs"
             aria-label={t('common:coworkAccess.label')}
+            title={downgradeKey ? t(downgradeKey) : undefined}
             className={cn(
               // h-8 to match the model selector and the other context-bar pills.
               'h-8 shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
@@ -165,9 +168,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
       {/* The stored preference is not in force. Saying which, and why, is the
           difference between a downgrade and a silent lie. */}
       <span aria-live="polite" className="sr-only">
-        {props.effective.downgradedFrom && props.effective.reason
-          ? t(`common:coworkAccess.downgrade.${props.effective.reason}`)
-          : t(accessLabelKey(active))}
+        {downgradeKey ? t(downgradeKey) : t(accessLabelKey(active))}
       </span>
     </>
   )

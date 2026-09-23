@@ -359,6 +359,8 @@ function childStep(opts: {
   tools: Record<string, Tool>
   messages: UIMessage[]
   signal: AbortSignal
+  /** The closing turn after the loop guard stopped the run: no tool calls. */
+  textOnly?: boolean
 }): Promise<ReadableStream<UIMessageChunk>> {
   return (async () => {
     const modelMessages = await convertToModelMessages(opts.messages, {
@@ -370,7 +372,12 @@ function childStep(opts: {
       messages: modelMessages,
       abortSignal: opts.signal,
       tools: Object.keys(opts.tools).length > 0 ? opts.tools : undefined,
-      toolChoice: Object.keys(opts.tools).length > 0 ? 'auto' : undefined,
+      toolChoice:
+        Object.keys(opts.tools).length > 0
+          ? opts.textOnly
+            ? 'none'
+            : 'auto'
+          : undefined,
     })
     const usage = createUsageCollector()
     return result.toUIMessageStream({
@@ -457,13 +464,14 @@ export async function runSubagent(
       maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
       sessionTokens,
       deps: {
-        sendStep: (msgs, signal) =>
+        sendStep: (msgs, signal, stepOpts) =>
           childStep({
             model: opts.model,
             system,
             tools,
             messages: msgs,
             signal,
+            textOnly: stepOpts?.textOnly,
           }),
         dispatch: opts.dispatch,
         activity: opts.activity,

@@ -116,6 +116,21 @@ export class CoworkChatTransport extends CustomChatTransport {
     }
   }
 
+  /**
+   * Set for one request: the closing turn after the loop guard stopped a run,
+   * which may answer but not call tools. The tools stay advertised so the
+   * prompt prefix is the same as every other step's.
+   */
+  textOnlyNext = false
+
+  protected override toolChoiceForStep(): 'auto' | 'none' {
+    if (this.textOnlyNext) {
+      this.textOnlyNext = false
+      return 'none'
+    }
+    return 'auto'
+  }
+
   /** Applied at the next run: changing it mid-run would invalidate the prefix. */
   setConfig(config: CoworkRunConfig) {
     this.config = config
