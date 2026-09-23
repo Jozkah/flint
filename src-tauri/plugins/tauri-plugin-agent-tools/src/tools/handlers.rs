@@ -1308,15 +1308,34 @@ async fn read(
     // the path must not redirect the open out of the workspace.
     if symlink_escapes_any_root(root, scratch, read_roots, &target) {
         return (
-            format!("ERROR: refused to read through a symlink out of the workspace: {path}"),
+            format!(
+                "ERROR: refused to read through a symlink out of the workspace: {path}{}",
+                resolved_target(&target)
+            ),
             None,
         );
+    }
+    // Windows reports a directory opened as a file as "Access is denied.
+    // (os error 5)", which reads as a permission problem.
+    if target.is_dir() {
+        return (format!("ERROR: {path} is a directory; use ls."), None);
     }
 
     let bytes = match tokio::fs::read(&target).await {
         Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return (
+                format!(
+                    "ERROR: File not found: {path}. Relative paths resolve against your \
+                     workspace ({}).",
+                    root.display()
+                ),
+                None,
+            )
+        }
         Err(e) => return (format!("ERROR: {e}"), None),
     };
+    let total_bytes = bytes.len();
 
     // An image file is returned as an OpenAI `image_url` content part rather
     // than text: the model cannot see a raster through a base64 string. Only a
@@ -1342,7 +1361,12 @@ async fn read(
 
     let content = match String::from_utf8(bytes) {
         Ok(c) => c,
-        Err(_) => return ("ERROR: not a UTF-8 text file".to_string(), None),
+        Err(_) => {
+            return (
+                format!("ERROR: Binary file ({total_bytes} bytes); read only returns text."),
+                None,
+            )
+        }
     };
 
     let selected = if offset.is_some() || limit.is_some() {
@@ -1378,6 +1402,19 @@ async fn read(
     )
 }
 
+/// " (it resolves to X)" for a symlink refusal, so the model can see where the
+/// link leads instead of guessing. Empty when the target cannot be resolved.
+fn resolved_target(target: &Path) -> String {
+    match std::fs::canonicalize(target) {
+        Ok(real) => {
+            let shown = real.to_string_lossy();
+            let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
+            format!(" (it resolves to {shown})")
+        }
+        Err(_) => String::new(),
+    }
+}
+
 async fn ls(
     args: &serde_json::Value,
     root: &Path,
@@ -1392,7 +1429,22 @@ async fn ls(
     let target = resolve_path(root, scratch, path);
     // Names are content too: a symlinked directory would list a host directory.
     if symlink_escapes_any_root(root, scratch, read_roots, &target) {
-        return format!("ERROR: refused to list through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to list through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
+    }
+    // Windows says "The directory name is invalid. (os error 267)" for a file.
+    if target.is_file() {
+        let is_git = target.file_name().is_some_and(|n| n.eq_ignore_ascii_case(".git"));
+        return if is_git {
+            format!(
+                "ERROR: {path} is a file, not a directory (a git worktree's .git is a pointer \
+                 file; read it)."
+            )
+        } else {
+            format!("ERROR: {path} is a file, not a directory; use read.")
+        };
     }
     let mut entries = match tokio::fs::read_dir(&target).await {
         Ok(rd) => rd,
@@ -1456,7 +1508,10 @@ async fn write(
     // decision and this call, and creating the parents first would already have
     // made directories through the swapped link. Fail closed.
     if symlink_escapes_root(root, scratch, &target) {
-        return format!("ERROR: refused to write through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to write through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
     }
     let open_at = match resolved_for_open(&target) {
         Ok(p) => p,
@@ -1507,7 +1562,10 @@ async fn edit(
     // Re-validate before the final read+write pair so a swapped symlink cannot
     // redirect either the read or the later write.
     if symlink_escapes_root(root, scratch, &target) {
-        return format!("ERROR: refused to edit through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to edit through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
     }
     let open_at = match resolved_for_open(&target) {
         Ok(p) => p,
@@ -1714,7 +1772,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
         // something, just not what was asked for.
         if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
-            if let Some(construct) = proc::requires_posix_shell(command) {
+            if let Some(construct) = proc::requires_posix_shell_for(command, selected.report.cfg.flavor) {
                 return proc::posix_unavailable_error(
                     construct,
                     &selected.report.cfg,
@@ -1825,6 +1883,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let shell_description = shell.description;
     let shell_flavor = shell.flavor;
     let command_text = command.to_string();
+    let cwd_display = root.display().to_string();
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
         // The tree has exited (or been stopped): what it used is final.
@@ -1841,8 +1900,18 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // and the hint would name limits that are not in force.
         // Classified first: a denial the shell caused (PowerShell given cmd's
         // `2>nul`) must not be reported as the sandbox's doing.
+        if shell_flavor == proc::ShellFlavor::PowerShell {
+            out = proc::strip_prologue(&out);
+        }
         if bash_result_failed(&out) {
             let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
+            // PowerShell runs from a drive mounted on the workspace, not from the
+            // project, and a script it starts can land elsewhere. A path the
+            // command could not find is most often a relative path aimed at the
+            // project; say where relative paths actually go.
+            if shell_flavor == proc::ShellFlavor::PowerShell && cwd_note_applies(&class, &out) {
+                out.insert_str(0, &cwd_note(&cwd_display));
+            }
             let hint = match class {
                 super::shell_diag::FailureClass::FileAccessDenied
                 | super::shell_diag::FailureClass::Network
@@ -1858,20 +1927,38 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             // A program the sandbox cannot find may still be installed on the
             // host, just not runnable from inside. Say where and why, so the
             // model reports it rather than hunting for another copy to run.
-            if sandboxed && class == super::shell_diag::FailureClass::MissingCommand {
-                if let Some(name) = super::host_tools::missing_program(&out) {
+            // Not on the host either: say so just as firmly, or the model
+            // searches the profile, downloads an installer, or retries.
+            // The `py` launcher's own "no Python" exit codes are the same case.
+            let missing = if class == super::shell_diag::FailureClass::MissingCommand {
+                super::host_tools::missing_program(&out)
+            } else {
+                None
+            }
+            .or_else(|| super::host_tools::python_launcher_missing(&command_text, &out));
+            if sandboxed {
+                if let Some(name) = missing {
                     let host = std::env::var_os("PATH").unwrap_or_default();
                     let pathext =
                         std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-                    if let Some(found) = super::host_tools::locate_on_host(&name, &host, &pathext) {
-                        let profile = std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
-                        out.push_str(&super::host_tools::unavailable_hint(
-                            &name,
-                            &found,
-                            profile.as_deref(),
-                            super::host_tools::container_can_execute,
-                        ));
+                    match super::host_tools::locate_on_host(&name, &host, &pathext) {
+                        // The launcher itself exists when it reports 103/109;
+                        // what is missing is a Python behind it.
+                        Some(found) if name != "py" => {
+                            let profile =
+                                std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
+                            out.push_str(&super::host_tools::unavailable_hint(
+                                &name,
+                                &found,
+                                profile.as_deref(),
+                                super::host_tools::container_can_execute,
+                            ));
+                        }
+                        _ => out.push_str(&super::host_tools::not_installed_hint(&name)),
                     }
+                }
+                if !policy.allow_network && super::host_tools::is_name_resolution_failure(&out) {
+                    out.push_str(super::host_tools::NO_NETWORK_HINT);
                 }
             }
             // Which shell ran it, on a failure only: that is when the model is
@@ -2417,6 +2504,24 @@ impl BashCapture {
 /// deliberately left unprefixed (a non-zero exit is not an "ERROR" string, since
 /// commands like `grep`/`diff`/`test` exit non-zero without failing); this feeds
 /// the display-only `is_error` flag so the TUI marks the call failed.
+/// Whether a failed PowerShell command's output is a path the shell could not
+/// reach from where it runs: not found / does not exist, or `Set-Location`
+/// refused ("Access is denied") on a directory outside the mounted workspace.
+fn cwd_note_applies(class: &super::shell_diag::FailureClass, out: &str) -> bool {
+    if *class == super::shell_diag::FailureClass::NotFound {
+        return true;
+    }
+    let lower = out.to_lowercase();
+    lower.contains("does not exist")
+        || (lower.contains("set-location") && lower.contains("access is denied"))
+}
+
+fn cwd_note(workspace: &str) -> String {
+    format!(
+        "[cwd: {workspace}. The project is not the working directory; use absolute paths.]\n"
+    )
+}
+
 pub fn bash_result_failed(content: &str) -> bool {
     content.lines().any(|line| {
         let l = line.trim();
@@ -6156,6 +6261,54 @@ on_failure = \"warn\"
         let root = unique_root();
         let out = execute_builtin(lookup("bash").unwrap(), &json!({}), &root).await;
         assert!(out.starts_with("ERROR: missing required argument"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cwd_note_names_the_workspace_on_path_failures_only() {
+        use super::super::shell_diag::FailureClass;
+        assert!(cwd_note_applies(&FailureClass::NotFound, ""));
+        assert!(cwd_note_applies(
+            &FailureClass::FileAccessDenied,
+            "Set-Location : Access is denied\n[exit 1]"
+        ));
+        assert!(cwd_note_applies(&FailureClass::Other, "x.ps1 does not exist"));
+        assert!(!cwd_note_applies(&FailureClass::Other, "test failed\n[exit 1]"));
+        assert!(!cwd_note_applies(
+            &FailureClass::FileAccessDenied,
+            "Get-Content : Access to the path 'C:\\x' is denied."
+        ));
+        let n = cwd_note(r"C:\ws");
+        assert!(n.starts_with("[cwd: C:\\ws. The project is not the working directory"), "{n}");
+    }
+
+    #[tokio::test]
+    async fn read_and_ls_explain_the_common_mistakes() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("dir")).unwrap();
+        std::fs::write(root.join(".git"), "gitdir: C:/elsewhere\n").unwrap();
+        std::fs::write(root.join("plain.txt"), "x").unwrap();
+        std::fs::write(root.join("blob.bin"), [0xff_u8, 0xfe, 0x00, 0x80]).unwrap();
+
+        let (missing, _) = read(&serde_json::json!({"path": "nope.md"}), &root, None, &[]).await;
+        assert!(missing.starts_with("ERROR: File not found: nope.md."), "{missing}");
+        assert!(missing.contains(&root.display().to_string()), "{missing}");
+        assert!(!missing.contains("cannot create"), "{missing}");
+
+        let (dir, _) = read(&serde_json::json!({"path": "dir"}), &root, None, &[]).await;
+        assert_eq!(dir, "ERROR: dir is a directory; use ls.");
+
+        let (bin, _) = read(&serde_json::json!({"path": "blob.bin"}), &root, None, &[]).await;
+        assert_eq!(bin, "ERROR: Binary file (4 bytes); read only returns text.");
+
+        let git = ls(&serde_json::json!({"path": ".git"}), &root, None, false, &[]).await;
+        assert!(git.contains("is a file, not a directory") && git.contains("read it"), "{git}");
+        let plain = ls(&serde_json::json!({"path": "plain.txt"}), &root, None, false, &[]).await;
+        assert!(plain.ends_with("use read."), "{plain}");
+
+        // A call with no arguments at all lists the workspace.
+        let listed = ls(&serde_json::Value::Null, &root, None, false, &[]).await;
+        assert!(listed.contains("plain.txt"), "{listed}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

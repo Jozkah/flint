@@ -426,12 +426,46 @@ pub fn requires_posix_shell(command: &str) -> Option<&'static str> {
         .map(|(_, what)| *what)
 }
 
+/// Constructs from [`POSIX_ONLY`] that PowerShell also parses, with a meaning
+/// close enough that refusing them only blocks valid commands: `$(...)` is a
+/// PowerShell subexpression, `${name}` a braced variable, `2>&1` merges the
+/// error stream exactly as in POSIX, and a backtick pair is two escapes.
+const POWERSHELL_VALID: &[&str] = &["$(", "${", "2>&1"];
+
+/// [`requires_posix_shell`] as seen by the shell that will actually run the
+/// command. PowerShell accepts `$(...)`, `${...}`, `2>&1` (and `*>&1`,
+/// `2>$null`, which were never listed) and uses the backtick as its escape
+/// character, so none of those is evidence of a bash-only command there.
+pub fn requires_posix_shell_for(command: &str, flavor: ShellFlavor) -> Option<&'static str> {
+    if flavor != ShellFlavor::PowerShell {
+        return requires_posix_shell(command);
+    }
+    POSIX_ONLY
+        .iter()
+        .filter(|(needle, _)| !POWERSHELL_VALID.contains(needle))
+        .find(|(needle, _)| command.contains(needle))
+        .map(|(_, what)| *what)
+}
+
+/// The reason a POSIX shell was rejected, cut to one sentence when it is the
+/// long Git Bash / MSYS2 loader explanation: the refusal is about the command,
+/// and the paragraph on AppContainer internals only buried the actionable part.
+fn short_posix_reason(why: &str) -> String {
+    if why.contains("STATUS_DLL_INIT_FAILED") || why.contains("MSYS") {
+        "Git Bash (MSYS2) cannot start inside the Windows sandbox (STATUS_DLL_INIT_FAILED)."
+            .to_string()
+    } else {
+        why.to_string()
+    }
+}
+
 /// The refusal handed back when a command needs a POSIX shell and none can run.
 ///
 /// Structured and actionable on purpose: it names the construct, the shell that
 /// is available instead, and why the POSIX one is not being used. It never
 /// silently re-runs the command through another interpreter.
 pub fn posix_unavailable_error(construct: &str, available: &ShellConfig, why: &str) -> String {
+    let why = short_posix_reason(why);
     format!(
         "ERROR: this command needs a POSIX shell -- it uses {construct} -- and none is \
          available here.\n\
@@ -665,15 +699,96 @@ fn confine_limits(cmd: &mut Command) {
 /// moves to it. The path is quoted as a PowerShell literal (see
 /// [`ps_literal`]). The process's own working directory is already the
 /// workspace, so native programs the command runs are unaffected.
+///
+/// Three more things are set up for PowerShell, each for a failure seen in
+/// real runs:
+///
+/// - `[Environment]::CurrentDirectory` and `$env:JAN_WORKSPACE` are set to the
+///   workspace path. A nested `powershell -File x.ps1` does not inherit the
+///   parent's PSDrive location; it starts from the process's .NET current
+///   directory, which inside the container had become a drive root (`I:\`),
+///   so the script's relative paths missed. `JAN_WORKSPACE` gives a script an
+///   absolute path to the same place.
+/// - The user command is compiled on its own, as the first line of a script
+///   block, so PowerShell's "At line:N char:M" positions refer to the command
+///   the model wrote rather than to a line that begins with this prologue.
+///   It is dot-sourced, so variables and functions behave as if typed at the
+///   top level.
+/// - The exit status is honest. `powershell -Command` exits 0 whenever the
+///   *last* statement succeeded, so a command whose earlier statement threw
+///   ("Exception calling ...", a method on `$null`) reported success. The
+///   command is now failed when either
+///     * `$?` is false after its last statement (as before, and as
+///       `-Command` itself decides), or
+///     * a statement- or script-terminating error occurred anywhere in it.
+///   The second is read from `$Error`: records added while the command ran
+///   whose origin is not a cmdlet or native program. Non-terminating cmdlet
+///   errors are deliberately *not* counted -- they include those silenced
+///   with `-ErrorAction SilentlyContinue` (still recorded in `$Error`, with
+///   `$?` false for that statement only), which are used exactly when a
+///   missing item is an expected answer, e.g. `Get-Command x -EA
+///   SilentlyContinue; ...`. Native stderr redirected with `2>&1` becomes an
+///   error record from the native program and is not counted either; the
+///   program's exit code speaks for it. A failing native program's own exit
+///   code is kept when it is the reason.
 pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
     match flavor {
-        ShellFlavor::PowerShell => format!(
-            "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{}' -Scope Global; \
-             Set-Location JanWorkspace:\\; {command}",
-            ps_literal(&cwd.to_string_lossy())
-        ),
+        ShellFlavor::PowerShell => {
+            let ws = ps_literal(&cwd.to_string_lossy());
+            let body = ps_literal(&format!("{command}\n$global:__JanOk = $?"));
+            format!(
+                "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
+                 Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
+                 $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
+                 . ([scriptblock]::Create('{body}'))\n\
+                 $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
+                 Where-Object {{ $_ -is [System.Management.Automation.ErrorRecord] -and \
+                 $_.InvocationInfo.MyCommand -isnot [System.Management.Automation.CmdletInfo] -and \
+                 $_.InvocationInfo.MyCommand -isnot [System.Management.Automation.ApplicationInfo] }}).Count\n\
+                 if ($global:__JanThrown -or -not $global:__JanOk) {{ if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}; exit 1 }}; exit 0"
+            )
+        }
         _ => command.to_string(),
     }
+}
+
+/// Remove the PowerShell prologue from an error message that quotes it.
+///
+/// A parse error in the command is reported against the wrapper line that
+/// compiles it, and PowerShell echoes that line with its "At line" position
+/// and `~~~` marker. Those lines name `JanWorkspace`, `__Jan` variables and
+/// `[scriptblock]::Create`, none of which the model wrote; left in, it tried
+/// to "fix" them. The parse error's own message, which points into the
+/// command, is kept.
+pub(crate) fn strip_prologue(output: &str) -> String {
+    const MARKERS: &[&str] = &["__Jan", "JanWorkspace -PSProvider", "[scriptblock]::Create("];
+    let lines: Vec<&str> = output.split('\n').collect();
+    let mut drop = vec![false; lines.len()];
+    for (i, line) in lines.iter().enumerate() {
+        if !MARKERS.iter().any(|m| line.contains(m)) {
+            continue;
+        }
+        drop[i] = true;
+        if i > 0 && lines[i - 1].trim_start().starts_with("At line:") {
+            drop[i - 1] = true;
+        }
+        if let Some(next) = lines.get(i + 1) {
+            let t = next.trim();
+            if t.starts_with('+') && t[1..].trim().chars().all(|c| c == '~' || c == ' ') {
+                drop[i + 1] = true;
+            }
+        }
+    }
+    if !drop.iter().any(|d| *d) {
+        return output.to_string();
+    }
+    lines
+        .iter()
+        .zip(drop)
+        .filter(|(_, d)| !d)
+        .map(|(l, _)| *l)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Text to put between single quotes in a PowerShell command.
@@ -697,6 +812,86 @@ pub(crate) fn ps_literal(text: &str) -> String {
 #[cfg(test)]
 mod located_tests {
     use super::*;
+
+    #[test]
+    fn prologue_echoes_are_stripped_and_the_rest_kept() {
+        let out = "At line:1 char:15\n+ Write-Output (1 +\n+               ~~~\nMissing expression.\n\
+                   At line:2 char:1\n+ . ([scriptblock]::Create('Write-Output (1 +\n+ ~~~~~~~~~\n\
+                   + $global:__JanOk = $?\n+ ~\n[exit 1]";
+        let s = strip_prologue(out);
+        assert!(!s.contains("__Jan") && !s.contains("scriptblock"), "{s}");
+        assert!(s.contains("+ Write-Output (1 +") && s.contains("Missing expression."), "{s}");
+        assert!(s.contains("At line:1 char:15") && !s.contains("At line:2"), "{s}");
+        assert!(s.ends_with("[exit 1]"), "{s}");
+        assert_eq!(strip_prologue("plain\n[exit 0]"), "plain\n[exit 0]");
+    }
+
+    /// Runs `command` through the real wrapper in unsandboxed Windows
+    /// PowerShell, which parses it exactly as the sandboxed one does.
+    #[cfg(windows)]
+    fn run_wrapped(command: &str) -> (i32, String, String) {
+        let ws = std::env::temp_dir().join(format!(
+            "jan-wrapped-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&ws).unwrap();
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(located(ShellFlavor::PowerShell, command, &ws))
+            .current_dir(&ws)
+            .output()
+            .expect("powershell runs");
+        let _ = std::fs::remove_dir_all(&ws);
+        (
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stdout).to_string(),
+            String::from_utf8_lossy(&out.stderr).to_string(),
+        )
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_statement_that_threw_fails_the_command_even_if_later_ones_succeed() {
+        let (code, out, err) = run_wrapped("[IO.File]::ReadAllText('Z:\\nope\\x'); Write-Output after");
+        assert_ne!(code, 0, "{out} / {err}");
+        // Statement-terminating: the rest still ran, as it would natively.
+        assert!(out.contains("after"), "{out}");
+        // The position refers to the command, not to the prologue.
+        assert!(err.contains("At line:1 char:1"), "{err}");
+        assert!(!err.contains("JanWorkspace"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn exit_status_follows_the_last_statement_and_native_codes() {
+        assert_eq!(run_wrapped("Write-Output fine").0, 0);
+        assert_eq!(run_wrapped("cmd /c exit 3").0, 3);
+        assert_eq!(run_wrapped("exit 7").0, 7);
+        assert_ne!(run_wrapped("Write-Output a; throw 'boom'; Write-Output b").0, 0);
+        // A silenced lookup followed by more work is an answer, not a failure.
+        assert_eq!(
+            run_wrapped("Get-Command no-such-thing-jan -ErrorAction SilentlyContinue; Write-Output ok").0,
+            0
+        );
+        // Quotes in the command survive the literal it is compiled from.
+        let (code, out, _) = run_wrapped("Write-Output \"it's\"; Write-Output 'a''b'");
+        assert_eq!(code, 0);
+        assert!(out.contains("it's") && out.contains("a'b"), "{out}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn nested_processes_see_the_workspace_as_current_directory() {
+        let (code, out, err) = run_wrapped(
+            "[Environment]::CurrentDirectory; $env:JAN_WORKSPACE",
+        );
+        assert_eq!(code, 0, "{err}");
+        let lines: Vec<&str> = out.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "{out}");
+        assert!(lines[0].contains("jan-wrapped-"), "{out}");
+        assert_eq!(lines[0], lines[1], "{out}");
+    }
 
     #[test]
     fn every_quote_powershell_honours_is_doubled() {
@@ -1848,6 +2043,41 @@ mod posix_tests {
                 "wrongly refused: {command}"
             );
         }
+    }
+
+    #[test]
+    fn powershell_syntax_is_not_mistaken_for_posix() {
+        for command in [
+            "git status 2>&1",
+            "npm test *>&1",
+            "Remove-Item x 2>$null",
+            "Write-Output $(Get-Date)",
+            "Write-Output ${env:PATH}",
+            "Write-Output \"a`tb`n\"",
+        ] {
+            assert_eq!(
+                requires_posix_shell_for(command, ShellFlavor::PowerShell),
+                None,
+                "wrongly refused for PowerShell: {command}"
+            );
+        }
+        // Still bash-only in PowerShell.
+        for command in ["cat <<EOF\nhi\nEOF", "export FOO=1", "ls | xargs rm"] {
+            assert!(requires_posix_shell_for(command, ShellFlavor::PowerShell).is_some(), "{command}");
+        }
+        // cmd keeps the full list.
+        assert!(requires_posix_shell_for("echo $(date)", ShellFlavor::Cmd).is_some());
+    }
+
+    #[test]
+    fn the_msys_startup_paragraph_is_cut_to_one_sentence() {
+        let cmd = c("cmd.exe", &["/C"], "cmd", ShellFlavor::Cmd);
+        let long = "bash.exe could not start in the sandbox: The program started and then its \
+                    runtime failed to initialise (STATUS_DLL_INIT_FAILED). Git Bash and the other \
+                    MSYS2 programs shipped with Git for Windows cannot initialise.";
+        let message = posix_unavailable_error("a heredoc", &cmd, long);
+        assert!(message.contains("Git Bash (MSYS2) cannot start inside the Windows sandbox"), "{message}");
+        assert!(!message.contains("shipped with Git for Windows"), "{message}");
     }
 
     #[test]

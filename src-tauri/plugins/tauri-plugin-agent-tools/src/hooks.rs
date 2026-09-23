@@ -509,7 +509,7 @@ async fn execute(
         // file asked for, and a policy hook that silently runs something else
         // is worse than one that does not run.
         if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
-            if let Some(construct) = proc::requires_posix_shell(&hook.command) {
+            if let Some(construct) = proc::requires_posix_shell_for(&hook.command, selected.report.cfg.flavor) {
                 return (
                     false,
                     String::new(),
@@ -1015,7 +1015,7 @@ mod tests {
         let root = dir("confined");
         write_config(
             &root,
-            "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo $(id -u)\"\non_failure = \"block\"\n",
+            "[[hook]]\nevent = \"pre-tool\"\ncommand = \"export UID_NOW=$(id -u)\"\non_failure = \"block\"\n",
         );
         let hooks = load(&root).unwrap();
         let policy = jail::Policy::new(&root, false).with_home_readonly(true);
@@ -1037,7 +1037,8 @@ mod tests {
         )
         .await;
         if !posix {
-            // No POSIX shell can be confined here, so `$(...)` is refused --
+            // No POSIX shell can be confined here, so `export` is refused --
+            // (`$(...)` alone is valid PowerShell and no longer refused there)
             // not quietly run by cmd or PowerShell, which would do something
             // else entirely.
             let blocked = decision.blocked.expect("a hook that cannot be run as written blocks");
