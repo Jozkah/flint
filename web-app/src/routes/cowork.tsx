@@ -232,7 +232,11 @@ import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
-import { TeamControl, awaitingDecision } from '@/lib/coworkTeamControl'
+import {
+  COWORK_DECISION_WINDOW_MS,
+  TeamControl,
+  awaitingDecision,
+} from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
@@ -3143,6 +3147,7 @@ function CoworkPage() {
                       signal: controller.signal,
                       allowParallel,
                       control: teamControl,
+                      decisionWindowMs: COWORK_DECISION_WINDOW_MS,
                       onControl: (request, result) => {
                         if (!result.ok || request.kind === 'finish') {
                           if (!result.ok) toast.error(result.refusal.message)
