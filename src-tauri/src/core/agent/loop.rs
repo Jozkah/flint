@@ -39,6 +39,153 @@ const MAX_REPEATED_BROKEN_TOOL_TURNS: usize = 5;
 /// Hard ceiling on consecutive turns with nothing executable, however the
 /// broken calls vary, so a run can never loop forever on malformed calls.
 const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
+/// Consecutive turns issuing the identical set of tool calls (same names and
+/// arguments), or consecutive turns whose every tool call failed, after which
+/// the run is considered stuck and the user is asked for guidance.
+pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+
+/// Why the loop decided the model is stuck.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum StuckReason {
+    /// The same tool calls, with the same arguments, `count` turns in a row.
+    RepeatedCalls { count: usize, calls: String },
+    /// Every tool call failed, `count` turns in a row.
+    RepeatedErrors { count: usize, last_error: String },
+}
+
+impl StuckReason {
+    pub(crate) fn summary(&self) -> String {
+        match self {
+            StuckReason::RepeatedCalls { count, calls } => format!(
+                "The agent has made the same tool call {count} times in a row without progress: {calls}"
+            ),
+            StuckReason::RepeatedErrors { count, last_error } => format!(
+                "The agent's tool calls have failed {count} turns in a row. Latest error: {last_error}"
+            ),
+        }
+    }
+}
+
+/// Tracks executed tool-call turns to notice a model going around in circles.
+#[derive(Debug, Default)]
+pub(crate) struct StuckDetector {
+    last_signature: Option<String>,
+    repeats: usize,
+    error_turns: usize,
+}
+
+impl StuckDetector {
+    /// Canonical identity of a turn's calls: name plus parsed arguments, sorted
+    /// so call order does not matter.
+    pub(crate) fn signature(calls: &[serde_json::Value]) -> String {
+        let mut parts: Vec<String> = calls
+            .iter()
+            .map(|tc| {
+                let f = tc.get("function");
+                let name = f
+                    .and_then(|f| f.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let args = match f.and_then(|f| f.get("arguments")) {
+                    Some(serde_json::Value::String(s)) => {
+                        serde_json::from_str::<serde_json::Value>(s)
+                            .map(|v| canonical_json(&v))
+                            .unwrap_or_else(|_| s.clone())
+                    }
+                    Some(v) => canonical_json(v),
+                    None => String::new(),
+                };
+                format!("{name}({args})")
+            })
+            .collect();
+        parts.sort();
+        parts.join(", ")
+    }
+
+    /// Record one turn. Returns a reason once a limit is reached.
+    pub(crate) fn observe(
+        &mut self,
+        signature: String,
+        all_failed: bool,
+        last_error: &str,
+    ) -> Option<StuckReason> {
+        if self.last_signature.as_deref() == Some(signature.as_str()) {
+            self.repeats += 1;
+        } else {
+            self.repeats = 1;
+        }
+        self.error_turns = if all_failed { self.error_turns + 1 } else { 0 };
+        let reason = if self.repeats >= STUCK_TURN_LIMIT {
+            Some(StuckReason::RepeatedCalls {
+                count: self.repeats,
+                calls: truncate_chars(&signature, 300),
+            })
+        } else if self.error_turns >= STUCK_TURN_LIMIT {
+            Some(StuckReason::RepeatedErrors {
+                count: self.error_turns,
+                last_error: truncate_chars(last_error, 300),
+            })
+        } else {
+            None
+        };
+        self.last_signature = Some(signature);
+        reason
+    }
+
+    /// Forget history, e.g. after the user has given guidance.
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+/// JSON text with object keys sorted at every level, so two argument objects
+/// that differ only in key order compare equal.
+fn canonical_json(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let body: Vec<String> = keys
+                .into_iter()
+                .map(|k| {
+                    let key = serde_json::Value::String(k.clone());
+                    format!("{key}:{}", canonical_json(&map[k]))
+                })
+                .collect();
+            format!("{{{}}}", body.join(","))
+        }
+        serde_json::Value::Array(items) => {
+            let body: Vec<String> = items.iter().map(canonical_json).collect();
+            format!("[{}]", body.join(","))
+        }
+        other => other.to_string(),
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let head: String = s.chars().take(max).collect();
+        format!("{head}...")
+    }
+}
+
+/// Result of asking the user for guidance outside of a model `ask` call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum UserGuidance {
+    /// No interactive UI is attached.
+    Unavailable,
+    /// The user dismissed the question or chose to stop.
+    Stop,
+    /// The user's answer, to hand to the model.
+    Answer(String),
+}
+
+/// Option label the user picks to end a stuck run.
+const STUCK_STOP_LABEL: &str = "Stop the run";
+/// Option label the user picks to let a stuck run continue.
+const STUCK_CONTINUE_LABEL: &str = "Try a different approach";
 #[cfg(not(feature = "cli"))]
 use crate::core::server::proxy::router_first_model;
 #[cfg(not(feature = "cli"))]
@@ -265,6 +412,12 @@ pub(crate) trait ToolInvoker: Send + Sync {
     fn observe_conversation(&self, _messages: &[serde_json::Value]) {}
 
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError>;
+
+    /// Ask the user how to proceed when the run looks stuck. The default has no
+    /// UI to ask through.
+    async fn ask_user_guidance(&self, _summary: &str) -> UserGuidance {
+        UserGuidance::Unavailable
+    }
 }
 
 /// One provider request, as the canonical record names it (AH-004).
@@ -2628,6 +2781,31 @@ impl ToolInvoker for CompositeToolInvoker {
             self.record_outcomes(tool_calls, outcomes);
         }
         out
+    }
+
+    async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
+        if self.ask_requests.is_none() {
+            return UserGuidance::Unavailable;
+        }
+        let args = serde_json::json!({
+            "questions": [{
+                "id": "stuck",
+                "question": format!("{summary}\n\nHow should the agent proceed?"),
+                "options": [
+                    { "label": STUCK_CONTINUE_LABEL, "description": "Continue, telling the agent to stop repeating itself" },
+                    { "label": STUCK_STOP_LABEL, "description": "End the run now" }
+                ],
+                "recommended": 0
+            }]
+        });
+        let answer = self.handle_ask_tool(&args).await;
+        if answer.starts_with("ERROR [interactive_ui_required]") {
+            UserGuidance::Unavailable
+        } else if answer.starts_with("ERROR") || answer.contains(STUCK_STOP_LABEL) {
+            UserGuidance::Stop
+        } else {
+            UserGuidance::Answer(answer)
+        }
     }
 }
 
@@ -5119,6 +5297,8 @@ async fn run_turn_cycle(
     let mut repeated_broken_turns: usize = 0;
     let mut consecutive_broken_turns: usize = 0;
     let mut last_broken_signatures: Option<Vec<String>> = None;
+    // Loops over well-formed calls: identical repeats, or nothing but errors.
+    let mut stuck = StuckDetector::default();
     // Mid-run todo upkeep: after a long uninterrupted run of mutating tool
     // calls with no todo touch, nudge the model once to keep the list honest
     // rather than only ever reminding it at a full stop -- a task that never
@@ -5844,6 +6024,28 @@ async fn run_turn_cycle(
         // Reset wins over any mutations counted in the same batch: touching
         // `todo` at all means the list was just reconciled, regardless of
         // what else ran alongside it.
+        let stuck_reason = if executable.is_empty() {
+            // All-broken turns have their own guard above.
+            None
+        } else {
+            let failures: Vec<&str> = tool_results
+                .iter()
+                .filter(|o| {
+                    let name = tool_names.get(o.id.as_str()).copied().unwrap_or("");
+                    tauri_plugin_agent_tools::harness_error::classify_tool(name, &o.content)
+                        .is_some()
+                        || (name == "bash"
+                            && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(
+                                &o.content,
+                            ))
+                })
+                .map(|o| o.content.as_str())
+                .collect();
+            let all_failed = !tool_results.is_empty() && failures.len() == tool_results.len();
+            let last_error = failures.last().copied().unwrap_or("").to_string();
+            stuck.observe(StuckDetector::signature(&executable), all_failed, &last_error)
+        };
+
         let mut todo_touched_this_batch = false;
         for outcome in tool_results {
             let ToolOutcome {
@@ -5901,6 +6103,35 @@ async fn run_turn_cycle(
                 "tool_call_id": id,
                 "content": wire_content
             }));
+        }
+        if let Some(reason) = stuck_reason {
+            let summary = reason.summary();
+            match tools.ask_user_guidance(&summary).await {
+                UserGuidance::Answer(answer) => {
+                    stuck.reset();
+                    conversation_messages.push(serde_json::json!({
+                        "role": "user",
+                        "content": format!(
+                            "{summary}\nThe run was paused and the user was asked how to proceed.\n\
+                             {answer}\nDo not repeat the same call again; follow this guidance."
+                        ),
+                    }));
+                }
+                UserGuidance::Stop => {
+                    return Err(HarnessError::new(
+                        ErrorKind::Cancelled,
+                        format!("{summary}; the user chose to stop the run"),
+                    )
+                    .at(Stage::Stream));
+                }
+                UserGuidance::Unavailable => {
+                    return Err(HarnessError::new(
+                        ErrorKind::InvalidResponse,
+                        format!("{summary}; the run was stopped rather than looping"),
+                    )
+                    .at(Stage::Stream));
+                }
+            }
         }
         if todo_touched_this_batch {
             mutations_since_todo_touch = 0;
@@ -7205,7 +7436,7 @@ mod tests {
                     "tool_calls": [{
                         "id": id,
                         "type": "function",
-                        "function": { "name": name, "arguments": "{}" }
+                        "function": { "name": name, "arguments": json!({ "step": id }).to_string() }
                     }]
                 },
                 "finish_reason": "tool_calls"
@@ -11105,6 +11336,182 @@ mod tests {
         assert!(
             closed.is_ok(),
             "the event channel never closed while a backgrounded bash job was still running"
+        );
+    }
+
+    #[test]
+    fn stuck_detector_flags_identical_calls_and_error_streaks() {
+        let call = |args: &str| {
+            json!([{ "id": "x", "function": { "name": "read", "arguments": args } }])
+        };
+        let sig = |v: serde_json::Value| StuckDetector::signature(v.as_array().unwrap());
+        // Argument key order does not change the identity of a call.
+        assert_eq!(sig(call("{\"a\":1,\"b\":2}")), sig(call("{\"b\":2,\"a\":1}")));
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert!(matches!(
+            d.observe(sig(call("{\"p\":1}")), false, ""),
+            Some(StuckReason::RepeatedCalls { count: 3, .. })
+        ));
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None);
+        assert_eq!(d.observe(sig(call("{\"p\":2}")), false, ""), None);
+        assert_eq!(d.observe(sig(call("{\"p\":1}")), false, ""), None, "not consecutive");
+
+        let mut d = StuckDetector::default();
+        assert_eq!(d.observe("a".into(), true, "ERROR: x"), None);
+        assert_eq!(d.observe("b".into(), true, "ERROR: y"), None);
+        let reason = d.observe("c".into(), true, "ERROR: z").expect("three failing turns");
+        assert!(reason.summary().contains("ERROR: z"), "{}", reason.summary());
+        d.reset();
+        assert_eq!(d.observe("c".into(), true, "ERROR: z"), None, "reset forgets history");
+    }
+
+    /// Without an interactive UI a run that repeats the same call is stopped
+    /// with an error rather than looping.
+    #[tokio::test]
+    async fn identical_calls_without_ui_stop_the_run() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let calls = std::sync::Arc::new(StdMutex::new(0usize));
+        let model = AlwaysModel {
+            reply: tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}"),
+            calls: calls.clone(),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the run is stopped");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
+            "{err}"
+        );
+        assert!(err.message().contains("same tool call 3 times"), "{err}");
+        assert_eq!(*calls.lock().unwrap(), STUCK_TURN_LIMIT);
+        assert_eq!(tool.calls.lock().unwrap().len(), STUCK_TURN_LIMIT);
+    }
+
+    /// A tool invoker with a UI: answers the stuck question with fixed text.
+    #[derive(Default)]
+    struct GuidedTool {
+        inner: MockTool,
+        asked: StdMutex<Vec<String>>,
+        answer: Option<UserGuidance>,
+    }
+    #[async_trait]
+    impl ToolInvoker for GuidedTool {
+        async fn invoke(
+            &self,
+            tool_calls: &[serde_json::Value],
+        ) -> Result<Vec<ToolOutcome>, HarnessError> {
+            self.inner.invoke(tool_calls).await
+        }
+        async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
+            self.asked.lock().unwrap().push(summary.to_string());
+            self.answer.clone().unwrap_or(UserGuidance::Unavailable)
+        }
+    }
+
+    /// With a UI the loop pauses, asks the user, feeds the answer back as
+    /// guidance, and the run continues.
+    #[tokio::test]
+    async fn identical_calls_with_ui_ask_the_user_and_continue() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let call = || tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}");
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(
+                vec![
+                    call(),
+                    call(),
+                    call(),
+                    json!({ "choices": [{ "message": { "content": "done" } }] }),
+                ]
+                .into(),
+            ),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = GuidedTool {
+            answer: Some(UserGuidance::Answer(
+                "User response for \"stuck\": look in b.txt instead".into(),
+            )),
+            ..Default::default()
+        };
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the run continues after guidance");
+        assert_eq!(tool.asked.lock().unwrap().len(), 1);
+        let requests = model.requests.lock().unwrap();
+        let last = requests.last().unwrap().to_string();
+        assert!(last.contains("look in b.txt instead"), "{last}");
+    }
+
+    /// The user choosing to stop ends the run as cancelled.
+    #[tokio::test]
+    async fn stuck_run_stops_when_the_user_says_so() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = AlwaysModel {
+            reply: tool_call_reply("c1", "read", "{\"path\": \"a.txt\"}"),
+            calls: std::sync::Arc::new(StdMutex::new(0usize)),
+        };
+        let tool = GuidedTool { answer: Some(UserGuidance::Stop), ..Default::default() };
+        let mut budget = SessionBudget::new(None);
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "do it" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the user stopped it");
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::Cancelled,
+            "{err}"
         );
     }
 }
