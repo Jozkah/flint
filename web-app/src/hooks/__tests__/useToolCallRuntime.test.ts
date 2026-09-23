@@ -152,6 +152,20 @@ describe('useToolCallRuntime', () => {
     expect(store().diffs).toEqual({})
   })
 
+  it('accumulates live output per call, keeps it after settle, and clears it on reset', () => {
+    store().enqueue(['a'])
+    store().markRunning('a')
+    store().appendOutput('a', 'one ')
+    store().appendOutput('a', '\x1b[32mtwo\x1b[0m')
+    store().appendOutput('b', 'other')
+    store().markSettled('a')
+    expect(store().output['a']).toBe('one \x1b[32mtwo\x1b[0m')
+    store().forget(['b'])
+    expect(store().output['b']).toBeUndefined()
+    store().reset()
+    expect(store().output).toEqual({})
+  })
+
   it('records diffs per call without disturbing the others', () => {
     store().recordDiff('a', 'first')
     store().recordDiff('b', 'second')

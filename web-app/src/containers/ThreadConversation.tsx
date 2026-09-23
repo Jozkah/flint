@@ -742,6 +742,12 @@ export function ThreadConversation({
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',
+                  // Live command output for the terminal card; raw, so it
+                  // keeps colours the model-facing result does not.
+                  onOutput: (text) =>
+                    useToolCallRuntime
+                      .getState()
+                      .appendOutput(toolCall.toolCallId, text),
                 }
               )
               // The diff is display-only, so it goes to the runtime store rather

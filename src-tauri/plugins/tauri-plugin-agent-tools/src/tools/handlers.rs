@@ -2393,15 +2393,65 @@ fn bytecount_newlines(bytes: &[u8]) -> usize {
 }
 
 /// Drop control characters that would corrupt the model's view of the output
-/// (NUL, bell, ANSI escapes, etc.), keeping only tab and newline. Carriage
-/// returns are already resolved by [`collapse_carriage_returns`] beforehand.
+/// (NUL, bell, etc.), keeping only tab and newline. ANSI escape sequences are
+/// removed whole, so colour codes leave no `[31m`-style residue behind.
+/// Carriage returns are already resolved by [`collapse_carriage_returns`]
+/// beforehand. The live output stream to the UI does not pass through here, so
+/// the UI can still render colours.
 fn sanitize_control(s: &str) -> String {
     if !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n') {
         return s.to_string();
     }
-    s.chars()
+    strip_ansi(s)
+        .chars()
         .filter(|&c| !c.is_control() || c == '\t' || c == '\n')
         .collect()
+}
+
+/// Remove ANSI escape sequences: CSI (`ESC [ ... final`), OSC (`ESC ] ...`
+/// ended by BEL or `ESC \`), and two-character `ESC x` escapes. A C1 CSI
+/// (`U+009B`) is treated like `ESC [`.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => match chars.next() {
+                Some('[') => skip_csi(&mut chars),
+                Some(']') => {
+                    // OSC: skip to BEL or ST.
+                    while let Some(o) = chars.next() {
+                        if o == '\u{7}' {
+                            break;
+                        }
+                        if o == '\u{1b}' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                // Character-set designation: ESC ( B and friends.
+                Some('(' | ')' | '*' | '+') => {
+                    chars.next();
+                }
+                _ => {}
+            },
+            '\u{9b}' => skip_csi(&mut chars),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Consume a CSI's parameter and intermediate bytes and its final byte.
+fn skip_csi(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    for p in chars.by_ref() {
+        if ('\u{40}'..='\u{7e}').contains(&p) {
+            break;
+        }
+    }
 }
 
 /// Keep the last `max_lines` lines and last `max_bytes` bytes of `s` (trimming
@@ -6137,7 +6187,21 @@ on_failure = \"warn\"
         assert!(!out.contains('\u{0}'), "NUL must be stripped");
         assert!(!out.contains('\u{7}'), "bell must be stripped");
         assert!(!out.contains('\u{1b}'), "escape must be stripped");
+        assert!(!out.contains("[31m") && !out.contains("[0m"), "no SGR residue: {out:?}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_osc_and_short_escapes() {
+        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m plain"), "red plain");
+        assert_eq!(strip_ansi("a\u{1b}]0;title\u{7}b"), "ab");
+        assert_eq!(
+            strip_ansi("a\u{1b}]8;;http://x\u{1b}\\link\u{1b}]8;;\u{1b}\\b"),
+            "alinkb"
+        );
+        assert_eq!(strip_ansi("x\u{1b}(By"), "xy");
+        assert_eq!(strip_ansi("\u{9b}32mgreen"), "green");
+        assert_eq!(strip_ansi("no escapes"), "no escapes");
     }
 
     #[tokio::test]

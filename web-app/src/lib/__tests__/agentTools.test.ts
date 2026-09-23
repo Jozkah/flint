@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const advertisedToolSchemas = vi.fn()
 const executeTool = vi.fn()
+const executeToolStreaming = vi.fn()
 const threadWorkspaceDelete = vi.fn()
 const threadWorkspaceSweep = vi.fn()
 const sandboxStatus = vi.fn()
@@ -10,6 +11,7 @@ const getJanDataFolder = vi.fn()
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   advertisedToolSchemas: (...args: unknown[]) => advertisedToolSchemas(...args),
   executeTool: (...args: unknown[]) => executeTool(...args),
+  executeToolStreaming: (...args: unknown[]) => executeToolStreaming(...args),
   threadWorkspaceDelete: (...args: unknown[]) => threadWorkspaceDelete(...args),
   threadWorkspaceSweep: (...args: unknown[]) => threadWorkspaceSweep(...args),
   sandboxStatus: () => sandboxStatus(),
@@ -18,6 +20,9 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
 const invoke = vi.fn()
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
+  Channel: class {
+    onmessage: (m: unknown) => void = () => {}
+  },
 }))
 
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -97,7 +102,12 @@ describe('agentTools', () => {
   /// generated binding cannot pass, so a scoped request calls the plugin
   /// command itself -- and is cached apart from the thread list.
   it('passes the session scope to the backend and caches it apart from threads', async () => {
-    const messaging = ['list_sessions', 'send_message', 'read_messages', 'wait_for_reply']
+    const messaging = [
+      'list_sessions',
+      'send_message',
+      'read_messages',
+      'wait_for_reply',
+    ]
     advertisedToolSchemas.mockResolvedValue(advertising(['read']))
     invoke.mockReset().mockResolvedValue(advertising(['read', ...messaging]))
     const { getAgentToolSchemas } = await import('../agentTools')
@@ -106,15 +116,18 @@ describe('agentTools', () => {
     expect(thread).toEqual(['read'])
     expect(invoke).not.toHaveBeenCalled()
 
-    const session = (await getAgentToolSchemas('/p', undefined, 'session' as never)).map(
-      (s) => s.function.name
-    )
+    const session = (
+      await getAgentToolSchemas('/p', undefined, 'session' as never)
+    ).map((s) => s.function.name)
     expect(session).toEqual(['read', ...messaging])
-    expect(invoke).toHaveBeenCalledWith('plugin:agent-tools|advertised_tool_schemas', {
-      projectRoot: '/p',
-      reported: undefined,
-      scope: 'session',
-    })
+    expect(invoke).toHaveBeenCalledWith(
+      'plugin:agent-tools|advertised_tool_schemas',
+      {
+        projectRoot: '/p',
+        reported: undefined,
+        scope: 'session',
+      }
+    )
   })
 
   it('advertises the workspace tools including writes and bash', async () => {
@@ -295,6 +308,31 @@ describe('agentTools', () => {
     const call = executeTool.mock.calls.at(-1) as unknown[]
     expect(call[9]).toBe('session')
     expect(call[11]).toBe('run-7')
+  })
+
+  it('streams bash output in seq order when a sink is given', async () => {
+    executeToolStreaming.mockImplementation(
+      async (
+        _d: string,
+        _t: string,
+        _n: string,
+        _a: unknown,
+        channel: { onmessage: (m: { seq: number; text: string }) => void }
+      ) => {
+        channel.onmessage({ seq: 1, text: 'b' })
+        channel.onmessage({ seq: 0, text: 'a' })
+        channel.onmessage({ seq: 2, text: 'c' })
+        return { content: 'abc [exit 0]', diff: null, isError: false }
+      }
+    )
+    const chunks: string[] = []
+    const { executeAgentTool } = await import('../agentTools')
+    const result = await executeAgentTool('bash', { command: 'x' }, 't', {
+      onOutput: (text) => chunks.push(text),
+    })
+    expect(chunks).toEqual(['a', 'b', 'c'])
+    expect(result.content).toBe('abc [exit 0]')
+    expect(executeTool).not.toHaveBeenCalled()
   })
 
   it('passes the network setting through to the plugin', async () => {

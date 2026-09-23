@@ -1323,6 +1323,8 @@ export async function executeToolStreaming(
     scope?: WorkspaceScope
     callId?: string
     undoRun?: string
+    /** Who is making this call (AH-110); journaled with every file it changes. */
+    actor?: ChangeActorInput
   }
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
@@ -1339,6 +1341,7 @@ export async function executeToolStreaming(
     writeGrant: options?.writeGrant,
     scope: options?.scope,
     callId: options?.callId,
+    actor: options?.actor,
   })
 }
 

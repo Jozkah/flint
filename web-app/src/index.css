@@ -412,3 +412,42 @@ html.kb-open .kb-hidden {
     padding: 6px 16px !important;
   }
 }
+/* ANSI terminal palette for command output (lib/ansi.ts). Tuned per theme so
+   every colour keeps readable contrast on the card background. */
+:root {
+  --ansi-black: #3b3b3b;
+  --ansi-red: #c62828;
+  --ansi-green: #2e7d32;
+  --ansi-yellow: #9a6700;
+  --ansi-blue: #1f5fbf;
+  --ansi-magenta: #a3329e;
+  --ansi-cyan: #0f7b83;
+  --ansi-white: #6e6e6e;
+  --ansi-bright-black: #6b6b6b;
+  --ansi-bright-red: #e0443a;
+  --ansi-bright-green: #3a9a3f;
+  --ansi-bright-yellow: #b58400;
+  --ansi-bright-blue: #3b7be0;
+  --ansi-bright-magenta: #c045bb;
+  --ansi-bright-cyan: #1597a0;
+  --ansi-bright-white: #1f1f1f;
+}
+
+.dark {
+  --ansi-black: #7a7a7a;
+  --ansi-red: #f07178;
+  --ansi-green: #8bd48b;
+  --ansi-yellow: #e6c46b;
+  --ansi-blue: #7aa7f0;
+  --ansi-magenta: #d99be6;
+  --ansi-cyan: #6fd3d8;
+  --ansi-white: #d0d0d0;
+  --ansi-bright-black: #9a9a9a;
+  --ansi-bright-red: #ff8f95;
+  --ansi-bright-green: #a8e6a8;
+  --ansi-bright-yellow: #f2d88f;
+  --ansi-bright-blue: #9dc0ff;
+  --ansi-bright-magenta: #e9b7f2;
+  --ansi-bright-cyan: #95e6ea;
+  --ansi-bright-white: #ffffff;
+}

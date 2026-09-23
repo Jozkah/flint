@@ -34,6 +34,12 @@ export type ToolCallRuntimeSnapshot = {
    * settles, since the diff is the whole point of the finished card.
    */
   diffs: Record<string, string>
+  /**
+   * Live `bash` output per call, as streamed by the backend: raw, so it keeps
+   * the command's ANSI colours (the model-facing result has them stripped).
+   * Kept after the call settles so the finished card can still show colours.
+   */
+  output: Record<string, string>
 }
 
 type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
@@ -52,6 +58,8 @@ type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
   reportProgress: (update: ToolProgressUpdate) => void
   /** Records a display-only diff against the call that produced it. */
   recordDiff: (toolCallId: string, diff: string) => void
+  /** Appends a chunk of live command output to the call that produced it. */
+  appendOutput: (toolCallId: string, text: string) => void
   /** Ends a turn: nothing still queued will run, so stop showing it as waiting. */
   settleRemaining: () => void
   reset: () => void
@@ -89,6 +97,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
   timings: {},
   progress: {},
   diffs: {},
+  output: {},
 
   enqueue: (toolCallIds) =>
     set((s) => {
@@ -147,6 +156,14 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
   recordDiff: (toolCallId, diff) =>
     set((s) => ({ diffs: { ...s.diffs, [toolCallId]: diff } })),
 
+  appendOutput: (toolCallId, text) =>
+    set((s) => ({
+      output: {
+        ...s.output,
+        [toolCallId]: (s.output[toolCallId] ?? '') + text,
+      },
+    })),
+
   settleRemaining: () =>
     set((s) => {
       if (s.queue.length === 0) return s
@@ -158,13 +175,14 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       return { queue: [], timings }
     }),
 
-  reset: () => set({ queue: [], timings: {}, progress: {}, diffs: {} }),
+  reset: () =>
+    set({ queue: [], timings: {}, progress: {}, diffs: {}, output: {} }),
 
   forget: (toolCallIds) =>
     set((s) => {
       if (toolCallIds.length === 0) return s
       const drop = new Set(toolCallIds)
-      const keep = <T,>(record: Record<string, T>) =>
+      const keep = <T>(record: Record<string, T>) =>
         Object.fromEntries(
           Object.entries(record).filter(([id]) => !drop.has(id))
         ) as Record<string, T>
@@ -173,6 +191,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
         timings: keep(s.timings),
         progress: keep(s.progress),
         diffs: keep(s.diffs),
+        output: keep(s.output),
       }
     }),
 }))
