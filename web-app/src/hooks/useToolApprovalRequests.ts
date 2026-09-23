@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
+import { destructiveCommandReason } from '@/lib/destructiveCommand'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -151,6 +152,26 @@ type ToolApprovalRequestsState = {
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
+/**
+ * Why a `bash` call's command looks destructive, or null. `workspace` is used
+ * only when it is an absolute path; a display label is ignored.
+ */
+function bashDestructiveReason(
+  toolName: string,
+  input: unknown,
+  workspace: string | undefined
+): string | null {
+  if (toolName !== 'bash') return null
+  const command = (input as { command?: unknown } | undefined)?.command
+  if (typeof command !== 'string') return null
+  const root =
+    workspace &&
+    (/^[a-zA-Z]:[\\/]/.test(workspace) || workspace.startsWith('/'))
+      ? workspace
+      : ''
+  return destructiveCommandReason(command, root)
+}
+
 let nextRequest = 0
 const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
 
@@ -253,8 +274,26 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         // A standing grant answers without a prompt: allow-all, a server the
         // user trusts, the tool everywhere, or the tool in this thread --
         // except for a tool that must be asked about every time.
+        //
+        // A shell command that looks destructive (`rm -rf ~`, `git push
+        // --force`, an `eval` nobody can check) is asked about on every
+        // surface, whatever grant exists -- not only where the caller thought
+        // to pass `alwaysAsk`. Without a known project path every absolute
+        // path counts as outside it, which errs toward asking.
+        const destructive = bashDestructiveReason(
+          toolName,
+          context?.input,
+          context?.workspaceLabel
+        )
         const alwaysAsk =
-          ALWAYS_ASK_TOOLS.has(toolName) || context?.alwaysAsk === true
+          ALWAYS_ASK_TOOLS.has(toolName) ||
+          context?.alwaysAsk === true ||
+          destructive !== null
+        const taskContext =
+          context?.taskContext ??
+          (destructive
+            ? `Destructive command: ${destructive}. Asked even though this tool is otherwise allowed.`
+            : undefined)
         // "Allow all MCP permissions" is an MCP-server setting (that is what its
         // label promises), so it only auto-approves a server's tool -- never a
         // built-in agent tool (write/edit/bash, no serverName), which must still
@@ -278,11 +317,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           toolName,
           threadId,
           serverName,
-          ...(context?.preview !== undefined ? { preview: context.preview } : {}),
+          ...(context?.preview !== undefined
+            ? { preview: context.preview }
+            : {}),
           ...(origin ? { origin } : {}),
           ...(serverFingerprint ? { serverFingerprint } : {}),
           ...(context?.input !== undefined ? { input: context.input } : {}),
-          ...(context?.taskContext ? { taskContext: context.taskContext } : {}),
+          ...(taskContext ? { taskContext } : {}),
           ...(context?.workspaceLabel
             ? { workspaceLabel: context.workspaceLabel }
             : {}),

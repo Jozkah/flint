@@ -183,6 +183,12 @@ pub enum StreamEvent {
         patch: Option<tauri_plugin_agent_tools::patch::PatchView>,
         prompt_kind: String,
         offers_always: bool,
+        /// Why this call is being asked about when a grant or auto-approval
+        /// would otherwise have let it run: a destructive shell command, or the
+        /// check-in after a long streak of auto-approved calls. `None` for an
+        /// ordinary prompt.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
     },
 }
 
@@ -442,6 +448,7 @@ mod tests {
             patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
+            reason: None,
         })
         .unwrap();
         assert_eq!(

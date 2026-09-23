@@ -1539,6 +1539,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: true,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -1569,6 +1570,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: false,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -1599,6 +1601,7 @@ impl CompositeToolInvoker {
             patch: None,
             prompt_kind: "subagent_create".to_string(),
             offers_always: false,
+            reason: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -3179,18 +3182,34 @@ impl CompositeToolInvoker {
                     crate::core::agent::destructive::destructive_reason(c, &self.project_root)
                 });
             use std::sync::atomic::Ordering as StreakOrdering;
+            // Said in the prompt, so the person knows why a call that would
+            // otherwise have run on its own is in front of them. A forced prompt
+            // also offers no "always": it would record a grant this check
+            // overrides anyway.
+            let mut forced_reason: Option<String> = None;
             let decision = match decision {
                 Decision::Prompt(PromptKind::Write | PromptKind::Exec)
                     if self.auto_approve && destructive.is_none() =>
                 {
                     let streak = self.auto_approved_streak.fetch_add(1, StreakOrdering::Relaxed) + 1;
                     if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
+                        forced_reason = Some(format!(
+                            "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
+                            self.auto_approve_limit
+                        ));
                         Decision::Prompt(PromptKind::Exec)
                     } else {
                         Decision::Allow
                     }
                 }
-                Decision::Allow if destructive.is_some() => Decision::Prompt(PromptKind::Exec),
+                Decision::Prompt(kind) if destructive.is_some() => {
+                    forced_reason = destructive.as_ref().map(|d| format!("Destructive command: {d}."));
+                    Decision::Prompt(kind)
+                }
+                Decision::Allow if destructive.is_some() => {
+                    forced_reason = destructive.as_ref().map(|d| format!("Destructive command: {d}."));
+                    Decision::Prompt(PromptKind::Exec)
+                }
                 other => other,
             };
             if matches!(decision, Decision::Prompt(_)) {
@@ -3297,7 +3316,8 @@ impl CompositeToolInvoker {
                         diff,
                         patch: staged.as_ref().map(|(_, patch)| patch.view()),
                         prompt_kind: prompt_kind.to_string(),
-                        offers_always: true,
+                        offers_always: forced_reason.is_none(),
+                        reason: forced_reason.clone(),
                     });
                     // AH-023. The wait itself is cancellable: a run stopped
                     // while someone is deciding must not sit here until they
@@ -11074,8 +11094,8 @@ mod tests {
         let asked = tokio::spawn(async move {
             let mut commands = Vec::new();
             while let Some(event) = rx.recv().await {
-                if let StreamEvent::PermissionRequest { request_id, command, .. } = event {
-                    commands.push(command.unwrap_or_default());
+                if let StreamEvent::PermissionRequest { request_id, command, reason, offers_always, .. } = event {
+                    commands.push((command.unwrap_or_default(), reason, offers_always));
                     if let Some(sender) = answering.lock().await.remove(&request_id) {
                         let _ = sender.send(PermissionDecision::Deny);
                     }
@@ -11091,7 +11111,13 @@ mod tests {
         assert!(out[0].content.contains("ERROR") || out[0].content.to_lowercase().contains("denied"), "{}", out[0].content);
         drop(invoker);
         let commands = asked.await.unwrap();
-        assert_eq!(commands, vec!["rm -rf ~/jan-destructive-guard-test".to_string()]);
+        assert_eq!(commands.len(), 1, "{commands:?}");
+        assert_eq!(commands[0].0, "rm -rf ~/jan-destructive-guard-test");
+        // The prompt says why, and offers no standing grant the check would
+        // override anyway.
+        let why = commands[0].1.as_deref().unwrap_or_default();
+        assert!(why.contains("Destructive command") && why.contains("~/jan-destructive-guard-test"), "{why}");
+        assert!(!commands[0].2);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -11109,8 +11135,12 @@ mod tests {
         let asked = tokio::spawn(async move {
             let mut n = 0;
             while let Some(event) = rx.recv().await {
-                if let StreamEvent::PermissionRequest { request_id, .. } = event {
+                if let StreamEvent::PermissionRequest { request_id, reason, .. } = event {
                     n += 1;
+                    assert!(
+                        reason.as_deref().is_some_and(|r| r.contains("Auto-approval paused")),
+                        "{reason:?}"
+                    );
                     if let Some(sender) = answering.lock().await.remove(&request_id) {
                         let _ = sender.send(PermissionDecision::AllowOnce);
                     }

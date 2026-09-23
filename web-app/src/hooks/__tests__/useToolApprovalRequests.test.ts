@@ -90,6 +90,45 @@ describe('useToolApprovalRequests', () => {
     expect(result.current.pending['tc1']).toBeUndefined()
   })
 
+  it('a standing bash grant still asks before a destructive command, and says why', async () => {
+    act(() => {
+      useToolApproval.getState().approveToolForThread('thread-1', 'bash')
+      useToolApproval.getState().approveToolEverywhere('bash')
+    })
+    const { result } = renderHook(() => useToolApprovalRequests())
+
+    let ordinary: Promise<boolean>
+    act(() => {
+      ordinary = result.current.requestApproval(
+        'tc-ok',
+        'bash',
+        'thread-1',
+        undefined,
+        {
+          input: { command: 'npm test && rm -rf node_modules' },
+          workspaceLabel: '/home/me/project',
+        }
+      )
+      void result.current.requestApproval(
+        'tc-rm',
+        'bash',
+        'thread-1',
+        undefined,
+        {
+          input: { command: 'npm test && rm -rf ~' },
+          workspaceLabel: '/home/me/project',
+        }
+      )
+    })
+
+    await expect(ordinary!).resolves.toBe(true)
+    expect(result.current.pending['tc-ok']).toBeUndefined()
+    expect(result.current.pending['tc-rm']).toBeDefined()
+    expect(result.current.pending['tc-rm'].taskContext).toMatch(
+      /Destructive command/
+    )
+  })
+
   it('resolveApproval allow-once resolves true without persisting the tool', async () => {
     const { result } = renderHook(() => useToolApprovalRequests())
 
