@@ -564,7 +564,7 @@ pub fn probe_filesystem(project_root: Option<&Path>, now_ms: i64) -> ComponentRe
             Component::Filesystem,
             State::Ready,
             Reason::Ok,
-            "No folder is attached, so the file tools work in this conversation's              own private workspace. Attach a folder to work on your own files.",
+            "No folder is attached, so the file tools work in this conversation's own private workspace. Attach a folder to work on your own files.",
             now_ms,
         )
         .granting(&[capability::FS_READ, capability::FS_WRITE]);
