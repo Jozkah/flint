@@ -241,6 +241,44 @@ fn secret_file_name(resource: &crate::resource::Resource) -> Option<String> {
     crate::project_browse::is_sensitive_name(&name).then_some(name)
 }
 
+/// For each path resource that a symlink redirects, the path it really
+/// resolves to. Paths that resolve to themselves, and paths that cannot be
+/// resolved, add nothing: the lexical checks already cover them, and the
+/// containment checks refuse what cannot be resolved.
+fn resolved_aliases(resources: &[crate::resource::Resource]) -> Vec<crate::resource::Resource> {
+    use crate::resource::Resource;
+    resources
+        .iter()
+        .filter_map(|r| {
+            let Resource::Path(lexical) = r else {
+                return None;
+            };
+            let real = crate::tools::sandbox::canonicalize_lenient(lexical).ok()?;
+            let real = crate::resource::normalize(&strip_verbatim(&real));
+            // The same file, only spelled the way the platform canonicalizes:
+            // resolve the parent alone and compare.
+            let unlinked = lexical
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|p| crate::resource::normalize(&strip_verbatim(&p)).join(lexical.file_name().unwrap_or_default()));
+            if unlinked.as_deref() == Some(real.as_path()) || real == *lexical {
+                return None;
+            }
+            Some(Resource::Path(real))
+        })
+        .collect()
+}
+
+/// `\\?\C:\x` as `C:\x`, so a resolved path reads like the paths rules are
+/// written against. Other paths are returned as they are.
+fn strip_verbatim(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow,
@@ -284,7 +322,15 @@ pub fn resolve_decision(
         Some(project_root),
     );
 
-    if perms.denies_call(tool.name, &resources, subject).is_some() {
+    // Where those paths really lead, when a symlink makes that somewhere else
+    // (Jozkah/jan#235). Allow rules keep matching only the lexical path, so a
+    // planted link cannot widen what one covers; deny rules and the secret
+    // guard below also look here, so a link cannot hide what it opens.
+    let resolved = resolved_aliases(&resources);
+
+    if perms.denies_call(tool.name, &resources, subject).is_some()
+        || (!resolved.is_empty() && perms.denies_call(tool.name, &resolved, subject).is_some())
+    {
         return Decision::HardDeny(DenyReason::Policy);
     }
 
@@ -317,6 +363,15 @@ pub fn resolve_decision(
     if let Some(secret) = resources.iter().find_map(secret_file_name) {
         let named = perms
             .allows_call(tool.name, &resources, subject)
+            .is_some_and(|rule| rule.source().contains('('));
+        if !named {
+            return Decision::HardDeny(DenyReason::SecretFile(secret));
+        }
+    }
+    // Reached through a link: only a rule naming the secret itself allows it.
+    if let Some(secret) = resolved.iter().find_map(secret_file_name) {
+        let named = perms
+            .allows_call(tool.name, &resolved, subject)
             .is_some_and(|rule| rule.source().contains('('));
         if !named {
             return Decision::HardDeny(DenyReason::SecretFile(secret));
