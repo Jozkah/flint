@@ -2814,9 +2814,12 @@ async fn find(
 ) -> String {
     let pattern = arg_str(args, "pattern").map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
+    // Clamped like the sibling tools' limits (Jozkah/jan#251): a model-chosen
+    // million would otherwise walk the whole tree into one result.
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
-        .unwrap_or(FIND_DEFAULT_LIMIT);
+        .unwrap_or(FIND_DEFAULT_LIMIT)
+        .clamp(1, FIND_DEFAULT_LIMIT * 10);
     let base = resolve_path(root, scratch, &path);
     if symlink_escapes_any_root(root, scratch, read_roots, &base) {
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
@@ -2860,11 +2863,35 @@ async fn find(
         if matches.is_empty() {
             "No matches.".to_string()
         } else {
-            matches.join("\n")
+            // The same byte cap `ls` and `grep` apply: long paths times the
+            // match limit can still be megabytes of tool result.
+            cap_output(&matches.join("\n"), usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+#[cfg(test)]
+mod find_cap_tests {
+    use super::*;
+
+    /// Jozkah/jan#251: however many files match, the result stays within the
+    /// byte cap every sibling tool applies, and says it was cut.
+    #[tokio::test]
+    async fn find_output_is_capped() {
+        let root = std::env::temp_dir().join(format!("jan_find_cap_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let deep = root.join("a".repeat(60)).join("b".repeat(60));
+        std::fs::create_dir_all(&deep).unwrap();
+        for i in 0..1500 {
+            std::fs::write(deep.join(format!("{}_{i}.txt", "c".repeat(40))), b"").unwrap();
+        }
+        let out = find(&serde_json::json!({"pattern": "**/*.txt", "limit": 1_000_000}), &root, None, false, &[]).await;
+        assert!(out.len() <= MAX_BYTES + 64, "{} bytes", out.len());
+        assert!(out.contains("[truncated: 64KB limit]"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 async fn grep(
