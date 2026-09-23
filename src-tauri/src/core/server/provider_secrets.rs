@@ -324,6 +324,11 @@ pub fn store_provider_keys(provider: &str, keys: &[String]) -> Result<(), String
     let stored = file_store(provider, keys);
     if stored.is_ok() {
         index_set(provider, true);
+        // The keyring could not take the new value; a copy it still holds
+        // from before is stale, and must not be what a later read finds.
+        if !keyring_down() {
+            let _ = keyring_entry(provider).and_then(|e| e.delete_credential());
+        }
     }
     stored
 }
