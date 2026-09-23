@@ -166,7 +166,7 @@ fn same_origin(first: &url::Url, next: &url::Url) -> bool {
 /// custom header, a subscription key or a tenant token among them. A provider
 /// that answers with a redirect to somewhere else now gets an error naming
 /// where it tried to send the request, and nothing is sent there.
-fn same_origin_redirects() -> reqwest::redirect::Policy {
+pub(crate) fn same_origin_redirects() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > MAX_REDIRECTS {
             return attempt.error("too many redirects");
