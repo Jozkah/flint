@@ -1171,6 +1171,27 @@ pub fn clamp_count(requested: Option<u64>) -> u32 {
 mod tests {
     use super::*;
 
+    /// Jozkah/jan#189: a model-driven `web_fetch` must not reach this machine
+    /// or the local network. A listener on loopback stands in for a local
+    /// service; the fetch is refused and the listener never sees a connection.
+    #[tokio::test]
+    async fn a_direct_fetch_never_reaches_a_local_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = build_http_client("test").unwrap();
+        for url in [
+            format!("http://127.0.0.1:{port}/"),
+            format!("http://localhost:{port}/"),
+            format!("http://[::ffff:127.0.0.1]:{port}/"),
+        ] {
+            assert!(http_get_page(&client, &url, "test").await.is_err(), "{url}");
+            assert!(fetch_url_direct(&client, &url, "test").await.is_err(), "{url}");
+        }
+        let connected =
+            tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await;
+        assert!(connected.is_err(), "a local service received a connection");
+    }
+
     #[test]
     fn clamp_count_defaults_and_caps() {
         assert_eq!(clamp_count(None), SEARCH_DEFAULT_COUNT);
