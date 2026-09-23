@@ -1941,6 +1941,69 @@ mod security_corpus {
         );
     }
 
+    // -- symlink aliases (Jozkah/jan#235) --------------------------------------
+
+    /// A file symlink at `at` naming `target`; `None` where the platform
+    /// refuses to make one (Windows without Developer Mode).
+    fn file_link(target: &Path, at: &Path) -> Option<()> {
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(target, at);
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(target, at);
+        made.map_err(|e| eprintln!("skipped: cannot create a symlink here: {e}"))
+            .ok()
+    }
+
+    #[test]
+    fn a_harmless_name_linked_to_a_secret_file_is_refused() {
+        let root = root();
+        std::fs::write(root.join(".env"), b"API_KEY=x").unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        if file_link(Path::new("../.env"), &root.join("docs/config.txt")).is_none() {
+            return;
+        }
+        let d = decide(
+            "read",
+            json!({ "path": "docs/config.txt" }),
+            &root,
+            &ToolPermissions::allow_all(),
+            &NetworkPolicy::open(),
+        );
+        assert!(matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))), "{d:?}");
+
+        // A rule naming the alias names the alias, not the secret behind it.
+        let named = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["read(docs/config.txt)".to_string()],
+            &[],
+            &[],
+        );
+        let d = decide("read", json!({ "path": "docs/config.txt" }), &root, &named, &NetworkPolicy::open());
+        assert!(matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))), "{d:?}");
+    }
+
+    #[test]
+    fn a_deny_rule_follows_a_link_to_the_file_it_names() {
+        let root = root();
+        std::fs::write(root.join("secret.txt"), b"x").unwrap();
+        std::fs::write(root.join("notes.txt"), b"x").unwrap();
+        if file_link(&root.join("secret.txt"), &root.join("alias.txt")).is_none()
+            || file_link(&root.join("notes.txt"), &root.join("link.txt")).is_none()
+        {
+            return;
+        }
+        let perms = denying(&["read(**/secret.txt)"]);
+        assert_eq!(
+            decide("read", json!({ "path": "alias.txt" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::HardDeny(DenyReason::Policy)
+        );
+        // An in-root link to an ordinary file is still just a read.
+        assert_eq!(
+            decide("read", json!({ "path": "link.txt" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+    }
+
     // -- network -------------------------------------------------------------
 
     #[test]
