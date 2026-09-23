@@ -1996,6 +1996,48 @@ mod security_corpus {
         );
     }
 
+    // -- relative allow rules (Jozkah/jan#222) --------------------------------
+
+    /// `write(src/**)` names the project's `src`, not every `src` on the host.
+    /// Outside the project the escape prompt still applies.
+    #[test]
+    fn a_relative_allow_rule_does_not_reach_a_same_named_folder_elsewhere() {
+        let elsewhere = root();
+        let root = root();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(elsewhere.join("src")).unwrap();
+        std::fs::write(root.join("src/a.rs"), b"x").unwrap();
+        std::fs::write(elsewhere.join("src/x.txt"), b"x").unwrap();
+        let outside_write = elsewhere.join("src/a.rs").to_string_lossy().into_owned();
+        let outside_read = elsewhere.join("src/x.txt").to_string_lossy().into_owned();
+
+        let writes = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &[],
+            &["write(src/**)".to_string()],
+        );
+        assert_eq!(
+            decide("write", json!({"path": "src/a.rs", "content": "x"}), &root, &writes, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+        assert_eq!(
+            decide("write", json!({"path": outside_write, "content": "x"}), &root, &writes, &NetworkPolicy::open()),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+
+        let reads = ToolPermissions::new(PermissionDefault::ReadOnly, &["read(src/**)".to_string()], &[], &[]);
+        assert_eq!(
+            decide("read", json!({"path": "src/a.rs"}), &root, &reads, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+        assert_eq!(
+            decide("read", json!({"path": outside_read}), &root, &reads, &NetworkPolicy::open()),
+            Decision::Prompt(PromptKind::ReadEscape)
+        );
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
     // -- symlink aliases (Jozkah/jan#235) --------------------------------------
 
     /// A file symlink at `at` naming `target`; `None` where the platform
