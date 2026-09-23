@@ -190,7 +190,7 @@ mod tests {
     #[tokio::test]
     async fn traversal_names_are_rejected() {
         let root = unique_root();
-        for bad in ["../escape", "sub/x", "..", "", "."] {
+        for bad in ["../escape", "sub/x", "..", "", ".", "C:x", "c:probe"] {
             assert!(write(&root, bad, "x").await.is_err(), "write {bad:?}");
             assert!(read(&root, bad).await.is_err(), "read {bad:?}");
             assert!(delete(&root, bad).await.is_err(), "delete {bad:?}");

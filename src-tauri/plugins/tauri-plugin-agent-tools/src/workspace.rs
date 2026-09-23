@@ -757,7 +757,12 @@ mod tests {
 
     #[test]
     fn filename_rejects_escapes() {
-        for bad in ["", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b"] {
+        // Jozkah/jan#254: a drive prefix makes `Path::join` replace the base on
+        // Windows, so `store.join("C:x.md")` lands outside the store.
+        for bad in [
+            "", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b", "C:x", "c:FLINT", "D:x.md",
+            "x:y", "C:", "a:b.md",
+        ] {
             assert!(
                 workspace_filename(bad).is_err(),
                 "expected {bad:?} to be rejected"
