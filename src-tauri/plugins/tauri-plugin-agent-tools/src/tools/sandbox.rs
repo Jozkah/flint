@@ -1064,4 +1064,144 @@ mod tests {
         let _ = std::fs::remove_dir_all(&ws);
         let _ = std::fs::remove_dir_all(&parent);
     }
+
+    // -- dangling symlinks (Jozkah/jan#192) -----------------------------------
+    //
+    // A symlink whose target does not exist yet makes `canonicalize` fail just
+    // as a missing file does, but opening it for writing creates the target.
+    // Containment must follow the link, wherever it points.
+
+    /// A symlink at `at` naming `target`, which need not exist. `None` where
+    /// the platform refuses to make one (Windows without Developer Mode), so
+    /// the test has nothing to check there rather than failing.
+    fn link(target: &Path, at: &Path, dir: bool) -> Option<()> {
+        #[cfg(unix)]
+        let made = {
+            let _ = dir;
+            std::os::unix::fs::symlink(target, at)
+        };
+        #[cfg(windows)]
+        let made = if dir {
+            std::os::windows::fs::symlink_dir(target, at)
+        } else {
+            std::os::windows::fs::symlink_file(target, at)
+        };
+        match made {
+            Ok(()) => Some(()),
+            Err(e) => {
+                eprintln!("skipped: cannot create a symlink here: {e}");
+                None
+            }
+        }
+    }
+
+    fn all_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(true), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(true),
+            "escapes_write_roots {raw}"
+        );
+        assert!(symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    fn none_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(false), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(false),
+            "escapes_write_roots {raw}"
+        );
+        assert!(!symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    #[test]
+    fn a_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("created.txt"), &root.join("dangling"), false).is_none() {
+            return;
+        }
+        all_escape(&root, "dangling");
+        assert!(!outside.join("created.txt").exists());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_relative_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        let name = outside.file_name().unwrap().to_string_lossy().into_owned();
+        let target = PathBuf::from("..").join(name).join("created.txt");
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        // Relative to the link's own directory: `notes/../..` is the temp dir.
+        if link(&PathBuf::from("..").join(&target), &root.join("notes").join("todo.md"), false)
+            .is_none()
+        {
+            return;
+        }
+        all_escape(&root, "notes/todo.md");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_dangling_directory_link_in_the_middle_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("missing"), &root.join("d"), true).is_none() {
+            return;
+        }
+        all_escape(&root, "d/new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_chain_of_links_ending_outside_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&root.join("b"), &root.join("a"), false).is_none()
+            || link(&outside.join("x.txt"), &root.join("b"), false).is_none()
+        {
+            return;
+        }
+        all_escape(&root, "a");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// A cycle has no destination to judge, so it cannot be shown to stay in.
+    #[test]
+    fn a_link_cycle_fails_closed() {
+        let root = unique_root();
+        if link(&root.join("c2"), &root.join("c1"), false).is_none()
+            || link(&root.join("c1"), &root.join("c2"), false).is_none()
+        {
+            return;
+        }
+        assert_ne!(escapes_project(&root, None, "c1"), Ok(false));
+        assert_ne!(escapes_write_roots(&root, None, &[], "c1"), Ok(false));
+        assert!(symlink_escapes_root(&root, None, &root.join("c1")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Following links must not cost legitimate in-root cases: a dangling link
+    /// whose target stays inside, absolute or relative, and a plain new file.
+    #[test]
+    fn dangling_links_that_stay_inside_are_not_escapes() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        if link(&root.join("sub").join("new.txt"), &root.join("abs"), false).is_none()
+            || link(Path::new("sub/other.txt"), &root.join("rel"), false).is_none()
+        {
+            return;
+        }
+        none_escape(&root, "abs");
+        none_escape(&root, "rel");
+        none_escape(&root, "sub/plain-new.txt");
+        none_escape(&root, "sub/deeper/still-new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

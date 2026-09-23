@@ -4854,6 +4854,51 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Jozkah/jan#192: a dangling symlink in the workspace naming a file
+    /// outside it. Writing "to" the link must be refused, and nothing may be
+    /// created at its target. An in-root dangling link still writes.
+    #[tokio::test]
+    async fn a_write_through_a_dangling_link_is_refused_and_creates_nothing() {
+        let root = unique_root();
+        let outside = unique_root();
+        let target = outside.join("created.txt");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&target, root.join("dangling"))
+            .and_then(|_| std::os::unix::fs::symlink(root.join("inside.txt"), root.join("inward")));
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&target, root.join("dangling")).and_then(
+            |_| std::os::windows::fs::symlink_file(root.join("inside.txt"), root.join("inward")),
+        );
+        if let Err(e) = made {
+            eprintln!("skipped: cannot create a symlink here: {e}");
+            return;
+        }
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_confined_writes(true);
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "dangling", "content": "planted"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.starts_with("ERROR: refused"), "got: {out}");
+        assert!(!target.exists(), "the write created a file outside the workspace");
+
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "inward", "content": "fine"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(!out.starts_with("ERROR"), "an in-root link must keep working: {out}");
+        assert_eq!(std::fs::read_to_string(root.join("inside.txt")).unwrap(), "fine");
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
     /// With write confinement enabled, a `..` write is refused at the handler,
     /// independent of the gate -- the defense-in-depth layer.
     #[tokio::test]
