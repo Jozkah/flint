@@ -5311,6 +5311,12 @@ async fn run_turn_cycle(
     let mut mid_run_nudge_count: u32 = 0;
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
+    // Per-turn todo table / one-time "make a list" nudge; see `TodoReminderState`.
+    let todo_reminders_on = json_body
+        .get("todo_reminders")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(crate::core::agent::todo::TODO_REMINDERS_ENABLED_BY_DEFAULT);
+    let mut todo_reminders = crate::core::agent::todo::TodoReminderState::default();
     // janhq/jan#8712: one corrective retry per cycle for a reply with neither
     // an answer nor a tool call, so an empty turn is not reported as finished.
     let mut empty_retried = false;
@@ -6133,6 +6139,7 @@ async fn run_turn_cycle(
                 }
             }
         }
+        let mut mid_run_nudged = false;
         if todo_touched_this_batch {
             mutations_since_todo_touch = 0;
         } else if mutations_since_todo_touch >= MID_RUN_NUDGE_MUTATION_THRESHOLD
@@ -6157,6 +6164,7 @@ async fn run_turn_cycle(
                 None => 0,
             };
             if open_count > 0 {
+                mid_run_nudged = true;
                 mutations_since_todo_touch = 0;
                 mid_run_nudge_count += 1;
                 let plural = if open_count == 1 { "" } else { "s" };
@@ -6168,6 +6176,19 @@ async fn run_turn_cycle(
                          visible; otherwise just keep working."
                     ),
                 );
+            }
+        }
+        // Always advance the reminder state (it counts tool turns), but never
+        // stack a table on top of the mid-run nudge in the same turn.
+        if todo_reminders_on && run_mode == crate::core::agent::plan::RunMode::Normal {
+            if let Some(registry) = todo_registry {
+                let text = {
+                    let list = registry.lock().await;
+                    todo_reminders.after_tool_turn(&list)
+                };
+                if let Some(text) = text.filter(|_| !mid_run_nudged) {
+                    crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+                }
             }
         }
         // AH-026: the step's calls and their results are published as soon as
