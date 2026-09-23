@@ -988,7 +988,14 @@ pub fn plan(
                 out
             }
         };
-        if chosen.is_empty() && !(file.binary || file.oversized) {
+        // Nothing chosen means nothing to do -- except a whole-file change
+        // approved whole: an empty file added or deleted has no hunks at all,
+        // and skipping it here left it unapplied under an Applied report
+        // (Jozkah/jan#272).
+        let whole_file = file.binary
+            || file.oversized
+            || (file.change != Change::Modified && matches!(sel.hunks, HunkChoice::All));
+        if chosen.is_empty() && !whole_file {
             continue;
         }
 
@@ -1310,12 +1317,10 @@ mod tests {
             ],
         )
         .unwrap();
-        let report = apply(
-            &data,
-            &dest,
-            &approve(&record, &dest, vec![all("__init__.py"), all("gone.txt")]),
-        )
-        .unwrap();
+        // A deletion is only applied once acknowledged, empty file or not.
+        let mut approval = approve(&record, &dest, vec![all("__init__.py"), all("gone.txt")]);
+        approval.acknowledged = vec!["gone.txt".into()];
+        let report = apply(&data, &dest, &approval).unwrap();
         assert_eq!(report.state, ProposalState::Applied);
         assert!(dest.join("__init__.py").is_file(), "the empty file was not created");
         assert!(!dest.join("gone.txt").exists(), "the empty file was not deleted");
