@@ -1293,6 +1293,34 @@ mod tests {
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
     }
 
+    /// Jozkah/jan#272: an empty file added (`__init__.py`, `.gitkeep`) or an
+    /// empty file deleted stages to zero hunks. Approved whole, it must still
+    /// land, not be skipped while the proposal reports Applied.
+    #[test]
+    fn empty_files_added_and_deleted_still_land() {
+        let (data, dest) = dirs("empty");
+        std::fs::write(dest.join("gone.txt"), "").unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc123",
+            vec![
+                FileInput { path: "__init__.py".into(), base: None, proposed: Some(Vec::new()) },
+                FileInput { path: "gone.txt".into(), base: Some(Vec::new()), proposed: None },
+            ],
+        )
+        .unwrap();
+        let report = apply(
+            &data,
+            &dest,
+            &approve(&record, &dest, vec![all("__init__.py"), all("gone.txt")]),
+        )
+        .unwrap();
+        assert_eq!(report.state, ProposalState::Applied);
+        assert!(dest.join("__init__.py").is_file(), "the empty file was not created");
+        assert!(!dest.join("gone.txt").exists(), "the empty file was not deleted");
+    }
+
     #[test]
     fn approving_everything_lands_the_proposal() {
         let (data, dest) = dirs("all");
