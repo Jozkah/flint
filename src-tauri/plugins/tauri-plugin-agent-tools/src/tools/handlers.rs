@@ -2903,6 +2903,7 @@ async fn grep(
         let mut groups: Vec<(String, Vec<(usize, bool, String)>)> = Vec::new();
         let mut count = 0usize;
         let mut truncated = false;
+        let mut skipped_secrets = 0usize;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -2989,14 +2990,28 @@ async fn grep(
                 if hide_jan && is_hidden_jan_path(&root_owned, &entry.path().to_string_lossy()) {
                     continue;
                 }
+                // AH-044 for the files a walk finds (Jozkah/jan#239): the gate
+                // only saw the directory, so a credential file is skipped here,
+                // judged by its own name and, through a link, by its target's.
+                if walked_secret(entry.path()) {
+                    skipped_secrets += 1;
+                    continue;
+                }
                 if !search_file(entry.path(), &base) {
                     break;
                 }
             }
         }
 
+        let skipped_note = if skipped_secrets > 0 {
+            format!(
+                "\n\n[Skipped {skipped_secrets} credential file(s) (.env, keys, tokens); read one by name with a rule that allows it]"
+            )
+        } else {
+            String::new()
+        };
         if groups.is_empty() {
-            "No matches.".to_string()
+            format!("No matches.{skipped_note}")
         } else {
             let mut body = format_grep_groups(&groups);
             if truncated {
@@ -3004,11 +3019,22 @@ async fn grep(
                     "\n\n[Showing first {count} of {count}+ matches; narrow the pattern, path or glob to see the rest]"
                 ));
             }
+            body.push_str(&skipped_note);
             cap_output(&body, usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+/// Whether a file a directory walk reached is a credential file by the AH-044
+/// name rules, by its own name or, if it is a link, by its target's name.
+fn walked_secret(path: &Path) -> bool {
+    let named = |p: &Path| {
+        p.file_name()
+            .is_some_and(|n| crate::project_browse::is_sensitive_name(&n.to_string_lossy()))
+    };
+    named(path) || path.canonicalize().is_ok_and(|real| named(&real))
 }
 
 /// Model-facing grep output: a header line per file (its relative path), then
