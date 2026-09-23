@@ -102,28 +102,72 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
         return Some(found);
     }
 
-    // NAME = value, where the name says what the value is.
-    let (name, value) = split_assignment(trimmed)?;
-    let value = value.trim().trim_matches(['"', '\'']).trim();
-    if value.is_empty() || value.len() < 8 {
-        return None;
-    }
+    // NAME = value, where the name says what the value is -- every such pair
+    // on the line, not just the first (Jozkah/jan#275): minified JSON and
+    // multi-export lines put the secret after another key, and base64
+    // padding is not the separator of `password: c2Vj…=`.
     // A placeholder is not a secret, and flagging one trains people to ignore
     // the warning that matters.
-    let placeholder = value.to_ascii_lowercase();
-    if placeholder.contains("example")
-        || placeholder.contains("changeme")
-        || placeholder.contains("your-")
-        || placeholder.starts_with("${")
-        || placeholder.starts_with("<")
-        || placeholder.chars().all(|c| c == 'x' || c == '*')
-    {
-        return None;
-    }
+    named_pairs(trimmed).into_iter().find_map(|(name, v, w)| {
+        let value = &trimmed[v..w];
+        if value.len() < 8 || is_placeholder(value) {
+            return None;
+        }
+        let kind = secret_name_kind(&name)?;
+        Some((kind, format!("{name}={REDACTED}")))
+    })
+}
 
-    let name = name.to_ascii_lowercase();
-    let kind = secret_name_kind(&name)?;
-    Some((kind, format!("{name}={REDACTED}")))
+/// Every `name<sep>value` pair on a line, separator `=` or `:`: the lowercase
+/// name and the byte range of its value (inside quotes when quoted). A value
+/// ends at its closing quote, or unquoted at whitespace, `,`, `}`, `;`, `&` or
+/// a quote. Scanning resumes after each value, so `=` padding inside a
+/// base64 value is never read as a separator.
+fn named_pairs(line: &str) -> Vec<(String, usize, usize)> {
+    let bytes = line.as_bytes();
+    let mut pairs = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'=' && bytes[i] != b':' {
+            i += 1;
+            continue;
+        }
+        let mut end = i;
+        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'"' | b'\'') {
+            end -= 1;
+        }
+        let mut start = end;
+        while start > 0
+            && (bytes[start - 1].is_ascii_alphanumeric() || matches!(bytes[start - 1], b'_' | b'-' | b'.'))
+        {
+            start -= 1;
+        }
+        let mut v = i + 1;
+        while v < bytes.len() && matches!(bytes[v], b' ' | b'\t') {
+            v += 1;
+        }
+        let quote = bytes.get(v).copied().filter(|b| *b == b'"' || *b == b'\'');
+        if quote.is_some() {
+            v += 1;
+        }
+        let mut w = v;
+        while w < bytes.len() {
+            let b = bytes[w];
+            let stop = match quote {
+                Some(q) => b == q,
+                None => b.is_ascii_whitespace() || matches!(b, b',' | b'}' | b';' | b'&' | b'"' | b'\''),
+            };
+            if stop {
+                break;
+            }
+            w += 1;
+        }
+        if start < end {
+            pairs.push((line[start..end].to_ascii_lowercase(), v, w));
+        }
+        i = w.max(i + 1);
+    }
+    pairs
 }
 
 /// Whether a lowercase value name says the value is a credential, and which.
@@ -171,54 +215,12 @@ fn is_placeholder(value: &str) -> bool {
 /// knows credentials by shape; a password has none, so on a line that also
 /// held a shaped token it used to survive. `None` when nothing changed.
 fn redact_named_values(line: &str) -> Option<String> {
-    let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut copied = 0;
     let mut changed = false;
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] != b'=' && bytes[i] != b':' {
-            i += 1;
-            continue;
-        }
-        // The name: identifier characters just before the separator, past a
-        // closing quote and spaces.
-        let mut end = i;
-        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'"' | b'\'') {
-            end -= 1;
-        }
-        let mut start = end;
-        while start > 0
-            && (bytes[start - 1].is_ascii_alphanumeric() || matches!(bytes[start - 1], b'_' | b'-' | b'.'))
-        {
-            start -= 1;
-        }
-        let name = line[start..end].to_ascii_lowercase();
-        // The value: after spaces and an optional opening quote, up to the
-        // matching quote or the first delimiter.
-        let mut v = i + 1;
-        while v < bytes.len() && matches!(bytes[v], b' ' | b'\t') {
-            v += 1;
-        }
-        let quote = bytes.get(v).copied().filter(|b| *b == b'"' || *b == b'\'');
-        if quote.is_some() {
-            v += 1;
-        }
-        let mut w = v;
-        while w < bytes.len() {
-            let b = bytes[w];
-            let stop = match quote {
-                Some(q) => b == q,
-                None => b.is_ascii_whitespace() || matches!(b, b',' | b'}' | b';' | b'&' | b'"' | b'\''),
-            };
-            if stop {
-                break;
-            }
-            w += 1;
-        }
+    for (name, v, w) in named_pairs(line) {
         let value = &line[v..w];
-        if !name.is_empty()
-            && secret_name_kind(&name).is_some()
+        if secret_name_kind(&name).is_some()
             && value.len() >= 8
             && !value.contains(REDACTED)
             && !is_placeholder(value)
@@ -228,7 +230,6 @@ fn redact_named_values(line: &str) -> Option<String> {
             copied = w;
             changed = true;
         }
-        i = w.max(i + 1);
     }
     if !changed {
         return None;
@@ -428,7 +429,9 @@ pub fn redact_secrets(text: &str) -> String {
             // can share its line (Jozkah/jan#277): take those values too.
             Some((_, _)) => match redact_tokens_in_line(line) {
                 Some(rebuilt) => redact_named_values(&rebuilt).unwrap_or(rebuilt),
-                None => redact_line(line),
+                // Take the named values themselves where there are any, so the
+                // rest of the line stays readable; the whole value otherwise.
+                None => redact_named_values(line).unwrap_or_else(|| redact_line(line)),
             },
             None => redact_tokens_in_line(line).unwrap_or_else(|| line.to_string()),
         })
@@ -559,6 +562,27 @@ mod tests {
             assert!(!out.contains("abcdefghijklmnopqrstuv"), "{out}");
             assert!(!out.contains("9d7f6a5b4c3e2d1f0a9b8c7d"), "{out}");
         }
+    }
+
+    /// Jozkah/jan#275: base64 padding is not a separator, and a secret that
+    /// is not the first key on its line is still a secret.
+    #[test]
+    fn a_secret_is_found_wherever_it_sits_on_the_line() {
+        for (line, secret) in [
+            ("db_password: c2VjcmV0cGFzc3dvcmQ=", "c2VjcmV0cGFzc3dvcmQ"),
+            ("  password: cGFzc3dvcmQxMjM=", "cGFzc3dvcmQxMjM"),
+            (r#""client_secret": "c2VjcmV0cGFzc3dvcmQ=""#, "c2VjcmV0cGFzc3dvcmQ"),
+            (r#"{"id":1,"client_secret":"s3cr3tvalue123"}"#, "s3cr3tvalue123"),
+            ("export FOO=bar PASSWORD=hunter2seventeen", "hunter2seventeen"),
+        ] {
+            assert!(!scan_text(line).is_empty(), "missed: {line}");
+            let out = redact_secrets(line);
+            assert!(!out.contains(secret), "{line} -> {out}");
+        }
+        assert!(!scan_diff("+  db_password: c2VjcmV0cGFzc3dvcmQ=\n").is_empty());
+        // Still not secrets.
+        assert!(scan_text("url = https://example.com/a=b").is_empty());
+        assert!(scan_text("password: changeme-example").is_empty());
     }
 
     #[test]
@@ -736,7 +760,8 @@ mod tests {
     #[test]
     fn redaction_keeps_the_line_legible_and_loses_the_value() {
         let redacted = redact_secrets("API_KEY = \"sk-live-2f8a91bd77\"\nport = 8080\n");
-        assert!(redacted.contains("api_key=[redacted]") || redacted.contains("API_KEY=[redacted]"));
+        // The name stays, the value goes; the line keeps its own layout.
+        assert!(redacted.contains("API_KEY") && redacted.contains(REDACTED), "{redacted}");
         assert!(!redacted.contains("sk-live-2f8a91bd77"));
         // Everything else is left exactly as it was.
         assert!(redacted.contains("port = 8080"));
