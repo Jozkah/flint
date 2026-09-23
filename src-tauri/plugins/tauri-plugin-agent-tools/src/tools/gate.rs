@@ -1877,6 +1877,70 @@ mod security_corpus {
         ));
     }
 
+    /// Jozkah/jan#223: Windows opens `.npmrc.`, `.npmrc ` and `.env::$DATA` as
+    /// the real files, so the secret-file guard and deny rules must see them
+    /// as those files too.
+    #[cfg(windows)]
+    #[test]
+    fn a_secret_file_spelled_the_windows_way_is_still_refused() {
+        let root = root();
+        for f in [".npmrc", ".env", "server.pem", "id_rsa"] {
+            std::fs::write(root.join(f), b"x").unwrap();
+        }
+        let perms = ToolPermissions::allow_all();
+        for spelling in [
+            ".npmrc.",
+            ".npmrc ",
+            ".npmrc. .",
+            "server.pem.",
+            ".env::$DATA",
+            ".ENV",
+            "id_rsa.",
+            "server.pem:$DATA",
+        ] {
+            let d = decide("read", json!({ "path": spelling }), &root, &perms, &NetworkPolicy::open());
+            assert!(
+                matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))),
+                "{spelling:?} read a secret file: {d:?}"
+            );
+        }
+
+        std::fs::create_dir_all(root.join("secrets")).unwrap();
+        std::fs::write(root.join("secrets/keys.txt"), b"x").unwrap();
+        let perms = denying(&["read(secrets/**)"]);
+        for spelling in ["secrets./keys.txt", "secrets /keys.txt", "secrets/keys.txt::$DATA"] {
+            assert_eq!(
+                decide("read", json!({ "path": spelling }), &root, &perms, &NetworkPolicy::open()),
+                Decision::HardDeny(DenyReason::Policy),
+                "{spelling:?} slipped past the deny rule"
+            );
+        }
+    }
+
+    /// On a case-insensitive file system a deny rule covers every casing of the
+    /// path, since every casing opens the same file.
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn a_deny_rule_ignores_case_where_the_file_system_does() {
+        let root = root();
+        std::fs::create_dir_all(root.join("secrets")).unwrap();
+        std::fs::write(root.join("secrets/keys.txt"), b"x").unwrap();
+        let perms = denying(&["read(secrets/**)"]);
+        for spelling in ["Secrets/keys.txt", "SECRETS/KEYS.TXT"] {
+            assert_eq!(
+                decide("read", json!({ "path": spelling }), &root, &perms, &NetworkPolicy::open()),
+                Decision::HardDeny(DenyReason::Policy),
+                "{spelling:?} slipped past the deny rule"
+            );
+        }
+        std::fs::create_dir_all(root.join("notsecrets")).unwrap();
+        std::fs::write(root.join("notsecrets/x"), b"x").unwrap();
+        assert_eq!(
+            decide("read", json!({ "path": "notsecrets/x" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+    }
+
     // -- network -------------------------------------------------------------
 
     #[test]

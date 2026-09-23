@@ -411,6 +411,7 @@ pub fn normalize(path: &Path) -> PathBuf {
                     out.push("..");
                 }
             }
+            Component::Normal(name) => out.push(win32_name(name)),
             other => out.push(other.as_os_str()),
         }
     }
@@ -418,6 +419,25 @@ pub fn normalize(path: &Path) -> PathBuf {
         out.push(".");
     }
     out
+}
+
+/// The name Windows really opens for a path component (Jozkah/jan#223):
+/// `CreateFileW` drops trailing dots and spaces, and `name::$DATA` (any
+/// `:stream` suffix) is a stream of `name`. A rule or the secret-file guard
+/// must see `.npmrc.` and `.env::$DATA` as the files they open. Elsewhere those
+/// spellings are different files, so the name is kept as written.
+fn win32_name(name: &std::ffi::OsStr) -> std::ffi::OsString {
+    if !cfg!(windows) {
+        return name.to_os_string();
+    }
+    let text = name.to_string_lossy();
+    let file = text.split(':').next().unwrap_or(&text);
+    let folded = file.trim_end_matches(['.', ' ']);
+    if folded.is_empty() {
+        name.to_os_string()
+    } else {
+        folded.into()
+    }
 }
 
 /// Split a command line into words, honouring single and double quotes.
@@ -667,17 +687,24 @@ fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
 /// does not cover `/proj/notsecrets/x`.
 fn matches_resource_text(pattern: &str, resource: &Resource) -> bool {
     let text = resource.match_text();
-    if Pattern::new(pattern).is_ok_and(|p| p.matches(&text)) {
+    let is_path = matches!(resource, Resource::Path(_));
+    // Windows and default macOS volumes open any casing of a path as the same
+    // file, so a path rule must match it in any casing too (Jozkah/jan#223).
+    let options = glob::MatchOptions {
+        case_sensitive: !(is_path && cfg!(any(windows, target_os = "macos"))),
+        ..glob::MatchOptions::new()
+    };
+    if Pattern::new(pattern).is_ok_and(|p| p.matches_with(&text, options)) {
         return true;
     }
-    if !matches!(resource, Resource::Path(_)) {
+    if !is_path {
         return false;
     }
     // Already absolute or already anchored: nothing further to try.
     if pattern.starts_with('/') || pattern.starts_with("**") {
         return false;
     }
-    Pattern::new(&format!("**/{pattern}")).is_ok_and(|p| p.matches(&text))
+    Pattern::new(&format!("**/{pattern}")).is_ok_and(|p| p.matches_with(&text, options))
 }
 
 #[cfg(test)]
