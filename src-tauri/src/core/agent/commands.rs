@@ -1175,7 +1175,7 @@ mod worktree_command_tests {
             let err =
                 agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
                     .expect_err("must refuse");
-            assert!(err.contains("not a worktree Jan manages"), "{err}");
+            assert!(err.contains("not a worktree Flint manages"), "{err}");
         }
     }
 
