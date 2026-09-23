@@ -153,27 +153,48 @@ fn is_git_lfs_filter(key: &str, value: &str) -> bool {
         )
 }
 
+/// Every key and value the repository itself sets: its own config file
+/// and, when `extensions.worktreeConfig` is on, the worktree's
+/// `config.worktree`, which `--local` alone never lists. Includes are
+/// followed. A listing git cannot produce is refused rather than read as
+/// "nothing set".
+fn repository_config(repo: &Path) -> Result<Vec<(String, String)>, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(["config", "--show-scope", "--includes", "--list", "-z"]);
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("git would not run: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git could not list this repository's config: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let listed = String::from_utf8_lossy(&out.stdout);
+    // With `-z`, each entry is its scope, a NUL, then `key\nvalue`, a NUL.
+    let mut fields = listed.split('\0');
+    let mut entries = Vec::new();
+    while let (Some(scope), Some(entry)) = (fields.next(), fields.next()) {
+        if matches!(scope, "local" | "worktree") {
+            let (key, value) = entry.split_once('\n').unwrap_or((entry, ""));
+            entries.push((key.to_string(), value.to_string()));
+        }
+    }
+    Ok(entries)
+}
+
 /// R22: for change checkpoints and isolated checkouts, which run filters on
 /// every file they stage or check out -- refuse a repository whose own config
 /// names a filter, diff or merge program other than git-lfs's own commands.
 pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(["config", "--local", "--includes", "--list", "-z"]);
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| format!("git would not run: {e}"))?;
-    let listed = String::from_utf8_lossy(&out.stdout);
-    for entry in listed.split('\0').filter(|e| !e.is_empty()) {
-        let (key, value) = entry.split_once('\n').unwrap_or((entry, ""));
+    for (key, value) in repository_config(repo)? {
         let lower = key.to_ascii_lowercase();
         let last = lower.rsplit('.').next().unwrap_or("");
         let program = (lower.starts_with("filter.") && matches!(last, "clean" | "smudge" | "process"))
             || (lower.starts_with("diff.") && matches!(last, "textconv" | "command"))
             || (lower.starts_with("merge.") && last == "driver");
-        if program && !is_git_lfs_filter(key, value) {
+        if program && !is_git_lfs_filter(&key, &value) {
             return Err(format!(
                 "this repository's own git config sets `{key}`, which makes git run a program on the files it stages or checks out; Jan does not snapshot or check out this repository, so undo is not available for it. Remove that setting to restore it."
             ));
@@ -184,19 +205,9 @@ pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
 
 /// Refuse a repository whose own config names a program for git to run.
 pub(crate) fn refuse_program_config(repo: &Path) -> Result<(), VcsError> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(["config", "--local", "--includes", "--list", "-z"]);
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = cmd
-        .output()
-        .map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, format!("git would not run: {e}")))?;
-    // No local config at all (not a repository) is for the caller to report.
-    let listed = String::from_utf8_lossy(&out.stdout);
-    for entry in listed.split('\0').filter(|e| !e.is_empty()) {
-        let (key, value) = entry.split_once('\n').unwrap_or((entry, ""));
-        if runs_a_program(key, value) {
+    let entries = repository_config(repo).map_err(|e| VcsError::new(VcsErrorKind::GitUnavailable, e))?;
+    for (key, value) in entries {
+        if runs_a_program(&key, &value) {
             return Err(VcsError::new(
                 VcsErrorKind::WouldDiscard,
                 format!(
@@ -279,6 +290,7 @@ pub fn divergence(repo: &Path) -> Result<Divergence, VcsError> {
             "there is no git work tree here",
         ));
     }
+    refuse_program_config(repo)?;
     let dirty = !git(repo, &["status", "--porcelain"])?.trim().is_empty();
     let branch = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])
         .ok()
@@ -772,7 +784,8 @@ pub fn staged(repo: &Path) -> Result<Staged, VcsError> {
     if git(repo, &["rev-parse", "--is-inside-work-tree"]).is_err() {
         return Err(VcsError::new(VcsErrorKind::NotARepo, "there is no git work tree here"));
     }
-    let names = git(repo, &["diff", "--cached", "--name-only"])?;
+    refuse_program_config(repo)?;
+    let names = git(repo, &["diff", "--no-ext-diff", "--no-textconv", "--cached", "--name-only"])?;
     let files: Vec<String> = names
         .lines()
         .map(|l| l.trim().replace('\\', "/"))
@@ -785,18 +798,18 @@ pub fn staged(repo: &Path) -> Result<Staged, VcsError> {
             "nothing is staged, so there is no change for a message to describe",
         ));
     }
-    let stat = git(repo, &["diff", "--cached", "--shortstat"]).unwrap_or_default();
+    let stat = git(repo, &["diff", "--no-ext-diff", "--no-textconv", "--cached", "--shortstat"]).unwrap_or_default();
     let number_before = |word: &str| -> usize {
         stat.split(',')
             .find(|part| part.contains(word))
             .and_then(|part| part.trim().split_whitespace().next()?.parse().ok())
             .unwrap_or(0)
     };
-    let raw = git(repo, &["diff", "--cached"]).unwrap_or_default();
+    let raw = git(repo, &["diff", "--no-ext-diff", "--no-textconv", "--cached"]).unwrap_or_default();
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(&raw);
     let kept: String = scrubbed.chars().take(MAX_DIFF_CHARS).collect();
     let truncated = kept.chars().count() < scrubbed.chars().count();
-    let unstaged: Vec<String> = git(repo, &["diff", "--name-only"])
+    let unstaged: Vec<String> = git(repo, &["diff", "--no-ext-diff", "--no-textconv", "--name-only"])
         .unwrap_or_default()
         .lines()
         .map(|l| l.trim().replace('\\', "/"))
@@ -2152,5 +2165,38 @@ mod tests {
         assert_eq!(abort_op(&work, &again.backup).unwrap_err().kind, VcsErrorKind::WouldDiscard);
         assert_eq!(head(&work), here);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A repository's own config can name programs git runs while it reads
+    /// (`diff.external`, `diff.<driver>.textconv`, `filter.<driver>.clean`).
+    /// Reading what is staged or how far a branch has drifted runs none.
+    #[test]
+    fn a_read_runs_no_program_the_repository_names() {
+        for (i, (key, tail)) in [
+            ("diff.external", "true"),
+            ("diff.evil.textconv", "cat"),
+            ("filter.evil.clean", "cat"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for read in ["staged", "divergence"] {
+                let (base, work) = pair(&format!("progcfg-{i}-{read}"));
+                let marker = base.join("marker");
+                commit(&work, ".gitattributes", "*.txt diff=evil filter=evil\n", "attrs");
+                write(&work, "file.txt", "two\n");
+                run(&work, &["add", "file.txt"]);
+                write(&work, "file.txt", "three\n");
+                let m = marker.to_string_lossy().replace('\\', "/");
+                run(&work, &["config", key, &format!(": > '{m}'; {tail}")]);
+                let refused = match read {
+                    "staged" => staged(&work).is_err(),
+                    _ => divergence(&work).is_err(),
+                };
+                assert!(!marker.exists(), "{read} ran `{key}`");
+                assert!(refused, "{read} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
     }
 }
