@@ -35,7 +35,9 @@ const BASH_MAX_LINES: usize = 10_000;
 const GREP_MAX_LINE: usize = 500;
 const LS_DEFAULT_LIMIT: usize = 500;
 const FIND_DEFAULT_LIMIT: usize = 1000;
-const GREP_DEFAULT_LIMIT: usize = 100;
+const GREP_DEFAULT_LIMIT: usize = 300;
+/// Hard ceiling on grep matches returned to the model, whatever `limit` asks.
+const GREP_MAX_RESULTS: usize = 300;
 /// How long a `bash` call waits for the command before backgrounding it, when
 /// the caller doesn't specify `timeout`.
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
@@ -2828,7 +2830,8 @@ async fn grep(
     let context = arg_u64(args, "context").map(|v| v as usize).unwrap_or(0);
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
-        .unwrap_or(GREP_DEFAULT_LIMIT);
+        .unwrap_or(GREP_DEFAULT_LIMIT)
+        .clamp(1, GREP_MAX_RESULTS);
     let base = resolve_path(root, scratch, &path);
     if symlink_escapes_any_root(root, scratch, read_roots, &base) {
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
@@ -2863,8 +2866,10 @@ async fn grep(
         };
 
         let is_file = base.is_file();
-        let mut matches: Vec<String> = Vec::new();
+        // Grouped per file, in walk order: (relative path, [(line no, is match, text)]).
+        let mut groups: Vec<(String, Vec<(usize, bool, String)>)> = Vec::new();
         let mut count = 0usize;
+        let mut truncated = false;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -2886,29 +2891,36 @@ async fn grep(
             };
             let rel = rel_to(rel_base, file);
             let lines: Vec<&str> = content.lines().collect();
+            let mut entries: Vec<(usize, bool, String)> = Vec::new();
+            let mut keep_going = true;
             for (i, line) in lines.iter().enumerate() {
-                if re.is_match(line) {
-                    if context > 0 {
-                        let start = i.saturating_sub(context);
-                        let end = (i + context + 1).min(lines.len());
-                        for (j, item) in lines.iter().enumerate().take(end).skip(start) {
-                            let text = truncate_line(item);
-                            if j == i {
-                                matches.push(format!("{rel}:{}:{text}", j + 1));
-                            } else {
-                                matches.push(format!("{rel}-{}-{text}", j + 1));
-                            }
-                        }
-                    } else {
-                        matches.push(format!("{rel}:{}:{}", i + 1, truncate_line(line)));
-                    }
-                    count += 1;
-                    if count >= limit {
-                        return false;
-                    }
+                if !re.is_match(line) {
+                    continue;
                 }
+                if count >= limit {
+                    // One match past the cap is enough to report "N+".
+                    truncated = true;
+                    keep_going = false;
+                    break;
+                }
+                let start = i.saturating_sub(context);
+                let end = (i + context + 1).min(lines.len());
+                for (j, item) in lines.iter().enumerate().take(end).skip(start) {
+                    let line_no = j + 1;
+                    // Overlapping context windows: never repeat a line, but
+                    // promote an already-emitted context line that matches.
+                    if let Some(prev) = entries.iter_mut().find(|e| e.0 == line_no) {
+                        prev.1 |= j == i;
+                        continue;
+                    }
+                    entries.push((line_no, j == i, truncate_line(item)));
+                }
+                count += 1;
             }
-            true
+            if !entries.is_empty() {
+                groups.push((rel, entries));
+            }
+            keep_going
         };
 
         if is_file {
@@ -2950,19 +2962,43 @@ async fn grep(
             }
         }
 
-        if matches.is_empty() {
+        if groups.is_empty() {
             "No matches.".to_string()
         } else {
-            cap_output(
-                &matches.join("\n"),
-                usize::MAX,
-                MAX_BYTES,
-                "\n[truncated: 64KB limit]",
-            )
+            let mut body = format_grep_groups(&groups);
+            if truncated {
+                body.push_str(&format!(
+                    "\n\n[Showing first {count} of {count}+ matches; narrow the pattern, path or glob to see the rest]"
+                ));
+            }
+            cap_output(&body, usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+/// Model-facing grep output: a header line per file (its relative path), then
+/// its lines as `  N: text` for matches and `  N- text` for context, with a
+/// blank line between files. Gaps inside one file are marked by `  --`.
+fn format_grep_groups(groups: &[(String, Vec<(usize, bool, String)>)]) -> String {
+    let mut out = String::new();
+    for (gi, (file, entries)) in groups.iter().enumerate() {
+        if gi > 0 {
+            out.push_str("\n\n");
+        }
+        out.push_str(file);
+        let mut prev: Option<usize> = None;
+        for (line_no, is_match, text) in entries {
+            if prev.is_some_and(|p| *line_no > p + 1) {
+                out.push_str("\n  --");
+            }
+            let sep = if *is_match { ':' } else { '-' };
+            out.push_str(&format!("\n  {line_no}{sep} {text}"));
+            prev = Some(*line_no);
+        }
+    }
+    out
 }
 
 fn truncate_line(line: &str) -> String {
@@ -5448,7 +5484,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(re.contains("code.rs:1:fn main"), "regex: {re}");
+        assert!(re.contains("code.rs\n  1: fn main"), "regex: {re}");
 
         // Literal: "1.5" as regex would match "1x5" too; literal must match exactly.
         let lit = execute_builtin(
@@ -5457,7 +5493,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(lit.contains("code.rs:2:"), "literal: {lit}");
+        assert!(lit.contains("  2: Let x"), "literal: {lit}");
 
         let ci = execute_builtin(
             lookup("grep").unwrap(),
@@ -5465,7 +5501,55 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(ci.contains("code.rs:2:"), "ignore_case: {ci}");
+        assert!(ci.contains("  2: Let x"), "ignore_case: {ci}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_groups_by_file_with_line_numbers_and_context() {
+        let root = unique_root();
+        std::fs::write(
+            root.join("a.txt"),
+            b"one\nneedle two\nthree\nfour\nfive\nneedle six",
+        )
+        .unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "needle", "context": 1}),
+            &root,
+        )
+        .await;
+        assert_eq!(
+            out,
+            "a.txt\n  1- one\n  2: needle two\n  3- three\n  --\n  5- five\n  6: needle six",
+            "grouped: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_caps_results_and_notes_the_overflow() {
+        let root = unique_root();
+        let body: String = (0..400).map(|i| format!("hit {i}\n")).collect();
+        std::fs::write(root.join("big.txt"), body).unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "hit", "limit": 5000}),
+            &root,
+        )
+        .await;
+        assert!(out.contains("  300: hit 299"), "{out}");
+        assert!(!out.contains("  301: hit 300"), "cap not applied");
+        assert!(out.contains("[Showing first 300 of 300+ matches"), "note missing");
+
+        let long = "x".repeat(800);
+        std::fs::write(root.join("big.txt"), format!("{long}\n")).unwrap();
+        let out = execute_builtin(lookup("grep").unwrap(), &json!({"pattern": "x"}), &root).await;
+        assert!(
+            out.contains(&format!("  1: {}...", "x".repeat(500))),
+            "line not truncated"
+        );
+        assert!(!out.contains(&"x".repeat(501)));
         let _ = std::fs::remove_dir_all(&root);
     }
 

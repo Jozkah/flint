@@ -1,7 +1,8 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { ToolUIPart } from 'ai'
 import {
   BookOpen,
+  ChevronRight,
   File as FileIcon,
   FilePen,
   Folder,
@@ -14,8 +15,12 @@ import {
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
+  grepHighlightRegex,
   isToolRunning,
   parseBashOutput,
+  parseGrepOutput,
+  splitGrepMatches,
+  type GrepGroup,
   type ToolCallBar,
 } from '@/lib/toolPresentation'
 import { cn } from '@/lib/utils'
@@ -213,6 +218,92 @@ export const TerminalWidget = memo(
 
 TerminalWidget.displayName = 'TerminalWidget'
 
+const HighlightedLine = ({ text, re }: { text: string; re?: RegExp }) => {
+  const parts = useMemo(() => splitGrepMatches(text, re), [text, re])
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.hit ? (
+          <mark
+            key={i}
+            className="rounded-sm bg-warning-tint px-px text-foreground"
+            data-testid="grep-match"
+          >
+            {p.text}
+          </mark>
+        ) : (
+          <span key={i}>{p.text}</span>
+        )
+      )}
+    </>
+  )
+}
+
+const GrepFileGroup = ({ group, re }: { group: GrepGroup; re?: RegExp }) => {
+  const [open, setOpen] = useState(true)
+  const hits = group.lines.filter((l) => l.match).length
+  return (
+    <div data-testid="grep-file-group">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1 py-0.5 text-left text-foreground hover:text-foreground/80"
+      >
+        <ChevronRight
+          className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')}
+        />
+        <span className="min-w-0 flex-1 truncate">{group.file}</span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">{hits}</span>
+      </button>
+      {open && (
+        <div className="pl-4">
+          {group.lines.map((l, i) => (
+            <div key={`${l.line}-${i}`}>
+              {group.gaps.includes(i) && (
+                <div className="select-none text-muted-foreground/50">⋯</div>
+              )}
+              <div className="flex gap-2">
+                <span className="w-8 shrink-0 select-none text-right tabular-nums text-muted-foreground/60">
+                  {l.line}
+                </span>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 whitespace-pre-wrap wrap-break-word',
+                    l.match ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                  )}
+                >
+                  {l.match ? <HighlightedLine text={l.text} re={re} /> : l.text}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** `grep` results grouped per file, collapsible, with the matches highlighted. */
+export const GrepResults = memo(
+  ({ groups, notes, re }: { groups: GrepGroup[]; notes: string[]; re?: RegExp }) => (
+    <div
+      className="mt-1.5 max-h-80 space-y-1 overflow-auto rounded-md border border-border bg-sunken px-2 py-1.5 font-mono text-xs"
+      data-testid="grep-results"
+    >
+      {groups.map((g, i) => (
+        <GrepFileGroup key={`${g.file}-${i}`} group={g} re={re} />
+      ))}
+      {notes.map((n, i) => (
+        <p key={i} className="text-muted-foreground">
+          {n}
+        </p>
+      ))}
+    </div>
+  )
+)
+GrepResults.displayName = 'GrepResults'
+
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileIcon,
   ls: Folder,
@@ -254,6 +345,15 @@ export const AgentToolWidget = memo(
     )
     const Icon = TOOL_ICONS[bar.tool] ?? FileIcon
     const body = asText(output)
+    const grep = useMemo(
+      () => (bar.tool === 'grep' && body ? parseGrepOutput(body) : undefined),
+      [bar.tool, body]
+    )
+    const highlight = useMemo(
+      () =>
+        grep && bar.grep ? grepHighlightRegex(bar.target, bar.grep) : undefined,
+      [grep, bar.target, bar.grep]
+    )
     // `ls` with no path lists the workspace root; show that rather than a bar
     // that reads as though an argument failed to stream.
     const value =
@@ -309,6 +409,8 @@ export const AgentToolWidget = memo(
           // than the change itself.
           (diff ? (
             <DiffBlock diff={diff} />
+          ) : grep ? (
+            <GrepResults groups={grep.groups} notes={grep.notes} re={highlight} />
           ) : body ? (
             <OutputBlock>{body}</OutputBlock>
           ) : (
