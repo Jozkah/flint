@@ -51,8 +51,6 @@ type GroupsStore = {
   state: GroupsState
   loaded: Record<GroupSurface, boolean>
   migratedProjects: boolean
-  /** Items temporarily revealed by navigation, without persisting expansion. */
-  revealed: Record<GroupSurface, string | null>
 
   load: (surface: GroupSurface) => Promise<void>
   loadAll: () => Promise<void>
@@ -92,7 +90,6 @@ type GroupsStore = {
   pruneMissing: (surface: GroupSurface, liveIds: ReadonlySet<string>) => Promise<void>
   /** Replaces a whole surface; used by the one-time projects migration. */
   importSurface: (surface: GroupSurface, data: SurfaceGroups, migratedProjects: boolean) => Promise<boolean>
-  reveal: (surface: GroupSurface, itemId: string | null) => void
 }
 
 const allFalse = () => ({ home: false, cowork: false, rooms: false })
@@ -145,7 +142,6 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
     state: domain.emptyGroupsState(),
     loaded: allFalse(),
     migratedProjects: false,
-    revealed: { home: null, cowork: null, rooms: null },
 
     load: async (surface) => {
       let raw: string | null = null
@@ -282,7 +278,6 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       )
     },
 
-    reveal: (surface, itemId) => set((s) => ({ revealed: { ...s.revealed, [surface]: itemId } })),
   }
 })
 

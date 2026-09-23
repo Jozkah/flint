@@ -76,6 +76,15 @@ import { FolderResolutionDialog, type FolderResolutionRequest } from './FolderRe
 import { GroupedNavContext, type GroupedNavApi } from './context'
 import { GroupFoldersDialog } from './GroupFoldersDialog'
 import { ActiveDot } from './ActiveDot'
+import {
+  GROUP_PREFIX,
+  ITEM_PREFIX,
+  RECENTS_DROP,
+  groupDropId,
+  planDrop,
+  stripPrefix,
+  type DropContext,
+} from './dropPlan'
 
 /** Props a surface spreads onto its row's `SidebarMenuItem`. */
 export type GroupRowProps = {
@@ -111,14 +120,6 @@ export type GroupedNavProps<T> = {
 }
 
 const AUTO_EXPAND_MS = 600
-const GROUP_PREFIX = 'grp:'
-const ITEM_PREFIX = 'item:'
-const RECENTS_DROP = 'drop:recents'
-const groupDropId = (id: string) => `drop:${id}`
-
-function stripPrefix(id: string, prefix: string) {
-  return id.startsWith(prefix) ? id.slice(prefix.length) : null
-}
 
 export function GroupedNav<T>(props: GroupedNavProps<T>) {
   const {
@@ -141,7 +142,6 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
   const compact = props.compact ?? storedCompact
   const surfaceState = useConversationGroups((s) => s.state.surfaces[surface])
   const loaded = useConversationGroups((s) => s.loaded[surface])
-  const revealed = useConversationGroups((s) => s.revealed[surface])
   const store = useConversationGroups.getState
 
   const layout = useMemo(() => layoutSurface(surfaceState, items, getId), [surfaceState, items, getId])
@@ -164,12 +164,13 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
   const [peeked, setPeeked] = useState<ReadonlySet<string>>(new Set())
   const pendingItemForNewGroup = useRef<string | null>(null)
 
-  // Reveal the selected item's group for this navigation without persisting.
+  // Whatever selected the item (search, deep link, session restore, a click
+  // elsewhere), reveal its collapsed group for this view without persisting
+  // the expansion.
+  const selectedGroup = selectedId ? surfaceState.memberships[selectedId]?.groupId : undefined
   useEffect(() => {
-    if (!revealed) return
-    const gid = surfaceState.memberships[revealed]?.groupId
-    if (gid) setPeeked((p) => new Set(p).add(gid))
-  }, [revealed, surfaceState.memberships])
+    if (selectedGroup) setPeeked((p) => (p.has(selectedGroup) ? p : new Set(p).add(selectedGroup)))
+  }, [selectedGroup])
 
   const groupIdOf = useCallback(
     (itemId: string) => {
@@ -275,15 +276,6 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
     setActiveDrag(String(e.active.id))
   }
 
-  const targetGroupOfOver = (over: string): string | null | undefined => {
-    const g = stripPrefix(over, GROUP_PREFIX) ?? stripPrefix(over, 'drop:')
-    if (g === 'recents') return null
-    if (g) return g
-    const itemId = stripPrefix(over, ITEM_PREFIX)
-    if (itemId) return groupIdOf(itemId)
-    return undefined
-  }
-
   const onDragOver = (e: DragOverEvent) => {
     const over = e.over ? String(e.over.id) : null
     setOverId(over)
@@ -298,36 +290,24 @@ export function GroupedNav<T>(props: GroupedNavProps<T>) {
     }
   }
 
+  const dropContext: DropContext = useMemo(
+    () => ({
+      groupOrder: layout.groups.map((g) => g.group.id),
+      childrenOf: (gid) => layout.groups.find((g) => g.group.id === gid)?.children.map(getId) ?? [],
+      groupIdOf,
+      hasItem: (id) => itemById.has(id),
+    }),
+    [layout.groups, getId, groupIdOf, itemById]
+  )
+
   const onDragEnd = async (e: DragEndEvent) => {
     clearExpandTimer()
     setActiveDrag(null)
     setOverId(null)
-    const active = String(e.active.id)
-    const over = e.over ? String(e.over.id) : null
-    if (!over || over === active) return
-
-    const draggedGroup = stripPrefix(active, GROUP_PREFIX)
-    if (draggedGroup) {
-      const target = targetGroupOfOver(over)
-      if (!target) return
-      const toIndex = layout.groups.findIndex((g) => g.group.id === target)
-      if (toIndex >= 0) await store().reorderGroup(surface, draggedGroup, toIndex)
-      return
-    }
-
-    const itemId = stripPrefix(active, ITEM_PREFIX)
-    if (!itemId) return
-    const target = targetGroupOfOver(over)
-    if (target === undefined) return
-    let toIndex: number | undefined
-    const overItem = stripPrefix(over, ITEM_PREFIX)
-    if (target && overItem) {
-      const children = layout.groups.find((g) => g.group.id === target)?.children ?? []
-      toIndex = children.findIndex((c) => getId(c) === overItem)
-      // moveItem removes then inserts, which matches arrayMove(from, over).
-    }
-    if (target === groupIdOf(itemId) && toIndex === undefined) return
-    await requestMove(itemId, target, toIndex)
+    const plan = planDrop(String(e.active.id), e.over ? String(e.over.id) : null, dropContext)
+    if (!plan) return
+    if (plan.kind === 'reorderGroup') await store().reorderGroup(surface, plan.groupId, plan.toIndex)
+    else await requestMove(plan.itemId, plan.groupId, plan.toIndex)
   }
 
   const onDragCancel = () => {
