@@ -509,8 +509,9 @@ mod win {
         INVALID_HANDLE_VALUE, WAIT_FAILED,
     };
     use windows_sys::Win32::Security::Authorization::{
-        GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
-        GRANT_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
+        GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, ACCESS_MODE,
+        EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+        TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
     };
     use windows_sys::Win32::Security::Isolation::{
         CreateAppContainerProfile, DeleteAppContainerProfile,
@@ -606,6 +607,67 @@ mod win {
         ))
     }
 
+    /// Whether `path`'s own DACL holds an ACE naming `sid`. Test support.
+    #[cfg(test)]
+    pub(super) fn acl_names(path: &Path, sid: PSID) -> bool {
+        use windows_sys::Win32::Security::{
+            AclSizeInformation, EqualSid, GetAce, GetAclInformation, ACCESS_ALLOWED_ACE,
+            ACL_SIZE_INFORMATION,
+        };
+        let object = wide(path.as_os_str());
+        let mut acl: *mut ACL = std::ptr::null_mut();
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                object.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut acl,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
+        let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+        let ok = unsafe {
+            GetAclInformation(
+                acl,
+                &mut info as *mut _ as *mut c_void,
+                std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                AclSizeInformation,
+            )
+        };
+        assert_ne!(ok, 0, "GetAclInformation");
+        let mut found = false;
+        for i in 0..info.AceCount {
+            let mut ace: *mut c_void = std::ptr::null_mut();
+            if unsafe { GetAce(acl, i, &mut ace) } == 0 {
+                continue;
+            }
+            // Allowed and denied ACEs share this layout: header, mask, SID.
+            let entry = ace as *const ACCESS_ALLOWED_ACE;
+            let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+            if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                found = true;
+            }
+        }
+        unsafe { LocalFree(descriptor) };
+        found
+    }
+
+    /// A container SID for tests, with its profile.
+    #[cfg(test)]
+    pub(super) fn test_profile(moniker: &str) -> Result<ContainerSid, String> {
+        ensure_profile(moniker)
+    }
+
+    #[cfg(test)]
+    pub(super) fn sid_ptr(sid: &ContainerSid) -> PSID {
+        sid.0
+    }
+
     pub fn delete_profile(moniker: &str) {
         let name = wide(OsStr::new(moniker));
         unsafe { DeleteAppContainerProfile(name.as_ptr()) };
@@ -616,6 +678,56 @@ mod win {
     /// lowbox token can open nothing it was not given. Called for the workspace
     /// and, when there is one, the session scratch.
     fn grant_path(path: &Path, sid: PSID) -> Result<(), String> {
+        set_access(path, sid, GRANT_ACCESS)
+    }
+
+    /// Remove every ACE naming the container from `path` (Jozkah/jan#217). The
+    /// grant is inheritable, so the change propagates to what was created under
+    /// it the same way the grant did.
+    fn revoke_path(path: &Path, sid: PSID) -> Result<(), String> {
+        set_access(path, sid, REVOKE_ACCESS)
+    }
+
+    /// Where the write roots last granted to a container are recorded: in the
+    /// host's temp folder, which the container cannot write, so a sandboxed
+    /// command cannot erase the record to keep a grant alive.
+    fn write_root_record(moniker: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join("jan-appcontainer-write-roots")
+            .join(moniker)
+    }
+
+    /// Make the container's ACEs on authorized folders match `roots` exactly.
+    ///
+    /// The container SID is derived from the workspace, so it is the same for
+    /// every command in a session; an ACE granted for a worktree the session
+    /// has since lost (Review-only, a failed health check) would otherwise keep
+    /// giving `bash` full access to it (Jozkah/jan#217). Every folder recorded
+    /// as granted and no longer in `roots` is revoked before anything runs, then
+    /// `roots` are granted and recorded. A recorded folder that is gone needs no
+    /// revoking.
+    pub(super) fn sync_write_roots(
+        record: &Path,
+        sid: PSID,
+        roots: &[PathBuf],
+    ) -> Result<(), String> {
+        let previous = std::fs::read_to_string(record).unwrap_or_default();
+        for old in previous.lines().filter(|l| !l.is_empty()).map(PathBuf::from) {
+            if !roots.contains(&old) && old.is_dir() {
+                revoke_path(&old, sid)?;
+            }
+        }
+        for root in roots {
+            grant_path(root, sid)?;
+        }
+        if let Some(parent) = record.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let listed: Vec<String> = roots.iter().map(|r| r.to_string_lossy().into_owned()).collect();
+        std::fs::write(record, listed.join("\n")).map_err(|e| format!("{}: {e}", record.display()))
+    }
+
+    fn set_access(path: &Path, sid: PSID, mode: ACCESS_MODE) -> Result<(), String> {
         let mut object = wide(path.as_os_str());
         let mut existing: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
@@ -639,10 +751,15 @@ mod win {
             ));
         }
 
+        let granting = mode == GRANT_ACCESS;
         let access = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: FILE_ALL_ACCESS,
-            grfAccessMode: GRANT_ACCESS,
-            grfInheritance: CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+            grfAccessPermissions: if granting { FILE_ALL_ACCESS } else { 0 },
+            grfAccessMode: mode,
+            grfInheritance: if granting {
+                CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE
+            } else {
+                0
+            },
             Trustee: TRUSTEE_W {
                 pMultipleTrustee: std::ptr::null_mut(),
                 MultipleTrusteeOperation: 0,
@@ -928,7 +1045,9 @@ mod win {
         })?;
         // Authorized write roots: Jan-owned worktrees only, checked by the
         // caller before it asked. A missing one is refused rather than skipped,
-        // so a run is never told it can write somewhere it cannot.
+        // so a run is never told it can write somewhere it cannot. Folders
+        // granted to this container before and no longer authorized lose their
+        // ACE first.
         for root in &req.write_roots {
             if !root.is_dir() {
                 return Err(LaunchFailure::new(
@@ -937,10 +1056,10 @@ mod win {
                     format!("authorized folder does not exist: {}", root.display()),
                 ));
             }
-            grant_path(root, sid.0).map_err(|detail| {
-                LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
-            })?;
         }
+        sync_write_roots(&write_root_record(&name), sid.0, &req.write_roots).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+        })?;
 
         let env = sandbox_env(req, &home)?;
         let mut env_block = env.encode().map_err(|e| {
@@ -1145,6 +1264,43 @@ mod tests {
             moniker(&ws()),
             moniker(Path::new(r"C:\USERS\ME\.JAN\AGENT-WORKSPACE\THREADS\T1"))
         );
+    }
+
+    /// Jozkah/jan#217: once a worktree is no longer an authorized write root,
+    /// the next confined run must take the container's ACE off it; otherwise
+    /// `bash` keeps writing there after `write`/`edit` were refused.
+    #[cfg(windows)]
+    #[test]
+    fn a_write_root_no_longer_authorized_loses_its_ace() {
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_revoke_{n}"));
+        let (wt, other) = (base.join("worktree"), base.join("other"));
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        let record = base.join("record");
+        let name = format!("jan.test.revoke.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+
+        win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
+        assert!(win::acl_names(&wt, psid), "the authorized worktree was not granted");
+
+        win::sync_write_roots(&record, psid, &[other.clone()]).unwrap();
+        assert!(!win::acl_names(&wt, psid), "the revoked worktree kept its ACE");
+        assert!(win::acl_names(&other, psid));
+
+        win::sync_write_roots(&record, psid, &[]).unwrap();
+        assert!(!win::acl_names(&other, psid));
+
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
