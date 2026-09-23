@@ -739,6 +739,73 @@ mod tests {
         assert!(preview_restore_diff(&theirs).is_err());
     }
 
+    /// The preview names exactly the files the plan lists, marks a binary file
+    /// as such instead of dumping bytes, and is what the restore then does: once
+    /// restored, there is nothing left to preview.
+    #[test]
+    fn restore_preview_matches_the_plan_and_the_restore_including_binary_files() {
+        let (_d, root) = repo();
+        write(&root, "img.bin", [0u8, 1, 2, 3, 0, 255]);
+        write(&root, "gone.txt", "keep me\n");
+        let id = thread_id("cp-preview-accuracy");
+        let point = capture(&root, &id, None, "before", &[], Destination::Managed).unwrap();
+
+        write(&root, "a.txt", "edited\n");
+        write(&root, "img.bin", [9u8, 0, 8, 0, 7]);
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        write(&root, "added.txt", "new\n");
+
+        let diff = preview_restore_diff(&point).expect("preview");
+        let RewindPlan::Restore { files, .. } = plan(&point, &point.sha).unwrap() else {
+            panic!("a managed tree plans a restore");
+        };
+        let mut in_diff: Vec<String> = diff
+            .lines()
+            .filter_map(|l| l.strip_prefix("diff --git a/"))
+            .map(|l| l.split(" b/").next().unwrap().to_string())
+            .collect();
+        in_diff.sort();
+        let mut planned = files.clone();
+        planned.sort();
+        assert_eq!(in_diff, planned, "{diff}");
+        assert!(diff.contains("Binary files") && diff.contains("img.bin"), "{diff}");
+        assert!(diff.contains("+keep me"), "the deleted file comes back: {diff}");
+        assert!(diff.contains("-new"), "the added file goes: {diff}");
+
+        let safety = capture(&root, &id, None, "safety", &[], Destination::Managed).unwrap();
+        restore(&point, &safety.sha, &RestoreGuard::with_safety(&safety.sha)).unwrap();
+        assert_eq!(preview_restore_diff(&point).unwrap().trim(), "");
+        assert_eq!(read(&root, "a.txt"), "one\n");
+        assert_eq!(std::fs::read(root.join("img.bin")).unwrap(), vec![0u8, 1, 2, 3, 0, 255]);
+    }
+
+    /// An edit made after the last checkpoint shows in the preview and is
+    /// named in the plan's `changedSinceLatest`, and a restore without a
+    /// safety point refuses rather than lose it.
+    #[test]
+    fn restore_preview_shows_changes_made_since_the_latest_checkpoint() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-preview-conflict");
+        let first = capture(&root, &id, None, "first", &[], Destination::Managed).unwrap();
+        write(&root, "a.txt", "agent\n");
+        let latest = capture(&root, &id, None, "latest", &[], Destination::Managed).unwrap();
+        // Someone edits after the latest checkpoint.
+        write(&root, "a.txt", "human\n");
+        write(&root, "notes.txt", "mine\n");
+
+        let diff = preview_restore_diff(&first).unwrap();
+        assert!(diff.contains("-human") && diff.contains("notes.txt"), "{diff}");
+        let RewindPlan::Restore { changed_since_latest, .. } = plan(&first, &latest.sha).unwrap() else {
+            panic!("a managed tree plans a restore");
+        };
+        let mut changed = changed_since_latest.clone();
+        changed.sort();
+        assert_eq!(changed, vec!["a.txt".to_string(), "notes.txt".to_string()]);
+        let err = restore(&first, &latest.sha, &RestoreGuard::default()).unwrap_err();
+        assert!(err.contains("nothing was restored"), "{err}");
+        assert_eq!(read(&root, "a.txt"), "human\n");
+    }
+
     #[test]
     fn a_managed_tree_is_planned_as_a_restore() {
         let (_d, root) = repo();
