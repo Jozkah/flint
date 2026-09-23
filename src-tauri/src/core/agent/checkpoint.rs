@@ -206,6 +206,18 @@ pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String>
     Ok(RewindPlan::Patch { diff })
 }
 
+/// The exact change a restore to `checkpoint` would make to the tree as it
+/// stands, for previewing before confirming. Read-only.
+///
+/// Only for a managed tree: in the user's checkout the plan already *is* a
+/// patch, and there is no restore to preview.
+pub fn preview_restore_diff(checkpoint: &Checkpoint) -> Result<String, String> {
+    if !checkpoint.destination.may_hard_restore() {
+        return Err("this checkpoint is in your own checkout; its plan is the patch".to_string());
+    }
+    git::diff_worktree_to(&PathBuf::from(&checkpoint.root), &checkpoint.sha)
+}
+
 /// What a restore may discard, as the caller vouches for it.
 ///
 /// The default — no safety point, nothing allowed — is the strict one: the
@@ -698,6 +710,33 @@ mod tests {
             }
             other => panic!("expected a patch, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn restore_preview_shows_the_change_without_touching_the_tree() {
+        let (_d, root) = repo();
+        let point = capture(
+            &root,
+            &thread_id("cp-preview"),
+            None,
+            "before",
+            &[],
+            Destination::Managed,
+        )
+        .unwrap();
+        std::fs::write(root.join("a.txt"), "changed\n").unwrap();
+        std::fs::write(root.join("new.txt"), "fresh\n").unwrap();
+
+        let diff = preview_restore_diff(&point).expect("preview");
+        assert!(diff.contains("a.txt") && diff.contains("-changed"), "{diff}");
+        assert!(diff.contains("new.txt") && diff.contains("-fresh"), "{diff}");
+        // Read-only: the tree is exactly as it was.
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "changed\n");
+        assert!(root.join("new.txt").exists());
+
+        let mut theirs = point.clone();
+        theirs.destination = Destination::UserCheckout;
+        assert!(preview_restore_diff(&theirs).is_err());
     }
 
     #[test]

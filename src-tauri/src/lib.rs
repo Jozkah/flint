@@ -187,6 +187,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_team_child_propose,
         core::agent::commands::agent_checkpoint_capture,
         core::agent::commands::agent_checkpoint_plan,
+        core::agent::commands::agent_checkpoint_preview_diff,
         core::agent::commands::agent_checkpoint_restore,
         core::agent::commands::agent_checkpoint_forget,
         core::agent::commands::agent_git_status,

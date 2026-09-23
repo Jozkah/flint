@@ -4568,6 +4568,11 @@ function CoworkPage() {
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
                 }
+                onPreviewDiff={(sha) =>
+                  useCoworkCheckpoints
+                    .getState()
+                    .previewDiff(session?.id ?? '', sha)
+                }
                 // Newer edits Flint made itself are not someone else's work, so
                 // only the rest need an explicit acknowledgement.
                 janAuthored={

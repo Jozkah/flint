@@ -1052,6 +1052,13 @@ pub fn agent_checkpoint_plan(
     checkpoint::plan(&checkpoint, &latest)
 }
 
+/// The diff a restore to `checkpoint` would apply to the tree as it stands.
+/// Changes nothing; refuses a checkpoint in the user's own checkout.
+#[tauri::command]
+pub fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Result<String, String> {
+    checkpoint::preview_restore_diff(&checkpoint)
+}
+
 /// Roll a Flint-owned tree back to a checkpoint.
 ///
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller

@@ -345,6 +345,22 @@ pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, 
     run(repo, None, &["diff", from, to])
 }
 
+/// The change that would take the working tree as it stands back to `commit`,
+/// as a unified diff. Untracked (not ignored) files count as part of the tree,
+/// so a file a restore would delete shows up as a deletion. Nothing on disk,
+/// and not the user's index, is touched: the tree is staged into a scratch
+/// index seeded from `commit`.
+pub(crate) fn diff_worktree_to(repo: &Path, commit: &str) -> Result<String, String> {
+    let idx = temp_index();
+    let result = (|| {
+        stage_worktree(repo, &idx, commit)?;
+        let tree = run(repo, Some(&idx), &["write-tree"])?;
+        run_untrimmed(repo, None, &["diff", &tree, commit])
+    })();
+    let _ = std::fs::remove_file(&idx);
+    result
+}
+
 /// Stage the working tree exactly as it stands into a scratch index.
 ///
 /// The index is seeded from `base` first so that paths outside `repo` (when

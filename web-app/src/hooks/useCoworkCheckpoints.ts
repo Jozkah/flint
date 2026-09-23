@@ -119,6 +119,14 @@ type CheckpointsState = {
     sessionId: string,
     sha: string
   ) => Promise<{ ok: true; plan: RewindPlan } | { ok: false; reason: string }>
+  /**
+   * The diff a restore to this point would apply to the tree as it stands.
+   * Read-only; only meaningful for a plan that said `restore`.
+   */
+  previewDiff: (
+    sessionId: string,
+    sha: string
+  ) => Promise<{ ok: true; diff: string } | { ok: false; reason: string }>
   /** Carry out a rewind the backend agrees may discard. */
   restore: (
     sessionId: string,
@@ -220,6 +228,22 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
               plan: await invoke<RewindPlan>('agent_checkpoint_plan', {
                 checkpoint: wire(target),
                 latest,
+              }),
+            }
+          } catch (e) {
+            return { ok: false, reason: messageOf(e) }
+          }
+        },
+
+        previewDiff: async (sessionId, sha) => {
+          const chain = get().bySession[sessionId] ?? []
+          const target = chain.find((one) => one.sha === sha)
+          if (!target) return { ok: false, reason: 'that point is not recorded' }
+          try {
+            return {
+              ok: true,
+              diff: await invoke<string>('agent_checkpoint_preview_diff', {
+                checkpoint: wire(target),
               }),
             }
           } catch (e) {
