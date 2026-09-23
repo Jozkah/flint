@@ -870,6 +870,33 @@ mod tests {
         assert!(matches!(err, VectorDBError::InvalidInput(_)), "{err}");
     }
 
+    /// Jozkah/jan#246: one chunk stored at another dimension (an embedding
+    /// model changed mid-collection) must not fail the whole search; the
+    /// matching chunks are still found.
+    #[test]
+    fn linear_search_skips_a_chunk_of_another_dimension() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        insert_chunks(
+            &conn,
+            "f1",
+            vec![MinimalChunkInput { text: "good".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        let odd: Vec<u8> = [0.5f32, 0.5].iter().flat_map(|f| f.to_le_bytes()).collect();
+        conn.execute(
+            "INSERT INTO chunks (id, text, embedding, file_id, chunk_file_order) VALUES ('odd', 'odd', ?1, 'f1', 99)",
+            [odd],
+        )
+        .unwrap();
+        let found = search_collection(&conn, &[0.1, 0.2, 0.3], 5, 0.0, Some("linear".to_string()), false, None)
+            .expect("one bad chunk must not fail the search");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "good");
+    }
+
     #[test]
     fn insert_rejects_a_non_finite_embedding() {
         let conn = Connection::open_in_memory().unwrap();
