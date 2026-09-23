@@ -70,6 +70,7 @@
   "cmdBusy": "Can't do that while the agent is running",
   "skills": "Skills",
   "skillsInContext": "Skills available to the agent this run",
+  "skillsScopeGlobal": "Global skills. Select a project folder to choose which ones this project uses.",
   "skillsTitle": "Manage skills",
   "skillsSelectFolder": "Select a project folder in the code screen first to manage its skills.",
   "skillsEmpty": "No skills yet",
