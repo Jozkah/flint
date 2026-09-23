@@ -25,7 +25,10 @@ import {
   type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
-import { buildSubagentSystemPrompt } from '@/lib/coworkPrompt'
+import {
+  buildSubagentSystemPrompt,
+  type PromptFolderAccess,
+} from '@/lib/coworkPrompt'
 import { streamCutOff } from '@/lib/streamFinish'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
@@ -321,7 +324,7 @@ export type RunSubagentOptions = {
      * was. A child that believes the folder is editable when it is not writes
      * into refusals and reports work it did not do.
      */
-    folderAccess?: 'read-only' | 'editable'
+    folderAccess?: PromptFolderAccess
     /** The parent's `JAN.md`, handed down for the same reason. */
     projectInstructions?: string | null
     /**

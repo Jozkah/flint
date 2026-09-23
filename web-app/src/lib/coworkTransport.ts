@@ -7,12 +7,17 @@ import {
   coworkToolSignature,
   type CoworkToolOptions,
 } from '@/lib/coworkTools'
-import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
+import {
+  buildCoworkSystemPrompt,
+  environmentOptions,
+  type CoworkEnvironmentOptions,
+  type PromptFolderAccess,
+} from '@/lib/coworkPrompt'
 import { measureContextPack } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
 import { useModelProvider } from '@/hooks/useModelProvider'
 
-export type CoworkRunConfig = CoworkToolOptions & {
+export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
   /**
    * The model this run is sent with, captured from its session when the run
    * started (janhq/jan#8905). Every step of the run uses it, whatever the
@@ -27,7 +32,9 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * Frozen with the run, from its effective access — so the prompt describes
    * the destination the dispatcher will actually use.
    */
-  folderAccess?: 'read-only' | 'editable'
+  folderAccess?: PromptFolderAccess
+  /** The managed worktree's own branch, when `folderAccess` is `worktree`. */
+  worktreeBranch?: string | null
   /** The attached project's git branch, surfaced in the system prompt. */
   gitBranch?: string | null
   /** Verbatim `JAN.md` from the attached folder, when it has one. */
@@ -173,6 +180,8 @@ export class CoworkChatTransport extends CustomChatTransport {
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
       folderAccess: this.config.folderAccess,
+      worktreeBranch: this.config.worktreeBranch,
+      ...environmentOptions(this.config),
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,

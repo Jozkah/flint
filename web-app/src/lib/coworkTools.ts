@@ -46,7 +46,7 @@ export const CLIENT_TOOL_NAMES = new Set([
 
 const todoTool: Tool = {
   description:
-    'Manage the canonical session todo list: init/start/done/drop/rm/append/view. One call applies one operation. Tasks advance automatically in phase and task order after done or drop; start only confirms the current task. init takes `list` or `items`, never `phase`/`task` directly.',
+    'Manage the canonical session todo list: init/start/done/drop/rm/append/view. One call applies one operation. Tasks advance automatically in phase and task order after done or drop; start only confirms the current task. init takes `list` or `items`, never `phase`/`task` directly. Mark a task done only if every part of it happened; if a check could not run, drop it and say why.',
   inputSchema: jsonSchema({
     type: 'object',
     properties: {
@@ -145,7 +145,11 @@ function teamTool(subagentNames: string[]): Tool {
       'narrow a scope, or run them side by side. Paths only read go in ' +
       '`reads` and never conflict. Set `isolate` on a task that should work in a checkout ' +
       'of its own, when its changes must not reach the attached folder or its ' +
-      'siblings.' +
+      'siblings. Only the tester role has a shell; implementer, reviewer and ' +
+      'the other read roles do not, so do not ask them to build or run tests: ' +
+      'use tester, or run checks yourself after the team returns. A reviewer of ' +
+      'other tasks’ output must list them in `depends_on`, or be dispatched ' +
+      'in a later team call.' +
       known,
     inputSchema: jsonSchema({
       type: 'object',
