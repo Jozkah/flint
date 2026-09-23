@@ -855,6 +855,26 @@ pub(crate) async fn resolve_upstream_for_model(
             // engine loaded from persisted settings has none -- fall through to
             // the MLX session / llama-server router resolution below.
             if let Some(api_url) = provider_cfg.base_url.clone().filter(|u| !u.is_empty()) {
+                // An endpoint the user never vouched for (a project override
+                // pointing the name elsewhere) gets only the key written next
+                // to it. If a credential is stored under the name, sending the
+                // request without it would fail obscurely, so say why instead.
+                #[cfg(feature = "cli")]
+                if !provider_cfg.may_use_stored_credentials() {
+                    let api_keys = provider_cfg.bearer_key_chain();
+                    if api_keys.is_empty()
+                        && crate::core::cli::providers::has_stored_credential(
+                            &provider_cfg.provider,
+                            &api_url,
+                        )
+                    {
+                        return Err(crate::core::cli::providers::withheld_credential_error(
+                            &provider_cfg.provider,
+                            &api_url,
+                        ));
+                    }
+                    return Ok((format!("{api_url}{destination_path}"), api_keys));
+                }
                 // A registered account takes its OAuth access token (refreshed if
                 // needed) ahead of any stored API key. Account auth is a `cli`
                 // concern; the desktop resolves credentials through its own
@@ -3160,6 +3180,7 @@ mod tests {
                 base_url: Some("https://api.openai.com/v1".into()),
                 api_key: Some("api-key".into()),
                 models: vec!["account-model".into()],
+                stored_credentials: crate::core::state::StoredCredentials::Allowed,
                 ..Default::default()
             },
         );
