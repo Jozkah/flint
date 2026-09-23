@@ -270,6 +270,26 @@ pub fn run_command(notify: &Notify, note: &Notification, project_root: &Path) ->
             ))
         }
     };
+    // Drained on its own thread (Jozkah/jan#256): a command that writes more
+    // than a pipe buffer of stderr otherwise blocks on the write and never
+    // exits, and delivery waits out the whole deadline. The start is kept for
+    // the failure message.
+    let stderr = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut kept = Vec::new();
+            let mut buf = [0u8; 8192];
+            while let Ok(n) = pipe.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                if kept.len() < 2048 {
+                    kept.extend_from_slice(&buf[..n.min(2048 - kept.len())]);
+                }
+            }
+            String::from_utf8_lossy(&kept).trim().to_string()
+        })
+    });
     let deadline = std::time::Instant::now() + DELIVERY_DEADLINE;
     loop {
         match child.try_wait() {
@@ -277,10 +297,15 @@ pub fn run_command(notify: &Notify, note: &Notification, project_root: &Path) ->
                 return Delivered::Sent(format!("ran {}", notify.command[0]))
             }
             Ok(Some(status)) => {
+                let said = stderr
+                    .and_then(|h| h.join().ok())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| format!(": {s}"))
+                    .unwrap_or_default();
                 return Delivered::Failed(format!(
-                    "[notify].command '{}' exited with {status}",
+                    "[notify].command '{}' exited with {status}{said}",
                     notify.command[0]
-                ))
+                ));
             }
             Ok(None) if std::time::Instant::now() >= deadline => {
                 let _ = child.kill();
@@ -430,6 +455,30 @@ mod tests {
             Delivered::Failed(why) => assert!(why.contains("could not be started"), "{why}"),
             other => panic!("expected a failure, got {other:?}"),
         }
+    }
+
+    /// Jozkah/jan#256: a command that writes more than a pipe buffer of
+    /// stderr still finishes, and promptly -- not at the delivery deadline.
+    #[test]
+    fn a_chatty_command_is_not_stalled_by_its_own_stderr() {
+        let script = "import sys; sys.stderr.write('x' * 1000000); sys.stderr.flush()";
+        let command = if cfg!(windows) {
+            vec!["python".to_string(), "-c".to_string(), script.to_string()]
+        } else {
+            vec!["sh".to_string(), "-c".to_string(), "head -c 1000000 /dev/zero | tr '\\0' x >&2".to_string()]
+        };
+        let notify = Notify { command, webhook: None, moments: vec![Moment::RunEnded] };
+        let note = Notification::new(Moment::RunEnded, "s", None, "done");
+        let started = std::time::Instant::now();
+        let delivered = run_command(&notify, &note, &std::env::temp_dir());
+        if let Delivered::Failed(e) = &delivered {
+            if e.contains("could not be started") {
+                eprintln!("skipped: {e}");
+                return;
+            }
+        }
+        assert!(matches!(delivered, Delivered::Sent(_)), "{delivered:?}");
+        assert!(started.elapsed() < DELIVERY_DEADLINE, "waited out the deadline");
     }
 
     /// The command actually runs, with the notification as one argument.
