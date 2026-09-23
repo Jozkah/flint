@@ -120,6 +120,136 @@ fn build_http_client(provider: &str) -> Result<reqwest::Client, String> {
         .map_err(|e| format!("failed to build HTTP client for {provider}: {e}"))
 }
 
+// -- fetching pages from this machine (Jozkah/jan#189) ------------------------
+//
+// SearXNG, Brave, Serper and keyless You.com fetch a page by GETting it from
+// the user's machine, and `web_fetch` runs without an approval prompt. So the
+// URL is model-chosen and must not reach this machine, the LAN or a cloud
+// metadata endpoint. Three layers: the URL's own host is checked when it is an
+// address; every name the client resolves (the first hop, each redirect, and
+// again at connect time, so a rebinding DNS answer gains nothing) keeps only
+// public addresses; and each redirect is checked the same way before it is
+// followed. The provider's own API client is separate, so a self-hosted
+// SearXNG search endpoint on localhost keeps working.
+
+/// Whether `ip` is an ordinary internet address: not loopback, private,
+/// link-local, CGNAT, unique-local, unspecified, multicast, broadcast,
+/// documentation or reserved, and not one of those wrapped in IPv6.
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_multicast()
+                || a == 0
+                || (a == 100 && (64..128).contains(&b)) // CGNAT 100.64/10
+                || (a == 192 && b == 0 && c == 0) // IETF 192.0.0/24
+                || (a == 198 && (b == 18 || b == 19)) // benchmarking 198.18/15
+                || a >= 240) // reserved 240/4
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            let seg = v6.segments();
+            // NAT64 (64:ff9b::/96) carries an IPv4 address in its low bits.
+            if seg[0] == 0x64 && seg[1] == 0xff9b && seg[2..6] == [0, 0, 0, 0] {
+                let [.., hi, lo] = seg;
+                let v4 = std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (seg[0] & 0xfe00) == 0xfc00 // unique local fc00::/7
+                || (seg[0] & 0xffc0) == 0xfe80 // link local fe80::/10
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)) // documentation
+        }
+    }
+}
+
+/// Refuse a URL whose host is written as a non-public address or is a name
+/// for this machine. Names are left to [`PublicOnlyResolver`].
+pub(crate) fn check_public_url(url: &reqwest::Url) -> Result<(), String> {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Ipv6(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Domain(d))
+            if d.eq_ignore_ascii_case("localhost")
+                || d.to_ascii_lowercase().ends_with(".localhost") =>
+        {
+            Err(format!("refused to fetch {url}: {d} is this machine"))
+        }
+        None => Err(format!("refused to fetch {url}: no host")),
+        _ => Ok(()),
+    }
+}
+
+/// Resolves a name to its public addresses only; a name with none is an error.
+struct PublicOnlyResolver;
+
+impl reqwest::dns::Resolve for PublicOnlyResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let public: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await?
+                .filter(|a| is_public_ip(a.ip()))
+                .collect();
+            if public.is_empty() {
+                return Err(format!("{host} resolves only to local or private addresses").into());
+            }
+            Ok(Box::new(public.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+/// The one client pages are fetched with, built once.
+fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+                .dns_resolver(std::sync::Arc::new(PublicOnlyResolver))
+                .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    if attempt.previous().len() >= 10 {
+                        return attempt.error("too many redirects");
+                    }
+                    match check_public_url(attempt.url()) {
+                        Ok(()) => attempt.follow(),
+                        Err(e) => attempt.error(e),
+                    }
+                }))
+                .build()
+                .map_err(|e| format!("failed to build the page-fetch HTTP client: {e}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// GET `url` from this machine, refusing anything that is not a public
+/// internet address.
+async fn public_get(url: &str, provider: &str) -> Result<reqwest::Response, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("{provider} fetch: invalid URL: {e}"))?;
+    check_public_url(&parsed)?;
+    public_fetch_client()?
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|e| format!("{provider} fetch request failed: {e}"))
+}
+
 /// Which Exa transport the adapter uses.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExaMode {
@@ -854,15 +984,11 @@ impl SearchProvider for SearxngProvider {
 /// Serper) share this: there is nothing provider-specific about pulling a URL
 /// and reading its body, so the logic lives once.
 async fn http_get_page(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    let resp = public_get(url, provider).await?;
     let status = resp.status();
     let body = resp
         .text()
@@ -1101,15 +1227,11 @@ fn normalize_searxng_search(body: &Value, count: u32) -> Vec<SearchResult> {
 /// Used by backends that have no content-extraction endpoint on the active
 /// transport, so `web_fetch` still answers instead of erroring.
 async fn fetch_url_direct(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    let resp = public_get(url, provider).await?;
     let status = resp.status();
     let body = resp
         .text()
@@ -1170,6 +1292,57 @@ pub fn clamp_count(requested: Option<u64>) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Jozkah/jan#189: a model-driven `web_fetch` must not reach this machine
+    /// or the local network. A listener on loopback stands in for a local
+    /// service; the fetch is refused and the listener never sees a connection.
+    #[tokio::test]
+    async fn a_direct_fetch_never_reaches_a_local_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = build_http_client("test").unwrap();
+        for url in [
+            format!("http://127.0.0.1:{port}/"),
+            format!("http://localhost:{port}/"),
+            format!("http://[::ffff:127.0.0.1]:{port}/"),
+        ] {
+            assert!(http_get_page(&client, &url, "test").await.is_err(), "{url}");
+            assert!(fetch_url_direct(&client, &url, "test").await.is_err(), "{url}");
+        }
+        let connected =
+            tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await;
+        assert!(connected.is_err(), "a local service received a connection");
+    }
+
+    #[test]
+    fn only_public_addresses_are_fetchable() {
+        for local in [
+            "127.0.0.1", "127.8.9.10", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
+            "100.64.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "240.0.0.1", "198.18.0.1",
+            "::1", "::", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "fc00::1", "fd12::1", "fe80::1",
+            "64:ff9b::7f00:1", "ff02::1",
+        ] {
+            assert!(!is_public_ip(local.parse().unwrap()), "{local} counted as public");
+        }
+        for public in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"] {
+            assert!(is_public_ip(public.parse().unwrap()), "{public} counted as local");
+        }
+    }
+
+    #[test]
+    fn a_redirect_target_is_held_to_the_same_rule() {
+        for refused in [
+            "http://127.0.0.1/x",
+            "http://[::1]/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://LOCALHOST:8080/",
+            "http://api.localhost/",
+            "http://[::ffff:192.168.0.1]/",
+        ] {
+            assert!(check_public_url(&reqwest::Url::parse(refused).unwrap()).is_err(), "{refused}");
+        }
+        assert!(check_public_url(&reqwest::Url::parse("https://example.com/").unwrap()).is_ok());
+    }
 
     #[test]
     fn clamp_count_defaults_and_caps() {
