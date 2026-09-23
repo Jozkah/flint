@@ -424,7 +424,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 26);
+        assert_eq!(schemas.len(), 27);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

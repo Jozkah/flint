@@ -6881,7 +6881,7 @@ on_failure = \"warn\"
         let list = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
         assert!(
             list.lines()
-                .any(|line| line == "jan" || line.starts_with("jan — ")),
+                .any(|line| line == "flint" || line.starts_with("flint — ")),
             "unexpected list: {list}"
         );
 
