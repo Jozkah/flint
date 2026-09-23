@@ -259,6 +259,30 @@ mod tests {
         s
     }
 
+    /// Jozkah/jan#287: deleting one session's snapshots while another's are
+    /// being appended loses none of the appended ones.
+    #[test]
+    fn a_snapshot_rewrite_does_not_lose_concurrent_appends() {
+        let d = dir("race");
+        let now = crate::audit::now();
+        let writer = {
+            let (d, now) = (d.clone(), now.clone());
+            std::thread::spawn(move || {
+                for _ in 0..200 {
+                    snapshot::append(&d, &snap("keep", &now));
+                }
+            })
+        };
+        for _ in 0..200 {
+            snapshot::append(&d, &snap("gone", &now));
+            let _ = snapshot::delete_session(&d, "gone");
+        }
+        writer.join().unwrap();
+        let kept = snapshot::by_session(&d, "keep").len();
+        assert_eq!(kept, 200, "appends lost to a concurrent rewrite");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     fn use_line(session: &str, at: &str) -> usage::PayloadUsage {
         let mut u = usage::record(format!("inv-{session}-{at}"), usage::UsageSource::Provider);
         u.session = session.into();
