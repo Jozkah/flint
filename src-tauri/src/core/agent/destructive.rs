@@ -57,7 +57,11 @@ fn reason_at_depth(command: &str, workspace: &Path, depth: usize) -> Option<Stri
     }
     let parsed = match parse(command) {
         Ok(parsed) => parsed,
-        Err(why) => return Some(format!("could not be parsed ({why}), so it cannot be checked")),
+        Err(why) => {
+            return Some(format!(
+                "could not be parsed ({why}), so it cannot be checked"
+            ))
+        }
     };
     for body in &parsed.substitutions {
         if let Some(reason) = reason_at_depth(body, workspace, depth + 1) {
@@ -115,12 +119,16 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
     }
     if rules.powershells.contains(&cmd) {
         if lower_args.iter().any(|a| {
-            matches!(a.as_str(), "-e" | "-ec" | "-en" | "-enc" | "-encodedcommand")
-                || a.starts_with("-encodedc")
+            matches!(
+                a.as_str(),
+                "-e" | "-ec" | "-en" | "-enc" | "-encodedcommand"
+            ) || a.starts_with("-encodedc")
         }) {
             return Some("runs an encoded PowerShell command, which cannot be checked".into());
         }
-        let at = lower_args.iter().position(|a| a == "-c" || a.starts_with("-com"))?;
+        let at = lower_args
+            .iter()
+            .position(|a| a == "-c" || a.starts_with("-com"))?;
         return reason_at_depth(&args[at + 1..].join(" "), workspace, depth + 1);
     }
 
@@ -130,7 +138,10 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
             let reach = recursive || cmd == "shred";
             if reach {
                 if let Some(t) = targets.iter().find(|t| outside_workspace(t, workspace)) {
-                    return Some(format!("`{}` deletes `{t}`, outside the workspace", words.join(" ")));
+                    return Some(format!(
+                        "`{}` deletes `{t}`, outside the workspace",
+                        words.join(" ")
+                    ));
                 }
             }
             None
@@ -153,7 +164,11 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
             }
             let targets: Vec<&String> = targets.iter().collect();
             let default = ".".to_string();
-            let targets = if targets.is_empty() { vec![&default] } else { targets };
+            let targets = if targets.is_empty() {
+                vec![&default]
+            } else {
+                targets
+            };
             targets
                 .into_iter()
                 .find(|t| outside_workspace(t, workspace))
@@ -165,7 +180,12 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
             rules
                 .delete_commands
                 .contains(&command_name(inner))
-                .then(|| format!("`xargs {}` deletes paths read from input", command_name(inner)))
+                .then(|| {
+                    format!(
+                        "`xargs {}` deletes paths read from input",
+                        command_name(inner)
+                    )
+                })
         }
         "find" => {
             let deletes = lower_args.iter().enumerate().any(|(i, a)| {
@@ -183,18 +203,29 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
                 .take_while(|a| !a.starts_with('-') && *a != "(" && *a != "!")
                 .collect();
             let default = ".".to_string();
-            let starts = if starts.is_empty() { vec![&default] } else { starts };
+            let starts = if starts.is_empty() {
+                vec![&default]
+            } else {
+                starts
+            };
             starts
                 .into_iter()
                 .find(|t| outside_workspace(t, workspace))
-                .map(|t| format!("`{}` deletes under `{t}`, outside the workspace", words.join(" ")))
+                .map(|t| {
+                    format!(
+                        "`{}` deletes under `{t}`, outside the workspace",
+                        words.join(" ")
+                    )
+                })
         }
         "git" => {
             let sub = git_subcommand(&lower_args)?;
             let rest = &lower_args[sub + 1..];
             let has = |f: &str| rest.iter().any(|a| a == f);
             match lower_args[sub].as_str() {
-                "reset" if has("--hard") => Some("`git reset --hard` discards uncommitted work".into()),
+                "reset" if has("--hard") => {
+                    Some("`git reset --hard` discards uncommitted work".into())
+                }
                 "clean" => {
                     let short: String = rest
                         .iter()
@@ -204,13 +235,16 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
                     let force = short.contains('f') || has("--force");
                     let dirs = short.contains('d');
                     let ignored = short.contains('x');
-                    (force && (dirs || ignored)).then(|| "`git clean` deletes untracked files".to_string())
+                    (force && (dirs || ignored))
+                        .then(|| "`git clean` deletes untracked files".to_string())
                 }
                 "push"
                     if has("--force")
                         || has("-f")
                         || rest.iter().any(|a| {
-                            a.starts_with("--force-with-lease") || a.starts_with("--mirror") || a.starts_with('+')
+                            a.starts_with("--force-with-lease")
+                                || a.starts_with("--mirror")
+                                || a.starts_with('+')
                         }) =>
                 {
                     Some("`git push --force` rewrites remote history".into())
@@ -219,8 +253,12 @@ fn check_segment(words: &[String], workspace: &Path, depth: usize) -> Option<Str
             }
         }
         c if c == "mkfs" || c.starts_with("mkfs.") => Some("`mkfs` formats a filesystem".into()),
-        "dd" if lower_args.iter().any(|a| a.starts_with("of=/dev/")) => Some("`dd` writes to a raw device".into()),
-        "format" if args.first().is_some_and(|a| is_drive(a)) => Some("`format` erases a drive".into()),
+        "dd" if lower_args.iter().any(|a| a.starts_with("of=/dev/")) => {
+            Some("`dd` writes to a raw device".into())
+        }
+        "format" if args.first().is_some_and(|a| is_drive(a)) => {
+            Some("`format` erases a drive".into())
+        }
         _ => None,
     }
 }
@@ -319,7 +357,10 @@ fn outside_workspace(target: &str, workspace: &Path) -> bool {
     if root.is_empty() {
         return true;
     }
-    let (n, r) = if cfg!(windows) || is_drive(&norm[..2.min(norm.len())]) || is_drive(&root[..2.min(root.len())]) {
+    let (n, r) = if cfg!(windows)
+        || is_drive(&norm[..2.min(norm.len())])
+        || is_drive(&root[..2.min(root.len())])
+    {
         (norm.to_ascii_lowercase(), root.to_ascii_lowercase())
     } else {
         (norm.clone(), root.to_string())
@@ -471,7 +512,10 @@ mod tests {
             let got = destructive_reason(&case.command, Path::new(&case.workspace));
             let asked = if got.is_some() { "ask" } else { "allow" };
             if asked != case.expect {
-                wrong.push(format!("{:?} -> {asked} ({got:?}), expected {}", case.command, case.expect));
+                wrong.push(format!(
+                    "{:?} -> {asked} ({got:?}), expected {}",
+                    case.command, case.expect
+                ));
             }
         }
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));

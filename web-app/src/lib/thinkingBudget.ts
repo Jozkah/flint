@@ -56,7 +56,11 @@ export function clampThinkingBudget(
   budget: number,
   maxOutputTokens: number | undefined
 ): number {
-  if (!maxOutputTokens || !Number.isFinite(maxOutputTokens) || maxOutputTokens <= 0) {
+  if (
+    !maxOutputTokens ||
+    !Number.isFinite(maxOutputTokens) ||
+    maxOutputTokens <= 0
+  ) {
     return budget
   }
   const cap = Math.max(
