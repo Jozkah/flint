@@ -1170,7 +1170,7 @@ pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
         std::fs::create_dir_all(&folder).map_err(|e| format!("ERROR: {e}"))?;
         folder_skill
     };
-    std::fs::write(&target, content).map_err(|e| format!("ERROR: {e}"))
+    crate::workspace::write_atomic(&target, content.as_bytes()).map_err(|e| format!("ERROR: {e}"))
 }
 
 /// Delete a skill (folder or flat form). Idempotent: a missing skill is Ok.
