@@ -122,6 +122,12 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     }
 
     let name = name.to_ascii_lowercase();
+    let kind = secret_name_kind(&name)?;
+    Some((kind, format!("{name}={REDACTED}")))
+}
+
+/// Whether a lowercase value name says the value is a credential, and which.
+fn secret_name_kind(name: &str) -> Option<SecretKind> {
     let kind = if name.contains("private_key") || name.contains("privatekey") {
         SecretKind::PrivateKey
     } else if name.contains("password") || name.contains("passwd") {
@@ -146,8 +152,89 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     } else {
         return None;
     };
+    Some(kind)
+}
 
-    Some((kind, format!("{name}={REDACTED}")))
+/// Whether a value is a stand-in rather than a credential.
+fn is_placeholder(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("example")
+        || lower.contains("changeme")
+        || lower.contains("your-")
+        || lower.starts_with("${")
+        || lower.starts_with('<')
+        || lower.chars().all(|c| c == 'x' || c == '*')
+}
+
+/// Replace the value of every `name = value` / `"name": "value"` on the line
+/// whose name says it is a credential (Jozkah/jan#277). The word pass only
+/// knows credentials by shape; a password has none, so on a line that also
+/// held a shaped token it used to survive. `None` when nothing changed.
+fn redact_named_values(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let mut out = String::with_capacity(line.len());
+    let mut copied = 0;
+    let mut changed = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'=' && bytes[i] != b':' {
+            i += 1;
+            continue;
+        }
+        // The name: identifier characters just before the separator, past a
+        // closing quote and spaces.
+        let mut end = i;
+        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'"' | b'\'') {
+            end -= 1;
+        }
+        let mut start = end;
+        while start > 0
+            && (bytes[start - 1].is_ascii_alphanumeric() || matches!(bytes[start - 1], b'_' | b'-' | b'.'))
+        {
+            start -= 1;
+        }
+        let name = line[start..end].to_ascii_lowercase();
+        // The value: after spaces and an optional opening quote, up to the
+        // matching quote or the first delimiter.
+        let mut v = i + 1;
+        while v < bytes.len() && matches!(bytes[v], b' ' | b'\t') {
+            v += 1;
+        }
+        let quote = bytes.get(v).copied().filter(|b| *b == b'"' || *b == b'\'');
+        if quote.is_some() {
+            v += 1;
+        }
+        let mut w = v;
+        while w < bytes.len() {
+            let b = bytes[w];
+            let stop = match quote {
+                Some(q) => b == q,
+                None => b.is_ascii_whitespace() || matches!(b, b',' | b'}' | b';' | b'&' | b'"' | b'\''),
+            };
+            if stop {
+                break;
+            }
+            w += 1;
+        }
+        let value = &line[v..w];
+        if !name.is_empty()
+            && secret_name_kind(&name).is_some()
+            && value.len() >= 8
+            && !value.contains(REDACTED)
+            && !is_placeholder(value)
+        {
+            out.push_str(&line[copied..v]);
+            out.push_str(REDACTED);
+            copied = w;
+            changed = true;
+        }
+        i = w.max(i + 1);
+    }
+    if !changed {
+        return None;
+    }
+    out.push_str(&line[copied..]);
+    Some(out)
 }
 
 /// Issued-credential prefixes, and how much must follow to be one.
@@ -337,7 +424,12 @@ pub fn redact_secrets(text: &str) -> String {
         // it with `redact_line` threw away the sentence that said where the
         // credential came from.
         .map(|line| match classify_line(line) {
-            Some((_, _)) => redact_tokens_in_line(line).unwrap_or_else(|| redact_line(line)),
+            // A shaped token was replaced, but a named secret without a shape
+            // can share its line (Jozkah/jan#277): take those values too.
+            Some((_, _)) => match redact_tokens_in_line(line) {
+                Some(rebuilt) => redact_named_values(&rebuilt).unwrap_or(rebuilt),
+                None => redact_line(line),
+            },
             None => redact_tokens_in_line(line).unwrap_or_else(|| line.to_string()),
         })
         .collect::<Vec<_>>()
@@ -452,6 +544,22 @@ fn redact_line(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Jozkah/jan#277: a shaped token on a line must not stop the assignment
+    /// secret next to it from being redacted.
+    #[test]
+    fn an_assignment_secret_next_to_a_token_is_still_redacted() {
+        for line in [
+            r#"{"api_key":"sk-live-abcdefghijklmnopqrstuv","db_password":"hunter2seventeen"}"#,
+            "token: ghp_9d7f6a5b4c3e2d1f0a9b8c7d password: hunter2seventeen",
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123 DB_PASSWORD=hunter2seventeen",
+        ] {
+            let out = redact_secrets(line);
+            assert!(!out.contains("hunter2seventeen"), "{out}");
+            assert!(!out.contains("abcdefghijklmnopqrstuv"), "{out}");
+            assert!(!out.contains("9d7f6a5b4c3e2d1f0a9b8c7d"), "{out}");
+        }
+    }
 
     #[test]
     fn finds_the_shapes_a_credential_actually_takes() {
