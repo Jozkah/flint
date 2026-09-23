@@ -1654,16 +1654,24 @@ function CoworkPage() {
   // A task the inline card asked the panel to reveal.
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
   const [focusWorkflowId, setFocusWorkflowId] = useState<string | null>(null)
-  const showTaskInPanel = useCallback((task: ActivityTask) => {
-    setRail({ kind: 'tasks' })
-    setFocusWorkflowId(task.workflowId)
-    setFocusTaskId(task.id)
-  }, [])
-  const showWorkflowInPanel = useCallback((workflowId: string) => {
-    setRail({ kind: 'tasks' })
-    setFocusTaskId(null)
-    setFocusWorkflowId(workflowId)
-  }, [])
+  // `setRail` is bound to the session in view; with empty deps these kept the
+  // one from the first render and opened the rail for no session at all.
+  const showTaskInPanel = useCallback(
+    (task: ActivityTask) => {
+      setRail({ kind: 'tasks' })
+      setFocusWorkflowId(task.workflowId)
+      setFocusTaskId(task.id)
+    },
+    [setRail]
+  )
+  const showWorkflowInPanel = useCallback(
+    (workflowId: string) => {
+      setRail({ kind: 'tasks' })
+      setFocusTaskId(null)
+      setFocusWorkflowId(workflowId)
+    },
+    [setRail]
+  )
 
   // Whether the run still holds a controller for an agent task. Consulted
   // rather than assumed, so a Stop control is only offered where pressing it
@@ -4017,7 +4025,9 @@ function CoworkPage() {
           ) : null}
           {!phone && modelSelector}
           {!phone && (
-            <div className="flex min-w-0 items-center gap-1">
+            // Clips and lets the pills shrink, so on a narrow window they give
+            // way instead of sliding under "Review changes" on the right.
+            <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden [&>*]:min-w-0 [&>*]:shrink">
               {sessionControls}
             </div>
           )}
