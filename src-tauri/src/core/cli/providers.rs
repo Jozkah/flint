@@ -1559,3 +1559,247 @@ mod tests {
         });
     }
 }
+
+/// Jozkah/jan#60: a project's `agent.toml` is checked into a repository the
+/// user may not control. Its `[provider]` section can point a provider name the
+/// user signed in to at any URL, and credentials stored for that name --
+/// credential-store API keys, Desktop keyring keys, OAuth account tokens --
+/// must never follow the name to an endpoint the user never trusted.
+#[cfg(test)]
+mod credential_origin_tests {
+    use super::*;
+    use crate::core::agent::global_config::{set_provider, with_temp_home, ProviderUpdate};
+    use crate::core::cli::auth::{Credential, CredentialStore, OAuthToken};
+
+    const TRUSTED: &str = "https://api.deepseek.com/v1";
+
+    fn with_store<T>(f: impl FnOnce() -> T) -> T {
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::var("JAN_DATA_FOLDER").ok();
+        std::env::set_var("JAN_DATA_FOLDER", dir.path());
+        crate::core::server::provider_secrets::force_file_secrets();
+        let result = with_temp_home(|_| f());
+        match &prev {
+            Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+        result
+    }
+
+    fn trust(name: &str, base_url: &str, models: &[&str]) {
+        set_provider(
+            name,
+            ProviderUpdate {
+                api_key: None,
+                clear_api_key: true,
+                base_url: Some(base_url.into()),
+                models: Some(models.iter().map(|m| m.to_string()).collect()),
+                api_type: None,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    /// A project whose `agent.toml` names `provider` at `base_url`.
+    fn project(
+        provider: &str,
+        base_url: &str,
+        api_key: Option<&str>,
+        models: &[&str],
+    ) -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = api_key
+            .map(|k| format!("api_key = \"{k}\"\n"))
+            .unwrap_or_default();
+        let models = models
+            .iter()
+            .map(|m| format!("\"{m}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        std::fs::write(
+            dir.join("agent.toml"),
+            format!(
+                "[provider]\nname = \"{provider}\"\nbase_url = \"{base_url}\"\n{key}models = [{models}]\n"
+            ),
+        )
+        .unwrap();
+        root
+    }
+
+    fn load(root: &tempfile::TempDir, overrides: &ProviderOverrides) -> HashMap<String, ProviderConfig> {
+        load_provider_configs(Some(root.path()), overrides).unwrap()
+    }
+
+    fn stored_key_reaches(base_url: &str) -> Vec<String> {
+        with_store(|| {
+            trust("deepseek", TRUSTED, &["deepseek-chat"]);
+            CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
+            let root = project("deepseek", base_url, None, &["deepseek-chat"]);
+            load(&root, &ProviderOverrides::default())
+                .get("deepseek")
+                .unwrap()
+                .bearer_key_chain()
+        })
+    }
+
+    #[test]
+    fn a_stored_api_key_is_not_sent_to_a_project_base_url() {
+        assert!(stored_key_reaches("https://evil.example/v1").is_empty());
+    }
+
+    #[test]
+    fn a_url_that_only_looks_like_the_trusted_one_gets_no_stored_key() {
+        for url in [
+            "https://api.deepseek.com.evil.example/v1",
+            "https://evil.example/api.deepseek.com/v1",
+            "https://api.deepseek.com@evil.example/v1",
+            "https://api.deepseek.com/v1.evil",
+            "https://api.deepseek.com/v2",
+            "https://api.deepseek.com/v1?x=1",
+            "http://api.deepseek.com/v1",
+            "https://api.deepseek.com:8443/v1",
+            "not a url",
+        ] {
+            assert!(stored_key_reaches(url).is_empty(), "stored key sent to {url}");
+        }
+    }
+
+    #[test]
+    fn the_trusted_endpoint_written_differently_still_gets_the_stored_key() {
+        for url in [
+            TRUSTED,
+            "https://api.deepseek.com/v1/",
+            "HTTPS://API.DeepSeek.COM/v1",
+            "https://api.deepseek.com:443/v1",
+        ] {
+            assert_eq!(stored_key_reaches(url), vec!["sk-stored".to_string()], "{url}");
+        }
+    }
+
+    #[test]
+    fn a_desktop_keyring_key_is_not_hydrated_for_a_project_base_url() {
+        with_store(|| {
+            trust("deepseek", TRUSTED, &["deepseek-chat"]);
+            crate::core::server::provider_secrets::store_provider_keys(
+                "deepseek",
+                &["sk-keyring".into()],
+            )
+            .unwrap();
+            let root = project("deepseek", "https://evil.example/v1", None, &["deepseek-chat"]);
+            let mut cfg = load(&root, &ProviderOverrides::default())
+                .get("deepseek")
+                .unwrap()
+                .clone();
+            hydrate_provider_keys(&mut cfg);
+            assert!(cfg.bearer_key_chain().is_empty());
+            assert!(!has_credential(&cfg));
+        });
+    }
+
+    #[test]
+    fn a_project_only_provider_gets_no_credential_stored_under_its_name() {
+        with_store(|| {
+            CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
+            let root = project("deepseek", TRUSTED, None, &["deepseek-chat"]);
+            let configs = load(&root, &ProviderOverrides::default());
+            assert!(configs.get("deepseek").unwrap().bearer_key_chain().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_blanket_override_key_is_not_sent_to_a_project_base_url() {
+        with_store(|| {
+            trust("deepseek", TRUSTED, &["deepseek-chat"]);
+            let root = project("deepseek", "https://evil.example/v1", None, &["deepseek-chat"]);
+            let overrides = ProviderOverrides {
+                provider: None,
+                api_key: Some("sk-env".into()),
+            };
+            let configs = load(&root, &overrides);
+            assert!(configs.get("deepseek").unwrap().bearer_key_chain().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_project_key_still_goes_to_the_project_endpoint() {
+        with_store(|| {
+            trust("deepseek", TRUSTED, &["deepseek-chat"]);
+            CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
+            let root = project(
+                "deepseek",
+                "https://gateway.example/v1",
+                Some("sk-project"),
+                &["deepseek-chat"],
+            );
+            let configs = load(&root, &ProviderOverrides::default());
+            assert_eq!(
+                configs.get("deepseek").unwrap().bearer_key_chain(),
+                vec!["sk-project".to_string()]
+            );
+        });
+    }
+
+    fn resolve(
+        configs: HashMap<String, ProviderConfig>,
+        model: &str,
+    ) -> Result<(String, Vec<String>), String> {
+        let configs = std::sync::Arc::new(tokio::sync::Mutex::new(configs));
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(crate::core::agent::upstream::resolve_upstream_for_model(
+                model, configs,
+            ))
+    }
+
+    fn oauth(token: &str) -> Credential {
+        Credential::OAuthToken(OAuthToken {
+            access_token: token.into(),
+            refresh_token: Some("refresh".into()),
+            expires_at: Some(4_000_000_000),
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        })
+    }
+
+    #[test]
+    fn an_account_token_is_not_paired_with_a_project_base_url() {
+        with_store(|| {
+            trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
+            CredentialStore::store("openai", &oauth("account-access")).unwrap();
+            let root = project("openai", "https://evil.example/v1", None, &["gpt-x"]);
+            let configs = load(&root, &ProviderOverrides::default());
+            let err = resolve(configs, "gpt-x")
+                .expect_err("a withheld stored credential is a configuration error");
+            assert!(err.contains("openai") && err.contains("base_url"), "{err}");
+        });
+    }
+
+    #[test]
+    fn an_account_token_still_reaches_the_trusted_endpoint() {
+        with_store(|| {
+            trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
+            CredentialStore::store("openai", &oauth("account-access")).unwrap();
+            let root = project("openai", "https://api.openai.com/v1/", None, &["gpt-x"]);
+            let configs = load(&root, &ProviderOverrides::default());
+            let (_, keys) = resolve(configs, "gpt-x").unwrap();
+            assert_eq!(keys, vec!["account-access".to_string()]);
+        });
+    }
+
+    #[test]
+    fn a_keyless_loopback_project_provider_still_resolves() {
+        with_store(|| {
+            let root = project("ollama", "http://127.0.0.1:11434/v1", None, &["llama3"]);
+            let configs = load(&root, &ProviderOverrides::default());
+            let (url, keys) = resolve(configs, "llama3").unwrap();
+            assert_eq!(url, "http://127.0.0.1:11434/v1/chat/completions");
+            assert!(keys.is_empty());
+        });
+    }
+}
