@@ -170,20 +170,26 @@ fn is_usable(config: &ProviderConfig) -> bool {
 
 /// Whether a base URL points at this machine, where an API key is usually not
 /// required. Host-only match (no DNS): anything else is treated as remote.
+///
+/// The host is the one a URL parser -- and so the HTTP client -- reads, so
+/// user info cannot pass for it: `http://localhost:80@evil.example` is
+/// `evil.example`. A bare `host:port` without a scheme is read as `http://`.
+/// Anything that does not parse is remote.
 pub(crate) fn is_loopback_url(url: &str) -> bool {
-    let authority = url
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(url)
-        .split('/')
-        .next()
-        .unwrap_or("");
-    // Bracketed IPv6 keeps its colons; everything else splits off the port.
-    let host = match authority.strip_prefix('[') {
-        Some(rest) => rest.split(']').next().unwrap_or(""),
-        None => authority.split(':').next().unwrap_or(""),
+    let url = url.trim();
+    let parsed = if url.contains("://") {
+        url::Url::parse(url)
+    } else {
+        url::Url::parse(&format!("http://{url}"))
     };
-    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
+    match parsed.ok().and_then(|u| u.host().map(|h| h.to_owned())) {
+        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+        // `0.0.0.0` is not loopback, but a server bound to it is reached here
+        // and it was always accepted.
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback() || ip.is_unspecified(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
 }
 
 /// `(provider, model_id)` pairs the CLI can actually run: Tokamak first, then
@@ -1033,6 +1039,40 @@ mod tests {
         assert!(!is_loopback_url("https://localhost.evil.com/v1"));
         assert!(!is_loopback_url("https://api.tokamak.sh/v1"));
         assert!(!is_loopback_url(""));
+    }
+
+    /// The host is the one the HTTP client would connect to, never a
+    /// substring of the URL that merely looks like one.
+    #[test]
+    fn loopback_detection_reads_the_host_a_request_would_reach() {
+        for remote in [
+            "http://localhost:80@evil.example/v1",
+            "http://localhost@evil.example/v1",
+            "http://127.0.0.1:1337@evil.example/v1",
+            "http://[::1]@evil.example/v1",
+            "http://evil.example/localhost:1337",
+            "http://evil.example#@localhost",
+            "http://localhost.evil.example/v1",
+            "http://127.0.0.1.nip.io/v1",
+            "not a url",
+            "http://",
+            "://localhost",
+        ] {
+            assert!(!is_loopback_url(remote), "{remote} is not this machine");
+        }
+        for local in [
+            "http://LOCALHOST:1337/v1",
+            "HTTP://LocalHost/v1",
+            "http://127.0.0.2:8080/v1",
+            "http://127.255.255.254/v1",
+            "http://[::1]/v1",
+            "http://[0:0:0:0:0:0:0:1]:1337/v1",
+            "http://0.0.0.0:1337/v1",
+            " http://localhost/v1 ",
+            "127.0.0.1:1337",
+        ] {
+            assert!(is_loopback_url(local), "{local} is this machine");
+        }
     }
 
     // janhq/jan#8412: models on the desktop's local engine have no base_url,
