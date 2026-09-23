@@ -5599,6 +5599,44 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The live stream keeps a command's colours for the terminal card; the
+    /// result the model (and the persisted tool result) gets has them removed
+    /// whole, and a non-zero exit is still reported in it.
+    #[tokio::test]
+    async fn streamed_output_keeps_ansi_but_the_result_is_clean_and_keeps_the_exit_code() {
+        let root = unique_root();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = {
+            let seen = seen.clone();
+            std::sync::Arc::new(move |chunk: String| {
+                seen.lock().unwrap().push_str(&chunk);
+            }) as crate::tools::OutputSink
+        };
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[])
+            .with_sandbox(false)
+            .with_output_sink(sink);
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "printf '\\033[31mred\\033[0m then plain\\n'; exit 3"}),
+            &ctx,
+        )
+        .await
+        .0;
+        let streamed = seen.lock().unwrap().clone();
+        if !streamed.contains("red") {
+            // No POSIX printf on this machine's unsandboxed shell.
+            eprintln!("skipped: shell did not run printf: {out}");
+            let _ = std::fs::remove_dir_all(&root);
+            return;
+        }
+        assert!(streamed.contains("\u{1b}[31m"), "the live view lost its colour: {streamed:?}");
+        assert!(out.contains("red then plain"), "{out}");
+        assert!(!out.contains('\u{1b}') && !out.contains("[31m") && !out.contains("[0m"), "{out:?}");
+        assert!(out.contains("[exit 3]"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A sandboxed command runs when the workspace is spelled relatively, as it
     /// is under Jan's default `./data` data folder. The confined helper starts
     /// in the workspace, so a relative path handed to it named somewhere else,

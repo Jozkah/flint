@@ -1,5 +1,6 @@
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
+import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import {
   noteAutoApproved,
   resetAutoApproveStreak,
@@ -619,6 +620,17 @@ async function routeCoworkTool(
         // which task is asking.
         ...(toolName === 'request_access'
           ? { signal, taskLabel: 'Cowork session' }
+          : {}),
+        // Live command output for the terminal card, as the chat surface
+        // does: raw, so it keeps the colours the model-facing result (which
+        // the backend strips) does not.
+        ...(toolName === 'bash'
+          ? {
+              onOutput: (text: string) =>
+                useToolCallRuntime
+                  .getState()
+                  .appendOutput(call.toolCallId, text),
+            }
           : {}),
       })
     } finally {

@@ -54,6 +54,28 @@ describe('dispatchCoworkTool', () => {
     })
   })
 
+  // Cowork's terminal card streams like chat's: the raw chunks (colours and
+  // all) land in the runtime store under the call, while the result the model
+  // gets is whatever the backend returned -- which it has already stripped.
+  it('streams bash output to the terminal card, and returns the clean result', async () => {
+    const { useToolCallRuntime } = await import('@/hooks/useToolCallRuntime')
+    useToolCallRuntime.getState().reset()
+    executeAgentTool.mockImplementationOnce(
+      async (_n: string, _i: unknown, _s: string, opts: { onOutput?: (t: string) => void }) => {
+        opts.onOutput?.('\x1b[32mok\x1b[0m\n')
+        opts.onOutput?.('done\n')
+        return { content: 'ok\ndone\n[exit 0]' }
+      }
+    )
+    const out = await dispatchCoworkTool(call('bash', { command: 'npm test' }), ctx())
+    expect(useToolCallRuntime.getState().output['c1']).toBe('\x1b[32mok\x1b[0m\ndone\n')
+    expect(out.output).toBe('ok\ndone\n[exit 0]')
+    expect(out.output).not.toContain('\x1b')
+    // Only bash streams.
+    await dispatchCoworkTool(call('read', { path: 'a' }), ctx())
+    expect(executeAgentTool.mock.lastCall?.[3]).not.toHaveProperty('onOutput')
+  })
+
   // AH-110: the backend journals a change under the agent that made it, so
   // the identity has to travel with the call, not be guessed afterwards.
   it('tells the backend which agent is making the call', async () => {

@@ -335,6 +335,36 @@ describe('agentTools', () => {
     expect(executeTool).not.toHaveBeenCalled()
   })
 
+  // Cancellation goes by call id (`cancel_tool`), so the streaming path has
+  // to carry it exactly as the plain one does; a failed command comes back as
+  // the same error result, with only the chunks that arrived streamed.
+  it('streams with the call id, so a stop still reaches the command', async () => {
+    executeToolStreaming.mockImplementation(
+      async (
+        _d: string,
+        _t: string,
+        _n: string,
+        _a: unknown,
+        channel: { onmessage: (m: { seq: number; text: string }) => void }
+      ) => {
+        channel.onmessage({ seq: 0, text: '\x1b[31mboom\x1b[0m\n' })
+        return { content: 'boom\n[exit 2]', diff: null, isError: true }
+      }
+    )
+    const chunks: string[] = []
+    const { executeAgentTool } = await import('../agentTools')
+    const result = await executeAgentTool('bash', { command: 'x' }, 't', {
+      callId: 'call-9',
+      onOutput: (text) => chunks.push(text),
+    })
+    const options = executeToolStreaming.mock.calls.at(-1)?.[5] as {
+      callId?: string
+    }
+    expect(options.callId).toBe('call-9')
+    expect(chunks).toEqual(['\x1b[31mboom\x1b[0m\n'])
+    expect(result.error).toBe('boom\n[exit 2]')
+  })
+
   it('passes the network setting through to the plugin', async () => {
     executeTool.mockResolvedValue({ content: '', diff: null, isError: false })
     const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
