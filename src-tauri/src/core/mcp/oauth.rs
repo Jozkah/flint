@@ -776,7 +776,12 @@ pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<Pending
 
     let mut state = OAuthState::new(url.to_string(), None)
         .await
-        .map_err(|e| format!("could not reach '{url}' for OAuth discovery: {e}"))?;
+        .map_err(|e| {
+            redact_url(
+                &format!("could not reach '{url}' for OAuth discovery: {e}"),
+                url,
+            )
+        })?;
     // Flint declares the scopes it asks for (AH-135); an empty list would let
     // the SDK auto-select from server metadata, which is not the same policy.
     state
@@ -1067,9 +1072,48 @@ pub async fn authorized_client(
     Ok(Some(client))
 }
 
+/// `message` with every spelling of `url` cut down to its origin (Jozkah/jan#261).
+///
+/// Connection errors repeat the request URL, and an HTTP MCP server's URL can
+/// carry its credential (`/api/mcp/s/<secret>/mcp`, `?api_key=`). These errors
+/// are logged and shown in the settings UI on every failed attempt, so the
+/// server is named by `scheme://host[:port]` only.
+pub(crate) fn redact_url(message: &str, url: &str) -> String {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return message.replace(url, "<mcp server url>");
+    };
+    let origin = parsed.origin().ascii_serialization();
+    let mut spellings = vec![
+        url.to_string(),
+        parsed.to_string(),
+        url.trim_end_matches('/').to_string(),
+    ];
+    spellings.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    spellings.dedup();
+    let mut out = message.to_string();
+    for spelling in spellings.iter().filter(|s| s.len() > origin.len()) {
+        out = out.replace(spelling.as_str(), &format!("{origin}/<redacted>"));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_url_in_an_error_is_cut_to_its_origin() {
+        let url = "https://mcp.example.invalid/api/mcp/s/SECRET123456/mcp?api_key=Q%20S";
+        let parsed = url::Url::parse(url).unwrap().to_string();
+        for message in [
+            format!("could not reach '{url}' for OAuth discovery: dns"),
+            format!("error sending request for url ({parsed})"),
+        ] {
+            let out = redact_url(&message, url);
+            assert!(!out.contains("SECRET123456") && !out.contains("api_key"), "{out}");
+            assert!(out.contains("https://mcp.example.invalid/<redacted>"), "{out}");
+        }
+    }
     use oauth2::{AccessToken, RefreshToken, TokenResponse};
     use rmcp::transport::auth::VendorExtraTokenFields;
     use serde_json::json;

@@ -946,7 +946,10 @@ where
         client,
         StreamableHttpClientTransportConfig::with_uri(url.to_string()),
     );
-    handler.serve(transport).await.map_err(|e| e.to_string())
+    handler
+        .serve(transport)
+        .await
+        .map_err(|e| super::oauth::redact_url(&e.to_string(), url))
 }
 
 fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
