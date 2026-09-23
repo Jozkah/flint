@@ -132,8 +132,10 @@ fn named_pairs(line: &str) -> Vec<(String, usize, usize)> {
             i += 1;
             continue;
         }
+        // Past spaces and quotes, escaped ones included: inside a JSON string
+        // the name reads `\"api_key\"` (Jozkah/jan#276).
         let mut end = i;
-        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'"' | b'\'') {
+        while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'"' | b'\'' | b'\\') {
             end -= 1;
         }
         let mut start = end;
@@ -146,6 +148,11 @@ fn named_pairs(line: &str) -> Vec<(String, usize, usize)> {
         while v < bytes.len() && matches!(bytes[v], b' ' | b'\t') {
             v += 1;
         }
+        let escaped = bytes.get(v) == Some(&b'\\')
+            && matches!(bytes.get(v + 1), Some(b'"') | Some(b'\''));
+        if escaped {
+            v += 1;
+        }
         let quote = bytes.get(v).copied().filter(|b| *b == b'"' || *b == b'\'');
         if quote.is_some() {
             v += 1;
@@ -154,7 +161,9 @@ fn named_pairs(line: &str) -> Vec<(String, usize, usize)> {
         while w < bytes.len() {
             let b = bytes[w];
             let stop = match quote {
-                Some(q) => b == q,
+                // An escaped value closes at `\"`: stop at the backslash, so
+                // the escape stays and the JSON string stays valid.
+                Some(q) => b == q || (escaped && b == b'\\'),
                 None => b.is_ascii_whitespace() || matches!(b, b',' | b'}' | b';' | b'&' | b'"' | b'\''),
             };
             if stop {
@@ -580,6 +589,12 @@ mod tests {
             assert!(!out.contains(secret), "{line} -> {out}");
         }
         assert!(!scan_diff("+  db_password: c2VjcmV0cGFzc3dvcmQ=\n").is_empty());
+        // Jozkah/jan#276: the same, escaped inside a JSON string.
+        let record = r#"{"role":"user","content":"cfg {\"id\":1,\"db_password\": \"hunter2seventeen\"}"}"#;
+        assert!(!scan_text(record).is_empty(), "missed escaped: {record}");
+        let out = redact_secrets(record);
+        assert!(!out.contains("hunter2seventeen"), "{out}");
+        assert!(out.contains(r#"\"[redacted]\""#), "the escape must survive: {out}");
         // Still not secrets.
         assert!(scan_text("url = https://example.com/a=b").is_empty());
         assert!(scan_text("password: changeme-example").is_empty());

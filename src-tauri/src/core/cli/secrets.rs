@@ -44,7 +44,10 @@ impl Redactor {
             Rule {
                 label: "authorization header",
                 re: Regex::new(
-                    r#"(?i)(["']?authorization["']?\s*[:=]\s*["']?(?:bearer|basic)\s+)[A-Za-z0-9._~+/\-=]+"#,
+                    // `\\?` before each quote: inside a JSON string (every
+                    // messages.jsonl message and tool argument) the quotes are
+                    // escaped (Jozkah/jan#276).
+                    r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic)\s+)[A-Za-z0-9._~+/\-=]+"#,
                 )
                 .expect("auth header regex"),
             },
@@ -52,7 +55,7 @@ impl Redactor {
                 label: "api key / token value",
                 // Both `api_key="..."` and JSON `"api_key":"..."`.
                 re: Regex::new(
-                    r#"(?i)(["']?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)["']?\s*[:=]\s*["']?)[A-Za-z0-9._~+/\-=]{12,}"#,
+                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[A-Za-z0-9._~+/\-=]{12,}"#,
                 )
                 .expect("key regex"),
             },
@@ -63,7 +66,9 @@ impl Redactor {
                 // catches one quoted inside a JSON string, which a line-shape
                 // scanner reading the whole record does not.
                 re: Regex::new(
-                    r#"(?i)(["']?[A-Za-z0-9_]*(?:password|passwd|pwd)["']?\s*[:=]\s*["']?)[^\s"',;}]{6,}"#,
+                    // `\` is excluded from the value so the escape before a
+                    // closing quote stays and the JSON string stays valid.
+                    r#"(?i)((?:\\?["'])?[A-Za-z0-9_]*(?:password|passwd|pwd)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[^\s"',;}\\]{6,}"#,
                 )
                 .expect("password regex"),
             },
