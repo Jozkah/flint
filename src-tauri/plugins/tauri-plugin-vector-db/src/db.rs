@@ -611,6 +611,7 @@ fn search_linear(
         stmt.query(&*param_refs)?
     };
     let mut results: Vec<SearchResult> = Vec::new();
+    let mut skipped = 0usize;
 
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
@@ -620,6 +621,13 @@ fn search_linear(
         let chunk_file_order: i64 = row.get(4)?;
 
         let emb = from_le_bytes_vec(&embedding_bytes);
+        // A chunk stored at another dimension (the embedding model changed
+        // under an existing collection) cannot be compared; skip it rather
+        // than failing the search for every chunk that can (Jozkah/jan#246).
+        if emb.len() != query_embedding.len() {
+            skipped += 1;
+            continue;
+        }
         let score = cosine_similarity(query_embedding, &emb)?;
 
         if score >= threshold {
@@ -642,6 +650,11 @@ fn search_linear(
         }
     });
     let take: Vec<SearchResult> = results.into_iter().take(limit).collect();
+    if skipped > 0 {
+        println!(
+            "[VectorDB] Linear search skipped {skipped} chunk(s) stored at another dimension; re-index to include them"
+        );
+    }
     println!("[VectorDB] Linear search returned {} results", take.len());
     Ok(take)
 }
