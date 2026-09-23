@@ -166,8 +166,10 @@ pub fn unavailable_hint(
     let dir = found.parent().unwrap_or(found);
     if is_msys_install(dir) {
         return format!(
-            "
-[sandbox: `{name}` at {} is part of Git for Windows / MSYS2, which cannot run inside              this sandbox. For repository information use the `git_inspect` tool. For anything              else, tell the user to run the command themselves. Do not retry it here or look for              another copy.]",
+            "\n[sandbox: `{name}` at {} is part of Git for Windows / MSYS2, which cannot run inside \
+             this sandbox. For repository information use the `git_inspect` tool. For anything \
+             else, tell the user to run the command themselves. Do not retry it here or look for \
+             another copy.]",
             found.display()
         );
     }
@@ -451,6 +453,7 @@ mod tests {
         let hint = unavailable_hint("git", &cmd.join("git.exe"), None, |_| Some(true));
         assert!(hint.contains("git_inspect"), "{hint}");
         assert!(hint.contains("Do not retry"), "{hint}");
+        assert!(!hint.contains("  "), "no runs of spaces: {hint}");
     }
 
     #[cfg(windows)]
