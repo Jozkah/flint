@@ -1855,6 +1855,25 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             if let Some(hint) = hint {
                 out.push_str(&hint);
             }
+            // A program the sandbox cannot find may still be installed on the
+            // host, just not runnable from inside. Say where and why, so the
+            // model reports it rather than hunting for another copy to run.
+            if sandboxed && class == super::shell_diag::FailureClass::MissingCommand {
+                if let Some(name) = super::host_tools::missing_program(&out) {
+                    let host = std::env::var_os("PATH").unwrap_or_default();
+                    let pathext =
+                        std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+                    if let Some(found) = super::host_tools::locate_on_host(&name, &host, &pathext) {
+                        let profile = std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
+                        out.push_str(&super::host_tools::unavailable_hint(
+                            &name,
+                            &found,
+                            profile.as_deref(),
+                            super::host_tools::container_can_execute,
+                        ));
+                    }
+                }
+            }
             // Which shell ran it, on a failure only: that is when the model is
             // about to write the next command and most needs the syntax.
             if let Some(banner) = super::shell_diag::shell_banner(shell_flavor, shell_description)

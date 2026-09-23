@@ -822,6 +822,21 @@ mod win {
                 dirs.push(dir);
             }
         }
+        // Then the host's own toolchain folders the container is allowed to
+        // run (Git, Node, Python installed for all users), after the system
+        // folders so none of them can shadow a system program. Folders in the
+        // user profile, or whose ACL does not admit app packages, stay out: in
+        // the sandbox they would only fail, and confusingly.
+        if let Some(host) = std::env::var_os("PATH") {
+            let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
+            let extra = crate::tools::host_tools::usable_host_dirs(
+                &host,
+                profile.as_deref(),
+                &dirs,
+                crate::tools::host_tools::container_can_execute,
+            );
+            dirs.extend(extra);
+        }
         OsString::from(
             dirs.iter()
                 .map(|d| d.to_string_lossy().to_string())
