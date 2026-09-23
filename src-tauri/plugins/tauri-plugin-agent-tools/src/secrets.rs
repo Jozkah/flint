@@ -453,6 +453,22 @@ fn redact_line(line: &str) -> String {
 mod tests {
     use super::*;
 
+    /// Jozkah/jan#277: a shaped token on a line must not stop the assignment
+    /// secret next to it from being redacted.
+    #[test]
+    fn an_assignment_secret_next_to_a_token_is_still_redacted() {
+        for line in [
+            r#"{"api_key":"sk-live-abcdefghijklmnopqrstuv","db_password":"hunter2seventeen"}"#,
+            "token: ghp_9d7f6a5b4c3e2d1f0a9b8c7d password: hunter2seventeen",
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123 DB_PASSWORD=hunter2seventeen",
+        ] {
+            let out = redact_secrets(line);
+            assert!(!out.contains("hunter2seventeen"), "{out}");
+            assert!(!out.contains("abcdefghijklmnopqrstuv"), "{out}");
+            assert!(!out.contains("9d7f6a5b4c3e2d1f0a9b8c7d"), "{out}");
+        }
+    }
+
     #[test]
     fn finds_the_shapes_a_credential_actually_takes() {
         let findings = scan_text(
