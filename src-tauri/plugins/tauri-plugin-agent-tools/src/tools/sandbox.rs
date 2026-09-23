@@ -276,9 +276,9 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     } else {
         root.join(raw)
     };
-    let Ok(resolved) = canonicalize_lenient(&abs) else {
-        return false;
-    };
+    // A path that cannot be resolved (a link cycle planted under `.jan`) is
+    // judged by where it is written, so it stays hidden rather than listed.
+    let resolved = canonicalize_lenient(&abs).unwrap_or_else(|_| lexical_normalize(&abs));
     resolved.starts_with(root.join(JAN_DIR))
 }
 
@@ -352,42 +352,104 @@ pub fn symlink_escapes_any_root(
         .any(|r| resolved.starts_with(r))
 }
 
-/// Canonicalize a path that may not fully exist: canonicalize the deepest
-/// existing ancestor, then re-append the non-existing tail (resolving `.`/`..`
-/// lexically). Errors only if no ancestor up to root exists.
-fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
-    if let Ok(p) = path.canonicalize() {
-        return Ok(p);
-    }
-    let mut existing = path;
-    let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
-    loop {
-        match existing.parent() {
-            Some(parent) => {
-                if let Some(name) = existing.file_name() {
-                    tail.push(name);
-                }
-                existing = parent;
-                if let Ok(base) = existing.canonicalize() {
-                    let mut result = base;
-                    for comp in tail.iter().rev() {
-                        if *comp == std::ffi::OsStr::new(".") {
-                            continue;
-                        }
-                        if *comp == std::ffi::OsStr::new("..") {
-                            result.pop();
-                        } else {
-                            result.push(comp);
-                        }
-                    }
-                    return Ok(result);
-                }
-            }
-            None => {
-                return Err(format!("no existing ancestor for {:?}", path));
-            }
+/// How many symlinks one resolution may follow before it is taken to be a
+/// cycle. Linux's own limit (`MAXSYMLINKS`) is 40.
+const MAX_LINK_HOPS: usize = 40;
+
+/// Where `path` leads, for a path that may not fully exist yet: the path a
+/// create-or-open of it would really reach.
+///
+/// The deepest existing ancestor is canonicalized, and the rest is walked one
+/// component at a time. A component that exists as a symlink -- including a
+/// dangling one, whose target does not exist yet and which `canonicalize`
+/// therefore cannot tell from a missing file (Jozkah/jan#192) -- is replaced by
+/// its target, relative targets taken from the link's own directory, and
+/// resolution starts over. Only components that do not exist at all are
+/// appended lexically.
+///
+/// Fails closed: an error for no existing ancestor, a component that cannot be
+/// inspected or read, or more than [`MAX_LINK_HOPS`] links (a cycle). Callers
+/// treat an error as an escape.
+///
+/// This decides where a path points at the moment it is called; it cannot stop
+/// a link from being planted or swapped afterwards. See the write handler's
+/// `O_NOFOLLOW` open for the part of that window it closes.
+pub(crate) fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
+    let mut path = path.to_path_buf();
+    for _ in 0..=MAX_LINK_HOPS {
+        if let Ok(p) = path.canonicalize() {
+            return Ok(p);
+        }
+        match resolve_once(&path)? {
+            Resolution::Reached(p) => return Ok(p),
+            Resolution::FollowLink(next) => path = next,
         }
     }
+    Err(format!("too many levels of symbolic links in {:?}", path))
+}
+
+enum Resolution {
+    /// Every component was checked and none is a symlink.
+    Reached(PathBuf),
+    /// The path with its first symlink replaced by the link's target.
+    FollowLink(PathBuf),
+}
+
+fn resolve_once(path: &Path) -> Result<Resolution, String> {
+    use std::path::Component;
+    let components: Vec<Component> = path.components().collect();
+    for split in (1..components.len()).rev() {
+        let prefix: PathBuf = components[..split].iter().collect();
+        let Ok(base) = prefix.canonicalize() else {
+            continue;
+        };
+        let rest = &components[split..];
+        let mut current = base;
+        for (i, component) in rest.iter().enumerate() {
+            match component {
+                Component::CurDir => {}
+                // `current` is canonical up to here, or names something that
+                // does not exist, so stepping up lexically is exact.
+                Component::ParentDir => {
+                    current.pop();
+                }
+                Component::Normal(name) => {
+                    let next = current.join(name);
+                    match std::fs::symlink_metadata(&next) {
+                        Ok(meta) if meta.file_type().is_symlink() => {
+                            let target = std::fs::read_link(&next)
+                                .map_err(|e| format!("cannot read link {:?}: {e}", next))?;
+                            // `join` keeps an absolute target as it is and puts
+                            // a relative one under the link's directory.
+                            let mut followed = current.join(target);
+                            for later in &rest[i + 1..] {
+                                followed.push(later.as_os_str());
+                            }
+                            return Ok(Resolution::FollowLink(followed));
+                        }
+                        Ok(_) => current = next,
+                        // Nothing there -- including under a file used as a
+                        // directory, which Unix reports as `NotADirectory`. The
+                        // open will fail with the real error; it is not an escape.
+                        Err(e)
+                            if matches!(
+                                e.kind(),
+                                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                            ) =>
+                        {
+                            current = next
+                        }
+                        Err(e) => return Err(format!("cannot inspect {:?}: {e}", next)),
+                    }
+                }
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(format!("unexpected root inside {:?}", path));
+                }
+            }
+        }
+        return Ok(Resolution::Reached(current));
+    }
+    Err(format!("no existing ancestor for {:?}", path))
 }
 
 #[cfg(test)]
@@ -1063,5 +1125,168 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&ws);
         let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // -- dangling symlinks (Jozkah/jan#192) -----------------------------------
+    //
+    // A symlink whose target does not exist yet makes `canonicalize` fail just
+    // as a missing file does, but opening it for writing creates the target.
+    // Containment must follow the link, wherever it points.
+
+    /// A symlink at `at` naming `target`, which need not exist. `None` where
+    /// the platform refuses to make one (Windows without Developer Mode), so
+    /// the test has nothing to check there rather than failing.
+    fn link(target: &Path, at: &Path, dir: bool) -> Option<()> {
+        #[cfg(unix)]
+        let made = {
+            let _ = dir;
+            std::os::unix::fs::symlink(target, at)
+        };
+        #[cfg(windows)]
+        let made = if dir {
+            std::os::windows::fs::symlink_dir(target, at)
+        } else {
+            std::os::windows::fs::symlink_file(target, at)
+        };
+        match made {
+            Ok(()) => Some(()),
+            Err(e) => {
+                eprintln!("skipped: cannot create a symlink here: {e}");
+                None
+            }
+        }
+    }
+
+    fn all_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(true), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(true),
+            "escapes_write_roots {raw}"
+        );
+        assert!(symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    fn none_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(false), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(false),
+            "escapes_write_roots {raw}"
+        );
+        assert!(!symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    #[test]
+    fn a_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("created.txt"), &root.join("dangling"), false).is_none() {
+            return;
+        }
+        all_escape(&root, "dangling");
+        assert!(!outside.join("created.txt").exists());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_relative_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        let name = outside.file_name().unwrap().to_string_lossy().into_owned();
+        let target = PathBuf::from("..").join(name).join("created.txt");
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        // Relative to the link's own directory: `notes/../..` is the temp dir.
+        if link(&PathBuf::from("..").join(&target), &root.join("notes").join("todo.md"), false)
+            .is_none()
+        {
+            return;
+        }
+        all_escape(&root, "notes/todo.md");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_dangling_directory_link_in_the_middle_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("missing"), &root.join("d"), true).is_none() {
+            return;
+        }
+        all_escape(&root, "d/new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_chain_of_links_ending_outside_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&root.join("b"), &root.join("a"), false).is_none()
+            || link(&outside.join("x.txt"), &root.join("b"), false).is_none()
+        {
+            return;
+        }
+        all_escape(&root, "a");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// A cycle has no destination to judge, so it cannot be shown to stay in.
+    #[test]
+    fn a_link_cycle_fails_closed() {
+        let root = unique_root();
+        if link(&root.join("c2"), &root.join("c1"), false).is_none()
+            || link(&root.join("c1"), &root.join("c2"), false).is_none()
+        {
+            return;
+        }
+        assert_ne!(escapes_project(&root, None, "c1"), Ok(false));
+        assert_ne!(escapes_write_roots(&root, None, &[], "c1"), Ok(false));
+        assert!(symlink_escapes_root(&root, None, &root.join("c1")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Following links must not cost legitimate in-root cases: a dangling link
+    /// whose target stays inside, absolute or relative, and a plain new file.
+    #[test]
+    fn dangling_links_that_stay_inside_are_not_escapes() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        if link(&root.join("sub").join("new.txt"), &root.join("abs"), false).is_none()
+            || link(Path::new("sub/other.txt"), &root.join("rel"), false).is_none()
+        {
+            return;
+        }
+        none_escape(&root, "abs");
+        none_escape(&root, "rel");
+        none_escape(&root, "sub/plain-new.txt");
+        none_escape(&root, "sub/deeper/still-new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file used as a directory has nothing beneath it: not an escape, so
+    /// the write fails with the real error instead of a containment refusal.
+    #[test]
+    fn a_path_under_a_file_is_not_an_escape() {
+        let root = unique_root();
+        std::fs::write(root.join("main.rs"), b"x").unwrap();
+        none_escape(&root, "main.rs/x");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Unresolvable names under `.jan` stay hidden.
+    #[test]
+    fn a_link_cycle_under_jan_stays_hidden() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(JAN_DIR)).unwrap();
+        let (a, b) = (root.join(JAN_DIR).join("c1"), root.join(JAN_DIR).join("c2"));
+        if link(&b, &a, false).is_none() || link(&a, &b, false).is_none() {
+            return;
+        }
+        assert!(is_hidden_jan_path(&root, &format!("{JAN_DIR}/c1")));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

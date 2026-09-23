@@ -16,7 +16,7 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
+    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
     scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
@@ -1458,20 +1458,24 @@ async fn write(
     if symlink_escapes_root(root, scratch, &target) {
         return format!("ERROR: refused to write through a symlink out of the workspace: {path}");
     }
-    if let Some(parent) = target.parent() {
+    let open_at = match resolved_for_open(&target) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: refused to write {path}: {e}"),
+    };
+    if let Some(parent) = open_at.parent() {
         if let Err(e) = tokio::fs::create_dir_all(parent).await {
             return format!("ERROR: {shown}: {e}");
         }
     }
     // Existence decides created/overwrote; a non-UTF8 file still exists, so it
     // must not be read_to_string's error path that answers that question.
-    let existed = tokio::fs::try_exists(&target).await.unwrap_or(false);
+    let existed = tokio::fs::try_exists(&open_at).await.unwrap_or(false);
     let unchanged = existed
-        && tokio::fs::read_to_string(&target)
+        && tokio::fs::read_to_string(&open_at)
             .await
             .is_ok_and(|prior| prior == content);
     let bytes = content.len();
-    match tokio::fs::write(&target, content).await {
+    match write_no_follow(&open_at, content).await {
         Ok(()) if unchanged => format!("No change: {shown} already had these {bytes} bytes"),
         Ok(()) if existed => format!("Overwrote {shown} ({bytes} bytes)"),
         Ok(()) => format!("Created {shown} ({bytes} bytes)"),
@@ -1505,7 +1509,11 @@ async fn edit(
     if symlink_escapes_root(root, scratch, &target) {
         return format!("ERROR: refused to edit through a symlink out of the workspace: {path}");
     }
-    let content = match tokio::fs::read_to_string(&target).await {
+    let open_at = match resolved_for_open(&target) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: refused to edit {path}: {e}"),
+    };
+    let content = match tokio::fs::read_to_string(&open_at).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: {shown}: {e}"),
     };
@@ -1514,10 +1522,35 @@ async fn edit(
         Err(message) => return message,
     };
 
-    match tokio::fs::write(&target, content).await {
+    match write_no_follow(&open_at, &content).await {
         Ok(()) => format!("Applied {} edit(s) to {shown}", edits.len()),
         Err(e) => format!("ERROR: {shown}: {e}"),
     }
+}
+
+/// The file a write to `target` really lands in, every symlink on the way
+/// followed -- the same resolution the containment checks just judged. The
+/// handlers open this rather than `target`, so the open does not resolve the
+/// path a second time on its own (Jozkah/jan#192).
+fn resolved_for_open(target: &Path) -> Result<PathBuf, String> {
+    canonicalize_lenient(target)
+}
+
+/// Create or truncate `path` and write `content`, refusing to follow a
+/// symlink at `path` itself where the platform can (`O_NOFOLLOW` on Unix).
+/// `path` is already resolved, so a link found there now was planted after the
+/// checks: the open fails rather than follows it. Windows has no equivalent
+/// open flag here; there the resolution above is the whole defence, and a
+/// link swapped in between the check and the open is not caught.
+async fn write_no_follow(path: &Path, content: &str) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
+    let mut file = options.open(path).await?;
+    file.write_all(content.as_bytes()).await?;
+    file.flush().await
 }
 
 /// `path` made absolute against this process's working directory, with `.`
@@ -4852,6 +4885,51 @@ on_failure = \"warn\"
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#192: a dangling symlink in the workspace naming a file
+    /// outside it. Writing "to" the link must be refused, and nothing may be
+    /// created at its target. An in-root dangling link still writes.
+    #[tokio::test]
+    async fn a_write_through_a_dangling_link_is_refused_and_creates_nothing() {
+        let root = unique_root();
+        let outside = unique_root();
+        let target = outside.join("created.txt");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&target, root.join("dangling"))
+            .and_then(|_| std::os::unix::fs::symlink(root.join("inside.txt"), root.join("inward")));
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&target, root.join("dangling")).and_then(
+            |_| std::os::windows::fs::symlink_file(root.join("inside.txt"), root.join("inward")),
+        );
+        if let Err(e) = made {
+            eprintln!("skipped: cannot create a symlink here: {e}");
+            return;
+        }
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_confined_writes(true);
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "dangling", "content": "planted"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.starts_with("ERROR: refused"), "got: {out}");
+        assert!(!target.exists(), "the write created a file outside the workspace");
+
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "inward", "content": "fine"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(!out.starts_with("ERROR"), "an in-root link must keep working: {out}");
+        assert_eq!(std::fs::read_to_string(root.join("inside.txt")).unwrap(), "fine");
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     /// With write confinement enabled, a `..` write is refused at the handler,
