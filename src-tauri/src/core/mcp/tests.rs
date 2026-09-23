@@ -1844,6 +1844,30 @@ mod mcp_http_integration_tests {
         }
     }
 
+    /// Jozkah/jan#261: a URL can carry the server's credential (a Zapier-style
+    /// `/s/<secret>/mcp` path, `?api_key=`). A failed connection's error is
+    /// logged and shown, so it names the server's origin and nothing more.
+    #[tokio::test]
+    async fn a_failed_connection_does_not_repeat_the_url_secret() {
+        let port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            socket.local_addr().expect("addr").port()
+        };
+        let client = reqwest13::Client::builder().build().expect("client");
+        let url = format!("http://127.0.0.1:{port}/api/mcp/s/SECRET123456/mcp?api_key=QUERYSECRET789");
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            serve_http(client, &url, handler("leaky")),
+        )
+        .await
+        .expect("fails rather than hangs")
+        .err()
+        .expect("a closed port does not connect");
+        assert!(!err.contains("SECRET123456"), "{err}");
+        assert!(!err.contains("QUERYSECRET789"), "{err}");
+        assert!(err.contains(&format!("127.0.0.1:{port}")), "still names the server: {err}");
+    }
+
     /// An `initialize` reply that is not a valid result is a failed handshake,
     /// not a server to start publishing tools from.
     #[tokio::test]
