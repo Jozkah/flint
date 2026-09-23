@@ -1153,7 +1153,17 @@ struct CompositeToolInvoker {
     /// The language servers this run has started (AH-057/058). Owned by the
     /// invoker, so they end with the run.
     lsp: std::sync::Arc<crate::core::agent::lsp::LspPool>,
+    /// After this many consecutive auto-approved write/exec calls the next one
+    /// is put to the user instead, as a checkpoint on a long unattended run.
+    /// `0` disables the pause. Request body `auto_approve_limit` overrides
+    /// [`DEFAULT_AUTO_APPROVE_LIMIT`].
+    auto_approve_limit: u32,
+    /// Consecutive auto-approved calls since the user last answered a prompt.
+    auto_approved_streak: std::sync::atomic::AtomicU32,
 }
+
+/// Default for [`CompositeToolInvoker::auto_approve_limit`].
+pub const DEFAULT_AUTO_APPROVE_LIMIT: u32 = 50;
 
 /// Default for the sandboxed shell's network namespace, used when
 /// `[tools].allow_network` is unset.
@@ -3156,10 +3166,37 @@ impl CompositeToolInvoker {
             // project -- those reach host files no sandbox confines, gate.rs
             // documents them as never auto-approved, and a headless run with
             // nobody to ask them is refused.
+            //
+            // Two exceptions put the call to the user anyway, through the same
+            // prompt: a shell command that matches a destructive pattern
+            // (`rm -rf ~`, `git push --force`, ...), whatever grant or mode
+            // would otherwise allow it; and the call after a long streak of
+            // auto-approved ones, so an unattended run checks in periodically.
+            let destructive = (name == "bash")
+                .then(|| args.get("command").and_then(|v| v.as_str()))
+                .flatten()
+                .and_then(|c| {
+                    crate::core::agent::destructive::destructive_reason(c, &self.project_root)
+                });
+            use std::sync::atomic::Ordering as StreakOrdering;
             let decision = match decision {
-                Decision::Prompt(PromptKind::Write | PromptKind::Exec) if self.auto_approve => Decision::Allow,
+                Decision::Prompt(PromptKind::Write | PromptKind::Exec)
+                    if self.auto_approve && destructive.is_none() =>
+                {
+                    let streak = self.auto_approved_streak.fetch_add(1, StreakOrdering::Relaxed) + 1;
+                    if self.auto_approve_limit > 0 && streak > self.auto_approve_limit {
+                        Decision::Prompt(PromptKind::Exec)
+                    } else {
+                        Decision::Allow
+                    }
+                }
+                Decision::Allow if destructive.is_some() => Decision::Prompt(PromptKind::Exec),
                 other => other,
             };
+            if matches!(decision, Decision::Prompt(_)) {
+                // Someone is about to be asked: the streak starts over.
+                self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
+            }
             // Read and Net tools are non-mutating and safe to run concurrently
             // once allowed: reads hit the filesystem, web tools do outbound HTTP.
             if matches!(decision, Decision::Allow)
@@ -4719,8 +4756,17 @@ async fn orchestrate_inner(
             })
             .map(|cfg| cfg.auto_mode)
             .unwrap_or_default();
+        // How many auto-approved calls in a row before the run checks in with
+        // the user; `0` turns the pause off.
+        let auto_approve_limit_from_body = json_body
+            .get("auto_approve_limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n.min(u32::MAX as u64) as u32)
+            .unwrap_or(DEFAULT_AUTO_APPROVE_LIMIT);
         let tools = CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
+            auto_approve_limit: auto_approve_limit_from_body,
+            auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing,
             auto_mode,
             format_on_edit: settings.format_on_edit,
@@ -9113,6 +9159,8 @@ mod tests {
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::disabled()),
+            auto_approve_limit: DEFAULT_AUTO_APPROVE_LIMIT,
+            auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing: Vec::new(),
             format_on_edit: false,
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
@@ -11010,6 +11058,76 @@ mod tests {
         let kinds = asked.await.unwrap();
         assert_eq!(kinds, vec!["write_escape".to_string()], "only the escaping write asked");
         let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A destructive shell command is put to the user even under
+    /// auto-approval, and is not run when they refuse.
+    #[tokio::test]
+    async fn auto_approval_still_asks_before_a_destructive_command() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut commands = Vec::new();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, command, .. } = event {
+                    commands.push(command.unwrap_or_default());
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                }
+            }
+            commands
+        });
+        let call = serde_json::json!({ "id": "b", "type": "function", "function": {
+            "name": "bash",
+            "arguments": serde_json::json!({ "command": "rm -rf ~/jan-destructive-guard-test" }).to_string()
+        } });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(out[0].content.contains("ERROR") || out[0].content.to_lowercase().contains("denied"), "{}", out[0].content);
+        drop(invoker);
+        let commands = asked.await.unwrap();
+        assert_eq!(commands, vec!["rm -rf ~/jan-destructive-guard-test".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// After `auto_approve_limit` auto-approved calls in a row, the next one is
+    /// put to the user; answering resets the streak.
+    #[tokio::test]
+    async fn a_long_auto_approved_streak_pauses_to_ask() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+        invoker.auto_approve = true;
+        invoker.auto_approve_limit = 2;
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut n = 0;
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, .. } = event {
+                    n += 1;
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::AllowOnce);
+                    }
+                }
+            }
+            n
+        });
+        for i in 0..6 {
+            let call = serde_json::json!({ "id": format!("w{i}"), "type": "function", "function": {
+                "name": "write",
+                "arguments": serde_json::json!({ "path": format!("f{i}.txt"), "content": "x" }).to_string()
+            } });
+            invoker.invoke(&[call]).await.unwrap();
+        }
+        drop(invoker);
+        // Calls 1-2 auto, 3 asks; 4-5 auto, 6 asks.
+        assert_eq!(asked.await.unwrap(), 2);
         let _ = std::fs::remove_dir_all(&root);
     }
 

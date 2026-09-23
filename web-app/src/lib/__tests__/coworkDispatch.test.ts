@@ -826,3 +826,55 @@ describe('an approval prompt whose run is stopped', () => {
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })
+
+describe('dispatchCoworkTool: destructive commands and auto-approve limit', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('asks before a destructive command even in autonomous mode', async () => {
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('bash', { command: 'rm -rf ~/' }),
+      ctx({ sessionId: 'destructive', mode: 'auto', onApprove })
+    )
+    expect(onApprove).toHaveBeenCalledTimes(1)
+    const forced = (onApprove.mock.calls[0] as unknown[])[5] as {
+      alwaysAsk: boolean
+      reason: string
+    }
+    expect(forced.alwaysAsk).toBe(true)
+    expect(forced.reason).toMatch(/rm -rf/)
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('does not ask for an ordinary command in autonomous mode', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('bash', { command: 'rm -rf node_modules' }),
+      ctx({ sessionId: 'ordinary', mode: 'auto', onApprove })
+    )
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  it('pauses to ask after the auto-approve limit, then starts over', async () => {
+    const { useAutoApproveLimit } = await import('@/hooks/useAutoApproveLimit')
+    useAutoApproveLimit.getState().setLimit(2)
+    try {
+      const onApprove = vi.fn(async () => true)
+      for (let i = 0; i < 6; i++) {
+        await dispatchCoworkTool(
+          call('write', { path: `f${i}` }),
+          ctx({ sessionId: 'streak', mode: 'auto', onApprove })
+        )
+      }
+      // Calls 1-2 run, 3 asks; 4-5 run, 6 asks.
+      expect(onApprove).toHaveBeenCalledTimes(2)
+    } finally {
+      useAutoApproveLimit.getState().setLimit(50)
+    }
+  })
+})

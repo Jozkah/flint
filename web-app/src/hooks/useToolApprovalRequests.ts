@@ -13,6 +13,11 @@ import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 export type ApprovalRequestContext = {
   /** The call's arguments, shown sanitized in the prompt. */
   input?: unknown
+  /**
+   * Ask even when a standing grant would answer: the call is destructive, or
+   * the run has gone a long time without asking.
+   */
+  alwaysAsk?: boolean
   /** Why the call is being made, only when the caller actually knows. */
   taskContext?: string
   /** Folder or project the call works in. */
@@ -248,7 +253,8 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         // A standing grant answers without a prompt: allow-all, a server the
         // user trusts, the tool everywhere, or the tool in this thread --
         // except for a tool that must be asked about every time.
-        const alwaysAsk = ALWAYS_ASK_TOOLS.has(toolName)
+        const alwaysAsk =
+          ALWAYS_ASK_TOOLS.has(toolName) || context?.alwaysAsk === true
         // "Allow all MCP permissions" is an MCP-server setting (that is what its
         // label promises), so it only auto-approves a server's tool -- never a
         // built-in agent tool (write/edit/bash, no serverName), which must still
