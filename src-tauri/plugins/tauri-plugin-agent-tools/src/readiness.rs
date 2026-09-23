@@ -843,12 +843,30 @@ fn cache() -> &'static Mutex<HashMap<String, EnvironmentReadiness>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// The cache key for a project root. Case-folded, because Windows paths are
-/// case-insensitive and two spellings of one folder must not probe twice.
+/// The cache key for a project root. Case-folded on Windows only, where two
+/// spellings are one folder and must not probe twice. Elsewhere `Proj` and
+/// `proj` are two folders and must not share an answer (Jozkah/jan#285).
 fn key(project_root: Option<&Path>) -> String {
     project_root
-        .map(|p| p.to_string_lossy().to_lowercase())
+        .map(|p| {
+            let text = p.to_string_lossy();
+            if cfg!(windows) {
+                text.to_lowercase()
+            } else {
+                text.into_owned()
+            }
+        })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod key_tests {
+    #[test]
+    fn two_spellings_share_a_key_only_where_they_are_one_folder() {
+        let a = super::key(Some(std::path::Path::new("/home/u/Proj")));
+        let b = super::key(Some(std::path::Path::new("/home/u/proj")));
+        assert_eq!(a == b, cfg!(windows));
+    }
 }
 
 /// The readiness for `project_root`, probing only if it is not already known.
