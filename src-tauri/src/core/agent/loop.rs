@@ -1117,6 +1117,11 @@ struct CompositeToolInvoker {
     /// per run from `[tools].allow_network`, falling back to the surface
     /// default when unset.
     allow_network: bool,
+    /// `[tools].allow_domains` / `deny_domains`, capped by the machine policy,
+    /// resolved once per run and handed to the gate with every call
+    /// (Jozkah/jan#226).
+    allow_domains: Vec<String>,
+    deny_domains: Vec<String>,
     /// Whether the sandboxed shell may read `$HOME`. Resolved once per run
     /// from `[tools].allow_home_read`, falling back to `true` on the CLI.
     allow_home_read: bool,
@@ -1308,6 +1313,9 @@ struct ResolvedSettings {
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
+    /// The project's domain lists, capped by the machine policy.
+    allow_domains: Vec<String>,
+    deny_domains: Vec<String>,
 }
 
 /// Kept out of the invoker's struct literal so it is reachable from a test.
@@ -1325,6 +1333,8 @@ fn resolve_run_settings(
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
+        allow_domains: settings.allow_domains,
+        deny_domains: settings.deny_domains,
     }
 }
 
@@ -3159,13 +3169,14 @@ impl CompositeToolInvoker {
                 &self.permissions,
                 &snapshot,
                 self.sandbox,
-                // The CLI's network policy is its own resolved `allow_network`;
-                // domain lists come from the project file, which the desktop
-                // reads through `policy::load`. Both surfaces go through the
-                // same gate so a rule cannot mean two things.
+                // The run's resolved `allow_network` and the project's domain
+                // lists, capped by the machine policy (Jozkah/jan#226): both
+                // surfaces go through the same gate so a rule cannot mean two
+                // things.
                 &NetworkPolicy {
                     allowed: self.allow_network,
-                    ..NetworkPolicy::default()
+                    allow_domains: self.allow_domains.clone(),
+                    deny_domains: self.deny_domains.clone(),
                 },
                 // AH-007. Not `MainAgent` unconditionally: a subagent dispatched
                 // under a name is judged as that name, so a project can grant
@@ -4853,6 +4864,8 @@ async fn orchestrate_inner(
             store_root: tauri_plugin_agent_tools::workspace::project_store(root),
             enabled_skills: settings.enabled_skills,
             allow_network: settings.allow_network,
+            allow_domains: settings.allow_domains.clone(),
+            deny_domains: settings.deny_domains.clone(),
             allow_home_read: settings.allow_home_read,
             sandbox: settings.sandbox,
             scratch_root: scratch_root.clone(),
@@ -9262,6 +9275,8 @@ mod tests {
             store_root: tauri_plugin_agent_tools::workspace::project_store(&root),
             enabled_skills: Vec::new(),
             allow_network: DEFAULT_ALLOW_NETWORK,
+            allow_domains: Vec::new(),
+            deny_domains: Vec::new(),
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
             user_skills: None,
