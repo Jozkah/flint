@@ -114,8 +114,13 @@ export function recover(
           toolState: 'stale' as const,
           isError: true,
           result: t.result || '(interrupted: the app stopped before this call finished)',
+          // #321: kept when saved; a call whose arguments never arrived is
+          // replayed with none rather than without the field.
+          args: t.args ?? {},
         }
-      : { ...t }
+      : t.role === 'tool'
+        ? { ...t, args: t.args ?? {} }
+        : { ...t }
   )
   const partial = unfinishedReply(record)
   if (choice === 'discard-partial' && partial) {

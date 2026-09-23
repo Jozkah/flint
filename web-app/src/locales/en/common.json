@@ -418,7 +418,7 @@
     "description": "The assistant wants to use <strong>{{toolName}}</strong>",
     "securityNotice": "Only allow tools you trust. Tools can access your system and data.",
     "deny": "Deny",
-    "allowOnce": "Allow Once",
+    "allowOnce": "Allow once",
     "alwaysAllow": "Always Allow"
   },
   "deleteModel": {
@@ -1115,6 +1115,7 @@
     "title": "Worktrees from earlier runs",
     "found": "{{count}} worktree(s) here from an earlier run",
     "use": "Use",
+    "thisSession": "(this session)",
     "remove": "Remove",
     "noAuthority": "Using one tells this session where the work is. It does not make it writable — choose an access mode for that.",
     "confirmTitle": "Remove this worktree",
@@ -1257,7 +1258,8 @@
       "no-capability": "Editing this folder isn’t available here, so Flint is reading only.",
       "no-grant": "Editing this folder needs confirming again, so Flint is reading only.",
       "binding-changed": "The folder changed, so Flint is reading only.",
-      "capability-unknown": "Flint is reading only until it can check what this platform enforces."
+      "capability-unknown": "Flint is reading only until it can check what this platform enforces.",
+      "worktree-restart": "Worktree access ended when Flint restarted; choose Use on the worktree to reattach."
     },
     "refusal": {
       "stale-binding": "the attached folder changed",

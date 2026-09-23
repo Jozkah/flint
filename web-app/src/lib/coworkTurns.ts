@@ -202,7 +202,10 @@ export function coworkTurnsToUIMessages(
     const part: any = {
       type: `tool-${name}`,
       toolCallId: turn.callId ?? `code-tool-${i}`,
-      input: turn.args,
+      // #321: a call saved before its arguments arrived is replayed with an
+      // empty object, never without `input`: providers reject a tool call
+      // with no arguments, and every later request would fail the same way.
+      input: turn.args ?? {},
       state: running
         ? 'input-available'
         : turn.isError
@@ -247,4 +250,34 @@ export function appendLiveMessages(
   }
   const joined = { ...last, parts: [...last.parts, ...live[0].parts] }
   return [...committed.slice(0, -1), joined, ...live.slice(1)]
+}
+
+/**
+ * Messages with every tool part carrying an `input`. #321.
+ *
+ * A tool call replayed without arguments is rejected by the provider on every
+ * request after it, so a session holding one can never continue. Parts that
+ * already have an input are left alone, and so is every message without such a
+ * part (returned as the same object).
+ */
+export function withToolInputs<T extends { parts: unknown[] }>(messages: T[]): T[] {
+  return messages.map((message) => {
+    if (!Array.isArray(message.parts)) return message
+    let changed = false
+    const parts = message.parts.map((part) => {
+      const record = part as Record<string, unknown> | null
+      if (
+        record &&
+        typeof record.type === 'string' &&
+        (record.type.startsWith('tool-') || record.type === 'dynamic-tool') &&
+        'toolCallId' in record &&
+        record.input === undefined
+      ) {
+        changed = true
+        return { ...record, input: {} }
+      }
+      return part
+    })
+    return changed ? { ...message, parts } : message
+  })
 }

@@ -49,6 +49,25 @@ export const orphans = (
     .map((one) => one.record)
 
 /**
+ * The branch Flint gives a session's managed worktree: `jan/cowork/` plus the
+ * session id's slug. Mirrors `branch_name`/`slug` in the Rust worktree module
+ * (first 12 ASCII alphanumerics, then the id's 64-bit FNV-1a hash in hex), so
+ * a worktree found after a restart can be recognised as this session's own.
+ */
+export function sessionWorktreeBranch(sessionId: string): string {
+  let hash = 0xcbf29ce484222325n
+  for (const byte of new TextEncoder().encode(sessionId)) {
+    hash ^= BigInt(byte)
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn
+  }
+  const head = [...sessionId]
+    .filter((c) => /^[A-Za-z0-9]$/.test(c))
+    .slice(0, 12)
+    .join('')
+  return `jan/cowork/${head || 'session'}-${hash.toString(16).padStart(16, '0')}`
+}
+
+/**
  * What removing this worktree would destroy, phrased for a confirmation.
  *
  * Never "are you sure": a prompt that does not say what is in the directory is

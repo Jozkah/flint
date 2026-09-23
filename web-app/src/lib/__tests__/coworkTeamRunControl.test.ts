@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { runTeam, type TaskResult, type TeamState, type TeamTask } from '@/lib/coworkTeam'
-import { TeamControl, type ControlRequest, type ControlResult } from '@/lib/coworkTeamControl'
+import {
+  renderNotRetried,
+  runTeam,
+  type TaskResult,
+  type TeamState,
+  type TeamTask,
+} from '@/lib/coworkTeam'
+import {
+  DECISION_WINDOW_MS,
+  TeamControl,
+  type ControlRequest,
+  type ControlResult,
+} from '@/lib/coworkTeamControl'
 
 const task = (id: string, dependsOn: string[] = [], extra: Partial<TeamTask> = {}): TeamTask => ({
   id,
@@ -29,6 +40,7 @@ describe('runTeam with a control (AH-111)', () => {
     const decisions: Array<[ControlRequest, ControlResult]> = []
     const done = runTeam(graph, {
       control,
+      decisionWindowMs: DECISION_WINDOW_MS,
       onState: (s) => (state = s),
       onControl: (r, res) => decisions.push([r, res]),
       runTask: async (t): Promise<TaskResult> => {
@@ -60,6 +72,7 @@ describe('runTeam with a control (AH-111)', () => {
     let state: TeamState = {}
     const done = runTeam(graph, {
       control,
+      decisionWindowMs: DECISION_WINDOW_MS,
       onState: (s) => (state = s),
       runTask: async (t): Promise<TaskResult> => {
         seen.push(t)
@@ -86,6 +99,7 @@ describe('runTeam with a control (AH-111)', () => {
     const decisions: Array<[ControlRequest, ControlResult]> = []
     const done = runTeam(graph, {
       control,
+      decisionWindowMs: DECISION_WINDOW_MS,
       onState: (s) => (state = s),
       onControl: (r, res) => decisions.push([r, res]),
       runTask: async (t): Promise<TaskResult> => ({ taskId: t.id, ok: t.id === 'b', output: '', producedBy: t.id }),
@@ -124,6 +138,7 @@ describe('runTeam with a control (AH-111)', () => {
     let state: TeamState = {}
     const done = runTeam([task('a')], {
       control,
+      decisionWindowMs: DECISION_WINDOW_MS,
       signal: stop.signal,
       onState: (s) => (state = s),
       runTask: async (t): Promise<TaskResult> => ({ taskId: t.id, ok: false, output: 'no', producedBy: t.id }),
@@ -140,5 +155,27 @@ describe('runTeam with a control (AH-111)', () => {
       runTask: async (t): Promise<TaskResult> => ({ taskId: t.id, ok: false, output: 'no', producedBy: t.id }),
     })
     expect(outcome.ok && outcome.state).toEqual({ a: { status: 'failed' }, b: { status: 'blocked' } })
+  })
+})
+
+describe('a team with failures and no decision window', () => {
+  it('reports the failure at once and says it was not retried', async () => {
+    const control = new TeamControl()
+    const started = Date.now()
+    const outcome = await runTeam([task('a')], {
+      runTask: async (t): Promise<TaskResult> => ({
+        taskId: t.id,
+        ok: false,
+        output: 'provider unreachable\nstack...',
+        producedBy: t.id,
+      }),
+      control,
+    })
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(outcome.ok && outcome.decision).toBe('not-retried')
+    if (!outcome.ok) throw new Error('refused')
+    expect(renderNotRetried(outcome.report)).toBe(
+      'a failed (provider unreachable). Not retried automatically; re-dispatch it if needed.'
+    )
   })
 })

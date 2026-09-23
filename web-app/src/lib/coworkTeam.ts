@@ -20,7 +20,6 @@
  */
 
 import {
-  DECISION_WINDOW_MS,
   TeamControl,
   applyReplacement,
   awaitingDecision,
@@ -877,7 +876,10 @@ export type TeamRunDeps = {
   onControl?: (request: ControlRequest, result: ControlResult) => void
   /**
    * How long a team that would end with failures waits for a decision before
-   * ending on its own. Defaults to [`DECISION_WINDOW_MS`].
+   * ending on its own. Defaults to 0: a team with failures ends at once and
+   * reports them (decision `not-retried`), because an agent's tool call
+   * holding for minutes with nobody asked to decide reads as a hang. Pass
+   * [`DECISION_WINDOW_MS`] to hold for a person at the Tasks panel.
    */
   decisionWindowMs?: number
 }
@@ -894,7 +896,7 @@ export type TeamOutcome =
        * window passed with nobody deciding, or the run was stopped. Absent when
        * nothing had failed, or no one could have decided.
        */
-      decision?: 'finished' | 'window-elapsed' | 'stopped'
+      decision?: 'finished' | 'window-elapsed' | 'stopped' | 'not-retried'
     }
 
 /**
@@ -925,7 +927,12 @@ export async function runTeam(
   const results: TaskResult[] = []
   const running = new Map<string, Promise<void>>()
   let finishRequested = false
-  let decision: 'finished' | 'window-elapsed' | 'stopped' | undefined
+  let decision:
+    | 'finished'
+    | 'window-elapsed'
+    | 'stopped'
+    | 'not-retried'
+    | undefined
 
   const publish = () => deps.onState?.(state)
   publish()
@@ -1028,11 +1035,16 @@ export async function runTeam(
     if (running.size === 0) {
       // Nothing left to run. With failures and a person able to decide, hold
       // rather than end: ending would make a restart impossible.
+      const windowMs = deps.decisionWindowMs ?? 0
       if (deps.control && !finishRequested && awaitingDecision(state)) {
-        const asked = await deps.control.next(
-          deps.signal,
-          deps.decisionWindowMs ?? DECISION_WINDOW_MS
-        )
+        // No window, no wait: the failures are reported straight away rather
+        // than after minutes of holding for a decision nobody is asked for.
+        // The dispatching agent can re-dispatch what failed.
+        if (windowMs <= 0) {
+          decision = 'not-retried'
+          break
+        }
+        const asked = await deps.control.next(deps.signal, windowMs)
         if (!asked && !deps.signal?.aborted) {
           // Nobody decided in time: end as the team would have, and say so.
           decision = 'window-elapsed'
@@ -1094,6 +1106,21 @@ export function renderTeamReport(report: TeamReport): string {
     )
   }
   return lines.join('\n')
+}
+
+/**
+ * One line per failed task, for a team that ended without restarting them:
+ * what failed and why, and that nothing retried it. The reason is the first
+ * line of the task's own output.
+ */
+export function renderNotRetried(report: TeamReport): string {
+  return report.failed
+    .map((one) => {
+      const first = one.output.trim().split(/\r?\n/)[0]?.trim() ?? ''
+      const reason = first.length > 160 ? `${first.slice(0, 157)}...` : first
+      return `${one.taskId} failed${reason ? ` (${reason})` : ''}. Not retried automatically; re-dispatch it if needed.`
+    })
+    .join('\n')
 }
 
 /**

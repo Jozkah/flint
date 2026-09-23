@@ -188,7 +188,8 @@ describe('deriving a run outcome', () => {
       })
     )
 
-    expect(outcome.status).toBe('completed')
+    // A failed check is not a completed request: partly done.
+    expect(outcome.status).toBe('partial')
     expect(outcome.headline).toBe('completed-checks-failed')
     expect(outcome.checks[0]).toMatchObject({
       outcome: 'failed',
@@ -644,5 +645,45 @@ describe('claims in the assistant’s text', () => {
     expect(
       claimsFromText('The build succeeded.\nType-checking is clean.').map((c) => c.kind)
     ).toEqual(['build', 'lint'])
+  })
+})
+
+describe('a normal finish that left the request undone', () => {
+  it('is partly done when a requested write was refused', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          {
+            role: 'tool',
+            content: '',
+            name: 'write',
+            callId: 'w1',
+            args: { path: 'out/report.md' },
+            status: 'done',
+            isError: true,
+            result: 'The call to `write` was not run: tool not offered.',
+          },
+          assistant('Done.'),
+        ],
+      })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
+  it('is partly done while the plan has open items', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), assistant('Done.')], openTodos: 2 })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
+  it('is still completed when nothing was left undone', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), assistant('Done.')], openTodos: 0 })
+    )
+    expect(outcome.status).toBe('completed')
   })
 })
