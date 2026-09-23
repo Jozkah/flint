@@ -1928,6 +1928,14 @@ fn install_payload_dir_with(
         }
     };
     let target = plugins.join(&stem);
+    // The name is one plain component, but the rename below must never move the
+    // clone anywhere but directly under the store, whatever `join` made of it.
+    if target.parent() != Some(std::path::Path::new(&plugins)) {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidName,
+            format!("invalid plugin name '{name}'"),
+        ));
+    }
     if target.exists() {
         return Ok(PayloadOutcome::AlreadyInstalled(stem));
     }

@@ -521,11 +521,19 @@ pub fn workspace_filename(name: &str) -> Result<String, String> {
     let stem = trimmed.strip_suffix(".md").unwrap_or(trimmed);
     // Checked on the stem, not the input: otherwise a bare "." passes and the
     // guard emits "..md", a name it would itself reject as input.
+    // `:` makes a drive-relative name on Windows (`C:x`), which `Path::join`
+    // lets replace the base directory entirely (Jozkah/jan#254). The component
+    // check covers anything else that is not one plain name, on any platform.
     if stem.is_empty()
         || stem.contains('/')
         || stem.contains('\\')
+        || stem.contains(':')
         || stem.contains("..")
         || stem.chars().all(|c| c == '.')
+        || !matches!(
+            std::path::Path::new(stem).components().collect::<Vec<_>>().as_slice(),
+            [std::path::Component::Normal(_)]
+        )
     {
         return Err(format!("ERROR: invalid name '{name}'"));
     }
@@ -757,7 +765,12 @@ mod tests {
 
     #[test]
     fn filename_rejects_escapes() {
-        for bad in ["", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b"] {
+        // Jozkah/jan#254: a drive prefix makes `Path::join` replace the base on
+        // Windows, so `store.join("C:x.md")` lands outside the store.
+        for bad in [
+            "", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b", "C:x", "c:FLINT", "D:x.md",
+            "x:y", "C:", "a:b.md",
+        ] {
             assert!(
                 workspace_filename(bad).is_err(),
                 "expected {bad:?} to be rejected"
