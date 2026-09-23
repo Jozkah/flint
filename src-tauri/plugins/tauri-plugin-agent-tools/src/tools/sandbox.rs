@@ -616,6 +616,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Jozkah/jan#220: the shell unquotes, unescapes, expands globs and
+    /// substitutes variables before it opens anything, so the scan must see
+    /// through the same spellings -- on the unsandboxed CLI it is the only
+    /// thing between the model and `.jan/agent/hooks.toml`.
+    #[test]
+    fn command_scan_sees_through_shell_spellings_of_jan() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(".jan/agent")).unwrap();
+        for command in [
+            "mkdir -p .j''an/agent && printf x > .j''an/agent/hooks.toml",
+            r#"echo x > ".j"an/agent/hooks.toml"#,
+            r"echo x > .j\an/agent/hooks.toml",
+            "cp evil.toml .ja?/agent/agent.toml",
+            "cp evil.toml .j*/agent/agent.toml",
+            "cp evil.toml .[j]an/agent/agent.toml",
+            "cp evil.toml ./.ja?/agent/agent.toml",
+            "d=.j; echo x > ${d}an/agent/hooks.toml",
+            "echo x > $(printf .j)an/agent/hooks.toml",
+            "echo x > `echo .ja`n/agent/hooks.toml",
+        ] {
+            assert!(command_touches_hidden_jan_path(&root, command), "{command}");
+        }
+        // Ordinary commands with the same characters stay usable.
+        for command in [
+            "ls src/*.rs",
+            "echo $HOME",
+            "grep -r 'jan' src",
+            "cat JAN.md",
+            "cp a.txt 'my file.txt'",
+        ] {
+            assert!(!command_touches_hidden_jan_path(&root, command), "{command}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A symlink planted in the scratch (the shell can create one: `/tmp` is
     /// the scratch bind) must not turn `/tmp/...` into a way out. Clamping `..`
     /// is not enough -- the link is a single component that resolves elsewhere.
