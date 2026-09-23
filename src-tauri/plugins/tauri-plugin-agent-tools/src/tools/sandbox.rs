@@ -282,17 +282,56 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     resolved.starts_with(root.join(JAN_DIR))
 }
 
-/// True iff a shell command references a hidden path (best-effort token scan).
-/// Splits on whitespace and shell metacharacters and checks each token so
-/// `cat .jan/agent/agent.toml` and its quoted/redirected variants are caught.
-/// Best-effort is enough only because the OS sandbox masks the directory too
-/// (see [`super::jail::Policy::hide_root`]); this check exists to turn an
-/// evasion-free attempt into a clear error instead of an empty directory.
+/// True iff a shell command references a hidden path.
+///
+/// Splits on whitespace and shell metacharacters and checks each token, so
+/// `cat .jan/agent/agent.toml` and its redirected variants are caught. On the
+/// unsandboxed CLI nothing masks `.jan`, so this scan is the only barrier
+/// (Jozkah/jan#220) and must see what the shell will: it also checks the text
+/// with quotes and backslashes removed (`.j''an`, `.j\an`), treats a glob that
+/// would match `.jan` in the project root as naming it (`.ja?`, `.j*`,
+/// `.[j]an`), and refuses a command that builds a name by substitution (`$`,
+/// backticks) out of the pieces of one (`${d}an/agent`). It errs towards
+/// refusing: a false positive costs a rephrased command, a miss costs hooks.
 pub fn command_touches_hidden_jan_path(project_root: &Path, command: &str) -> bool {
-    command
-        .split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
-        .filter(|t| !t.is_empty())
-        .any(|t| is_hidden_jan_path(project_root, t))
+    let names_jan = |text: &str| {
+        text.split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
+            .filter(|t| !t.is_empty())
+            .any(|t| is_hidden_jan_path(project_root, t) || glob_names_jan(project_root, t))
+    };
+    if names_jan(command) {
+        return true;
+    }
+    let dequoted: String = command
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '"' | '\\'))
+        .collect();
+    if names_jan(&dequoted) {
+        return true;
+    }
+    let substitutes = command.contains('$') || command.contains('`');
+    substitutes && (dequoted.contains(".j") || dequoted.contains("an/agent"))
+}
+
+/// Whether a token is a glob whose first component, relative to the project
+/// root, the shell would expand to `.jan`. A leading dot must be written, as
+/// in the shell's default, so `*` alone does not count.
+fn glob_names_jan(project_root: &Path, token: &str) -> bool {
+    let root = project_root.to_string_lossy().replace('\\', "/");
+    let token = token.replace('\\', "/");
+    let relative = token
+        .strip_prefix(&format!("{}/", root.trim_end_matches('/')))
+        .unwrap_or(&token);
+    let relative = relative.trim_start_matches("./");
+    let first = relative.split('/').next().unwrap_or("");
+    if !first.contains(['*', '?', '[']) {
+        return false;
+    }
+    let options = glob::MatchOptions {
+        require_literal_leading_dot: true,
+        ..glob::MatchOptions::new()
+    };
+    glob::Pattern::new(first).is_ok_and(|p| p.matches_with(JAN_DIR, options))
 }
 
 /// True when `target` *claims* to be inside a trusted root but resolves outside
