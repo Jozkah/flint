@@ -5,8 +5,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/constants/localStorage', () => ({
   localStorageKey: { settingAgentTools: 'setting-agent-tools' },
 }))
+// Capture the persist options so the migration can be exercised directly.
+const captured = vi.hoisted(() => ({ options: undefined as any }))
 vi.mock('zustand/middleware', () => ({
-  persist: (fn: any) => fn,
+  persist: (fn: any, options: any) => {
+    captured.options = options
+    return fn
+  },
   createJSONStorage: () => ({
     getItem: vi.fn(),
     setItem: vi.fn(),
@@ -16,17 +21,33 @@ vi.mock('zustand/middleware', () => ({
 
 import { useAgentToolsConfig } from '../useAgentToolsConfig'
 
+describe('useAgentToolsConfig defaults', () => {
+  it('defaults agent tools off and network on', () => {
+    expect(useAgentToolsConfig.getState().agentToolsEnabled).toBe(false)
+    expect(useAgentToolsConfig.getState().bashNetworkEnabled).toBe(true)
+  })
+
+  it('migrates a stored network-off from before v1 to on, once', () => {
+    expect(captured.options.version).toBe(1)
+    expect(
+      captured.options.migrate(
+        { agentToolsEnabled: true, bashNetworkEnabled: false },
+        0
+      )
+    ).toEqual({ agentToolsEnabled: true, bashNetworkEnabled: true })
+    // A choice made at v1 or later is kept.
+    expect(
+      captured.options.migrate({ bashNetworkEnabled: false }, 1)
+    ).toEqual({ bashNetworkEnabled: false })
+  })
+})
+
 describe('useAgentToolsConfig', () => {
   beforeEach(() => {
     useAgentToolsConfig.setState({
       agentToolsEnabled: false,
       bashNetworkEnabled: false,
     })
-  })
-
-  it('defaults both toggles off', () => {
-    expect(useAgentToolsConfig.getState().agentToolsEnabled).toBe(false)
-    expect(useAgentToolsConfig.getState().bashNetworkEnabled).toBe(false)
   })
 
   it('toggles the agent tools switch on and off', () => {

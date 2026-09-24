@@ -2336,6 +2336,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           ? 'It has network access.'
           : 'It has no network access, so commands that download or upload will fail.'
       )
+      parts.push(
+        'git and Git Bash cannot run inside the bash sandbox. To clone a GitHub',
+        'repository, call the git_clone tool; to inspect a local clone, call',
+        'git_inspect. If a GitHub URL names only a user or organization and no',
+        'repository, ask the user which repository to clone before cloning.'
+      )
     }
     return parts.join(' ')
   }
