@@ -271,6 +271,15 @@ fn looks_like_a_token(word: &str) -> bool {
     if word.contains('/') || word.contains('\\') || word.contains(' ') {
         return false;
     }
+    // A key, JWT or base64 blob is made of token characters only. Source code
+    // with no spaces in it -- `test('t',()=>assert.equal(calcTotal(...)))` --
+    // is long and mixed-case too, and was redacted from the activity log.
+    if !word
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+' | '=' | '~'))
+    {
+        return false;
+    }
     let has_upper = word.chars().any(|c| c.is_ascii_uppercase());
     let has_lower = word.chars().any(|c| c.is_ascii_lowercase());
     let has_digit = word.chars().any(|c| c.is_ascii_digit());
@@ -532,6 +541,19 @@ mod tests {
             let out = redact(line);
             assert!(out.contains("[redacted]"), "{line} -> {out}");
         }
+    }
+
+    #[test]
+    fn long_code_without_spaces_is_not_a_token() {
+        for line in [
+            "test('t',()=>assert.equal(calcTotal([{price:2,qty:3}]),6))",
+            "fmt.Println(strings.Repeat(\"X\",40)+strconv.Itoa(12345))",
+        ] {
+            assert_eq!(redact(line), line);
+        }
+        // A bare high-entropy key is still caught.
+        let key = "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5";
+        assert!(redact(key).contains("[redacted]"));
     }
 
     #[test]
