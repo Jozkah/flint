@@ -96,3 +96,48 @@ fn stale_old_copies_are_removed_even_when_the_primary_delete_succeeds() {
         );
     }
 }
+
+/// The body of the NSIS section `name`, up to its `SectionEnd`.
+fn section_body<'a>(template: &'a str, name: &str) -> &'a str {
+    let start = template
+        .find(&format!("Section {name}\n"))
+        .or_else(|| template.find(&format!("Section {name}\r\n")))
+        .unwrap_or_else(|| panic!("Section {name} not found in the NSIS template"));
+    let rest = &template[start..];
+    &rest[..rest.find("SectionEnd").expect("unterminated section")]
+}
+
+/// #293: the install directory can be one Jan does not own (`/D=`, or a path
+/// restored from the registry), and every upgrade runs the old uninstaller
+/// against it. Uninstall must remove what the installer wrote and then the
+/// directory only if that left it empty -- never the whole tree.
+#[test]
+fn uninstall_never_deletes_the_install_directory_recursively() {
+    let template = repo_file("tauri.bundle.windows.nsis.template");
+    let uninstall = section_body(&template, "Uninstall");
+    for line in uninstall.lines().map(str::trim) {
+        let recursive = line.starts_with("RMDir") && line.split_whitespace().any(|w| w == "/r");
+        assert!(
+            !(recursive && line.ends_with("\"$INSTDIR\"")),
+            "Section Uninstall deletes $INSTDIR recursively: {line}"
+        );
+    }
+    assert!(
+        uninstall.lines().any(|l| l.trim() == "RMDir /REBOOTOK \"$INSTDIR\""),
+        "Section Uninstall must still remove $INSTDIR once it is empty"
+    );
+    // Everything the installer writes at the top level is removed by name, or
+    // the non-recursive RMDir leaves Jan's own files behind.
+    for file in [
+        "${MAINBINARYNAME}.exe",
+        "LICENSE",
+        "bun.exe",
+        "uv.exe",
+        "uninstall.exe",
+    ] {
+        assert!(
+            uninstall.contains(&format!("Delete \"$INSTDIR\\{file}\"")),
+            "Section Uninstall does not delete $INSTDIR\\{file}"
+        );
+    }
+}
