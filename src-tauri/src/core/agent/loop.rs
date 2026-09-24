@@ -597,6 +597,10 @@ struct HttpModelInvoker {
     /// through, including a retry, a fallback and a compaction summary. `None`
     /// is the ordinary case -- no quotas.toml, no ceilings, no ledger read.
     quota: Option<(std::path::PathBuf, crate::core::agent::quota::Quotas)>,
+    /// Sent as `X-Client-Request-Id` on every request this invoker makes, so
+    /// the provider's usage records can be looked up by session (upstream
+    /// #9034, see [`crate::core::agent::correlation`]). `None` sends nothing.
+    client_request_id: Option<String>,
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -905,6 +909,7 @@ impl HttpModelInvoker {
                 converter.as_ref(),
                 body,
                 events,
+                self.client_request_id.as_deref(),
             )
             .await
             .map_err(|e| {
@@ -919,6 +924,7 @@ impl HttpModelInvoker {
                 None,
                 body,
                 events,
+                self.client_request_id.as_deref(),
             )
             .await
             .map_err(|e| {
@@ -4846,6 +4852,9 @@ async fn orchestrate_inner(
         // refuses the run here rather than being ignored, which is the only
         // reading of an unreadable ceiling that is not a licence to spend.
         quota: quota_guard(jan_data_folder.as_str())?,
+        client_request_id: crate::core::agent::correlation::session_request_id(
+            session_id.as_deref(),
+        ),
         client: client.clone(),
         upstream_url,
         api_keys: session_api_keys,
@@ -5246,6 +5255,10 @@ pub(crate) async fn compact_history(
         // own (AH-191/AH-192). Stopping a compaction against a ceiling would
         // strand the run with a history it cannot send.
         quota: None,
+        // Billed to the same session, so one correlation lookup finds it.
+        client_request_id: crate::core::agent::correlation::session_request_id(
+            args.session_id.as_deref(),
+        ),
         client: args.client.clone(),
         upstream_url,
         api_keys,
@@ -5317,6 +5330,10 @@ pub(crate) async fn evaluate_goal(
     let model = HttpModelInvoker {
         // As above: this is a helper dispatch inside a run already judged.
         quota: None,
+        // Billed to the same session, so one correlation lookup finds it.
+        client_request_id: crate::core::agent::correlation::session_request_id(
+            args.session_id.as_deref(),
+        ),
         client: args.client.clone(),
         upstream_url,
         api_keys,
@@ -5839,7 +5856,10 @@ async fn run_turn_cycle(
         // Publish before the tool calls run: the numbers describe the request
         // that just landed, and a long tool phase shouldn't sit on them.
         if let Some(usage) = turn_usage.clone() {
-            let _ = events.send(StreamEvent::TurnUsage { usage });
+            let _ = events.send(StreamEvent::TurnUsage {
+                usage,
+                execution_id: crate::core::agent::correlation::execution_id_of(&completion),
+            });
         }
         budget.record(&turn_usage);
 

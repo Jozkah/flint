@@ -5358,7 +5358,7 @@ impl App {
                 name,
                 event,
             } => self.apply_subagent_event(&run_id, &name, *event),
-            StreamEvent::TurnUsage { usage } => {
+            StreamEvent::TurnUsage { usage, .. } => {
                 self.turn_output_tokens += usage.completion_tokens.unwrap_or(0);
                 // Latest request's context, not a sum: each request resends the
                 // whole conversation, so adding them would be meaningless.
@@ -5463,7 +5463,7 @@ impl App {
                     panel.requests += 1;
                 }
             }
-            StreamEvent::TurnUsage { usage } => {
+            StreamEvent::TurnUsage { usage, .. } => {
                 if let Some(panel) = self.subagents.iter_mut().find(|p| p.run_id == run_id) {
                     panel.prompt_tokens = usage.prompt_tokens.unwrap_or(panel.prompt_tokens);
                 }
@@ -27249,6 +27249,7 @@ mod tests {
                 None,
                 &json!({"model": "m", "messages": [{"role": "user", "content": "go"}]}),
                 &tx,
+                None,
             ),
         )
         .await
@@ -29219,6 +29220,7 @@ mod tests {
                         total_tokens: Some(12_900),
                         ..Default::default()
                     },
+                    execution_id: None,
                 },
             );
             subagent_event(
@@ -29874,6 +29876,7 @@ mod tests {
                     total_tokens: Some(40_500),
                     ..Default::default()
                 },
+                execution_id: None,
             });
         }
         assert_eq!(app.turn_output_tokens, 1_500);
@@ -30258,6 +30261,7 @@ mod tests {
                 total_tokens: Some(90_010),
                 ..Default::default()
             },
+            execution_id: None,
         });
         assert!(
             app.context_report().await.fill_reported,
@@ -30283,6 +30287,7 @@ mod tests {
                 total_tokens: Some(120_010),
                 ..Default::default()
             },
+            execution_id: None,
         });
         assert!(app.context_report().await.fill_reported);
         rewind_to(&mut app, 0, false);

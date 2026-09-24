@@ -153,7 +153,17 @@ pub enum StreamEvent {
     /// all. Consumers accumulate these to show context pressure, output
     /// volume, and throughput while the work is still happening -- for the
     /// parent run and, via the [`Subagent`] bracket, for each child.
-    TurnUsage { usage: Usage },
+    TurnUsage {
+        usage: Usage,
+        /// The provider's id for the execution that produced this usage, when
+        /// it reported one. This is the handle a per-request billing lookup is
+        /// keyed by. A sibling of `usage` rather than a field inside it, because
+        /// it is a billing handle and not a token count. Absent on the default
+        /// upstream path, which cannot see the response headers (see
+        /// [`crate::core::agent::correlation`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_id: Option<String>,
+    },
     /// Terminal success: the model returned a final (tool-free) completion.
     Done {
         stop_reason: String,

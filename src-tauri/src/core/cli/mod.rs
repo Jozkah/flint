@@ -1969,7 +1969,7 @@ async fn run_agent_loop(
             report.observe(&ev);
             // Said before the reply that would overflow, not after: the point
             // of the warning is that there is still a choice to make.
-            if let StreamEvent::TurnUsage { usage } = &ev {
+            if let StreamEvent::TurnUsage { usage, .. } = &ev {
                 let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
                 match crate::core::agent::context_pressure::pressure(
                     used,
@@ -2847,7 +2847,7 @@ async fn print_event(
         // Headless reports totals once, from the terminal `Done` -- unless the
         // run was asked to say more, in which case each turn's own numbers are
         // worth having, because a total hides which turn was expensive.
-        StreamEvent::TurnUsage { usage } => {
+        StreamEvent::TurnUsage { usage, .. } => {
             if density == Density::Verbose {
                 let (input, output, total) = (
                     usage.prompt_tokens.unwrap_or(0),
