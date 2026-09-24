@@ -12,6 +12,7 @@ import {
   resetAutoApproveStreak,
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
+import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -150,6 +151,13 @@ type ToolApprovalRequestsState = {
    * definition. Bounded; read with {@link takeApprovedFingerprint}.
    */
   approvedFingerprints: Record<string, string>
+  /**
+   * threadId -> keys ({@link repeatCommandKey}) of the shell commands the
+   * user answered "Allow once" for in that conversation. In memory only, so
+   * a repeat of the same command can be shown as one; it never answers a
+   * request by itself.
+   */
+  allowedOnceCommands: Record<string, string[]>
 
   requestApproval: (
     toolCallId: string,
@@ -261,6 +269,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     queued: {},
     refusals: {},
     approvedFingerprints: {},
+    allowedOnceCommands: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
       // An MCP call is approved for one definition of its server, so the
@@ -459,8 +468,23 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           approval.approveToolEverywhere(entry.toolName)
         }
       }
+      const onceKey =
+        decision === 'allow-once'
+          ? repeatCommandKey(entry.toolName, entry.input)
+          : null
       set((s) => ({
         ...without(s, entry),
+        ...(onceKey
+          ? {
+              allowedOnceCommands: {
+                ...s.allowedOnceCommands,
+                [entry.threadId]: rememberCommand(
+                  s.allowedOnceCommands[entry.threadId],
+                  onceKey
+                ),
+              },
+            }
+          : {}),
         ...(decision === 'deny'
           ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
           : {}),
@@ -558,4 +582,18 @@ export function selectPendingApprovalCount(
 
 export function usePendingApprovalCount(threadId?: string): number {
   return useToolApprovalRequests((s) => selectPendingApprovalCount(s, threadId))
+}
+
+/**
+ * Whether the user already answered "Allow once" for this exact shell
+ * command in this conversation (see `allowedOnceCommands`).
+ */
+export function wasCommandAllowedOnce(
+  state: Pick<ToolApprovalRequestsState, 'allowedOnceCommands'>,
+  threadId: string,
+  toolName: string,
+  input: unknown
+): boolean {
+  const key = repeatCommandKey(toolName, input)
+  return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
 }

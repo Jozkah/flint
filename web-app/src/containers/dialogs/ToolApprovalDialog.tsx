@@ -35,6 +35,11 @@ export type ApprovalDecision =
  * In both, closing counts as `deny` (Esc or click-away), the safe default, and
  * focus starts on Deny rather than on the broadest grant, so a reflexive Enter
  * never widens a permission.
+ *
+ * With `repeatedCommand` (the caller found this exact bash command already
+ * answered "Allow once" in this conversation, see `wasCommandAllowedOnce`),
+ * the described dialog says so and fills and focuses "Allow in this
+ * conversation" when offered. It is still the user's click.
  */
 export function ToolApprovalDialog({
   open,
@@ -43,6 +48,7 @@ export function ToolApprovalDialog({
   request,
   offersAlways = true,
   showSecurityNotice = false,
+  repeatedCommand = false,
   children,
   onDecision,
 }: {
@@ -55,11 +61,17 @@ export function ToolApprovalDialog({
   /** Legacy shell only: show the allow-always button (defaults to true). */
   offersAlways?: boolean
   showSecurityNotice?: boolean
+  /** Described dialog only: this exact bash command was allowed once here. */
+  repeatedCommand?: boolean
   children?: ReactNode
   onDecision: (decision: ApprovalDecision) => void
 }) {
   const { t } = useTranslation()
   const denyRef = useRef<HTMLButtonElement>(null)
+  const preferRepeat =
+    !!request &&
+    repeatedCommand &&
+    request.scopesOffered.includes('allow-thread')
 
   return (
     <Dialog
@@ -72,7 +84,12 @@ export function ToolApprovalDialog({
         showCloseButton={false}
         onOpenAutoFocus={(event) => {
           event.preventDefault()
-          denyRef.current?.focus()
+          const preferred = preferRepeat
+            ? (
+                event.currentTarget as HTMLElement | null
+              )?.querySelector<HTMLButtonElement>('[data-scope="allow-thread"]')
+            : null
+          ;(preferred ?? denyRef.current)?.focus()
         }}
       >
         <DialogHeader>
@@ -108,6 +125,15 @@ export function ToolApprovalDialog({
           <PermissionRequestDetails request={request} showAction={false} />
         )}
 
+        {request && repeatedCommand && (
+          <p
+            data-testid="approval-repeat-notice"
+            className="text-xs text-muted-foreground"
+          >
+            {t('permissions:repeat.allowedOnceBefore')}
+          </p>
+        )}
+
         {children}
 
         {showSecurityNotice && (
@@ -123,6 +149,7 @@ export function ToolApprovalDialog({
             <PermissionScopeChoices
               request={request}
               denyRef={denyRef}
+              preferredScope={preferRepeat ? 'allow-thread' : undefined}
               onDecision={onDecision}
             />
             <p className="text-xs text-muted-foreground">
