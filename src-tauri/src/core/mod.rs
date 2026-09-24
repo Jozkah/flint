@@ -3,16 +3,17 @@ pub mod app;
 pub mod compat_env;
 #[cfg(feature = "cli")]
 pub mod cli;
-// Download manager, native file dialogs/IO commands, and the system/tray
-// command surface are desktop-only; the CLI uses std::fs and its own tools.
-#[cfg(not(feature = "cli"))]
-pub mod downloads;
+// Native file dialogs/IO commands and the system/tray command surface are
+// desktop-only; the CLI uses std::fs and its own tools.
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
 pub mod mcp;
 pub mod migration;
 pub mod net;
 pub mod openai_schema;
+// Sandboxed HTML preview scheme (#135); desktop-only like filesystem.
+#[cfg(not(feature = "cli"))]
+pub mod preview;
 // Discussion room files; the commands are desktop-only like filesystem.
 #[cfg(not(feature = "cli"))]
 pub mod rooms;

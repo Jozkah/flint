@@ -92,18 +92,6 @@ describe('getModelContextLimit', () => {
   })
 })
 
-describe('createDownloadTaskId', () => {
-  it('prefixes the provider and strips everything after the first dot', () => {
-    const ext = newExt()
-    expect(ext.createDownloadTaskId('org/model.Q4_K_M')).toBe('mlx/org/model')
-  })
-
-  it('keeps the id intact when there is no dot', () => {
-    const ext = newExt()
-    expect(ext.createDownloadTaskId('org/model')).toBe('mlx/org/model')
-  })
-})
-
 describe('get', () => {
   it('returns undefined when model.yml does not exist', async () => {
     const ext = newExt()
@@ -258,6 +246,78 @@ describe('chat', () => {
       'MLX model has crashed! Please reload!'
     )
   })
+
+  it('handles a rejected cleanup unload when the health check fails (#171)', async () => {
+    const ext = newExt()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'plugin:mlx|find_mlx_session_by_model')
+        return { pid: 5, port: 1, model_id: 'foo' }
+      if (cmd === 'plugin:mlx|is_mlx_process_running') return true
+      return undefined
+    })
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('connection refused'))
+    let catchSpy: ReturnType<typeof vi.spyOn> | undefined
+    ext.unload = vi.fn(() => {
+      const rejected = Promise.reject(new Error('No active MLX session'))
+      catchSpy = vi.spyOn(rejected, 'catch')
+      return rejected
+    })
+
+    await expect(ext.chat({ model: 'foo' })).rejects.toThrow(
+      'MLX model appears to have crashed! Please reload!'
+    )
+    expect(ext.unload).toHaveBeenCalledWith('foo')
+    // The floating cleanup promise must have a rejection handler attached.
+    expect(catchSpy).toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+})
+
+describe('handleStreamingResponse', () => {
+  it('does not log a context-limit stop as a JSON parse error (#162)', async () => {
+    const ext = newExt()
+    const { logger } = await import('@janhq/core')
+    const chunk = JSON.stringify({ choices: [{ finish_reason: 'length' }] })
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(`data: ${chunk}\n\n`))
+
+    const iterate = async () => {
+      for await (const _ of ext.handleStreamingResponse('u', {}, '{}')) {
+        // drain
+      }
+    }
+    await expect(iterate()).rejects.toThrow(
+      'the request exceeds the available context size.'
+    )
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'Error parsing MLX stream JSON:',
+      expect.anything()
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('still logs a malformed chunk as a parse error', async () => {
+    const ext = newExt()
+    const { logger } = await import('@janhq/core')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('data: {not json\n\n'))
+
+    const iterate = async () => {
+      for await (const _ of ext.handleStreamingResponse('u', {}, '{}')) {
+        // drain
+      }
+    }
+    await expect(iterate()).rejects.toThrow()
+    expect(logger.error).toHaveBeenCalledWith(
+      'Error parsing MLX stream JSON:',
+      expect.anything()
+    )
+    fetchSpy.mockRestore()
+  })
 })
 
 describe('isVisionSupported', () => {
@@ -333,5 +393,22 @@ describe('isToolSupported', () => {
       p.endsWith('tokenizer_config.json')
     )
     expect(await ext.isToolSupported('foo')).toBe(true)
+  })
+
+  it('does not treat the assistant chat role as tool support (#64)', async () => {
+    const ext = newExt()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_yaml') return { model_path: '/abs/model.safetensors' }
+      if (cmd === 'read_file_sync')
+        return JSON.stringify({
+          chat_template:
+            "{% for message in messages %}<|im_start|>{{ message['role'] }}\n{{ message['content'] }}<|im_end|>{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}",
+        })
+      return undefined
+    })
+    mockExistsSync.mockImplementation(async (p: string) =>
+      p.endsWith('tokenizer_config.json')
+    )
+    expect(await ext.isToolSupported('foo')).toBe(false)
   })
 })

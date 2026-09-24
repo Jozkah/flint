@@ -12,7 +12,7 @@
   "scripts": {
     "lint": "yarn workspace @janhq/web-app lint",
     "guard:local-only": "node scripts/local-only-guard.mjs",
-    "test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/agent-harness/*.test.mjs\"",
+    "test:scripts": "node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs",
     "dev": "yarn dev:tauri",
     "ios": "yarn tauri ios dev",
     "android": "yarn tauri android dev",
@@ -54,7 +54,7 @@
     "build:tauri:plugin:api:darwin": "cd src-tauri/plugins && yarn workspaces foreach -Apt run build",
     "build:tauri:plugin:api:win32": "cd src-tauri/plugins && yarn workspaces foreach -Apt --exclude @janhq/tauri-plugin-mlx-api run build",
     "build:tauri:plugin:api:linux": "cd src-tauri/plugins && yarn workspaces foreach -Apt --exclude @janhq/tauri-plugin-mlx-api run build",
-    "build:icon": "tauri icon ./src-tauri/icons/icon.png",
+    "build:icon": "node scripts/build-icon.mjs",
     "build:core": "cd core && yarn build && yarn pack",
     "build:web": "yarn build:extensions && yarn workspace @janhq/web-app build",
     "build:extensions": "yarn build:tauri:plugin:api && yarn workspace @janhq/core build && yarn workspaces foreach -Apt --include '@janhq/*-extension' run build",

@@ -156,9 +156,63 @@ pub fn path_for(data_folder: &Path, project: &Path) -> PathBuf {
     data_folder.join("reviews").join(format!("{}.json", &digest[..24]))
 }
 
+/// Largest file a comment's path is hashed from. Anything bigger is treated
+/// as unreadable rather than pulled into memory.
+const MAX_HASHED_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The file a comment's `path` names, only when it stays inside the project.
+///
+/// The path comes from the review file, which is data anyone could have
+/// written: it is relative and `/`-separated by contract, so an absolute
+/// path, a drive or UNC prefix, a `..` segment, or a symbolic link that leads
+/// out of the project is kept as display text and never read.
+fn confined(project: &Path, rel: &str) -> Option<PathBuf> {
+    use std::path::Component;
+    let lexically_inside = !rel.is_empty()
+        && Path::new(rel)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir));
+    if !lexically_inside {
+        return None;
+    }
+    match tauri_plugin_agent_tools::tools::sandbox::escapes_project(project, None, rel) {
+        Ok(false) => Some(project.join(rel)),
+        _ => None,
+    }
+}
+
+/// SHA-256 of a regular file of bounded size, streamed. A device, FIFO,
+/// directory, or oversized file has no hash: reading one would hang or
+/// exhaust memory.
 fn hash_of(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    Some(format!("{:x}", Sha256::digest(&bytes)))
+    use std::io::Read;
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HASHED_BYTES {
+        return None;
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut reader = file.take(MAX_HASHED_BYTES + 1);
+    let mut buf = [0u8; 64 * 1024];
+    let mut total: u64 = 0;
+    loop {
+        let n = reader.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        if total > MAX_HASHED_BYTES {
+            return None;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// Hash of the project file a comment is about, or `None` when the path
+/// leaves the project or names nothing hashable.
+fn hash_in_project(project: &Path, rel: &str) -> Option<String> {
+    hash_of(&confined(project, rel)?)
 }
 
 /// Read a review from a file and start working through it.
@@ -206,7 +260,7 @@ pub fn load(
         let path = text("path").or_else(|| text("file")).map(|p| p.replace('\\', "/"));
         let id = text("id").unwrap_or_else(|| format!("c{}", index + 1));
         if let Some(path) = path.as_ref() {
-            if let Some(hash) = hash_of(&project.join(path)) {
+            if let Some(hash) = hash_in_project(project, path) {
                 file_hashes.insert(path.clone(), hash);
             }
         }
@@ -299,8 +353,11 @@ pub fn reply(
     }
     if outcome == Outcome::Addressed {
         let changed = match comment.path.as_ref() {
+            // A path outside the project was never hashed and is not read
+            // now, so a change to it cannot be shown.
+            Some(path) if confined(project, path).is_none() => false,
             Some(path) => {
-                let now = hash_of(&project.join(path));
+                let now = hash_in_project(project, path);
                 match (now, hashes.get(path)) {
                     (Some(now), Some(before)) => &now != before,
                     // A file that did not exist and now does, or the reverse.
@@ -444,6 +501,48 @@ mod tests {
     }
 
     /// The distinction the whole thing exists for: "addressed" is checked.
+    /// A comment's `path` is data from the review file: one that leaves the
+    /// project -- by `..` or as an absolute path -- is never read, so it
+    /// neither gets a hash on load nor counts as addressed when the file it
+    /// names changes.
+    #[test]
+    fn a_comment_path_outside_the_project_is_never_read() {
+        let (project, data) = fixture();
+        let outside = Workspace::new("review-outside").files(&[("secret.txt", "one\n")]);
+        let secret = outside.join("secret.txt");
+        let outside_name = outside.path().file_name().unwrap().to_string_lossy().to_string();
+        let traversal = format!("../{outside_name}/secret.txt");
+        let absolute = secret.to_string_lossy().replace('\\', "/");
+        let body = serde_json::json!([
+            {"id": "up", "path": traversal, "body": "look at this"},
+            {"id": "abs", "path": absolute, "body": "and this"},
+            {"id": "in", "path": "src/a.rs", "body": "and this one"}
+        ])
+        .to_string();
+        let source = review_file(&project, &body);
+        let review = load(data.path(), project.path(), &source).expect("the review loads");
+        assert_eq!(
+            review.file_hashes.keys().collect::<Vec<_>>(),
+            vec!["src/a.rs"],
+            "a path outside the project was read"
+        );
+        assert_eq!(review.comments.len(), 3, "the comments are still shown");
+
+        std::fs::write(&secret, "two\n").unwrap();
+        for id in ["up", "abs"] {
+            let refused = reply(data.path(), project.path(), id, Outcome::Addressed, "done")
+                .unwrap_err();
+            assert_eq!(refused.kind, ReviewErrorKind::NotAddressed, "{id}");
+        }
+    }
+
+    #[test]
+    fn a_non_regular_file_is_not_hashed() {
+        let (project, _data) = fixture();
+        assert!(hash_of(project.path()).is_none(), "a directory was hashed");
+        assert!(hash_in_project(project.path(), "src/a.rs").is_some());
+    }
+
     #[test]
     fn addressed_is_refused_until_the_file_actually_changes() {
         let (project, data) = fixture();

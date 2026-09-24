@@ -5927,10 +5927,17 @@ async fn run_turn_cycle(
             // attached to the completion so the response distinguishes the
             // worker's claims, the automated test output, and the verdict.
             if verify_completion && !awaiting_user {
-                use crate::core::agent::verification::{verify, CompletionSummary, Verdict};
+                use crate::core::agent::verification::{verify_counted, CompletionSummary, Verdict};
                 let input = assemble_verification_input(&conversation_messages, &final_text);
-                let report = verify(model_id, &input, model).await;
-                if report.verdict != Verdict::Pass && verify_budget.may_retry() {
+                let (report, verifier_tokens) = verify_counted(model_id, &input, model).await;
+                // The verifier's request is spend like any other, and a retry
+                // is another full worker turn: neither may carry the run past
+                // its session token ceiling (#131).
+                budget.charge(verifier_tokens);
+                if report.verdict != Verdict::Pass
+                    && verify_budget.may_retry()
+                    && !budget.exhausted()
+                {
                     verify_budget.spend();
                     conversation_messages.push(serde_json::json!({
                         "role": "assistant",

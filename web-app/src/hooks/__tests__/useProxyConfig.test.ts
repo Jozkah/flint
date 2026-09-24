@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useProxyConfig } from '../useProxyConfig'
+import { useProxyConfig, persistedProxyConfigState } from '../useProxyConfig'
+
+const invoke = vi.fn(async () => undefined)
+vi.mock('@/hooks/useServiceHub', () => ({
+  getServiceHub: () => ({ core: () => ({ invoke }) }),
+}))
 
 // Mock constants
 vi.mock('@/constants/localStorage', () => ({
@@ -301,6 +306,24 @@ describe('useProxyConfig', () => {
       expect(result2.current.proxyUrl).toBe('http://test-proxy.com:8080')
       expect(result2.current.proxyUsername).toBe('testuser')
       expect(result2.current.proxyIgnoreSSL).toBe(true)
+    })
+  })
+
+  // #82: the proxy password is a secret -- never in the settings.json blob.
+  describe('password persistence', () => {
+    it('keeps the password out of the persisted blob and in the keyring', () => {
+      act(() => {
+        useProxyConfig.getState().setProxyUsername('alice')
+        useProxyConfig.getState().setProxyPassword('s3cret')
+      })
+      const persisted = persistedProxyConfigState(useProxyConfig.getState())
+      expect(persisted).not.toHaveProperty('proxyPassword')
+      expect(JSON.stringify(persisted)).not.toContain('s3cret')
+      expect(persisted.proxyUsername).toBe('alice')
+      expect(invoke).toHaveBeenCalledWith('set_secret', {
+        key: 'proxy-password',
+        value: 's3cret',
+      })
     })
   })
 

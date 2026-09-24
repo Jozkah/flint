@@ -363,48 +363,6 @@ async function readPersistedLlamacppModels(): Promise<PersistedModelState[]> {
   }
 }
 
-/**
- * Breadth-first search of `rootDir` for the directory directly containing
- * a file named `serverName`. Returns the absolute path of that directory,
- * or null if not found. Used by manual backend install to tolerate
- * different archive layouts (Flint-built `build/bin/...` vs upstream
- * llama.cpp's flat `llama-bXXXX/...`).
- */
-async function findLlamaServerDir(
-  rootDir: string,
-  serverName: string
-): Promise<string | null> {
-  // Note: fs.readdirSync returns absolute child paths (see
-  // src-tauri/src/core/filesystem/commands.rs::readdir_sync), not basenames.
-  const queue: string[] = [rootDir]
-  while (queue.length > 0) {
-    const current = queue.shift() as string
-    let entries: string[]
-    try {
-      entries = await fs.readdirSync(current)
-    } catch {
-      continue
-    }
-    for (const entryPath of entries) {
-      let stat
-      try {
-        stat = await fs.fileStat(entryPath)
-      } catch {
-        continue
-      }
-      if (!stat) continue
-      const entryName = await basename(entryPath)
-      if (!stat.isDirectory && entryName === serverName) {
-        return current
-      }
-      if (stat.isDirectory) {
-        queue.push(entryPath)
-      }
-    }
-  }
-  return null
-}
-
 // Folder structure for llamacpp extension:
 // <Flint's data folder>/llamacpp
 //  - models/<modelId>/
@@ -2166,18 +2124,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         error: `Failed to unload model: ${error}`,
       }
     }
-  }
-
-  /**
-   * The id becomes a Tauri event name (`download-<taskId>`), which cannot contain
-   * a dot. Dots are replaced rather than truncated at: truncating collapsed every
-   * `Jan-v3.*` quant onto one id, and Rust cancels an in-flight task whose id
-   * repeats -- deleting its partial file -- so downloading one quant destroyed
-   * another's, and pause/cancel hit whichever quant happened to be registered.
-   */
-  private createDownloadTaskId(modelId: string) {
-    // prepend provider to make taskId unique across providers
-    return `${this.provider}/${modelId.replace(/\./g, '-')}`
   }
 
   private async *handleStreamingResponse(

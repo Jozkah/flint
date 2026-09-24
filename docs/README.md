@@ -41,23 +41,15 @@ This command starts a local development server and opens up a browser window. Mo
 yarn build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+This command builds the site as a Next.js static export into the `out` directory, which can be served by any static hosting service. To check the result locally:
+
+```bash
+yarn start
+```
 
 ### Deployment
 
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+There is no deploy script. The site is published by the `Jan Docs` GitHub Actions workflow (`.github/workflows/jan-docs.yml`), which is run manually from the Actions tab: it runs `yarn build` and deploys the `docs/out` directory to Cloudflare Pages.
 
 ### Preview URL, Pre-release and Publishing Documentation
 

@@ -11,7 +11,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({ core: () => ({ invoke }) }),
 }))
 vi.mock('@/hooks/useGeneralSetting', () => ({
-  HUGGINGFACE_TOKEN_SECRET_KEY: 'huggingface',
+  HUGGINGFACE_TOKEN_SECRET_KEY: 'general:huggingface-token',
 }))
 
 import { migrateLocalStorageToBackend } from '../migrateLocalStorageSettings'
@@ -85,6 +85,8 @@ describe('migrateLocalStorageToBackend', () => {
         api_keys: ['sk-fb'],
         base_url: 'https://api.openai.com/v1',
         models: ['gpt-4'],
+        // #139: the backend picks its wire converter by this.
+        api_type: 'openai',
       }),
     })
 
@@ -140,7 +142,7 @@ describe('migrateLocalStorageToBackend', () => {
     )
     await migrateLocalStorageToBackend()
     expect(invoke).toHaveBeenCalledWith('set_secret', {
-      key: 'huggingface',
+      key: 'general:huggingface-token',
       value: 'hf_secret',
     })
     const stored = backend.get('setting-general')!
@@ -190,5 +192,37 @@ describe('migrateLocalStorageToBackend', () => {
     const stored = backend.get('model-provider')!
     expect(stored).not.toContain('sk-real')
     expect(stored).toContain('gpt-4')
+  })
+  // #130 / #82: legacy blobs holding a secret move it to the keyring and
+  // reach settings.json without it.
+  it('moves the local API key and proxy password into the keyring', async () => {
+    localStorage.setItem(
+      'setting-local-api-server',
+      JSON.stringify({ state: { apiKey: 'k-local', serverPort: 1337 }, version: 4 })
+    )
+    localStorage.setItem(
+      'setting-proxy-config',
+      JSON.stringify({
+        state: { proxyUsername: 'alice', proxyPassword: 'p-proxy' },
+        version: 0,
+      })
+    )
+
+    await migrateLocalStorageToBackend()
+
+    expect(invoke).toHaveBeenCalledWith('set_secret', {
+      key: 'local-api-server-key',
+      value: 'k-local',
+    })
+    expect(invoke).toHaveBeenCalledWith('set_secret', {
+      key: 'proxy-password',
+      value: 'p-proxy',
+    })
+    const server = backend.get('setting-local-api-server')!
+    expect(server).not.toContain('k-local')
+    expect(server).toContain('1337')
+    const proxy = backend.get('setting-proxy-config')!
+    expect(proxy).not.toContain('p-proxy')
+    expect(proxy).toContain('alice')
   })
 })

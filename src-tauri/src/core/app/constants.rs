@@ -30,8 +30,15 @@ pub const JAN_DATA_DIRS_COMMON: &[&str] = &["extensions", "logs", ".npx", ".uvx"
 /// Written by the backend settings store (`core::app::settings_store`), which
 /// persists webview zustand blobs here keyed by store namespace.
 /// `provider_secrets.enc` is the encrypted OS-keyring fallback for provider API
-/// keys (`core::server::provider_secrets`); it must also be wiped on a full reset.
-pub const JAN_DATA_FILES_SETTINGS: &[&str] = &["settings.json", "provider_secrets.enc"];
+/// keys (`core::server::provider_secrets`); it must also be wiped on a full reset,
+/// as must `provider_secrets.index.json`, its list of which names hold a secret.
+/// The keyring entries themselves are removed by `wipe_all_secrets`, which runs
+/// first, while the index can still name them.
+pub const JAN_DATA_FILES_SETTINGS: &[&str] = &[
+    "settings.json",
+    "provider_secrets.enc",
+    "provider_secrets.index.json",
+];
 
 /// All known data subdirectories (union of every category above).
 pub const JAN_DATA_SUBDIRS: &[&str] = &[
@@ -48,7 +55,12 @@ pub const JAN_DATA_SUBDIRS: &[&str] = &[
 ];
 
 /// All known data files (union of every file category above).
-pub const JAN_DATA_FILES: &[&str] = &["mcp_config.json", "settings.json", "provider_secrets.enc"];
+pub const JAN_DATA_FILES: &[&str] = &[
+    "mcp_config.json",
+    "settings.json",
+    "provider_secrets.enc",
+    "provider_secrets.index.json",
+];
 
 #[cfg(test)]
 mod tests {

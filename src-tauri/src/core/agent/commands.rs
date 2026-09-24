@@ -619,7 +619,7 @@ pub fn agent_worktree_discard(
             record.path
         ));
     }
-    worktree::discard(&record, force)
+    worktree::discard_owned(&record, &roots, force)
 }
 
 /// Why a shell command would be asked about before it runs, or `None`.
@@ -666,7 +666,18 @@ pub fn agent_desktop_bridge(
     use crate::core::agent::desktop_bridge::{DesktopBridge, FileSettingsUi, RequestContext};
     let settings_path = std::path::Path::new(&data_folder)
         .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
-    let mut bridge = DesktopBridge::new(FileSettingsUi::new(settings_path));
+    // The app's own settings file belongs to settings_store, which rewrites
+    // it whole from memory; writing it directly lost one writer's keys
+    // (#240). Any other folder has no in-process owner and is written as a
+    // file.
+    let app_settings = crate::core::app::commands::resolve_jan_data_folder()
+        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
+    let ui = if settings_path == app_settings {
+        FileSettingsUi::app_store()
+    } else {
+        FileSettingsUi::new(settings_path)
+    };
+    let mut bridge = DesktopBridge::new(ui);
     let ctx = RequestContext {
         window_id: String::new(),
         workspace_root: std::path::PathBuf::from(&workspace),

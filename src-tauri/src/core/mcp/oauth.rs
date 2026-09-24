@@ -635,6 +635,35 @@ fn live_refreshers(data_folder: &Path, name: &str) -> usize {
         .unwrap_or(0)
 }
 
+/// The stored record, when another process sharing this data folder has
+/// already rotated this server's tokens and stored a set that is not yet due
+/// (#121).
+///
+/// The desktop app and every Flint session load the same record and refresh on
+/// the same schedule. A provider that rotates refresh tokens accepts only the
+/// first refresh; the others would send a refresh token it has already
+/// replaced, get `invalid_grant`, and (with reuse detection) revoke the family.
+/// A refresher that finds a fresh record adopts it instead of refreshing.
+fn rotated_elsewhere(
+    stored: Option<StoredCredentials>,
+    client_id: &str,
+    url: &str,
+    requested: &[String],
+) -> Option<StoredCredentials> {
+    let stored = stored?;
+    let same_grant = stored.client_id == client_id
+        && stored.resource == url
+        && stored.requested_scopes.as_slice() == requested;
+    (same_grant && !stored.is_expired()).then_some(stored)
+}
+
+/// A per-process delay before a due refresh, so processes that share a record
+/// do not all reach the store in the same instant; the first to refresh stores
+/// its tokens and the others find them (#121). Well inside `EXPIRY_SKEW`.
+fn refresh_stagger() -> Duration {
+    Duration::from_millis(u64::from(std::process::id() % 4) * 500)
+}
+
 /// Keep a live connection's access token fresh: refresh it `EXPIRY_SKEW`
 /// before it expires, store what the provider returned, and repeat for the
 /// new token. Holds the connection's authorization manager only weakly, so the
@@ -674,8 +703,24 @@ fn spawn_refresher(
                 }
                 tokio::time::sleep(Duration::from_secs(due - now).min(REFRESH_POLL)).await;
             }
+            tokio::time::sleep(refresh_stagger()).await;
             let Some(strong) = manager.upgrade() else { return };
             let mut guard = strong.lock().await;
+            // Another process may have refreshed already: its rotation made our
+            // refresh token stale, so take what it stored instead (#121).
+            if let Some(stored) = rotated_elsewhere(load(&data_folder, &name), &client_id, &url, &requested) {
+                match manager_for(&name, &url, &base, &client_id, stored.tokens.clone()).await {
+                    Ok(replacement) => {
+                        *guard = replacement;
+                        expires_at = stored.expires_at;
+                        current = stored.tokens;
+                        granted = stored.granted_scopes;
+                        log::info!("took the access token for '{name}' that another session had already refreshed");
+                        continue;
+                    }
+                    Err(e) => log::warn!("could not use the stored tokens for '{name}': {e}; refreshing instead"),
+                }
+            }
             let outcome = guard.refresh_token().await;
             match outcome {
                 Ok(tokens) => {
@@ -715,6 +760,18 @@ fn spawn_refresher(
                     }
                 }
                 Err(e) => {
+                    // Lost a race with another process: it rotated the refresh
+                    // token between our check and our request (#121).
+                    if let Some(stored) = rotated_elsewhere(load(&data_folder, &name), &client_id, &url, &requested) {
+                        if let Ok(replacement) = manager_for(&name, &url, &base, &client_id, stored.tokens.clone()).await {
+                            *guard = replacement;
+                            expires_at = stored.expires_at;
+                            current = stored.tokens;
+                            granted = stored.granted_scopes;
+                            log::info!("took the access token for '{name}' that another session refreshed first");
+                            continue;
+                        }
+                    }
                     log::warn!(
                         "could not refresh the access token for '{name}' ahead of its expiry: {e}; the server will ask to re-authenticate"
                     );
@@ -1066,21 +1123,36 @@ pub async fn authorized_client(
 
     let mut current = stored.clone();
     if stored.is_expired() {
-        let tokens = manager.refresh_token().await.map_err(|e| {
-            auth(format!(
-                "could not refresh the access token for '{name}': {e} - re-authenticate from /mcp"
-            ))
-        })?;
-        // A refresh may not widen the grant: refused, and nothing is stored.
-        let refreshed_scopes = granted_scopes(&tokens, &stored.granted_scopes);
-        check_grant(name, &declared, &refreshed_scopes)?;
-        let (tokens, carried) = keep_refresh_token(tokens, &stored.tokens);
-        if carried {
-            manager = manager_for(name, url, &base, &stored.client_id, tokens.clone()).await?;
+        match manager.refresh_token().await {
+            Ok(tokens) => {
+                // A refresh may not widen the grant: refused, and nothing is stored.
+                let refreshed_scopes = granted_scopes(&tokens, &stored.granted_scopes);
+                check_grant(name, &declared, &refreshed_scopes)?;
+                let (tokens, carried) = keep_refresh_token(tokens, &stored.tokens);
+                if carried {
+                    manager = manager_for(name, url, &base, &stored.client_id, tokens.clone()).await?;
+                }
+                current = StoredCredentials::from_exchange(stored.client_id.clone(), tokens, url.to_string())
+                    .with_scopes(stored.requested_scopes.clone(), refreshed_scopes);
+                store_record(data_folder, name, &current)?;
+            }
+            Err(e) => {
+                // Another process connecting at the same time may have used
+                // the refresh token first and stored what it got (#121).
+                let Some(rotated) = rotated_elsewhere(
+                    load(data_folder, name),
+                    &stored.client_id,
+                    url,
+                    &stored.requested_scopes,
+                ) else {
+                    return Err(auth(format!(
+                        "could not refresh the access token for '{name}': {e} - re-authenticate from /mcp"
+                    )));
+                };
+                manager = manager_for(name, url, &base, &rotated.client_id, rotated.tokens.clone()).await?;
+                current = rotated;
+            }
         }
-        current = StoredCredentials::from_exchange(stored.client_id.clone(), tokens, url.to_string())
-            .with_scopes(stored.requested_scopes.clone(), refreshed_scopes);
-        store_record(data_folder, name, &current)?;
     }
 
     let client = AuthClient::new(base.clone(), manager);
@@ -1790,6 +1862,46 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(200)).await;
             }
             assert!(fixture.entries("/token").iter().all(|e| e["refresh_token"] == "rt-kept"));
+            drop(client);
+        });
+    }
+
+    /// #121: a record another process stored is adopted only when it is for
+    /// the same client, resource and scopes, and is not itself due.
+    #[test]
+    fn a_fresh_record_from_another_process_is_adopted() {
+        let url = "https://mcp.example.invalid/mcp";
+        let fresh = StoredCredentials::from_exchange("c".into(), tokens(Some(3600), true), url.into());
+        assert!(rotated_elsewhere(Some(fresh.clone()), "c", url, &[]).is_some());
+        assert!(rotated_elsewhere(None, "c", url, &[]).is_none());
+        let due = StoredCredentials::from_exchange("c".into(), tokens(Some(30), true), url.into());
+        assert!(rotated_elsewhere(Some(due), "c", url, &[]).is_none(), "a due record is no newer");
+        assert!(rotated_elsewhere(Some(fresh.clone()), "other", url, &[]).is_none());
+        assert!(rotated_elsewhere(Some(fresh.clone()), "c", "https://elsewhere.invalid/mcp", &[]).is_none());
+        assert!(rotated_elsewhere(Some(fresh), "c", url, &["write".to_string()]).is_none());
+    }
+
+    /// #121: when another process has already refreshed and stored new tokens,
+    /// a due refresher takes them instead of spending the rotated refresh token.
+    #[test]
+    fn a_refresher_adopts_tokens_another_process_refreshed() {
+        let dir = isolated();
+        let fixture = OauthFixture::start(&["--accept", "rt-good", "--expires-in", "62"]);
+        // Due two seconds after connecting.
+        save(dir.path(), "srv", &fixture_creds(&fixture, "at-first", "rt-good", 62)).unwrap();
+        runtime().block_on(async {
+            let client = authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new())
+                .await
+                .unwrap()
+                .expect("an authorized client");
+            // The other process wins the race and stores its rotated set.
+            save(dir.path(), "srv", &fixture_creds(&fixture, "at-other", "rt-other", 3600)).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(20);
+            while client.get_access_token().await.unwrap() != "at-other" {
+                assert!(std::time::Instant::now() < deadline, "the stored tokens were never adopted");
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            assert!(fixture.entries("/token").is_empty(), "refreshed anyway: {:?}", fixture.entries("/token"));
             drop(client);
         });
     }

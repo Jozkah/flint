@@ -2,6 +2,12 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { localStorageKey } from '@/constants/localStorage'
 import { HUGGINGFACE_TOKEN_SECRET_KEY } from '@/hooks/useGeneralSetting'
+import { getProviderApiType } from '@/lib/providerCaps'
+import {
+  LOCAL_API_SERVER_KEY_SECRET,
+  PROXY_PASSWORD_SECRET,
+  moveFieldToKeyring,
+} from '@/lib/storeSecrets'
 
 /**
  * One-time migration of settings from webview localStorage to the backend
@@ -97,6 +103,15 @@ async function transformModelProviderBlob(
           base_url: p.base_url,
           custom_headers: customHeaders,
           models,
+          // Selects the backend's wire converter, as registerRemoteProvider
+          // does (#139).
+          api_type: getProviderApiType({
+            provider: String(p.provider),
+            api_type:
+              p.api_type === 'anthropic' || p.api_type === 'openai'
+                ? p.api_type
+                : undefined,
+          }),
         },
       })
     }
@@ -140,6 +155,18 @@ async function transformGeneralBlob(
   return JSON.stringify(parsed)
 }
 
+// Move one secret field of a legacy blob into the keyring, then strip it.
+async function transformSecretField(
+  raw: string,
+  field: string,
+  secretKey: string,
+  invoke: Invoke
+): Promise<string> {
+  const parsed = JSON.parse(raw)
+  await moveFieldToKeyring(getStateSlice(parsed), field, secretKey, invoke)
+  return JSON.stringify(parsed)
+}
+
 export async function migrateLocalStorageToBackend(): Promise<void> {
   // On web there is no backend; localStorage IS the store, nothing to migrate.
   if (!isPlatformTauri() || typeof localStorage === 'undefined') return
@@ -169,6 +196,20 @@ export async function migrateLocalStorageToBackend(): Promise<void> {
         value = await transformModelProviderBlob(local, invoke)
       } else if (key === localStorageKey.settingGeneral) {
         value = await transformGeneralBlob(local, invoke)
+      } else if (key === localStorageKey.settingLocalApiServer) {
+        value = await transformSecretField(
+          local,
+          'apiKey',
+          LOCAL_API_SERVER_KEY_SECRET,
+          invoke
+        )
+      } else if (key === localStorageKey.settingProxyConfig) {
+        value = await transformSecretField(
+          local,
+          'proxyPassword',
+          PROXY_PASSWORD_SECRET,
+          invoke
+        )
       }
       await invoke('settings_set', { key, value })
     }

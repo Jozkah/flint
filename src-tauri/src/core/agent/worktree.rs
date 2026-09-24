@@ -199,6 +199,64 @@ pub fn uncommitted(repo: &Path) -> Vec<String> {
     paths
 }
 
+/// A history operation stopped in a checkout, with the files it left
+/// unresolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationInProgress {
+    /// `merge`, `rebase`, `cherry-pick` or `revert`.
+    pub operation: &'static str,
+    pub unresolved: Vec<String>,
+}
+
+impl OperationInProgress {
+    /// The message the UI shows and a delegating model reads.
+    pub fn refusal(&self) -> String {
+        let op = self.operation;
+        let files = if self.unresolved.is_empty() {
+            String::new()
+        } else {
+            format!(" (unresolved: {})", self.unresolved.join(", "))
+        };
+        format!(
+            "The checkout has a {op} in progress{files}; a managed worktree starts from HEAD and cannot carry it.              Finish or abort the {op} in the checkout, or use Review only."
+        )
+    }
+}
+
+/// Which merge, rebase, cherry-pick or revert is stopped in `repo`, read from
+/// git's own state files through `--git-path` so a linked worktree resolves
+/// them in the right git directory.
+pub fn operation_in_progress(repo: &Path) -> Option<OperationInProgress> {
+    let exists = |name: &str| {
+        run(repo, &["rev-parse", "--git-path", name])
+            .map(|p| {
+                let p = PathBuf::from(p);
+                if p.is_absolute() { p } else { repo.join(p) }
+            })
+            .is_ok_and(|p| p.exists())
+    };
+    let operation = if exists("rebase-merge") || exists("rebase-apply") {
+        "rebase"
+    } else if exists("CHERRY_PICK_HEAD") {
+        "cherry-pick"
+    } else if exists("REVERT_HEAD") {
+        "revert"
+    } else if exists("MERGE_HEAD") {
+        "merge"
+    } else {
+        return None;
+    };
+    let mut unresolved: Vec<String> = run(repo, &["diff", "--name-only", "--diff-filter=U"])
+        .map(|out| out.lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default();
+    unresolved.sort();
+    unresolved.dedup();
+    Some(OperationInProgress {
+        operation,
+        unresolved,
+    })
+}
+
 /// A short, stable, filesystem- and ref-safe name for one owner id.
 ///
 /// Readable half plus a hash of the whole id, and the hash is the part that
@@ -437,6 +495,16 @@ pub fn ensure(
         ));
     }
 
+    // A worktree is built from HEAD, so a merge, rebase, cherry-pick or revert
+    // stopped in the checkout cannot come along: the worktree would be clean,
+    // the agent would "resolve" a conflict that is not there, and the user
+    // would be told to commit a file that still has conflict markers in their
+    // real checkout. Refuse rather than start from a state that silently
+    // differs; replicating git's operation state is not attempted.
+    if let Some(stopped) = operation_in_progress(repo) {
+        return Err(stopped.refusal());
+    }
+
     let head = run(repo, &["rev-parse", "HEAD"]).map_err(|_| {
         "this repository has no commits yet, so there is nothing to branch from".to_string()
     })?;
@@ -523,6 +591,42 @@ pub fn discard(record: &WorktreeRecord, force: bool) -> Result<(), String> {
         return Err(format!("{} could not be removed", record.path));
     }
     Ok(())
+}
+
+/// [`discard`], but only for a worktree that `record.source_root`'s own Git
+/// lists at `record.path` on `record.branch`, under `worktrees_root` and in
+/// Flint's branch namespace (Jozkah/jan#57).
+///
+/// The record arrives over IPC. Checking only that its path sits under the
+/// worktrees root let a decoy path (one that need not exist, which also
+/// silenced the uncommitted-changes guard) carry any repository and any branch
+/// into `git branch -D`. The repository itself is the authority on which
+/// worktree holds which branch, so the whole triple is matched against it.
+pub fn discard_owned(
+    record: &WorktreeRecord,
+    worktrees_root: &Path,
+    force: bool,
+) -> Result<(), String> {
+    let normal = |p: &str| {
+        resolve_lexically(Path::new(p))
+            .map(|resolved| {
+                crate::core::app::commands::strip_verbatim_prefix(resolved)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .unwrap_or_else(|_| p.to_string())
+    };
+    let wanted = normal(&record.path);
+    let known = list(Path::new(&record.source_root), worktrees_root)
+        .into_iter()
+        .any(|w| w.branch == record.branch && normal(&w.path) == wanted);
+    if !known {
+        return Err(format!(
+            "{} is not a worktree Flint manages on branch {} of {}, so Flint will not remove it",
+            record.path, record.branch, record.source_root
+        ));
+    }
+    discard(record, force)
 }
 
 /// Every Flint-owned worktree of this repository that is actually on disk.
@@ -1044,6 +1148,108 @@ mod tests {
             .any(|p| p == "new.txt"));
     }
 
+    /// Run git expecting failure: a conflicting merge, rebase, cherry-pick or
+    /// revert exits non-zero and leaves its state behind, which is the point.
+    fn git_conflicting(dir: &Path, args: &[&str]) {
+        use jan_process::CommandConsole;
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .background()
+            .env("GIT_AUTHOR_NAME", "T")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "T")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .env("GIT_EDITOR", "true")
+            .output()
+            .expect("git");
+        assert!(!out.status.success(), "git {args:?} was expected to stop on a conflict");
+    }
+
+    /// `main` and `topic` both edit a.txt; returns the fixture on `main` with
+    /// `topic`'s commit available to conflict with.
+    fn diverged() -> Fixture {
+        let f = fixture();
+        git_in(&f.repo, &["checkout", "-q", "-b", "topic"]);
+        std::fs::write(f.repo.join("a.txt"), "topic").unwrap();
+        git_in(&f.repo, &["commit", "-q", "-am", "topic edit"]);
+        git_in(&f.repo, &["checkout", "-q", "main"]);
+        std::fs::write(f.repo.join("a.txt"), "main").unwrap();
+        git_in(&f.repo, &["commit", "-q", "-am", "main edit"]);
+        f
+    }
+
+    fn assert_refused_for(f: &Fixture, op: &str, session: &str) {
+        let stopped = operation_in_progress(&f.repo).expect("operation detected");
+        assert_eq!(stopped.operation, op);
+        assert_eq!(stopped.unresolved, vec!["a.txt".to_string()]);
+        let err = ensure(&f.repo, &f.worktrees, session).expect_err("must refuse");
+        assert!(err.contains(&format!("has a {op} in progress")), "{err}");
+        assert!(err.contains("a.txt"), "{err}");
+        assert!(err.contains("Review only"), "{err}");
+        // Nothing was created: no worktree directory, no branch.
+        assert!(!worktree_path(&f.worktrees, &identity(&f.repo).unwrap(), session).exists());
+        assert!(run(
+            &f.repo,
+            &["rev-parse", "--verify", &format!("refs/heads/{}", branch_name(session))]
+        )
+        .is_err());
+    }
+
+    /// #314: a worktree built from HEAD silently dropped a stopped merge.
+    #[test]
+    fn refuses_a_checkout_with_a_merge_in_progress() {
+        let f = diverged();
+        git_conflicting(&f.repo, &["merge", "topic"]);
+        assert_refused_for(&f, "merge", "sess-merge");
+    }
+
+    #[test]
+    fn refuses_a_checkout_with_a_rebase_in_progress() {
+        let f = diverged();
+        git_conflicting(&f.repo, &["rebase", "topic"]);
+        assert_refused_for(&f, "rebase", "sess-rebase");
+    }
+
+    #[test]
+    fn refuses_a_checkout_with_a_cherry_pick_in_progress() {
+        let f = diverged();
+        git_conflicting(&f.repo, &["cherry-pick", "topic"]);
+        assert_refused_for(&f, "cherry-pick", "sess-pick");
+    }
+
+    #[test]
+    fn refuses_a_checkout_with_a_revert_in_progress() {
+        let f = fixture();
+        std::fs::write(f.repo.join("a.txt"), "two").unwrap();
+        git_in(&f.repo, &["commit", "-q", "-am", "second"]);
+        std::fs::write(f.repo.join("a.txt"), "three").unwrap();
+        git_in(&f.repo, &["commit", "-q", "-am", "third"]);
+        git_conflicting(&f.repo, &["revert", "--no-edit", "HEAD~1"]);
+        assert_refused_for(&f, "revert", "sess-revert");
+    }
+
+    #[test]
+    fn a_finished_merge_no_longer_blocks_a_worktree() {
+        let f = diverged();
+        git_conflicting(&f.repo, &["merge", "topic"]);
+        git_in(&f.repo, &["merge", "--abort"]);
+        assert_eq!(operation_in_progress(&f.repo), None);
+        ensure(&f.repo, &f.worktrees, "sess-after").expect("created once the merge is gone");
+    }
+
+    /// A worktree made before the merge started is still the session's own;
+    /// resuming it is not refused.
+    #[test]
+    fn an_existing_worktree_is_reused_despite_a_later_merge() {
+        let f = diverged();
+        let first = ensure(&f.repo, &f.worktrees, "sess-early").unwrap();
+        git_conflicting(&f.repo, &["merge", "topic"]);
+        let again = ensure(&f.repo, &f.worktrees, "sess-early").expect("reused");
+        assert_eq!(first.path, again.path);
+    }
+
     #[test]
     fn notices_a_worktree_that_was_deleted_underneath_it() {
         let f = fixture();
@@ -1197,6 +1403,38 @@ mod tests {
         // Forced is the same operation, chosen: the caller had to have been
         // told what it holds to get here.
         discard(&record, true).expect("forced discard");
+        assert!(!PathBuf::from(&record.path).exists());
+    }
+
+    /// Jozkah/jan#57: a record whose path is a decoy under the worktrees root
+    /// cannot carry another repository's branch into `git branch -D`; a real
+    /// Flint worktree is still discarded.
+    #[test]
+    fn discard_owned_refuses_a_record_git_does_not_list() {
+        let f = fixture();
+        git_in(&f.repo, &["branch", "precious"]);
+        let decoy = WorktreeRecord {
+            path: f.worktrees.join("decoy").to_string_lossy().into_owned(),
+            branch: "precious".to_string(),
+            base_sha: String::new(),
+            source_root: f.repo.to_string_lossy().into_owned(),
+            identity: identity(&f.repo).expect("identity"),
+            uncommitted_at_creation: Vec::new(),
+        };
+        assert!(discard_owned(&decoy, &f.worktrees, false).is_err());
+        let still = std::process::Command::new("git")
+            .args(["-C", &decoy.source_root, "rev-parse", "--verify", "refs/heads/precious"])
+            .output()
+            .expect("git");
+        assert!(still.status.success(), "the unrelated branch was deleted");
+
+        // A real worktree's own record, but pointed at another branch.
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let mut swapped = record.clone();
+        swapped.branch = "precious".to_string();
+        assert!(discard_owned(&swapped, &f.worktrees, true).is_err());
+
+        discard_owned(&record, &f.worktrees, false).expect("a real worktree is discarded");
         assert!(!PathBuf::from(&record.path).exists());
     }
 

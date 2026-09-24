@@ -8808,7 +8808,7 @@ fn open_project_init(ctx: &Ctx) -> Result<String, Failure> {
     )?;
     ctx.eval("document.querySelector('[data-testid=\"project-init-open\"]').click(); return true;")?;
     ctx.wait_until(
-        "the proposed JAN.md",
+        "the proposed FLINT.md",
         "const t = document.querySelector('[data-testid=\"project-init-text\"]');
          return !!t && t.value.length > 0;",
         Duration::from_secs(30),
@@ -8818,8 +8818,10 @@ fn open_project_init(ctx: &Ctx) -> Result<String, Failure> {
 
 /// AH-209 through the real UI: survey, edit, accept; nothing written before.
 fn scenario_project_init(ctx: &Ctx) -> ScenarioResult {
-    let jan_md = ctx.project.join("JAN.md");
-    let _ = std::fs::remove_file(&jan_md);
+    let flint_md = ctx.project.join("FLINT.md");
+    let _ = std::fs::remove_file(&flint_md);
+    // A legacy JAN.md would make accept refuse, so start from neither file.
+    let _ = std::fs::remove_file(ctx.project.join("JAN.md"));
     ctx.script_model("plain", &[])?;
     attach_project(ctx)?;
 
@@ -8857,7 +8859,7 @@ fn scenario_project_init(ctx: &Ctx) -> ScenarioResult {
         not_read.contains("skipped by design"),
         "the dialog does not say what the survey did not read: {not_read:?}"
     );
-    ensure!(!jan_md.exists(), "surveying wrote JAN.md");
+    ensure!(!flint_md.exists(), "surveying wrote FLINT.md");
 
     let edited = format!("{draft}- Checked by the smoke run.\n");
     set_field(ctx, "[data-testid=\"project-init-text\"]", &edited)?;
@@ -8865,13 +8867,13 @@ fn scenario_project_init(ctx: &Ctx) -> ScenarioResult {
     ctx.wait_until(
         "the write to be announced",
         "const s = document.querySelector('[data-testid=\"project-init-status\"]');
-         return !!s && s.textContent.includes('Wrote JAN.md');",
+         return !!s && s.textContent.includes('Wrote FLINT.md');",
         Duration::from_secs(20),
     )?;
-    let written = std::fs::read_to_string(&jan_md).map_err(|e| Failure(format!("JAN.md: {e}")))?;
-    ensure!(written == edited, "JAN.md is not exactly the accepted text: {written:?}");
+    let written = std::fs::read_to_string(&flint_md).map_err(|e| Failure(format!("FLINT.md: {e}")))?;
+    ensure!(written == edited, "FLINT.md is not exactly the accepted text: {written:?}");
     ctx.wait_until(
-        "the offer to go once JAN.md exists",
+        "the offer to go once FLINT.md exists",
         "return !document.querySelector('[data-testid=\"project-init-open\"]');",
         Duration::from_secs(20),
     )?;
@@ -8884,16 +8886,16 @@ fn scenario_project_init(ctx: &Ctx) -> ScenarioResult {
         "plugin:agent-tools|project_init_accept",
         &format!("{{ dataFolder: {data:?}, root: {project:?}, content: 'OVERWRITTEN', overwrite: false }}"),
     )?;
-    ensure!(!ok, "a second JAN.md was written over the first");
+    ensure!(!ok, "a second FLINT.md was written over the first");
     ensure!(
-        refusal.to_string().contains("already has a JAN.md"),
+        refusal.to_string().contains("already has a FLINT.md"),
         "the refusal did not say why: {refusal}"
     );
     ensure!(
-        std::fs::read_to_string(&jan_md).unwrap_or_default() == edited,
-        "the refused write changed JAN.md"
+        std::fs::read_to_string(&flint_md).unwrap_or_default() == edited,
+        "the refused write changed FLINT.md"
     );
-    let _ = std::fs::remove_file(&jan_md);
+    let _ = std::fs::remove_file(&flint_md);
     Ok(())
 }
 
@@ -8902,7 +8904,7 @@ const DRAFT_TEXT: &str = "DRAFT-KEPT-ACROSS-RESTART";
 
 /// Phase one: edit a draft, close the dialog without accepting, and exit.
 fn scenario_project_init_draft_first(ctx: &Ctx) -> ScenarioResult {
-    let _ = std::fs::remove_file(ctx.project.join("JAN.md"));
+    let _ = std::fs::remove_file(ctx.project.join("FLINT.md"));
     ctx.script_model("plain", &[])?;
     attach_project(ctx)?;
     let draft = open_project_init(ctx)?;
@@ -8922,7 +8924,7 @@ fn scenario_project_init_draft_first(ctx: &Ctx) -> ScenarioResult {
         "return !document.querySelector('[data-testid=\"project-init-dialog\"]');",
         Duration::from_secs(10),
     )?;
-    ensure!(!ctx.project.join("JAN.md").exists(), "closing the dialog wrote JAN.md");
+    ensure!(!ctx.project.join("FLINT.md").exists(), "closing the dialog wrote FLINT.md");
     let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
     let settings = Path::new(&data).join("settings.json");
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -8967,7 +8969,7 @@ fn scenario_project_init_draft_second(ctx: &Ctx) -> ScenarioResult {
          return !!s && s.textContent.includes('Nothing was written');",
         Duration::from_secs(10),
     )?;
-    ensure!(!ctx.project.join("JAN.md").exists(), "discarding wrote JAN.md");
+    ensure!(!ctx.project.join("FLINT.md").exists(), "discarding wrote FLINT.md");
     Ok(())
 }
 

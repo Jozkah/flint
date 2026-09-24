@@ -85,6 +85,7 @@ import {
   parseServerContextLimit,
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
+import { unloadForContextResize } from '@/lib/contextResizeUnload'
 import { Button } from '@/components/ui/button'
 import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -316,6 +317,9 @@ export function ThreadConversation({
   const processingEmbeddings = useAppState(
     (s) => !!s.embeddingThreads[threadId]
   )
+  // Set while a finished turn's tools await approval or run. Reactive, unlike
+  // `sessionData.tools`, so the queue drains once they settle.
+  const threadBusy = useAppState((s) => !!s.busyThreads[threadId])
   const { t } = useTranslation()
 
   // llama-server's overflow string is raw English; localize it, interpolating
@@ -630,7 +634,10 @@ export function ThreadConversation({
       // Tools run one at a time below, so the rest are genuinely queued.
       useToolCallRuntime
         .getState()
-        .enqueue(sessionData.tools.map((tc) => tc.toolCallId))
+        .enqueue(
+          sessionData.tools.map((tc) => tc.toolCallId),
+          threadId
+        )
 
       ;(async () => {
         for (const toolCall of sessionData.tools) {
@@ -894,7 +901,7 @@ export function ThreadConversation({
           }
         }
 
-        useToolCallRuntime.getState().settleRemaining()
+        useToolCallRuntime.getState().settleRemaining(threadId)
         sessionData.tools = []
         toolApprovalPromises.current.clear()
         toolCallAbortController.current = null
@@ -903,7 +910,7 @@ export function ThreadConversation({
         if (error.name !== 'AbortError') {
           console.error('Tool call error:', error)
         }
-        useToolCallRuntime.getState().settleRemaining()
+        useToolCallRuntime.getState().settleRemaining(threadId)
         sessionData.tools = []
         toolApprovalPromises.current.clear()
         toolCallAbortController.current = null
@@ -1924,7 +1931,13 @@ export function ThreadConversation({
         return
       }
     } else {
-      await serviceHub.models().stopModel(selectedModel.id)
+      // MLX's unload throws when no session is tracked for the model (it was
+      // never loaded, or already unloaded). The new ctx_len still applies on
+      // the next load, so a failed unload must not abort the resize.
+      await unloadForContextResize(
+        (id) => serviceHub.models().stopModel(id),
+        selectedModel.id
+      )
     }
 
     // Consume any pending partial captured at the `finishReason === 'length'`
@@ -1985,7 +1998,7 @@ export function ThreadConversation({
 
   useEffect(() => {
     if (status !== 'ready' || processingQueueRef.current) return
-    if (sessionData.tools.length > 0) return
+    if (threadBusy || sessionData.tools.length > 0) return
 
     const next = useMessageQueue.getState().dequeue(threadId)
     if (!next) return
@@ -1998,7 +2011,7 @@ export function ThreadConversation({
       .finally(() => {
         processingQueueRef.current = false
       })
-  }, [status, threadId, sendQueuedMessage, sessionData.tools.length])
+  }, [status, threadId, sendQueuedMessage, sessionData.tools.length, threadBusy])
 
   // If streaming errors out, discard any queued messages so they don't sit there stuck
   useEffect(() => {

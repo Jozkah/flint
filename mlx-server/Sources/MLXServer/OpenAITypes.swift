@@ -355,3 +355,26 @@ func generateToolCallId() -> String {
 func currentTimestamp() -> Int {
     Int(Date().timeIntervalSince1970)
 }
+
+/// A `tools` entry that is not a JSON object (#76).
+struct InvalidToolEntryError: LocalizedError {
+    let index: Int
+    var errorDescription: String? {
+        "tools[\(index)] must be a JSON object"
+    }
+}
+
+/// Every tool entry must be a JSON object. A bare string, number or array used
+/// to reach a forced cast in `buildToolSpecs` and kill the whole server (#76);
+/// callers turn this error into a 400 instead.
+func validateToolEntries(_ tools: [AnyCodable]?) throws {
+    guard let tools else { return }
+    for (index, tool) in tools.enumerated() where toolSpec(from: tool) == nil {
+        throw InvalidToolEntryError(index: index)
+    }
+}
+
+/// The tool spec for one entry, or nil when the entry is not a JSON object.
+func toolSpec(from tool: AnyCodable) -> [String: any Sendable]? {
+    tool.toSendable() as? [String: any Sendable]
+}

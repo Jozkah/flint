@@ -8,7 +8,12 @@ concurrency:
 
 jobs:
   base_branch_cov:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -48,7 +53,12 @@ jobs:
           path: coverage/lcov.info
 
   base_branch_rust_cov:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -125,7 +135,10 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
   test-on-windows:
-    if: github.event_name == 'push'
+    # Ran only on push, which this manual-dispatch workflow no longer has, and
+    # needs self-hosted antivirus runners; disabled explicitly (#56).
+    # test-on-windows-pr covers Windows on dispatch.
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -214,10 +227,30 @@ jobs:
       - name: Getting the repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # Every third-party action must be pinned to a full 40-hex commit SHA
+      # (#194). Local actions (`uses: ./...`) and docker:// references are exempt.
+      - name: Check actions are pinned to commit SHAs
+        shell: bash
+        run: |
+          bad=$(grep -rnE '^[[:space:]-]*uses:[[:space:]]*' .github/workflows .github/actions 2>/dev/null \
+            | grep -vE 'uses:[[:space:]]*["'"'"']?(\./|docker://)' \
+            | grep -vE 'uses:[[:space:]]*["'"'"']?[^@[:space:]]+@[0-9a-f]{40}([[:space:]"'"'"']|$)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Actions not pinned to a 40-hex commit SHA:"
+            echo "$bad"
+            exit 1
+          fi
+
       - name: Installing node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
+
+      # Dependency-free node:test suites (registry gate, archive/local-only
+      # guards, installer templates). Same files as `yarn test:scripts`; the
+      # shell expands the globs because node 20's --test does not (#37).
+      - name: Script tests
+        run: node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs
 
       - name: Install Tauri dependencies
         run: |
@@ -245,7 +278,12 @@ jobs:
           make check-cli
 
   coverage-check:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     needs: [base_branch_cov, base_branch_rust_cov]
     continue-on-error: true

@@ -40,6 +40,7 @@ import CodeEditor from '@uiw/react-textarea-code-editor'
 import '@uiw/react-textarea-code-editor/dist.css'
 import {
   validateMcpServerForm,
+  validateServerName,
   type McpFieldId,
   type McpValidationIssue,
 } from '@/lib/mcpServerValidation'
@@ -409,7 +410,9 @@ export default function AddEditMCPServer({
           return
         }
 
-        // For each server in the JSON, validate serverName and config
+        // Validate every entry before saving any, so a bad entry late in the
+        // JSON does not leave the earlier ones half-applied.
+        const entries: Array<[string, MCPServerConfig]> = []
         for (const [serverName, config] of Object.entries(parsedData)) {
           const trimmedServerName = serverName.trim()
           if (!trimmedServerName) {
@@ -434,7 +437,24 @@ export default function AddEditMCPServer({
             return
           }
 
-          onSave(trimmedServerName, serverConfig as MCPServerConfig)
+          // Same duplicate-name rule as the form: a pasted key that matches
+          // another configured server would silently replace it.
+          if (
+            validateServerName(trimmedServerName, { existingNames, editingKey })
+              ?.code === 'nameDuplicate'
+          ) {
+            setError(
+              t('mcp-servers:editJson.errorNameDuplicate', {
+                serverName: trimmedServerName,
+              })
+            )
+            return
+          }
+
+          entries.push([trimmedServerName, serverConfig])
+        }
+        for (const [name, serverConfig] of entries) {
+          onSave(name, serverConfig)
         }
         onOpenChange(false)
         resetForm()

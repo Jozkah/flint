@@ -29,11 +29,68 @@ pub struct SseEvent {
 #[derive(Debug, Default)]
 pub struct SseAccumulator {
     buf: String,
+    utf8: Utf8ChunkDecoder,
+}
+
+/// Decodes a byte stream as UTF-8 one network chunk at a time, holding back
+/// a multi-byte character split across a chunk boundary until the rest of it
+/// arrives. Decoding each chunk on its own with `from_utf8_lossy` turned such a
+/// character into U+FFFD replacement characters (#195).
+#[derive(Debug, Default)]
+pub struct Utf8ChunkDecoder {
+    pending: Vec<u8>,
+}
+
+impl Utf8ChunkDecoder {
+    /// The text completed by `chunk`. Genuinely invalid bytes still become
+    /// U+FFFD; only an incomplete sequence at the very end is held back.
+    pub fn push(&mut self, chunk: &[u8]) -> String {
+        self.pending.extend_from_slice(chunk);
+        let cut = self.pending.len() - incomplete_utf8_tail(&self.pending);
+        let text = String::from_utf8_lossy(&self.pending[..cut]).into_owned();
+        self.pending.drain(..cut);
+        text
+    }
+
+    /// Whatever is still held back when the stream ends (lossily decoded).
+    pub fn finish(&mut self) -> String {
+        let text = String::from_utf8_lossy(&self.pending).into_owned();
+        self.pending.clear();
+        text
+    }
+}
+
+/// How many bytes at the end of `bytes` begin a UTF-8 sequence that is not
+/// complete yet (0 to 3).
+fn incomplete_utf8_tail(bytes: &[u8]) -> usize {
+    for back in 1..=bytes.len().min(3) {
+        let byte = bytes[bytes.len() - back];
+        if byte & 0xC0 == 0x80 {
+            // A continuation byte: keep looking for the lead byte.
+            continue;
+        }
+        let needed = match byte {
+            0xF0..=0xF7 => 4,
+            0xE0..=0xEF => 3,
+            0xC0..=0xDF => 2,
+            _ => 1,
+        };
+        return if needed > back { back } else { 0 };
+    }
+    0
 }
 
 impl SseAccumulator {
     pub fn new() -> Self {
-        Self { buf: String::new() }
+        Self::default()
+    }
+
+    /// Feed raw response bytes; like [`SseAccumulator::push`], but a UTF-8
+    /// character split across two network chunks is reassembled instead of
+    /// being corrupted.
+    pub fn push_bytes(&mut self, chunk: &[u8]) -> Vec<SseEvent> {
+        let text = self.utf8.push(chunk);
+        self.push(&text)
     }
 
     /// Feed a chunk of the response body; returns every event completed by it.
@@ -53,6 +110,8 @@ impl SseAccumulator {
     /// Flush a final event that arrived without a terminating blank line (some
     /// servers omit it before closing the connection).
     pub fn finish(&mut self) -> Option<SseEvent> {
+        let tail = self.utf8.finish();
+        self.buf.push_str(&tail.replace("\r\n", "\n"));
         let raw = std::mem::take(&mut self.buf);
         parse_event(&raw)
     }
@@ -837,6 +896,14 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
             }
         }
 
+        // A mid-stream failure arrives as a top-level `error` object, and a
+        // prompt Gemini refuses as `promptFeedback.blockReason` with no
+        // candidates. Both must end the stream as an error, not as a short
+        // successful answer (#184).
+        if let Some(message) = gemini_stream_error(&data) {
+            return stream_error(state, &message);
+        }
+
         let mut out: Vec<String> = Vec::new();
         let candidate = data
             .get("candidates")
@@ -1391,9 +1458,54 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                 out.push("[DONE]".to_string());
                 state.finished = true;
             }
+            // `event: error` (overloaded_error, api_error, ...) mid-stream:
+            // surface it instead of ending as a truncated success (#184).
+            "error" => {
+                let message = data
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("upstream error");
+                return stream_error(state, message);
+            }
             _ => {}
         }
         out
+    }
+}
+
+/// The chat/completions-shaped error payload a converter emits when the
+/// provider fails mid-stream, followed by `[DONE]`, the same shape the
+/// Responses converter uses for `response.failed`.
+fn stream_error(state: &mut StreamState, message: &str) -> Vec<String> {
+    state.finished = true;
+    vec![
+        json!({"error": {"message": message}}).to_string(),
+        "[DONE]".to_string(),
+    ]
+}
+
+/// The error a Gemini stream chunk reports, if any: a top-level `error`
+/// object, or a prompt blocked before any candidate was produced.
+fn gemini_stream_error(data: &Value) -> Option<String> {
+    if let Some(error) = data.get("error") {
+        let message = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("upstream error");
+        return Some(message.to_string());
+    }
+    let no_candidates = data
+        .get("candidates")
+        .and_then(|c| c.as_array())
+        .is_none_or(|c| c.is_empty());
+    let block = data
+        .get("promptFeedback")
+        .and_then(|f| f.get("blockReason"))
+        .and_then(|r| r.as_str());
+    match block {
+        Some(reason) if no_candidates => Some(format!("the prompt was blocked: {reason}")),
+        _ => None,
     }
 }
 
@@ -1475,6 +1587,33 @@ fn convert_usage(usage: Option<&Value>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_character_split_across_chunks_is_not_corrupted() {
+        let payload = "{\"t\":\"h\u{e9}llo \u{4e16}\u{754c} \u{1F600}\"}";
+        let body = format!("data: {payload}\n\n");
+        let body = body.as_bytes();
+        // Every split point, including inside each multi-byte character.
+        for cut in 1..body.len() {
+            let mut acc = SseAccumulator::new();
+            let mut events = acc.push_bytes(&body[..cut]);
+            events.extend(acc.push_bytes(&body[cut..]));
+            assert_eq!(events.len(), 1, "cut at {cut}");
+            assert_eq!(events[0].data, payload, "cut at {cut}");
+        }
+    }
+
+    #[test]
+    fn utf8_decoder_holds_back_only_an_incomplete_tail() {
+        let mut d = Utf8ChunkDecoder::default();
+        let euro = "\u{20ac}".as_bytes(); // 3 bytes
+        assert_eq!(d.push(&euro[..2]), "");
+        assert_eq!(d.push(&euro[2..]), "\u{20ac}");
+        // Invalid bytes are still replaced, not held forever.
+        assert_eq!(d.push(&[b'a', 0xFF, b'b']), "a\u{FFFD}b");
+        assert_eq!(d.push(&[0xE2]), "");
+        assert_eq!(d.finish(), "\u{FFFD}");
+    }
 
     #[test]
     fn parses_a_single_event_in_one_chunk() {
@@ -2017,6 +2156,33 @@ mod google_generate_content_tests {
     }
 
     #[test]
+    fn a_mid_stream_error_or_blocked_prompt_is_an_error_not_a_success() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &ev(json!({"candidates": [{"content": {"parts": [{"text": "par"}]}}]})),
+            &mut state,
+        );
+        let out = c.convert_stream_event(
+            &ev(json!({"error": {"code": 503, "message": "The model is overloaded."}})),
+            &mut state,
+        );
+        assert_eq!(out.len(), 2);
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(err["error"]["message"], "The model is overloaded.");
+        assert_eq!(out[1], "[DONE]");
+        assert!(state.finished);
+
+        let mut state = StreamState::default();
+        let out = c.convert_stream_event(
+            &ev(json!({"promptFeedback": {"blockReason": "SAFETY"}})),
+            &mut state,
+        );
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert!(err["error"]["message"].as_str().unwrap().contains("SAFETY"));
+    }
+
+    #[test]
     fn stream_emits_role_reasoning_content_and_finish() {
         let c = conv();
         let mut state = StreamState::default();
@@ -2371,6 +2537,28 @@ mod anthropic_messages_tests {
             event: event.to_string(),
             data: data.to_string(),
         }
+    }
+
+    #[test]
+    fn a_mid_stream_error_event_is_surfaced() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &ev("message_start", json!({"message": {"id": "msg_1", "model": "claude-sonnet-4", "usage": {"input_tokens": 10}}})),
+            &mut state,
+        );
+        let out = c.convert_stream_event(
+            &ev(
+                "error",
+                json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}),
+            ),
+            &mut state,
+        );
+        assert_eq!(out.len(), 2);
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(err["error"]["message"], "Overloaded");
+        assert_eq!(out[1], "[DONE]");
+        assert!(state.finished);
     }
 
     #[test]

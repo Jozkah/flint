@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  acceptsProposal,
+  continuationInstruction,
+  CONTINUE_QUESTION_ID,
   decideOpening,
   isExplicitDirective,
   recordFor,
@@ -50,6 +53,36 @@ describe('telling an instruction from an opening remark', () => {
     expect(
       isExplicitDirective('the README recommends running the migration')
     ).toBe(false)
+  })
+
+  it('judges a report and an instruction in separate sentences apart (#296)', () => {
+    // The s01 smoke prompt: the report in the first sentence ("Customers
+    // say") disqualified the plain "Fix it" in the second, so an explicit
+    // request ran read-only and `edit` was refused as not offered.
+    const s01 =
+      'Customers say an order of exactly 100.00 does not get the 10% discount ' +
+      'the comment in Calc/Discount.cs promises. Fix it, add an xunit test ' +
+      'project covering the boundary, and run dotnet test.'
+    expect(isExplicitDirective(s01)).toBe(true)
+    expect(
+      decideOpening({ folder: '/repo', priorTurns: 0, text: s01 })
+    ).toBe('follow-the-request')
+    expect(
+      decideOpening({
+        folder: '/repo',
+        priorTurns: 0,
+        text: 'Users report X is broken. Please fix it.',
+      })
+    ).toBe('follow-the-request')
+    expect(
+      decideOpening({
+        folder: '/repo',
+        priorTurns: 0,
+        text: 'The plan says to implement task 2',
+      })
+    ).toBe('inspect-and-propose')
+    // A dot inside a file name or a number is not a sentence break.
+    expect(isExplicitDirective('look at notes.fix later')).toBe(false)
   })
 
   it('ignores verbs quoted from code', () => {
@@ -160,5 +193,84 @@ describe('resuming', () => {
 
   it('resumes nothing without a record', () => {
     expect(resumesIntoWork(null)).toBe(false)
+  })
+})
+
+describe('accepting the opening proposal (#296)', () => {
+  const request = {
+    questions: [
+      {
+        id: CONTINUE_QUESTION_ID,
+        question: 'Apply the one-line fix to src/pricing.ts?',
+        options: [
+          { label: 'You apply it for me' },
+          { label: 'I will apply it myself' },
+        ],
+      },
+    ],
+  }
+  const picked = (label: string) => [
+    { id: CONTINUE_QUESTION_ID, selected: [label] },
+  ]
+  const typed = (text: string) => [
+    { id: CONTINUE_QUESTION_ID, selected: [], custom_input: text },
+  ]
+
+  it('accepts the proposed step, which the addendum puts first', () => {
+    expect(acceptsProposal(request, picked('You apply it for me'))).toBe(true)
+  })
+
+  it('does not accept the alternative', () => {
+    expect(acceptsProposal(request, picked('I will apply it myself'))).toBe(
+      false
+    )
+  })
+
+  it.each(['do it', 'Go ahead', 'yes please', 'ok, apply it'])(
+    'accepts a typed "%s"',
+    (text) => {
+      expect(acceptsProposal(request, typed(text))).toBe(true)
+    }
+  )
+
+  it.each([
+    "no, don't",
+    'yes but do not touch the tests',
+    'what would that change?',
+    '',
+  ])('does not accept a typed "%s"', (text) => {
+    expect(acceptsProposal(request, typed(text))).toBe(false)
+  })
+
+  it('does not accept a dismissed card or a different question', () => {
+    expect(acceptsProposal(request, null)).toBe(false)
+    expect(
+      acceptsProposal(
+        { questions: [{ id: 'other', options: [{ label: 'x' }] }] },
+        [{ id: 'other', selected: ['x'] }]
+      )
+    ).toBe(false)
+  })
+
+  it('names the accepted step in the continuation instruction', () => {
+    const text = continuationInstruction(
+      request.questions[0].question,
+      picked('You apply it for me')
+    )
+    expect(text).toContain('You apply it for me')
+    expect(text).toContain('src/pricing.ts')
+  })
+
+  it('continues as a follow-the-request turn, not another opening', () => {
+    // The continuation is sent after the opening turn is committed, so it
+    // runs under the session's stored mode with write tools offered.
+    expect(
+      decideOpening({
+        folder: '/repo',
+        priorTurns: 1,
+        text: continuationInstruction('Apply it?', picked('Yes')),
+        record: record({ state: 'executing' }),
+      })
+    ).toBe('follow-the-request')
   })
 })

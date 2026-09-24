@@ -242,6 +242,21 @@ fn secret_file_name(resource: &crate::resource::Resource) -> Option<String> {
     crate::project_browse::is_sensitive_name(&name).then_some(name)
 }
 
+/// `resources` with every credential file swapped for an ordinary file in the
+/// same directory: the probe that tells a rule naming the secret from a rule
+/// that covers the whole directory.
+fn harmless_files(resources: &[crate::resource::Resource]) -> Vec<crate::resource::Resource> {
+    resources
+        .iter()
+        .map(|r| match (r, secret_file_name(r)) {
+            (crate::resource::Resource::Path(path), Some(_)) => crate::resource::Resource::Path(
+                path.with_file_name("flint-probe-not-a-credential.txt"),
+            ),
+            _ => r.clone(),
+        })
+        .collect()
+}
+
 /// For each path resource that a symlink redirects, the path it really
 /// resolves to. Paths that resolve to themselves, and paths that cannot be
 /// resolved, add nothing: the lexical checks already cover them, and the
@@ -406,19 +421,19 @@ pub fn resolve_decision(
     // reach the model and the log. A rule that names the file explicitly still
     // allows it -- someone who writes a rule spelling out the path has said
     // what they mean -- but a blanket `allow = ["read"]` has not.
+    //
+    // "Names" means the rule is about the secret, not merely resource-qualified:
+    // `read(**)` also covers the same call on an ordinary file beside it, so it
+    // is a blanket rule in parentheses and counts as one (Jozkah/jan#47).
     if let Some(secret) = resources.iter().find_map(secret_file_name) {
-        let named = perms
-            .allows_call(tool.name, &resources, subject)
-            .is_some_and(|rule| rule.source().contains('('));
+        let named = perms.names_call(tool.name, &resources, &harmless_files(&resources), subject);
         if !named {
             return Decision::HardDeny(DenyReason::SecretFile(secret));
         }
     }
     // Reached through a link: only a rule naming the secret itself allows it.
     if let Some(secret) = resolved.iter().find_map(secret_file_name) {
-        let named = perms
-            .allows_call(tool.name, &resolved, subject)
-            .is_some_and(|rule| rule.source().contains('('));
+        let named = perms.names_call(tool.name, &resolved, &harmless_files(&resolved), subject);
         if !named {
             return Decision::HardDeny(DenyReason::SecretFile(secret));
         }
@@ -437,10 +452,16 @@ pub fn resolve_decision(
     // `allow = ["bash"]` blanket does not count -- that is the difference
     // between "may run shell commands" and "may throw away my uncommitted
     // work" -- so this is checked before the generic allow below.
+    //
+    // As with secrets, a rule that also covers the same git subcommand without
+    // what made it destructive (`bash(git *)`, `bash(git:*)`) does not name the
+    // operation (Jozkah/jan#47).
     if let Some(op) = resources.iter().find_map(|r| r.destructive_git()) {
-        let named = perms
-            .allows_call(tool.name, &resources, subject)
-            .is_some_and(|rule| rule.source().contains('('));
+        let harmless: Vec<crate::resource::Resource> = resources
+            .iter()
+            .map(|r| r.harmless_git_twin().unwrap_or_else(|| r.clone()))
+            .collect();
+        let named = perms.names_call(tool.name, &resources, &harmless, subject);
         if !named {
             return Decision::HardDeny(DenyReason::DestructiveGit(op));
         }
@@ -1686,6 +1707,13 @@ mod tests {
             "git push --force origin main",
             "git branch -D topic",
             "git -C . push -f",
+            // Jozkah/jan#209: spellings the shell still resolves to git.
+            "GIT reset --hard HEAD~1",
+            "git.exe push --force origin main",
+            r#""C:\Program Files\Git\cmd\git.exe" reset --hard"#,
+            // Jozkah/jan#45: the long form of -f.
+            "git clean --force",
+            "git clean --force -X",
         ] {
             let d = resolve_decision(
                 lookup("bash").unwrap(),
@@ -1703,6 +1731,44 @@ mod tests {
                 "{line} should be refused, got {d:?}"
             );
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_wildcard_rule_does_not_name_a_destructive_git_operation() {
+        // Jozkah/jan#47: parentheses alone are not naming the operation.
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let decide_with = |rule: &str, line: &str| {
+            let perms = ToolPermissions::new(PermissionDefault::Allow, &s(&[rule]), &[], &[]);
+            resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": line }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        for rule in ["bash(git *)", "bash(*)", "bash(git:*)", "bash(git push*)"] {
+            let d = decide_with(rule, "git push --force origin main");
+            assert!(
+                matches!(d, Decision::HardDeny(DenyReason::DestructiveGit(_))),
+                "{rule} must not unlock a force push, got {d:?}"
+            );
+        }
+        // Rules that do name it still work, and git stays usable under git *.
+        for rule in ["bash(git:force-push)", "bash(git push --force*)"] {
+            assert_eq!(
+                decide_with(rule, "git push --force origin main"),
+                Decision::Allow,
+                "{rule} names the force push"
+            );
+        }
+        assert_eq!(decide_with("bash(git *)", "git status"), Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -2103,6 +2169,29 @@ mod security_corpus {
             ),
             Decision::Allow
         );
+    }
+
+    #[test]
+    fn a_wildcard_read_rule_does_not_name_a_credential_file() {
+        // Jozkah/jan#47: read(**) covers every file, so it names none of them.
+        let root = root();
+        std::fs::write(root.join(".env"), b"API_KEY=x").unwrap();
+        for rule in ["read(**)", "read(*)", "read(**/*)"] {
+            let perms = ToolPermissions::new(PermissionDefault::Allow, &[rule.to_string()], &[], &[]);
+            let d = decide("read", json!({ "path": ".env" }), &root, &perms, &NetworkPolicy::open());
+            assert!(
+                matches!(d, Decision::HardDeny(DenyReason::SecretFile(_))),
+                "{rule} opened .env: {d:?}"
+            );
+        }
+        for rule in ["read(**/.env)", "read(.env*)"] {
+            let perms = ToolPermissions::new(PermissionDefault::Allow, &[rule.to_string()], &[], &[]);
+            assert_eq!(
+                decide("read", json!({ "path": ".env" }), &root, &perms, &NetworkPolicy::open()),
+                Decision::Allow,
+                "{rule} names .env"
+            );
+        }
     }
 
     #[test]

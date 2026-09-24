@@ -5,6 +5,7 @@
 mod agent_status;
 pub mod auth;
 pub mod brand;
+pub mod color;
 pub mod browser;
 pub mod device_auth;
 pub mod doctor;
@@ -248,18 +249,44 @@ pub fn cli_list_messages(thread_id: &str) -> Result<Vec<serde_json::Value>, Stri
 
 /// Delete a thread directory.
 pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
+    delete_thread_at(&resolve_jan_data_folder(), thread_id)
+}
+
+/// Metadata key naming the repository that holds a thread's snapshot ref.
+/// Written by the TUI with its snapshots; read back on delete, which otherwise
+/// has no repository in hand to drop the ref from (Jozkah/jan#143).
+pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
+
+fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
-    let data_folder = resolve_jan_data_folder();
-    let thread_dir = get_thread_dir(&data_folder, thread_id);
+    // Read where the snapshots live before the thread's files go away.
+    let snapshot_repo = fs::read_to_string(get_thread_metadata_path(data_folder, thread_id))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|t| {
+            t.pointer(&format!("/metadata/{SNAPSHOT_REPO_KEY}"))
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from)
+        });
+    let thread_dir = get_thread_dir(data_folder, thread_id);
     if thread_dir.exists() {
         fs::remove_dir_all(thread_dir).map_err(|e| e.to_string())?;
     }
     crate::core::agent::git::cleanup_snapshot_index(thread_id);
+    // The ref is what keeps the snapshot commit chain alive; the index above
+    // is only scratch. Same pair the desktop's checkpoint::forget drops.
+    if let Some(repo) = snapshot_repo.filter(|r| r.is_dir()) {
+        let _ = crate::core::agent::git::drop_ref(&repo, thread_id);
+    }
     // What the thread's runs recorded goes with it, as on the desktop
     // (Jozkah/jan#294): snapshots, usage, diffs, decisions, undo journal.
     if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
         eprintln!("could not remove the records of thread {thread_id}: {e}");
+    }
+    // Its agent scratch dir goes too (Jozkah/jan#186).
+    if let Some(scratch) = crate::core::threads::utils::thread_scratch_dir(thread_id) {
+        let _ = fs::remove_dir_all(scratch);
     }
     Ok(())
 }
@@ -1885,8 +1912,14 @@ async fn run_agent_loop(
                     Some(found) if !warned_about_context => {
                         warned_about_context = true;
                         eprintln!(
-                            "\n\x1b[33m[context] {}\x1b[0m",
-                            crate::core::agent::context_pressure::line(&found)
+                            "\n{}",
+                            color::paint(
+                                "33",
+                                format_args!(
+                                    "[context] {}",
+                                    crate::core::agent::context_pressure::line(&found),
+                                ),
+                            ),
                         );
                     }
                     Some(_) => {}
@@ -2021,9 +2054,15 @@ async fn run_agent_loop(
     if persisted.saved && !format.is_machine() {
         if let Some(id) = session_id.as_deref() {
             eprintln!(
-                "\x1b[2m[session {} - resume with `flint --resume={}`]\x1b[0m",
-                short_id(id),
-                short_id(id)
+                "{}",
+                color::paint(
+                    "2",
+                    format_args!(
+                        "[session {} - resume with `flint --resume={}`]",
+                        short_id(id),
+                        short_id(id),
+                    ),
+                ),
             );
         }
     }
@@ -2489,7 +2528,13 @@ async fn strand_pending_permissions(registry: &PermissionRegistry, format: Outpu
             ));
         } else {
             eprintln!(
-                "\x1b[33m[permission] auto-denied '{request_id}' (client closed stdin)\x1b[0m"
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!(
+                        "[permission] auto-denied '{request_id}' (client closed stdin)",
+                    ),
+                ),
             );
         }
     }
@@ -2508,7 +2553,7 @@ fn report_input_error(format: OutputFormat, message: &str, line: &str) {
     if format.is_stream_json() {
         print_json_line(&InputErrorRecord::new(message, line));
     } else {
-        eprintln!("\x1b[33m[input] {message}\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[input] {message}")));
     }
 }
 
@@ -2675,8 +2720,14 @@ async fn print_event(
 ) {
     if crate::core::cli::auth::account::take_claude_alias_engaged() {
         eprintln!(
-            "\x1b[33m[warning] {}\x1b[0m",
-            crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE
+            "{}",
+            color::paint(
+                "33",
+                format_args!(
+                    "[warning] {}",
+                    crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE,
+                ),
+            ),
         );
     }
     match ev {
@@ -2699,7 +2750,7 @@ async fn print_event(
             // Live command output is the noisiest thing a run produces, and
             // the whole of it arrives again with the tool result.
             if density != Density::Compact {
-                eprint!("\x1b[2m{delta}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{delta}")));
                 let _ = std::io::stderr().flush();
             }
         }
@@ -2707,15 +2758,15 @@ async fn print_event(
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
             if density != Density::Compact {
-                eprint!("\x1b[2m{text}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{text}")));
                 let _ = std::io::stderr().flush();
             }
         }
         StreamEvent::Step { index, max } => {
             if density != Density::Compact {
                 match max {
-                    0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
-                    m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
+                    0 => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}]"))),
+                    m => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}/{m}]"))),
                 }
             }
         }
@@ -2735,13 +2786,25 @@ async fn print_event(
                     usage.total_tokens.unwrap_or(0),
                 );
                 eprintln!(
-                    "\x1b[2m[turn-usage] in={input} out={output} total={total}\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[turn-usage] in={input} out={output} total={total}",
+                        ),
+                    ),
                 );
             }
         }
         StreamEvent::ToolCall { name, args, .. } => eprintln!(
-            "\x1b[2m[tool] {}\x1b[0m",
-            crate::core::agent::events::describe_tool_call(&name, &args)
+            "{}",
+            color::paint(
+                "2",
+                format_args!(
+                    "[tool] {}",
+                    crate::core::agent::events::describe_tool_call(&name, &args),
+                ),
+            ),
         ),
         StreamEvent::ToolResult {
             content, is_error, ..
@@ -2754,17 +2817,17 @@ async fn print_event(
             // A failure is never quiet: a compact run drops results, not the
             // news that something did not work.
             if density != Density::Compact || is_error {
-                eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("[{tag}] {content}")));
             }
         }
         StreamEvent::SubagentStart { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] started (background)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] started (background)")))
         }
         StreamEvent::SubagentQueued { name, waiting, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] queued ({waiting} waiting)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] queued ({waiting} waiting)")))
         }
         StreamEvent::SubagentEnd { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] finished\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
         }
         StreamEvent::Subagent { name, event, .. } => {
             if let StreamEvent::ToolCall {
@@ -2772,8 +2835,14 @@ async fn print_event(
             } = *event
             {
                 eprintln!(
-                    "\x1b[2m[subagent:{name}] {}\x1b[0m",
-                    crate::core::agent::events::describe_tool_call(&tool, &args)
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[subagent:{name}] {}",
+                            crate::core::agent::events::describe_tool_call(&tool, &args),
+                        ),
+                    ),
                 );
             }
         }
@@ -2792,29 +2861,33 @@ async fn print_event(
                     )
                 };
                 eprintln!(
-                    "[2m[resources] {figures} ({} of {} commands measured)[0m",
-                    resources.measured_commands, resources.commands
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[resources] {figures} ({} of {} commands measured)",
+                            resources.measured_commands, resources.commands
+                        ),
+                    ),
                 );
             }
         }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
-            eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
+            eprintln!("\n{}", color::paint("2", format_args!("[done] stop_reason={stop_reason} tokens={tokens}")));
         }
         StreamEvent::Error { code, message } => {
             // AH-009: the event already carries the classification, so the
             // line says what kind of failure it was once, and a cancellation
             // does not read as a crash.
             if code == "cancelled" {
-                eprintln!("
-[2m[stopped] {message}[0m");
+                eprintln!("\n{}", color::paint("2", format_args!("[stopped] {message}")));
             } else {
-                eprintln!("
-[31m[error:{code}] {message}[0m");
+                eprintln!("\n{}", color::paint("31", format_args!("[error:{code}] {message}")));
             }
         }
         StreamEvent::AskRequest { .. } => {
-            eprintln!("\n\x1b[31m[error] interactive ask requires `flint agent ui`\x1b[0m")
+            eprintln!("\n{}", color::paint("31", format_args!("[error] interactive ask requires `flint agent ui`")))
         }
         // Headless never renders an ask prompt, so there is nothing to dismiss.
         StreamEvent::AskResolved { .. } => {}
@@ -2836,18 +2909,24 @@ async fn print_event(
         } => {
             // Why a call auto-approval would have run is being asked about.
             if let Some(reason) = &reason {
-                eprintln!("\x1b[33m[permission] {reason}\x1b[0m");
+                eprintln!("{}", color::paint("33", format_args!("[permission] {reason}")));
             }
             let detail = command
                 .map(|c| format!(" ({c})"))
                 .or_else(|| path.map(|p| format!(" on {p}")))
                 .unwrap_or_default();
             if let Some(diff) = diff {
-                eprintln!("\x1b[2m{diff}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("{diff}")));
             }
             if duplex {
                 eprintln!(
-                    "\x1b[33m[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "33",
+                        format_args!(
+                            "[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin",
+                        ),
+                    ),
                 );
                 return;
             }
@@ -2869,11 +2948,11 @@ async fn prompt_permission(
 ) -> PermissionDecision {
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
-        eprintln!("\x1b[33m[permission] auto-denied {capability} via '{tool_name}' (non-interactive)\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {
-        eprint!("\x1b[33m[permission] allow {capability} via '{tool_name}'{detail}? [y/N] \x1b[0m");
+        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N] ")));
         let _ = std::io::stderr().flush();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).is_err() {
@@ -2890,6 +2969,75 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// #200: every colored line goes through `color::paint`, so NO_COLOR and
+    /// non-terminal stderr are honored. Neither source may hold an SGR
+    /// sequence of its own, whether escaped or as a raw ESC character.
+    #[test]
+    fn cli_sources_hold_no_raw_escape_sequences() {
+        let escaped = concat!("\\", "x1b[");
+        for (name, src) in [
+            ("core/cli/mod.rs", include_str!("mod.rs")),
+            ("bin/flint.rs", include_str!("../../bin/flint.rs")),
+        ] {
+            assert!(!src.contains(escaped), "{name} writes an escape sequence directly");
+            assert!(!src.contains('\u{1b}'), "{name} holds a raw ESC character");
+        }
+    }
+
+    /// #143: deleting a thread drops its snapshot ref in the repository the
+    /// thread recorded, not only the scratch index.
+    #[test]
+    fn deleting_a_thread_drops_its_snapshot_ref() {
+        use crate::core::agent::git;
+        let git_in = |dir: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let repo = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        git_in(repo.path(), &["init", "-q"]);
+        // The empty tree (stdin is empty), written so commit-tree can use it.
+        let tree = git_in(repo.path(), &["hash-object", "-t", "tree", "-w", "--stdin"]);
+        let sha = git_in(
+            repo.path(),
+            &[
+                "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                "commit-tree", &tree, "-m", "s",
+            ],
+        );
+        let id = "cli-delete-drops-ref";
+        git::update_ref(repo.path(), id, &sha).unwrap();
+        let reference = git::snapshot_ref(id);
+        git_in(repo.path(), &["rev-parse", "--verify", &reference]);
+
+        let meta_path = super::get_thread_metadata_path(data.path(), id);
+        std::fs::create_dir_all(meta_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &meta_path,
+            serde_json::json!({
+                "id": id,
+                "metadata": { super::SNAPSHOT_REPO_KEY: repo.path().to_string_lossy() },
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        super::delete_thread_at(data.path(), id).unwrap();
+
+        let still = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "--quiet", &reference])
+            .current_dir(repo.path())
+            .output()
+            .unwrap();
+        assert!(!still.status.success(), "snapshot ref survived the delete");
+        assert!(!meta_path.exists());
+    }
+
     /// AH-181: a declared density is read, and anything that is not one is
     /// refused rather than quietly treated as the default -- a run that says
     /// less than somebody asked it to is a run whose log is missing what they

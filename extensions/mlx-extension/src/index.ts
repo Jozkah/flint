@@ -400,7 +400,11 @@ export default class mlx_extension extends AIEngine {
       try {
         await fetch(`http://localhost:${sessionInfo.port}/health`)
       } catch (e) {
-        this.unload(sessionInfo.model_id)
+        // Best-effort cleanup: unload() rejects when the session is already
+        // gone, and that rejection must not escape as an unhandled one.
+        this.unload(sessionInfo.model_id).catch((err) =>
+          logger.warn('Failed to unload crashed MLX model:', err)
+        )
         throw new Error('MLX model appears to have crashed! Please reload!')
       }
     } else {
@@ -505,18 +509,21 @@ export default class mlx_extension extends AIEngine {
 
           if (trimmedLine.startsWith('data: ')) {
             const jsonStr = trimmedLine.slice(6)
+            let data: chatCompletionChunk
             try {
-              const data = JSON.parse(jsonStr) as chatCompletionChunk
-
-              if (data.choices?.[0]?.finish_reason === 'length') {
-                throw new Error(OUT_OF_CONTEXT_SIZE)
-              }
-
-              yield data
+              data = JSON.parse(jsonStr) as chatCompletionChunk
             } catch (e) {
               logger.error('Error parsing MLX stream JSON:', e)
               throw e
             }
+
+            // A context-limit stop is an expected outcome, not a parse
+            // failure, so it is raised outside the parse try/catch.
+            if (data.choices?.[0]?.finish_reason === 'length') {
+              throw new Error(OUT_OF_CONTEXT_SIZE)
+            }
+
+            yield data
           } else if (trimmedLine.startsWith('error: ')) {
             const jsonStr = trimmedLine.slice(7)
             const error = JSON.parse(jsonStr)
@@ -678,14 +685,6 @@ export default class mlx_extension extends AIEngine {
       size_bytes,
       capabilities: capabilities,
     })
-  }
-
-  private createDownloadTaskId(modelId: string) {
-    // prepend provider to make taksId unique across providers
-    const cleanModelId = modelId.includes('.')
-      ? modelId.slice(0, modelId.indexOf('.'))
-      : modelId
-    return `${this.provider}/${cleanModelId}`
   }
 
   override async abortImport(modelId: string): Promise<void> {
@@ -866,13 +865,14 @@ export default class mlx_extension extends AIEngine {
               args: [tokenizerConfigPath],
             }
           )
-          // Check for tool/function calling indicators
+          // Check for tool/function calling indicators. Not 'assistant':
+          // that is the chat role name in nearly every chat template, so it
+          // marked almost every safetensors model as tool-capable (#64).
           const tcLower = tokenizerConfigContent.toLowerCase()
           if (
             tcLower.includes('function_call') ||
             tcLower.includes('tool_use') ||
-            tcLower.includes('tools') ||
-            tcLower.includes('assistant')
+            tcLower.includes('tools')
           ) {
             logger.info(
               `Tool support detected from tokenizer_config.json for ${modelId}`

@@ -16,7 +16,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CRATE_DIR="$SCRIPT_DIR/src-tauri"
 INSTALL_DIR="${HOME}/.local/bin"
-BIN_NAME="jan"
+# The Cargo [[bin]] target and the installed command name (#52).
+BIN_NAME="flint"
 
 # Ensure install dir exists
 mkdir -p "$INSTALL_DIR"
@@ -32,9 +33,9 @@ build() {
     fi
 
     echo "==> Building CLI binary (${profile})..."
-    (cd "$CRATE_DIR" && cargo build $flag --no-default-features --features cli --bin jan)
+    (cd "$CRATE_DIR" && cargo build $flag --no-default-features --features cli --bin "$BIN_NAME")
 
-    local artifact="$CRATE_DIR/target/$target_dir/jan"
+    local artifact="$CRATE_DIR/target/$target_dir/$BIN_NAME"
     if [ ! -f "$artifact" ]; then
         echo "ERROR: build artifact not found at $artifact"
         exit 1

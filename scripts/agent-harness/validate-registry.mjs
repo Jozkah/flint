@@ -24,11 +24,15 @@ problems.push(...validateRegistry(doc))
 problems.push(...findMissingFiles(doc, REPO_ROOT))
 
 if (problems.length === 0) {
+  // The rendered markdown is gitignored (5588dd809): it is only checked for
+  // drift when a local copy has been generated.
   let current
   try {
     current = readFileSync(MARKDOWN_PATH, 'utf8')
   } catch (error) {
-    problems.push(`Could not read ${MARKDOWN_PATH}: ${error.message}`)
+    if (error.code !== 'ENOENT') {
+      problems.push(`Could not read ${MARKDOWN_PATH}: ${error.message}`)
+    }
   }
   if (current !== undefined && current !== renderMarkdown(doc)) {
     problems.push(

@@ -246,6 +246,10 @@ pub fn checks(project_root: &Path) -> Vec<Check> {
 
 /// Run one check, bounded.
 fn run(check: &Check, project_root: &Path) -> Result_ {
+    run_within(check, project_root, CHECK_DEADLINE)
+}
+
+fn run_within(check: &Check, project_root: &Path, deadline: Duration) -> Result_ {
     let started = Instant::now();
     let mut command = std::process::Command::new(&check.command[0]);
     command
@@ -257,6 +261,14 @@ fn run(check: &Check, project_root: &Path) -> Result_ {
     {
         use jan_process::CommandConsole;
         command.background();
+    }
+    // Its own process group, so a timeout can take down everything it
+    // started (a test runner's workers, a compiler's children), not only the
+    // direct child (Jozkah/jan#163).
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
     }
     let spawned = command.spawn();
     let mut child = match spawned {
@@ -286,7 +298,11 @@ fn run(check: &Check, project_root: &Path) -> Result_ {
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
-            Ok(None) if started.elapsed() >= CHECK_DEADLINE => {
+            Ok(None) if started.elapsed() >= deadline => {
+                // The whole tree: killing only the direct child left its
+                // workers running, still holding the output pipes open, so
+                // the drain threads below never finished (#163).
+                let _ = tauri_plugin_agent_tools::tools::proc::kill_tree(child.id());
                 let _ = child.kill();
                 let _ = child.wait();
                 break None;
@@ -603,6 +619,28 @@ mod tests {
         assert_eq!(Kind::parse("deps"), Ok(Kind::Dependencies));
         let err = Kind::parse("everything").unwrap_err();
         assert!(err.contains("is not a check"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A check that times out takes its whole process tree with it. Only the
+    /// direct child used to be killed: the grandchild kept the output pipe
+    /// open, so the drain never finished and the scan hung (#163).
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_check_takes_its_children_with_it() {
+        let root = temp_project("tree");
+        let check = Check {
+            kind: Kind::Test,
+            command: vec!["sh".into(), "-c".into(), "sleep 60 & sleep 60".into()],
+            evidence: "test".into(),
+        };
+        let started = Instant::now();
+        let result = run_within(&check, &root, Duration::from_secs(1));
+        assert!(matches!(result.outcome, Outcome::TimedOut), "{:?}", result.outcome);
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the drain waited on a surviving child"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

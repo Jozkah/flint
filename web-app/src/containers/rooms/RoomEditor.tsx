@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { normalizeError, useRoomsApi, useRoomsState, type RoomsUiError } from './roomsBindings'
-import { activeParticipants, clampLimit, isEditable, limitCeiling } from './roomUi'
+import { activeParticipants, clampLimit, isEditable, limitCeiling, limitMin } from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
 import { RoomSection } from './RoomSection'
 
@@ -61,11 +61,21 @@ function displayCeiling(key: keyof RoomLimits): number | null {
   return key === 'maxDurationMs' ? max / MINUTE : max
 }
 
-function parseLimit(key: keyof RoomLimits, raw: string): { value: number | null; capped: boolean } {
+/** The minimum shown to the user, in the same unit as the input. */
+function displayMin(key: keyof RoomLimits): number {
+  const min = limitMin(key)
+  return key === 'maxDurationMs' ? min / MINUTE : min
+}
+
+function parseLimit(
+  key: keyof RoomLimits,
+  raw: string
+): { value: number | null; capped: boolean; raised: boolean } {
   if (key === 'maxCostUsd') {
-    if (raw.trim() === '') return { value: null, capped: false }
+    if (raw.trim() === '') return { value: null, capped: false, raised: false }
     const n = Number(raw)
-    return { value: Number.isFinite(n) && n >= 0 ? n : 0, capped: false }
+    const valid = Number.isFinite(n) && n >= 0
+    return { value: valid ? n : 0, capped: false, raised: Number.isFinite(n) && n < 0 }
   }
   const n = Number(raw)
   const base = key === 'maxDurationMs' ? n * MINUTE : n
@@ -192,7 +202,12 @@ export function RoomEditor({ room }: { room: Room }) {
       return
     }
     setParticipants((prev) => {
-      const kept = prev.filter((d) => fresh.some((f) => f.id === d.id))
+      // Kept drafts keep the user's edits but take the new revision's
+      // participant as their source, so availability stays current (#165).
+      const kept = prev.flatMap((d) => {
+        const f = fresh.find((x) => x.id === d.id)
+        return f ? [{ ...d, source: f.source }] : []
+      })
       const added = fresh.filter((f) => !prev.some((d) => d.id === f.id))
       return [...kept, ...added]
     })
@@ -705,6 +720,10 @@ export function RoomEditor({ room }: { room: Room }) {
                   <p id={`${lid}-hint`} className="text-xs text-muted-foreground">
                     {parsed.capped && ceiling !== null ? (
                       <span className="text-destructive">{t('rooms:editor.clamped', { max: ceiling })}</span>
+                    ) : parsed.raised ? (
+                      <span className="text-destructive">
+                        {t('rooms:editor.raisedToMin', { min: displayMin(key) })}
+                      </span>
                     ) : key === 'maxCostUsd' ? (
                       t('rooms:editor.costHint')
                     ) : (

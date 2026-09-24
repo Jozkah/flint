@@ -27,12 +27,52 @@ where
             let start = total_downloaded;
             let end = std::cmp::min(start + chunk_size - 1, max_total_size - 1);
 
-            let resp = client
+            let mut resp = client
                 .get(path)
                 .header("Range", format!("bytes={}-{}", start, end))
                 .send()
                 .await
                 .map_err(|e| format!("Failed to fetch chunk {}-{}: {}", start, end, e))?;
+
+            let status = resp.status();
+            if status == reqwest::StatusCode::OK {
+                // The server ignored Range and is sending the whole file from
+                // byte 0. Appending it as "the next chunk" would duplicate the
+                // file, and reading it with bytes() would pull down every byte
+                // of a multi-GB model. Stream it once, up to the cap, instead.
+                let mut data = Vec::new();
+                let mut parsed_at = 0;
+                loop {
+                    let next = resp
+                        .chunk()
+                        .await
+                        .map_err(|e| format!("Failed to read response: {}", e))?;
+                    let done = match next {
+                        Some(bytes) => {
+                            data.extend_from_slice(&bytes);
+                            data.len() >= max_total_size
+                        }
+                        None => true,
+                    };
+                    if done || data.len() - parsed_at >= chunk_size {
+                        parsed_at = data.len();
+                        let mut cursor = std::io::Cursor::new(data.as_slice());
+                        if let Ok(parsed) = parse(&mut cursor) {
+                            return Ok(parsed);
+                        }
+                    }
+                    if done {
+                        break;
+                    }
+                }
+                return Err(format!("Could not read {} from downloaded data", what));
+            }
+            if status != reqwest::StatusCode::PARTIAL_CONTENT {
+                return Err(format!(
+                    "Failed to fetch {} from {}: HTTP {}",
+                    what, path, status
+                ));
+            }
 
             let chunk_data = resp
                 .bytes()
@@ -149,11 +189,19 @@ pub async fn estimate_kv_cache_internal(
             let total_heads = meta
                 .get(&n_head_key)
                 .and_then(|s| s.parse::<u64>().ok())
+                .filter(|&n| n > 0)
                 .unwrap_or(n_head);
 
+            // Only fill in the length that is missing: a key or value length
+            // the file does declare is authoritative, and architectures with
+            // asymmetric attention have key_length != value_length.
             let head_dim = emb_len / total_heads;
-            key_len = head_dim;
-            val_len = head_dim;
+            if key_len == 0 {
+                key_len = head_dim;
+            }
+            if val_len == 0 {
+                val_len = head_dim;
+            }
 
             log::info!(
                 "Calculated key_len and val_len from embedding_length: {} / {} heads = {} per head",
@@ -187,18 +235,32 @@ pub async fn estimate_kv_cache_internal(
     // Assume fp16
     const BYTES_PER_ELEMENT: u64 = 2;
 
+    // Every factor below comes from the file's own metadata. Release builds
+    // disable overflow checks, so plain arithmetic on a crafted or corrupt
+    // value would wrap to a small, plausible-looking estimate. Checked
+    // arithmetic turns that into an error instead.
+    let overflow = || KVCacheError::SizeOverflow;
+
     // Per-token KV size
-    let kv_per_token = n_layer * n_head * (key_len + val_len) * BYTES_PER_ELEMENT;
+    let kv_per_token = key_len
+        .checked_add(val_len)
+        .and_then(|kv| kv.checked_mul(n_layer))
+        .and_then(|v| v.checked_mul(n_head))
+        .and_then(|v| v.checked_mul(BYTES_PER_ELEMENT))
+        .ok_or_else(overflow)?;
 
     // Pure full-attention cost
-    let full_cost = ctx_len * kv_per_token;
+    let full_cost = ctx_len.checked_mul(kv_per_token).ok_or_else(overflow)?;
 
     // Pure sliding-window cost (tiny, only keeps last W tokens)
-    let sliding_cost = sliding_window.map(|w| w * kv_per_token);
+    let sliding_cost = match sliding_window {
+        Some(w) => Some(w.checked_mul(kv_per_token).ok_or_else(overflow)?),
+        None => None,
+    };
 
     // Middle estimate: average of sliding + full if sliding_window is present
     let chosen_size = if let Some(slide) = sliding_cost {
-        let middle = (full_cost + slide) / 2;
+        let middle = full_cost / 2 + slide / 2 + (full_cost % 2 + slide % 2) / 2;
         log::info!(
             "KV estimates -> sliding: {} bytes (~{:.2} MB), full: {} bytes (~{:.2} MB), middle: {} bytes (~{:.2} MB)",
             slide,
@@ -222,4 +284,187 @@ pub async fn estimate_kv_cache_internal(
         size: chosen_size,
         per_token_size: kv_per_token,
     })
+}
+
+#[cfg(test)]
+mod remote_fetch_status_tests {
+    use super::*;
+    use std::io::Read;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Serves every request with the same status line and body.
+    async fn serve(status: &'static str, body: Vec<u8>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut req = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => req.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let head = format!(
+                        "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        status,
+                        body.len()
+                    );
+                    let _ = sock.write_all(head.as_bytes()).await;
+                    let _ = sock.write_all(&body).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        format!("http://{}/model.gguf", addr)
+    }
+
+    fn read_all(r: &mut (dyn ReadSeek + '_)) -> std::io::Result<Vec<u8>> {
+        let mut out = Vec::new();
+        r.read_to_end(&mut out)?;
+        if out.starts_with(b"GGUF") {
+            Ok(out)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "not gguf"))
+        }
+    }
+
+    // Regression for #161: an HTTP error must be reported, not parsed as bytes.
+    #[tokio::test]
+    async fn an_http_error_is_reported_with_its_status() {
+        let url = serve("404 Not Found", b"GGUF-looking error page".to_vec()).await;
+        let err = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap_err();
+        assert!(err.contains("404"), "status missing from error: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_server_ignoring_range_yields_the_file_once() {
+        let body = b"GGUF-whole-file".to_vec();
+        let url = serve("200 OK", body.clone()).await;
+        let data = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap();
+        assert_eq!(data, body);
+    }
+
+    #[tokio::test]
+    async fn a_partial_content_response_is_parsed() {
+        let body = b"GGUF-range".to_vec();
+        let url = serve("206 Partial Content", body.clone()).await;
+        let data = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap();
+        assert_eq!(data, body);
+    }
+}
+
+#[cfg(test)]
+mod kv_estimate_fallback_tests {
+    use super::*;
+
+    fn meta(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    // Regression for #66: a declared key_length must survive when only
+    // value_length is missing (and vice versa).
+    #[tokio::test]
+    async fn declared_key_length_is_kept_when_value_length_is_missing() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.attention.key_length", "192"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        // key 192 (declared) + value 512/4 = 128 (derived)
+        assert_eq!(est.per_token_size, 2 * 4 * (192 + 128) * 2);
+    }
+
+    #[tokio::test]
+    async fn declared_value_length_is_kept_when_key_length_is_missing() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.attention.value_length", "64"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 2 * 4 * (128 + 64) * 2);
+    }
+
+    #[tokio::test]
+    async fn both_lengths_missing_still_derive_from_embedding_length() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 2 * 4 * (128 + 128) * 2);
+    }
+}
+
+#[cfg(test)]
+mod kv_estimate_overflow_tests {
+    use super::*;
+
+    fn meta(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    // Regression for #154: implausible metadata must be rejected, not wrapped.
+    #[tokio::test]
+    async fn implausible_metadata_is_an_error_not_a_wrapped_estimate() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "18446744073709551615"),
+            ("llama.attention.head_count", "4294967296"),
+            ("llama.attention.key_length", "4294967296"),
+            ("llama.attention.value_length", "4294967296"),
+            ("llama.context_length", "4096"),
+        ]);
+        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        assert!(matches!(err, KVCacheError::SizeOverflow));
+    }
+
+    #[tokio::test]
+    async fn context_multiplication_overflow_is_an_error() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "32"),
+            ("llama.attention.head_count", "32"),
+            ("llama.attention.key_length", "128"),
+            ("llama.attention.value_length", "128"),
+            ("llama.context_length", "18446744073709551615"),
+        ]);
+        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        assert!(matches!(err, KVCacheError::SizeOverflow));
+    }
+
+    #[tokio::test]
+    async fn ordinary_metadata_still_estimates() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "32"),
+            ("llama.attention.head_count", "32"),
+            ("llama.attention.key_length", "128"),
+            ("llama.attention.value_length", "128"),
+            ("llama.context_length", "4096"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 32 * 32 * 256 * 2);
+        assert_eq!(est.size, 4096 * 32 * 32 * 256 * 2);
+    }
 }

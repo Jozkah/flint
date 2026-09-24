@@ -159,4 +159,27 @@ describe('chatRun', () => {
     endChatRun('a', 'done')
     expect(chatRunOf('b')?.run).toBe(b.run)
   })
+
+  it('ignores a superseded request ending or marking a newer turn (#137)', () => {
+    const stale = continueOrBeginChatRun('t', { model: 'm' }).run
+    // Stop and resend: the newer request opens its own turn first.
+    const fresh = continueOrBeginChatRun('t', { model: 'm' }).run
+    expect(fresh).not.toBe(stale)
+    nextChatInvocation('t')
+
+    markChatAwaitingTools('t', true, stale)
+    expect(chatAwaitsTools('t')).toBe(false)
+    expect(chatAwaitsTools('t', stale)).toBe(false)
+    endChatRun('t', 'error', undefined, stale)
+    endChatRun('t', 'cancelled', undefined, stale)
+
+    const open = chatRunOf('t')
+    expect(open?.run).toBe(fresh)
+    expect(open?.steps).toBe(1)
+    expect(open?.awaitingTools).toBe(false)
+    expect(written().filter((e) => e.kind === 'run.ended' && e.run === fresh)).toEqual([])
+
+    endChatRun('t', 'done', undefined, fresh)
+    expect(chatRunOf('t')).toBeUndefined()
+  })
 })

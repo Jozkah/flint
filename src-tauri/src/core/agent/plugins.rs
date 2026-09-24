@@ -1503,6 +1503,38 @@ struct Staged {
     record: InstallRecord,
 }
 
+/// Refuse a git argument that git would parse as an option (`--upload-pack=`,
+/// `-c`, ...), which runs a command before any clone happens.
+fn reject_option_like(value: &str, what: &str) -> Result<(), PluginError> {
+    if value.trim_start().starts_with('-') {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("invalid plugin {what} '{value}' (must not start with '-')"),
+        ));
+    }
+    Ok(())
+}
+
+/// Checks for a marketplace entry's `repo` and `ref`, which come from a remote
+/// index and are no more trusted than user input: the repo must be a git URL
+/// and neither may read as a git option. (git is spawned without a shell, so
+/// the option check is what matters; a `file://` repo may carry a Windows
+/// path's backslashes, so the shell-metacharacter check is left to the ref.)
+fn validate_marketplace_entry(repo: &str, r#ref: Option<&str>) -> Result<(), PluginError> {
+    reject_option_like(repo, "repository")?;
+    if !looks_like_git(repo.trim()) {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("marketplace entry repo '{repo}' is not a git URL"),
+        ));
+    }
+    if let Some(r#ref) = r#ref {
+        validate_spec(r#ref)?;
+        reject_option_like(r#ref, "ref")?;
+    }
+    Ok(())
+}
+
 /// Clone a plugin source into a staging dir, then install from it. A failed
 /// or cancelled clone, or an empty repo, leaves nothing behind.
 ///
@@ -1519,18 +1551,30 @@ fn install_git(
     source_kind: &str,
 ) -> Result<GitInstall, PluginError> {
     let source = parse_git_source(url)?;
+    let r#ref = r#ref.or(source.r#ref.as_deref());
+    reject_option_like(&source.url, "repository")?;
+    if let Some(r#ref) = r#ref {
+        reject_option_like(r#ref, "ref")?;
+    }
     let plugins = plugin_root_dir(scope);
     std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
     ctx.check()?;
     let tmp = new_staging(&plugins);
 
-    let r#ref = r#ref.or(source.r#ref.as_deref());
     let mut cmd = git_command();
-    cmd.args(["clone", "--depth", "1"]);
+    // A repository's symbolic links are checked out as plain files holding
+    // the link text, never as links. A link in a plugin would otherwise lead
+    // out of it: a skill file pointing at the project's `.env` is read and
+    // handed to the model by `skill_read`, and a directory link named in a
+    // tree URL's subdirectory makes the installer move a real directory from
+    // outside the clone into the plugin store. The local-folder install
+    // already skips links for the same reason.
+    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
     if let Some(r#ref) = r#ref {
         cmd.args(["--branch", r#ref]);
     }
-    cmd.arg(&source.url).arg(&tmp);
+    // `--` ends option parsing: a positional can never be read as a git option.
+    cmd.arg("--").arg(&source.url).arg(&tmp);
     if !ctx.terminal_prompts {
         // No terminal to answer a credential prompt: fail instead of hanging.
         cmd.env("GIT_TERMINAL_PROMPT", "0");
@@ -1557,6 +1601,23 @@ fn install_git(
         .as_deref()
         .map(|subdir| tmp.join(subdir))
         .unwrap_or_else(|| tmp.clone());
+    // Whatever the checkout holds, the payload must resolve inside the clone.
+    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
+        (Ok(p), Ok(t)) => p.starts_with(&t),
+        // A subdirectory that does not exist is reported as such below.
+        (Err(_), _) => true,
+        (Ok(_), Err(_)) => false,
+    };
+    if !inside {
+        remove_staging(&tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin subdirectory leads outside the repository: '{}'",
+                source.subdir.as_deref().unwrap_or("")
+            ),
+        ));
+    }
     let staged = Staged {
         tmp,
         payload_root,
@@ -2143,6 +2204,7 @@ async fn install_marketplace(
             format!("plugin '{name}' not found on the marketplace"),
         )
     })?;
+    validate_marketplace_entry(&entry.repo, entry.r#ref.as_deref())?;
     // Marketplace installs clone a git repo too: same blocking-work treatment.
     let scope = scope.clone();
     spawn_blocking(move || {
@@ -2507,6 +2569,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A symbolic link committed to a plugin repository is never checked out
+    /// as a link, so a skill cannot be a window onto a file outside the
+    /// plugin (here, a `.env` two levels up).
+    #[tokio::test]
+    async fn install_never_checks_out_a_symlink() {
+        let repo = make_repo("symlink", true);
+        let r = repo.to_str().unwrap();
+        std::fs::write(repo.join("link.txt"), "../../../.env").unwrap();
+        let blob = git(&["-C", r, "hash-object", "-w", "link.txt"]).unwrap();
+        std::fs::remove_file(repo.join("link.txt")).unwrap();
+        let info = format!("120000,{},skills/notes.md", blob.trim());
+        git(&["-C", r, "update-index", "--add", "--cacheinfo", &info]).unwrap();
+        git(&["-C", r, "commit", "-m", "link", "--author=Jan Test <test@jan.ai>"]).unwrap();
+
+        let root = unique_root("symlink");
+        let p = install(&root, &format!("file://{}", repo.display())).await.unwrap();
+        let notes = skills::plugins_dir(&root).join(&p.name).join("skills/notes.md");
+        let meta = std::fs::symlink_metadata(&notes).expect("the link's path is still there");
+        assert!(!meta.file_type().is_symlink(), "a repository symlink was checked out as a link");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
     #[tokio::test]
     async fn install_names_from_repo_dir_without_manifest() {
         let repo = make_repo("install2", false);
@@ -2563,6 +2648,24 @@ mod tests {
         assert!(!skills::plugins_dir(&root).join(&p.name).exists());
         assert!(remove(&root, &p.name).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #51: a marketplace entry cannot smuggle a git option into `git clone`.
+    #[test]
+    fn marketplace_entries_that_read_as_git_options_are_refused() {
+        for repo in [
+            "--upload-pack=touch INJECTED; false",
+            " -cprotocol.ext.allow=always",
+            "not-a-url",
+        ] {
+            let err = validate_marketplace_entry(repo, None).unwrap_err();
+            assert_eq!(err.code, PluginErrorCode::InvalidSource, "{repo}");
+        }
+        let ok = "https://github.com/o/r.git";
+        assert!(validate_marketplace_entry(ok, Some("main")).is_ok());
+        assert!(validate_marketplace_entry(ok, Some("--upload-pack=x")).is_err());
+        assert!(reject_option_like("-x", "ref").is_err());
+        assert!(reject_option_like("v1.0", "ref").is_ok());
     }
 
     #[tokio::test]

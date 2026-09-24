@@ -42,7 +42,9 @@ jobs:
             if [[ "$line" == *"="* ]]; then
               var_name=$(echo $line | cut -d '=' -f 1)
               echo $var_name
-              var_value="$(jq -r --arg key "$var_name" '.[$key]' <<< "$SECRETS")"
+              # "// empty": an unset secret is an empty value, not the word
+              # "null" baked into the site (#106).
+              var_value="$(jq -r --arg key "$var_name" '.[$key] // empty' <<< "$SECRETS")"
               echo "$var_name=$var_value" >> .env
             fi
           done < "$env_example_file"

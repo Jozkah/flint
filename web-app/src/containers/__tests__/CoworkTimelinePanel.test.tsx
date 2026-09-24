@@ -124,6 +124,17 @@ describe('CoworkTimelinePanel', () => {
     expect(screen.getByTestId('timeline-detail-refusal')).toHaveTextContent('tool-not-offered')
   })
 
+  // #170: opening the panel on an idle session read the log twice from the
+  // same point, and every phase in a row's history appeared twice.
+  it('lists each phase of a call once when opened on an idle session', async () => {
+    render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    await waitFor(() => expect(rows()).toHaveLength(6))
+    await act(async () => {})
+    const read = rows().find((r) => r.textContent?.includes('a.txt'))!
+    fireEvent.click(read.querySelector('[data-row-toggle]')!)
+    expect(screen.getByText('requested → succeeded')).toBeInTheDocument()
+  })
+
   it('links everything from one model request', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
     await waitFor(() => expect(rows()).toHaveLength(6))

@@ -183,10 +183,51 @@ async fn abort_unload_watcher(state: &Arc<LlamacppState>) {
     }
 }
 
+/// How long a loopback call to the worker may take before it is abandoned.
+///
+/// A worker that accepted the connection but stopped answering would
+/// otherwise hang the command, and whatever frontend flow awaits it, forever.
+/// `/models` is a listing; `/slots/state/erase` deletes files; a reload may
+/// load models, so it gets the same budget as a model load.
+const BUSY_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const ERASE_SLOT_STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const RELOAD_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// An HTTP client for talking to the worker, with a request timeout.
+///
+/// Never falls back to `reqwest::Client::new()`: that client has no timeout,
+/// which is the hang this exists to prevent. If the builder fails (system
+/// proxy discovery is the usual cause), one retry skips proxies -- the worker
+/// is on loopback anyway -- and a second failure is an error.
+fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .or_else(|e| {
+            log::warn!("could not build the engine worker client ({e}); retrying without proxies");
+            reqwest::Client::builder().timeout(timeout).no_proxy().build()
+        })
+        .map_err(|e| {
+            log::error!("could not build the engine worker client: {e}");
+            format!("could not build an HTTP client for the engine worker: {e}")
+        })
+}
+
 /// Models with a request in flight, from the worker's own `/models` listing.
 /// An unreachable worker reports none -- it cannot be generating.
 async fn busy_models(port: u16, api_key: &str) -> Vec<String> {
-    let Ok(resp) = reqwest::Client::new()
+    busy_models_within(port, api_key, BUSY_MODELS_TIMEOUT).await
+}
+
+async fn busy_models_within(
+    port: u16,
+    api_key: &str,
+    timeout: std::time::Duration,
+) -> Vec<String> {
+    let Ok(client) = worker_client(timeout) else {
+        return Vec::new();
+    };
+    let Ok(resp) = client
         .get(format!("http://127.0.0.1:{port}/models"))
         .bearer_auth(api_key)
         .send()
@@ -306,7 +347,7 @@ pub async fn reload_engine_models(
         body["slot_cache_mib"] = serde_json::json!(m);
     }
 
-    let resp = reqwest::Client::new()
+    let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
         .post(format!("http://127.0.0.1:{port}/models/reload"))
         .bearer_auth(&api_key)
         .json(&body)
@@ -357,7 +398,14 @@ pub async fn engine_slots_idle(
             None => return Ok(true),
         }
     };
-    let busy = busy_models(port, &api_key).await;
+    // busy_models has its own request timeout; this outer bound also covers a
+    // client that could not honor it, so the command can never hang.
+    let busy = tokio::time::timeout(
+        BUSY_MODELS_TIMEOUT + std::time::Duration::from_secs(1),
+        busy_models(port, &api_key),
+    )
+    .await
+    .unwrap_or_default();
     Ok(match model_id {
         Some(id) => !busy.contains(&id),
         None => busy.is_empty(),
@@ -425,7 +473,7 @@ pub async fn erase_thread_slot_state(
         body.insert("model".into(), serde_json::Value::String(m));
     }
     let body = serde_json::Value::Object(body);
-    let client = reqwest::Client::new();
+    let client = worker_client(ERASE_SLOT_STATE_TIMEOUT)?;
     let resp = client
         .post(format!("http://127.0.0.1:{port}/slots/state/erase"))
         .bearer_auth(&api_key)
@@ -505,6 +553,32 @@ pub fn get_engine_version() -> EngineVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression for #151: a worker that accepts the connection but never
+    /// answers must not hang `busy_models` (and so `engine_slots_idle`).
+    #[tokio::test]
+    async fn busy_models_gives_up_on_a_silent_worker() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Accept and hold connections without ever writing a response.
+        let server = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = listener.accept().await {
+                held.push(sock);
+            }
+        });
+
+        let started = std::time::Instant::now();
+        let busy = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            busy_models_within(port, "k", std::time::Duration::from_millis(200)),
+        )
+        .await
+        .expect("busy_models hung on a silent worker");
+        assert!(busy.is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        server.abort();
+    }
 
     /// The screen that shows this is the only place a user can check which
     /// engine they are running, so it has to report the pin rather than a

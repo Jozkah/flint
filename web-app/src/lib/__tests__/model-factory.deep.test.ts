@@ -356,6 +356,9 @@ describe('model-factory deep coverage', () => {
       await new Promise((r) => setTimeout(r, 20))
       expect(vi.mocked(httpFetch)).toHaveBeenCalledTimes(2)
       expect(vi.mocked(httpFetch).mock.calls[1][0]).toBe('http://localhost:9090/v1/cancel')
+      // mlx-server rejects /v1/cancel without the session key (#172).
+      const cancelHeaders = vi.mocked(httpFetch).mock.calls[1][1]!.headers as Record<string, string>
+      expect(cancelHeaders.Authorization).toBe('Bearer k')
     })
 
     it('throws when startModel fails', async () => {

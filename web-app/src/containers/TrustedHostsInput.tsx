@@ -24,6 +24,9 @@ export function TrustedHostsInput({
   }
 
   const handleBlur = () => {
+    // A running server keeps its configuration; the field is disabled, and
+    // this guards a blur that still arrives (#111).
+    if (isServerRunning) return
     // Split by comma and clean up each host
     const hosts = inputValue
       .split(',')
@@ -43,10 +46,11 @@ export function TrustedHostsInput({
       value={inputValue}
       onChange={handleChange}
       onBlur={handleBlur}
+      disabled={isServerRunning}
       placeholder={t('common:enterTrustedHosts')}
       className={cn(
         'h-8 text-sm',
-        isServerRunning && 'opacity-50 pointer-events-none'
+        isServerRunning && 'opacity-50'
       )}
     />
   )

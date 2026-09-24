@@ -1,6 +1,5 @@
 {
   "sortNewest": "Més nous",
-  "sortMostDownloaded": "Més descarregats",
   "newChat": "Xat nou",
   "download": "Descarrega",
   "downloaded": "Descarregat",
@@ -11,7 +10,6 @@
   "variants": "Variants",
   "showVariants": "Mostra les variants",
   "useModel": "Utilitza aquest model",
-  "downloadModel": "Descarrega el model",
   "tools": "Eines",
   "searchPlaceholder": "Cerca models a Hugging Face..."
 }

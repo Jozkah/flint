@@ -212,16 +212,40 @@ fn path_for(data_folder: &Path, owner: &str) -> PathBuf {
 ///
 /// Best effort by design: losing the note must not fail the job it describes.
 pub fn save(data_folder: &Path, record: &JobRecord) -> Result<(), String> {
+    write(data_folder, record, false).map(|_| ())
+}
+
+/// Write an ending for a job unless the stored record has one already.
+///
+/// A caller that decides an ending (cancel, reconcile) judged a record it read
+/// earlier; the supervisor may have written the real `Completed`/`Failed` in
+/// the meantime. The first ending written is the one that stands, so the check
+/// is made against the stored record in the same read that the write replaces.
+/// Returns the stored record when it was already ended and nothing was
+/// written.
+pub fn save_ending(data_folder: &Path, record: &JobRecord) -> Result<Option<JobRecord>, String> {
+    write(data_folder, record, true)
+}
+
+fn write(data_folder: &Path, record: &JobRecord, keep_ended: bool) -> Result<Option<JobRecord>, String> {
     // AH-008: the owner names the file this is written to and the id is a key
     // in it, so both are parsed before either is used.
     crate::identity::SessionId::parse(record.owner.as_str()).map_err(|e| e.message().to_string())?;
     crate::identity::JobId::parse(record.id.as_str()).map_err(|e| e.message().to_string())?;
     let path = path_for(data_folder, &record.owner);
     std::fs::create_dir_all(jobs_dir(data_folder)).map_err(|e| e.to_string())?;
-    let mut kept: Vec<JobRecord> = read_owner(data_folder, &record.owner)
-        .into_iter()
-        .filter(|r| r.id != record.id)
-        .collect();
+    // The read-modify-write below runs in the app and in every job's detached
+    // supervisor at once. Without a lock the later rename drops what an
+    // overlapping save wrote (Jozkah/jan#55). The mailbox's lock file works
+    // across processes and cannot wedge on a stale lock.
+    let _held = crate::mailbox::Held::take(&path);
+    let stored = read_owner(data_folder, &record.owner);
+    if keep_ended {
+        if let Some(ended) = stored.iter().find(|r| r.id == record.id && r.state.is_ended()) {
+            return Ok(Some(ended.clone()));
+        }
+    }
+    let mut kept: Vec<JobRecord> = stored.into_iter().filter(|r| r.id != record.id).collect();
     kept.push(record.clone());
     kept.sort_by_key(|r| r.started_at_ms);
     if kept.len() > MAX_RECORDS_PER_OWNER {
@@ -233,10 +257,11 @@ pub fn save(data_folder: &Path, record: &JobRecord) -> Result<(), String> {
         body.push_str(&serde_json::to_string(one).map_err(|e| e.to_string())?);
         body.push('\n');
     }
-    // Atomic: a half-written listing must not replace a whole one.
-    let temp = path.with_extension("jsonl.tmp");
-    std::fs::write(&temp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, &path).map_err(|e| e.to_string())
+    // Atomic: a half-written listing must not replace a whole one. The temp
+    // file is unique per write, so even a save that took a stale lock cannot
+    // stomp another's temp file.
+    crate::atomic_file::write_atomic(&path, body.as_bytes())?;
+    Ok(None)
 }
 
 /// One owner's records, oldest first. A line that cannot be read is skipped:
@@ -466,6 +491,38 @@ mod tests {
             pid,
             created: creation_time_of(pid).expect("this process has a creation time"),
         }
+    }
+
+    /// Jozkah/jan#55: overlapping saves for one owner all land; none is lost
+    /// to a concurrent read-modify-write.
+    #[test]
+    fn concurrent_saves_for_one_owner_keep_every_record() {
+        let d = dir("concurrent");
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let d = d.clone();
+                std::thread::spawn(move || {
+                    for round in 0..5 {
+                        let id = format!("job-{i}-{round}");
+                        save(&d, &JobRecord::started(&id, "session-c", "echo x", me()))
+                            .expect("saved");
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        let ids: std::collections::HashSet<String> = read_owner(&d, "session-c")
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        for i in 0..8 {
+            for round in 0..5 {
+                assert!(ids.contains(&format!("job-{i}-{round}")), "lost job-{i}-{round}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// A job outlives the app that started it, listed to its owner and to

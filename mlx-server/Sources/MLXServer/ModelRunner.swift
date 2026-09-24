@@ -15,13 +15,50 @@ actor ModelRunner {
 
     func currentInjectsThinkingOpener() -> Bool { injectsThinkingOpener }
 
+    /// Context window requested with `--ctx-size`; bounds the KV cache of every
+    /// chat session. nil (or <= 0) leaves the library default in place.
+    private(set) var contextLength: Int?
+
+    func setContextLength(_ value: Int?) {
+        contextLength = Self.kvCacheLimit(ctxSize: value)
+    }
+
+    /// Map a configured context size to the KV-cache size passed to MLX.
+    /// Non-positive values mean "not configured".
+    nonisolated static func kvCacheLimit(ctxSize: Int?) -> Int? {
+        guard let ctxSize, ctxSize > 0 else { return nil }
+        return ctxSize
+    }
+
     /// Load a model from the given path
     /// Supports both local directories and HuggingFace model IDs
     func load(modelPath: String) async throws {
         log("[mlx] Loading model from: \(modelPath)")
 
+        // Fail loudly: returning normally here would let the server print its
+        // readiness lines and serve requests with no model loaded.
+        guard let dir = Self.resolveModelDirectory(modelPath: modelPath) else {
+            log("[mlx] Could not resolve a model directory with config.json for: \(modelPath)")
+            throw MLXServerError.modelPathNotResolved(modelPath)
+        }
+
+        self.model = try await loadModel(
+            from: dir,
+            using: SwiftTransformersTokenizerLoader()
+        )
+        self.injectsThinkingOpener = Self.detectInjectsThinkingOpener(in: dir)
+        log("[mlx] injectsThinkingOpener=\(injectsThinkingOpener)")
+    }
+
+    /// Resolve the directory to load a model from: the path itself when it is a
+    /// directory holding `config.json`, else its parent when that holds
+    /// `config.json`, or the parent of a single file. Returns nil when the path
+    /// does not exist or no candidate directory contains `config.json`.
+    nonisolated static func resolveModelDirectory(
+        modelPath: String,
+        fileManager: FileManager = .default
+    ) -> URL? {
         let modelURL = URL(fileURLWithPath: modelPath)
-        let fileManager = FileManager.default
 
         var isDirectory: ObjCBool = false
         let pathExists = fileManager.fileExists(atPath: modelPath, isDirectory: &isDirectory)
@@ -48,14 +85,7 @@ actor ModelRunner {
             log("[mlx] Using parent directory: \(modelDir!.path)")
         }
 
-        if let dir = modelDir {
-            self.model = try await loadModel(
-                from: dir,
-                using: SwiftTransformersTokenizerLoader()
-            )
-            self.injectsThinkingOpener = Self.detectInjectsThinkingOpener(in: dir)
-            log("[mlx] injectsThinkingOpener=\(injectsThinkingOpener)")
-        }
+        return modelDir
     }
 
     /// Inspect the model folder to see if the chat template injects a `<think>`
@@ -168,14 +198,16 @@ actor ModelRunner {
     }
 
     /// Build GenerateParameters from individual parameters
-    private nonisolated func buildGenerateParameters(
+    nonisolated func buildGenerateParameters(
         temperature: Float,
         topP: Float,
         maxTokens: Int? = nil,
-        repetitionPenalty: Float
+        repetitionPenalty: Float,
+        contextLength: Int? = nil
     ) -> GenerateParameters {
         GenerateParameters(
             maxTokens: maxTokens,
+            maxKVSize: contextLength,
             temperature: temperature,
             topP: topP,
             repetitionPenalty: repetitionPenalty,
@@ -204,7 +236,8 @@ actor ModelRunner {
 
         let generateParameters = buildGenerateParameters(
             temperature: temperature, topP: topP,
-            maxTokens: maxTokens, repetitionPenalty: repetitionPenalty
+            maxTokens: maxTokens, repetitionPenalty: repetitionPenalty,
+            contextLength: contextLength
         )
 
         let toolSpecs = self.buildToolSpecs(from: tools)
@@ -297,7 +330,8 @@ actor ModelRunner {
 
                 let generateParameters = self.buildGenerateParameters(
                     temperature: temperature, topP: topP,
-                    maxTokens: maxTokens, repetitionPenalty: repetitionPenalty
+                    maxTokens: maxTokens, repetitionPenalty: repetitionPenalty,
+                    contextLength: self.contextLength
                 )
 
                 let toolSpecs = self.buildToolSpecs(from: tools)
@@ -376,9 +410,9 @@ actor ModelRunner {
     /// Convert AnyCodable tools array to ToolSpec format
     private func buildToolSpecs(from tools: [AnyCodable]?) -> [[String: any Sendable]]? {
         guard let tools = tools, !tools.isEmpty else { return nil }
-        let specs = tools.map { tool in
-            tool.toSendable() as! [String: any Sendable]
-        }
+        // #76: never force-cast client input; the routes reject non-object
+        // entries with a 400 first, and anything else is dropped here.
+        let specs = tools.compactMap { toolSpec(from: $0) }
         log("[mlx] Tools provided: \(specs.count)")
         return specs
     }
@@ -396,11 +430,14 @@ enum StreamEvent {
 enum MLXServerError: Error, LocalizedError {
     case modelNotLoaded
     case invalidRequest(String)
+    case modelPathNotResolved(String)
 
     var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
             return "No model is currently loaded"
+        case .modelPathNotResolved(let path):
+            return "Model path not found or missing config.json: \(path)"
         case .invalidRequest(let msg):
             return "Invalid request: \(msg)"
         }

@@ -55,6 +55,16 @@ describe('sanitizeInvalidJsonEscapes', () => {
     })
   })
 
+  // Jozkah/jan#85: an escaped quote must not end the string, or every later
+  // backslash in the value is left undoubled.
+  it('keeps string tracking across an escaped quote', () => {
+    const raw = '{"text":"say \\"hi\\" then C:\\Users\\x"}'
+    expect(JSON.parse(sanitizeInvalidJsonEscapes(raw))).toEqual({
+      text: 'say "hi" then C:\\Users\\x',
+    })
+    expect(repairToolArgs(raw)).toEqual({ text: 'say "hi" then C:\\Users\\x' })
+  })
+
   it('leaves content outside string literals untouched', () => {
     const raw = '{"n":42,"ok":true}'
     expect(sanitizeInvalidJsonEscapes(raw)).toBe(raw)

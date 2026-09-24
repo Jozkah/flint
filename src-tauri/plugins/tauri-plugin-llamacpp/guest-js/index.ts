@@ -55,16 +55,6 @@ export async function ensureSessionReady(
   })
 }
 
-export async function getDevices(
-  backendPath: string,
-  envs: Record<string, string> = {}
-): Promise<DeviceList[]> {
-  return await invoke('plugin:llamacpp|get_devices', {
-    backendPath,
-    envs,
-  })
-}
-
 export async function generateApiKey(
   modelId: string,
   apiSecret: string
@@ -133,9 +123,9 @@ export async function getEngineVersion(): Promise<EngineVersion> {
 /**
  * The devices the shipped engine can offload to.
  *
- * Replaces the `getDevices(backendPath, envs)` shell-out to a downloaded
- * `llama-server --list-devices`: there is no downloaded binary any more, and
- * the engine is statically linked into the worker.
+ * Replaces the removed `get_devices` command, which shelled out to a
+ * downloaded `llama-server --list-devices`: there is no downloaded binary any
+ * more, and the engine is statically linked into the worker.
  */
 export async function engineDevices(
   envs: Record<string, string> = {}

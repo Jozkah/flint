@@ -80,11 +80,12 @@ import {
 } from '@/stores/message-queue-store'
 import {
   agentAttribution,
-  dequeueClaimedReady,
+  drainIdleSession,
   takeClaimed,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import {
@@ -285,6 +286,9 @@ import { measureContextPack } from '@/lib/coworkContext'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
+  acceptsProposal,
+  continuationInstruction,
+  PROPOSAL_ACCEPTED_RESULT,
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
@@ -376,6 +380,7 @@ import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
+import { sessionDetailsLabel } from '@/lib/windowTitle'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -414,7 +419,29 @@ const messageOf = errorText
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
-  const { selectedModel, selectedProvider } = useModelProvider()
+  // The session's own model when it has one (#215): the picker no longer
+  // mirrors a session's choice into the global store, so the readiness card
+  // and capability checks read it from the session, as the run does.
+  const {
+    selectedModel: globalModel,
+    selectedProvider: globalProvider,
+    getProviderByName,
+    providers: modelProviders,
+  } = useModelProvider()
+  const viewedModel = useCoworkSessions(
+    (s) => s.sessions.find((x) => x.id === s.currentId)?.model
+  )
+  const { selectedModel, selectedProvider } = useMemo(
+    () =>
+      selectionForThreadModel(viewedModel, {
+        selectedModel: globalModel,
+        selectedProvider: globalProvider,
+        getProviderByName,
+      }),
+    // `modelProviders` is why getProviderByName's answer can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewedModel, globalModel, globalProvider, getProviderByName, modelProviders]
+  )
   // Resolved once for the route: the readiness card, the context measurement
   // and the run all have to be talking about the same window.
   // The snapshot of the dispatch now in flight, so its reply's usage can be
@@ -771,11 +798,10 @@ function CoworkPage() {
    * which is what someone glances at to confirm they are in the right place.
    * The rest lives inside the dialog.
    */
-  const sessionDetailsSummary = useMemo(() => {
-    const repo = readiness.folder?.split('/').filter(Boolean).pop()
-    if (!repo) return ''
-    return readiness.branch ? `${repo} · ${readiness.branch}` : repo
-  }, [readiness.folder, readiness.branch])
+  const sessionDetailsSummary = useMemo(
+    () => sessionDetailsLabel(readiness.folder, readiness.branch),
+    [readiness.folder, readiness.branch]
+  )
 
   // A retake re-uses the skills of the turn it takes again -- that session's
   // turn, not whichever session ran last.
@@ -1041,9 +1067,19 @@ function CoworkPage() {
       setGitBranch(null)
       return
     }
+    // Like the tooling effect below: a slow answer for a folder no longer
+    // attached must not name the branch of the one that is.
+    let alive = true
     invoke<string | null>('agent_git_branch', { project: folder })
-      .then(setGitBranch)
-      .catch(() => setGitBranch(null))
+      .then((branch) => {
+        if (alive) setGitBranch(branch)
+      })
+      .catch(() => {
+        if (alive) setGitBranch(null)
+      })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Read once per attached folder. A failure is a typed state, never a throw,
@@ -2848,6 +2884,13 @@ function CoworkPage() {
       deadlineBudgetMs: runDeadline.budgetMs,
     })
 
+    /**
+     * The instruction to continue with once this run ends, set when the
+     * opening proposal is accepted (#296). The opening run is read-only by
+     * construction and its tools are frozen, so the accepted step cannot run
+     * here: it runs in a new request under the session's stored mode.
+     */
+    let continueWith: string | null = null
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -3009,6 +3052,24 @@ function CoworkPage() {
                           folder: current.folder,
                           proposal: proposal.question,
                         })
+                      }
+                      // An accepted opening proposal ends this read-only run
+                      // and continues in a new one that can write (#296).
+                      if (
+                        inspecting &&
+                        proposal &&
+                        answers &&
+                        acceptsProposal(parsed, answers)
+                      ) {
+                        continueWith = continuationInstruction(
+                          proposal.question,
+                          answers
+                        )
+                        resolve({
+                          output: PROPOSAL_ACCEPTED_RESULT,
+                          endsTurn: true,
+                        })
+                        return
                       }
                       // A plan review changes the session's mode, from the next
                       // message: this run's tools are frozen. Only ever towards
@@ -3641,6 +3702,11 @@ function CoworkPage() {
       // dropping it silently nor sending it on its own is right.
       // janhq/jan#8864.
       if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
+      // Only after a clean finish: a stopped or failed opening run must not
+      // start work on its own.
+      if (continueWith && stop === 'done') {
+        void runRequestRef.current(continueWith)
+      }
     }
   }
 
@@ -3743,10 +3809,13 @@ function CoworkPage() {
     // Held input waits for the user; only what is ready goes. Mail is claimed
     // first, so a reply a tool already consumed is not sent again.
     idleDrainRef.current = true
-    void dequeueClaimedReady(session.id)
-      .then((next) => {
+    // The message is sent only into the session it was drained from; see
+    // drainIdleSession.
+    void drainIdleSession(session.id, (text, from) => {
+      void runRequestRef.current(text, from)
+    })
+      .then(() => {
         idleDrainRef.current = false
-        if (next) void runRequestRef.current(next.text, next.from)
       })
       .catch(() => {
         idleDrainRef.current = false

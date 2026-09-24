@@ -150,15 +150,10 @@ fn head_of(record: &WorktreeRecord) -> String {
 }
 
 /// Remove bundles a stopped process left half-made.
+/// Sweep leftover `.partial` bundles, but never one a concurrent export in
+/// this process is still writing (Jozkah/jan#202).
 fn sweep_partials(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in entries.flatten() {
-        if e.file_name().to_string_lossy().ends_with(".partial") {
-            let _ = std::fs::remove_dir_all(e.path());
-        }
-    }
+    super::partial_dirs::sweep(dir);
 }
 
 /// Where a bundle's file goes, refusing any path that would leave it.
@@ -225,6 +220,7 @@ pub fn export(
     let name = format!("{stamp}-{tail}");
     let partial = dir.join(format!("{name}.partial"));
     let done = dir.join(&name);
+    let _claim = super::partial_dirs::claim(&partial);
 
     let build = |step: &mut dyn FnMut(&str) -> Result<(), String>| -> Result<Manifest, ExportError> {
         std::fs::create_dir_all(&partial).map_err(io)?;

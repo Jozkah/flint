@@ -40,6 +40,26 @@ struct MLXHTTPServer {
         self.apiKey = apiKey
     }
 
+    /// A 401 response when an API key is set and the request does not carry
+    /// `Authorization: Bearer <key>`; nil when the request may proceed. Every
+    /// route that acts on the model must call this first.
+    func unauthorizedResponse(for request: Request) throws -> Response? {
+        if apiKey.isEmpty { return nil }
+        if request.headers[.authorization] == "Bearer \(apiKey)" { return nil }
+        let error = ErrorResponse(
+            error: ErrorDetail(
+                message: "Unauthorized",
+                type_name: "authentication_error",
+                code: "unauthorized"
+            )
+        )
+        return try Response(
+            status: .unauthorized,
+            headers: [.contentType: "application/json"],
+            body: .init(byteBuffer: encodeJSONBuffer(error))
+        )
+    }
+
     func buildRouter() -> Router<BasicRequestContext> {
         let router = Router()
 
@@ -67,26 +87,8 @@ struct MLXHTTPServer {
 
         // Chat completions
         router.post("/v1/chat/completions") { request, context in
-            // Validate API key if set
-            if !self.apiKey.isEmpty {
-                let authHeader =
-                request.headers[.authorization]
-                let expectedAuth = "Bearer \(self.apiKey)"
-                if authHeader != expectedAuth {
-                    let error = ErrorResponse(
-                        error: ErrorDetail(
-                            message: "Unauthorized",
-                            type_name: "authentication_error",
-                            code: "unauthorized"
-                        )
-                    )
-                    let response = try Response(
-                        status: .unauthorized,
-                        headers: [.contentType: "application/json"],
-                        body: .init(byteBuffer: encodeJSONBuffer(error))
-                    )
-                    return response
-                }
+            if let denied = try self.unauthorizedResponse(for: request) {
+                return denied
             }
 
             // Parse request body
@@ -101,6 +103,7 @@ struct MLXHTTPServer {
                 let stop = chatRequest.stop ?? []
                 let isStreaming = chatRequest.stream ?? false
                 let tools = chatRequest.tools
+                try validateToolEntries(tools)
 
                 log("[mlx] Request: model=\(chatRequest.model), messages=\(chatRequest.messages.count), stream=\(isStreaming), tools=\(tools?.count ?? 0)")
 
@@ -144,24 +147,8 @@ struct MLXHTTPServer {
 
         // Anthropic Messages API
         router.post("/v1/messages") { request, context in
-            // Validate API key if set
-            if !self.apiKey.isEmpty {
-                let authHeader = request.headers[.authorization]
-                let expectedAuth = "Bearer \(self.apiKey)"
-                if authHeader != expectedAuth {
-                    let error = ErrorResponse(
-                        error: ErrorDetail(
-                            message: "Unauthorized",
-                            type_name: "authentication_error",
-                            code: "unauthorized"
-                        )
-                    )
-                    return try Response(
-                        status: .unauthorized,
-                        headers: [.contentType: "application/json"],
-                        body: .init(byteBuffer: encodeJSONBuffer(error))
-                    )
-                }
+            if let denied = try self.unauthorizedResponse(for: request) {
+                return denied
             }
 
             do {
@@ -175,6 +162,7 @@ struct MLXHTTPServer {
                 let stop = anthropicReq.stop_sequences ?? []
                 let isStreaming = anthropicReq.stream ?? false
                 let tools: [AnyCodable]? = anthropicReq.tools.map { anthropicToolsToOpenAI($0) }
+                try validateToolEntries(tools)
 
                 log("[mlx] Anthropic request: model=\(anthropicReq.model), messages=\(messages.count), stream=\(isStreaming), tools=\(tools?.count ?? 0)")
 
@@ -216,8 +204,12 @@ struct MLXHTTPServer {
             }
         }
 
-        // Cancel active generation
-        router.post("/v1/cancel") { _, _ in
+        // Cancel active generation. Guarded like the generation routes: without
+        // the key, any local process could cancel every in-flight generation.
+        router.post("/v1/cancel") { request, _ in
+            if let denied = try self.unauthorizedResponse(for: request) {
+                return denied
+            }
             let cancelled = await self.activeGenerations.cancelAll()
             log("[mlx] Cancel requested: \(cancelled) active generation(s) cancelled")
 

@@ -242,7 +242,47 @@ impl SubagentRegistry {
         scope: SubagentScope,
         overwrite: bool,
     ) -> Result<bool, SubagentError> {
-        validate_name(&def.name)?;
+        self.check_create(&def.name, scope, overwrite)?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
+        })?;
+        let file = SubagentFile {
+            name: def.name.clone(),
+            description: def.description.clone(),
+            system_prompt: def.system_prompt.clone(),
+            allowed_tools: def.allowed_tools.clone(),
+            model: def.model.clone(),
+        };
+        let body = toml::to_string_pretty(&file)
+            .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
+        let path = dir.join(format!("{}.toml", def.name));
+        tauri_plugin_agent_tools::atomic_file::write_atomic(&path, body.as_bytes()).map_err(|e| {
+            SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
+        })?;
+
+        let shadows_user = scope == SubagentScope::Project
+            && self
+                .defs
+                .iter()
+                .any(|d| d.name == def.name && d.scope == SubagentScope::User);
+        // Keep the in-memory view consistent: replace any same-scope entry.
+        self.defs
+            .retain(|d| !(d.name == def.name && d.scope == scope));
+        self.defs.push(SubagentDefinition { scope, ..def });
+        Ok(shadows_user)
+    }
+
+    /// Every refusal `create_in` can make before it writes: an illegal name, a
+    /// read-only scope, or a same-scope name that exists without `overwrite`.
+    /// A batch caller runs this over the whole batch first, so a refusal
+    /// arrives before anything is on disk.
+    pub fn check_create(
+        &self,
+        name: &str,
+        scope: SubagentScope,
+        overwrite: bool,
+    ) -> Result<(), SubagentError> {
+        validate_name(name)?;
         if scope == SubagentScope::Builtin {
             return Err(SubagentError::PermissionDenied(
                 "built-in roles are read-only".to_string(),
@@ -257,40 +297,13 @@ impl SubagentRegistry {
         let collides = self
             .defs
             .iter()
-            .any(|d| d.name == def.name && d.scope == scope);
+            .any(|d| d.name == name && d.scope == scope);
         if collides && !overwrite {
             return Err(SubagentError::PermissionDenied(format!(
-                "a {scope:?}-scope subagent named '{}' already exists; pass overwrite to replace it",
-                def.name
+                "a {scope:?}-scope subagent named '{name}' already exists; pass overwrite to replace it"
             )));
         }
-        std::fs::create_dir_all(dir).map_err(|e| {
-            SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
-        })?;
-        let file = SubagentFile {
-            name: def.name.clone(),
-            description: def.description.clone(),
-            system_prompt: def.system_prompt.clone(),
-            allowed_tools: def.allowed_tools.clone(),
-            model: def.model.clone(),
-        };
-        let body = toml::to_string_pretty(&file)
-            .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
-        let path = dir.join(format!("{}.toml", def.name));
-        std::fs::write(&path, body).map_err(|e| {
-            SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
-        })?;
-
-        let shadows_user = scope == SubagentScope::Project
-            && self
-                .defs
-                .iter()
-                .any(|d| d.name == def.name && d.scope == SubagentScope::User);
-        // Keep the in-memory view consistent: replace any same-scope entry.
-        self.defs
-            .retain(|d| !(d.name == def.name && d.scope == scope));
-        self.defs.push(SubagentDefinition { scope, ..def });
-        Ok(shadows_user)
+        Ok(())
     }
 }
 
@@ -1146,13 +1159,19 @@ impl BackgroundSubagents {
         let mut guard = self.inner.lock().unwrap();
         for (_, entry) in guard.drain() {
             entry.abort.abort();
-            // Cancelled on its own already: its end was announced and its
-            // checkout settled then, and announcing either twice would tell a
-            // consumer two different stories about the same child.
+            // Only a child still queued or running is cancelled here. One that
+            // already ended -- cancelled on its own, or finished but never
+            // awaited -- announced its end and settled its checkout then, and
+            // announcing either twice (or relabelling a finished child as
+            // cancelled) would tell a consumer two different stories about it.
             if entry
                 .phase
-                .swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
-                == PHASE_CANCELLED
+                .fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |p| matches!(p, PHASE_QUEUED | PHASE_RUNNING).then_some(PHASE_CANCELLED),
+                )
+                .is_err()
             {
                 continue;
             }
@@ -3110,6 +3129,39 @@ mod tests {
         assert_eq!(await_subagent(&bg, "r1").await.unwrap(), "done");
         assert!(await_subagent(&bg, "r1").await.is_err(), "run is consumed");
         handle.abort();
+    }
+
+    #[tokio::test]
+    async fn abort_all_leaves_a_finished_child_alone() {
+        // A finished child that was never awaited already sent its own
+        // SubagentEnd. Teardown must neither announce it again nor relabel it
+        // as cancelled.
+        let bg = Arc::new(BackgroundSubagents::default());
+        let (_tx, rx) = tokio::sync::oneshot::channel::<Result<String, SubagentError>>();
+        let handle = tokio::spawn(async {});
+        let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel();
+        let phase = Arc::new(std::sync::atomic::AtomicU8::new(PHASE_FINISHED));
+        bg.inner.lock().unwrap().insert(
+            "r1".to_string(),
+            BackgroundEntry {
+                result: Some(rx),
+                abort: handle.abort_handle(),
+                run_id: "r1".to_string(),
+                name: "reviewer".to_string(),
+                events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: phase.clone(),
+            },
+        );
+        bg.abort_all();
+        assert!(ev_rx.try_recv().is_err(), "no second SubagentEnd for a finished child");
+        assert_eq!(
+            phase.load(std::sync::atomic::Ordering::SeqCst),
+            PHASE_FINISHED,
+            "a finished child stays finished"
+        );
+        assert!(bg.inner.lock().unwrap().is_empty(), "the entry is still drained");
     }
 
     #[tokio::test]

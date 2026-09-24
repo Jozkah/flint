@@ -465,7 +465,10 @@ pub(crate) fn load_memories(
 ) -> (Option<String>, memory::retrieve::Selection) {
     use memory::record::Scope;
 
-    let project_id = memory::identity::project_id(project_root);
+    // Read-only: loading memories for a run must not write into the folder;
+    // Review only promises to leave it untouched (#312). The id is written
+    // down when a project memory is actually saved.
+    let project_id = Some(memory::identity::project_id_read_only(project_root));
     let project_store = workspace::project_store(project_root);
 
     // Bring the legacy `<name>.md` notes across, once. Idempotent and keyed by
@@ -890,6 +893,26 @@ mod tests {
         });
     }
 
+    /// #312: loading memories for a run (what every Cowork turn does, Review
+    /// only included) must leave the attached folder untouched.
+    #[test]
+    fn loading_memories_writes_nothing_into_the_project_folder() {
+        with_temp_data_folder(|_| {
+            let project = scratch_project("readonly-attach");
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join("orders.csv"), "id
+1
+").unwrap();
+
+            let _ = load_memories(&project, Some("chat-a"), false);
+            assert!(
+                !project.join(".jan").exists(),
+                "loading memories created .jan in the user's folder"
+            );
+            let _ = std::fs::remove_dir_all(&project);
+        });
+    }
+
     /// Project memory reaches another chat in the same project, and no other
     /// project -- checked through the real prompt, with real project identity.
     #[test]
@@ -900,7 +923,7 @@ mod tests {
             std::fs::create_dir_all(&mine).unwrap();
             std::fs::create_dir_all(&other).unwrap();
 
-            let id = memory::identity::project_id(&mine).expect("project id");
+            let id = memory::identity::project_id_read_only(&mine);
             save_memory(
                 &workspace::project_store(&mine),
                 "m-proj",

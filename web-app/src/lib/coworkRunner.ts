@@ -112,6 +112,13 @@ export type ToolOutcome = {
    * caller branches on the kind instead of parsing `output`.
    */
   refusal?: HarnessRefusal
+  /**
+   * Set when the call's answer means this run must not take another step --
+   * the opening turn's proposal was accepted, and the work belongs to a new
+   * run with the session's own tools. The step's results are still recorded;
+   * the model is simply not called again. Never reaches the model.
+   */
+  endsTurn?: boolean
 }
 
 /**
@@ -1065,6 +1072,16 @@ export async function runTurn(opts: {
         usage,
         sessionTokens: spend.spent,
         stoppedBy: 'aborted',
+      }
+    }
+    // A call whose answer hands the work to a new run: finished, not stopped.
+    if ([...outcomes.values()].some((one) => one.endsTurn)) {
+      return {
+        messages,
+        steps: step,
+        usage,
+        sessionTokens: spend.spent,
+        stoppedBy: 'done',
       }
     }
     // No tool calls means the model answered rather than asked for more work.

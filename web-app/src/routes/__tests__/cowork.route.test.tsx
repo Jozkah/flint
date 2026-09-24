@@ -1253,3 +1253,35 @@ describe('the folder the session is bound to', () => {
     )
   })
 })
+
+describe('the branch shown for the attached folder', () => {
+  it('ignores a branch answer for a folder no longer attached', async () => {
+    let answerOld: (b: string) => void = () => {}
+    installInvoke({
+      agent_git_branch: (args: { project: string }) =>
+        args.project === FOLDER
+          ? new Promise<string>((r) => {
+              answerOld = r
+            })
+          : 'branch-of-other',
+    })
+    seedSession()
+    await renderRoute()
+
+    // The folder changes while the first answer is still out.
+    await act(async () => {
+      useCoworkSessions.setState((s) => ({
+        sessions: s.sessions.map((x) => ({ ...x, folder: '/other' })),
+      }))
+    })
+    await waitFor(() =>
+      expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+    )
+
+    await act(async () => {
+      answerOld('branch-of-repo')
+    })
+    expect(screen.queryByText(/branch-of-repo/)).toBeNull()
+    expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+  })
+})

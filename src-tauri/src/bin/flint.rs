@@ -78,6 +78,11 @@ struct Cli {
     plan: bool,
     #[command(flatten)]
     sandbox: SandboxArgs,
+    /// Log more: `info` on stderr instead of `warn`. Accepted before or after
+    /// any subcommand. The logger reads it from the raw arguments before this
+    /// parser runs; declaring it here keeps clap from rejecting it.
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
 }
 
 /// Whether this invocation confines the shell, shared by every surface that
@@ -704,11 +709,12 @@ enum AgentCommands {
         /// The session it belongs to. Needed to send; a read does not use it.
         #[arg(long)]
         session: Option<String>,
-        /// Send instead of read: the run the message is from.
-        #[arg(long)]
+        /// Send instead of read: the run the message is from. Requires
+        /// `--body`: half a send must be refused, not read as a read (#150).
+        #[arg(long, requires = "body")]
         from: Option<String>,
         /// What to say. Requires `--from`.
-        #[arg(long)]
+        #[arg(long, requires = "from")]
         body: Option<String>,
         #[arg(long, default_value = "")]
         subject: String,
@@ -1496,8 +1502,14 @@ fn handle_job(cmd: JobCommands) {
             worker::start(&data, &me, &owner, &command, ("", "", "")).map(|record| {
                 println!("{}", record.id);
                 eprintln!(
-                    "\x1b[2m[job {} started; it keeps running if this process exits]\x1b[0m",
-                    record.id
+                    "{}",
+                    app_lib::core::cli::color::paint(
+                        "2",
+                        format_args!(
+                            "[job {} started; it keeps running if this process exits]",
+                            record.id,
+                        ),
+                    ),
                 );
             })
         }
@@ -2961,6 +2973,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn verbose_flag_is_accepted_bare_and_after_a_subcommand() {
+        for args in [
+            vec!["jan", "--verbose"],
+            vec!["jan", "-v"],
+            vec!["jan", "plugin", "list", "--verbose"],
+            vec!["jan", "-v", "plugin", "list"],
+        ] {
+            let cli = Cli::try_parse_from(&args)
+                .unwrap_or_else(|e| panic!("{args:?} should parse: {e}"));
+            assert!(cli.verbose, "{args:?} should set verbose");
+        }
+        assert!(!Cli::try_parse_from(["jan", "plugin", "list"]).unwrap().verbose);
+    }
+
+    #[test]
     fn bug_report_parses_its_flags_and_nothing_else() {
         let cli = Cli::parse_from([
             "jan",
@@ -2987,6 +3014,22 @@ mod tests {
                 "{flag} must not exist"
             );
         }
+    }
+
+    /// `--from` without `--body` (or the reverse) is half a send; it must be
+    /// refused rather than fall through to reading the mailbox (#150).
+    #[test]
+    fn agent_mail_refuses_half_a_send() {
+        let base = ["jan", "cli", "agent", "mail", "--run", "r1"];
+        let with = |extra: &[&'static str]| {
+            let mut args = base.to_vec();
+            args.extend_from_slice(extra);
+            Cli::try_parse_from(args)
+        };
+        assert!(with(&["--from", "r2"]).is_err(), "--from alone was accepted");
+        assert!(with(&["--body", "hi"]).is_err(), "--body alone was accepted");
+        assert!(with(&[]).is_ok(), "a plain read must still parse");
+        assert!(with(&["--from", "r2", "--body", "hi", "--session", "s"]).is_ok());
     }
 
     // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must

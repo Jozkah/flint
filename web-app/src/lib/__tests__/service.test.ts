@@ -28,6 +28,14 @@ describe('start_server shim', () => {
     })
   })
 
+  // #144: the "Verbose Server Logs" switch was dropped here too.
+  it('forwards the verbose logs switch to the backend', async () => {
+    await APIs.startServer({ host: '127.0.0.1', port: 1337, isVerboseEnabled: true })
+    expect(invoke).toHaveBeenCalledWith('start_server', {
+      config: expect.objectContaining({ verbose_logs: true }),
+    })
+  })
+
   it('leaves the switch unset when the caller does not say, so the backend keeps CORS on', async () => {
     await APIs.startServer({ host: '127.0.0.1', port: 1337 })
     const { config } = invoke.mock.calls[0][1] as { config: Record<string, unknown> }

@@ -3,6 +3,10 @@
 pub struct FileStat {
     pub is_directory: bool,
     pub size: u64,
+    /// The path itself is a symbolic link; `is_directory` and `size` describe
+    /// its target. A directory walk must not follow these, or a link to an
+    /// ancestor recurses forever.
+    pub is_symlink: bool,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -29,9 +33,11 @@ mod tests {
         let stat = FileStat {
             is_directory: true,
             size: 4096,
+            is_symlink: true,
         };
         let json = serde_json::to_string(&stat).unwrap();
         assert!(json.contains("\"isDirectory\":true"));
+        assert!(json.contains("\"isSymlink\":true"));
         assert!(json.contains("\"size\":4096"));
         assert!(!json.contains("is_directory"));
     }

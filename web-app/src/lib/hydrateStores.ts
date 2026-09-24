@@ -4,10 +4,13 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useHardware } from '@/hooks/useHardware'
-import { useLocalApiServer } from '@/hooks/useLocalApiServer'
+import {
+  useLocalApiServer,
+  seedLocalApiServerKey,
+} from '@/hooks/useLocalApiServer'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { useProxyConfig } from '@/hooks/useProxyConfig'
+import { useProxyConfig, seedProxyPassword } from '@/hooks/useProxyConfig'
 import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useModelOrder } from '@/hooks/useModelOrder'
@@ -86,6 +89,9 @@ export async function hydrateBackendStores(): Promise<void> {
   await Promise.all(
     secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
   )
+  // Secrets are never in the persisted blobs; seed them from the keyring
+  // before anything (the server auto-start) reads them.
+  await Promise.all([seedLocalApiServerKey(), seedProxyPassword()])
   // Nothing survives a restart: a subagent's stream and a shell's process both
   // died with the process that owned them. Settle whatever the previous app
   // run left in flight, or the panel would show work still running that

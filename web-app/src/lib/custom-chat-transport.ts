@@ -1211,22 +1211,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
-    const cacheKey = JSON.stringify({
-      model: selectedModel?.id ?? '',
-      modelSupportsTools,
-      hasDocuments: this.hasDocuments,
-      ragFeatureAvailable: this.ragFeatureAvailable,
-      disabledToolKeys,
-      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
-      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
-    })
-    if (useCache && this.toolsCacheKey === cacheKey) return
-
-    // Only load tools if model supports them
+    // Whether there are documents is read live, before the cache check: a
+    // file attached to the thread's project mid-thread changes nothing else
+    // in the key, and `this.hasDocuments` is only refreshed by the thread
+    // view, so a key built from it kept the RAG tools away (#128).
+    let hasDocuments = this.hasDocuments
+    let ragFeatureAvailable = this.ragFeatureAvailable
     if (modelSupportsTools) {
-      let hasDocuments = this.hasDocuments
-      let ragFeatureAvailable = this.ragFeatureAvailable
-
       if (!hasDocuments && this.threadId) {
         const thread = useThreads.getState().threads[this.threadId]
         const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
@@ -1253,7 +1244,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (!ragFeatureAvailable) {
         ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
       }
+    }
+    const cacheKey = JSON.stringify({
+      model: selectedModel?.id ?? '',
+      modelSupportsTools,
+      hasDocuments,
+      ragFeatureAvailable,
+      disabledToolKeys,
+      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
+      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+    })
+    if (useCache && this.toolsCacheKey === cacheKey) return
 
+    // Only load tools if model supports them
+    if (modelSupportsTools) {
       // Load RAG tools if documents are available
       if (hasDocuments && ragFeatureAvailable) {
         try {
@@ -1536,6 +1540,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         reject(err)
       }
       if (abortSignal.aborted) {
+        // Nobody else awaits modelPromise on this path; observe it so a later
+        // load failure is not an unhandled rejection (#88).
+        modelPromise.catch(() => {})
         onAbort()
         return
       }
@@ -1591,7 +1598,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // request goes out, so a turn cancelled before its first token is in the
     // record rather than missing from it, and continued -- not reopened --
     // when this request is the one carrying tool results back.
-    continueOrBeginChatRun(threadId, { model: modelId })
+    // Only this request's turn may be ended by its callbacks (#137).
+    const myRun = continueOrBeginChatRun(threadId, { model: modelId }).run
 
     try {
       const updatedProvider = useModelProvider
@@ -2122,7 +2130,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               })
               // A reply that asked for tools leaves the turn open: the tools
               // run next, and their results come back in another request.
-              markChatAwaitingTools(threadId, finishPart.finishReason === 'tool-calls')
+              markChatAwaitingTools(
+                threadId,
+                finishPart.finishReason === 'tool-calls',
+                myRun
+              )
               return {}
             })(),
             tokenSpeed: {
@@ -2153,7 +2165,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
         }
-        endChatRun(threadId, 'error')
+        endChatRun(threadId, 'error', undefined, myRun)
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
           ? 'Unknown error'
@@ -2171,10 +2183,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return baseMessage
       },
       onFinish: ({ responseMessage }) => {
-        if (options.abortSignal?.aborted) endChatRun(threadId, 'cancelled')
+        if (options.abortSignal?.aborted)
+          endChatRun(threadId, 'cancelled', undefined, myRun)
         // Left open when tools are still to run: the turn ends with the reply
         // that needs none.
-        else if (!chatAwaitsTools(threadId)) endChatRun(threadId, 'done')
+        else if (!chatAwaitsTools(threadId, myRun))
+          endChatRun(threadId, 'done', undefined, myRun)
         if (this.streamGeneration === myGeneration) {
           useAppState.getState().updatePromptProgress(undefined)
           useAppState.getState().updateLoadingModel(false)

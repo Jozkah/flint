@@ -314,11 +314,26 @@ fn arg_u32(args: &Value, key: &str) -> Result<Option<u32>, String> {
 /// [`DesktopUi`]; here they refuse rather than pretend.
 pub struct FileSettingsUi {
     settings_path: PathBuf,
+    /// Write through the app's settings store instead of the file.
+    shared: bool,
 }
 
 impl FileSettingsUi {
     pub fn new(settings_path: PathBuf) -> Self {
-        Self { settings_path }
+        Self { settings_path, shared: false }
+    }
+
+    /// The app's own `settings.json`, changed through `settings_store`
+    /// (Jozkah/jan#240).
+    ///
+    /// The webview's settings store holds that file in memory and rewrites
+    /// the whole of it on a debounce. A write of our own straight to the file
+    /// was lost at its next flush, and a flush in flight was lost to ours --
+    /// whichever landed second won. Going through the store's own
+    /// `settings_get`/`settings_set` puts the change under its lock and into
+    /// the map it flushes, so both writers' keys survive.
+    pub fn app_store() -> Self {
+        Self { settings_path: PathBuf::new(), shared: true }
     }
 
     fn read(&self) -> serde_json::Map<String, Value> {
@@ -344,6 +359,20 @@ impl DesktopUi for FileSettingsUi {
         Err("no interactive desktop surface is attached to this session".to_string())
     }
     fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String> {
+        // The desktop's settings store (and its lock) exists only in the app
+        // build; the CLI has no webview writing the same file, so it writes
+        // the file directly below.
+        #[cfg(not(feature = "cli"))]
+        if self.shared {
+            let previous = crate::core::app::settings_store::settings_get(key.to_string())
+                .map_or(Value::Null, |s| from_store_value(&s));
+            crate::core::app::settings_store::settings_set(key.to_string(), to_store_value(value))?;
+            return Ok(SettingChange {
+                key: key.to_string(),
+                previous,
+                resulting: value.clone(),
+            });
+        }
         let mut map = self.read();
         let previous = map.get(key).cloned().unwrap_or(Value::Null);
         map.insert(key.to_string(), value.clone());
@@ -366,10 +395,41 @@ impl DesktopUi for FileSettingsUi {
     }
 }
 
+/// The settings store keeps every value as a string (`{ key: string }`); a
+/// bare JSON number written into the file made the whole map fail to parse.
+/// A string is kept as it is, anything else as its JSON text.
+fn to_store_value(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// The inverse of [`to_store_value`]: JSON text back to its value, anything
+/// else as the string it is.
+fn from_store_value(stored: &str) -> Value {
+    serde_json::from_str::<Value>(stored)
+        .ok()
+        .filter(|v| !v.is_string())
+        .unwrap_or_else(|| Value::String(stored.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    /// Values go into the settings store as strings and come back as what
+    /// they were (#240).
+    #[test]
+    fn store_values_round_trip() {
+        for v in [json!(16), json!(true), json!("compact"), json!({ "a": 1 })] {
+            assert_eq!(from_store_value(&to_store_value(&v)), v, "{v}");
+        }
+        assert_eq!(to_store_value(&json!("compact")), "compact");
+        assert!(FileSettingsUi::app_store().shared);
+        assert!(!FileSettingsUi::new(PathBuf::from("x")).shared);
+    }
 
     /// A file opened, with its line and column.
     type Opened = (PathBuf, Option<u32>, Option<u32>);

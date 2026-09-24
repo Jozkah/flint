@@ -8,7 +8,7 @@ repository = "https://github.com/janhq/jan"
 edition = "2021"
 # 1.85 is the floor: `genai` (the OpenAI upstream client) is edition 2024.
 # Below that the previous floor was 1.82, for `Option::is_none_or` in agent/loop.rs.
-rust-version = "1.85"
+rust-version = "1.88"
 resolver = "2"
 default-run = "Flint-Desktop"
 # Every binary this package ships is declared explicitly below. Cargo otherwise
@@ -209,9 +209,9 @@ tauri-plugin-store = { version = "2", optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"], optional = true }
 thiserror = "2.0.12"
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7.14"
 url = "2.5"
 uuid = { version = "1.7", features = ["v4"] }
+tempfile = "3.20.0"
 rfd = { version = "0.15.4", optional = true, default-features = false, features = [
   "tokio",
   "xdg-portal",
@@ -277,7 +277,6 @@ default-features = false
 features = ["protocol-asset", "macos-private-api", "test"]
 
 [dev-dependencies]
-tempfile = "3.20.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "=0.30.1", features = ["signal", "process", "resource"] }
@@ -296,6 +295,8 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_Graphics_Gdi",
   "Win32_Storage_FileSystem",
   "Win32_System_Threading",
+  # Turn on VT sequences for the headless CLI's colored stderr (core::cli::color).
+  "Win32_System_Console",
   # Read the Git-for-Windows install path the installer records, so native Git
   # is found even when it is not on PATH (core::agent::github_recovery).
   "Win32_System_Registry",

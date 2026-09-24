@@ -5,9 +5,8 @@ Installs the `jan` agent CLI on Windows: either a published build from
 delta.jan.ai (default) or one compiled from this checkout (-Source).
 
 .DESCRIPTION
-The PowerShell counterpart of install-jan-agent.sh. Downloaded builds
-self-update via `jan update`; -Source builds do not, because the update
-channel is embedded only by the nightly CI.
+The PowerShell counterpart of install-jan-agent.sh. The CLI has no
+self-update command: re-run this script to update.
 
 .EXAMPLE
 .\scripts\install-jan-agent.ps1
@@ -120,7 +119,7 @@ function Install-FromSource {
   $built = Join-Path $RepoRoot "src-tauri\target\release\$BinaryName"
   if (-not (Test-Path -LiteralPath $built)) { throw "expected a binary at $built" }
   Install-Binary -Source $built
-  Write-Host 'note: builds from source have no update channel embedded, so `jan update` is a no-op'
+  Write-Host 'note: to update a source build, pull and re-run this script with -Source'
 }
 
 function Install-Published {

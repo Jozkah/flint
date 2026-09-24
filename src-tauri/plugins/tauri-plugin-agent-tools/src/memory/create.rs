@@ -192,22 +192,15 @@ pub fn propose(
 /// a second proposal, which would be checked again.
 pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<MemoryId, String> {
     let record = &proposal.record;
-    store::update(store_root, record.scope, |records| {
-        let live = records
-            .iter()
-            .filter(|r| !matches!(r.status, Status::Deleted) && r.id != record.id)
-            .count();
-        if live >= MAX_RECORDS_PER_SCOPE {
-            return Err(format!(
-                "ERROR: this scope already holds {MAX_RECORDS_PER_SCOPE} memories; forget some before saving more"
-            ));
+    store::insert_capped(store_root, record, MAX_RECORDS_PER_SCOPE)?;
+    // The project identity is written into the folder only now, when a
+    // project memory really is saved there -- never when a folder is merely
+    // attached or read (#312).
+    if record.scope == Scope::Project {
+        if let Some(id) = record.project_id.as_deref() {
+            super::identity::persist_for_store(store_root, id);
         }
-        match records.iter_mut().find(|r| r.id == record.id) {
-            Some(existing) => *existing = record.clone(),
-            None => records.push(record.clone()),
-        }
-        Ok((true, ()))
-    })?;
+    }
     Ok(record.id.clone())
 }
 
@@ -346,6 +339,35 @@ mod tests {
             1_000,
             existing,
         )
+    }
+
+    /// #312: saving a project memory is what writes the folder's identity,
+    /// and it is the id a read-only lookup already resolved.
+    #[test]
+    fn committing_a_project_memory_writes_the_project_id() {
+        let project = unique_root();
+        std::fs::create_dir_all(&project).unwrap();
+        let id = super::super::identity::project_id_read_only(&project);
+        let store = crate::workspace::project_store(&project);
+        assert!(!project.join(".jan").exists());
+
+        let proposal = propose(
+            MemoryId::new("m-proj"),
+            "This project builds with make",
+            Scope::Project,
+            Some(&id),
+            None,
+            Creator::User,
+            Origin::Explicit,
+            1_000,
+            &[],
+        )
+        .unwrap();
+        commit(&store, &proposal).unwrap();
+
+        let path = super::super::identity::identity_path(&project);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), id);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

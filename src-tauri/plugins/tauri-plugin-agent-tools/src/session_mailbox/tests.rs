@@ -1090,3 +1090,41 @@ fn a_corrupt_registry_refuses_writes_and_is_left_untouched() {
     std::fs::remove_file(&path).unwrap();
     mb.register("n", "New", fx.folder()).unwrap();
 }
+
+/// #147: read mail older than the retention window is compacted out of the
+/// inbox and its state, unread mail is kept however old, and the outbox keeps
+/// only entries inside the window.
+#[test]
+fn old_read_mail_and_old_outbox_entries_are_compacted() {
+    let fx = Fixture::new("retention");
+    let t = clock(10_000_000);
+    let mb = Mailbox::open(&fx.data).with_clock(t.clone());
+    pair(&fx, &mb);
+
+    let old_read = mb.send("a", "b", "old and read", None, Origin::Agent).unwrap();
+    let old_unread = mb.send("a", "b", "old but unread", None, Origin::Agent).unwrap();
+    mb.mark_read("b", std::slice::from_ref(&old_read.message_id))
+        .unwrap();
+
+    t.fetch_add(MAIL_RETENTION_MS + 1, Ordering::SeqCst);
+    let fresh = mb.send("a", "b", "fresh", None, Origin::Agent).unwrap();
+    // The send compacted a's outbox down to the one entry inside the window.
+    let outbox = read_jsonl::<OutboxEntry>(&mb.outbox_path("a"));
+    assert_eq!(outbox.len(), 1, "{outbox:?}");
+    assert_eq!(outbox[0].id, fresh.message_id);
+
+    // Any read-state write on b's inbox compacts it.
+    mb.mark_read("b", std::slice::from_ref(&fresh.message_id))
+        .unwrap();
+    let inbox = read_jsonl::<MailEnvelope>(&mb.inbox_path("b"));
+    let ids: Vec<&str> = inbox.iter().map(|e| e.id.as_str()).collect();
+    assert!(!ids.contains(&old_read.message_id.as_str()), "{ids:?}");
+    assert!(ids.contains(&old_unread.message_id.as_str()), "unread mail dropped");
+    assert!(ids.contains(&fresh.message_id.as_str()));
+    let state: DeliveryState =
+        serde_json::from_slice(&std::fs::read(mb.state_path("b")).unwrap()).unwrap();
+    assert!(!state.contains_key(&old_read.message_id), "stale state kept");
+    let pending = mb.pending("b").unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].id, old_unread.message_id);
+}

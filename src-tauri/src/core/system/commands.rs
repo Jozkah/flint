@@ -196,30 +196,136 @@ fn detect_shell_env_file(home_dir: &str, is_macos: bool) -> (&'static str, Strin
     }
 }
 
+/// Quote `value` for a POSIX shell: single quotes, with each embedded single
+/// quote written as `'\''`, so no character in it is ever interpreted (#95).
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// `export` lines for the shell config, keys validated, values quoted (#95).
+fn render_env_exports(env_vars: &[(String, String)]) -> String {
+    env_vars
+        .iter()
+        .map(|(k, v)| format!("export {}={}\n", k, sh_single_quote(v)))
+        .collect()
+}
+
+/// A shell variable name: `[A-Za-z_][A-Za-z0-9_]*`.
+fn is_valid_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+
 // Helper function to write env vars to a shell config file
 fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Result<(), String> {
     let marker = "# Jan Local API Server - Claude Code Config";
-    let new_entries: String = env_vars
-        .iter()
-        .map(|(k, v)| format!("export {}='{}'\n", k, v))
-        .collect();
+    let new_entries = render_env_exports(env_vars);
 
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
-    let cleaned: Vec<&str> = existing_content
+    // Drop the whole block written last time, custom variables included, so a
+    // re-save replaces it instead of piling up copies.
+    let cleaned = strip_jan_env_block(&existing_content);
+
+    let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
+
+    let final_content = cleaned + "\n" + &new_content;
+    std::fs::write(env_file_path, &final_content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+const JAN_ENV_MARKER: &str = "# Jan Local API Server - Claude Code Config";
+
+/// `content` without the block Jan wrote between its two marker lines, every
+/// variable in it included (custom ones too, not only `ANTHROPIC_*`). Stray
+/// marker lines and `export ANTHROPIC_` lines outside a block, left by older
+/// versions, are dropped as well. An unclosed block runs to the end of the
+/// file, since Jan always appends its block last.
+fn strip_jan_env_block(content: &str) -> String {
+    let mut inside = false;
+    let kept: Vec<&str> = content
         .split('\n')
         .filter(|line| {
-            // Remove Flint config markers and existing ANTHROPIC env vars to replace them
-            !line.starts_with(marker)
+            if line.starts_with(JAN_ENV_MARKER) {
+                inside = !inside;
+                return false;
+            }
+            !inside
                 && !line.starts_with("# Jan Local API Server")
                 && !line.starts_with("export ANTHROPIC_")
         })
         .collect();
+    kept.join("\n").trim_end().to_string()
+}
 
-    let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
+/// Where the names of the variables `setx` wrote on Windows are recorded, so
+/// Reset can remove custom ones too, not only the fixed `ANTHROPIC_*` names.
+fn claude_code_env_keys_path() -> PathBuf {
+    crate::core::app::commands::resolve_jan_data_folder().join("claude-code-env-keys.json")
+}
 
-    let final_content = cleaned.join("\n") + &new_content;
-    std::fs::write(env_file_path, &final_content).map_err(|e| e.to_string())?;
-    Ok(())
+fn load_claude_code_env_keys(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn record_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Result<(), String> {
+    let mut all = load_claude_code_env_keys(path);
+    for key in keys {
+        if !all.contains(key) {
+            all.push(key.clone());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, serde_json::to_string(&all).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
+/// Recorded names that the new variable set no longer contains: they were
+/// written by an earlier `setx` and must be deleted, or a removed custom
+/// variable lingers in the user environment.
+fn stale_claude_code_env_keys(recorded: &[String], current: &[String]) -> Vec<String> {
+    recorded
+        .iter()
+        .filter(|k| !current.contains(k))
+        .cloned()
+        .collect()
+}
+
+/// Drop `forget` from the recorded names.
+fn forget_claude_code_env_keys(path: &std::path::Path, forget: &[String]) -> Result<(), String> {
+    let kept: Vec<String> = load_claude_code_env_keys(path)
+        .into_iter()
+        .filter(|k| !forget.contains(k))
+        .collect();
+    std::fs::write(path, serde_json::to_string(&kept).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
+/// Every user variable Reset removes on Windows: the fixed Claude Code names
+/// plus whatever was recorded when it was written.
+fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
+    let mut keys: Vec<String> = [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    ]
+    .iter()
+    .map(|k| k.to_string())
+    .collect();
+    for key in recorded {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
 }
 
 #[tauri::command]
@@ -291,6 +397,10 @@ pub fn factory_reset<R: Runtime>(
 
             // store.json spans all categories; only wipe it when nothing is kept
             if !keep_app_data && !keep_models_and_configs {
+                // Secrets live mostly in the OS keyring, not the data folder;
+                // clear them while the index can still name them.
+                let wiped = crate::core::server::provider_secrets::wipe_all_secrets();
+                log::info!("Factory reset: wiped {wiped} stored secret(s)");
                 delete_settings(&data_folder);
             }
         }
@@ -440,6 +550,16 @@ fn build_claude_code_env_vars(
             env.get("key").and_then(|v| v.as_str()),
             env.get("value").and_then(|v| v.as_str()),
         ) {
+            // #95: these are written into a shell startup file.
+            if !is_valid_env_key(key) {
+                return Err(format!(
+                    "Invalid environment variable name {key:?}: use letters, digits and \
+                     underscores, not starting with a digit."
+                ));
+            }
+            if value.contains('\0') {
+                return Err(format!("The value of {key} contains a NUL byte."));
+            }
             env_vars.push((key.to_string(), value.to_string()));
         }
     }
@@ -475,25 +595,15 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
             }
             Err(_) => {
                 // Use admin privileges to write
-                let marker = "# Jan Local API Server - Claude Code Config";
+                let marker = JAN_ENV_MARKER;
                 let existing_content = std::fs::read_to_string(&env_file_path).unwrap_or_default();
-                let cleaned: Vec<&str> = existing_content
-                    .split('\n')
-                    .filter(|line| {
-                        !line.starts_with(marker)
-                            && !line.starts_with("# Jan Local API Server")
-                            && !line.starts_with("export ANTHROPIC_")
-                    })
-                    .collect();
+                let cleaned = strip_jan_env_block(&existing_content);
 
-                let env_content: String = env_vars
-                    .iter()
-                    .map(|(k, v)| format!("export {}='{}'\n", k, v))
-                    .collect();
+                let env_content = render_env_exports(env_vars);
 
                 let new_block = format!("{}\n{}", marker, env_content);
 
-                let final_content = cleaned.join("\n") + "\n" + &new_block + marker;
+                let final_content = cleaned + "\n" + &new_block + marker;
 
                 // Write to a temp file first, then use osascript to move it
                 let temp_script_path = format!("{}/.jan_env_update.sh", home_dir);
@@ -545,7 +655,36 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
             }
         }
     } else {
-        // On Windows, set persistent user environment variables using setx
+        // On Windows, set persistent user environment variables using setx.
+        // Record the names first, so Reset can find every one even if a later
+        // setx fails part-way.
+        let names: Vec<String> = env_vars.iter().map(|(k, _)| k.clone()).collect();
+        let keys_path = claude_code_env_keys_path();
+        // Delete what an earlier apply wrote but this one no longer sets, so a
+        // removed custom variable does not linger (#122).
+        let stale = stale_claude_code_env_keys(&load_claude_code_env_keys(&keys_path), &names);
+        let mut deleted = Vec::with_capacity(stale.len());
+        for key in stale {
+            use jan_process::CommandConsole;
+            // A missing value makes `reg delete` fail, which also means it is
+            // gone; only a command that could not run keeps the name recorded.
+            if std::process::Command::new("reg")
+                .args(["delete", "HKCU\\Environment", "/v", &key, "/f"])
+                .background()
+                .output()
+                .is_ok()
+            {
+                deleted.push(key);
+            }
+        }
+        if !deleted.is_empty() {
+            if let Err(e) = forget_claude_code_env_keys(&keys_path, &deleted) {
+                log::warn!("Could not update the recorded Claude Code env var names: {e}");
+            }
+        }
+        if let Err(e) = record_claude_code_env_keys(&keys_path, &names) {
+            log::warn!("Could not record the Claude Code env var names: {e}");
+        }
         for (key, value) in env_vars {
             use jan_process::CommandConsole;
             let output = std::process::Command::new("setx")
@@ -780,16 +919,8 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
 /// Build the cleaned shell-file content with all Flint CC env vars stripped out.
 fn build_cleaned_env_content(env_file_path: &str) -> String {
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
-    let cleaned: Vec<&str> = existing_content
-        .split('\n')
-        .filter(|line| {
-            !line.starts_with("# Jan Local API Server - Claude Code Config")
-                && !line.starts_with("# Jan Local API Server")
-                && !line.starts_with("export ANTHROPIC_")
-        })
-        .collect();
-    // Trim trailing blank lines left behind by the removed block
-    cleaned.join("\n").trim_end().to_string() + "\n"
+    // Trailing blank lines left behind by the removed block are trimmed too.
+    strip_jan_env_block(&existing_content) + "\n"
 }
 
 /// Clear all Flint-written Claude Code environment variables from the shell config.
@@ -865,13 +996,8 @@ pub fn clear_claude_code_env() -> Result<(), String> {
         }
     } else {
         // Windows: delete the persistent user env vars from the registry
-        let keys = [
-            "ANTHROPIC_BASE_URL",
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        ];
+        let keys_path = claude_code_env_keys_path();
+        let keys = claude_code_env_keys_to_clear(load_claude_code_env_keys(&keys_path));
         for key in &keys {
             // No console window per deletion (Jozkah/jan#253), like `setx` above.
             use jan_process::CommandConsole;
@@ -880,6 +1006,7 @@ pub fn clear_claude_code_env() -> Result<(), String> {
                 .background()
                 .output();
         }
+        let _ = std::fs::remove_file(&keys_path);
         log::info!("CC env vars removed from Windows registry.");
         Ok(())
     }
@@ -1072,6 +1199,135 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn rewriting_the_env_block_drops_custom_vars_instead_of_duplicating_them() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".zshenv");
+        fs::write(&path, "export PATH=/usr/bin\n").unwrap();
+        let vars = vec![
+            ("ANTHROPIC_BASE_URL".to_string(), "http://x".to_string()),
+            ("HTTPS_PROXY".to_string(), "http://u:p@proxy".to_string()),
+        ];
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert_eq!(written.matches("export HTTPS_PROXY=").count(), 1, "{written}");
+        assert_eq!(written.matches(JAN_ENV_MARKER).count(), 2, "{written}");
+        assert!(written.starts_with("export PATH=/usr/bin\n"));
+
+        let cleaned = build_cleaned_env_content(path.to_str().unwrap());
+        assert_eq!(cleaned, "export PATH=/usr/bin\n");
+    }
+
+    #[test]
+    fn strip_keeps_lines_after_the_block() {
+        let content = format!(
+            "a\n{JAN_ENV_MARKER}\nexport FOO='bar'\n{JAN_ENV_MARKER}\nb\n"
+        );
+        assert_eq!(strip_jan_env_block(&content), "a\nb");
+    }
+
+    #[test]
+    fn windows_reset_clears_recorded_custom_keys() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        record_claude_code_env_keys(&path, &["HTTPS_PROXY".to_string()]).unwrap();
+        record_claude_code_env_keys(
+            &path,
+            &["ANTHROPIC_BASE_URL".to_string(), "MY_TOKEN".to_string()],
+        )
+        .unwrap();
+        let keys = claude_code_env_keys_to_clear(load_claude_code_env_keys(&path));
+        assert!(keys.contains(&"HTTPS_PROXY".to_string()));
+        assert!(keys.contains(&"MY_TOKEN".to_string()));
+        assert!(keys.contains(&"ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string()));
+        assert_eq!(keys.iter().filter(|k| *k == "ANTHROPIC_BASE_URL").count(), 1);
+    }
+
+    /// #122: re-applying without a custom variable deletes it and stops
+    /// recording it, while the still-set names stay recorded.
+    #[test]
+    fn windows_reapply_forgets_removed_custom_keys() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        record_claude_code_env_keys(
+            &path,
+            &["ANTHROPIC_BASE_URL".to_string(), "HTTPS_PROXY".to_string()],
+        )
+        .unwrap();
+        let current = vec!["ANTHROPIC_BASE_URL".to_string()];
+        let stale = stale_claude_code_env_keys(&load_claude_code_env_keys(&path), &current);
+        assert_eq!(stale, vec!["HTTPS_PROXY".to_string()]);
+        forget_claude_code_env_keys(&path, &stale).unwrap();
+        record_claude_code_env_keys(&path, &current).unwrap();
+        assert_eq!(load_claude_code_env_keys(&path), current);
+    }
+
+    #[test]
+    fn shell_env_values_are_quoted_so_quotes_cannot_break_out() {
+        assert_eq!(sh_single_quote("O'Reilly"), "'O'\\''Reilly'");
+        let dir = tempdir().unwrap();
+        let file = dir.path().join(".zshenv");
+        let file_s = file.to_str().unwrap();
+        let vars = vec![
+            ("MY_VAR".to_string(), "O'Reilly".to_string()),
+            ("X".to_string(), "a'; touch /tmp/pwned; echo '".to_string()),
+        ];
+        write_env_to_shell(file_s, &vars).unwrap();
+        let written = fs::read_to_string(&file).unwrap();
+        assert!(written.contains("export MY_VAR='O'\\''Reilly'\n"), "{written}");
+        assert!(written.contains("export X='a'\\''; touch /tmp/pwned; echo '\\'''\n"), "{written}");
+
+        #[cfg(unix)]
+        {
+            let marker = dir.path().join("pwned");
+            let evil = vec![(
+                "X".to_string(),
+                format!("a'; touch {}; echo '", marker.display()),
+            ), ("MY_VAR".to_string(), "O'Reilly".to_string())];
+            write_env_to_shell(file_s, &evil).unwrap();
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!(". '{}'; printf %s \"$MY_VAR\"", file_s))
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+            assert_eq!(String::from_utf8_lossy(&out.stdout), "O'Reilly");
+            assert!(!marker.exists(), "an env value ran a shell command");
+        }
+    }
+
+    #[test]
+    fn a_resave_replaces_custom_variables_and_keeps_user_lines() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join(".bashrc");
+        fs::write(&file, "alias ll='ls -l'\n").unwrap();
+        let file_s = file.to_str().unwrap();
+        write_env_to_shell(file_s, &[("OLD_CUSTOM".to_string(), "1".to_string())]).unwrap();
+        write_env_to_shell(file_s, &[("NEW_CUSTOM".to_string(), "2".to_string())]).unwrap();
+        let written = fs::read_to_string(&file).unwrap();
+        assert!(!written.contains("OLD_CUSTOM"), "{written}");
+        assert!(written.contains("export NEW_CUSTOM='2'"), "{written}");
+        assert!(written.contains("alias ll='ls -l'"), "{written}");
+        assert_eq!(written.matches("# Jan Local API Server").count(), 2, "{written}");
+    }
+
+    #[test]
+    fn an_invalid_custom_env_key_is_rejected() {
+        let result = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            None,
+            None,
+            None,
+            vec![serde_json::json!({"key": "FOO; id", "value": "x"})],
+        );
+        assert!(result.unwrap_err().contains("FOO; id"));
+        assert!(is_valid_env_key("_MY_VAR1"));
+        assert!(!is_valid_env_key("1ABC"));
+        assert!(!is_valid_env_key(""));
+    }
+
+    #[test]
     fn bundled_cli_uses_flint_executable_name() {
         assert_eq!(cli_binary_name(), if cfg!(windows) { "flint.exe" } else { "flint" });
         assert!(jan_cli_install_candidates()
@@ -1194,6 +1450,12 @@ mod tests {
         assert!(!d.join("settings.json").exists());
         assert!(!exists_any(d, JAN_DATA_SUBDIRS));
         assert!(!exists_any(d, JAN_DATA_FILES));
+    }
+
+    #[test]
+    fn test_full_wipe_list_includes_the_secret_index() {
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.enc"));
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.index.json"));
     }
 
     #[test]

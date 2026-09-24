@@ -18,7 +18,7 @@ use tauri_plugin_llamacpp::state::LlamacppState;
 use tokio::sync::Mutex;
 
 use crate::core::server::converters::{
-    converter_for, SseAccumulator, StreamState, UpstreamConverter,
+    converter_for, SseAccumulator, StreamState, UpstreamConverter, Utf8ChunkDecoder,
 };
 use crate::core::{
     mcp::models::McpSettings,
@@ -152,9 +152,15 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 ///   Flint. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
 ///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
 ///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
+/// Whether an inbound header is copied onto the upstream request. Both headers
+/// that authenticate the caller to this local server (`Authorization` and
+/// `X-Api-Key`) are consumed here: forwarding them handed the local server's
+/// secret to the remote provider, and on an Anthropic upstream collided with
+/// the real `x-api-key` the converter adds.
 pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
     name != hyper::header::HOST
         && name != hyper::header::AUTHORIZATION
+        && name != "x-api-key"
         && name != hyper::header::CONTENT_LENGTH
         && name != hyper::header::TRANSFER_ENCODING
         && name != hyper::header::ORIGIN
@@ -677,6 +683,24 @@ pub(crate) async fn router_first_model(
         .next()
 }
 
+/// The Settings "Verbose Server Logs" switch (#144). Set by each
+/// `start_server` command; read on every request.
+static VERBOSE_LOGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_verbose_logs(on: bool) {
+    VERBOSE_LOGS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn verbose_logs() -> bool {
+    VERBOSE_LOGS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The line a verbose server logs for a request. The query string is left
+/// out: a client can put a key in it, and the log is shared in bug reports.
+fn verbose_request_line(method: &hyper::Method, uri: &hyper::Uri) -> String {
+    format!("API server request: {method} {}", uri.path())
+}
+
 /// Handles the proxy request logic
 #[allow(clippy::too_many_arguments)]
 async fn proxy_request(
@@ -691,6 +715,9 @@ async fn proxy_request(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
 ) -> Result<Response<ResBody>, hyper::Error> {
+    if verbose_logs() {
+        log::info!("{}", verbose_request_line(req.method(), req.uri()));
+    }
     if req.method() == hyper::Method::OPTIONS {
         log::debug!(
             "Handling CORS preflight request from {:?} {:?}",
@@ -2152,10 +2179,8 @@ async fn proxy_request(
                     fallback_req = fallback_req.header("Accept-Encoding", "identity");
 
                     for (name, value) in headers.iter() {
-                        if name != hyper::header::HOST
-                            && name != hyper::header::AUTHORIZATION
+                        if forwards_to_upstream(name)
                             && name != "content-type"
-                            && name != hyper::header::CONTENT_LENGTH
                             && name != hyper::header::ACCEPT_ENCODING
                         {
                             fallback_req = fallback_req.header(name, value);
@@ -2632,8 +2657,7 @@ async fn forward_converted_stream<S>(
     'outer: while let Some(chunk_result) = stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                let text = String::from_utf8_lossy(&chunk);
-                for event in acc.push(&text) {
+                for event in acc.push_bytes(&chunk) {
                     for payload in converter.convert_stream_event(&event, &mut state) {
                         let framed = Bytes::from(format!("data: {payload}\n\n"));
                         if sender.send_data(framed).await.is_err() {
@@ -2692,276 +2716,297 @@ async fn transform_and_forward_stream<S>(
     let mut text_block_index: Option<usize> = None;
     let mut tool_blocks: HashMap<usize, usize> = HashMap::new(); // OAI tool index -> Anthropic block index
     let mut next_block_index: usize = 0;
+    // Bytes decode across chunk boundaries, and a line split between two
+    // chunks waits for its end, so neither a multi-byte character nor a
+    // `data:` line is cut in half (#195).
+    let mut utf8 = Utf8ChunkDecoder::default();
+    let mut pending_lines = String::new();
 
-    while let Some(chunk_result) = stream.next().await {
-        match chunk_result {
-            Ok(chunk) => {
-                let chunk_str = String::from_utf8_lossy(&chunk);
+    loop {
+        // When the stream ends (or errors), whatever is still buffered is the
+        // final line, even without a trailing newline -- e.g. a bare
+        // `data: [DONE]` -- so it is processed before stopping.
+        let (chunk_str, stream_ended) = match stream.next().await {
+            Some(Ok(chunk)) => {
+                pending_lines.push_str(&utf8.push(&chunk));
+                let Some(end) = pending_lines.rfind('\n') else {
+                    continue;
+                };
+                (pending_lines.drain(..=end).collect::<String>(), false)
+            }
+            end => {
+                if let Some(Err(e)) = end {
+                    log::error!("Stream error: {e}");
+                }
+                pending_lines.push_str(&utf8.finish());
+                if pending_lines.is_empty() {
+                    break;
+                }
+                pending_lines.push('\n');
+                (std::mem::take(&mut pending_lines), true)
+            }
+        };
+        for line in chunk_str.lines() {
+            if !line.starts_with("data:") {
+                continue;
+            }
+            let data = line.trim_start_matches("data:").trim();
 
-                for line in chunk_str.lines() {
-                    if !line.starts_with("data:") {
-                        continue;
-                    }
-                    let data = line.trim_start_matches("data:").trim();
-
-                    if data == "[DONE]" {
-                        // Close any remaining open blocks
-                        if let Some(idx) = text_block_index.take() {
-                            let stop =
-                                serde_json::json!({"type": "content_block_stop", "index": idx});
-                            if sender.send_data(sse_event(&stop)).await.is_err() {
-                                return;
-                            }
-                        }
-                        let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
-                        tool_indices.sort();
-                        for idx in tool_indices {
-                            let stop =
-                                serde_json::json!({"type": "content_block_stop", "index": idx});
-                            if sender.send_data(sse_event(&stop)).await.is_err() {
-                                return;
-                            }
-                        }
-
-                        let stop_reason = if tool_blocks.is_empty() {
-                            "end_turn"
-                        } else {
-                            "tool_use"
-                        };
-                        let output_tokens = accumulated_content.split_whitespace().count() as u64;
-
-                        let delta_event = serde_json::json!({
-                            "type": "message_delta",
-                            "delta": {
-                                "stop_reason": stop_reason,
-                                "stop_sequence": serde_json::Value::Null
-                            },
-                            "usage": { "output_tokens": output_tokens }
-                        });
-                        if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                            return;
-                        }
-
-                        let final_stop = serde_json::json!({"type": "message_stop"});
-                        if sender.send_data(sse_event(&final_stop)).await.is_err() {
-                            return;
-                        }
-                        log::debug!("Sent Anthropic final events");
+            if data == "[DONE]" {
+                // Close any remaining open blocks
+                if let Some(idx) = text_block_index.take() {
+                    let stop =
+                        serde_json::json!({"type": "content_block_stop", "index": idx});
+                    if sender.send_data(sse_event(&stop)).await.is_err() {
                         return;
                     }
+                }
+                let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
+                tool_indices.sort();
+                for idx in tool_indices {
+                    let stop =
+                        serde_json::json!({"type": "content_block_stop", "index": idx});
+                    if sender.send_data(sse_event(&stop)).await.is_err() {
+                        return;
+                    }
+                }
 
-                    let json_chunk = match serde_json::from_str::<serde_json::Value>(data) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+                let stop_reason = if tool_blocks.is_empty() {
+                    "end_turn"
+                } else {
+                    "tool_use"
+                };
+                let output_tokens = accumulated_content.split_whitespace().count() as u64;
 
-                    let choice = json_chunk
-                        .get("choices")
-                        .and_then(|c| c.as_array())
-                        .and_then(|c| c.first());
-                    let delta = match choice.and_then(|c| c.get("delta")) {
-                        Some(d) => d,
-                        None => continue,
-                    };
-                    let finish_reason = choice.and_then(|c| c.get("finish_reason"));
-                    let has_finish = finish_reason.is_some() && !finish_reason.unwrap().is_null();
+                let delta_event = serde_json::json!({
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": stop_reason,
+                        "stop_sequence": serde_json::Value::Null
+                    },
+                    "usage": { "output_tokens": output_tokens }
+                });
+                if sender.send_data(sse_event(&delta_event)).await.is_err() {
+                    return;
+                }
 
-                    // First chunk: send message_start
-                    if is_first {
-                        let role = delta
-                            .get("role")
-                            .and_then(|r| r.as_str())
-                            .unwrap_or("assistant");
-                        let message_id = json_chunk
-                            .get("id")
-                            .unwrap_or(&serde_json::json!(""))
-                            .clone();
-                        let model = json_chunk
-                            .get("model")
-                            .unwrap_or(&serde_json::json!(""))
-                            .clone();
+                let final_stop = serde_json::json!({"type": "message_stop"});
+                if sender.send_data(sse_event(&final_stop)).await.is_err() {
+                    return;
+                }
+                log::debug!("Sent Anthropic final events");
+                return;
+            }
 
-                        let start_event = serde_json::json!({
-                            "type": "message_start",
-                            "message": {
-                                "id": message_id,
-                                "type": "message",
-                                "role": role,
-                                "content": [],
-                                "model": model,
-                                "stop_reason": serde_json::Value::Null,
-                                "stop_sequence": serde_json::Value::Null,
-                                "usage": { "input_tokens": 0, "output_tokens": 0 }
-                            }
+            let json_chunk = match serde_json::from_str::<serde_json::Value>(data) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let choice = json_chunk
+                .get("choices")
+                .and_then(|c| c.as_array())
+                .and_then(|c| c.first());
+            let delta = match choice.and_then(|c| c.get("delta")) {
+                Some(d) => d,
+                None => continue,
+            };
+            let finish_reason = choice.and_then(|c| c.get("finish_reason"));
+            let has_finish = finish_reason.is_some() && !finish_reason.unwrap().is_null();
+
+            // First chunk: send message_start
+            if is_first {
+                let role = delta
+                    .get("role")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("assistant");
+                let message_id = json_chunk
+                    .get("id")
+                    .unwrap_or(&serde_json::json!(""))
+                    .clone();
+                let model = json_chunk
+                    .get("model")
+                    .unwrap_or(&serde_json::json!(""))
+                    .clone();
+
+                let start_event = serde_json::json!({
+                    "type": "message_start",
+                    "message": {
+                        "id": message_id,
+                        "type": "message",
+                        "role": role,
+                        "content": [],
+                        "model": model,
+                        "stop_reason": serde_json::Value::Null,
+                        "stop_sequence": serde_json::Value::Null,
+                        "usage": { "input_tokens": 0, "output_tokens": 0 }
+                    }
+                });
+                if sender.send_data(sse_event(&start_event)).await.is_err() {
+                    return;
+                }
+                is_first = false;
+            }
+
+            // Handle text content
+            if let Some(text) =
+                delta
+                    .get("content")
+                    .and_then(|c| if c.is_null() { None } else { c.as_str() })
+            {
+                if !text.is_empty() {
+                    // Open text block if needed
+                    if text_block_index.is_none() {
+                        let idx = next_block_index;
+                        next_block_index += 1;
+                        text_block_index = Some(idx);
+
+                        let block_start = serde_json::json!({
+                            "type": "content_block_start",
+                            "index": idx,
+                            "content_block": { "type": "text", "text": "" }
                         });
-                        if sender.send_data(sse_event(&start_event)).await.is_err() {
+                        if sender.send_data(sse_event(&block_start)).await.is_err() {
                             return;
-                        }
-                        is_first = false;
-                    }
-
-                    // Handle text content
-                    if let Some(text) =
-                        delta
-                            .get("content")
-                            .and_then(|c| if c.is_null() { None } else { c.as_str() })
-                    {
-                        if !text.is_empty() {
-                            // Open text block if needed
-                            if text_block_index.is_none() {
-                                let idx = next_block_index;
-                                next_block_index += 1;
-                                text_block_index = Some(idx);
-
-                                let block_start = serde_json::json!({
-                                    "type": "content_block_start",
-                                    "index": idx,
-                                    "content_block": { "type": "text", "text": "" }
-                                });
-                                if sender.send_data(sse_event(&block_start)).await.is_err() {
-                                    return;
-                                }
-                            }
-
-                            accumulated_content.push_str(text);
-                            let delta_event = serde_json::json!({
-                                "type": "content_block_delta",
-                                "index": text_block_index.unwrap(),
-                                "delta": { "type": "text_delta", "text": text }
-                            });
-                            if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                                return;
-                            }
                         }
                     }
 
-                    // Handle tool calls
-                    if let Some(tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
-                        // Close text block before tool blocks
-                        if let Some(idx) = text_block_index.take() {
-                            let stop = serde_json::json!(
-                                {"type": "content_block_stop", "index": idx}
-                            );
-                            if sender.send_data(sse_event(&stop)).await.is_err() {
-                                return;
-                            }
-                        }
-
-                        for tc in tool_calls {
-                            let tc_index =
-                                tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-
-                            // New tool call (has id + function.name)
-                            if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
-                                let name = tc
-                                    .get("function")
-                                    .and_then(|f| f.get("name"))
-                                    .and_then(|n| n.as_str())
-                                    .unwrap_or("");
-
-                                let idx = next_block_index;
-                                next_block_index += 1;
-                                tool_blocks.insert(tc_index, idx);
-
-                                let block_start = serde_json::json!({
-                                    "type": "content_block_start",
-                                    "index": idx,
-                                    "content_block": {
-                                        "type": "tool_use",
-                                        "id": id,
-                                        "name": name,
-                                        "input": {}
-                                    }
-                                });
-                                if sender.send_data(sse_event(&block_start)).await.is_err() {
-                                    return;
-                                }
-                            }
-
-                            // Argument delta
-                            if let Some(args) = tc
-                                .get("function")
-                                .and_then(|f| f.get("arguments"))
-                                .and_then(|a| a.as_str())
-                            {
-                                if !args.is_empty() {
-                                    if let Some(&idx) = tool_blocks.get(&tc_index) {
-                                        let delta_event = serde_json::json!({
-                                            "type": "content_block_delta",
-                                            "index": idx,
-                                            "delta": {
-                                                "type": "input_json_delta",
-                                                "partial_json": args
-                                            }
-                                        });
-                                        if sender.send_data(sse_event(&delta_event)).await.is_err()
-                                        {
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Handle finish
-                    if has_finish {
-                        // Close text block
-                        if let Some(idx) = text_block_index.take() {
-                            let stop = serde_json::json!(
-                                {"type": "content_block_stop", "index": idx}
-                            );
-                            if sender.send_data(sse_event(&stop)).await.is_err() {
-                                return;
-                            }
-                        }
-                        // Close all tool blocks
-                        let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
-                        tool_indices.sort();
-                        for idx in tool_indices {
-                            let stop = serde_json::json!(
-                                {"type": "content_block_stop", "index": idx}
-                            );
-                            if sender.send_data(sse_event(&stop)).await.is_err() {
-                                return;
-                            }
-                        }
-
-                        let reason = finish_reason
-                            .and_then(|fr| fr.as_str())
-                            .unwrap_or("end_turn");
-                        let stop_reason = match reason {
-                            "stop" => "end_turn",
-                            "length" => "max_tokens",
-                            "tool_calls" => "tool_use",
-                            _ => reason,
-                        };
-                        let output_tokens = accumulated_content.split_whitespace().count() as u64;
-
-                        let delta_event = serde_json::json!({
-                            "type": "message_delta",
-                            "delta": {
-                                "stop_reason": stop_reason,
-                                "stop_sequence": serde_json::Value::Null
-                            },
-                            "usage": { "output_tokens": output_tokens }
-                        });
-                        if sender.send_data(sse_event(&delta_event)).await.is_err() {
-                            return;
-                        }
-
-                        let final_stop = serde_json::json!({"type": "message_stop"});
-                        if sender.send_data(sse_event(&final_stop)).await.is_err() {
-                            return;
-                        }
+                    accumulated_content.push_str(text);
+                    let delta_event = serde_json::json!({
+                        "type": "content_block_delta",
+                        "index": text_block_index.unwrap(),
+                        "delta": { "type": "text_delta", "text": text }
+                    });
+                    if sender.send_data(sse_event(&delta_event)).await.is_err() {
                         return;
                     }
                 }
             }
-            Err(e) => {
-                log::error!("Stream error: {e}");
-                break;
+
+            // Handle tool calls
+            if let Some(tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
+                // Close text block before tool blocks
+                if let Some(idx) = text_block_index.take() {
+                    let stop = serde_json::json!(
+                        {"type": "content_block_stop", "index": idx}
+                    );
+                    if sender.send_data(sse_event(&stop)).await.is_err() {
+                        return;
+                    }
+                }
+
+                for tc in tool_calls {
+                    let tc_index =
+                        tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+
+                    // New tool call (has id + function.name)
+                    if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                        let name = tc
+                            .get("function")
+                            .and_then(|f| f.get("name"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("");
+
+                        let idx = next_block_index;
+                        next_block_index += 1;
+                        tool_blocks.insert(tc_index, idx);
+
+                        let block_start = serde_json::json!({
+                            "type": "content_block_start",
+                            "index": idx,
+                            "content_block": {
+                                "type": "tool_use",
+                                "id": id,
+                                "name": name,
+                                "input": {}
+                            }
+                        });
+                        if sender.send_data(sse_event(&block_start)).await.is_err() {
+                            return;
+                        }
+                    }
+
+                    // Argument delta
+                    if let Some(args) = tc
+                        .get("function")
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(|a| a.as_str())
+                    {
+                        if !args.is_empty() {
+                            if let Some(&idx) = tool_blocks.get(&tc_index) {
+                                let delta_event = serde_json::json!({
+                                    "type": "content_block_delta",
+                                    "index": idx,
+                                    "delta": {
+                                        "type": "input_json_delta",
+                                        "partial_json": args
+                                    }
+                                });
+                                if sender.send_data(sse_event(&delta_event)).await.is_err()
+                                {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
             }
+
+            // Handle finish
+            if has_finish {
+                // Close text block
+                if let Some(idx) = text_block_index.take() {
+                    let stop = serde_json::json!(
+                        {"type": "content_block_stop", "index": idx}
+                    );
+                    if sender.send_data(sse_event(&stop)).await.is_err() {
+                        return;
+                    }
+                }
+                // Close all tool blocks
+                let mut tool_indices: Vec<usize> = tool_blocks.values().copied().collect();
+                tool_indices.sort();
+                for idx in tool_indices {
+                    let stop = serde_json::json!(
+                        {"type": "content_block_stop", "index": idx}
+                    );
+                    if sender.send_data(sse_event(&stop)).await.is_err() {
+                        return;
+                    }
+                }
+
+                let reason = finish_reason
+                    .and_then(|fr| fr.as_str())
+                    .unwrap_or("end_turn");
+                let stop_reason = match reason {
+                    "stop" => "end_turn",
+                    "length" => "max_tokens",
+                    "tool_calls" => "tool_use",
+                    _ => reason,
+                };
+                let output_tokens = accumulated_content.split_whitespace().count() as u64;
+
+                let delta_event = serde_json::json!({
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": stop_reason,
+                        "stop_sequence": serde_json::Value::Null
+                    },
+                    "usage": { "output_tokens": output_tokens }
+                });
+                if sender.send_data(sse_event(&delta_event)).await.is_err() {
+                    return;
+                }
+
+                let final_stop = serde_json::json!({"type": "message_stop"});
+                if sender.send_data(sse_event(&final_stop)).await.is_err() {
+                    return;
+                }
+                return;
+            }
+        }
+        if stream_ended {
+            break;
         }
     }
     log::debug!("Streaming complete (Anthropic format)");
@@ -3070,6 +3115,43 @@ mod redirect_tests {
 mod tests {
     use super::{is_insecure_public_bind, map_bind_error};
     use std::net::SocketAddr;
+
+    /// #195: a final `data: [DONE]` with no trailing newline is still
+    /// processed when the upstream stream ends, so the client gets its
+    /// closing `message_stop` event.
+    #[tokio::test]
+    async fn a_final_done_line_without_newline_is_not_dropped() {
+        use http_body_util::BodyExt;
+        use hyper::body::Bytes;
+
+        let chunks: Vec<Result<Bytes, reqwest::Error>> = vec![
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"m1\",\"model\":\"x\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n",
+            )),
+            Ok(Bytes::from_static(b"data: [DONE]")),
+        ];
+        let (sender, body) = super::body_channel();
+        super::transform_and_forward_stream(futures_util::stream::iter(chunks), sender, "/v1/messages")
+            .await;
+        let out = body.collect().await.unwrap().to_bytes();
+        let out = String::from_utf8_lossy(&out);
+        assert!(out.contains("\"text_delta\""), "{out}");
+        assert!(out.contains("\"message_stop\""), "{out}");
+    }
+
+    /// #144: the "Verbose Server Logs" switch reaches the server, and the
+    /// line it logs never carries a query string.
+    #[test]
+    fn verbose_logging_is_switchable_and_leaves_out_the_query() {
+        super::set_verbose_logs(true);
+        assert!(super::verbose_logs());
+        super::set_verbose_logs(false);
+        assert!(!super::verbose_logs());
+
+        let uri: hyper::Uri = "/v1/chat/completions?api_key=SECRET".parse().unwrap();
+        let line = super::verbose_request_line(&hyper::Method::POST, &uri);
+        assert_eq!(line, "API server request: POST /v1/chat/completions");
+    }
 
     #[test]
     fn loopback_never_warns() {

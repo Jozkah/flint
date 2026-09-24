@@ -8,7 +8,7 @@
 //! janhq/jan#8019.
 
 use super::helpers::{
-    append_message_line, read_messages_from_file, update_thread_metadata, write_messages_to_file,
+    append_message_line, append_message_line_if_new, read_messages_from_file, update_thread_metadata, write_messages_to_file,
 };
 use super::utils::{ensure_thread_dir_exists, get_messages_path, get_thread_metadata_path};
 use serde_json::json;
@@ -19,6 +19,29 @@ fn thread(label: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     ensure_thread_dir_exists(tmp.path(), label).unwrap();
     let path = get_messages_path(tmp.path(), label);
     (tmp, path)
+}
+
+#[test]
+fn append_if_new_skips_a_known_id_and_still_settles_a_torn_tail() {
+    let (tmp, path) = thread("dedupe");
+    fs::write(&path, "{\"id\":\"m1\",\"role\":\"user\"}\n{\"id\":\"m2\",\"ro").unwrap();
+
+    // Already present: nothing written, not even the tail repair.
+    let m1 = json!({"id": "m1", "role": "user"});
+    assert!(!append_message_line_if_new(&path, &m1, Some("m1")).unwrap());
+
+    // A new id whose text only appears inside another message is still new.
+    let m3 = json!({"id": "m3", "role": "assistant", "note": "\"m1\""});
+    assert!(append_message_line_if_new(&path, &m3, Some("m3")).unwrap());
+    let raw = fs::read_to_string(&path).unwrap();
+    assert!(raw.ends_with('\n'));
+    let messages = read_messages_from_file(tmp.path(), "dedupe");
+    let ids: Vec<_> = messages
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, ["m1", "m3"]);
 }
 
 #[test]

@@ -769,40 +769,92 @@ pub fn denial_hint(policy: &Policy) -> String {
     let home = if policy.home_readonly {
         ""
     } else {
-        " and files under your home directory are not readable"
+        " Files under your home directory are not readable."
     };
-    // Naming only the workspace would send the model away from the scratch,
-    // which is writable too and is where temporary work belongs.
-    let scratch = match scratch_env_path(backend(), policy) {
-        Some(path) => format!(" and the scratch dir ({})", path.display()),
-        None => String::new(),
+    // Every place the shell may write, as the policy actually grants it: the
+    // workspace, the scratch (writable too, and where temporary work belongs)
+    // and any authorized write root such as a managed worktree. Naming only
+    // the workspace sent the model away from a worktree it could write.
+    let mut writable = vec![format!("the workspace ({})", policy.workspace.display())];
+    if let Some(path) = scratch_env_path(backend(), policy) {
+        writable.push(format!("the scratch dir ({})", path.display()));
+    }
+    for root in &policy.write_roots {
+        if root != &policy.workspace {
+            writable.push(root.display().to_string());
+        }
+    }
+    let start = if policy.start_dir() != policy.workspace.as_path() {
+        format!(" The shell starts in {}.", policy.start_dir().display())
+    } else {
+        String::new()
     };
     // An attached folder the file tools can read but the shell cannot is a real
     // asymmetry on Windows, where granting it would mean permanently rewriting
-    // the DACL of a directory Jan does not own and never revokes. Saying so
-    // beats letting the model read the folder with `read` and conclude `bash` is
-    // broken when the same path is missing there.
-    let attached = if policy.read_roots.is_empty() {
+    // the DACL of a directory Jan does not own and never revokes. Only folders
+    // the shell really cannot reach are named: one inside a write root (the
+    // managed worktree, say) is readable and writable there.
+    let unreachable: Vec<String> = policy
+        .read_roots
+        .iter()
+        .filter(|r| !shell_writable(policy, r))
+        .map(|r| r.display().to_string())
+        .collect();
+    let attached = if unreachable.is_empty() {
         String::new()
     } else if backend() == Backend::AppContainer {
-        " The attached folder is readable by the file tools but not by shell \
-         commands on this platform."
-            .to_string()
+        format!(
+            " The attached folder ({}) is readable by the file tools but not by shell \
+             commands on this platform.",
+            unreachable.join(", ")
+        )
     } else {
         format!(
             " The attached folder ({}) is readable but not writable.",
-            policy
-                .read_roots
-                .iter()
-                .map(|r| r.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            unreachable.join(", ")
         )
     };
     format!(
-        "\n[sandbox: writes are limited to the workspace ({}){scratch}{home}.{net}{attached}]",
-        policy.workspace.display()
+        "\n[sandbox: writes are limited to {}.{start}{home}{net}{attached}]",
+        writable.join(", ")
     )
+}
+
+/// Is `path` inside a directory the shell may write (workspace, scratch or a
+/// granted write root)? Compared case-insensitively with either separator,
+/// which is how Windows resolves paths; on Unix a false match costs only a
+/// missing hint sentence, never access.
+fn shell_writable(policy: &Policy, path: &Path) -> bool {
+    fn norm(p: &Path) -> String {
+        let s = p.to_string_lossy().replace('\\', "/").to_lowercase();
+        s.trim_end_matches('/').to_string()
+    }
+    let candidate = norm(path);
+    let roots = std::iter::once(policy.workspace.as_path())
+        .chain(policy.scratch_root.as_deref())
+        .chain(policy.write_roots.iter().map(PathBuf::as_path));
+    roots.map(norm).any(|root| {
+        !root.is_empty()
+            && (candidate == root
+                || candidate
+                    .strip_prefix(&root)
+                    .is_some_and(|rest| rest.starts_with('/')))
+    })
+}
+
+/// Absolute paths a failure message names, best effort: quoted or bare tokens
+/// that start like a Windows drive path or a Unix root.
+fn named_paths(output: &str) -> Vec<PathBuf> {
+    output
+        .split(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | '`'))
+        .map(|t| t.trim_end_matches([':', ',', '.', ';', ')']))
+        .filter(|t| {
+            let b = t.as_bytes();
+            (b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'))
+                || (b.len() > 1 && b[0] == b'/' && b[1] != b'/')
+        })
+        .map(PathBuf::from)
+        .collect()
 }
 
 /// What a model is told when granting access would fix the failure.
@@ -817,10 +869,22 @@ pub const REQUEST_ACCESS_ADVICE: &str = " Call request_access with the narrowest
 /// did it sends the model after the wrong problem. A network refusal gets the
 /// limits (network is off) but no access advice: a folder grant opens no
 /// socket.
-pub fn failure_hint(policy: &Policy, class: &super::shell_diag::FailureClass) -> Option<String> {
+///
+/// `output` is the command's output: a denial whose every named path is one the
+/// shell may already write is not a grant problem (a locked file, a read-only
+/// attribute, a device), so it gets no access advice either.
+pub fn failure_hint(
+    policy: &Policy,
+    class: &super::shell_diag::FailureClass,
+    output: &str,
+) -> Option<String> {
     use super::shell_diag::{powershell_equivalent, FailureClass};
     match class {
         FailureClass::FileAccessDenied => {
+            let named = named_paths(output);
+            if !named.is_empty() && named.iter().all(|p| shell_writable(policy, p)) {
+                return None;
+            }
             let mut hint = denial_hint(policy);
             // Inside the closing bracket, so it reads as part of the note.
             hint.pop();
@@ -841,13 +905,32 @@ pub fn failure_hint(policy: &Policy, class: &super::shell_diag::FailureClass) ->
                  Use {fix}.]"
             ))
         }
-        FailureClass::DeviceFile => Some(
-            "\n[device_path: the failure is on a device path (such as the null device), \
-             not on a file the sandbox is hiding. Discard output with the shell's own null \
-             syntax instead.]"
-                .to_string(),
-        ),
+        FailureClass::DeviceFile => Some(device_hint(
+            backend() == Backend::AppContainer
+                && super::appcontainer::null_device_admits_sandbox() == Some(false),
+        )),
         _ => None,
+    }
+}
+
+/// The note for a failure on a device path. `null_denied` is true when this
+/// machine's `\Device\Null` refuses AppContainers outright (see
+/// [`super::appcontainer::null_device_admits_sandbox`]): then a program that
+/// opens NUL itself -- Go, git -- cannot run here whatever the command says,
+/// and advice to use the shell's null syntax would be wrong.
+fn device_hint(null_denied: bool) -> String {
+    if null_denied {
+        "\n[device_path: this machine's null device (NUL) does not admit sandboxed \
+         processes: its security descriptor grants Everyone but not ALL APPLICATION \
+         PACKAGES, so any program that opens NUL itself (go, git, some build tools) fails \
+         inside the sandbox. It is not a folder permission, so granting access cannot fix \
+         it. Report it to the user rather than retrying.]"
+            .to_string()
+    } else {
+        "\n[device_path: the failure is on a device path (such as the null device), \
+         not on a file the sandbox is hiding. Discard output with the shell's own null \
+         syntax instead.]"
+            .to_string()
     }
 }
 
@@ -1791,11 +1874,70 @@ mod tests {
         );
     }
 
+    /// A managed-worktree session: the shell starts in the worktree and may
+    /// write it, and the attached checkout it was cut from is a separate path.
+    fn worktree_policy() -> Policy {
+        let wt = PathBuf::from("/data/worktrees/proj-1");
+        Policy::new(Path::new("/data/agent-workspace/threads/t1"), false)
+            .with_write_roots(vec![wt.clone()])
+            .with_start_dir(&wt)
+    }
+
+    #[test]
+    fn denial_hint_lists_every_write_root_and_the_start_dir() {
+        let hint = denial_hint(&worktree_policy());
+        assert!(hint.contains("/data/worktrees/proj-1"), "{hint}");
+        assert!(hint.contains("The shell starts in /data/worktrees/proj-1."), "{hint}");
+        assert!(hint.contains("writes are limited to the workspace ("), "{hint}");
+    }
+
+    #[test]
+    fn an_attached_folder_the_shell_can_write_is_not_called_unreadable() {
+        let inside = worktree_policy()
+            .with_read_roots(vec![PathBuf::from("/data/worktrees/proj-1/sub")]);
+        assert!(!denial_hint(&inside).contains("attached folder"));
+        let outside = worktree_policy().with_read_roots(vec![PathBuf::from("/home/me/proj")]);
+        let hint = denial_hint(&outside);
+        assert!(hint.contains("attached folder (/home/me/proj)"), "{hint}");
+    }
+
+    #[test]
+    fn a_denial_inside_the_write_roots_gets_no_access_advice() {
+        use crate::tools::shell_diag::FailureClass;
+        let p = worktree_policy();
+        let inside = "rm: cannot remove '/data/worktrees/proj-1/locked.db': Permission denied";
+        assert!(failure_hint(&p, &FailureClass::FileAccessDenied, inside).is_none());
+        let outside = "cat: /home/me/.ssh/config: Permission denied";
+        let hint = failure_hint(&p, &FailureClass::FileAccessDenied, outside).unwrap();
+        assert!(hint.contains("request_access"), "{hint}");
+        // No path named at all: unknown, so the advice stays.
+        assert!(failure_hint(&p, &FailureClass::FileAccessDenied, "Access is denied.").is_some());
+    }
+
+    #[test]
+    fn named_paths_finds_windows_and_unix_paths() {
+        let found = named_paths(r"open C:\Users\me\x.txt: denied; see '/etc/passwd'.");
+        assert_eq!(
+            found,
+            vec![PathBuf::from(r"C:\Users\me\x.txt"), PathBuf::from("/etc/passwd")]
+        );
+        assert!(named_paths("open NUL: Access is denied.").is_empty());
+    }
+
+    #[test]
+    fn a_null_device_that_refuses_the_sandbox_is_not_blamed_on_a_folder() {
+        let hint = device_hint(true);
+        assert!(hint.contains("ALL APPLICATION PACKAGES"), "{hint}");
+        assert!(!hint.contains("request_access"), "{hint}");
+        assert!(!hint.contains("writes are limited"), "{hint}");
+        assert!(device_hint(false).contains("null syntax"));
+    }
+
     #[test]
     fn failure_hint_advises_request_access_only_for_file_denials() {
         use crate::tools::shell_diag::FailureClass;
         let p = policy();
-        let hint = failure_hint(&p, &FailureClass::FileAccessDenied).unwrap();
+        let hint = failure_hint(&p, &FailureClass::FileAccessDenied, "").unwrap();
         assert!(hint.contains("Call request_access with the narrowest required path"));
         assert!(hint.ends_with(']'));
         for class in [
@@ -1806,15 +1948,15 @@ mod tests {
             FailureClass::Network,
             FailureClass::Other,
         ] {
-            let h = failure_hint(&p, &class).unwrap_or_default();
+            let h = failure_hint(&p, &class, "").unwrap_or_default();
             assert!(!h.contains("request_access"), "{class:?}: {h}");
         }
-        let nul = failure_hint(&p, &FailureClass::CmdNulRedirect("2>nul".into())).unwrap();
+        let nul = failure_hint(&p, &FailureClass::CmdNulRedirect("2>nul".into()), "").unwrap();
         assert!(nul.contains("`2>$null`"));
         assert!(nul.contains("not a sandbox restriction"));
         assert!(!nul.contains("writes are limited"));
-        assert!(failure_hint(&p, &FailureClass::MissingCommand).is_none());
-        assert!(failure_hint(&Policy::new(Path::new("/w"), true), &FailureClass::Network).is_none());
+        assert!(failure_hint(&p, &FailureClass::MissingCommand, "").is_none());
+        assert!(failure_hint(&Policy::new(Path::new("/w"), true), &FailureClass::Network, "").is_none());
     }
 
     #[test]

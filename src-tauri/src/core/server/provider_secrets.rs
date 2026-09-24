@@ -9,7 +9,8 @@
 //! is often absent on headless/CI/SSH boxes. When the keyring is unavailable we
 //! fall back to an encrypted, permission-restricted file
 //! (`<jan_data>/provider_secrets.enc`, AES-256-GCM, `0600` on unix). The key is
-//! derived from a stable per-machine id + an app salt: this defeats casual disk
+//! derived from a stable per-machine id + an app salt (or, on a machine with no
+//! usable id, a random per-install key kept under `~/.jan`): this defeats casual disk
 //! or backup inspection, the realistic threat for a headless fallback. It is not
 //! proof against an attacker who already has code + disk access on the box (no
 //! local-key scheme can be). Keyring failure is never fatal; callers additionally
@@ -21,6 +22,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use keyring::Entry;
@@ -31,6 +33,7 @@ use crate::core::app::commands::resolve_jan_data_folder;
 const KEYRING_SERVICE: &str = "jan-providers";
 const SECRETS_FILE_NAME: &str = "provider_secrets.enc";
 const SECRETS_INDEX_FILE_NAME: &str = "provider_secrets.index.json";
+const INSTALL_KEY_FILE_NAME: &str = "provider_secrets.key";
 const NONCE_LEN: usize = 12;
 
 /// Serializes read-modify-write on the fallback file.
@@ -115,6 +118,86 @@ impl Drop for TestEnvGuard {
 /// `FILE_LOCK` because the index is updated around calls that take it.
 static INDEX_LOCK: Mutex<()> = Mutex::new(());
 
+/// Lock files guarding the fallback file and the index across processes.
+const FILE_XLOCK_NAME: &str = "provider_secrets.enc.lock";
+const INDEX_XLOCK_NAME: &str = "provider_secrets.index.lock";
+/// A lock file older than this is from a writer that died mid-update.
+const XLOCK_STALE: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long a writer waits for another process before going ahead anyway.
+const XLOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A cross-process lock on one of the secret files.
+///
+/// The in-process `FILE_LOCK`/`INDEX_LOCK` only serialize threads; the
+/// desktop app and `flint` CLI processes share the same data folder and each
+/// do a whole-file read-modify-write, so without this the last writer
+/// silently dropped the other's change. A `create_new` lock file is portable
+/// to every supported toolchain; one left behind by a crashed writer is
+/// reclaimed once it is stale.
+struct CrossProcessLock {
+    path: Option<PathBuf>,
+}
+
+impl CrossProcessLock {
+    fn acquire(name: &str) -> Self {
+        let path = resolve_jan_data_folder().join(name);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let started = std::time::Instant::now();
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Self { path: Some(path) },
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age >= XLOCK_STALE);
+                    if stale {
+                        let _ = fs::remove_file(&path);
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Cannot take secrets lock {}: {e}", path.display());
+                    return Self { path: None };
+                }
+            }
+            if started.elapsed() >= XLOCK_WAIT {
+                log::warn!(
+                    "Secrets lock {} still held after {:?}; proceeding without it",
+                    path.display(),
+                    XLOCK_WAIT
+                );
+                return Self { path: None };
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+}
+
+impl Drop for CrossProcessLock {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// A staging path no concurrent writer shares: the process id plus a
+/// per-process counter. A fixed `.tmp` name let two writers truncate each
+/// other's in-flight file before the rename.
+fn unique_tmp(path: &std::path::Path, ext: &str) -> PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!("{ext}.{}.{n}.tmp", std::process::id()))
+}
+
 /// Latched on the first infrastructure-level keyring failure (D-Bus timeout,
 /// platform/storage-access failure). Once set, every secret op skips the
 /// keyring and goes straight to the encrypted file fallback for the rest of the
@@ -153,14 +236,94 @@ fn secrets_file_path() -> PathBuf {
     resolve_jan_data_folder().join(SECRETS_FILE_NAME)
 }
 
-/// Derive a stable 32-byte key from a per-machine id and a versioned app salt.
-fn derive_cipher() -> Result<Aes256Gcm, String> {
-    let machine_id = machine_uid::get().unwrap_or_else(|_| "jan-fallback-machine".to_string());
+/// The id a machine-id lookup produced, if it is one worth keying on. A failed
+/// lookup and an empty (or whitespace-only) id are both "no machine id": each
+/// would otherwise hash to a key every such install shares.
+fn usable_machine_id<E>(lookup: Result<String, E>) -> Option<String> {
+    lookup.ok().filter(|id| !id.trim().is_empty())
+}
+
+/// SHA-256 of the versioned app salt and `material`, the AES-256 key bytes.
+fn key_bytes(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(b"jan-provider-secrets-v1");
-    hasher.update(machine_id.as_bytes());
-    let key = hasher.finalize();
-    Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())
+    hasher.update(material);
+    hasher.finalize().into()
+}
+
+fn cipher_from(key: &[u8; 32]) -> Result<Aes256Gcm, String> {
+    Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())
+}
+
+/// Where the random per-install key lives when the machine has no usable id.
+/// Deliberately outside the data folder, so a copy of that folder (a backup,
+/// a Docker volume) does not carry the key along with the file it unlocks.
+fn install_key_path() -> Option<PathBuf> {
+    crate::core::app::commands::jan_home_dir()
+        .map(|home| home.join(".jan").join(INSTALL_KEY_FILE_NAME))
+}
+
+/// Read the random per-install key, creating it on first use.
+fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
+    if let Ok(bytes) = fs::read(path) {
+        if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
+            return Ok(key);
+        }
+        log::warn!(
+            "Ignoring malformed provider secrets key file {}; generating a new one",
+            path.display()
+        );
+    }
+    let mut key = [0u8; 32];
+    OsRng.fill_bytes(&mut key);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!("key.{}.tmp", std::process::id()));
+    fs::write(&tmp, key).map_err(|e| e.to_string())?;
+    restrict_permissions(&tmp);
+    fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    restrict_permissions(path);
+    Ok(key)
+}
+
+static NO_MACHINE_ID_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// The key bytes for this install: from the machine id when there is a usable
+/// one, otherwise from a random key persisted under `~/.jan`. Never from a
+/// constant baked into the source, which any reader of it could recompute.
+fn current_key(
+    machine_id: Option<String>,
+    install_key: &Option<PathBuf>,
+) -> Result<[u8; 32], String> {
+    if let Some(id) = machine_id {
+        return Ok(key_bytes(id.as_bytes()));
+    }
+    if !NO_MACHINE_ID_WARNED.swap(true, Ordering::Relaxed) {
+        log::warn!(
+            "No machine id available; protecting the provider secrets file with a random per-install key instead"
+        );
+    }
+    let path = install_key
+        .as_ref()
+        .ok_or_else(|| "no machine id and no home directory for the secrets key".to_string())?;
+    let random = load_or_create_install_key(path)?;
+    Ok(key_bytes(&random))
+}
+
+/// Derive the 32-byte key for the fallback file.
+fn derive_cipher() -> Result<Aes256Gcm, String> {
+    cipher_from(&current_key(
+        usable_machine_id(machine_uid::get()),
+        &install_key_path(),
+    )?)
+}
+
+/// The keys older builds derived when the machine id was missing or empty.
+/// Only ever used to read a file those builds wrote; the next write
+/// re-encrypts it under [`derive_cipher`].
+fn legacy_no_machine_id_keys() -> [[u8; 32]; 2] {
+    [key_bytes(b"jan-fallback-machine"), key_bytes(b"")]
 }
 
 fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
@@ -171,14 +334,26 @@ fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
         return BTreeMap::new();
     }
     let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
-    let plaintext = match derive_cipher().and_then(|c| {
-        c.decrypt(Nonce::from_slice(nonce), ciphertext)
+    let decrypt = |cipher: Aes256Gcm| {
+        cipher
+            .decrypt(Nonce::from_slice(nonce), ciphertext)
             .map_err(|e| e.to_string())
-    }) {
+    };
+    let plaintext = match derive_cipher().and_then(decrypt) {
         Ok(pt) => pt,
         Err(err) => {
-            log::warn!("Failed to decrypt provider secrets file: {err}");
-            return BTreeMap::new();
+            // A file an older build wrote on a machine without an id used a
+            // constant key; still read it so the upgrade loses nothing.
+            let legacy = legacy_no_machine_id_keys()
+                .iter()
+                .find_map(|key| cipher_from(key).and_then(decrypt).ok());
+            match legacy {
+                Some(pt) => pt,
+                None => {
+                    log::warn!("Failed to decrypt provider secrets file: {err}");
+                    return BTreeMap::new();
+                }
+            }
         }
     };
     serde_json::from_slice(&plaintext).unwrap_or_default()
@@ -200,7 +375,7 @@ fn write_file_map_atomic(
     let mut blob = nonce.to_vec();
     blob.extend_from_slice(&ciphertext);
 
-    let tmp = path.with_extension("enc.tmp");
+    let tmp = unique_tmp(path, "enc");
     fs::write(&tmp, &blob).map_err(|e| e.to_string())?;
     restrict_permissions(&tmp);
     fs::rename(&tmp, path).map_err(|e| e.to_string())?;
@@ -239,7 +414,7 @@ fn write_index(names: &BTreeSet<String>) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let body = serde_json::to_vec(names).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
+    let tmp = unique_tmp(&path, "json");
     fs::write(&tmp, &body).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
@@ -250,6 +425,7 @@ fn index_set(provider: &str, present: bool) {
     let Ok(_guard) = INDEX_LOCK.lock() else {
         return;
     };
+    let _xlock = CrossProcessLock::acquire(INDEX_XLOCK_NAME);
     let mut names = read_index();
     let changed = match present {
         true => names.insert(provider.to_string()),
@@ -280,6 +456,7 @@ pub fn has_stored_key(provider: &str) -> bool {
 
 fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
     let mut map = read_file_map(&path);
     map.insert(provider.to_string(), keys.to_vec());
@@ -288,6 +465,7 @@ fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
 
 fn file_remove(provider: &str) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
     let mut map = read_file_map(&path);
     if map.remove(provider).is_some() {
@@ -348,6 +526,30 @@ pub fn delete_provider_keys(provider: &str) -> Result<(), String> {
     let removed = file_remove(provider);
     index_set(provider, false);
     removed
+}
+
+/// Delete every secret this app stored: each name in the presence index or in
+/// the fallback file, from both the OS keyring and the fallback file, then the
+/// index itself. For a full factory reset, which otherwise removed only the
+/// fallback file and left every keyring entry to be reloaded on next launch.
+///
+/// Returns how many names were wiped. Individual failures are logged, never
+/// fatal: the reset should remove whatever it can.
+pub fn wipe_all_secrets() -> usize {
+    let mut names = read_index();
+    names.extend(read_file_map(&secrets_file_path()).into_keys());
+    for name in &names {
+        if let Err(err) = delete_provider_keys(name) {
+            log::warn!("Factory reset: failed to delete stored secret {name}: {err}");
+        }
+    }
+    let _guard = INDEX_LOCK.lock();
+    match fs::remove_file(secrets_index_path()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!("Factory reset: failed to remove the secret index: {e}"),
+    }
+    names.len()
 }
 
 /// Read a provider's key chain: keyring first, then the fallback file. Returns
@@ -539,6 +741,36 @@ mod tests {
         assert!(has_stored_key("openai"));
     }
 
+    /// #138: the General Hugging Face token (`general:huggingface-token`) and
+    /// the huggingface provider's key chain (`huggingface`) are separate
+    /// entries; writing or clearing one never touches the other.
+    #[test]
+    fn general_hf_token_and_provider_chain_are_independent() {
+        let _tmp = TempDataFolder::new();
+        let chain = vec!["hf_provider".to_string(), "hf_fallback".to_string()];
+        file_store("huggingface", &chain).unwrap();
+        file_store("general:huggingface-token", &["hf_general".to_string()]).unwrap();
+        assert_eq!(file_load("huggingface"), chain);
+        assert_eq!(
+            file_load("general:huggingface-token"),
+            vec!["hf_general".to_string()]
+        );
+
+        // Clearing the General token leaves the provider chain intact...
+        file_remove("general:huggingface-token").unwrap();
+        assert!(file_load("general:huggingface-token").is_empty());
+        assert_eq!(file_load("huggingface"), chain);
+
+        // ...and removing the provider chain leaves a General token intact.
+        file_store("general:huggingface-token", &["hf_general".to_string()]).unwrap();
+        file_remove("huggingface").unwrap();
+        assert!(file_load("huggingface").is_empty());
+        assert_eq!(
+            file_load("general:huggingface-token"),
+            vec!["hf_general".to_string()]
+        );
+    }
+
     #[test]
     fn file_remove_missing_is_ok() {
         let _tmp = TempDataFolder::new();
@@ -592,6 +824,105 @@ mod tests {
             !haystack.contains("openai"),
             "provider name must not appear in plaintext"
         );
+    }
+
+    /// A missing or empty machine id must not key the file with a constant
+    /// anyone can recompute from the source (#164).
+    #[test]
+    fn no_machine_id_never_derives_a_public_key() {
+        let _tmp = TempDataFolder::new();
+        assert_eq!(usable_machine_id::<()>(Err(())), None);
+        assert_eq!(usable_machine_id::<()>(Ok(String::new())), None);
+        assert_eq!(usable_machine_id::<()>(Ok(" 	 ".into())), None);
+        assert_eq!(usable_machine_id::<()>(Ok("abc".into())), Some("abc".into()));
+
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let key_a = current_key(None, &Some(a.path().join("k"))).unwrap();
+        let key_b = current_key(None, &Some(b.path().join("k"))).unwrap();
+        for legacy in legacy_no_machine_id_keys() {
+            assert_ne!(key_a, legacy);
+            assert_ne!(key_b, legacy);
+        }
+        assert_ne!(key_a, key_b, "two installs without a machine id share no key");
+        assert_eq!(
+            key_a,
+            current_key(None, &Some(a.path().join("k"))).unwrap(),
+            "the per-install key is stable across calls"
+        );
+    }
+
+    /// A file an older build encrypted under the constant key still loads.
+    #[test]
+    fn a_legacy_constant_key_file_still_reads() {
+        let _tmp = TempDataFolder::new();
+        let path = secrets_file_path();
+        let mut map = BTreeMap::new();
+        map.insert("openai".to_string(), vec!["sk-old".to_string()]);
+        let cipher = cipher_from(&key_bytes(b"jan-fallback-machine")).unwrap();
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut blob = nonce.to_vec();
+        blob.extend(
+            cipher
+                .encrypt(&nonce, serde_json::to_vec(&map).unwrap().as_ref())
+                .unwrap(),
+        );
+        fs::write(&path, blob).unwrap();
+        assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
+    }
+
+    /// A writer in another process holds the lock file: an update waits for
+    /// it rather than racing its read-modify-write, and a lock abandoned by a
+    /// crashed writer is reclaimed (#114).
+    #[test]
+    fn index_updates_wait_for_another_process_lock() {
+        let _tmp = TempDataFolder::new();
+        let lock = resolve_jan_data_folder().join(INDEX_XLOCK_NAME);
+        fs::write(&lock, b"other process").unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        // The environment is process-wide, so the writer thread resolves the
+        // same temp data folder this test set up.
+        let writer = std::thread::spawn(move || {
+            index_set("anthropic", true);
+            tx.send(()).unwrap();
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(300)).is_err(),
+            "the update ran while another process held the lock"
+        );
+        fs::remove_file(&lock).unwrap();
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the update proceeds once the lock is released");
+        writer.join().unwrap();
+        assert!(read_index().contains("anthropic"));
+        assert!(!lock.exists(), "the writer releases its own lock");
+    }
+
+    #[test]
+    fn staging_paths_are_unique_per_writer() {
+        let p = PathBuf::from("provider_secrets.index.json");
+        assert_ne!(unique_tmp(&p, "json"), unique_tmp(&p, "json"));
+    }
+
+    /// A full reset removes every stored secret and the index, so nothing is
+    /// reloaded into the freshly reset app (#136).
+    #[test]
+    fn wipe_all_secrets_removes_every_record_and_the_index() {
+        let _tmp = TempDataFolder::new();
+        force_file_secrets();
+        store_provider_keys("openai", &["sk-a".to_string()]).unwrap();
+        store_provider_keys("anthropic", &["sk-b".to_string()]).unwrap();
+        store_secret_record("anthropic", "{\"token\":1}").unwrap();
+        assert!(secrets_index_path().exists());
+
+        assert_eq!(wipe_all_secrets(), 3);
+
+        for provider in ["openai", "anthropic", "auth:anthropic"] {
+            assert!(load_provider_keys(provider).is_empty(), "{provider} survived");
+            assert!(!has_stored_key(provider));
+        }
+        assert_eq!(load_secret_record("anthropic"), None);
+        assert!(!secrets_index_path().exists());
     }
 
     #[cfg(unix)]

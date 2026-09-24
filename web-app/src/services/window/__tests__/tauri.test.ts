@@ -9,7 +9,11 @@ const {
   mockSetTheme,
   mockGetByLabel,
   mockConstructor,
+  mockOnce,
+  mockListen,
 } = vi.hoisted(() => ({
+  mockOnce: vi.fn(),
+  mockListen: vi.fn(),
   mockClose: vi.fn(),
   mockShow: vi.fn(),
   mockHide: vi.fn(),
@@ -28,6 +32,7 @@ function makeMockWindow() {
     setFocus: mockSetFocus,
     setTitle: mockSetTitle,
     setTheme: mockSetTheme,
+    once: mockOnce,
   }
 }
 
@@ -41,10 +46,10 @@ vi.mock('@tauri-apps/api/webviewWindow', () => {
 })
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(vi.fn()),
+  listen: mockListen,
 }))
 
-import { TauriWindowService } from '../tauri'
+import { TauriWindowService, __testing } from '../tauri'
 import { DefaultWindowService } from '../default'
 import type { WindowConfig } from '../types'
 
@@ -68,6 +73,9 @@ describe('TauriWindowService', () => {
     mockSetFocus.mockResolvedValue(undefined)
     mockSetTitle.mockResolvedValue(undefined)
     mockSetTheme.mockResolvedValue(undefined)
+    mockOnce.mockResolvedValue(vi.fn())
+    mockListen.mockImplementation(async () => vi.fn())
+    __testing.themeListeners.clear()
     localStorage.clear()
     svc = new TauriWindowService()
   })
@@ -166,6 +174,42 @@ describe('TauriWindowService', () => {
       await expect(svc.createWebviewWindow(baseConfig)).rejects.toBe(err)
       expect(spy).toHaveBeenCalledWith('Error creating Tauri window:', err)
       spy.mockRestore()
+    })
+  })
+
+  describe('theme listener lifetime (#92)', () => {
+    const settle = () => new Promise((r) => setTimeout(r, 0))
+
+    it('removes the listener when the window is closed', async () => {
+      const inst = await svc.createWebviewWindow(baseConfig)
+      await settle()
+      const unlisten = await mockListen.mock.results[0].value
+      await inst.close()
+      expect(unlisten).toHaveBeenCalledTimes(1)
+      expect(__testing.themeListeners.size).toBe(0)
+    })
+
+    it('removes the listener when the OS destroys the window', async () => {
+      await svc.createWebviewWindow(baseConfig)
+      await settle()
+      const unlisten = await mockListen.mock.results[0].value
+      const [event, handler] = mockOnce.mock.calls[0]
+      expect(event).toBe('tauri://destroyed')
+      handler()
+      expect(unlisten).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps one listener per label across reopen cycles', async () => {
+      for (let i = 0; i < 3; i++) {
+        await svc.createWebviewWindow(baseConfig)
+        await settle()
+      }
+      const unlistens = await Promise.all(
+        mockListen.mock.results.map((r) => r.value)
+      )
+      expect(unlistens.slice(0, 2).every((u) => u.mock.calls.length === 1)).toBe(true)
+      expect(unlistens[2]).not.toHaveBeenCalled()
+      expect(__testing.themeListeners.size).toBe(1)
     })
   })
 

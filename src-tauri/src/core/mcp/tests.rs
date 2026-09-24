@@ -2430,6 +2430,71 @@ mod manager_bookkeeping_tests {
         );
     }
 
+    /// A task that stands in for a health monitor, and a receiver that
+    /// resolves once the task is gone (its sender is dropped on abort).
+    fn fake_monitor() -> (
+        tauri::async_runtime::JoinHandle<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    ) {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tauri::async_runtime::spawn(async move {
+            let _tx = tx;
+            std::future::pending::<()>().await;
+        });
+        (handle, rx)
+    }
+
+    /// #112: deactivating a server left its monitor running with the old
+    /// config, so a same-name re-activation could be reverted by it later.
+    #[tokio::test]
+    async fn deactivating_a_server_stops_its_monitor() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let state = handle.state::<AppState>();
+        let (monitor, gone) = fake_monitor();
+        state
+            .mcp_monitoring_tasks
+            .lock()
+            .await
+            .insert("edited".to_string(), monitor);
+
+        // No running service is registered, so this reports "not found"; the
+        // monitor must be stopped regardless.
+        let _ = super::super::commands::deactivate_mcp_server(
+            handle.clone(),
+            handle.state::<AppState>(),
+            "edited".to_string(),
+        )
+        .await;
+
+        assert!(!state.mcp_monitoring_tasks.lock().await.contains_key("edited"));
+        tokio::time::timeout(std::time::Duration::from_secs(5), gone)
+            .await
+            .expect("the old monitor must be aborted, not detached")
+            .unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn aborting_a_monitor_stops_the_task() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let state = handle.state::<AppState>();
+        let (monitor, gone) = fake_monitor();
+        state
+            .mcp_monitoring_tasks
+            .lock()
+            .await
+            .insert("x".to_string(), monitor);
+
+        super::super::helpers::abort_mcp_monitor(&state.mcp_monitoring_tasks, "x").await;
+
+        assert!(state.mcp_monitoring_tasks.lock().await.is_empty());
+        tokio::time::timeout(std::time::Duration::from_secs(5), gone)
+            .await
+            .expect("aborted")
+            .unwrap_err();
+    }
+
     /// Every start takes a number, and the number moves. That is what lets a
     /// completion tell whether it is still the current instance.
     #[tokio::test]

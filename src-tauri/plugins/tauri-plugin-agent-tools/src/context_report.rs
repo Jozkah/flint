@@ -313,18 +313,31 @@ pub fn classify(
         });
     };
 
-    // The system message, cut into the sections that wrote it.
-    let system_text: String = payload
+    // The system message, cut into the sections that wrote it. An
+    // OpenAI-shaped request carries it as `role: "system"` messages; an
+    // Anthropic-shaped one (what the desktop's AI SDK sends) moves it out of
+    // `messages` into a top-level `system` field, a string or a list of text
+    // blocks. Both are read, or the Anthropic path reports no system prompt.
+    let mut system_parts: Vec<&str> = payload
         .get("messages")
         .and_then(Value::as_array)
         .map(|list| {
             list.iter()
                 .filter(|m| m.get("role").and_then(Value::as_str) == Some("system"))
                 .filter_map(|m| m.get("content").and_then(Value::as_str))
-                .collect::<Vec<_>>()
-                .join("\n")
+                .collect()
         })
         .unwrap_or_default();
+    match payload.get("system") {
+        Some(Value::String(text)) => system_parts.push(text),
+        Some(Value::Array(blocks)) => system_parts.extend(
+            blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(Value::as_str)),
+        ),
+        _ => {}
+    }
+    let system_text = system_parts.join("\n");
     let _ = system_bytes;
     for (category, bytes) in split_system(&system_text) {
         push(category, tokens_of(bytes), 0);
@@ -551,6 +564,25 @@ mod tests {
             b.slice(Category::FreeSpace).unwrap().tokens,
             10_000 - summed - 500
         );
+    }
+
+    /// An Anthropic-shaped request carries its system prompt in a top-level
+    /// `system` field, not in `messages`; it must still be counted (#271).
+    #[test]
+    fn a_top_level_system_field_is_the_system_prompt() {
+        let system = "You are helpful.\n\n# Project Context\n\nproject rules here\n\n# Available Skills\n\n## Skill: deploy";
+        for shape in [json!(system), json!([{ "type": "text", "text": system }])] {
+            let p = json!({
+                "model": "m",
+                "system": shape,
+                "messages": [ { "role": "user", "content": "hello there" } ]
+            });
+            let b = classify(&p, Some(10_000), None, 0);
+            assert!(b.slice(Category::SystemPrompt).unwrap().tokens > 0);
+            assert!(b.slice(Category::ProjectContext).unwrap().tokens > 0);
+            assert!(b.slice(Category::Skills).unwrap().tokens > 0);
+            assert!(b.used_tokens >= tokens_of(system.len()));
+        }
     }
 
     /// A provider's own count wins, and says so; the categories stay estimates.

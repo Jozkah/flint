@@ -255,6 +255,31 @@ pub fn upsert(store_root: &Path, record: &MemoryRecord) -> Result<(), String> {
     })
 }
 
+/// Insert or replace a record, refusing to grow its scope past `cap` live
+/// records. Replacing a record already in the scope never counts against it.
+///
+/// Every writer that can add a record to a scope goes through here, so the
+/// ceiling cannot drift between them: `move_scope` used to write with
+/// [`upsert`] and grew a full scope without bound (Jozkah/jan#188).
+pub fn insert_capped(store_root: &Path, record: &MemoryRecord, cap: usize) -> Result<(), String> {
+    update(store_root, record.scope, |records| {
+        let live = records
+            .iter()
+            .filter(|r| !matches!(r.status, super::record::Status::Deleted) && r.id != record.id)
+            .count();
+        if live >= cap {
+            return Err(format!(
+                "ERROR: this scope already holds {cap} memories; forget some before saving more"
+            ));
+        }
+        match records.iter_mut().find(|r| r.id == record.id) {
+            Some(existing) => *existing = record.clone(),
+            None => records.push(record.clone()),
+        }
+        Ok((true, ()))
+    })
+}
+
 /// Remove one record outright. Idempotent.
 ///
 /// Callers wanting an undoable delete set [`super::record::Status::Deleted`]

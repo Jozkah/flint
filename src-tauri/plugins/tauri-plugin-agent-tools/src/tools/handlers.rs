@@ -1432,15 +1432,39 @@ async fn read(
         content
     };
 
-    (
-        cap_output(
-            &selected,
-            MAX_LINES,
-            MAX_BYTES,
-            "\n[truncated: use offset/limit to read more]",
-        ),
-        None,
-    )
+    let out = cap_output(
+        &selected,
+        MAX_LINES,
+        MAX_BYTES,
+        "\n[truncated: use offset/limit to read more]",
+    );
+    // File text that happens to start with "ERROR" reads like a handler
+    // failure to `classify_tool`; say that this one succeeded (Jozkah/jan#62).
+    if out.trim_start().starts_with("ERROR") {
+        let _ = READ_SUCCESS.try_with(|slot| *slot.borrow_mut() = Some(out.clone()));
+    }
+    (out, None)
+}
+
+tokio::task_local! {
+    /// The text a successful `read` returned, when it starts with "ERROR" and
+    /// so could be mistaken for a failure. Set only inside
+    /// [`with_read_success`].
+    static READ_SUCCESS: std::cell::RefCell<Option<String>>;
+}
+
+/// Run `work` (a tool call) and also return the output of any `read` in it
+/// that succeeded with text starting with "ERROR". Content that starts with
+/// that text is file content, not a handler error, and the caller must not
+/// classify it as a failure (Jozkah/jan#62).
+pub async fn with_read_success<F: std::future::Future>(work: F) -> (F::Output, Option<String>) {
+    READ_SUCCESS
+        .scope(std::cell::RefCell::new(None), async {
+            let out = work.await;
+            let success = READ_SUCCESS.with(|slot| slot.borrow_mut().take());
+            (out, success)
+        })
+        .await
 }
 
 /// " (it resolves to X)" for a symlink refusal, so the model can see where the
@@ -1638,21 +1662,20 @@ fn resolved_for_open(target: &Path) -> Result<PathBuf, String> {
     canonicalize_lenient(target)
 }
 
-/// Create or truncate `path` and write `content`, refusing to follow a
-/// symlink at `path` itself where the platform can (`O_NOFOLLOW` on Unix).
-/// `path` is already resolved, so a link found there now was planted after the
-/// checks: the open fails rather than follows it. Windows has no equivalent
-/// open flag here; there the resolution above is the whole defence, and a
-/// link swapped in between the check and the open is not caught.
+/// Replace `path` with `content` through a sibling temp file and a rename
+/// (Jozkah/jan#39), so a crash or kill mid-write leaves the user's file with
+/// its old content or the full new content, never truncated, and the file's
+/// permission bits survive the replacement. `path` is already resolved; the
+/// rename replaces whatever directory entry sits there now rather than writing
+/// through it, so a symlink planted at `path` after the checks is replaced,
+/// not followed (Jozkah/jan#192).
 async fn write_no_follow(path: &Path, content: &str) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
-    let mut file = options.open(path).await?;
-    file.write_all(content.as_bytes()).await?;
-    file.flush().await
+    let path = path.to_path_buf();
+    let bytes = content.as_bytes().to_vec();
+    tokio::task::spawn_blocking(move || crate::atomic_file::write_atomic(&path, &bytes))
+        .await
+        .map_err(std::io::Error::other)?
+        .map_err(std::io::Error::other)
 }
 
 /// `path` made absolute against this process's working directory, with `.`
@@ -1984,7 +2007,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 {
                     None
                 }
-                ref c => jail::failure_hint(&policy, c),
+                ref c => jail::failure_hint(&policy, c, &out),
             };
             if let Some(hint) = hint {
                 out.push_str(&hint);
@@ -3948,7 +3971,10 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
         &existing,
         &inferred::Context {
             scope,
-            project_id: crate::memory::identity::project_id(ctx.project_root).as_deref(),
+            // Read-only here; `create::commit` writes the id down only if the
+            // memory is actually saved (#312).
+            project_id: Some(crate::memory::identity::project_id_read_only(ctx.project_root))
+                .as_deref(),
             session_id: ctx.session_id,
             temporary: ctx.temporary,
             now,
@@ -5181,6 +5207,66 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Jozkah/jan#39: `write` and `edit` replace the file through a temp file
+    /// and a rename, so the old inode is never truncated in place and no temp
+    /// file is left next to the target.
+    #[tokio::test]
+    async fn write_and_edit_replace_the_file_atomically() {
+        let root = unique_root();
+        let target = root.join("keep.txt");
+        std::fs::write(&target, b"one two").unwrap();
+        // A handle opened before the write still sees the old bytes: a rename
+        // swaps the directory entry, an in-place truncate would empty it.
+        let mut before = std::fs::File::open(&target).unwrap();
+
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "keep.txt", "content": "three four"}),
+            &root,
+        )
+        .await;
+        assert_eq!(out, "Overwrote keep.txt (10 bytes)");
+        let mut old = String::new();
+        std::io::Read::read_to_string(&mut before, &mut old).unwrap();
+        assert_eq!(old, "one two", "the write truncated the file in place");
+        drop(before);
+
+        let out = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "keep.txt", "edits": [{"old_string": "four", "new_string": "five"}]}),
+            &root,
+        )
+        .await;
+        assert!(out.starts_with("Applied 1 edit"), "{out}");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "three five");
+        let stray: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp-"))
+            .collect();
+        assert!(stray.is_empty(), "temp files left behind: {stray:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#62: a file whose text starts with "ERROR" reads
+    /// successfully and is reported as such; a real read error is not.
+    #[tokio::test]
+    async fn a_read_of_a_file_starting_with_error_is_marked_successful() {
+        let root = unique_root();
+        std::fs::write(root.join("app.log"), "ERROR: connection refused").unwrap();
+        let r = lookup("read").unwrap();
+        let (out, success) =
+            with_read_success(execute_builtin(r, &json!({"path": "app.log"}), &root)).await;
+        assert!(out.starts_with("ERROR: connection refused"), "{out}");
+        assert!(success.is_some_and(|s| out.starts_with(&s)));
+
+        let (missing, success) =
+            with_read_success(execute_builtin(r, &json!({"path": "nope.log"}), &root)).await;
+        assert!(missing.starts_with("ERROR"), "{missing}");
+        assert!(success.is_none(), "a failed read was marked successful");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn rewriting_identical_content_reports_no_change_and_no_diff() {
         let root = unique_root();
@@ -6197,9 +6283,19 @@ on_failure = \"warn\"
             seen.lock().unwrap().is_empty(),
             "nothing printed yet at hand-off"
         );
-        // The detached task is still running and still holds the sink.
-        tokio::time::sleep(std::time::Duration::from_millis(900)).await;
-        let streamed = seen.lock().unwrap().clone();
+        // The detached task is still running and still holds the sink. The
+        // command itself sleeps a full second before printing, so a fixed
+        // wait shorter than that always races it; poll with a generous
+        // deadline instead so a loaded runner or slow sandbox spawn does not
+        // fail the test.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let streamed = loop {
+            let now_seen = seen.lock().unwrap().clone();
+            if now_seen.contains("late") || std::time::Instant::now() >= deadline {
+                break now_seen;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
         assert!(
             streamed.contains("late"),
             "a backgrounded job must keep reporting: {streamed:?}"
