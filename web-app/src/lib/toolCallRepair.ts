@@ -27,6 +27,16 @@ const HEX = /[0-9a-fA-F]/
  * text that already failed to parse (see `recoverToolArgs`, which parses first),
  * so an intended escape in valid JSON is never mangled.
  */
+/**
+ * Whether a quote whose next character is at `from` ends a JSON string value:
+ * what follows it, after whitespace, is the end of input or `,` `}` `]` `:`.
+ */
+function closesString(raw: string, from: number): boolean {
+  let j = from
+  while (j < raw.length && /\s/.test(raw[j])) j++
+  return j >= raw.length || ',}]:'.includes(raw[j])
+}
+
 export function sanitizeInvalidJsonEscapes(raw: string): string {
   let out = ''
   let inString = false
@@ -47,6 +57,15 @@ export function sanitizeInvalidJsonEscapes(raw: string): string {
       if (isUnicode) {
         out += raw.slice(i, i + 6)
         i += 5
+      } else if (raw[i + 1] === '"' && !closesString(raw, i + 2)) {
+        // An escaped quote inside the value. Kept as the escape it is, and
+        // the quote consumed with it so it does not end the string: without
+        // this the scan left the string here and copied every later
+        // backslash in the value through undoubled (Jozkah/jan#85). A `\"`
+        // that is followed by what ends a value is a trailing path separator
+        // instead, handled below like any other literal backslash.
+        out += '\\"'
+        i += 1
       } else {
         out += '\\\\'
       }
