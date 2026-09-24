@@ -400,7 +400,11 @@ export default class mlx_extension extends AIEngine {
       try {
         await fetch(`http://localhost:${sessionInfo.port}/health`)
       } catch (e) {
-        this.unload(sessionInfo.model_id)
+        // Best-effort cleanup: unload() rejects when the session is already
+        // gone, and that rejection must not escape as an unhandled one.
+        this.unload(sessionInfo.model_id).catch((err) =>
+          logger.warn('Failed to unload crashed MLX model:', err)
+        )
         throw new Error('MLX model appears to have crashed! Please reload!')
       }
     } else {
