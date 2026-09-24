@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import {
+  LOCAL_API_SERVER_KEY_SECRET,
+  moveFieldToKeyring,
+  persistStoreSecret,
+  readStoreSecret,
+} from '@/lib/storeSecrets'
 
 type LocalApiServerState = {
   // Run local API server once app opens
@@ -48,6 +54,18 @@ type LocalApiServerState = {
   setEnableServerToolExecution: (value: boolean) => void
 }
 
+/**
+ * What of the store is written to `settings.json`: everything except the API
+ * key, which is a secret and lives in the OS keyring.
+ */
+export function persistedLocalApiServerState(
+  state: LocalApiServerState
+): Partial<LocalApiServerState> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { apiKey, ...rest } = state
+  return rest
+}
+
 export const useLocalApiServer = create<LocalApiServerState>()(
   persist(
     (set) => ({
@@ -87,14 +105,19 @@ export const useLocalApiServer = create<LocalApiServerState>()(
       setEnableServerToolExecution: (value) =>
         set({ enableServerToolExecution: value }),
       apiKey: '',
-      setApiKey: (value) => set({ apiKey: value }),
+      setApiKey: (value) => {
+        set({ apiKey: value })
+        // The key is a secret: kept in the OS keyring, never in settings.json.
+        void persistStoreSecret(LOCAL_API_SERVER_KEY_SECRET, value)
+      },
     }),
     {
       name: localStorageKey.settingLocalApiServer,
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 4,
-      migrate: (persistedState: unknown, version: number) => {
+      partialize: persistedLocalApiServerState,
+      version: 5,
+      migrate: async (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<LocalApiServerState>
         if (version < 1) {
           // v0 → v1: add lastServerModels field
@@ -112,8 +135,22 @@ export const useLocalApiServer = create<LocalApiServerState>()(
           // v3 -> v4: add run-in-background toggle (matches previous behavior)
           state.runInBackground = true
         }
-        return state
+        if (version < 5) {
+          // v4 -> v5: the API key moves out of settings.json into the keyring.
+          await moveFieldToKeyring(
+            state as Record<string, unknown>,
+            'apiKey',
+            LOCAL_API_SERVER_KEY_SECRET
+          )
+        }
+        return state as LocalApiServerState
       },
     }
   )
 )
+
+/** Re-seed the API key from the keyring after the store hydrates. */
+export async function seedLocalApiServerKey(): Promise<void> {
+  const key = await readStoreSecret(LOCAL_API_SERVER_KEY_SECRET)
+  if (key) useLocalApiServer.setState({ apiKey: key })
+}

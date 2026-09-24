@@ -4,7 +4,11 @@ import type {
   TemplateKwarg,
   TemplateKwargType,
 } from '@janhq/tauri-plugin-llamacpp-api'
-import { getBackendSetting, setBackendSetting } from './backend-settings'
+import {
+  getBackendSecret,
+  getBackendSetting,
+  setBackendSetting,
+} from './backend-settings'
 
 // Zustand proxy state structure
 interface ProxyState {
@@ -88,10 +92,14 @@ export async function getProxyConfig(): Promise<Record<
       url: proxyState.proxyUrl,
     }
 
-    // Add username/password if both are provided
-    if (proxyState.proxyUsername && proxyState.proxyPassword) {
+    // Add username/password if both are provided. The password lives in the
+    // OS keyring (`proxy-password`), not the settings blob; a blob written by
+    // an older build may still carry it until it is migrated.
+    const proxyPassword =
+      (await getBackendSecret('proxy-password')) || proxyState.proxyPassword
+    if (proxyState.proxyUsername && proxyPassword) {
       proxyConfig.username = proxyState.proxyUsername
-      proxyConfig.password = proxyState.proxyPassword
+      proxyConfig.password = proxyPassword
     }
 
     // Parse no_proxy list if provided

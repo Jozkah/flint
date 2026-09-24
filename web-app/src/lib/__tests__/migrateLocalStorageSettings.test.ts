@@ -191,4 +191,36 @@ describe('migrateLocalStorageToBackend', () => {
     expect(stored).not.toContain('sk-real')
     expect(stored).toContain('gpt-4')
   })
+  // #130 / #82: legacy blobs holding a secret move it to the keyring and
+  // reach settings.json without it.
+  it('moves the local API key and proxy password into the keyring', async () => {
+    localStorage.setItem(
+      'setting-local-api-server',
+      JSON.stringify({ state: { apiKey: 'k-local', serverPort: 1337 }, version: 4 })
+    )
+    localStorage.setItem(
+      'setting-proxy-config',
+      JSON.stringify({
+        state: { proxyUsername: 'alice', proxyPassword: 'p-proxy' },
+        version: 0,
+      })
+    )
+
+    await migrateLocalStorageToBackend()
+
+    expect(invoke).toHaveBeenCalledWith('set_secret', {
+      key: 'local-api-server-key',
+      value: 'k-local',
+    })
+    expect(invoke).toHaveBeenCalledWith('set_secret', {
+      key: 'proxy-password',
+      value: 'p-proxy',
+    })
+    const server = backend.get('setting-local-api-server')!
+    expect(server).not.toContain('k-local')
+    expect(server).toContain('1337')
+    const proxy = backend.get('setting-proxy-config')!
+    expect(proxy).not.toContain('p-proxy')
+    expect(proxy).toContain('alice')
+  })
 })
