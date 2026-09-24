@@ -16,6 +16,8 @@ pub mod json_api;
 pub mod bench;
 pub mod login;
 pub mod mcp;
+/// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
+pub mod mcp_serve;
 mod model_capabilities;
 mod path_refs;
 pub mod providers;
@@ -26,6 +28,8 @@ pub mod stream_input;
 pub mod terminal_setup;
 pub mod tokamak;
 mod tui;
+/// Renders reported usage from the Tokamak usage API (upstream #9034).
+pub mod usage_view;
 pub mod version;
 pub mod worktree;
 
@@ -780,11 +784,80 @@ use tauri_plugin_agent_tools::workspace;
 use tokio::sync::{mpsc, Mutex};
 
 /// Token-spend ceiling for one agent run when `agent.toml [budget].max_tokens`
-/// is unset. There is no turn cap: the agent takes as many turns as the task
-/// needs and this budget (or cancellation) is what stops a runaway loop. `0`
-/// disables the ceiling entirely. Counted marginally by `SessionBudget`, so
-/// this bounds real new spend, not the context replayed on every turn.
+/// is unset. `0` disables the ceiling entirely. Counted marginally by
+/// `SessionBudget`, so it tracks real new spend, not the context replayed on
+/// every turn.
+///
+/// Spending it stops the run (see `body_session_budget`); `--max-turns` adds a
+/// turn cap on top.
 const DEFAULT_MAX_SESSION_TOKENS: u64 = 128_000;
+
+/// Where the session token ceiling in effect came from, so `agent status` can
+/// say which source won.
+///
+/// `agent status` takes no budget flag and so always passes `None`, making
+/// `"flag"` unreachable from the binary today. It is kept because the argument
+/// mirrors `resolve_session_budget` below: a status surface that does accept
+/// the flag (or any caller reporting an in-flight run's ceiling) would
+/// otherwise report `agent.toml` for a value the flag had overridden.
+fn session_budget_source(flag: Option<u64>, configured: Option<u64>) -> &'static str {
+    match (flag, configured) {
+        (Some(_), _) => "flag",
+        (None, Some(_)) => "agent.toml",
+        (None, None) => "default",
+    }
+}
+
+/// Session token ceiling for one run. Precedence is the per-invocation
+/// `--max-session-tokens` flag, then `agent.toml [budget].max_tokens`, then
+/// `DEFAULT_MAX_SESSION_TOKENS` - the same flag/config/default shape the
+/// sandbox setting resolves with. `0` from either source means unbounded and is
+/// carried through as-is (see `body_session_budget`).
+/// The money ceiling for a run (upstream #9034): `--max-budget-usd`, then
+/// `[budget].max_usd`, then none.
+///
+/// A ceiling is only meaningful if the run can be priced, and in this fork the
+/// price is what a person declared in `<data folder>/prices.toml`. So a model
+/// with no declared price is **refused** rather than run uncapped, and a
+/// negative limit is refused as a typo. `0` is allowed and honest: it stops at
+/// the first billed request. Refused at startup, before any paid request.
+fn resolve_cost_ceiling(
+    flag: Option<f64>,
+    configured: Option<f64>,
+    prices: &std::collections::BTreeMap<String, crate::core::agent::spend::Price>,
+    model: &str,
+) -> Result<Option<crate::core::agent::session::CostCeiling>, String> {
+    let Some(max_usd) = flag.or(configured) else {
+        return Ok(None);
+    };
+    if !max_usd.is_finite() || max_usd < 0.0 {
+        return Err(format!(
+            "a cost ceiling must be a non-negative amount in USD, not {max_usd}"
+        ));
+    }
+    let price = crate::core::agent::spend::price_for(prices, model).ok_or_else(|| {
+        format!(
+            "cannot cap spend for {model}: no price is declared for it in prices.toml, so \
+             there is nothing to meter a ${max_usd} ceiling against. Remove the limit to run \
+             uncapped, or declare the model's price (dollars per million tokens)."
+        )
+    })?;
+    // prices.toml is dollars per million tokens.
+    let per_token = |per_million: f64| per_million / 1_000_000.0;
+    Ok(Some(crate::core::agent::session::CostCeiling {
+        rates: crate::core::agent::session::TokenRates {
+            prompt_usd: per_token(price.input),
+            completion_usd: per_token(price.output),
+            cache_read_usd: price.cached_input.map(per_token),
+            cache_write_usd: None,
+        },
+        max_usd,
+    }))
+}
+
+fn resolve_session_budget(flag: Option<u64>, configured: Option<u64>) -> u64 {
+    flag.or(configured).unwrap_or(DEFAULT_MAX_SESSION_TOKENS)
+}
 
 /// Resolve the `--project` flag (default `"."`) to an absolute path. The raw
 /// value is what the model would otherwise see verbatim in the system prompt's
@@ -827,7 +900,14 @@ pub fn cli_agent_status(
         "project": project_root.to_string_lossy(),
         "data_folder": resolve_jan_data_folder().to_string_lossy(),
         "model": cfg.agent.model,
-        "max_session_tokens": cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+        // The effective ceiling with the config files resolved. A
+        // `--max-session-tokens` flag is per-invocation and so, like
+        // `--sandbox` below, cannot be reflected in a config dump.
+        "max_session_tokens": resolve_session_budget(None, cfg.budget.max_tokens),
+        "max_session_tokens_source": session_budget_source(None, cfg.budget.max_tokens),
+        // The configured money ceiling, or null when the project sets none.
+        // Whether it can be enforced depends on the model a run resolves.
+        "max_budget_usd": cfg.budget.max_usd,
         "tools": {
             "default": cfg.tools.default,
             "allow": cfg.tools.allow,
@@ -939,8 +1019,8 @@ pub async fn cli_plugin_search(
     crate::core::agent::plugins::search(&resolve_project_root(project), query).await
 }
 
-/// Autonomous run: as many turns as the task needs, bounded only by the
-/// session token budget.
+/// Autonomous run: as many turns as the task needs, bounded by a `max_turns`
+/// cap when one is set, and by the session token budget.
 ///
 /// The failure is classified (AH-009), so the caller can choose an exit status
 /// and a message from what went wrong rather than from how it was worded.
@@ -961,8 +1041,8 @@ pub async fn cli_agent_run(
     .await
 }
 
-/// Single-turn run for debugging: the one place a turn cap is still applied,
-/// and it is not user-configurable.
+/// Single-turn run for debugging: the turn cap is pinned to 1 here and
+/// outranks any `--max-turns`.
 pub async fn cli_agent_step(
     project: &str,
     task: &str,
@@ -1088,9 +1168,19 @@ pub(crate) struct SessionLimits {
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     pub max_tokens: Option<u64>,
-    /// `[budget].max_tokens`: marginal token-spend ceiling for one run, the
-    /// only cap on run length. `0` is unbounded.
+    /// `--max-session-tokens`, else `[budget].max_tokens`, else the default:
+    /// marginal token-spend ceiling for one run. `0` is no ceiling.
+    ///
+    /// Spending it stops the run; `max_turns` is a separate turn cap.
     pub max_session_tokens: u64,
+    /// `--max-turns`: hard cap on agentic turns for this run. `None` omits the field from the request
+    /// body, which the engine reads as unbounded; `0` means unbounded too (see
+    /// `body_turn_cap`).
+    pub max_turns: Option<u64>,
+    /// `--max-budget-usd`, else `[budget].max_usd`: the run's money ceiling and
+    /// the rates to meter it against, resolved once at startup by
+    /// `resolve_cost_ceiling`. `None` leaves the run unmetered.
+    pub cost_ceiling: Option<crate::core::agent::session::CostCeiling>,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -1128,24 +1218,54 @@ pub(crate) struct AgentSession {
     pub workspace_note: Option<String>,
 }
 
+/// The request body for one turn, as a free function of the parts that shape
+/// it. Split out of [`AgentSession::body`] so the wire contract is testable
+/// without standing up an orchestration handle (MCP maps, HTTP client, tool
+/// permissions), none of which this assembly reads.
+fn request_body(
+    model: &str,
+    limits: &SessionLimits,
+    send_reasoning: bool,
+    messages: serde_json::Value,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "max_session_tokens": limits.max_session_tokens,
+        "stream": true,
+    });
+    // Forward the per-request output cap only when configured; it flows to
+    // the upstream via `copy_optional_chat_params`.
+    if let Some(max) = limits.max_tokens {
+        body["max_tokens"] = serde_json::json!(max);
+    }
+    // Single place a turn cap enters the body: `agent step` pins 1 the same
+    // way `--max-turns` pins N, so both go through `limits`. Absent rather
+    // than 0 when unset, so the engine's own default applies.
+    if let Some(turns) = limits.max_turns {
+        body["max_turns"] = serde_json::json!(turns);
+    }
+    // The ceiling travels with the rates it is metered against: the loop is
+    // not `cli`-gated, so prices resolved here are the only ones it sees.
+    if let Some(ceiling) = limits.cost_ceiling {
+        body["max_budget_usd"] = serde_json::json!(ceiling.max_usd);
+        body["token_rates"] = serde_json::json!({
+            "prompt_usd": ceiling.rates.prompt_usd,
+            "completion_usd": ceiling.rates.completion_usd,
+            "cache_read_usd": ceiling.rates.cache_read_usd,
+            "cache_write_usd": ceiling.rates.cache_write_usd,
+        });
+    }
+    // Reasoning resend policy: the request-level flag the loop reads to
+    // decide whether prior assistant `reasoning_content` goes back out.
+    body["send_reasoning"] = serde_json::json!(send_reasoning);
+    body
+}
+
 impl AgentSession {
     /// Build a streaming request body for the given conversation history.
     pub(crate) fn body(&self, messages: serde_json::Value) -> serde_json::Value {
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "messages": messages,
-            "max_session_tokens": self.limits.max_session_tokens,
-            "stream": true,
-        });
-        // Forward the per-request output cap only when configured; it flows to
-        // the upstream via `copy_optional_chat_params`.
-        if let Some(max) = self.limits.max_tokens {
-            body["max_tokens"] = serde_json::json!(max);
-        }
-        // Reasoning resend policy: the request-level flag the loop reads to
-        // decide whether prior assistant `reasoning_content` goes back out.
-        body["send_reasoning"] = serde_json::json!(self.send_reasoning);
-        body
+        request_body(&self.model, &self.limits, self.send_reasoning, messages)
     }
 }
 
@@ -1181,6 +1301,17 @@ pub struct SessionFlags {
     /// defers to `[agent].worktree`, then the global `worktree`, then the CLI
     /// default of off.
     pub worktree: Option<bool>,
+    /// `--max-turns`: hard cap on agentic turns. `None` (not passed) leaves the run unbounded by turns; `0`
+    /// is unbounded as well.
+    pub max_turns: Option<u64>,
+    /// `--max-session-tokens`: session token ceiling, outranking
+    /// `[budget].max_tokens`. `None` (not passed) defers to that, then to
+    /// `DEFAULT_MAX_SESSION_TOKENS`.
+    pub max_session_tokens: Option<u64>,
+    /// `--max-budget-usd`: hard USD ceiling for the run, outranking
+    /// `[budget].max_usd`. A run that asks for one but cannot be priced is
+    /// refused (see `resolve_cost_ceiling`).
+    pub max_budget_usd: Option<f64>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1501,6 +1632,19 @@ fn prepare_agent_session(
     )
     .map_err(|e| e.message().to_string())?;
 
+    // Resolved before the session is built: a run that asked for a ceiling it
+    // cannot be priced against is refused here, before any paid request.
+    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd) {
+        None => None,
+        Some(_) => {
+            let prices = crate::core::agent::spend::prices(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+            )
+            .map_err(|e| e.message)?;
+            resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?
+        }
+    };
+
     Ok(AgentSession {
         args,
         permission_requests,
@@ -1512,7 +1656,12 @@ fn prepare_agent_session(
             reserve_tokens: compaction.reserve_tokens,
             compaction: compaction.clone(),
             max_tokens: cfg.agent.max_tokens,
-            max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+            max_session_tokens: resolve_session_budget(
+                flags.max_session_tokens,
+                cfg.budget.max_tokens,
+            ),
+            max_turns: flags.max_turns,
+            cost_ceiling,
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
@@ -1627,6 +1776,9 @@ fn prepare_agent_run(
         SessionFlags {
             plan: false,
             require_model: true,
+            // `agent step` is a single turn by definition and outranks any
+            // flag; `agent run` carries whatever `--max-turns` asked for.
+            max_turns: if single_turn { Some(1) } else { flags.max_turns },
             ..flags
         },
         resume.as_ref(),
@@ -1696,10 +1848,7 @@ fn prepare_agent_run(
         .map(|r| r.history.clone())
         .unwrap_or_default();
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
-    let mut body = session.body(serde_json::json!(history.clone()));
-    if single_turn {
-        body["max_turns"] = serde_json::json!(1);
-    }
+    let body = session.body(serde_json::json!(history.clone()));
     // Emit resolved references stderr so the user sees what was injected
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
@@ -1900,7 +2049,7 @@ async fn run_agent_loop(
             report.observe(&ev);
             // Said before the reply that would overflow, not after: the point
             // of the warning is that there is still a choice to make.
-            if let StreamEvent::TurnUsage { usage } = &ev {
+            if let StreamEvent::TurnUsage { usage, .. } = &ev {
                 let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
                 match crate::core::agent::context_pressure::pressure(
                     used,
@@ -2778,7 +2927,7 @@ async fn print_event(
         // Headless reports totals once, from the terminal `Done` -- unless the
         // run was asked to say more, in which case each turn's own numbers are
         // worth having, because a total hides which turn was expensive.
-        StreamEvent::TurnUsage { usage } => {
+        StreamEvent::TurnUsage { usage, .. } => {
             if density == Density::Verbose {
                 let (input, output, total) = (
                     usage.prompt_tokens.unwrap_or(0),
@@ -4299,5 +4448,114 @@ mod tests {
         // A source that recorded a snapshot uses it, no capture needed.
         let snapped = serde_json::json!({ "id": "s", "metadata": { "base_snapshot": "cafe" } });
         assert_eq!(fork_base(Some(&snapped)).as_deref(), Some("cafe"));
+    }
+
+    /// `--max-session-tokens` outranks `[budget].max_tokens`, which outranks
+    /// the built-in default; `0` from either source survives as the unbounded
+    /// marker `body_session_budget` expects rather than falling through.
+    /// The money ceiling resolves flag > config > none, and a run that asks
+    /// for one it cannot price is refused rather than run uncapped.
+    #[test]
+    fn a_cost_ceiling_is_refused_rather_than_run_uncapped() {
+        let none = std::collections::BTreeMap::new();
+        let unpriced = "no-such-model/never-priced";
+        assert_eq!(resolve_cost_ceiling(None, None, &none, unpriced), Ok(None));
+        let refused = resolve_cost_ceiling(Some(2.0), None, &none, unpriced)
+            .expect_err("an unpriceable ceiling must not silently run uncapped");
+        assert!(refused.contains("no price is declared"), "{refused}");
+        assert!(resolve_cost_ceiling(None, Some(2.0), &none, unpriced).is_err());
+        let precedence = resolve_cost_ceiling(Some(2.0), Some(9.0), &none, unpriced)
+            .expect_err("still unpriceable");
+        assert!(precedence.contains("$2") && !precedence.contains("$9"), "{precedence}");
+        let negative = resolve_cost_ceiling(Some(-1.0), None, &none, unpriced)
+            .expect_err("a negative ceiling is rejected");
+        assert!(negative.contains("non-negative"), "{negative}");
+        assert!(resolve_cost_ceiling(Some(f64::NAN), None, &none, unpriced).is_err());
+
+        // A declared price (dollars per million) becomes per-token rates, and
+        // a provider-qualified id finds a bare declaration.
+        let mut prices = std::collections::BTreeMap::new();
+        prices.insert(
+            "claude-x".to_string(),
+            crate::core::agent::spend::Price {
+                input: 3.0,
+                output: 15.0,
+                cached_input: Some(0.3),
+            },
+        );
+        let ceiling = resolve_cost_ceiling(Some(0.0), None, &prices, "anthropic/claude-x")
+            .expect("priced")
+            .expect("a ceiling");
+        assert_eq!(ceiling.max_usd, 0.0);
+        assert!((ceiling.rates.prompt_usd - 3e-6).abs() < 1e-15);
+        assert!((ceiling.rates.completion_usd - 15e-6).abs() < 1e-15);
+        assert_eq!(ceiling.rates.cache_read_usd, Some(0.3 / 1_000_000.0));
+
+        // It reaches the request body with its rates.
+        let mut limits = limits_with(None, 0);
+        limits.cost_ceiling = Some(ceiling);
+        let body = request_body("m", &limits, true, serde_json::json!([]));
+        assert_eq!(body["max_budget_usd"], 0.0);
+        assert!(body["token_rates"]["prompt_usd"].as_f64().is_some());
+    }
+
+    #[test]
+    fn session_budget_precedence_is_flag_then_config_then_default() {
+        assert_eq!(
+            resolve_session_budget(None, None),
+            DEFAULT_MAX_SESSION_TOKENS
+        );
+        assert_eq!(resolve_session_budget(None, Some(50_000)), 50_000);
+        assert_eq!(resolve_session_budget(Some(20_000), Some(50_000)), 20_000);
+        assert_eq!(resolve_session_budget(Some(20_000), None), 20_000);
+        assert_eq!(resolve_session_budget(Some(0), Some(50_000)), 0);
+        assert_eq!(resolve_session_budget(None, Some(0)), 0);
+
+        assert_eq!(session_budget_source(None, None), "default");
+        assert_eq!(session_budget_source(None, Some(50_000)), "agent.toml");
+        assert_eq!(session_budget_source(Some(0), Some(50_000)), "flag");
+    }
+
+    fn limits_with(max_turns: Option<u64>, max_session_tokens: u64) -> SessionLimits {
+        SessionLimits {
+            context_window: 128_000,
+            context_window_source:
+                crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
+            reserve_tokens: 16_384,
+            compaction: Default::default(),
+            max_tokens: None,
+            max_session_tokens,
+            max_turns,
+            cost_ceiling: None,
+        }
+    }
+
+    /// The write side of the caps: the limits have to reach the request body in
+    /// the encoding `body_turn_cap` / `body_session_budget` read back, or the
+    /// flags are inert. `max_turns` is absent (not `0`) when unset, so a caller
+    /// that never passes it is byte-identical to before the flag existed.
+    #[test]
+    fn run_limits_reach_the_request_body() {
+        let messages = serde_json::json!([]);
+
+        let unset = request_body("m", &limits_with(None, 128_000), true, messages.clone());
+        assert!(
+            unset.get("max_turns").is_none(),
+            "an unset cap must not write the field at all: {unset}"
+        );
+        assert_eq!(unset["max_session_tokens"], 128_000);
+
+        // What `agent step` pins, and what `--max-turns 5` pins, by the same route.
+        let stepped = request_body("m", &limits_with(Some(1), 128_000), true, messages.clone());
+        assert_eq!(stepped["max_turns"], 1);
+        let capped = request_body("m", &limits_with(Some(5), 20_000), true, messages.clone());
+        assert_eq!(capped["max_turns"], 5);
+        assert_eq!(capped["max_session_tokens"], 20_000);
+
+        // An explicit 0 is the engine's "unbounded" encoding and must survive as
+        // itself rather than being dropped back to the absent case.
+        let zero = request_body("m", &limits_with(Some(0), 0), true, messages);
+        assert_eq!(zero["max_turns"], 0);
+        assert_eq!(zero["max_session_tokens"], 0);
     }
 }

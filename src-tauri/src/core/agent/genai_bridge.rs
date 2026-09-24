@@ -115,6 +115,7 @@ fn client_for(
     request_url: &str,
     api_key: Option<&str>,
     adapter: AdapterKind,
+    client_request_id: Option<&str>,
 ) -> Client {
     let endpoint = Endpoint::from_owned(endpoint_base.to_string());
 
@@ -136,6 +137,16 @@ fn client_for(
     ];
     if let Some(key) = api_key.filter(|k| !k.is_empty()) {
         headers.push(("Authorization".to_string(), format!("Bearer {key}")));
+    }
+    // The correlation id has to go in here rather than through
+    // `ChatOptions::with_extra_headers`: genai overwrites the whole header map
+    // with this override's when `RequestOverride` is set, which it always is on
+    // this path, so extra headers set anywhere else are silently dropped.
+    if let Some(id) = client_request_id.filter(|id| !id.is_empty()) {
+        headers.push((
+            super::correlation::CLIENT_REQUEST_ID_HEADER.to_string(),
+            id.to_string(),
+        ));
     }
     let auth = AuthData::RequestOverride {
         url: request_url.to_string(),
@@ -651,6 +662,7 @@ pub(crate) async fn stream_chat_completions(
     api_type: Option<&str>,
     body: &serde_json::Value,
     events: &mpsc::UnboundedSender<StreamEvent>,
+    client_request_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let (model, chat_req) = chat_request_from_body(body)?;
     let options = options_from_body(body);
@@ -669,7 +681,14 @@ pub(crate) async fn stream_chat_completions(
     let mut diagnosed = false;
 
     for (key_index, key) in keys.iter().enumerate() {
-        let client = client_for(http, &endpoint_base, upstream_url, *key, adapter);
+        let client = client_for(
+            http,
+            &endpoint_base,
+            upstream_url,
+            *key,
+            adapter,
+            client_request_id,
+        );
 
         for attempt in 0..MAX_ATTEMPTS {
             let mut progressed = false;
@@ -1230,7 +1249,7 @@ mod tests {
         keys: &[String],
         events: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<serde_json::Value, String> {
-        stream_chat_completions(&build_http_client(), url, keys, None, &body(), events).await
+        stream_chat_completions(&build_http_client(), url, keys, None, &body(), events, None).await
     }
 
     #[tokio::test]
@@ -1465,7 +1484,7 @@ mod tests {
         );
         assert!(diagnose_certificate(&client, &url).await.is_some(), "diagnose_certificate found nothing for {url}");
         let started = std::time::Instant::now();
-        let err = stream_chat_completions(&client, &url, &[], None, &body(), &tx).await.unwrap_err();
+        let err = stream_chat_completions(&client, &url, &[], None, &body(), &tx, None).await.unwrap_err();
         assert!(err.contains("not trusted"), "{err}");
         assert!(err.contains("not retried"), "{err}");
         assert!(!err.contains("attempts"), "{err}");

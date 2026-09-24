@@ -97,6 +97,10 @@ pub(crate) struct RunReport {
     prompt_tokens: u64,
     completion_tokens: u64,
     resources: Option<tauri_plugin_agent_tools::resources::RunResources>,
+    /// Provider execution ids seen this run, in request order (upstream
+    /// #9034). Each is a handle to one billing record; the token counts above
+    /// only describe the same requests.
+    execution_ids: Vec<String>,
 }
 
 impl RunReport {
@@ -123,9 +127,17 @@ impl RunReport {
             // Reasoning is display-only: it must not enter the piped/plain-text
             // report answer, which is reserved for the final completion.
             StreamEvent::Reasoning { .. } => {}
-            StreamEvent::TurnUsage { usage } => {
+            StreamEvent::TurnUsage {
+                usage,
+                execution_id,
+            } => {
                 self.prompt_tokens += usage.prompt_tokens.unwrap_or(0);
                 self.completion_tokens += usage.completion_tokens.unwrap_or(0);
+                // Recorded so a scripted run can look up what the provider
+                // actually charged for each request it made.
+                if let Some(id) = execution_id {
+                    self.execution_ids.push(id.clone());
+                }
             }
             // Subagent work is real spend on the same budget, so its usage
             // counts. Its `Step`/`Token` must not: those describe the child's
@@ -189,6 +201,8 @@ impl RunReport {
                 prompt_tokens: self.prompt_tokens,
                 completion_tokens: self.completion_tokens,
                 total_tokens: self.prompt_tokens + self.completion_tokens,
+                execution_ids: (!self.execution_ids.is_empty())
+                    .then(|| self.execution_ids.clone()),
             },
             resources: self.resources,
         }
@@ -231,6 +245,12 @@ struct ReportUsage {
     prompt_tokens: u64,
     completion_tokens: u64,
     total_tokens: u64,
+    /// Provider execution ids for the requests this run made, when the upstream
+    /// returned them. `flint usage generation <id>` turns one into the recorded
+    /// charge. Omitted rather than empty when none were reported, so its
+    /// absence is never read as "no requests were made".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution_ids: Option<Vec<String>>,
 }
 
 /// A stable, machine-readable code for a failure. The loop stamps every
@@ -312,6 +332,7 @@ mod tests {
             StreamEvent::Step { index: 1, max: 0 },
             StreamEvent::TurnUsage {
                 usage: usage(9011, 655),
+                execution_id: None,
             },
             token("done"),
             StreamEvent::Done {
@@ -344,6 +365,7 @@ mod tests {
             StreamEvent::Step { index: 1, max: 0 },
             StreamEvent::TurnUsage {
                 usage: usage(8123, 0),
+                execution_id: None,
             },
             token("I started reviewing auth.rs and"),
             StreamEvent::Error {
@@ -401,9 +423,11 @@ mod tests {
             StreamEvent::Step { index: 1, max: 0 },
             StreamEvent::TurnUsage {
                 usage: usage(100, 10),
+                execution_id: None,
             },
             child(StreamEvent::TurnUsage {
                 usage: usage(50, 5),
+                execution_id: None,
             }),
             // A child's own turns and prose belong to the child, not this run.
             child(StreamEvent::Step { index: 9, max: 0 }),
@@ -411,6 +435,7 @@ mod tests {
             StreamEvent::Step { index: 2, max: 0 },
             StreamEvent::TurnUsage {
                 usage: usage(200, 20),
+                execution_id: None,
             },
         ] {
             report.observe(&ev);

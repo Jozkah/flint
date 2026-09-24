@@ -74,14 +74,16 @@ Run the agent without a UI. This is the form to use in scripts.
 
 ### `run`
 
-Run to completion, or until the session token budget is spent. There is no turn cap - the agent
-runs as many turns as the task needs, bounded only by `[budget].max_tokens`, or by cancelling it.
+Run to completion, or until the session token budget is spent. There is no turn cap by default -
+the agent runs as many turns as the task needs, bounded by `--max-turns`, by the session token
+budget (`--max-session-tokens`, else `[budget].max_tokens`), or by cancelling it.
 
 ```bash
 jan cli agent run "fix the failing test in tests/auth"
 jan cli agent run --project ~/code/app "update the changelog"
 jan cli agent run --model gpt-4o "add unit tests for the parser"
 jan cli agent run --safe "run the migration"   # approve each step
+jan cli agent run --max-turns 5 --max-session-tokens 20000 "triage the build failure"
 ```
 
 | Flag | Description |
@@ -96,6 +98,9 @@ jan cli agent run --safe "run the migration"   # approve each step
 | `--fork-session` | Open the resumed session as a new thread, leaving the original resumable |
 | `--worktree` | Work in a dedicated git worktree instead of the project directory. Off by default |
 | `--no-worktree` | Work in the project directory, overriding a persistent `worktree` setting |
+| `--max-turns <N>` | Hard cap on agentic turns. If the model is still calling tools at N the run fails with `reached the N-turn limit...` and a non-zero exit; with `--output-format json` the partial answer is still in `result`. Bounds the parent run only - subagent turns are not counted. `0` means unbounded, which is the default |
+| `--max-session-tokens <N>` | Token-spend ceiling for this run, overriding `[budget].max_tokens`. The run stops once it is spent. `0` means no ceiling |
+| `--max-budget-usd <USD>` | Stop the run once it has spent this much, overriding `[budget].max_usd`. Priced from `<data folder>/prices.toml`; a model with no declared price is refused rather than run uncapped. The answer so far comes back with `finish_reason: budget_exceeded`. `0` stops at the first billed request |
 | `--provider`, `--api-key` | Credential overrides for this run |
 | `--output-format <FORMAT>` | `text` (default) streams the answer; `json` prints one result object; `stream-json` prints one JSON event per line |
 | `--input-format <FORMAT>` | `text` (default) ignores stdin; `stream-json` reads client messages while the run is in flight. Requires `--output-format stream-json` |
@@ -328,6 +333,34 @@ Adding a server that already exists replaces it (an edit); its `active` flag is 
 added servers default to inactive, so they are persisted but not connected until you `enable` them.
 
 See [MCP](/docs/agent/mcp).
+
+## `jan mcp serve`
+
+The other direction: serve Jan's own built-in tools to another MCP client. One project root, fixed
+at startup; a path argument that escapes it is refused, and so is the project's hidden `.jan` state.
+
+```bash
+jan mcp serve --project .                   # stdio, for a client that spawns it as a child
+jan mcp serve --transport http              # loopback HTTP; prints its URL and bearer token
+jan mcp serve --allow-write --allow-exec    # add the mutating and shell tools
+jan mcp serve --tool read --tool grep       # narrow the set
+```
+
+| Flag | Description |
+| --- | --- |
+| `--project <PATH>` | Project root the served tools are confined to. Defaults to `.` |
+| `--transport <T>` | `stdio` (default) or `http` |
+| `--port <PORT>` | Port for `http`. Defaults to an ephemeral one |
+| `--token <TOKEN>` | Bearer token for `http`. One is generated and printed if omitted |
+| `--allow-write` | Offer `write` and `edit`, confined to the project root |
+| `--allow-exec` | Offer `bash`, under the same OS sandbox the agent's shell uses |
+| `--tool <NAME>` | Serve only these tools. Repeatable; never widens what the flags above permit |
+
+The default set touches no project file, and the two classes that can change the machine are opt-in:
+the caller is another program, so anything that would wait for an approval returns an error rather
+than blocking. On `http` the listener is loopback-only and every request must carry the token.
+
+See [Serving Jan's own tools](/docs/agent/mcp#serving-jans-own-tools).
 
 ## `jan update`
 

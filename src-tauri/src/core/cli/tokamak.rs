@@ -19,10 +19,15 @@
 //! [`super::tui`] for `/login`); this module is UI-free so both share one
 //! implementation.
 
+/// Client for the Tokamak usage API (upstream #9034).
+pub mod usage;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::core::agent::global_config::{set_default_model_if_unset, set_provider, ProviderUpdate};
+use crate::core::agent::global_config::{
+    adopt_default_model, set_provider, DefaultModelChange, ProviderUpdate,
+};
 
 /// Provider id this login writes to in `~/.jan/config.toml`.
 pub const PROVIDER: &str = "tokamak";
@@ -61,8 +66,13 @@ const VERIFY_TIMEOUT: Duration = Duration::from_secs(20);
 pub struct Login {
     pub models: Vec<String>,
     pub config_path: PathBuf,
-    /// The model written to `default_model`, or `None` when the user already had one.
+    /// The model written to `default_model`, or `None` when the user already had
+    /// a usable one.
     pub default_model: Option<String>,
+    /// Set when [`Login::default_model`] *replaced* a stale default (one no
+    /// provider offers any more) rather than filling an empty one, so the
+    /// caller can say so.
+    pub replaced_default: bool,
     /// Who the server says signed in. Only the browser flow reports one; the
     /// paste flow never learns it.
     pub account: Option<String>,
@@ -128,17 +138,30 @@ fn persist(api_key: &str, models: Vec<String>) -> Result<Login, String> {
             account: Some(None),
         },
     )?;
-    let default_model = match models.first() {
-        Some(first) if set_default_model_if_unset(first)? => Some(first.clone()),
-        _ => None,
-    };
+    let (default_model, replaced_default) = resolve_default(&models)?;
     Ok(Login {
         models,
         config_path,
         default_model,
+        replaced_default,
         // The paste flow verifies a key against `/v1/models`; it never learns
         // who the key belongs to.
         account: None,
+    })
+}
+
+/// Point `default_model` at the first model when the stored default is missing
+/// or no longer offered by any provider (upstream #9034). Called *after* the
+/// roster is written, so the staleness check sees the list this sign-in just
+/// installed rather than the one it replaced.
+fn resolve_default(models: &[String]) -> Result<(Option<String>, bool), String> {
+    let Some(first) = models.first() else {
+        return Ok((None, false));
+    };
+    Ok(match adopt_default_model(first)? {
+        Some(DefaultModelChange::Adopted) => (Some(first.clone()), false),
+        Some(DefaultModelChange::Repointed) => (Some(first.clone()), true),
+        None => (None, false),
     })
 }
 
@@ -180,14 +203,12 @@ fn persist_minted(
             account: Some(minted.account.clone()),
         },
     )?;
-    let default_model = match models.first() {
-        Some(first) if set_default_model_if_unset(first)? => Some(first.clone()),
-        _ => None,
-    };
+    let (default_model, replaced_default) = resolve_default(&models)?;
     Ok(Login {
         models,
         config_path,
         default_model,
+        replaced_default,
         account: minted.account.clone(),
     })
 }
@@ -232,7 +253,7 @@ pub async fn logout() -> Result<Logout, String> {
     })
 }
 
-fn stored_api_key() -> Option<String> {
+pub(crate) fn stored_api_key() -> Option<String> {
     use crate::core::agent::global_config::load_global_config;
     load_global_config()
         .ok()?
@@ -477,9 +498,44 @@ mod tests {
     #[test]
     fn persist_respects_an_existing_default_model() {
         with_temp_home(|_| {
+            // Offered by this very roster, so it is a live choice, not a fossil.
             crate::core::agent::global_config::set_default_model_if_unset("chosen").unwrap();
-            let login = persist("tk-1", vec!["m-a".into()]).expect("persist");
+            let login = persist("tk-1", vec!["m-a".into(), "chosen".into()]).expect("persist");
             assert_eq!(login.default_model, None);
+            assert!(!login.replaced_default);
+        });
+    }
+
+    /// A re-login replaces the roster wholesale, so a default the upstream has
+    /// since retired would point at a model nothing serves (upstream #9034).
+    #[test]
+    fn a_relogin_repoints_a_default_the_provider_no_longer_offers() {
+        with_temp_home(|_| {
+            let first = persist("tk-old", vec!["legacy-preview".into(), "m-b".into()])
+                .expect("first");
+            assert_eq!(first.default_model.as_deref(), Some("legacy-preview"));
+            assert!(!first.replaced_default, "nothing to replace on a fresh sign-in");
+
+            let again = persist("tk-new", vec!["m-c".into(), "m-d".into()]).expect("second");
+            assert_eq!(again.default_model.as_deref(), Some("m-c"));
+            assert!(again.replaced_default, "a stale default is reported as replaced");
+            assert_eq!(
+                crate::core::agent::global_config::default_model()
+                    .unwrap()
+                    .as_deref(),
+                Some("m-c")
+            );
+        });
+    }
+
+    /// A default this sign-in still offers is a live choice and survives.
+    #[test]
+    fn a_relogin_leaves_a_still_offered_default_alone() {
+        with_temp_home(|_| {
+            persist("tk-old", vec!["m-a".into(), "m-b".into()]).expect("first");
+            let again = persist("tk-new", vec!["m-b".into(), "m-a".into()]).expect("second");
+            assert_eq!(again.default_model, None);
+            assert!(!again.replaced_default);
         });
     }
 

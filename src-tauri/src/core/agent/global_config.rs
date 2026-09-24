@@ -584,6 +584,50 @@ pub(crate) fn set_default_model_if_unset(model: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// Why `default_model` was (re)pointed, so a caller can tell the user which of
+/// the two happened -- adopting a default is routine, replacing one needs
+/// saying out loud (upstream #9034).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DefaultModelChange {
+    /// There was no default; `model` was adopted.
+    Adopted,
+    /// The previous default is no longer offered by any provider, so it was
+    /// replaced by `model`.
+    Repointed,
+}
+
+/// Point `default_model` at `model` when there is no default, **or** when the
+/// current default is not offered by any configured provider. Returns what
+/// changed, or `None` when the existing default was left alone.
+///
+/// A sign-in replaces a provider's roster wholesale, so a re-login after the
+/// upstream retires a model leaves `default_model` pointing at something no
+/// provider serves, and every run fails on it. A default some provider still
+/// offers is a live choice and is left alone.
+pub(crate) fn adopt_default_model(model: &str) -> Result<Option<DefaultModelChange>, String> {
+    let model = model.trim();
+    if model.is_empty() {
+        return Ok(None);
+    }
+    let mut config = load_raw()?;
+    let current = config
+        .default_model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string);
+    let change = match current {
+        None => DefaultModelChange::Adopted,
+        Some(current) if config.providers.values().any(|p| p.models.contains(&current)) => {
+            return Ok(None)
+        }
+        Some(_) => DefaultModelChange::Repointed,
+    };
+    config.default_model = Some(model.to_string());
+    write_raw(&config)?;
+    Ok(Some(change))
+}
+
 /// Server-assigned metadata for a provider's stored key, when a v5 device-flow
 /// login recorded any. Used by `jan auth status` / the expiry warning and by
 /// `jan auth logout` to revoke the exact key.
