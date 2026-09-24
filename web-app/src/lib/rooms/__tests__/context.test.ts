@@ -48,18 +48,34 @@ describe('context projection', () => {
     resolveExtensions.mockClear()
   })
 
-  it('injects the resolved skills catalog into the built system prompt', async () => {
+  it('injects the resolved skills catalog for a participant with tools', async () => {
     resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    const withTools = {
+      kind: 'participant' as const,
+      participant: { ...room.participants[0], toolAccess: 'read' as const },
+    }
     const built = await buildPrompt({
       room,
       messages: [],
-      speaker: alice,
+      speaker: withTools,
       contextWindow: 32000,
       maxOutputTokens: 512,
     })
     expect(resolveExtensions).toHaveBeenCalledWith('rooms')
     expect(built.system).toContain('## Skill: caveman')
     expect(built.system).toContain('Talk terse.')
+    expect(built.system).toContain('skill_read')
+  })
+
+  it('lists no skills to a speaker that has no tools to load them', async () => {
+    resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    for (const speaker of [
+      { kind: 'participant' as const, participant: { ...room.participants[0], toolAccess: 'none' as const } },
+      { kind: 'moderator' as const },
+    ]) {
+      const built = await buildPrompt({ room, messages: [], speaker, contextWindow: 32000, maxOutputTokens: 512 })
+      expect(built.system).not.toContain('# Skills')
+    }
   })
 
   it('leaves the prompt unchanged when the resolver returns no skills', async () => {
@@ -71,7 +87,9 @@ describe('context projection', () => {
       contextWindow: 32000,
       maxOutputTokens: 512,
     })
-    expect(built.system).toBe(buildSystemPrompt(room, alice))
+    // Only the date is added, last, so the prefix stays cacheable.
+    expect(built.system).toMatch(/\n\nToday's date is \d{4}-\d{2}-\d{2}\.$/)
+    expect(built.system.startsWith(buildSystemPrompt(room, alice))).toBe(true)
     expect(built.system).not.toContain('# Skills')
   })
 

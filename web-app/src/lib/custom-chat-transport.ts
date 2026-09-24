@@ -57,6 +57,7 @@ import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
+import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import {
@@ -1087,25 +1088,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * still wrap into special tokens.
    */
   protected buildSystemPrompt(messages: UIMessage[]): string | undefined {
+    const files = this.buildFilesSystemInstruction(messages)
+    const web = this.buildWebSearchSystemInstruction()
+    const agentTools = this.buildAgentToolsSystemInstruction()
     const raw =
       [
         this.systemMessage,
-        // The precedence chain (AH-084), stated by the backend so every surface
-        // says the same thing, then the remembered facts it ranks. Remembered
-        // facts are data the model may use, not instructions it must follow;
-        // the block arrives delimited and sealed from the backend.
-        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
-        this.memorySelection?.block ?? undefined,
-        this.buildFilesSystemInstruction(messages),
-        this.buildWebSearchSystemInstruction(),
-        this.buildAgentToolsSystemInstruction(),
+        chatSafetyGuidelines({
+          readsExternalContent: Boolean(files || web || agentTools),
+          canChangeThings: Boolean(agentTools),
+        }),
+        files,
+        web,
+        agentTools,
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),
+        // The precedence chain (AH-084), stated by the backend so every surface
+        // says the same thing, then the remembered facts it ranks. Remembered
+        // facts are data the model may use, not instructions it must follow;
+        // the block arrives delimited and sealed from the backend. They change
+        // with retrieval, so they follow the stable blocks above.
+        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
+        this.memorySelection?.block ?? undefined,
       ]
         .filter((s) => typeof s === 'string' && s.trim().length > 0)
         .join('\n\n') || undefined
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined
+    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+    // Last, so a new day does not invalidate the cached prefix before it.
+    return `${raw}\n\n${todayLine()}`
   }
 
   /**
