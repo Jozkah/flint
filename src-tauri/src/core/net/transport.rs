@@ -130,9 +130,16 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
                 cache: resolver::shared().clone(),
             }))
             // A local server that is down should fail quickly enough that the next
-            // candidate is tried while the user is still watching.
-            .connect_timeout(Duration::from_secs(10))
+            // candidate is tried while the user is still watching. 20s rather
+            // than 10s because a first dial over a Tailscale/WireGuard overlay
+            // can be relayed through DERP while the direct path is negotiated,
+            // and that handshake alone regularly took just over 10s.
+            .connect_timeout(Duration::from_secs(20))
             .pool_idle_timeout(Duration::from_secs(30))
+            // Keepalive probes stop NAT tables and overlay networks from
+            // silently dropping an idle pooled connection or a long, quiet
+            // generation stream; the agent client does the same.
+            .tcp_keepalive(Duration::from_secs(30))
             .redirect(same_origin_redirects()),
     )
     .build()
@@ -451,6 +458,22 @@ fn note_peer(host: &str, port: u16, response: &reqwest::Response) -> Option<Sock
     peer
 }
 
+/// reqwest's own text stops at the kind of failure ("error following
+/// redirect"); the reason is in the source chain.
+fn full_reason(e: &reqwest::Error) -> String {
+    let mut reason = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        let text = s.to_string();
+        if !reason.contains(&text) {
+            reason.push_str(": ");
+            reason.push_str(&text);
+        }
+        source = s.source();
+    }
+    reason
+}
+
 /// A transport failure -- no HTTP response at all. A 401 or 403 from the server
 /// we selected is a response and never reaches here, so a real refusal is never
 /// reported as a name-resolution problem.
@@ -467,24 +490,54 @@ fn transport_failed(host: &str, port: u16, e: &reqwest::Error) -> String {
     } else {
         "failed"
     };
-    // reqwest's own text stops at the kind of failure ("error following
-    // redirect"); the reason is in the source chain.
-    let mut reason = e.to_string();
-    let mut source = std::error::Error::source(e);
-    while let Some(s) = source {
-        let text = s.to_string();
-        if !reason.contains(&text) {
-            reason.push_str(": ");
-            reason.push_str(&text);
-        }
-        source = s.source();
-    }
+    let mut reason = full_reason(e);
     // R13: a certificate failure is named as one, not left to be read out of
     // an operating system message.
     if let Some(certificate) = crate::core::net::tls::certificate_failure(e) {
         reason.push_str(&format!(" [certificate: {certificate}]"));
     }
     format!("{host}:{port} {what}{diag}: {reason}")
+}
+
+/// How long to wait before the one retry of a request that never connected.
+const CONNECT_RETRY_DELAY: Duration = Duration::from_secs(1);
+
+/// Whether a failed send may be retried.
+///
+/// Only a failure to connect qualifies: name resolution failed, the address
+/// was unreachable or refused, or the connect itself timed out. In every one
+/// of those cases no byte of the request reached the server, so sending it
+/// again cannot run a generation twice. A timeout after the connection was
+/// made, or an error while reading a response, is not retried: the server may
+/// already be working on the request.
+fn retryable(e: &reqwest::Error) -> bool {
+    e.is_connect()
+}
+
+/// Send a request, retrying once when it failed before anything was sent.
+///
+/// An intermittent overlay network (a Tailscale peer, a sleeping resolver)
+/// often fails the first dial and succeeds on the next. The retry starts from
+/// fresh addresses and a fresh client, since the old ones are what failed.
+async fn send_once_retrying(
+    host: &str,
+    port: u16,
+    req: &ProviderRequest,
+) -> Result<Result<reqwest::Response, reqwest::Error>, String> {
+    // `build` clones the body, so the retry sends exactly the same bytes.
+    let first = build(&client_for(host, port)?, req)?.send().await;
+    match first {
+        Err(e) if retryable(&e) => {
+            log::warn!(
+                "{host}:{port} could not be reached ({}); retrying once with fresh addresses",
+                full_reason(&e)
+            );
+            invalidate(host, port);
+            tokio::time::sleep(CONNECT_RETRY_DELAY).await;
+            Ok(build(&client_for(host, port)?, req)?.send().await)
+        }
+        other => Ok(other),
+    }
 }
 
 /// A credential-free, one-line account of what was resolved and chosen.
@@ -525,13 +578,11 @@ fn redact_error_body(status: reqwest::StatusCode, body: String) -> String {
 /// Send a provider request and read the whole response.
 pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
     let (host, port) = endpoint_of(&req.url)?;
-    let client = client_for(&host, port)?;
     // Taken from the request as it stands here, at the last point before it
     // leaves the process.
     let snapshot = capture_snapshot(&req);
-    let response = build(&client, &req)?
-        .send()
-        .await
+    let response = send_once_retrying(&host, port, &req)
+        .await?
         .map_err(|e| transport_failed(&host, port, &e))?;
 
     let peer = note_peer(&host, port, &response);
@@ -563,10 +614,9 @@ pub trait ChunkSink: Send + 'static {
 /// Send a provider request and hand the body back a chunk at a time.
 pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<(), String> {
     let (host, port) = endpoint_of(&req.url)?;
-    let client = client_for(&host, port)?;
     let snapshot = capture_snapshot(&req);
     let guard = StreamGuard::new(req.stream_id.clone());
-    let response = match build(&client, &req)?.send().await {
+    let response = match send_once_retrying(&host, port, &req).await? {
         Ok(r) => r,
         Err(e) => {
             let message = transport_failed(&host, port, &e);
@@ -652,6 +702,37 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn only_a_failure_to_connect_is_retryable() {
+        // Nothing listens on a port that was bound and released.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let refused = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(retryable(&refused), "a refused connection was not retryable");
+
+        // A server that accepts and then says nothing: the request was
+        // delivered, so the timeout that follows must not be retried.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let held = std::thread::spawn(move || listener.accept().map(|(s, _)| s));
+        let timed_out = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .timeout(Duration::from_millis(300))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(timed_out.is_timeout());
+        assert!(!retryable(&timed_out), "a timeout after connecting was retryable");
+        drop(held.join());
+    }
 
     #[tokio::test]
     async fn a_model_dispatch_is_snapshotted_and_the_reference_comes_back() {
