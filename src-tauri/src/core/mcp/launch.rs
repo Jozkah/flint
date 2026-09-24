@@ -108,17 +108,6 @@ impl ConfinedMcpLaunch {
 
 /// Turn the entry's configured `headers` map into a `HeaderMap`, skipping any
 /// pair that is not a valid header name/value. Shared by both remote transports.
-/// Rebuild a command so it runs inside the session's sandbox.
-///
-/// The policy is not invented here: it comes from the agent-tools plugin,
-/// which is the one implementation of Flint's sandboxing and the same one the
-/// agent's own shell runs under. A second, MCP-shaped imitation of it would
-/// drift from the real boundary, and the drift would be invisible until
-/// something escaped.
-///
-/// The environment is rebuilt rather than filtered. `Command` inherits the
-/// parent's environment by default, and Flint's process holds the user's whole
-/// session — so `env_clear` first, then exactly the names the user approved.
 /// The program to start for a configured MCP command (Jozkah/jan#224).
 ///
 /// On Windows `npx`, `uvx`, `npm`, `pnpm` and most Node tools are `.cmd`
@@ -195,6 +184,17 @@ mod launchable_tests {
     }
 }
 
+/// Rebuild a command so it runs inside the session's sandbox.
+///
+/// The policy is not invented here: it comes from the agent-tools plugin,
+/// which is the one implementation of Flint's sandboxing and the same one the
+/// agent's own shell runs under. A second, MCP-shaped imitation of it would
+/// drift from the real boundary, and the drift would be invisible until
+/// something escaped.
+///
+/// The environment is rebuilt rather than filtered. `Command` inherits the
+/// parent's environment by default, and Flint's process holds the user's whole
+/// session — so `env_clear` first, then exactly the names the user approved.
 pub(super) fn confined_mcp_command(
     cmd: Command,
     params: &crate::core::mcp::models::McpServerConfig,
@@ -249,6 +249,17 @@ pub(super) fn confined_mcp_command(
     // Nothing inherited. Only the names the user approved, and only where the
     // configuration actually supplied a value for them.
     confined.env_clear();
+    // Except what the AppContainer helper itself needs to build the sandbox
+    // (Jozkah/jan#284): it refuses to start without SystemRoot and
+    // LOCALAPPDATA, so a cleared block stopped every imported server on
+    // Windows. The helper builds the server's own environment from its
+    // allowlist; these reach the helper, not the server as given.
+    #[cfg(windows)]
+    for name in tauri_plugin_agent_tools::tools::win_env::REQUIRED {
+        if let Some(value) = std::env::var_os(name) {
+            confined.env(name, value);
+        }
+    }
     for name in &confinement.allowed_env {
         if let Some(value) = params.envs.get(name).and_then(Value::as_str) {
             confined.env(name, value);
@@ -320,6 +331,32 @@ mod tests {
             .expect("a host with a backend must produce a confined launch");
 
         assert!(launch.is_confined());
+    }
+
+    /// Jozkah/jan#284: the AppContainer helper refuses to start without
+    /// SystemRoot and LOCALAPPDATA, so a confined launch passes those two to
+    /// it and nothing else from the host.
+    #[cfg(windows)]
+    #[test]
+    fn the_confinement_helper_keeps_what_it_needs_to_start() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            eprintln!("skipped: no confinement backend here");
+            return;
+        }
+        let cmd = confined_mcp_command(build(), &params(true, Some(confinement())), &confinement())
+            .expect("confined");
+        let names: Vec<String> = cmd
+            .as_std()
+            .get_envs()
+            .filter(|(_, v)| v.is_some())
+            .map(|(k, _)| k.to_string_lossy().to_ascii_uppercase())
+            .collect();
+        for required in tauri_plugin_agent_tools::tools::win_env::REQUIRED {
+            if std::env::var_os(required).is_some() {
+                assert!(names.contains(&required.to_ascii_uppercase()), "{names:?}");
+            }
+        }
+        assert!(!names.contains(&"PATH".to_string()), "the host PATH leaked: {names:?}");
     }
 
     /// Nothing about the command leaks through the debug output — the argv can
