@@ -1,6 +1,6 @@
 //! Authoritative usage and spend, read from Tokamak's usage API.
 //!
-//! This is the counterpart to [`super::super::model_catalog`]'s estimate, not a
+//! This is the counterpart to the client-side estimate priced from `prices.toml`, not a
 //! replacement for it. The estimate is what the client can compute from token
 //! counts and a cached price list: it works offline, mid-turn, and for any
 //! provider, and it is the only thing available while a request is still in
