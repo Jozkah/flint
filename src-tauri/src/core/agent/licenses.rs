@@ -132,10 +132,10 @@ fn allowed_by(expression: &str, allowed: &BTreeSet<String>) -> Option<bool> {
         if upper.contains(" AND ") {
             return None;
         }
-        return Some(text.split(" OR ").any(|p| ok(p)));
+        return Some(text.split(" OR ").any(&ok));
     }
     if upper.contains(" AND ") {
-        return Some(text.split(" AND ").all(|p| ok(p)));
+        return Some(text.split(" AND ").all(&ok));
     }
     Some(ok(text))
 }

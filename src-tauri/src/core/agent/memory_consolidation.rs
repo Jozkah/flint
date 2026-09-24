@@ -538,12 +538,11 @@ fn normalize(s: &str) -> String {
                 out.push(lc);
             }
             prev_space = false;
-        } else if ch.is_whitespace() {
-            if !prev_space && !out.is_empty() {
+        } else if ch.is_whitespace()
+            && !prev_space && !out.is_empty() {
                 out.push(' ');
                 prev_space = true;
             }
-        }
         // punctuation dropped
     }
     out.trim_end().to_string()

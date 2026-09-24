@@ -61,6 +61,10 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
 
+/// The latest diagnostics per document URI, with the version they were
+/// published for.
+type Diagnostics = Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>;
+
 /// One language server this build knows how to start.
 #[derive(Debug, Clone, Copy)]
 pub struct ServerSpec {
@@ -278,7 +282,7 @@ struct Connection {
     stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
     pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Reply>>>>,
-    diagnostics: Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>,
+    diagnostics: Diagnostics,
     /// Bumped on every `publishDiagnostics`, so a wait can see a new one.
     published: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
@@ -553,7 +557,7 @@ fn read_loop(
     mut reader: BufReader<std::process::ChildStdout>,
     stdin: Arc<Mutex<ChildStdin>>,
     pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Reply>>>>,
-    diagnostics: Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>,
+    diagnostics: Diagnostics,
     published: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
 ) {
@@ -716,11 +720,10 @@ impl LspPool {
                 ),
             )
         })?;
-        if query.line == 0 || query.column == 0 {
-            if query.action != Action::Diagnostics {
+        if (query.line == 0 || query.column == 0)
+            && query.action != Action::Diagnostics {
                 return Err(LspError::new(LspErrorKind::InvalidInput, "line and column are 1-based and must be given"));
             }
-        }
         if cancel() {
             return Err(LspError::new(LspErrorKind::Cancelled, "the run was cancelled before the language server was asked"));
         }

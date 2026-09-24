@@ -371,9 +371,12 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
+    /// A file opened, with its line and column.
+    type Opened = (PathBuf, Option<u32>, Option<u32>);
+
     #[derive(Default)]
     struct FakeUi {
-        opened: RefCell<Vec<(PathBuf, Option<u32>, Option<u32>)>>,
+        opened: RefCell<Vec<Opened>>,
         accepted: RefCell<Vec<String>>,
         next_diff_id: RefCell<u32>,
     }

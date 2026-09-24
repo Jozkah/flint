@@ -556,7 +556,7 @@ mod tests {
     fn fire_runs_a_command_and_captures_its_exit() {
         // A portable no-op that succeeds, and one that fails.
         let ok_cmd = if cfg!(windows) { "exit 0" } else { "true" };
-        let fail_cmd = if cfg!(windows) { "exit 3" } else { "exit 3" };
+        let fail_cmd = "exit 3";
         let config = HookConfig({
             let mut m = BTreeMap::new();
             m.insert(

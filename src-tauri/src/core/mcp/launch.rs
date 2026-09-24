@@ -115,6 +115,8 @@ impl ConfinedMcpLaunch {
 /// spawn failed with "file not found". A bare name (no directory, no
 /// extension) is resolved here through PATH in PATHEXT order. Anything else,
 /// and every name on other platforms, is returned as written.
+// Only the desktop MCP path (`mcp::helpers`) calls it so far.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 pub(super) fn launchable_program(command: &str) -> std::ffi::OsString {
     if !cfg!(windows) {
         return command.into();
@@ -129,6 +131,7 @@ pub(super) fn launchable_program(command: &str) -> std::ffi::OsString {
 /// The first `<dir>/<name><ext>` that is a file, over `path`'s directories and
 /// `pathext`'s extensions, for a bare `name`. `None` when `name` has a
 /// directory or an extension of its own, or nothing matches.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 fn resolve_bare_program(
     name: &str,
     path: &std::ffi::OsStr,
@@ -175,7 +178,7 @@ mod launchable_tests {
     #[test]
     fn npx_as_configured_actually_starts_on_windows() {
         let program = super::launchable_program("npx");
-        if program == std::ffi::OsString::from("npx") {
+        if program == "npx" {
             eprintln!("skipped: npx is not on PATH here");
             return;
         }

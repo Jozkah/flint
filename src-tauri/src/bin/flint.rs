@@ -2922,6 +2922,8 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
 /// Build the server config object for `mcp add` from the CLI flags. Funnels
 /// through the shared `core::cli::mcp::build_server_config` so the TUI form and
 /// the headless flags can never diverge on the config shape or validation.
+// One argument per `mcp add` flag, as clap hands them over.
+#[allow(clippy::too_many_arguments)]
 fn build_mcp_config(
     command: Option<String>,
     args: Vec<String>,

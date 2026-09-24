@@ -105,6 +105,8 @@ const DEFAULT_SKILL_GUIDE: &str = include_str!("default_skill.md");
 /// Skills with `disable-model-invocation: true` are excluded (user-invoked
 /// skills pay no context load). Covers folder skills (`<name>/SKILL.md`) and
 /// legacy flat `<name>.md`. Returns None when no advertisable skill exists.
+// Outside tests only the terminal UI reads it; the desktop build does not.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
     load_skills_for(project_root, true)
 }

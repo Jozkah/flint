@@ -650,6 +650,9 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 }
 
 #[cfg(test)]
+// `pin` holds a process-wide lock for a whole test on purpose: the resolver it
+// installs is global, so tests that install one must not overlap.
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 

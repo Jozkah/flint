@@ -168,24 +168,24 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
         }
     };
     let mapped: Vec<String> = match value {
-        serde_yaml::Value::String(list) => list.split(',').filter_map(|n| take(n)).collect(),
+        serde_yaml::Value::String(list) => list.split(',').filter_map(&mut take).collect(),
         serde_yaml::Value::Sequence(items) => items
             .iter()
             .filter_map(|i| i.as_str())
-            .filter_map(|n| take(n))
+            .filter_map(&mut take)
             .collect(),
         serde_yaml::Value::Mapping(switches) => {
             let on: Vec<String> = switches
                 .iter()
                 .filter(|(_, v)| v.as_bool() == Some(true))
                 .filter_map(|(k, _)| k.as_str())
-                .filter_map(|n| take(n))
+                .filter_map(&mut take)
                 .collect();
             let off: Vec<String> = switches
                 .iter()
                 .filter(|(_, v)| v.as_bool() == Some(false))
                 .filter_map(|(k, _)| k.as_str())
-                .filter_map(|n| take(n))
+                .filter_map(take)
                 .collect();
             if on.is_empty() && !off.is_empty() {
                 notes.push(format!(
@@ -237,10 +237,9 @@ fn dialect_of(path: &Path, fm: &AgentFrontmatter) -> Dialect {
         path.components()
             .any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(needle))
     };
+    // `.qwen`, and any other folder, reads as Qwen's dialect.
     if in_dir(".opencode") {
         Dialect::OpenCode
-    } else if in_dir(".qwen") {
-        Dialect::Qwen
     } else {
         Dialect::Qwen
     }

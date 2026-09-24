@@ -499,7 +499,7 @@ fn ts_aliases(project_root: &Path) -> Vec<(String, Vec<String>)> {
     let base = doc
         .pointer("/compilerOptions/baseUrl")
         .and_then(|v| v.as_str())
-        .map(|b| normalise_prefix(b))
+        .map(normalise_prefix)
         .unwrap_or_default();
     let Some(paths) = doc.pointer("/compilerOptions/paths").and_then(|v| v.as_object()) else {
         return Vec::new();

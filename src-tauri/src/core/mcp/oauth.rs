@@ -642,6 +642,9 @@ fn live_refreshers(data_folder: &Path, name: &str) -> usize {
 /// `REFRESH_POLL`). A refresh the provider refuses ends it too: the next
 /// request is then refused and the server reports that it needs
 /// authentication, which is where re-authorizing is offered.
+// Everything the background refresher owns for its lifetime, handed over
+// once at spawn; there is no caller to share a struct with.
+#[allow(clippy::too_many_arguments)]
 fn spawn_refresher(
     data_folder: PathBuf,
     name: String,
@@ -1659,8 +1662,7 @@ mod tests {
         assert!(matches!(status(dir.path(), "srv", &broken), AuthStatus::InvalidScopes { .. }));
         let refused = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest13::Client::new()))
-            .err()
-            .expect("an unreadable declaration authorizes nothing");
+            .expect_err("an unreadable declaration authorizes nothing");
         assert_eq!(refused.kind(), ErrorKind::InvalidInput);
     }
 
@@ -1676,8 +1678,7 @@ mod tests {
         let config = scoped(&fixture, &["mcp:read"]);
         let refused = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest13::Client::new()))
-            .err()
-            .expect("a widened refresh is refused");
+            .expect_err("a widened refresh is refused");
         assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
         assert!(refused.message().contains("mcp:admin"), "{}", refused.message());
         let after = load(dir.path(), "srv").unwrap();
@@ -1816,8 +1817,7 @@ mod tests {
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-revoked", 10)).unwrap();
         let err = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new()))
-            .err()
-            .expect("a refused refresh is an error");
+            .expect_err("a refused refresh is an error");
         assert_eq!(err.kind(), ErrorKind::Authentication);
         assert!(err.message().contains("re-authenticate"), "{err}");
         assert_eq!(fixture.entries("/token")[0]["outcome"], "refused");
