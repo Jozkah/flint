@@ -8,7 +8,7 @@ repository = "https://github.com/janhq/jan"
 edition = "2021"
 # 1.85 is the floor: `genai` (the OpenAI upstream client) is edition 2024.
 # Below that the previous floor was 1.82, for `Option::is_none_or` in agent/loop.rs.
-rust-version = "1.85"
+rust-version = "1.88"
 resolver = "2"
 default-run = "Flint-Desktop"
 # Every binary this package ships is declared explicitly below. Cargo otherwise
