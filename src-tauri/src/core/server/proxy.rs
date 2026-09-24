@@ -18,7 +18,7 @@ use tauri_plugin_llamacpp::state::LlamacppState;
 use tokio::sync::Mutex;
 
 use crate::core::server::converters::{
-    converter_for, SseAccumulator, StreamState, UpstreamConverter,
+    converter_for, SseAccumulator, StreamState, UpstreamConverter, Utf8ChunkDecoder,
 };
 use crate::core::{
     mcp::models::McpSettings,
@@ -2632,8 +2632,7 @@ async fn forward_converted_stream<S>(
     'outer: while let Some(chunk_result) = stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                let text = String::from_utf8_lossy(&chunk);
-                for event in acc.push(&text) {
+                for event in acc.push_bytes(&chunk) {
                     for payload in converter.convert_stream_event(&event, &mut state) {
                         let framed = Bytes::from(format!("data: {payload}\n\n"));
                         if sender.send_data(framed).await.is_err() {
@@ -2692,11 +2691,20 @@ async fn transform_and_forward_stream<S>(
     let mut text_block_index: Option<usize> = None;
     let mut tool_blocks: HashMap<usize, usize> = HashMap::new(); // OAI tool index -> Anthropic block index
     let mut next_block_index: usize = 0;
+    // Bytes decode across chunk boundaries, and a line split between two
+    // chunks waits for its end, so neither a multi-byte character nor a
+    // `data:` line is cut in half (#195).
+    let mut utf8 = Utf8ChunkDecoder::default();
+    let mut pending_lines = String::new();
 
     while let Some(chunk_result) = stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                let chunk_str = String::from_utf8_lossy(&chunk);
+                pending_lines.push_str(&utf8.push(&chunk));
+                let Some(end) = pending_lines.rfind('\n') else {
+                    continue;
+                };
+                let chunk_str: String = pending_lines.drain(..=end).collect();
 
                 for line in chunk_str.lines() {
                     if !line.starts_with("data:") {
