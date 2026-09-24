@@ -23,8 +23,22 @@ const DB_NAME: &str = "jan.db";
 /// Global database pool for mobile platforms
 static DB_POOL: OnceLock<Mutex<Option<SqlitePool>>> = OnceLock::new();
 
+/// Set when `init_database` fails, so waiting commands stop waiting (#117).
+static DB_INIT_ERROR: OnceLock<String> = OnceLock::new();
+
+/// How long a command waits for the startup `init_database` task (#117).
+const DB_INIT_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Initialize database with connection pool and run migrations
 pub async fn init_database<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let result = init_database_inner(app).await;
+    if let Err(e) = &result {
+        let _ = DB_INIT_ERROR.set(e.clone());
+    }
+    result
+}
+
+async fn init_database_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // Get app data directory
     let app_data_dir = app
         .path()
@@ -107,12 +121,44 @@ pub async fn init_database<R: Runtime>(app: &AppHandle<R>) -> Result<(), String>
 
 /// Get database pool
 async fn get_pool() -> Result<SqlitePool, String> {
-    let pool_mutex = DB_POOL.get().ok_or("Database not initialized")?;
+    // #117: setup() spawns init_database without awaiting it, so a command
+    // fired right after the webview mounts can arrive first. Wait for it.
+    let pool_mutex = wait_until_ready(
+        || DB_POOL.get(),
+        || DB_INIT_ERROR.get().is_some(),
+        DB_INIT_WAIT,
+    )
+    .await
+    .ok_or_else(|| {
+        DB_INIT_ERROR
+            .get()
+            .map(|e| format!("Database initialization failed: {e}"))
+            .unwrap_or_else(|| "Database not initialized".to_string())
+    })?;
 
     let pool_guard = pool_mutex.lock().await;
     pool_guard
         .clone()
         .ok_or("Database pool not available".to_string())
+}
+
+/// Poll `probe` until it yields a value, `failed` reports that it never will,
+/// or `limit` passes.
+async fn wait_until_ready<T>(
+    mut probe: impl FnMut() -> Option<T>,
+    failed: impl Fn() -> bool,
+    limit: std::time::Duration,
+) -> Option<T> {
+    let deadline = tokio::time::Instant::now() + limit;
+    loop {
+        if let Some(value) = probe() {
+            return Some(value);
+        }
+        if failed() || tokio::time::Instant::now() >= deadline {
+            return None;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
 }
 
 /// List all threads from database
@@ -396,4 +442,32 @@ pub async fn db_modify_thread_assistant<R: Runtime>(
     }
 
     Ok(assistant)
+}
+
+#[cfg(test)]
+mod init_race_tests {
+    use super::wait_until_ready;
+    use std::sync::{Arc, OnceLock};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_command_before_init_finishes_waits_instead_of_failing() {
+        let cell: Arc<OnceLock<u32>> = Arc::new(OnceLock::new());
+        let setter = cell.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            let _ = setter.set(7);
+        });
+        let got = wait_until_ready(|| cell.get().copied(), || false, Duration::from_secs(5)).await;
+        assert_eq!(got, Some(7));
+    }
+
+    #[tokio::test]
+    async fn a_failed_init_stops_the_wait_early() {
+        let started = std::time::Instant::now();
+        let got: Option<u32> =
+            wait_until_ready(|| None, || true, Duration::from_secs(5)).await;
+        assert_eq!(got, None);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
 }
