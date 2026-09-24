@@ -2861,8 +2861,14 @@ async fn print_event(
                     )
                 };
                 eprintln!(
-                    "[2m[resources] {figures} ({} of {} commands measured)[0m",
-                    resources.measured_commands, resources.commands
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[resources] {figures} ({} of {} commands measured)",
+                            resources.measured_commands, resources.commands
+                        ),
+                    ),
                 );
             }
         }
@@ -2875,11 +2881,9 @@ async fn print_event(
             // line says what kind of failure it was once, and a cancellation
             // does not read as a crash.
             if code == "cancelled" {
-                eprintln!("
-[2m[stopped] {message}[0m");
+                eprintln!("\n{}", color::paint("2", format_args!("[stopped] {message}")));
             } else {
-                eprintln!("
-[31m[error:{code}] {message}[0m");
+                eprintln!("\n{}", color::paint("31", format_args!("[error:{code}] {message}")));
             }
         }
         StreamEvent::AskRequest { .. } => {
@@ -2965,6 +2969,21 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// #200: every colored line goes through `color::paint`, so NO_COLOR and
+    /// non-terminal stderr are honored. Neither source may hold an SGR
+    /// sequence of its own, whether escaped or as a raw ESC character.
+    #[test]
+    fn cli_sources_hold_no_raw_escape_sequences() {
+        let escaped = concat!("\\", "x1b[");
+        for (name, src) in [
+            ("core/cli/mod.rs", include_str!("mod.rs")),
+            ("bin/flint.rs", include_str!("../../bin/flint.rs")),
+        ] {
+            assert!(!src.contains(escaped), "{name} writes an escape sequence directly");
+            assert!(!src.contains('\u{1b}'), "{name} holds a raw ESC character");
+        }
+    }
+
     /// #143: deleting a thread drops its snapshot ref in the repository the
     /// thread recorded, not only the scratch index.
     #[test]
