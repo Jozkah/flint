@@ -1211,22 +1211,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
-    const cacheKey = JSON.stringify({
-      model: selectedModel?.id ?? '',
-      modelSupportsTools,
-      hasDocuments: this.hasDocuments,
-      ragFeatureAvailable: this.ragFeatureAvailable,
-      disabledToolKeys,
-      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
-      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
-    })
-    if (useCache && this.toolsCacheKey === cacheKey) return
-
-    // Only load tools if model supports them
+    // Whether there are documents is read live, before the cache check: a
+    // file attached to the thread's project mid-thread changes nothing else
+    // in the key, and `this.hasDocuments` is only refreshed by the thread
+    // view, so a key built from it kept the RAG tools away (#128).
+    let hasDocuments = this.hasDocuments
+    let ragFeatureAvailable = this.ragFeatureAvailable
     if (modelSupportsTools) {
-      let hasDocuments = this.hasDocuments
-      let ragFeatureAvailable = this.ragFeatureAvailable
-
       if (!hasDocuments && this.threadId) {
         const thread = useThreads.getState().threads[this.threadId]
         const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
@@ -1253,7 +1244,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (!ragFeatureAvailable) {
         ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
       }
+    }
+    const cacheKey = JSON.stringify({
+      model: selectedModel?.id ?? '',
+      modelSupportsTools,
+      hasDocuments,
+      ragFeatureAvailable,
+      disabledToolKeys,
+      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
+      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+    })
+    if (useCache && this.toolsCacheKey === cacheKey) return
 
+    // Only load tools if model supports them
+    if (modelSupportsTools) {
       // Load RAG tools if documents are available
       if (hasDocuments && ragFeatureAvailable) {
         try {
