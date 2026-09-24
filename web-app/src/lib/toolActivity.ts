@@ -421,15 +421,22 @@ export async function loadToolActivity(
   }
 }
 
-/** The diff one call produced, as stored when it ended; `null` when none was. */
+/**
+ * The diff one call produced, as stored when it ended; `null` when none was.
+ *
+ * `invocation` picks the right call when a provider reused its id across
+ * requests (#244); without one the backend reads the pre-invocation layout.
+ */
 export async function loadToolDiff(
   session: string,
-  call: string
+  call: string,
+  invocation?: string
 ): Promise<string | null> {
   try {
     const diff = await invoke<string | null>('tool_activity_diff', {
       session,
       call,
+      invocation: invocation || null,
     })
     return typeof diff === 'string' ? diff : null
   } catch {
