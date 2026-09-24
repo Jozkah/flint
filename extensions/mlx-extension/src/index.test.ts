@@ -260,6 +260,51 @@ describe('chat', () => {
   })
 })
 
+describe('handleStreamingResponse', () => {
+  it('does not log a context-limit stop as a JSON parse error (#162)', async () => {
+    const ext = newExt()
+    const { logger } = await import('@janhq/core')
+    const chunk = JSON.stringify({ choices: [{ finish_reason: 'length' }] })
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(`data: ${chunk}\n\n`))
+
+    const iterate = async () => {
+      for await (const _ of ext.handleStreamingResponse('u', {}, '{}')) {
+        // drain
+      }
+    }
+    await expect(iterate()).rejects.toThrow(
+      'the request exceeds the available context size.'
+    )
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'Error parsing MLX stream JSON:',
+      expect.anything()
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('still logs a malformed chunk as a parse error', async () => {
+    const ext = newExt()
+    const { logger } = await import('@janhq/core')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('data: {not json\n\n'))
+
+    const iterate = async () => {
+      for await (const _ of ext.handleStreamingResponse('u', {}, '{}')) {
+        // drain
+      }
+    }
+    await expect(iterate()).rejects.toThrow()
+    expect(logger.error).toHaveBeenCalledWith(
+      'Error parsing MLX stream JSON:',
+      expect.anything()
+    )
+    fetchSpy.mockRestore()
+  })
+})
+
 describe('isVisionSupported', () => {
   it('returns false when config.json is missing', async () => {
     const ext = newExt()

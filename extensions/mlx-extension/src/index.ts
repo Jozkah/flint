@@ -505,18 +505,21 @@ export default class mlx_extension extends AIEngine {
 
           if (trimmedLine.startsWith('data: ')) {
             const jsonStr = trimmedLine.slice(6)
+            let data: chatCompletionChunk
             try {
-              const data = JSON.parse(jsonStr) as chatCompletionChunk
-
-              if (data.choices?.[0]?.finish_reason === 'length') {
-                throw new Error(OUT_OF_CONTEXT_SIZE)
-              }
-
-              yield data
+              data = JSON.parse(jsonStr) as chatCompletionChunk
             } catch (e) {
               logger.error('Error parsing MLX stream JSON:', e)
               throw e
             }
+
+            // A context-limit stop is an expected outcome, not a parse
+            // failure, so it is raised outside the parse try/catch.
+            if (data.choices?.[0]?.finish_reason === 'length') {
+              throw new Error(OUT_OF_CONTEXT_SIZE)
+            }
+
+            yield data
           } else if (trimmedLine.startsWith('error: ')) {
             const jsonStr = trimmedLine.slice(7)
             const error = JSON.parse(jsonStr)
