@@ -142,9 +142,13 @@ export function CoworkTimelinePanel({
     try {
       const page = await listEvents(asked, lastSeq.current)
       if (session.current !== asked) return
-      if (page.events.length > 0) {
-        lastSeq.current = page.events[page.events.length - 1].seq
-        setEvents((prev) => [...prev, ...page.events])
+      // Two reads can be in flight from the same `lastSeq` (a poll tick and a
+      // run ending); whichever lands second must not append the same events
+      // again, or every tool phase shows up twice (#170).
+      const fresh = page.events.filter((e) => e.seq > lastSeq.current)
+      if (fresh.length > 0) {
+        lastSeq.current = fresh[fresh.length - 1].seq
+        setEvents((prev) => [...prev, ...fresh])
       }
       setError(null)
     } catch (e) {
@@ -157,11 +161,9 @@ export function CoworkTimelinePanel({
     if (!running) return
     const timer = setInterval(() => void read(), POLL_MS)
     return () => clearInterval(timer)
+  // This also makes the one last read when a run ends (`running` turning
+  // false re-runs it), so no second effect reads again in the same commit.
   }, [read, running])
-  // One last read when a run ends, for its final events.
-  useEffect(() => {
-    if (!running) void read()
-  }, [running, read])
 
   const liveRows = useMemo(() => buildTimeline(events, sessionId), [events, sessionId])
   const replaying = replay?.phase === 'ready' ? replay : null
