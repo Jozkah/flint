@@ -1536,6 +1536,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         reject(err)
       }
       if (abortSignal.aborted) {
+        // Nobody else awaits modelPromise on this path; observe it so a later
+        // load failure is not an unhandled rejection (#88).
+        modelPromise.catch(() => {})
         onAbort()
         return
       }
