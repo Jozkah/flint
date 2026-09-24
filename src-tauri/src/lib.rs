@@ -582,24 +582,38 @@ pub fn build_app() -> tauri::App {
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");
-            let store = app
-                .handle()
-                .store(store_path)
-                .expect("Store not initialized");
-            let stored_version = store
-                .get("version")
-                .and_then(|v| v.as_str().map(String::from))
-                .unwrap_or_default();
+            // A store that cannot be opened or saved (a read-only or full data
+            // folder, a file locked by antivirus, a corrupt store.json) is
+            // logged and the app starts without the migration, like every
+            // other failure in this block -- not a panic before any window
+            // exists (Jozkah/jan#233).
             let app_version = app.config().version.clone().unwrap_or_default();
-
-            // Migrate MCP servers
-            if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
-                log::error!("Failed to migrate MCP servers: {e}");
-            }
-
-            // Store the new app version
-            store.set("version", serde_json::json!(app_version));
-            store.save().expect("Failed to save store");
+            let stored_version = match app.handle().store(store_path.clone()) {
+                Ok(store) => {
+                    let stored_version = store
+                        .get("version")
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_default();
+                    // Migrate MCP servers
+                    if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
+                        log::error!("Failed to migrate MCP servers: {e}");
+                    }
+                    // Store the new app version
+                    store.set("version", serde_json::json!(app_version));
+                    if let Err(e) = store.save() {
+                        log::error!("Could not save {}: {e}", store_path.display());
+                    }
+                    stored_version
+                }
+                Err(e) => {
+                    log::error!(
+                        "Could not open {}: {e}; starting without the store migration",
+                        store_path.display()
+                    );
+                    // Unknown: treat as unchanged, so nothing reinstalls on a guess.
+                    app_version.clone()
+                }
+            };
             // Migration completed
 
             #[cfg(feature = "desktop")]
