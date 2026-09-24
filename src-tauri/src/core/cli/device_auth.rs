@@ -593,7 +593,13 @@ impl WakeServer {
             else {
                 return false;
             };
-            let n = stream.read(&mut buf).await.unwrap_or(0);
+            // #199: the read shares the same deadline as accept(), so a local
+            // peer that connects and sends nothing cannot stall the login poll.
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let n = tokio::time::timeout(remaining, stream.read(&mut buf))
+                .await
+                .unwrap_or(Ok(0))
+                .unwrap_or(0);
             let request = String::from_utf8_lossy(&buf[..n]);
             match classify_wake(&request, &self.state) {
                 WakeRequest::Preflight => {
@@ -1132,6 +1138,30 @@ mod tests {
         rt.block_on(async {
             let wake = WakeServer::bind("st-1".to_string()).await.expect("bind");
             assert!(!wake.wait(Duration::from_millis(50)).await);
+        });
+    }
+
+    #[test]
+    fn a_silent_wake_connection_cannot_outlast_the_timeout() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let wake = WakeServer::bind("st-1".to_string()).await.expect("bind");
+            // Connect and send nothing, keeping the socket open.
+            let _silent = tokio::net::TcpStream::connect(("127.0.0.1", wake.port))
+                .await
+                .expect("connect");
+            let started = std::time::Instant::now();
+            let woken = tokio::time::timeout(
+                Duration::from_secs(5),
+                wake.wait(Duration::from_millis(100)),
+            )
+            .await
+            .expect("wait() must honour its own timeout");
+            assert!(!woken);
+            assert!(started.elapsed() < Duration::from_secs(2));
         });
     }
 
