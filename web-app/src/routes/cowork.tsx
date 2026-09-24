@@ -80,7 +80,7 @@ import {
 } from '@/stores/message-queue-store'
 import {
   agentAttribution,
-  dequeueClaimedReady,
+  drainIdleSession,
   takeClaimed,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
@@ -3766,10 +3766,13 @@ function CoworkPage() {
     // Held input waits for the user; only what is ready goes. Mail is claimed
     // first, so a reply a tool already consumed is not sent again.
     idleDrainRef.current = true
-    void dequeueClaimedReady(session.id)
-      .then((next) => {
+    // The message is sent only into the session it was drained from; see
+    // drainIdleSession.
+    void drainIdleSession(session.id, (text, from) => {
+      void runRequestRef.current(text, from)
+    })
+      .then(() => {
         idleDrainRef.current = false
-        if (next) void runRequestRef.current(next.text, next.from)
       })
       .catch(() => {
         idleDrainRef.current = false
