@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use calamine::{open_workbook_auto, DataType, Reader as _};
+use calamine::{open_workbook_auto, Data, Reader as _};
 use chardetng::EncodingDetector;
 use csv as csv_crate;
 use quick_xml::events::Event;
@@ -146,7 +146,8 @@ fn parse_docx(file_path: &str) -> Result<String, RagError> {
 
     // Parse XML and extract text from w:t nodes; add newlines on w:p boundaries
     let mut reader = Reader::from_str(&xml_content);
-    reader.trim_text(true);
+    // No trim_text: quick-xml 0.38+ splits text at every entity reference,
+    // and trimming each piece would eat the spaces around "&amp;".
     let mut buf = Vec::new();
     let mut result = String::new();
     let mut in_text = false;
@@ -180,8 +181,14 @@ fn parse_docx(file_path: &str) -> Result<String, RagError> {
             }
             Ok(Event::Text(t)) => {
                 if in_text {
-                    let text = t.unescape().unwrap_or_default();
-                    result.push_str(&text);
+                    result.push_str(&t.decode().unwrap_or_default());
+                }
+            }
+            // quick-xml 0.38+ reports `&amp;`, `&#x41;` and friends as their
+            // own events instead of unescaping them inside Text.
+            Ok(Event::GeneralRef(r)) => {
+                if in_text {
+                    push_entity(&mut result, &r);
                 }
             }
             Ok(Event::Eof) => break,
@@ -234,12 +241,11 @@ fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
                 let cells = row
                     .iter()
                     .map(|c| match c {
-                        DataType::Empty => "".to_string(),
-                        DataType::String(s) => s.to_string(),
-                        DataType::Float(f) => format!("{}", f),
-                        DataType::Int(i) => i.to_string(),
-                        DataType::Bool(b) => b.to_string(),
-                        DataType::DateTime(f) => format!("{}", f),
+                        Data::Empty => "".to_string(),
+                        Data::String(s) => s.to_string(),
+                        Data::Float(f) => format!("{}", f),
+                        Data::Int(i) => i.to_string(),
+                        Data::Bool(b) => b.to_string(),
                         other => other.to_string(),
                     })
                     .collect::<Vec<_>>()
@@ -284,7 +290,8 @@ fn parse_pptx(file_path: &str) -> Result<String, RagError> {
 
 fn extract_pptx_text(xml: &str) -> String {
     let mut reader = Reader::from_str(xml);
-    reader.trim_text(true);
+    // No trim_text: quick-xml 0.38+ splits text at every entity reference,
+    // and trimming each piece would eat the spaces around "&amp;".
     let mut buf = Vec::new();
     let mut result = String::new();
     let mut in_text = false;
@@ -313,8 +320,14 @@ fn extract_pptx_text(xml: &str) -> String {
             }
             Ok(Event::Text(t)) => {
                 if in_text {
-                    let text = t.unescape().unwrap_or_default();
-                    result.push_str(&text);
+                    result.push_str(&t.decode().unwrap_or_default());
+                }
+            }
+            // quick-xml 0.38+ reports `&amp;`, `&#x41;` and friends as their
+            // own events instead of unescaping them inside Text.
+            Ok(Event::GeneralRef(r)) => {
+                if in_text {
+                    push_entity(&mut result, &r);
                 }
             }
             Ok(Event::Eof) => break,
@@ -323,6 +336,21 @@ fn extract_pptx_text(xml: &str) -> String {
         }
     }
     result
+}
+
+/// Append the text an entity reference stands for: a character reference
+/// (`&#65;`, `&#x41;`) or one of the five predefined XML entities. Anything
+/// else (a DTD-defined entity) is dropped, as `unescape` used to reject it.
+fn push_entity(out: &mut String, r: &quick_xml::events::BytesRef<'_>) {
+    if let Ok(Some(ch)) = r.resolve_char_ref() {
+        out.push(ch);
+        return;
+    }
+    if let Ok(name) = r.decode() {
+        if let Some(text) = quick_xml::escape::resolve_predefined_entity(&name) {
+            out.push_str(text);
+        }
+    }
 }
 
 fn parse_html(file_path: &str) -> Result<String, RagError> {
@@ -347,5 +375,16 @@ fn read_text_auto(file_path: &str) -> Result<String, RagError> {
         Ok(String::from_utf8_lossy(&bytes).to_string())
     } else {
         Ok(decoded.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pptx_text_resolves_entities_and_keeps_their_spacing() {
+        let xml = r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>A &amp; B &#x43;&#68;</a:t></p:sld>"#;
+        assert_eq!(extract_pptx_text(xml).trim(), "A & B CD");
     }
 }
