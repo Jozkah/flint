@@ -225,6 +225,19 @@ enum Commands {
         #[command(subcommand)]
         cmd: AuthCommands,
     },
+    /// Read recorded usage and spend from the Tokamak usage API
+    #[command(display_order = 4)]
+    Usage {
+        // Optional so bare `flint usage` answers "what have I spent" with the
+        // account summary.
+        #[command(subcommand)]
+        cmd: Option<UsageCommands>,
+        /// Print the provider's response body verbatim instead of a table.
+        /// Reshaping it would mean re-serializing money fields, which is how a
+        /// figure loses digits, so this forwards the bytes as received.
+        #[arg(long, global = true)]
+        json: bool,
+    },
     /// Manage provider credentials in ~/.jan/config.toml (used by the TUI and CLI)
     #[command(display_order = 4)]
     Config {
@@ -297,6 +310,30 @@ enum McpServeCommands {
         /// Bearer token for --transport http; a random one is generated and printed if omitted
         #[arg(long)]
         token: Option<String>,
+    },
+}
+
+/// Reads against the Tokamak usage API (upstream #9034). Every view reports
+/// figures the provider recorded, never a local estimate.
+#[derive(Subcommand)]
+enum UsageCommands {
+    /// Usage across this account's credentials, not only the key in use
+    Account,
+    /// Daily usage totals
+    Daily,
+    /// Recently recorded requests
+    Requests,
+    /// Current usage-limit status (separate from wallet credit)
+    Limits,
+    /// Inspect one execution by its X-Tokamak-Execution-Id
+    Generation {
+        /// The execution id, from the response header of an inference request
+        id: String,
+    },
+    /// Find every execution tagged with an X-Client-Request-Id
+    Correlate {
+        /// The correlation id sent on the original request
+        client_request_id: String,
     },
 }
 
@@ -1198,6 +1235,12 @@ async fn run() {
                 std::process::exit(1);
             }
         }
+        Commands::Usage { cmd, json } => {
+            if let Err(e) = handle_usage(cmd, json).await {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
         Commands::Config { cmd } => {
             if let Err(e) = handle_agent_config(cmd) {
                 eprintln!("Error: {e}");
@@ -1214,6 +1257,40 @@ async fn run() {
         Commands::Doctor { json } => handle_doctor(json),
         Commands::Mcp { cmd } => handle_mcp_serve(cmd).await,
     }
+}
+
+/// `flint usage` handler: read recorded spend from the Tokamak usage API.
+///
+/// Every view goes through one fetch so failures, timeouts and the
+/// not-signed-in case are reported identically. A failed lookup exits non-zero
+/// so a script cannot read it as a zero charge.
+async fn handle_usage(cmd: Option<UsageCommands>, json: bool) -> Result<(), String> {
+    use app_lib::core::cli::tokamak::usage::{self, Query};
+
+    let query = match &cmd {
+        None | Some(UsageCommands::Account) => Query::Summary,
+        Some(UsageCommands::Daily) => Query::Daily,
+        Some(UsageCommands::Requests) => Query::Requests,
+        Some(UsageCommands::Limits) => Query::Limits,
+        Some(UsageCommands::Generation { id }) => Query::Generation(id.clone()),
+        Some(UsageCommands::Correlate { client_request_id }) => {
+            Query::Correlated(client_request_id.clone())
+        }
+    };
+    let payload = usage::fetch(&query).await.map_err(|e| e.to_string())?;
+    if json {
+        println!("{}", payload.as_str());
+        return Ok(());
+    }
+    // `Fixed`: nothing is folded in a pipe, and there is no key to unfold it.
+    for line in app_lib::core::cli::usage_view::reported_usage_lines(
+        &query,
+        &payload,
+        app_lib::core::cli::usage_view::Fold::Fixed,
+    ) {
+        println!("{line}");
+    }
+    Ok(())
 }
 
 // ── MCP server handler ─────────────────────────────────────────────────────
@@ -3054,6 +3131,42 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usage_subcommands_parse() {
+        let view = |argv: &[&str]| {
+            let mut full = vec!["flint", "usage"];
+            full.extend_from_slice(argv);
+            match Cli::parse_from(full).command {
+                Some(Commands::Usage { cmd, .. }) => cmd,
+                other => panic!("expected a usage command, got {:?}", other.is_some()),
+            }
+        };
+        assert!(matches!(view(&["account"]), Some(UsageCommands::Account)));
+        assert!(matches!(view(&["daily"]), Some(UsageCommands::Daily)));
+        assert!(matches!(view(&["requests"]), Some(UsageCommands::Requests)));
+        assert!(matches!(view(&["limits"]), Some(UsageCommands::Limits)));
+        match view(&["generation", "exec-1"]) {
+            Some(UsageCommands::Generation { id }) => assert_eq!(id, "exec-1"),
+            _ => panic!("expected a generation lookup"),
+        }
+        match view(&["correlate", "my-app-request-001"]) {
+            Some(UsageCommands::Correlate { client_request_id }) => {
+                assert_eq!(client_request_id, "my-app-request-001");
+            }
+            _ => panic!("expected a correlation lookup"),
+        }
+        assert!(view(&[]).is_none(), "the subcommand is optional");
+        assert!(Cli::try_parse_from(["flint", "usage", "generation"]).is_err());
+        assert!(Cli::try_parse_from(["flint", "usage", "correlate"]).is_err());
+        assert!(matches!(
+            Cli::parse_from(["flint", "usage", "account", "--json"]).command,
+            Some(Commands::Usage {
+                cmd: Some(UsageCommands::Account),
+                json: true
+            })
+        ));
+    }
+
     /// Parse `flint cli agent run <task> <extra...>` and pull out its budget args.
     fn parsed_budget(extra: &[&str]) -> BudgetArgs {
         let mut argv = vec!["flint", "cli", "agent", "run", "task"];

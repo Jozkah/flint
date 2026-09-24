@@ -19,6 +19,9 @@
 //! [`super::tui`] for `/login`); this module is UI-free so both share one
 //! implementation.
 
+/// Client for the Tokamak usage API (upstream #9034).
+pub mod usage;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -232,7 +235,7 @@ pub async fn logout() -> Result<Logout, String> {
     })
 }
 
-fn stored_api_key() -> Option<String> {
+pub(crate) fn stored_api_key() -> Option<String> {
     use crate::core::agent::global_config::load_global_config;
     load_global_config()
         .ok()?

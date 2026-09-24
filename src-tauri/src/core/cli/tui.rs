@@ -1981,6 +1981,13 @@ struct App {
     /// loop (it sizes the tool segment, which takes the MCP server lock a turn
     /// may be holding). Taken once, like `mcp_job_request`.
     context_request: bool,
+    /// Set by `/usage <view>` to ask the loop to query the Tokamak usage API
+    /// off the render loop (upstream #9034). Taken once, like
+    /// `context_request`.
+    usage_request: Option<crate::core::cli::tokamak::usage::Query>,
+    /// The provider's execution id for the most recent request that reported
+    /// one, so `/usage` can name the handle a billing lookup is keyed by.
+    last_execution_id: Option<String>,
     /// Active MCP add/edit wizard (docked); owns the keyboard while open.
     mcp_prompt: Option<McpPrompt>,
     /// The `/mcp` detail screen's data, alongside the `McpServer` picker whose
@@ -2501,6 +2508,8 @@ impl App {
             settings_prompt: None,
             context_view: None,
             context_request: false,
+            usage_request: None,
+            last_execution_id: None,
             mcp_prompt: None,
             mcp_detail: None,
             agent_detail: None,
@@ -5358,7 +5367,13 @@ impl App {
                 name,
                 event,
             } => self.apply_subagent_event(&run_id, &name, *event),
-            StreamEvent::TurnUsage { usage, .. } => {
+            StreamEvent::TurnUsage {
+                usage,
+                execution_id,
+            } => {
+                if let Some(id) = execution_id {
+                    self.last_execution_id = Some(id);
+                }
                 self.turn_output_tokens += usage.completion_tokens.unwrap_or(0);
                 // Latest request's context, not a sum: each request resends the
                 // whole conversation, so adding them would be meaningless.
@@ -6147,7 +6162,7 @@ impl ContextReport {
 /// is slightly below 2.05 but `k * 10.0` lands on exactly 20.5, so the branch
 /// selected decimal output while the renderer produced the self-defeating
 /// `2.0K`. Integer math removes that representation mismatch.
-fn format_tokens(tokens: u64) -> String {
+pub(crate) fn format_tokens(tokens: u64) -> String {
     if tokens < 1_000 {
         return tokens.to_string();
     }
@@ -8071,6 +8086,39 @@ async fn await_mcp_job(
 
 /// Await an in-flight `/context` report, parking forever when none is running
 /// so this can sit in the loop's `select!` unconditionally.
+/// A `/usage` lookup's query and what the provider answered.
+type UsageDone = (
+    crate::core::cli::tokamak::usage::Query,
+    Result<crate::core::cli::tokamak::usage::Payload, crate::core::cli::tokamak::usage::UsageError>,
+);
+
+async fn await_usage(task: &mut Option<tokio::task::JoinHandle<UsageDone>>) -> Option<UsageDone> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
+
+/// Write a `/usage` answer into the transcript. Every line says it is what the
+/// provider recorded; a failure is reported as one, never as a zero charge.
+fn finish_usage(app: &mut App, (query, result): UsageDone) {
+    match result {
+        Ok(payload) => {
+            app.note(&format!("usage ({}), as recorded by Tokamak:", query.label()));
+            for line in crate::core::cli::usage_view::reported_usage_lines(
+                &query,
+                &payload,
+                crate::core::cli::usage_view::Fold::Fixed,
+            ) {
+                app.system_detail_text(&line);
+            }
+        }
+        Err(e) => app.note(&format!("usage ({}): {e}", query.label())),
+    }
+}
+
 async fn await_context(
     task: &mut Option<tokio::task::JoinHandle<ContextReport>>,
 ) -> Option<ContextReport> {
@@ -8620,6 +8668,9 @@ async fn chat_loop<B: Backend>(
     // executing an MCP tool call holds it for up to the tool-call timeout), so
     // it must never run on the render loop. One at a time.
     let mut context_task: Option<tokio::task::JoinHandle<ContextReport>> = None;
+    // `/usage <view>`: a round trip to the provider's usage API, so it runs off
+    // the render loop too. One at a time.
+    let mut usage_task: Option<tokio::task::JoinHandle<UsageDone>> = None;
     // `/plugin install` clones a git repo, so it runs off the render loop via
     // the installer's internal `spawn_blocking`; one at a time. A collection
     // source resolves in two steps (list -> picker -> install the chosen set),
@@ -8761,6 +8812,14 @@ async fn chat_loop<B: Backend>(
             app.context_request = false;
             let snapshot = app.context_snapshot();
             context_task = Some(tokio::spawn(compute_context_report(snapshot)));
+        }
+        if usage_task.is_none() {
+            if let Some(query) = app.usage_request.take() {
+                usage_task = Some(tokio::spawn(async move {
+                    let result = crate::core::cli::tokamak::usage::fetch(&query).await;
+                    (query, result)
+                }));
+            }
         }
         // A key was submitted at the `/login` prompt: verify it off-loop. One at
         // a time - the prompt is read-only while `verifying`.
@@ -8962,6 +9021,9 @@ async fn chat_loop<B: Backend>(
             }
             Some(done) = await_mcp_job(&mut mcp_job) => {
                 finish_mcp_job(app, done, mcp_servers, &mut mcp_job).await;
+            }
+            Some(done) = await_usage(&mut usage_task) => {
+                finish_usage(app, done);
             }
             Some(report) = await_context(&mut context_task) => {
                 // Only apply a report the user is still looking at: a result
@@ -10962,6 +11024,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/usage",
+        hint: "[account|daily|requests|limits|run|<execution-id>]",
+        description: "Show recorded Tokamak usage and spend",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/goal",
         hint: "[condition|clear]",
         description: "Keep working until a condition is met (bare: status)",
@@ -11261,6 +11329,7 @@ async fn run_command(
         }
         "compact" => compact_command(app),
         "context" => context_command(app),
+        "usage" => usage_command(app, arg),
         "threads" | "list" => match super::list_threads_in(&app.agent_dir) {
             Ok(threads) if threads.is_empty() => {
                 app.note("no saved threads found");
@@ -11358,6 +11427,47 @@ async fn run_command(
 /// and fills the overlay in when it lands. Unlike the old idle-only transcript
 /// row, the readout is a popup the user closes with Esc, so it stays available
 /// mid-turn without ever blocking the render loop.
+/// `/usage [view]`: what the provider recorded (upstream #9034).
+///
+/// These are the provider's own figures, fetched off the render loop. Bare
+/// `/usage` is the account summary and also names the last execution id this
+/// session reported, so a single request's charge is one lookup away. `run`
+/// correlates every execution this session produced through the
+/// `X-Client-Request-Id` the agent sends.
+fn usage_command(app: &mut App, arg: &str) {
+    use crate::core::cli::tokamak::usage::Query;
+    if crate::core::cli::tokamak::stored_api_key().is_none() {
+        app.note("usage: not signed in to Tokamak -- run /login first");
+        return;
+    }
+    let query = match arg.trim() {
+        "" | "account" => {
+            if let Some(id) = app.last_execution_id.as_deref() {
+                app.note(&format!(
+                    "last execution id: {id} (/usage {id} shows what it was charged)"
+                ));
+            }
+            Query::Summary
+        }
+        "daily" => Query::Daily,
+        "requests" => Query::Requests,
+        "limits" => Query::Limits,
+        "run" => {
+            let session = app.args.as_ref().and_then(|a| a.session_id.clone());
+            match crate::core::agent::correlation::session_request_id(session.as_deref()) {
+                Some(id) => Query::Correlated(id),
+                None => {
+                    app.note("usage: this session has no id to correlate yet");
+                    return;
+                }
+            }
+        }
+        id => Query::Generation(id.to_string()),
+    };
+    app.note(&format!("usage: asking Tokamak for {}...", query.label()));
+    app.usage_request = Some(query);
+}
+
 fn context_command(app: &mut App) {
     app.context_view = Some(ContextView::Loading);
     app.context_request = true;

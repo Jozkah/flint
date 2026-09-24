@@ -28,6 +28,8 @@ pub mod stream_input;
 pub mod terminal_setup;
 pub mod tokamak;
 mod tui;
+/// Renders reported usage from the Tokamak usage API (upstream #9034).
+pub mod usage_view;
 pub mod version;
 pub mod worktree;
 
