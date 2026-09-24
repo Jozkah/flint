@@ -464,6 +464,12 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
                 if let Ok(mut g) = BUSY_MODELS.lock() {
                     g.clear();
                 }
+                // The user may have cancelled while the stop was in flight;
+                // honor that instead of quitting anyway.
+                if take_exit_cancelled() {
+                    log::info!("{}: exit cancelled by the user", source);
+                    return;
+                }
                 SHUTTING_DOWN.store(true, Ordering::SeqCst);
                 app_handle.exit(exit_code);
                 return;

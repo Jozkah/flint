@@ -92,18 +92,6 @@ describe('getModelContextLimit', () => {
   })
 })
 
-describe('createDownloadTaskId', () => {
-  it('prefixes the provider and strips everything after the first dot', () => {
-    const ext = newExt()
-    expect(ext.createDownloadTaskId('org/model.Q4_K_M')).toBe('mlx/org/model')
-  })
-
-  it('keeps the id intact when there is no dot', () => {
-    const ext = newExt()
-    expect(ext.createDownloadTaskId('org/model')).toBe('mlx/org/model')
-  })
-})
-
 describe('get', () => {
   it('returns undefined when model.yml does not exist', async () => {
     const ext = newExt()

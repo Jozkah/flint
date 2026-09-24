@@ -31,7 +31,7 @@ pub async fn get_random_available_port<R: Runtime>(
     let state: State<MlxState> = app_handle.state();
     let map = state.mlx_server_process.lock().await;
 
-    let used_ports: HashSet<u16> = map
+    let mut used_ports: HashSet<u16> = map
         .values()
         .filter_map(|session| {
             if session.info.port > 0 && session.info.port <= u16::MAX as i32 {
@@ -41,6 +41,8 @@ pub async fn get_random_available_port<R: Runtime>(
             }
         })
         .collect();
+    // A load still waiting for readiness is not in the map yet (#71).
+    used_ports.extend(crate::commands::pending_ports());
 
     drop(map);
 

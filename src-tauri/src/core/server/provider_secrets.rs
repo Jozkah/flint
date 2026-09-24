@@ -741,6 +741,36 @@ mod tests {
         assert!(has_stored_key("openai"));
     }
 
+    /// #138: the General Hugging Face token (`general:huggingface-token`) and
+    /// the huggingface provider's key chain (`huggingface`) are separate
+    /// entries; writing or clearing one never touches the other.
+    #[test]
+    fn general_hf_token_and_provider_chain_are_independent() {
+        let _tmp = TempDataFolder::new();
+        let chain = vec!["hf_provider".to_string(), "hf_fallback".to_string()];
+        file_store("huggingface", &chain).unwrap();
+        file_store("general:huggingface-token", &["hf_general".to_string()]).unwrap();
+        assert_eq!(file_load("huggingface"), chain);
+        assert_eq!(
+            file_load("general:huggingface-token"),
+            vec!["hf_general".to_string()]
+        );
+
+        // Clearing the General token leaves the provider chain intact...
+        file_remove("general:huggingface-token").unwrap();
+        assert!(file_load("general:huggingface-token").is_empty());
+        assert_eq!(file_load("huggingface"), chain);
+
+        // ...and removing the provider chain leaves a General token intact.
+        file_store("general:huggingface-token", &["hf_general".to_string()]).unwrap();
+        file_remove("huggingface").unwrap();
+        assert!(file_load("huggingface").is_empty());
+        assert_eq!(
+            file_load("general:huggingface-token"),
+            vec!["hf_general".to_string()]
+        );
+    }
+
     #[test]
     fn file_remove_missing_is_ok() {
         let _tmp = TempDataFolder::new();

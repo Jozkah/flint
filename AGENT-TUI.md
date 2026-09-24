@@ -4,7 +4,7 @@
 
 The **Jan Agent CLI TUI** is a terminal-based interactive UI for Jan's agent. It uses [ratatui](https://ratatui.rs) (a Rust TUI framework) and [crossterm](https://github.com/crossterm-rs/crossterm) for terminal control.
 
-The CLI binary (`jan`) is separate from the desktop binary (`jan-desktop`). They share the same library crate (`app_lib`).
+The CLI binary (`flint`) is separate from the desktop binary (`Flint-Desktop`). They share the same library crate (`app_lib`).
 
 ### Architecture
 
@@ -75,8 +75,8 @@ The script installs the binary to `~/.local/bin/flint`. Make sure `~/.local/bin`
 - The **library** (`app_lib`) is what you build in CI/CD for both desktop and CLI,
   but the two are mutually exclusive feature configs: `cli` compiles out every
   Tauri-dependent module, and the Tauri/GTK crates are not even dependencies.
-- The **CLI binary** (`jan`) needs `--no-default-features --features cli` to include TUI dependencies.
-- The **desktop binary** (`jan-desktop`) uses the `desktop` feature (Tauri).
+- The **CLI binary** (`flint`) needs `--no-default-features --features cli` to include TUI dependencies.
+- The **desktop binary** (`Flint-Desktop`) uses the `desktop` feature (Tauri).
 
 When developing TUI features, use `cargo check --no-default-features --features cli --lib` for the fast inner loop (checks only the library, not binary linking).
 
@@ -268,10 +268,10 @@ flint tui
 cd src-tauri && cargo run --no-default-features --features cli --bin flint -- tui
 
 # With a specific model:
-jan-agent tui --model my-model
+flint tui --model my-model
 
 # With provider overrides:
-jan-agent tui --provider openai --model gpt-4
+flint tui --provider openai --model gpt-4
 ```
 
 ## Making Changes
@@ -292,7 +292,7 @@ vim src-tauri/src/core/cli/tui.rs
 ./build-tui.sh debug
 
 # 5. Test in terminal
-jan-agent tui
+flint tui
 ```
 
 ### Adding a New Slash Command

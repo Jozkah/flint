@@ -253,7 +253,12 @@ export function DataProvider() {
     })
     // Re-seed the Hugging Face token from the keyring (no longer persisted to
     // settings storage) into the store + download extension for this session.
-    loadHuggingfaceToken((command, args) => invoke(command, args))
+    loadHuggingfaceToken(
+      (command, args) => invoke(command, args),
+      useModelProvider
+        .getState()
+        .providers.find((p) => p.provider === 'huggingface')?.api_key
+    )
       .then((token) => {
         if (token) useGeneralSetting.getState().setHuggingfaceToken(token)
       })

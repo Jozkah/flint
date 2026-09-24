@@ -552,6 +552,78 @@ mod tests {
         assert!(matches!(parse_document(&path, "pdf"), Err(RagError::ParseError(_))));
     }
 
+    /// A structurally valid one-page PDF whose page draws nothing, with a real
+    /// xref table so lopdf loads it without falling back to recovery.
+    fn blank_pdf() -> Vec<u8> {
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> /Contents 4 0 R >>",
+            "<< /Length 0 >>\nstream\n\nendstream",
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, body) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", i + 1, body).as_bytes());
+        }
+        let xref_at = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
+        for off in offsets {
+            pdf.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+                objects.len() + 1,
+                xref_at
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+
+    #[test]
+    fn a_pdf_with_too_little_text_is_reported_as_image_based() {
+        let dir = TempDir::new("pdfblank");
+        let path = dir.file("blank.pdf", &blank_pdf());
+        let err = parse_document(&path, "pdf").unwrap_err();
+        assert!(
+            matches!(err, RagError::ParseError(ref m) if m.contains("image-based")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn parse_spreadsheet_reads_a_minimal_xlsx() {
+        let dir = TempDir::new("xlsx");
+        let path = dir.zip(
+            "a.xlsx",
+            &[
+                (
+                    "_rels/.rels",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#,
+                ),
+                (
+                    "xl/workbook.xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+                ),
+                (
+                    "xl/_rels/workbook.xml.rels",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+                ),
+                (
+                    "xl/worksheets/sheet1.xml",
+                    r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>apple</t></is></c><c r="B1"><v>3</v></c></row></sheetData></worksheet>"#,
+                ),
+            ],
+        );
+        let text = parse_document(&path, "xlsx").unwrap();
+        assert!(text.contains("# Sheet: Data"), "{text}");
+        assert!(text.contains("apple\t3"), "{text}");
+    }
+
     #[test]
     fn unknown_extensions_without_magic_bytes_parse_as_text() {
         let dir = TempDir::new("unknown");

@@ -2126,18 +2126,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
   }
 
-  /**
-   * The id becomes a Tauri event name (`download-<taskId>`), which cannot contain
-   * a dot. Dots are replaced rather than truncated at: truncating collapsed every
-   * `Jan-v3.*` quant onto one id, and Rust cancels an in-flight task whose id
-   * repeats -- deleting its partial file -- so downloading one quant destroyed
-   * another's, and pause/cancel hit whichever quant happened to be registered.
-   */
-  private createDownloadTaskId(modelId: string) {
-    // prepend provider to make taskId unique across providers
-    return `${this.provider}/${modelId.replace(/\./g, '-')}`
-  }
-
   private async *handleStreamingResponse(
     url: string,
     headers: HeadersInit,

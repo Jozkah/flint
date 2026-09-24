@@ -100,7 +100,10 @@ pub async fn is_model_supported(
     }
 
     // Total memory consumption = model weights + kvcache + mmproj
-    let total_required = model_size + kv_cache_size + mmproj_size;
+    // Saturating: sizes derived from untrusted GGUF metadata must not wrap (#154).
+    let total_required = model_size
+        .saturating_add(kv_cache_size)
+        .saturating_add(mmproj_size);
     log::info!(
         "isModelSupported: Total memory requirement: {} for {}; kvCacheSize: {}, mmprojSize: {}",
         total_required,

@@ -10,6 +10,12 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 export const HUGGINGFACE_TOKEN_SECRET_KEY = 'general:huggingface-token'
 /** Where builds before #138 kept the token. */
 export const LEGACY_HUGGINGFACE_TOKEN_SECRET_KEY = 'huggingface'
+/**
+ * Set once the legacy token has been looked at, so the copy runs a single
+ * time: repeating it every launch brought back a token the user had cleared.
+ */
+export const HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY =
+  'general:huggingface-token-migrated'
 
 type SecretInvoke = (
   command: 'get_secret' | 'set_secret',
@@ -18,20 +24,37 @@ type SecretInvoke = (
 
 /**
  * The General Hugging Face token from the keyring. A token saved by an older
- * build sits under the provider's entry; it is copied to the namespaced one,
- * and the provider's entry is left alone, since it may be the provider's key.
+ * build sits under the provider's entry; it is copied to the namespaced one
+ * once, behind a marker, and the provider's entry is left alone, since it may
+ * be the provider's key. A legacy value equal to `providerApiKey` (the
+ * huggingface provider's own key, when known) is not copied.
  */
 export async function loadHuggingfaceToken(
-  invoke: SecretInvoke
+  invoke: SecretInvoke,
+  providerApiKey?: string
 ): Promise<string | null> {
   const token = await invoke('get_secret', { key: HUGGINGFACE_TOKEN_SECRET_KEY })
   if (typeof token === 'string' && token) return token
+  const migrated = await invoke('get_secret', {
+    key: HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY,
+  })
+  if (typeof migrated === 'string' && migrated) return null
   const legacy = await invoke('get_secret', {
     key: LEGACY_HUGGINGFACE_TOKEN_SECRET_KEY,
   })
-  if (typeof legacy !== 'string' || !legacy) return null
-  await invoke('set_secret', { key: HUGGINGFACE_TOKEN_SECRET_KEY, value: legacy })
-  return legacy
+  const copy =
+    typeof legacy === 'string' && legacy !== '' && legacy !== providerApiKey
+  if (copy) {
+    await invoke('set_secret', {
+      key: HUGGINGFACE_TOKEN_SECRET_KEY,
+      value: legacy,
+    })
+  }
+  await invoke('set_secret', {
+    key: HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY,
+    value: '1',
+  })
+  return copy ? legacy : null
 }
 type GeneralSettingState = {
   currentLanguage: Language
@@ -71,6 +94,16 @@ export const useGeneralSetting = create<GeneralSettingState>()(
           .catch((err) =>
             console.warn('Failed to persist huggingface token to keyring:', err)
           )
+        if (!token) {
+          // A cleared token stays cleared: never re-copy the legacy entry.
+          getServiceHub()
+            .core()
+            .invoke('set_secret', {
+              key: HUGGINGFACE_TOKEN_MIGRATED_SECRET_KEY,
+              value: '1',
+            })
+            .catch(() => {})
+        }
       },
     }),
     {

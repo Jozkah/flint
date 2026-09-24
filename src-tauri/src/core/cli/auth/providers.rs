@@ -560,6 +560,44 @@ mod tests {
         });
     }
 
+    /// Makes the next `set_provider` fail: config.toml exists but is not TOML.
+    fn break_global_config() {
+        let path = crate::core::agent::global_config::global_config_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "this is [not toml").unwrap();
+    }
+
+    /// #201: a failed config write puts the previous credential back, so a
+    /// re-login that fails half-way does not sign the user out.
+    #[test]
+    fn a_failed_config_write_restores_the_previous_credential() {
+        let _tmp = TempSecrets::new();
+        with_temp_home(|_| {
+            CredentialStore::store("deepseek", &Credential::ApiKey("sk-old".into())).unwrap();
+            break_global_config();
+            let def = deepseek_at("http://127.0.0.1:9/v1".to_string());
+            let result = persist(&def, "sk-new", &["deepseek-chat".to_string()]);
+            assert!(matches!(result, Err(LoginError::Persist(_))));
+            assert_eq!(
+                CredentialStore::load("deepseek").unwrap(),
+                Some(Credential::ApiKey("sk-old".into()))
+            );
+        });
+    }
+
+    /// #201: with no previous credential, a failed config write leaves none.
+    #[test]
+    fn a_failed_config_write_without_a_previous_credential_leaves_none() {
+        let _tmp = TempSecrets::new();
+        with_temp_home(|_| {
+            break_global_config();
+            let def = deepseek_at("http://127.0.0.1:9/v1".to_string());
+            let result = persist(&def, "sk-new", &["deepseek-chat".to_string()]);
+            assert!(matches!(result, Err(LoginError::Persist(_))));
+            assert!(CredentialStore::load("deepseek").unwrap().is_none());
+        });
+    }
+
     #[tokio::test]
     async fn logout_removes_credential_and_config() {
         let _tmp = TempSecrets::new();

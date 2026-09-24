@@ -1,6 +1,5 @@
 {
   "sortNewest": "Самые новые",
-  "sortMostDownloaded": "Самые загружаемые",
   "newChat": "Новый чат",
   "download": "Загрузить",
   "downloaded": "Загруженные",
@@ -11,7 +10,6 @@
   "variants": "Варианты",
   "showVariants": "Показать варианты",
   "useModel": "Использовать эту модель",
-  "downloadModel": "Загрузить модель",
   "tools": "Инструменты",
   "searchPlaceholder": "Поиск моделей на Hugging Face…"
 }
