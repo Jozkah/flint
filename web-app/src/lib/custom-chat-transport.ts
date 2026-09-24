@@ -1091,12 +1091,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
     const agentTools = this.buildAgentToolsSystemInstruction()
+    // Any tool, MCP included, returns outside content, and an MCP tool can act
+    // on the world as readily as the agent tools can.
+    const hasTools = Object.keys(this.tools ?? {}).length > 0
     const raw =
       [
         this.systemMessage,
         chatSafetyGuidelines({
-          readsExternalContent: Boolean(files || web || agentTools),
-          canChangeThings: Boolean(agentTools),
+          readsExternalContent: Boolean(files || web || agentTools || hasTools),
+          canChangeThings: Boolean(agentTools || hasTools),
         }),
         files,
         web,

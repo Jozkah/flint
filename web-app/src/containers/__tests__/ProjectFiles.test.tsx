@@ -203,7 +203,7 @@ describe('ProjectFiles', () => {
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'common:delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete a.md' }))
 
     await waitFor(() => expect(deleteFileForProjectMock).toHaveBeenCalledWith('p1', 'f1'))
     await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
@@ -219,7 +219,7 @@ describe('ProjectFiles', () => {
     await waitFor(() =>
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
-    fireEvent.click(screen.getByRole('button', { name: 'common:delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete a.md' }))
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
   })
 

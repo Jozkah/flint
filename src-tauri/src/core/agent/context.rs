@@ -120,19 +120,6 @@ fn load_skills_for(project_root: &Path, can_read: bool) -> Option<String> {
     render_skills_block(&entries, can_read)
 }
 
-/// Same rendering `load_skills` uses, but sourced from the folderless Home
-/// surface's matrix-filtered global catalog. Drives the system prompt for
-/// runs with no project root (Home chat).
-pub(crate) fn load_global_skills() -> Option<String> {
-    let entries = crate::core::agent::extensions::resolve_extensions(
-        &crate::core::agent::extensions::Surface::Home,
-        None,
-    );
-    // A run with no project is not offered `skill_read`, so it is not told to
-    // call it.
-    render_skills_block(&entries, false)
-}
-
 fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta], can_read: bool) -> Option<String> {
     if entries.is_empty() {
         return None;
@@ -651,25 +638,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn home_run_emits_global_skills_block() {
-        let data = tempfile::tempdir().unwrap();
-        let store = tauri_plugin_agent_tools::workspace::permanent_store(data.path());
-        let sdir = tauri_plugin_agent_tools::skills::skills_dir(&store).join("caveman");
-        std::fs::create_dir_all(&sdir).unwrap();
-        std::fs::write(
-            sdir.join("SKILL.md"),
-            "---\ndescription: Talk terse\n---\nbody",
-        )
-        .unwrap();
-        crate::core::agent::skills::set_test_user_skills(Some(store));
-
-        let block = load_global_skills().expect("global skills block");
-        assert!(block.contains("## Skill: caveman"), "block: {block}");
-
-        crate::core::agent::skills::set_test_user_skills(None);
-    }
-
     // Uses `projects_registry::register_folder`, which is desktop-only
     // (`#[cfg(not(feature = "cli"))]`).
     #[cfg(not(feature = "cli"))]
@@ -1080,7 +1048,7 @@ We build with make.")
         let full = full.unwrap();
         assert!(full.contains("Reach for `todo`") && full.contains("Call `ask`") && full.contains("# Web Access"));
         assert!(!full.contains("are not available"));
-        // Home chat has no `skill_read`, so its catalog does not name it.
+        // A run without `skill_read` gets a catalog that does not name it.
         let meta = crate::core::agent::skills::SkillMeta {
             name: "deploy".into(),
             description: "Ship it".into(),

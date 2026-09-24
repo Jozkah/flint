@@ -115,9 +115,11 @@ function SkillListRow({
           </div>
         )}
         <div className="text-xs text-muted-foreground">
-          {isEnabled
-            ? t('connections:skills.state.enabled')
-            : t('connections:skills.state.disabled')}
+          <span>
+            {isEnabled
+              ? t('connections:skills.state.enabled')
+              : t('connections:skills.state.disabled')}
+          </span>
           {' · '}
           {scope === 'global' ? 'Global' : 'Workspace'}
         </div>

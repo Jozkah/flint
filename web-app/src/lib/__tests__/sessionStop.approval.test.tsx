@@ -49,6 +49,9 @@ describe('stop_session is never answered by a standing grant', () => {
     expect(settled).toBe(false)
     expect(useToolApprovalRequests.getState().pending.c1?.toolName).toBe('stop_session')
     // A tool that is not always-ask is still answered by those grants.
+    // "Allow all MCP" covers MCP tools only, so the built-in `write` needs a
+    // grant of its own -- the same always-allow kind stop_session ignores.
+    useToolApproval.setState({ approvedToolsGlobal: ['stop_session', 'write'] })
     await expect(
       useToolApprovalRequests.getState().requestApproval('c2', 'write', 'A')
     ).resolves.toBe(true)

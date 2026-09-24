@@ -119,6 +119,7 @@ const h = vi.hoisted(() => {
 
   const toolAvailableState: any = {
     getDisabledToolsForThread: vi.fn(() => []),
+    // ThreadConversation checks the global list before running a tool.
     getDisabledTools: vi.fn(() => []),
   }
   const useToolAvailableMock: any = (selector: any) => selector(toolAvailableState)

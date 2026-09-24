@@ -266,12 +266,6 @@ describe('MCP server connection state on the row', () => {
     return toggles[toggles.length - 1]
   }
   const status = () => screen.getByTestId('mcp-status-NotesMCP')
-  // Server cards render collapsed by default (00587f226); the connection
-  // status and details live in the expanded body.
-  const expandCard = () =>
-    fireEvent.click(
-      screen.getByRole('button', { name: 'mcp-servers:expandServer' })
-    )
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -287,7 +281,6 @@ describe('MCP server connection state on the row', () => {
     await act(async () => {
       render(<Component />)
     })
-    expandCard()
 
     await act(async () => {
       fireEvent.click(serverToggle())
@@ -309,7 +302,6 @@ describe('MCP server connection state on the row', () => {
     await act(async () => {
       render(<Component />)
     })
-    expandCard()
     expect(status()).toHaveTextContent('mcp-servers:connection.state.disabled')
 
     getConnectedServers.mockImplementationOnce(
@@ -360,7 +352,6 @@ describe('MCP server connection state on the row', () => {
     await act(async () => {
       render(<Component />)
     })
-    expandCard()
 
     await act(async () => {
       fireEvent.click(serverToggle())
@@ -379,7 +370,10 @@ describe('MCP server connection state on the row', () => {
     await act(async () => {
       render(<Component />)
     })
-    expandCard()
+    // Cards are compact by default; the explanation lives in the expanded card.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'mcp-servers:expandServer' }))
+    })
     const summary = screen.getByText('mcp-servers:details.toggle')
     expect(summary.tagName).toBe('SUMMARY')
     expect(
