@@ -468,6 +468,33 @@
     "description": "`Deserialize` as well as `Serialize`: a consumer validates what it received\nagainst these shapes, and `JsonSchema` is what `jan cli agent schema`\npublishes them as -- a consumer generates its own types from\n`protocol/schema.json` rather than copying this declaration. The wire has to\nsurvive a round trip, not just a write, so `#[serde(tag = \"type\")]` keeps the\ntag on both sides.",
     "oneOf": [
       {
+        "description": "A snapshot of the exact payload that was just dispatched. AH-078.\n\nCarries the identity and the hash, never the payload: the activity\ntimeline links to the record rather than embedding a copy that could\ndrift from it, and the redaction count tells a reader that something was\nremoved without saying what.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "redactions": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "type": {
+            "type": "string",
+            "const": "prompt_snapshot"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "hash",
+          "redactions"
+        ]
+      },
+      {
         "description": "A streamed content delta from the model.",
         "type": "object",
         "properties": {
@@ -592,7 +619,7 @@
         ]
       },
       {
-        "description": "A chunk of a tool's output, as it is produced. Emitted between\n[`ToolCall`] and [`ToolResult`] so a consumer can show a command's output\nwhile it runs instead of only once it exits.\n\nDeltas, not the accumulated buffer, for the same reason as\n[`ToolCallArgsDelta`]: resending the prefix on every chunk is quadratic in\nthe output size. Chunks are raw fragments and may split a line.\n\nKeeps arriving after a `bash` call has backgrounded itself, so a\nlong-running job reports progress under the id of the call that started it.",
+        "description": "A chunk of a tool's output, as it is produced. Emitted between\n[`ToolCall`] and [`ToolResult`] so a consumer can show a command's output\nwhile it runs instead of only once it exits.\n\nDeltas, not the accumulated buffer, for the same reason as\n[`ToolCallArgsDelta`]: resending the prefix on every chunk is quadratic in\nthe output size. Chunks are raw fragments and may split a line.\n\nKeeps arriving after a `bash` call has backgrounded itself and returned a\n`job_id`, so a long-running job reports progress under the id of the call\nthat started it.",
         "type": "object",
         "properties": {
           "id": {
@@ -641,6 +668,23 @@
           "id",
           "content",
           "is_error"
+        ]
+      },
+      {
+        "description": "What the commands a run started used, sent once as it ends (AH-174).",
+        "type": "object",
+        "properties": {
+          "resources": {
+            "$ref": "#/$defs/RunResources"
+          },
+          "type": {
+            "type": "string",
+            "const": "run_resources"
+          }
+        },
+        "required": [
+          "type",
+          "resources"
         ]
       },
       {
@@ -714,13 +758,6 @@
           "name": {
             "type": "string"
           },
-          "error": {
-            "description": "Why the child failed, when it did: the same reason the parent's\n`<SYSTEM>` completion ping carries. Carried on the event because a\nbackground child's answer never reaches a consumer -- only the model\nreads it -- so without this a failed run is indistinguishable from a\nclean one on screen. `None` for a clean finish, and for a child cut\noff at parent teardown, which is not its own failure.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "type": {
             "type": "string",
             "const": "subagent_end"
@@ -730,26 +767,6 @@
           "type",
           "run_id",
           "name"
-        ]
-      },
-      {
-        "description": "The later phases of a phased dispatch, named up front so a consumer can\nshow their subagents as WAITING on an earlier phase before they start.\nEach pending subagent is promoted by its own `SubagentStart` (or\n`SubagentQueued`), matched by `name`, which is unique across a plan.\nDisplay-only and never journaled; emitted only by the top-level run\n(children cannot dispatch), so it is never wrapped in `Subagent`.",
-        "type": "object",
-        "properties": {
-          "pending": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/PendingSubagent"
-            }
-          },
-          "type": {
-            "type": "string",
-            "const": "subagent_plan"
-          }
-        },
-        "required": [
-          "type",
-          "pending"
         ]
       },
       {
@@ -778,57 +795,7 @@
         ]
       },
       {
-        "description": "The user-facing headline of a background ping the loop just delivered to\nthe model as a `<SYSTEM>` reminder (today: a `monitor` condition\nmatching). Emitted at delivery, not when the ping is queued, so the\ntranscript reads in the order the model saw things. Display-only and\ntransient, like notes: it is never journaled.",
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "const": "notice"
-          }
-        },
-        "required": [
-          "type",
-          "text"
-        ]
-      },
-      {
-        "description": "The run's active file monitors, as a whole replacing the previous set.\nEmitted whenever the set changes (a `monitor` start or stop, a condition\nmatching, a monitor finishing), so a consumer keeps a live view without\nbookkeeping of its own. Display-only and never journaled. Not forwarded\nfrom a child: a child's monitors are its own.",
-        "type": "object",
-        "properties": {
-          "monitors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/MonitorSnapshot"
-            }
-          },
-          "type": {
-            "type": "string",
-            "const": "monitors"
-          }
-        },
-        "required": [
-          "type",
-          "monitors"
-        ]
-      },
-      {
-        "description": "The model has finished its turn and the loop is parked on background\nwork it started (a subagent still running, a monitor still watching).\nNothing is being generated until a ping resumes the run, which the next\n`Step` marks. Lets a consumer say \"watching\" rather than \"working\".",
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "parked"
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
-      {
-        "description": "The client should replace its session history with `messages` before\nsubsequent turns. Includes accepted prompt guidance in its original\nposition, but not a pending block from an unsuccessful request. Also\ncarries compacted history when the loop retries a context overflow.",
+        "description": "The loop's compaction reduced the conversation while retrying a\ncontext overflow. The client should replace its session history with\n`messages` for subsequent turns.",
         "type": "object",
         "properties": {
           "messages": {
@@ -914,13 +881,6 @@
         "properties": {
           "usage": {
             "$ref": "#/$defs/Usage"
-          },
-          "execution_id": {
-            "description": "The provider's id for the execution that produced this usage, when\nit reported one. This is the handle a per-request billing lookup is\nkeyed by, so a consumer can ask what this one request actually\ncost rather than only what it estimates.\n\nA sibling of `usage` rather than a field inside it, because it is a\nbilling handle and not a token count. Absent on the default upstream\npath, which cannot see the response headers (see\n[`crate::core::agent::correlation`]); that is a limitation to report,\nnot a reason to synthesize one.",
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "type": {
             "type": "string",
@@ -1013,11 +973,29 @@
               "null"
             ]
           },
+          "patch": {
+            "description": "The same change as reviewable hunks, with the base it was computed\nagainst. AH-146. The text diff above is for reading; this is for a\nclient that wants to present, or decide on, one hunk at a time.",
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PatchView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "prompt_kind": {
             "type": "string"
           },
           "offers_always": {
             "type": "boolean"
+          },
+          "reason": {
+            "description": "Why this call is being asked about when a grant or auto-approval\nwould otherwise have let it run: a destructive shell command, or the\ncheck-in after a long streak of auto-approved calls. `None` for an\nordinary prompt.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "type": {
             "type": "string",
@@ -1107,48 +1085,54 @@
       }
     ],
     "$defs": {
-      "PendingSubagent": {
-        "description": "A subagent in a not-yet-started phase of a phased dispatch: its name (unique\nacross the plan, and its blackboard file) and 1-based phase number. Carried by\n[`StreamEvent::SubagentPlan`] so a consumer can show it waiting on the phase\nbefore it.",
+      "RunResources": {
+        "description": "What a whole run's commands used.",
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string"
-          },
-          "phase": {
+          "commands": {
+            "description": "Commands the run started.",
             "type": "integer",
             "format": "uint32",
             "minimum": 0
-          }
-        },
-        "required": [
-          "name",
-          "phase"
-        ]
-      },
-      "MonitorSnapshot": {
-        "description": "Display-only view of one active monitor, for a status panel.",
-        "type": "object",
-        "properties": {
-          "monitorId": {
-            "type": "string"
           },
-          "name": {
-            "type": "string"
+          "measuredCommands": {
+            "description": "Of those, how many were measured.",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
           },
-          "script": {
-            "type": "string"
-          },
-          "polls": {
+          "cpuMs": {
+            "description": "CPU time across the measured commands, in milliseconds.",
             "type": "integer",
             "format": "uint64",
             "minimum": 0
+          },
+          "peakMemoryBytes": {
+            "description": "The highest peak of any one measured command, in bytes. Commands can\noverlap, so this is a floor on the run's peak, not a sum.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "processes": {
+            "description": "Processes across the measured commands.",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "unmeasuredReason": {
+            "description": "Why some were not measured, when some were not.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
-          "monitorId",
-          "name",
-          "script",
-          "polls"
+          "commands",
+          "measuredCommands",
+          "cpuMs",
+          "peakMemoryBytes",
+          "processes"
         ]
       },
       "AskRequest": {
@@ -1301,8 +1285,8 @@
             "format": "uint64",
             "minimum": 0
           },
-          "cached_tokens": {
-            "description": "Prompt tokens served from the provider's prompt cache (a read/hit).\nOpenAI reports it under `prompt_tokens_details.cached_tokens`; Anthropic\nunder `cache_read_input_tokens`. A thrashing cache shows here as a low\nvalue against a high `prompt_tokens`.",
+          "cached_prompt_tokens": {
+            "description": "Prompt tokens the provider read from its cache\n(`prompt_tokens_details.cached_tokens`). `None` when the provider did\nnot say, which is not the same as nothing having been cached.",
             "type": [
               "integer",
               "null"
@@ -1311,7 +1295,7 @@
             "minimum": 0
           },
           "cache_write_tokens": {
-            "description": "Prompt tokens written into the provider cache this request (a write).\nOnly Anthropic bills this separately (`cache_creation_input_tokens`);\nabsent for providers that do not distinguish reads from writes.",
+            "description": "Prompt tokens written to the provider's cache. Part of the prompt\ntotal, never added to it again.",
             "type": [
               "integer",
               "null"
@@ -1320,6 +1304,78 @@
             "minimum": 0
           }
         }
+      },
+      "PatchView": {
+        "description": "What a client receives: the hunks and the base they were computed against.",
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "string"
+          },
+          "hunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Hunk"
+            }
+          }
+        },
+        "required": [
+          "base",
+          "hunks"
+        ]
+      },
+      "Hunk": {
+        "description": "One contiguous change: lines removed from the base and lines put in their\nplace. Line numbers are 1-based, against the base and against the full\nproposal respectively.",
+        "type": "object",
+        "properties": {
+          "index": {
+            "description": "Position in [`StagedPatch::hunks`], and the id a selection names.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "oldStart": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "oldLen": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "newStart": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "newLen": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "index",
+          "oldStart",
+          "oldLen",
+          "newStart",
+          "newLen",
+          "removed",
+          "added"
+        ]
       }
     }
   }
