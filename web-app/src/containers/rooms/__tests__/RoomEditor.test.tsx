@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { createFakeApi, makeParticipant, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomEditor } from '../RoomEditor'
+import { RoomsApiProvider } from '../roomsBindings'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
@@ -155,6 +156,36 @@ describe('RoomEditor', () => {
     expect(screen.getByText('Provider is not configured — No API key')).toBeInTheDocument()
     expect(screen.getByText('Model is missing')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'gone / ghost (missing)' })).toBeInTheDocument()
+  })
+
+  // #165: while the form was dirty, a new revision updated the participant
+  // list but not each kept participant's availability.
+  it('refreshes participant availability from a new revision while editing', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    const room = makeRoom()
+    const { rerender } = renderWithApi(<RoomEditor room={room} />, api)
+    await user.type(screen.getByLabelText('Title'), ' edited')
+
+    const next = makeRoom({
+      rev: room.rev + 1,
+      participants: room.participants.map((p) =>
+        p.id === 'p1'
+          ? {
+              ...p,
+              availability: { state: 'unavailable' as const, reason: 'provider-not-configured' as const, message: 'No API key', at: 2 },
+            }
+          : p
+      ),
+    })
+    rerender(
+      <RoomsApiProvider api={api}>
+        <RoomEditor room={next} />
+      </RoomsApiProvider>
+    )
+
+    expect(screen.getByText('Provider is not configured — No API key')).toBeInTheDocument()
+    expect(screen.getByLabelText('Title')).toHaveValue('Alpha edited')
   })
 
   it('requires a moderator for moderator-chosen mode', async () => {

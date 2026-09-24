@@ -192,7 +192,12 @@ export function RoomEditor({ room }: { room: Room }) {
       return
     }
     setParticipants((prev) => {
-      const kept = prev.filter((d) => fresh.some((f) => f.id === d.id))
+      // Kept drafts keep the user's edits but take the new revision's
+      // participant as their source, so availability stays current (#165).
+      const kept = prev.flatMap((d) => {
+        const f = fresh.find((x) => x.id === d.id)
+        return f ? [{ ...d, source: f.source }] : []
+      })
       const added = fresh.filter((f) => !prev.some((d) => d.id === f.id))
       return [...kept, ...added]
     })
