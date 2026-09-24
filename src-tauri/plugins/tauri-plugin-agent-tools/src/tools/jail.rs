@@ -453,6 +453,14 @@ fn push(args: &mut Vec<String>, parts: &[&str]) {
     args.extend(parts.iter().map(|s| s.to_string()));
 }
 
+/// Paths under the masked `/run` that bubblewrap binds back read-only
+/// (Jozkah/jan#210). None of them holds a session socket.
+const RUN_KEEP: &[&str] = &["/run/current-system", "/run/booted-system", "/run/opengl-driver"];
+
+/// Bound back under `/run` only when the network is allowed: what name
+/// resolution reads when `/etc/resolv.conf` points into systemd-resolved.
+const RUN_KEEP_NETWORK: &[&str] = &["/run/systemd/resolve"];
+
 /// Build bubblewrap's argv. Operations apply in order, which the layering below
 /// depends on: the read-only root comes first, then the tmpfs that hides `$HOME`,
 /// then the workspace bind that punches back through it.
@@ -465,6 +473,37 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // rather than the host's, and so an unshared pid namespace has a valid /proc.
     push(&mut args, &["--proc", "/proc"]);
     push(&mut args, &["--dev", "/dev"]);
+    // An empty tmpfs over `/run` (Jozkah/jan#210). The read-only root bind
+    // leaves `/run/user/$UID` visible, and a read-only mount does not stop
+    // `connect()` on a pathname unix socket, nor does `--unshare-all` (such
+    // sockets live in the filesystem, not the network namespace). Left
+    // visible, the session D-Bus and the `systemd --user` socket let a command
+    // run `systemd-run --user` and start a process outside the sandbox; the
+    // ssh-agent/keyring sockets there hand out the user's credentials.
+    // Before every bind below, which take host paths as sources and so still
+    // work for a root that happens to sit under `/run`.
+    push(&mut args, &["--tmpfs", "/run"]);
+    // `/var/run` is normally a symlink into `/run` and so is covered; where it
+    // is still a real directory, mask it too.
+    #[cfg(target_os = "linux")]
+    {
+        if std::fs::symlink_metadata("/var/run").is_ok_and(|m| m.is_dir()) {
+            push(&mut args, &["--tmpfs", "/var/run"]);
+        }
+    }
+    // Put back, read-only, only what ordinary commands need from `/run`: the
+    // NixOS system profile (every binary on PATH there, the shell included)
+    // and its graphics drivers. `-try`, since most hosts have none of these.
+    for &keep in RUN_KEEP {
+        push(&mut args, &["--ro-bind-try", keep, keep]);
+    }
+    // With the network shared, name resolution: `/etc/resolv.conf` is often a
+    // symlink into `/run/systemd/resolve`.
+    if policy.allow_network {
+        for &keep in RUN_KEEP_NETWORK {
+            push(&mut args, &["--ro-bind-try", keep, keep]);
+        }
+    }
     // `/tmp`: by default a private tmpfs, writable and discarded with the
     // sandbox. When a session-scoped scratch root is set, bind it over `/tmp`
     // instead (the tmpfs would shadow it), so scratch files persist across
@@ -650,9 +689,19 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
              (deny file-write* (subpath (param \"{name}\")))\n"
         ));
     }
+    // IP only (Jozkah/jan#206). A bare `(allow network*)` also covers
+    // `network-outbound` to a `unix-socket` remote, i.e. connect() to any
+    // unix socket the command can name -- among them the launchd ssh-agent
+    // under `/private/tmp/com.apple.launchd.*/Listeners`, which would hand the
+    // sandbox the user's SSH identities that stripping SSH_AUTH_SOCK and
+    // denying `$HOME` are meant to keep out. The one unix socket allowed is
+    // mDNSResponder's, which name resolution goes through.
     if policy.allow_network {
         p.push_str(
-            "(allow network*)\n\
+            "(allow network-outbound (remote ip \"*:*\"))\n\
+             (allow network-inbound (local ip \"*:*\"))\n\
+             (allow network-bind (local ip \"*:*\"))\n\
+             (allow network-outbound (literal \"/private/var/run/mDNSResponder\"))\n\
              (allow system-socket)\n\
              (allow mach-lookup\n\
              \x20 (global-name \"com.apple.SystemConfiguration.DNSConfiguration\")\n\
@@ -1464,6 +1513,34 @@ mod tests {
         }
     }
 
+    /// Jozkah/jan#210: `/run` (session D-Bus, systemd --user, ssh-agent) is
+    /// masked right after the root bind and before anything is bound on top,
+    /// and only name resolution comes back, only with the network on.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bwrap_masks_run_before_the_workspace_and_keeps_resolve_only_with_network() {
+        let text = joined(&bwrap_args(&policy(), &cfg()));
+        let root = text.find("--ro-bind / /").expect("root bind");
+        let run = text.find("--tmpfs /run").expect("/run tmpfs");
+        let ws = text.find("--bind /data").expect("workspace bind");
+        assert!(root < run && run < ws, "{text}");
+        assert!(!text.contains("/run/user"), "{text}");
+        assert!(!text.contains("/run/systemd/resolve"), "{text}");
+        for keep in RUN_KEEP {
+            assert!(text.contains(&format!("--ro-bind-try {keep} {keep}")), "{text}");
+        }
+
+        let open = joined(&bwrap_args(
+            &Policy::new(Path::new("/data/agent-workspace/threads/t1"), true),
+            &cfg(),
+        ));
+        assert!(
+            open.contains("--ro-bind-try /run/systemd/resolve /run/systemd/resolve"),
+            "{open}"
+        );
+        assert!(open.find("--tmpfs /run").unwrap() < open.find("/run/systemd/resolve").unwrap());
+    }
+
     #[test]
     fn bwrap_binds_the_workspace_writable_and_chdirs_into_it() {
         let args = bwrap_args(&policy(), &cfg());
@@ -1813,8 +1890,28 @@ mod tests {
     fn seatbelt_denies_network_unless_allowed() {
         assert!(seatbelt_policy(&policy()).contains("(deny network*)"));
         let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
-        assert!(open.contains("(allow network*)"));
+        assert!(open.contains("(allow network-outbound (remote ip \"*:*\"))"), "{open}");
         assert!(!open.contains("(deny network*)"));
+    }
+
+    /// Jozkah/jan#206: network on grants IP traffic, not connect() to every
+    /// unix socket on the host (the launchd ssh-agent among them). Only the
+    /// mDNSResponder socket DNS needs is named.
+    #[test]
+    fn seatbelt_network_is_ip_only() {
+        let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
+        assert!(!open.contains("(allow network*)"), "{open}");
+        assert!(!open.contains("unix-socket"), "{open}");
+        for line in open.lines().filter(|l| l.contains("(allow network")) {
+            assert!(
+                line.contains("(remote ip ")
+                    || line.contains("(local ip ")
+                    || line.contains("/private/var/run/mDNSResponder"),
+                "network rule not scoped to IP: {line}"
+            );
+        }
+        assert!(open.contains("(allow network-inbound (local ip \"*:*\"))"), "{open}");
+        assert!(open.contains("(allow network-bind (local ip \"*:*\"))"), "{open}");
     }
 
     #[test]
@@ -2610,6 +2707,67 @@ mod enforcement_tests {
         let (ok, _) = run(&ws, false, "exec 3<>/dev/tcp/1.1.1.1/53 && echo connected").await;
         let _ = std::fs::remove_dir_all(&ws);
         assert!(!ok, "network must be denied by default");
+    }
+
+    /// Jozkah/jan#210: a socket in the user's runtime dir (where the session
+    /// D-Bus, `systemd --user` and ssh-agent listen) is not reachable from
+    /// the sandbox. Skipped where there is no `XDG_RUNTIME_DIR` under `/run`.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn sockets_under_the_runtime_dir_are_not_reachable() {
+        require_backend!();
+        let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from) else {
+            eprintln!("skipping: no XDG_RUNTIME_DIR");
+            return;
+        };
+        if !runtime.starts_with("/run") || !runtime.is_dir() {
+            eprintln!("skipping: XDG_RUNTIME_DIR is not under /run");
+            return;
+        }
+        let sock = runtime.join(format!("jan_jail_probe_{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let Ok(_listener) = std::os::unix::net::UnixListener::bind(&sock) else {
+            eprintln!("skipping: cannot create a socket in XDG_RUNTIME_DIR");
+            return;
+        };
+        let ws = workspace();
+        let (_, out) = run(
+            &ws,
+            false,
+            &format!("if test -e {0}; then echo VISIBLE; else echo HIDDEN; fi", sock.display()),
+        )
+        .await;
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(out.contains("HIDDEN"), "the runtime-dir socket is reachable: {out}");
+    }
+
+    /// Jozkah/jan#206: with the network on, a sandboxed command still cannot
+    /// connect to a unix socket outside the workspace (where the launchd
+    /// ssh-agent lives), while IP networking is left to the other tests.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn network_on_does_not_open_host_unix_sockets() {
+        require_backend!();
+        let sock = PathBuf::from(format!("/private/tmp/jan_sb_probe_{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind probe socket");
+        listener.set_nonblocking(true).unwrap();
+        let ws = workspace();
+        let (_, out) = run(
+            &ws,
+            true,
+            &format!("nc -w 1 -U {} </dev/null && echo CONNECTED", sock.display()),
+        )
+        .await;
+        let accepted = listener.accept();
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(
+            matches!(&accepted, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
+            "the sandbox connected to a host unix socket: {accepted:?} {out}"
+        );
+        assert!(!out.contains("CONNECTED"), "{out}");
     }
 
     /// A relocated store root (e.g. `JAN_DATA_FOLDER` outside `$HOME`) must not

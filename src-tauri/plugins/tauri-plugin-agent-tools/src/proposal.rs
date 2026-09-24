@@ -310,11 +310,27 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_atomic_with(path, bytes, None)
+}
+
+/// `write_atomic`, giving the temp file `perms` before it replaces `path`, so
+/// the result carries them rather than the process's `0o666 & umask` default.
+fn write_atomic_with(
+    path: &Path,
+    bytes: &[u8],
+    perms: Option<std::fs::Permissions>,
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let temp = path.with_extension(format!("tmp-{}", std::process::id()));
     std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    if let Some(perms) = perms {
+        if let Err(e) = std::fs::set_permissions(&temp, perms) {
+            let _ = std::fs::remove_file(&temp);
+            return Err(e.to_string());
+        }
+    }
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         e.to_string()
@@ -1134,13 +1150,30 @@ pub struct ApplyReport {
 fn write_file(dest_root: &Path, path: &str, content: Option<&[u8]>) -> Result<(), String> {
     let target = dest_root.join(path);
     match content {
-        Some(bytes) => write_atomic(&target, bytes),
+        Some(bytes) => write_atomic_with(&target, bytes, existing_mode(&target)),
         None => match std::fs::remove_file(&target) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.to_string()),
         },
     }
+}
+
+/// The permission bits of a file about to be replaced, so an edit keeps an
+/// executable script executable (Jozkah/jan#274). Unix only: Windows has no
+/// mode bits, and carrying its read-only flag onto the temp file would make
+/// the replacing rename fail. A new file gets the default mode.
+#[cfg(unix)]
+fn existing_mode(target: &Path) -> Option<std::fs::Permissions> {
+    std::fs::metadata(target)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.permissions())
+}
+
+#[cfg(not(unix))]
+fn existing_mode(_target: &Path) -> Option<std::fs::Permissions> {
+    None
 }
 
 /// Apply an approval. All files land, or none do.
@@ -1340,6 +1373,35 @@ mod tests {
         assert!(dirty.message().contains("a.txt"));
         let unrecorded = ProposalError::NotRecorded("denied".into()).message();
         assert!(unrecorded.contains("written in full") && !unrecorded.contains("nothing was"), "{unrecorded}");
+    }
+
+    /// Jozkah/jan#274: applying an edit to an executable file keeps its mode;
+    /// a file the proposal creates still gets the default mode.
+    #[cfg(unix)]
+    #[test]
+    fn apply_keeps_the_mode_of_an_edited_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let (data, dest) = dirs("mode");
+        let record = two_hunks(&data, &dest);
+        let target = dest.join("a.txt");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (data2, dest2) = dirs("mode-new");
+        let fresh = create(
+            &data2,
+            scope(&dest2),
+            "abc123",
+            vec![FileInput { path: "new.txt".into(), base: None, proposed: Some(b"x".to_vec()) }],
+        )
+        .unwrap();
+
+        apply(&data, &dest, &approve(&record, &dest, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), PROPOSED);
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o755, "mode changed to {mode:o}");
+
+        apply(&data2, &dest2, &approve(&fresh, &dest2, vec![all("new.txt")])).unwrap();
+        let mode = std::fs::metadata(dest2.join("new.txt")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0, "a created file came out executable: {mode:o}");
     }
 
     /// Jozkah/jan#272: an empty file added (`__init__.py`, `.gitkeep`) or an
