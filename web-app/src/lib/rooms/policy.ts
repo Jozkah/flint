@@ -118,12 +118,14 @@ export function nextSpeaker(input: {
     if (chosen && !blockedByConsecutive(room, messages, chosen)) {
       return { kind: 'speaker', participant: chosen, via: 'user-selected' }
     }
-    if (room.mode === 'user-selected') {
-      if (!chosen) return { kind: 'awaiting-user' }
+    // A blocked explicit choice is explained in every mode, not dropped in
+    // silence outside user-selected (#180).
+    if (chosen) {
       return fallback(
         `${chosen.name} would exceed the consecutive-turn limit; the next speaker was chosen in order.`
       )
     }
+    if (room.mode === 'user-selected') return { kind: 'awaiting-user' }
   }
 
   switch (room.mode) {
