@@ -404,3 +404,59 @@ describe('useMessages', () => {
     })
   })
 })
+
+describe('useMessages addMessage persist echo (#178)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useMessages.setState({ messages: {} })
+  })
+
+  const msg: ThreadMessage = {
+    id: 'm1',
+    thread_id: 't1',
+    role: 'user',
+    content: 'Hello',
+    created_at: 1,
+  } as ThreadMessage
+
+  it('does not let the createMessage echo undo a newer updateMessage', async () => {
+    let resolveCreate!: (m: ThreadMessage) => void
+    mockCreateMessage.mockReturnValue(
+      new Promise<ThreadMessage>((resolve) => {
+        resolveCreate = resolve
+      })
+    )
+    mockModifyMessage.mockResolvedValue(undefined)
+
+    act(() => {
+      useMessages.getState().addMessage(msg)
+    })
+    act(() => {
+      useMessages.getState().updateMessage({
+        ...msg,
+        metadata: { error: 'x' },
+      } as ThreadMessage)
+    })
+
+    await act(async () => {
+      resolveCreate({ ...msg })
+      await Promise.resolve()
+    })
+
+    const stored = useMessages.getState().getMessages('t1')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].metadata).toEqual({ error: 'x' })
+  })
+
+  it('still applies the echo when nothing changed meanwhile', async () => {
+    const persisted = { ...msg, content: 'persisted' } as ThreadMessage
+    mockCreateMessage.mockResolvedValue(persisted)
+
+    await act(async () => {
+      useMessages.getState().addMessage(msg)
+      await Promise.resolve()
+    })
+
+    expect(useMessages.getState().getMessages('t1')[0]).toBe(persisted)
+  })
+})

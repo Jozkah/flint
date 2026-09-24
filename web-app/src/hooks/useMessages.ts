@@ -42,14 +42,17 @@ export const useMessages = create<MessageState>()((set, get) => ({
       },
     }))
 
-    // Persist to storage asynchronously
+    // Persist to storage asynchronously. The echo only replaces the entry if
+    // it is still the object added above: an updateMessage (error metadata,
+    // branch relinking) made while the write was in flight is newer than the
+    // echo and must not be reverted by it.
     getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
       set((state) => ({
         messages: {
           ...state.messages,
           [message.thread_id]:
             state.messages[message.thread_id]?.map((existing) =>
-              existing.id === newMessage.id ? createdMessage : existing
+              existing === newMessage ? createdMessage : existing
             ) ?? [createdMessage],
         },
       }))
