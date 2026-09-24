@@ -53,6 +53,7 @@ const h = vi.hoisted(() => {
     setOomError: vi.fn(),
     setBackendError: vi.fn(),
     embeddingThreads: {},
+    busyThreads: {},
     setThreadBusy: vi.fn(),
     setThreadEmbedding: vi.fn(),
   }
