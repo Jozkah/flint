@@ -1377,8 +1377,13 @@ impl Scan<'_> {
             let Some(text) = self.read(&path) else {
                 continue;
             };
+            // The Windows wrapper is named with a `./` like the Unix one: the
+            // agent's shell on Windows is Git Bash when Git is installed, and
+            // bash never looks in the working directory for a bare name, so
+            // `gradlew.bat test` failed there with "command not found".
+            // PowerShell runs `./gradlew.bat` as well.
             let wrapper = if cfg!(windows) && self.has_file(dir, "gradlew.bat") {
-                Some("gradlew.bat")
+                Some("./gradlew.bat")
             } else if !cfg!(windows) && self.has_file(dir, "gradlew") {
                 Some("./gradlew")
             } else {
@@ -1894,6 +1899,23 @@ mod tests {
         assert_eq!(find(&t, FactKind::BuildSystem, "Flutter tool").command, None);
         assert_eq!(find(&t, FactKind::TestRunner, "xUnit").command.as_deref(), Some("dotnet test"));
         assert_eq!(find(&t, FactKind::TestRunner, "go test").command.as_deref(), Some("go test ./..."));
+    }
+
+    /// The Gradle wrapper is proposed with a path, so bash (the preferred
+    /// shell on Windows when Git is installed) finds it.
+    #[test]
+    fn the_gradle_wrapper_is_proposed_with_a_path() {
+        let dir = project();
+        let root = dir.path();
+        write(root, "build.gradle", "plugins { id 'java' }\n");
+        write(root, "gradlew", "");
+        write(root, "gradlew.bat", "");
+        let t = run(root);
+        let build = find(&t, FactKind::BuildSystem, "Gradle").command.clone().unwrap();
+        let test = find(&t, FactKind::TestRunner, "Gradle test").command.clone().unwrap();
+        let wrapper = if cfg!(windows) { "./gradlew.bat" } else { "./gradlew" };
+        assert_eq!(build, format!("{wrapper} build"));
+        assert_eq!(test, format!("{wrapper} test"));
     }
 
     #[test]
