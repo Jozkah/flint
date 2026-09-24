@@ -94,6 +94,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import { chatForcedPrompt } from '@/lib/chatToolGuard'
+import { chatLoopStop, noteChatToolCall } from '@/lib/chatLoopGuard'
 import {
   recordToolActivity,
   resourceOf,
@@ -674,6 +675,29 @@ export function ThreadConversation({
               resource: resourceOf(toolCall.input),
             }
 
+            // A turn that has stopped getting anywhere -- the same tool failing
+            // call after call -- is stopped here, whatever the arguments, the
+            // same check Cowork makes (runLoopGuard.ts). The refusal tells the
+            // model to stop and explain; it is shown in the tool card too.
+            const loopStop = chatLoopStop(threadId, message.id)
+            if (loopStop) {
+              await recordToolActivity({
+                ...permissionEvent,
+                phase: 'refused',
+                detail: `stopped: ${loopStop.verdict.detail}`,
+              })
+              await persistToolOutput({
+                state: 'output-error',
+                tool: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                errorText: loopStop.errorText,
+              })
+              // Told once already this turn and still calling tools: end the
+              // turn rather than resubmitting into the same loop.
+              if (loopStop.end) toolCallAbortController.current?.abort()
+              continue
+            }
+
             // A tool that runs without a prompt is still asked about when its
             // command looks destructive in this thread's workspace, or when it
             // would be one call past the consecutive auto-approval limit --
@@ -866,10 +890,23 @@ export function ThreadConversation({
                 return {
                   ...raw,
                   diff: chatDiff,
-                  isError: Boolean(raw.error),
+                  // An MCP tool reports failure with `isError`, not `error`.
+                  isError:
+                    Boolean(raw.error) ||
+                    (raw as { isError?: unknown }).isError === true,
                 }
               }
             )
+            noteChatToolCall(threadId, message.id, {
+              tool: toolName,
+              input: toolCall.input,
+              failed: result.isError,
+              error: result.error
+                ? String(result.error)
+                : result.isError
+                  ? JSON.stringify(result.content ?? '')
+                  : undefined,
+            })
 
             if (result.error) {
               await persistToolOutput({

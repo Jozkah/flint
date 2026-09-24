@@ -28,6 +28,8 @@ export type LoopReason =
   | 'failing-shell'
   /** Too many failed shell commands in one run, whatever the reasons. */
   | 'shell-failure-budget'
+  /** One tool failing call after call, whatever the arguments or errors. */
+  | 'failing-tool'
 
 export type LoopVerdict =
   | { tripped: false }
@@ -54,6 +56,16 @@ export const REPEAT_LIMIT = 5
 export const FAILURE_LIMIT = 3
 export const SHELL_STREAK_LIMIT = 3
 export const SHELL_FAILURE_BUDGET = 8
+/**
+ * Consecutive failed calls of one tool, whatever the arguments and whatever
+ * the errors, before the run is stopped. A model trying a different command
+ * against a tool that keeps refusing ("Command not whitelisted", then another
+ * error, then another) changes its arguments every time, so neither the
+ * same-call nor the same-error count ever trips; this does. A success of that
+ * tool ends the streak; calls to other tools in between do not. The built-in
+ * shell has its own, reason-aware counting above and is not counted here.
+ */
+export const TOOL_FAILURE_STREAK_LIMIT = 5
 export const NO_PROGRESS_LIMIT = 2
 export const DELEGATION_DEPTH_LIMIT = 3
 
@@ -210,6 +222,9 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
   const shell = shellFailures(calls)
   if (shell) return shell
 
+  const failing = toolFailureStreak(calls)
+  if (failing) return failing
+
   const churn = noProgressCycle(calls)
   if (churn) return churn
 
@@ -253,6 +268,28 @@ function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
         tripped: true,
         reason: 'failing-shell',
         detail: `${call.tool} failed ${streak} times in a row for the same reason (${streakClass})`,
+      }
+    }
+  }
+  return null
+}
+
+/** One tool failing again and again in a row, however its calls differ. */
+function toolFailureStreak(calls: ObservedCall[]): LoopVerdict | null {
+  const streaks = new Map<string, number>()
+  for (const call of calls) {
+    if (call.tool === SHELL_TOOL || call.failed === undefined) continue
+    if (!call.failed) {
+      streaks.delete(call.tool)
+      continue
+    }
+    const streak = (streaks.get(call.tool) ?? 0) + 1
+    streaks.set(call.tool, streak)
+    if (streak >= TOOL_FAILURE_STREAK_LIMIT) {
+      return {
+        tripped: true,
+        reason: 'failing-tool',
+        detail: `${call.tool} failed ${streak} times in a row`,
       }
     }
   }
