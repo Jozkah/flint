@@ -282,6 +282,46 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     resolved.starts_with(root.join(JAN_DIR))
 }
 
+/// [`is_hidden_jan_path`] for the project and every granted write root.
+///
+/// A managed worktree or a repository the user lets the agent edit in place
+/// carries the project's own `.jan/agent` (tool policy, hooks, skills). Hiding
+/// only the session workspace's `.jan` left that one open to the file tools
+/// and the shell alike (Jozkah/jan#124). A relative `raw` is resolved against
+/// the project root, the way the file tools resolve it.
+pub fn is_hidden_jan_path_in(project_root: &Path, write_roots: &[PathBuf], raw: &str) -> bool {
+    if is_hidden_jan_path(project_root, raw) {
+        return true;
+    }
+    if write_roots.is_empty() {
+        return false;
+    }
+    let abs = if Path::new(raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        project_root
+            .canonicalize()
+            .unwrap_or_else(|_| project_root.to_path_buf())
+            .join(raw)
+    };
+    let abs = abs.to_string_lossy();
+    write_roots.iter().any(|r| is_hidden_jan_path(r, &abs))
+}
+
+/// [`command_touches_hidden_jan_path`] for the project and every granted write
+/// root. A relative token is judged against each of them: the shell may start
+/// in a managed worktree, where `.jan/agent/agent.toml` means that worktree's.
+pub fn command_touches_hidden_jan_path_in(
+    project_root: &Path,
+    write_roots: &[PathBuf],
+    command: &str,
+) -> bool {
+    command_touches_hidden_jan_path(project_root, command)
+        || write_roots
+            .iter()
+            .any(|r| command_touches_hidden_jan_path(r, command))
+}
+
 /// True iff a shell command references a hidden path.
 ///
 /// Splits on whitespace and shell metacharacters and checks each token, so
@@ -630,6 +670,39 @@ mod tests {
         // A sibling whose name merely starts with `.jan` is not inside it.
         assert!(!is_hidden_jan_path(&root, ".janitor"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_write_roots_jan_is_hidden_too() {
+        let base = std::env::temp_dir().join(format!("jan-hide-wr-{}", std::process::id()));
+        let project = base.join("ws");
+        let wt = base.join("wt");
+        std::fs::create_dir_all(project.join(".jan")).unwrap();
+        std::fs::create_dir_all(wt.join(".jan/agent")).unwrap();
+        std::fs::create_dir_all(wt.join("src")).unwrap();
+        let roots = vec![wt.clone()];
+        let wt_policy = wt.join(".jan/agent/agent.toml");
+        let wt_policy = wt_policy.to_string_lossy();
+
+        // Only the project's own .jan without the write roots.
+        assert!(!is_hidden_jan_path_in(&project, &[], &wt_policy));
+        assert!(is_hidden_jan_path_in(&project, &roots, &wt_policy));
+        assert!(is_hidden_jan_path_in(&project, &roots, &wt.join(".jan").to_string_lossy()));
+        assert!(is_hidden_jan_path_in(&project, &roots, ".jan/agent"));
+        assert!(!is_hidden_jan_path_in(&project, &roots, &wt.join("src").to_string_lossy()));
+        assert!(!is_hidden_jan_path_in(&project, &roots, "src/main.rs"));
+
+        // The shell starts in the worktree, so a relative spelling counts too.
+        assert!(command_touches_hidden_jan_path_in(&project, &roots, &format!("cat {wt_policy}")));
+        assert!(command_touches_hidden_jan_path_in(&project, &roots, "cat .jan/agent/hooks.toml"));
+        assert!(command_touches_hidden_jan_path_in(
+            &project,
+            &roots,
+            "echo x > .jan/agent/agent.toml"
+        ));
+        assert!(!command_touches_hidden_jan_path_in(&project, &roots, "cargo test"));
+        assert!(!command_touches_hidden_jan_path(&project, &format!("cat {wt_policy}")));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
