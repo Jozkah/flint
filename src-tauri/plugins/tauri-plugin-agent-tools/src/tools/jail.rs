@@ -1408,6 +1408,36 @@ pub fn select_chaining_capable(policy: &Policy) -> Option<SelectedShell> {
     })
 }
 
+/// A Windows-native shell to retry a command on when the selected POSIX shell
+/// passed its probe but then could not be spawned for the real command
+/// (upstream janhq/jan#9044: a Git for Windows install whose directory grants
+/// nothing to `ALL APPLICATION PACKAGES`, an antivirus block, a damaged
+/// install -- `os error 203` from `CreateProcessW`).
+///
+/// Only non-POSIX candidates qualify (PowerShell, cmd, which live under
+/// `%SystemRoot%`), and each is probed under the same `policy`, so confinement
+/// is unchanged: the retry runs in the same container, workspace and network
+/// decision. A shell that would misread `command` is skipped -- a POSIX-only
+/// construct, `&&`/`||` on Windows PowerShell 5.1, or cmd's `2>nul` on
+/// PowerShell -- and `None` is returned when no native shell can take it, so
+/// the caller reports the original failure rather than running the command
+/// somewhere it means something else.
+pub fn select_native_fallback(policy: &Policy, command: &str) -> Option<ShellConfig> {
+    proc::candidates()
+        .into_iter()
+        .filter(|cfg| cfg.flavor != proc::ShellFlavor::Posix)
+        .filter(|cfg| proc::requires_posix_shell_for(command, cfg.flavor).is_none())
+        .filter(|cfg| {
+            proc::requires_and_or_chaining(command).is_none() || proc::supports_and_or_chaining(cfg)
+        })
+        .filter(|cfg| {
+            cfg.flavor != proc::ShellFlavor::PowerShell
+                || crate::tools::shell_diag::cmd_nul_redirects(command).is_empty()
+        })
+        .find(|cfg| probe(cfg, policy).usable())
+        .and_then(|cfg| wrap(&cfg, policy))
+}
+
 #[cfg(test)]
 mod probe_cache_tests {
     use super::*;

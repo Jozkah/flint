@@ -416,7 +416,11 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         "write" | "edit" | "memory_write" | "memory_propose" | "skill_write"
         // A message is written to a mailbox on disk, so it needs the same
         // thing writing a file needs.
-        | "message_send" => {
+        | "message_send"
+        // Clones in-process (no shell) into a directory it creates, so a
+        // writable disk is all it needs; the network is the gate's call, as
+        // for the web tools.
+        | "git_clone" => {
             vec![capability::FS_WRITE]
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"

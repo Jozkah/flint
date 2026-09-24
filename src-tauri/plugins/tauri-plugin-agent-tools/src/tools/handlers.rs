@@ -1922,8 +1922,34 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     } else {
         None
     };
+    let mut shell = shell;
+    // #9044: a POSIX shell can pass its sandbox probe and still fail to start
+    // for the real command. A native shell is retried in the same container
+    // before giving up, and the model is told which shell it got.
+    let mut fallback_note: Option<String> = None;
     let child = match proc::spawn(&shell, command, &start, sandbox_tmp.as_deref()).await {
         Ok(c) => c,
+        Err(e) if ctx.sandbox && shell.flavor == proc::ShellFlavor::Posix => {
+            match jail::select_native_fallback(&policy, command) {
+                Some(native) => {
+                    match proc::spawn(&native, command, &start, sandbox_tmp.as_deref()).await {
+                        Ok(c) => {
+                            fallback_note =
+                                Some(native_fallback_note(&e.to_string(), native.description));
+                            shell = native;
+                            c
+                        }
+                        Err(e2) => {
+                            return format!(
+                                "ERROR: failed to run command: {e}; the {} fallback could not start either: {e2}",
+                                native.description
+                            )
+                        }
+                    }
+                }
+                None => return format!("ERROR: failed to run command: {e}"),
+            }
+        }
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
     let pid = child.id();
@@ -2057,7 +2083,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 out.insert_str(0, &banner);
             }
         }
-        if shell_description == "cmd" {
+        if let Some(note) = &fallback_note {
+            out.insert_str(0, note);
+        } else if shell_description == "cmd" {
             out.insert_str(
                 0,
                 "[shell: cmd.exe - no bash is installed. Write commands in cmd syntax \
@@ -2642,6 +2670,17 @@ fn hide_write_root_jans(mut policy: jail::Policy, write_roots: &[PathBuf]) -> ja
         policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
     }
     policy
+}
+
+/// The line a command run on the #9044 native-shell fallback starts with: bash
+/// is installed, so "no bash is installed" would be false, and the model needs
+/// the syntax it is writing for now.
+pub(crate) fn native_fallback_note(spawn_error: &str, shell: &str) -> String {
+    format!(
+        "[shell: {shell} - bash is installed but could not start inside the sandbox \
+         ({spawn_error}), so this ran in {shell} in the same sandbox. Write commands in \
+         {shell} syntax, not POSIX/bash.]\n"
+    )
 }
 
 fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
@@ -4956,6 +4995,18 @@ on_failure = \"warn\"
         assert_eq!(img[0].name, "pic.png");
         assert!(img[0].data_url.starts_with("data:image/png;base64,"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #9044: the fallback note names the shell and why bash was not used,
+    /// rather than claiming bash is missing on a machine that has it.
+    #[test]
+    fn the_native_fallback_note_names_the_shell_and_the_spawn_failure() {
+        let note = native_fallback_note("os error 203", "cmd");
+        assert!(note.starts_with("[shell: cmd - bash is installed"), "{note}");
+        assert!(note.contains("os error 203"), "{note}");
+        assert!(note.contains("same sandbox"), "{note}");
+        assert!(!note.contains("no bash is installed"), "{note}");
+        assert!(note.ends_with("]\n"), "{note}");
     }
 
     #[tokio::test]
