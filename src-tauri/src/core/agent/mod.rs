@@ -28,7 +28,6 @@ pub mod desktop_bridge;
 pub mod destructive;
 pub mod diagnostics;
 pub mod durable_subagent;
-pub mod hooks;
 pub mod events;
 pub mod extensions;
 pub mod fixtures;
