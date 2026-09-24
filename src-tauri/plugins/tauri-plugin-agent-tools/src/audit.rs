@@ -234,15 +234,15 @@ fn redact_word(word: &str) -> String {
 }
 
 fn names_a_secret(key: &str) -> bool {
-    let k = key.trim_start_matches('-').to_ascii_lowercase();
-    // An assignment's key is a name: `PGPASSWORD`, `--token`, `api.key`. A
-    // destructuring pattern in code -- `const {user,pass}=JSON.parse(...)` --
-    // is not, and was redacted for containing "pass".
-    if k.is_empty()
-        || !k
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
-    {
+    // The name right before `=`: `PGPASSWORD` in `PGPASSWORD=`, and also in
+    // `{"command":"PGPASSWORD=` (a command quoted inside JSON). A destructuring
+    // pattern -- `const {user,pass}=JSON.parse(...)` -- ends in `}`, so it has
+    // no name there and is not a secret assignment.
+    let name_start = key
+        .rfind(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+        .map_or(0, |i| i + 1);
+    let k = key[name_start..].trim_start_matches('-').to_ascii_lowercase();
+    if k.is_empty() {
         return false;
     }
     [
@@ -562,6 +562,9 @@ mod tests {
         ] {
             assert_eq!(redact(line), line);
         }
+        // A secret assignment quoted inside JSON is still caught.
+        let json = "{\"command\":\"PGPASSWORD=hunter2 psql\"}";
+        assert!(!redact(json).contains("hunter2"), "{}", redact(json));
         // A bare high-entropy key is still caught.
         let key = "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5";
         assert!(redact(key).contains("[redacted]"));
