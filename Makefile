@@ -599,8 +599,8 @@ else ifeq ($(DETECTED_OS),Linux)
 	rm -rf ./electron/pre-install/*.tgz
 	rm -rf ./src-tauri/resources
 	rm -rf ./src-tauri/target
-	rm -rf "~/jan/extensions"
-	rm -rf "~/.cache/jan*"
+	rm -rf ~/jan/extensions
+	rm -rf ~/.cache/jan*
 	rm -rf "./.cache"
 else
 	find . -name "node_modules" -type d -prune -exec rm -rfv '{}' +
