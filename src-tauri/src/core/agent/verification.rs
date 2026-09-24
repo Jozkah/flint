@@ -162,26 +162,46 @@ pub fn parse_report(reply: &str) -> VerificationReport {
 /// error — it is a BLOCKED verdict, because a verifier that could not run must
 /// not let the work through. The evidence is clamped by the caller before it
 /// gets here.
+#[cfg(test)]
 pub(crate) async fn verify(
     model_id: &str,
     input: &VerificationInput,
     model: &dyn ModelInvoker,
 ) -> VerificationReport {
+    verify_counted(model_id, input, model).await.0
+}
+
+/// [`verify`], plus the tokens the verifier's own request cost, so a run with
+/// a session token ceiling can charge them (Jozkah/jan#131). Its stream is
+/// internal and never shown; its cost is not.
+pub(crate) async fn verify_counted(
+    model_id: &str,
+    input: &VerificationInput,
+    model: &dyn ModelInvoker,
+) -> (VerificationReport, u64) {
     let request = build_request(model_id, input);
-    // The verifier's tokens are internal.
     let (sink, _rx) = mpsc::unbounded_channel();
     match model.invoke(&request, &sink).await {
         Ok(completion) => {
+            let spent = crate::core::agent::events::Usage::from_completion(&completion)
+                .and_then(|u| {
+                    u.total_tokens.or_else(|| {
+                        u.prompt_tokens
+                            .zip(u.completion_tokens)
+                            .map(|(p, c)| p.saturating_add(c))
+                    })
+                })
+                .unwrap_or(0);
             let reply = extract_choice_message(&completion)
                 .and_then(|m| m.get("content").cloned())
                 .and_then(|c| c.as_str().map(str::to_string))
                 .unwrap_or_default();
             if reply.trim().is_empty() {
-                return VerificationReport::blocked("the verifier returned an empty reply");
+                return (VerificationReport::blocked("the verifier returned an empty reply"), spent);
             }
-            parse_report(&reply)
+            (parse_report(&reply), spent)
         }
-        Err(e) => VerificationReport::blocked(&format!("the verifier could not run: {e}")),
+        Err(e) => (VerificationReport::blocked(&format!("the verifier could not run: {e}")), 0),
     }
 }
 

@@ -85,6 +85,8 @@ describe('migrateLocalStorageToBackend', () => {
         api_keys: ['sk-fb'],
         base_url: 'https://api.openai.com/v1',
         models: ['gpt-4'],
+        // #139: the backend picks its wire converter by this.
+        api_type: 'openai',
       }),
     })
 

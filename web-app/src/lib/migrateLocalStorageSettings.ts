@@ -2,6 +2,7 @@ import { isPlatformTauri } from '@/lib/platform/utils'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { localStorageKey } from '@/constants/localStorage'
 import { HUGGINGFACE_TOKEN_SECRET_KEY } from '@/hooks/useGeneralSetting'
+import { getProviderApiType } from '@/lib/providerCaps'
 
 /**
  * One-time migration of settings from webview localStorage to the backend
@@ -97,6 +98,15 @@ async function transformModelProviderBlob(
           base_url: p.base_url,
           custom_headers: customHeaders,
           models,
+          // Selects the backend's wire converter, as registerRemoteProvider
+          // does (#139).
+          api_type: getProviderApiType({
+            provider: String(p.provider),
+            api_type:
+              p.api_type === 'anthropic' || p.api_type === 'openai'
+                ? p.api_type
+                : undefined,
+          }),
         },
       })
     }

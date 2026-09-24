@@ -298,12 +298,25 @@ pub fn import(
         let target = base.join(&entry.path);
         // The target itself, and every directory above it inside the agent
         // dir, must not be a link: writing through one writes somewhere else.
+        // Nor may anything that is not a regular file occupy the target (a
+        // directory), or a directory above it (a file): neither can be
+        // replaced by this entry, with or without `overwrite`, and reading
+        // one as "absent" skipped the overwrite refusal (Jozkah/jan#193).
         let mut probe = base.clone();
-        for part in Path::new(&entry.path).components() {
+        let parts: Vec<_> = Path::new(&entry.path).components().collect();
+        for (i, part) in parts.iter().enumerate() {
             probe.push(part);
             if let Ok(meta) = std::fs::symlink_metadata(&probe) {
                 if meta.file_type().is_symlink() || is_reparse_point(&meta) {
                     return Err(err(ErrorKind::PolicyViolation, Stage::Persistence, format!("{} would be written through a link", entry.path)));
+                }
+                let last = i + 1 == parts.len();
+                if (last && !meta.is_file()) || (!last && !meta.is_dir()) {
+                    return Err(err(
+                        ErrorKind::PolicyViolation,
+                        Stage::Persistence,
+                        format!("{} is occupied by something that is not a file this import can replace", entry.path),
+                    ));
                 }
             }
         }
@@ -316,7 +329,9 @@ pub fn import(
                     format!("{} already exists with different content; pass overwrite to replace it", entry.path),
                 ))
             }
-            _ => to_write.push(entry),
+            Ok(_) => to_write.push(entry),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => to_write.push(entry),
+            Err(e) => return Err(err(ErrorKind::Io, Stage::Persistence, format!("{}: {e}", entry.path))),
         }
         *report.counts.entry(format!("{:?}", entry.kind).to_lowercase()).or_default() += 1;
     }
@@ -369,20 +384,11 @@ pub fn import(
         let _ = std::fs::remove_dir_all(&staging);
         return Err(e);
     }
-    for entry in &to_write {
-        let from = staging.join(&entry.path);
-        let to = base.join(&entry.path);
-        if let Some(parent) = to.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::remove_file(&to);
-        if let Err(e) = std::fs::rename(&from, &to) {
-            let _ = std::fs::remove_dir_all(&staging);
-            return Err(err(ErrorKind::Io, Stage::Persistence, format!("{} could not be moved into place: {e}", entry.path)));
-        }
-        report.written += 1;
-    }
+    let paths: Vec<&str> = to_write.iter().map(|e| e.path.as_str()).collect();
+    let moved = move_into_place(&staging, &base, &paths);
     let _ = std::fs::remove_dir_all(&staging);
+    moved?;
+    report.written += paths.len();
     if let Some(document) = policy_write {
         let path = base.join("agent.toml");
         let existing = std::fs::read_to_string(&path).unwrap_or_default();
@@ -393,6 +399,56 @@ pub fn import(
         std::fs::write(&path, rewritten).map_err(|e| err(ErrorKind::Io, Stage::Persistence, format!("the policy could not be written: {e}")))?;
     }
     Ok(report)
+}
+
+/// Move each staged entry from `staging` into `base`, all or none.
+///
+/// A file being replaced is first moved aside into the staging directory, so a
+/// failure part-way can put back every entry already moved -- the new file
+/// removed, the old one returned -- and leave the project as it was
+/// (Jozkah/jan#193). The caller removes `staging` afterwards either way.
+fn move_into_place(staging: &Path, base: &Path, paths: &[&str]) -> Result<(), HarnessError> {
+    // Bundle paths live under the component roots, so this cannot collide.
+    let aside = staging.join(".replaced");
+    let mut done: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let undo = |done: Vec<(PathBuf, Option<PathBuf>)>| {
+        for (to, old) in done.into_iter().rev() {
+            let _ = std::fs::remove_file(&to);
+            if let Some(old) = old {
+                let _ = std::fs::rename(&old, &to);
+            }
+        }
+    };
+    for path in paths {
+        let from = staging.join(path);
+        let to = base.join(path);
+        let fail = |e: std::io::Error| err(ErrorKind::Io, Stage::Persistence, format!("{path} could not be moved into place: {e}"));
+        if let Some(parent) = to.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut old = None;
+        if to.is_file() {
+            let keep = aside.join(path);
+            let moved_aside = keep
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|_| std::fs::rename(&to, &keep));
+            if let Err(e) = moved_aside {
+                undo(done);
+                return Err(fail(e));
+            }
+            old = Some(keep);
+        }
+        if let Err(e) = std::fs::rename(&from, &to) {
+            if let Some(old) = &old {
+                let _ = std::fs::rename(old, &to);
+            }
+            undo(done);
+            return Err(fail(e));
+        }
+        done.push((to, old));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -506,6 +562,57 @@ mod tests {
         assert_eq!(std::fs::read_to_string(agent_dir(&conflict).join("skills/flat.md")).unwrap(), "mine\n");
         assert!(!agent_dir(&conflict).join("subagents").exists());
         assert!(import(&conflict, &plain, true, false, false).is_ok());
+    }
+
+    /// A directory where the bundle puts a file is not "absent": it refuses
+    /// the import, with or without overwrite, before anything is written
+    /// (Jozkah/jan#193).
+    #[test]
+    fn a_directory_at_an_entrys_path_refuses_the_import() {
+        let dst = project("dir-collision");
+        put(&dst, "skills/deploy/SKILL.md", "mine\n");
+        let entry = |path: &str, content: &str| Entry {
+            path: path.to_string(),
+            kind: Kind::Skill,
+            sha256: String::new(),
+            content: content.to_string(),
+        };
+        let bundle = Bundle {
+            format: FORMAT.to_string(),
+            version: VERSION,
+            entries: vec![entry("skills/aaa.md", "new\n"), entry("skills/deploy", "clobber\n")],
+            policy: None,
+        };
+        for overwrite in [false, true] {
+            let e = import(&dst, &bundle, overwrite, false, false).unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::PolicyViolation, "{e}");
+            assert!(!agent_dir(&dst).join("skills/aaa.md").exists(), "an entry was written");
+        }
+        // A file where a directory must go is refused the same way.
+        let blocked = project("file-collision");
+        put(&blocked, "skills/deploy", "a flat file\n");
+        let bundle = Bundle { entries: vec![entry("skills/deploy/SKILL.md", "x\n")], ..bundle };
+        assert_eq!(import(&blocked, &bundle, true, false, false).unwrap_err().kind(), ErrorKind::PolicyViolation);
+    }
+
+    /// A move that fails part-way puts back what was already moved: a new
+    /// file removed, a replaced file restored (Jozkah/jan#193).
+    #[test]
+    fn a_failed_move_rolls_back_the_entries_already_moved() {
+        let dst = project("rollback");
+        let base = agent_dir(&dst);
+        put(&dst, "skills/old.md", "original\n");
+        let staging = base.join(".bundle-import-test");
+        for (rel, text) in [("skills/new.md", "new\n"), ("skills/old.md", "replacement\n")] {
+            let p = staging.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        // The third entry was never staged, so its move fails.
+        let e = move_into_place(&staging, &base, &["skills/new.md", "skills/old.md", "skills/missing.md"]).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Io);
+        assert!(!base.join("skills/new.md").exists(), "a moved entry was left behind");
+        assert_eq!(std::fs::read_to_string(base.join("skills/old.md")).unwrap(), "original\n");
     }
 
     #[test]

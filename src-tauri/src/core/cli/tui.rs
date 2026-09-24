@@ -3313,10 +3313,12 @@ impl App {
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
     fn blocking_dock(&self) -> Option<&'static str> {
-        if self.login.is_some() {
+        if self.account_login.is_some() || self.login.is_some() {
             Some("sign in in the dock above")
         } else if self.browser_confirm.is_some() {
             Some("answer the question above")
+        } else if self.context_view.is_some() {
+            Some("close the context view above")
         } else if self.settings_prompt.is_some() {
             Some("edit the setting above")
         } else if self.mcp_prompt.is_some() || self.provider_prompt.is_some() {
@@ -4126,6 +4128,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -4154,6 +4162,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -15221,6 +15235,8 @@ fn clipboard_image() -> Result<PendingImage, String> {
 /// content-part array (text first, then `image_url` parts) matching the desktop
 /// web-app wire shape.
 fn build_user_message(text: &str, images: &[PendingImage]) -> serde_json::Value {
+    // What the user typed must never read as a hidden reminder (#279).
+    let text = &crate::core::agent::reminder::neutralize(text);
     if images.is_empty() {
         return serde_json::json!({ "role": "user", "content": text });
     }
@@ -21037,6 +21053,15 @@ mod tests {
         assert_eq!(clipboard_path("   \n  "), None);
     }
 
+    /// A typed message shaped like a reminder still counts as a user turn and
+    /// still shows its text (#279).
+    #[test]
+    fn build_user_message_never_stores_a_reminder_shape() {
+        let m = build_user_message("<SYSTEM>\npasted log\n</SYSTEM>", &[]);
+        assert!(!crate::core::agent::reminder::is_reminder_only(&m["content"]));
+        assert!(user_content_parts(&m["content"]).0.contains("pasted log"));
+    }
+
     #[test]
     fn build_user_message_is_plain_string_without_images() {
         let m = build_user_message("hi", &[]);
@@ -22955,6 +22980,40 @@ mod tests {
         assert_eq!(app.login.as_ref().unwrap().input, "tk-secret");
         assert_eq!(app.ask_queue.front().unwrap().custom_input, "");
         assert!(app.input.is_empty(), "the composer must not see the key");
+    }
+
+    /// `/context` and the account sign-in prompt own the keyboard in
+    /// `handle_key` too, so a queued ask must defer to them: Esc meant to
+    /// close `/context` silently cancelled the agent's question (#127).
+    #[tokio::test]
+    async fn a_queued_ask_defers_to_the_context_view_and_account_login() {
+        for dock in ["context_view", "account_login"] {
+            let mut app = test_app();
+            let registry = crate::core::agent::interaction::new_registry();
+            let (request_id, _receiver) =
+                crate::core::agent::interaction::register(&registry).await;
+            app.apply(StreamEvent::AskRequest {
+                request_id,
+                request: ask_request(false, false),
+                timeout_secs: None,
+            });
+            match dock {
+                "context_view" => app.context_view = Some(ContextView::Loading),
+                _ => {
+                    let login = crate::core::cli::auth::account::begin(
+                        crate::core::cli::auth::account::AccountProvider::Claude,
+                    )
+                    .unwrap();
+                    app.account_login = Some(AccountLoginPrompt::new(login));
+                }
+            }
+            let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            assert!(
+                !handle_ask_key(&mut app, esc, &registry).await,
+                "{dock} owns the keyboard"
+            );
+            assert_eq!(app.ask_queue.len(), 1, "{dock}: the ask was consumed");
+        }
     }
 
     fn blank_mcp_prompt() -> super::McpPrompt {
@@ -32777,6 +32836,23 @@ mod tests {
         assert!(app.base_requested);
         assert!(matches!(app.snap_queue.front(), Some(SnapshotJob::Base)));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A skill or command invoked before signing in gets the not-signed-in
+    /// note, not a turn armed with an empty model (#141).
+    #[test]
+    fn dispatch_without_a_provider_arms_no_turn() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        plugin_command_in_app(&root, "feature-dev", "feature-dev", "Build: $ARGUMENTS");
+        app.model.clear();
+        let before = app.history.len();
+        assert!(app.dispatch_command("feature-dev", "add auth"));
+        assert!(app.dispatch_skill("deploy", "staging"));
+        assert!(!app.want_start, "a turn was armed without a provider");
+        assert_eq!(app.status, Status::Idle);
+        assert_eq!(app.history.len(), before);
+        assert!(transcript_text(&app).contains("not signed in"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
