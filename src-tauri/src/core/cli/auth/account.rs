@@ -1069,6 +1069,9 @@ async fn complete_code_login(login: AccountLogin, code: String) -> Result<Accoun
             .then_some("anthropic".to_string()),
         )
     };
+    // Keep what was stored before, so a failed config write restores it
+    // rather than signing the user out.
+    let previous = CredentialStore::snapshot(provider.credential_provider());
     store(provider, &token)?;
     if let Err(error) = crate::core::agent::global_config::set_provider(
         definition.id,
@@ -1081,7 +1084,7 @@ async fn complete_code_login(login: AccountLogin, code: String) -> Result<Accoun
             ..Default::default()
         },
     ) {
-        let _ = CredentialStore::delete(provider.credential_provider());
+        let _ = CredentialStore::restore(provider.credential_provider(), previous);
         return Err(format!(
             "could not save the provider configuration: {error}"
         ));
