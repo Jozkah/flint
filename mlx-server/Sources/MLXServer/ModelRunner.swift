@@ -410,9 +410,9 @@ actor ModelRunner {
     /// Convert AnyCodable tools array to ToolSpec format
     private func buildToolSpecs(from tools: [AnyCodable]?) -> [[String: any Sendable]]? {
         guard let tools = tools, !tools.isEmpty else { return nil }
-        let specs = tools.map { tool in
-            tool.toSendable() as! [String: any Sendable]
-        }
+        // #76: never force-cast client input; the routes reject non-object
+        // entries with a 400 first, and anything else is dropped here.
+        let specs = tools.compactMap { toolSpec(from: $0) }
         log("[mlx] Tools provided: \(specs.count)")
         return specs
     }
