@@ -357,7 +357,8 @@ impl Timeouts {
     /// than no limit: an unbounded tool is how a run hangs forever.
     pub fn for_tool(&self, tool: &str) -> Duration {
         let secs = match tool {
-            "bash" => self.bash_secs,
+            // A clone is a long network operation, like a shell command.
+            "bash" | "git_clone" => self.bash_secs,
             "web_search" | "web_fetch" => self.net_secs,
             "read" | "ls" | "find" | "grep" | "write" | "edit" => self.filesystem_secs,
             name if name.starts_with("mcp") || name.contains('.') => self.mcp_secs,
