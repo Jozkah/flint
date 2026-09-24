@@ -400,8 +400,7 @@ fn write_jsonl_atomically<T: Serialize>(path: &Path, values: &[T]) -> Result<()>
         buf.push_str(
             &serde_json::to_string(value).map_err(|e| MailboxError::io("encode record", e))?,
         );
-        buf.push('
-');
+        buf.push('\n');
     }
     let temp = path.with_extension(format!(
         "tmp-{}-{}",
