@@ -28,7 +28,15 @@ export function ServerHostSwitcher({
         asChild
         className={cn(isServerRunning && 'opacity-50 pointer-events-none')}
       >
-        <Button variant="outline" size="sm" className="w-full justify-between" title="Edit Server Host">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full justify-between"
+          title="Edit Server Host"
+          // A real lock, not only pointer-events: the trigger was still
+          // reachable with Tab and Enter while the server ran (#111).
+          disabled={isServerRunning}
+        >
           {serverHost}
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
         </Button>
@@ -41,7 +49,10 @@ export function ServerHostSwitcher({
               'cursor-pointer my-0.5',
               serverHost === item.value && 'bg-seconday'
             )}
-            onClick={() => setServerHost(item.value as '127.0.0.1' | '0.0.0.0')}
+            onClick={() => {
+              if (isServerRunning) return
+              setServerHost(item.value as '127.0.0.1' | '0.0.0.0')
+            }}
           >
             {item.label}
           </DropdownMenuItem>

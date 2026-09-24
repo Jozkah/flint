@@ -122,6 +122,44 @@ describe('useToolCallRuntime', () => {
     expect(findRunningToolCallId(store().timings)).toBeUndefined()
   })
 
+  describe('split panes (#86)', () => {
+    it("does not end another conversation's running call when a turn starts", () => {
+      store().enqueue(['a1'], 'thread-A')
+      store().markRunning('a1')
+      store().enqueue(['b1', 'b2'], 'thread-B')
+
+      expect(store().timings['a1'].endedAt).toBeUndefined()
+      expect(store().queue).toEqual(['b1', 'b2'])
+    })
+
+    it("keeps and settles each conversation's queue separately", () => {
+      store().enqueue(['a1', 'a2'], 'thread-A')
+      store().enqueue(['b1'], 'thread-B')
+      expect(store().queue).toEqual(['a1', 'a2', 'b1'])
+
+      store().settleRemaining('thread-B')
+      expect(store().timings['b1'].endedAt).toBeDefined()
+      expect(store().timings['a1'].endedAt).toBeUndefined()
+      expect(store().queue).toEqual(['a1', 'a2'])
+    })
+
+    it('still settles a stranded call of the same conversation', () => {
+      store().enqueue(['a1'], 'thread-A')
+      store().markRunning('a1')
+      store().enqueue(['a2'], 'thread-A')
+      expect(store().timings['a1'].endedAt).toBeDefined()
+    })
+
+    it('does not attach progress to either card when two calls are running', () => {
+      store().enqueue(['a1'], 'thread-A')
+      store().markRunning('a1')
+      store().enqueue(['b1'], 'thread-B')
+      store().markRunning('b1')
+      store().reportProgress({ server: 's', progress: 1 })
+      expect(store().progress).toEqual({})
+    })
+  })
+
   it('reports the running call, ignoring settled ones', () => {
     store().enqueue(['a', 'b'])
     store().markRunning('a')

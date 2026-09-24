@@ -296,10 +296,15 @@ export async function compactMessages(
     const merged = [summaryMessage, ...trimResult.messages]
     const refit = trimMessages(merged, config, systemPromptTokens)
 
+    // The summary is the oldest entry of `merged`, so it is the first thing
+    // the re-trim drops. Only report it as preserved when it is really in the
+    // result (#81); a dropped summary is not a trimmed conversation message.
+    const summaryKept = refit.messages.includes(summaryMessage)
     return {
       messages: refit.messages,
-      trimmedCount: trimResult.trimmedCount + refit.trimmedCount,
-      compactedSummary: summary,
+      trimmedCount:
+        trimResult.trimmedCount + refit.trimmedCount - (summaryKept ? 0 : 1),
+      compactedSummary: summaryKept ? summary : undefined,
     }
   } catch (error) {
     console.warn(

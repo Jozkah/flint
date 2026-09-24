@@ -92,15 +92,25 @@ export function continueOrBeginChatRun(
   return beginChatRun(threadId, details)
 }
 
-/** Say whether the reply just finished asked for tools. */
-export function markChatAwaitingTools(threadId: string, awaiting: boolean): void {
+/**
+ * Say whether the reply just finished asked for tools. With `run`, only the
+ * turn the caller opened is marked, never a newer one on the same thread.
+ */
+export function markChatAwaitingTools(
+  threadId: string,
+  awaiting: boolean,
+  run?: string
+): void {
   const identity = runs.get(threadId)
-  if (identity) identity.awaitingTools = awaiting
+  if (!identity || (run !== undefined && identity.run !== run)) return
+  identity.awaitingTools = awaiting
 }
 
 /** Whether the turn is waiting for tools to run before its next request. */
-export function chatAwaitsTools(threadId: string): boolean {
-  return runs.get(threadId)?.awaitingTools === true
+export function chatAwaitsTools(threadId: string, run?: string): boolean {
+  const identity = runs.get(threadId)
+  if (!identity || (run !== undefined && identity.run !== run)) return false
+  return identity.awaitingTools === true
 }
 
 /**
@@ -196,14 +206,21 @@ export function recordChatMessage(
 /**
  * End the turn, saying how it ended: `done`, `cancelled` or `error`. Idempotent
  * -- a stream that both errors and is aborted ends once, as one run did.
+ *
+ * `run` names the turn the caller opened. A superseded request (stop and
+ * resend, regenerate) still fires its terminal callback after a newer request
+ * has opened its own turn on the same thread; with `run` given, that stale
+ * callback is a no-op instead of ending the newer turn.
  */
 export function endChatRun(
   threadId: string,
   stoppedBy: 'done' | 'cancelled' | 'error',
-  detail?: string
+  detail?: string,
+  run?: string
 ): void {
   const identity = runs.get(threadId)
   if (!identity) return
+  if (run !== undefined && identity.run !== run) return
   runs.delete(threadId)
   void recordEvents([
     {

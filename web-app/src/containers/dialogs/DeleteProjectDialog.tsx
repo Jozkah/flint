@@ -27,7 +27,7 @@ export function DeleteProjectDialog({
   projectName,
 }: DeleteProjectDialogProps) {
   const { t } = useTranslation()
-  const deleteButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
   const threads = useThreads((state) => state.threads)
   const { deleteFolderWithThreads } = useThreadManagement()
 
@@ -56,12 +56,6 @@ export function DeleteProjectDialog({
     }
   }
 
-  const handleKeyDown = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      await handleConfirm()
-    }
-  }
-
   const hasThreads = threadCount > 0
 
   return (
@@ -69,7 +63,8 @@ export function DeleteProjectDialog({
       <DialogContent
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          deleteButtonRef.current?.focus()
+          // Open on Cancel: a reflexive Enter must not delete (#78).
+          cancelButtonRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -83,15 +78,18 @@ export function DeleteProjectDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            ref={cancelButtonRef}
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+          >
             {t('cancel')}
           </Button>
           <Button
-            ref={deleteButtonRef}
             size="sm"
             variant="destructive"
             onClick={handleConfirm}
-            onKeyDown={handleKeyDown}
             aria-label={t('projects.deleteProjectDialog.ariaLabel', {
               projectName: projectName || t('projects.title').toLowerCase(),
             })}

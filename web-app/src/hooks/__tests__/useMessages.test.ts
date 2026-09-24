@@ -317,6 +317,35 @@ describe('useMessages', () => {
       expect(result.current.messages['thread1']).toEqual([testMessages[1]])
     })
 
+    it('restores the message and logs when the backend delete fails (#80)', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockDeleteMessage.mockRejectedValueOnce(new Error('disk error'))
+      const { result } = renderHook(() => useMessages())
+      const testMessages: ThreadMessage[] = [
+        { id: 'a', thread_id: 't', role: 'user', content: 'A', created_at: 1 },
+        { id: 'b', thread_id: 't', role: 'user', content: 'B', created_at: 2 },
+        { id: 'c', thread_id: 't', role: 'user', content: 'C', created_at: 3 },
+      ] as ThreadMessage[]
+      act(() => {
+        result.current.setMessages('t', testMessages)
+      })
+
+      act(() => {
+        result.current.deleteMessage('t', 'b')
+      })
+      expect(result.current.messages['t'].map((m) => m.id)).toEqual(['a', 'c'])
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+      expect(result.current.messages['t'].map((m) => m.id)).toEqual(['a', 'b', 'c'])
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Failed to delete message:',
+        expect.any(Error)
+      )
+      errorSpy.mockRestore()
+    })
+
     it('should handle deleting from empty thread', () => {
       const { result } = renderHook(() => useMessages())
 

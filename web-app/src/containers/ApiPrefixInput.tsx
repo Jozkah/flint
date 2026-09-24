@@ -17,6 +17,9 @@ export function ApiPrefixInput({
   }
 
   const handleBlur = () => {
+    // A running server keeps its configuration; the field is disabled, and
+    // this guards a blur that still arrives (#111).
+    if (isServerRunning) return
     // Ensure prefix starts with a slash
     let prefix = inputValue.trim()
     if (!prefix.startsWith('/')) {
@@ -32,9 +35,10 @@ export function ApiPrefixInput({
       value={inputValue}
       onChange={handleChange}
       onBlur={handleBlur}
+      disabled={isServerRunning}
       className={cn(
         'w-24 h-8 text-sm',
-        isServerRunning && 'opacity-50 pointer-events-none'
+        isServerRunning && 'opacity-50'
       )}
       placeholder="/v1"
     />

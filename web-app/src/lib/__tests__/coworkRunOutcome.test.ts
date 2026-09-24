@@ -530,6 +530,18 @@ describe('summarising verification from recorded results', () => {
     expect(s).toMatchObject({ passed: 0, didNotFinish: 1, allPassed: false, visualNotChecked: false })
   })
 
+  it.each([
+    ['cancelled', { toolState: 'cancelled', exitCode: 0 }],
+    ['cancelled', { toolState: 'cancelled', exitCode: 1 }],
+    ['timed-out', { toolState: 'timed-out', exitCode: 0 }],
+    ['timed-out', { toolState: 'timed-out', exitCode: 137 }],
+  ] as const)('gives a %s check with an exit code no pass/fail outcome (%o)', (_, over) => {
+    const outcome = deriveRunOutcome(input({ turns: [user(), bash('npm test', over)] }))
+    expect(outcome.checks[0].outcome).toBe('unknown')
+    expect(checkVerdict(outcome.checks[0])).toBe('did-not-finish')
+    expect(outcome.unresolved.some((u) => u.kind === 'check-failed')).toBe(false)
+  })
+
   it('counts a check left running when the run ended as did not finish', () => {
     const s = summarize(
       [bash('go test ./...', { toolState: 'running', status: 'running' })],

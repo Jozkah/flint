@@ -31,6 +31,20 @@ export function lastPathSegment(path: string): string {
   return parts.length ? parts[parts.length - 1] : ''
 }
 
+/**
+ * The Cowork session-details trigger label: "repo · branch". Uses
+ * lastPathSegment so a Windows folder (`C:\Users\me\repo`) shows its last
+ * segment rather than the whole path (#94).
+ */
+export function sessionDetailsLabel(
+  folder: string | null | undefined,
+  branch: string | null | undefined
+): string {
+  const repo = folder ? lastPathSegment(folder) : ''
+  if (!repo) return ''
+  return branch ? `${repo} · ${branch}` : repo
+}
+
 // An absolute or home-relative path, as one whitespace-free token: `C:\a\b`,
 // `\\server\share\x`, `/home/u/x`, `~/x`. A lone `/` between words ("and/or")
 // has no leading root and is left alone.

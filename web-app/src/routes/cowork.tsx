@@ -380,6 +380,7 @@ import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
+import { sessionDetailsLabel } from '@/lib/windowTitle'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -797,11 +798,10 @@ function CoworkPage() {
    * which is what someone glances at to confirm they are in the right place.
    * The rest lives inside the dialog.
    */
-  const sessionDetailsSummary = useMemo(() => {
-    const repo = readiness.folder?.split('/').filter(Boolean).pop()
-    if (!repo) return ''
-    return readiness.branch ? `${repo} · ${readiness.branch}` : repo
-  }, [readiness.folder, readiness.branch])
+  const sessionDetailsSummary = useMemo(
+    () => sessionDetailsLabel(readiness.folder, readiness.branch),
+    [readiness.folder, readiness.branch]
+  )
 
   // A retake re-uses the skills of the turn it takes again -- that session's
   // turn, not whichever session ran last.

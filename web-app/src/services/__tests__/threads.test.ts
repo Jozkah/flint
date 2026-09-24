@@ -446,6 +446,29 @@ describe('DefaultThreadsService', () => {
       )
     })
 
+    it('keeps the model when the assistant is cleared to None (#89)', () => {
+      const thread = {
+        id: '1',
+        title: 'No assistant',
+        model: { id: 'gpt-4', provider: 'openai' },
+        assistants: [],
+      }
+
+      threadsService.updateThread(thread as unknown as Thread)
+
+      expect(mockConversationalExtension.modifyThread).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistants: [
+            {
+              id: 'model-only',
+              name: 'Model',
+              model: { id: 'gpt-4', engine: 'openai' },
+            },
+          ],
+        })
+      )
+    })
+
     it('should handle updateThread with missing model info', () => {
       const realAssistant = {
         id: 'assistant-1',

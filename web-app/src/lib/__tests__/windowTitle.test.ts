@@ -3,6 +3,7 @@ import {
   composeWindowTitle,
   lastPathSegment,
   sanitizeTitleSegment,
+  sessionDetailsLabel,
 } from '@/lib/windowTitle'
 
 describe('composeWindowTitle', () => {
@@ -78,5 +79,17 @@ describe('lastPathSegment', () => {
     expect(lastPathSegment('C:\\a\\b\\')).toBe('b')
     expect(lastPathSegment('/a/b/c')).toBe('c')
     expect(lastPathSegment('')).toBe('')
+  })
+})
+
+describe('sessionDetailsLabel (#94)', () => {
+  it('shortens a Windows folder to its last segment', () => {
+    expect(sessionDetailsLabel('C:\\Users\\foo\\repo', 'main')).toBe('repo · main')
+    expect(sessionDetailsLabel('C:\\Users\\foo\\repo\\', null)).toBe('repo')
+  })
+
+  it('shortens a POSIX folder and handles no folder', () => {
+    expect(sessionDetailsLabel('/home/u/repo', 'dev')).toBe('repo · dev')
+    expect(sessionDetailsLabel(undefined, 'dev')).toBe('')
   })
 })

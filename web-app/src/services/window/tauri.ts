@@ -6,6 +6,25 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { WindowConfig, WebviewWindowInstance } from './types'
 import { DefaultWindowService } from './default'
 
+/**
+ * The theme listener of each open labeled window. listen() returns an
+ * UnlistenFn that used to be discarded, so every (re)opened window added a
+ * global theme-changed listener that outlived it (#92). Keyed by label: a
+ * window reopened under the same label replaces, and removes, the old one.
+ */
+const themeListeners = new Map<string, () => void>()
+
+function dropThemeListener(label: string, unlisten?: () => void) {
+  const current = themeListeners.get(label)
+  if (!current || (unlisten && current !== unlisten)) return
+  themeListeners.delete(label)
+  try {
+    current()
+  } catch (err) {
+    console.error('Failed to remove theme listener:', err)
+  }
+}
+
 export class TauriWindowService extends DefaultWindowService {
   async createWebviewWindow(
     config: WindowConfig
@@ -56,7 +75,7 @@ export class TauriWindowService extends DefaultWindowService {
       })
 
       // Setup theme listener for this window
-      this.setupThemeListenerForWindow(webviewWindow)
+      this.setupThemeListenerForWindow(config.label, webviewWindow)
 
       return this.toWindowInstance(config.label, webviewWindow)
     } catch (error) {
@@ -154,6 +173,7 @@ export class TauriWindowService extends DefaultWindowService {
     return {
       label,
       async close() {
+        dropThemeListener(label)
         await webviewWindow.close()
       },
       async show() {
@@ -171,11 +191,11 @@ export class TauriWindowService extends DefaultWindowService {
     }
   }
 
-  private setupThemeListenerForWindow(window: WebviewWindow): void {
+  private setupThemeListenerForWindow(label: string, window: WebviewWindow): void {
     // Listen to theme change events from Tauri backend
     import('@tauri-apps/api/event')
-      .then(({ listen }) => {
-        return listen<string>('theme-changed', async (event) => {
+      .then(async ({ listen }) => {
+        const unlisten = await listen<string>('theme-changed', async (event) => {
           const theme = event.payload
           try {
             if (theme === 'dark') {
@@ -189,9 +209,19 @@ export class TauriWindowService extends DefaultWindowService {
             console.error('Failed to update window theme:', err)
           }
         })
+        dropThemeListener(label)
+        themeListeners.set(label, unlisten)
+        // A window closed from its own chrome never goes through close().
+        if (typeof window.once === 'function') {
+          await window.once('tauri://destroyed', () =>
+            dropThemeListener(label, unlisten)
+          )
+        }
       })
       .catch((err) => {
         console.error('Failed to setup theme listener for window:', err)
       })
   }
 }
+
+export const __testing = { themeListeners }
