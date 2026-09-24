@@ -381,7 +381,7 @@ To run Flint in development instead of building an installer, use `yarn dev`.
 
 ### Prerequisites
 
-- Node.js 20 or newer and Yarn 4.5.3 (`corepack enable`)
+- Node.js 20 or newer and Yarn 4.10.3 (`corepack enable`)
 - Rust (stable) for Tauri
 - Make (macOS/Linux only; Windows builds work without Make)
 - Windows: Visual Studio 2022 Build Tools (MSVC x64 and Windows SDK), LLVM (`clang-cl`), Ninja and CMake

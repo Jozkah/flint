@@ -1342,9 +1342,13 @@ fn git_command() -> Command {
     cmd
 }
 
+/// Test-fixture `git`. Always carries a fixed identity so fixture commits
+/// succeed on a bare CI runner with no `user.name`/`user.email` configured
+/// (upstream janhq/jan#9036).
 #[cfg(test)]
 fn git(args: &[&str]) -> Result<String, String> {
     let out = git_command()
+        .args(["-c", "user.name=Jan Test", "-c", "user.email=test@jan.ai"])
         .args(args)
         .output()
         .map_err(|e| format!("ERROR: git: {e}"))?;

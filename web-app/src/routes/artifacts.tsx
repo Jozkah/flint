@@ -16,6 +16,7 @@ import { fs } from '@janhq/core'
 import HeaderPage from '@/containers/HeaderPage'
 import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
+import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -31,6 +32,7 @@ import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute(route.artifacts as any)({
+  beforeLoad: () => ensureCoworkEnabled(),
   component: ArtifactsPage,
 })
 

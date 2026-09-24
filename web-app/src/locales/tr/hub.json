@@ -1,0 +1,15 @@
+{
+  "sortNewest": "En Yeni",
+  "newChat": "Yeni sohbet",
+  "download": "İndir",
+  "downloaded": "İndirildi",
+  "loadingModels": "Modeller yükleniyor...",
+  "noModels": "Model bulunamadı",
+  "by": "Yapan",
+  "downloads": "İndirme sayısı",
+  "variants": "Varyantlar",
+  "showVariants": "Varyantları göster",
+  "useModel": "Bu modeli kullan",
+  "tools": "Araçlar",
+  "searchPlaceholder": "Hugging Face'te model ara..."
+}

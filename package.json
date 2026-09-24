@@ -6,7 +6,8 @@
     "packages": [
       "core",
       "web-app",
-      "extensions/*"
+      "extensions/*",
+      "packages/*"
     ]
   },
   "scripts": {
@@ -35,7 +36,6 @@
     "build:ios:device": "yarn build:icon && yarn copy:assets:mobile && cross-env IS_IOS=true yarn tauri ios build -- --no-default-features --features mobile --export-method debugging",
     "copy:assets:tauri": "cpx \"LICENSE\" \"src-tauri/resources/\"",
     "copy:assets:mobile": "cpx \"LICENSE\" \"src-tauri/resources/\"",
-    "download:lib": "node ./scripts/download-lib.mjs",
     "download:bin": "node ./scripts/download-bin.mjs",
     "check:resources": "node ./scripts/check-tauri-resources.mjs",
     "check:sidecars": "node ./scripts/check-sidecars.mjs",
@@ -85,5 +85,5 @@
     "@types/react": "19.1.2",
     "@types/react-dom": "19.1.2"
   },
-  "packageManager": "yarn@4.5.3"
+  "packageManager": "yarn@4.10.3"
 }

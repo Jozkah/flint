@@ -20,6 +20,7 @@ import { detectMacOverlay, resolveSidebarTitlebar } from '@/lib/titlebar'
 import { useMemo } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { isCoworkRoute } from '@/constants/routes'
+import { isCoworkEnabled } from '@/lib/version'
 import { areaForPath, isSettingsArea } from '@/lib/shellNavigation'
 import { AppRail } from '@/components/shell/AppRail'
 import SettingsMenu from '@/containers/SettingsMenu'
@@ -37,7 +38,7 @@ export function LeftSidebar() {
   const { pathname } = useLocation()
   const { setOpenMobile } = useSidebar()
   const area = areaForPath(pathname)
-  const isCowork = isCoworkRoute(pathname)
+  const isCowork = isCoworkRoute(pathname) && isCoworkEnabled()
   const settingsNav = isSettingsArea(area)
   // Right-align the header when native controls own the top-left (macOS, or a
   // Linux DE placing buttons left).

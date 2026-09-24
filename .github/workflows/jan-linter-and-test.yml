@@ -34,7 +34,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
@@ -121,7 +121,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
@@ -169,7 +169,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
@@ -209,7 +209,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
@@ -266,7 +266,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 
@@ -304,7 +304,7 @@ jobs:
       - name: Config Yarn
         run: |
           corepack enable
-          corepack prepare yarn@4.5.3 --activate
+          corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
 

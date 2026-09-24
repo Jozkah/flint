@@ -24,6 +24,11 @@
   "project-config": "Project Config",
   "permissions": "Tool Permissions",
   "mcp": "MCP",
+  "embedding-separator": { "title": "Embedding (preview)", "type": "separator" },
+  "sdk-ts": "JavaScript Quickstart",
+  "sdk-python": "Python Quickstart",
+  "sdk-tools": "Host Tools",
+  "sdk-runtime": "Process & Failures",
   "reference-separator": { "title": "Reference", "type": "separator" },
   "cli": "CLI"
 }

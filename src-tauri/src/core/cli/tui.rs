@@ -5393,6 +5393,8 @@ impl App {
             // wildcard, so a new event breaks this build rather than being
             // silently dropped from the interface.
             StreamEvent::PromptSnapshot { .. } => {}
+            // Machine-facing identity record (upstream #9056): nothing to draw.
+            StreamEvent::RequestProvenance { .. } => {}
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}

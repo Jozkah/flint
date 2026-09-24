@@ -2887,6 +2887,9 @@ async fn print_event(
         // the redacted record. Matched explicitly rather than through a
         // wildcard so a new event still fails this build instead of vanishing.
         StreamEvent::PromptSnapshot { .. } => {}
+        // Provenance is machine-facing: an identity record for a harness, not
+        // something to draw. The stream-json writer serializes the event itself.
+        StreamEvent::RequestProvenance { .. } => {}
         StreamEvent::Token { text } => {
             print!("{text}");
             let _ = std::io::stdout().flush();
