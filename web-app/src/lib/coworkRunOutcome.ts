@@ -688,6 +688,15 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
       const phase = phaseOf(turn)
       return phase === 'failed' || phase === 'done-error'
     }) ||
+    // A command the sandbox could not run at all -- a missing runtime, no
+    // network -- is work the user still has to do, whether or not the
+    // command reads as a test or build. "Completed" would hide that.
+    toolTurns.some(
+      (turn) =>
+        turn.name === 'bash' &&
+        turn.isError === true &&
+        /\[sandbox: /.test(String(turn.result ?? turn.content ?? ''))
+    ) ||
     (input.openTodos ?? 0) > 0
 
   let status: RunStatus

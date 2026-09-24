@@ -1087,18 +1087,21 @@ fn render_hunk_diff(old: &str, new: &str, start: usize) -> String {
     out
 }
 
-/// Whole-file `+` preview for a write, headed by created/overwrote, each line
-/// numbered by its position in the new content. Display-only; the TUI
-/// collapses long output.
+/// Preview for a write, headed by created/overwrote. A new file is shown
+/// whole as `+` lines; an overwrite is diffed against what it replaced, so
+/// the change counts the summary derives from `+`/`-` lines are real rather
+/// than "every line added, none removed". Display-only; the TUI collapses
+/// long output.
 fn render_write_diff(prior: Option<&str>, content: &str) -> String {
-    let mut out = String::from(if prior.is_some() {
-        "@@ overwrote file @@\n"
-    } else {
-        "@@ created file @@\n"
-    });
-    for (i, line) in content.lines().enumerate() {
-        out.push_str(&format!("+ {:>4} | {line}\n", i + 1));
-    }
+    let Some(prior) = prior else {
+        let mut out = String::from("@@ created file @@\n");
+        for (i, line) in content.lines().enumerate() {
+            out.push_str(&format!("+ {:>4} | {line}\n", i + 1));
+        }
+        return out.trim_end().to_string();
+    };
+    let mut out = String::from("@@ overwrote file @@\n");
+    out.push_str(&render_hunk_diff(prior, content, 1));
     out.trim_end().to_string()
 }
 
@@ -4880,7 +4883,7 @@ on_failure = \"warn\"
         );
         assert_eq!(
             render_write_diff(Some("old"), "x"),
-            "@@ overwrote file @@\n+    1 | x"
+            "@@ overwrote file @@\n-    1 | old\n+    1 | x"
         );
     }
 

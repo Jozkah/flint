@@ -680,6 +680,31 @@ describe('a normal finish that left the request undone', () => {
     expect(outcome.headline).toBe('finished-incomplete')
   })
 
+  it('is partly done when the sandbox could not run a command', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          {
+            role: 'tool',
+            content: '',
+            name: 'bash',
+            callId: 'b1',
+            args: { command: 'python examples\\basic.py' },
+            status: 'done',
+            isError: true,
+            result:
+              "python : The term 'python' is not recognized\n[exit 1]\n" +
+              '[sandbox: `python` is not available in this sandbox. Do not retry.]',
+          },
+          assistant('Not run: no Python in the sandbox.'),
+        ],
+      })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
   it('is still completed when nothing was left undone', () => {
     const outcome = deriveRunOutcome(
       input({ turns: [user(), assistant('Done.')], openTodos: 0 })
