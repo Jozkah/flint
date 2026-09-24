@@ -55,6 +55,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { offersModels } from '@/lib/providerOffers'
+import { modelsNeedingVisionProbe } from '@/lib/visionProbe'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
@@ -414,23 +415,30 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     }
   }, [selectedProvider, selectedModel, t])
 
+  // Models already probed for vision while the dropdown is open. The effect
+  // below re-runs on every providers-store change (including the ones the
+  // probe itself makes), and each probe is an uncached IPC/filesystem call,
+  // so a model is probed at most once per opening.
+  const visionProbedRef = useRef<Set<string>>(new Set())
+
   // Check vision capabilities for all llamacpp models
   useEffect(() => {
-    const checkAllLlamacppModelsForVision = async () => {
-      const llamacppProvider = providers.find(
-        (p) => p.provider === 'llamacpp' && p.active
-      )
-      if (llamacppProvider) {
-        const checkPromises = llamacppProvider.models.map((model) =>
-          checkAndUpdateModelVisionCapability(model.id)
-        )
-        await Promise.allSettled(checkPromises)
-      }
+    if (!open) {
+      visionProbedRef.current = new Set()
+      return
     }
-
-    if (open) {
-      checkAllLlamacppModelsForVision()
-    }
+    const llamacppProvider = providers.find(
+      (p) => p.provider === 'llamacpp' && p.active
+    )
+    if (!llamacppProvider) return
+    const toProbe = modelsNeedingVisionProbe(
+      llamacppProvider.models,
+      visionProbedRef.current
+    )
+    for (const id of toProbe) visionProbedRef.current.add(id)
+    void Promise.allSettled(
+      toProbe.map((id) => checkAndUpdateModelVisionCapability(id))
+    )
   }, [open, providers, checkAndUpdateModelVisionCapability])
 
   // Reset search value when dropdown closes
