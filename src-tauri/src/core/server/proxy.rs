@@ -683,6 +683,24 @@ pub(crate) async fn router_first_model(
         .next()
 }
 
+/// The Settings "Verbose Server Logs" switch (#144). Set by each
+/// `start_server` command; read on every request.
+static VERBOSE_LOGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_verbose_logs(on: bool) {
+    VERBOSE_LOGS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn verbose_logs() -> bool {
+    VERBOSE_LOGS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The line a verbose server logs for a request. The query string is left
+/// out: a client can put a key in it, and the log is shared in bug reports.
+fn verbose_request_line(method: &hyper::Method, uri: &hyper::Uri) -> String {
+    format!("API server request: {method} {}", uri.path())
+}
+
 /// Handles the proxy request logic
 #[allow(clippy::too_many_arguments)]
 async fn proxy_request(
@@ -697,6 +715,9 @@ async fn proxy_request(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
 ) -> Result<Response<ResBody>, hyper::Error> {
+    if verbose_logs() {
+        log::info!("{}", verbose_request_line(req.method(), req.uri()));
+    }
     if req.method() == hyper::Method::OPTIONS {
         log::debug!(
             "Handling CORS preflight request from {:?} {:?}",
@@ -3074,6 +3095,20 @@ mod redirect_tests {
 mod tests {
     use super::{is_insecure_public_bind, map_bind_error};
     use std::net::SocketAddr;
+
+    /// #144: the "Verbose Server Logs" switch reaches the server, and the
+    /// line it logs never carries a query string.
+    #[test]
+    fn verbose_logging_is_switchable_and_leaves_out_the_query() {
+        super::set_verbose_logs(true);
+        assert!(super::verbose_logs());
+        super::set_verbose_logs(false);
+        assert!(!super::verbose_logs());
+
+        let uri: hyper::Uri = "/v1/chat/completions?api_key=SECRET".parse().unwrap();
+        let line = super::verbose_request_line(&hyper::Method::POST, &uri);
+        assert_eq!(line, "API server request: POST /v1/chat/completions");
+    }
 
     #[test]
     fn loopback_never_warns() {

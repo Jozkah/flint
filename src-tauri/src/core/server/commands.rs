@@ -19,6 +19,9 @@ pub struct StartServerConfig {
     pub enable_server_tool_execution: Option<bool>,
     /// The Settings "CORS" switch; on when a caller does not say, as before.
     pub cors_enabled: Option<bool>,
+    /// The Settings "Verbose Server Logs" switch; off when a caller does not
+    /// say (#144).
+    pub verbose_logs: Option<bool>,
 }
 
 #[tauri::command]
@@ -36,7 +39,9 @@ pub async fn start_server<R: Runtime>(
         proxy_timeout,
         enable_server_tool_execution,
         cors_enabled,
+        verbose_logs,
     } = config;
+    proxy::set_verbose_logs(verbose_logs.unwrap_or(false));
     let server_handle = state.server_handle.clone();
     let llama_state: State<Arc<LlamacppState>> = app_handle.state();
     let llama_state_arc = llama_state.inner().clone();

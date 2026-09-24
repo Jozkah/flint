@@ -106,6 +106,9 @@ export const APIs = {
               // The Settings "CORS" switch, which used to stop here
               // (janhq/jan#8836).
               cors_enabled: pickBoolean(raw, ['cors_enabled', 'isCorsEnabled']),
+              // The Settings "Verbose Server Logs" switch, which also stopped
+              // here (#144).
+              verbose_logs: pickBoolean(raw, ['verbose_logs', 'isVerboseEnabled']),
             }
             return getServiceHub().core().invoke(command, { config })
           }
