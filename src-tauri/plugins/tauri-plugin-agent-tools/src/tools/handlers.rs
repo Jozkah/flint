@@ -2923,6 +2923,90 @@ fn windows_chrome_candidates(
     out
 }
 
+/// Content-Security-Policy put in front of every page `screenshot` renders
+/// (Jozkah/jan#236). `default-src 'none'` blocks every script and every
+/// subresource fetch, so a page can pull in neither `file://` frames/images
+/// (host files outside the workspace, including ones the jail hides) nor
+/// `http(s)://` ones (network egress regardless of `allow_network`). Only
+/// inline styles and `data:` assets render.
+const SCREENSHOT_CSP: &str = "default-src 'none'; style-src 'unsafe-inline' data:; \
+     img-src data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'";
+
+/// Build the self-contained document headless Chrome actually loads for a
+/// model-supplied `.html`/`.htm`/`.svg` file (Jozkah/jan#236).
+///
+/// HTML gets [`SCREENSHOT_CSP`] as the first element of its head (after a
+/// leading doctype, so standards mode is kept). Every `http-equiv` attribute
+/// name in the original is renamed first: attribute names cannot be spelled
+/// with character references, so this reliably disarms `<meta http-equiv=
+/// "refresh">`, the one way a script-less page can navigate itself (CSP does
+/// not govern navigation) to a `file://` URL. It also drops any CSP the page
+/// ships itself, which could only have been stricter-or-equal once ours is in
+/// place. A UTF-16 file is refused, since the byte-level rewrite can't see it.
+///
+/// SVG is not rendered as a document at all: it is embedded as a `data:`
+/// image, which runs in Chrome's secure image mode (no script, no external
+/// loads).
+fn confined_screenshot_document(bytes: &[u8], svg: bool) -> Result<Vec<u8>, String> {
+    let meta = format!(
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"{SCREENSHOT_CSP}\">"
+    );
+    if svg {
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+        return Ok(format!(
+            "<!DOCTYPE html><html><head>{meta}<style>html,body{{margin:0}}</style></head>\
+             <body><img src=\"data:image/svg+xml;base64,{b64}\"></body></html>"
+        )
+        .into_bytes());
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) || bytes.starts_with(&[0xFF, 0xFE]) {
+        return Err("screenshot does not render UTF-16 encoded HTML".to_string());
+    }
+    const BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
+    let (bom, body) = match bytes.strip_prefix(BOM) {
+        Some(rest) => (BOM, rest),
+        None => (&[][..], bytes),
+    };
+    // Rename every `http-equiv` (ASCII case-insensitive) to a same-length inert
+    // name, so nothing else in the document shifts.
+    const NEEDLE: &[u8] = b"http-equiv";
+    let mut body = body.to_vec();
+    let mut i = 0;
+    while i + NEEDLE.len() <= body.len() {
+        if body[i..i + NEEDLE.len()].eq_ignore_ascii_case(NEEDLE) {
+            body[i..i + NEEDLE.len()].copy_from_slice(b"data-inert");
+            i += NEEDLE.len();
+        } else {
+            i += 1;
+        }
+    }
+    // Keep a leading `<!doctype ...>` first so the page stays in standards
+    // mode; the meta then lands in the implied head.
+    let lead = body
+        .iter()
+        .take_while(|b| b.is_ascii_whitespace())
+        .count();
+    let split = if body[lead..]
+        .get(..9)
+        .is_some_and(|p| p.eq_ignore_ascii_case(b"<!doctype"))
+    {
+        body[lead..]
+            .iter()
+            .position(|&b| b == b'>')
+            .map(|end| lead + end + 1)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let mut out = Vec::with_capacity(bom.len() + meta.len() + body.len());
+    out.extend_from_slice(bom);
+    out.extend_from_slice(&body[..split]);
+    out.extend_from_slice(meta.as_bytes());
+    out.extend_from_slice(&body[split..]);
+    Ok(out)
+}
+
 /// Render a local HTML/SVG file to PNG bytes with headless Chrome.
 ///
 /// Shared by the model-facing `screenshot` tool and the `agent_render_preview`
@@ -2976,10 +3060,21 @@ pub async fn render_html_png(
         .unwrap_or(0);
     let shot = std::env::temp_dir().join(format!("jan-shot-{}-{nanos}.png", std::process::id()));
     let profile = std::env::temp_dir().join(format!("jan-chrome-{}-{nanos}", std::process::id()));
+    let page = std::env::temp_dir().join(format!("jan-shot-{}-{nanos}.html", std::process::id()));
 
-    // file:// lets the page resolve relative assets against its own directory,
-    // matching what the artifact preview does.
-    let file_url = format!("file://{}", target.display());
+    // Chrome never loads the model's file directly: it loads a confined copy
+    // (CSP, no script, no subresources; see `confined_screenshot_document`),
+    // so a page cannot read host files through file:// frames or reach the
+    // network (Jozkah/jan#236). The price is that relative assets and script-
+    // drawn content no longer render; only inline styles and data: assets do.
+    let original = tokio::fs::read(target)
+        .await
+        .map_err(|e| format!("failed to read {}: {e}", target.display()))?;
+    let confined = confined_screenshot_document(&original, ext == "svg")?;
+    tokio::fs::write(&page, &confined)
+        .await
+        .map_err(|e| format!("failed to stage the page for rendering: {e}"))?;
+    let file_url = format!("file://{}", page.display());
     // Chrome is spawned through the shell (`sh -c`): on macOS, a Chrome
     // headless-new process spawned directly by a non-bundled parent fails its
     // singleton/TCC check with "Multiple targets are not supported in headless
@@ -2989,9 +3084,17 @@ pub async fn render_html_png(
     let shot_quoted = shell_quote(shot.to_str().unwrap_or_default());
     let url_quoted = shell_quote(&file_url);
     let chrome_quoted = shell_quote(chrome.to_str().unwrap_or_default());
+    // Defense in depth behind the CSP: script off, every request sent to a
+    // dead proxy (loopback included, via `<-loopback>`), every hostname
+    // resolving to nothing, and Chrome's own background traffic disabled.
+    let resolver_quoted = shell_quote("--host-resolver-rules=MAP * ~NOTFOUND");
+    let bypass_quoted = shell_quote("--proxy-bypass-list=<-loopback>");
     let cmd = format!(
         "{chrome_quoted} --headless=new --disable-gpu --hide-scrollbars --no-sandbox \
          --disable-dev-shm-usage --no-first-run --user-data-dir={profile_quoted} \
+         --blink-settings=scriptEnabled=false \
+         --proxy-server=127.0.0.1:9 {bypass_quoted} {resolver_quoted} \
+         --disable-background-networking --disable-component-update --no-pings \
          --force-device-scale-factor={scale} \
          --window-size={width},{height} --screenshot={shot_quoted} {url_quoted}"
     );
@@ -3006,7 +3109,10 @@ pub async fn render_html_png(
         .spawn()
     {
         Ok(c) => c,
-        Err(e) => return Err(format!("failed to launch Chrome: {e}")),
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&page).await;
+            return Err(format!("failed to launch Chrome: {e}"));
+        }
     };
     // Bounded: headless Chrome can linger after writing the PNG. Give it a
     // generous window, then reap whatever is left and proceed if the file
@@ -3025,6 +3131,7 @@ pub async fn render_html_png(
     let _ = child.kill().await;
     let stderr = drain.await.unwrap_or_default();
     let _ = tokio::fs::remove_dir_all(&profile).await;
+    let _ = tokio::fs::remove_file(&page).await;
 
     let png = match tokio::fs::read(&shot).await {
         Ok(b) => b,
@@ -7790,6 +7897,95 @@ on_failure = \"warn\"
             .into_iter()
             .find(|p| p.is_file());
         assert_eq!(found.as_deref(), Some(exe.as_path()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#236: the CSP comes before any page content, after a leading
+    /// doctype, and blocks script and every fetch.
+    #[test]
+    fn confined_screenshot_document_puts_the_csp_first() {
+        let out = confined_screenshot_document(
+            b"  <!DOCTYPE html><html><body><iframe src=\"file:///etc/passwd\"></iframe>",
+            false,
+        )
+        .unwrap();
+        let out = String::from_utf8(out).unwrap();
+        let meta = out.find("Content-Security-Policy").unwrap();
+        assert!(out.find("<!DOCTYPE html>").unwrap() < meta, "{out}");
+        assert!(meta < out.find("<iframe").unwrap(), "{out}");
+        assert!(out.contains("default-src 'none'"), "{out}");
+        assert!(!SCREENSHOT_CSP.contains("script-src"));
+        assert!(!SCREENSHOT_CSP.contains("file:"));
+
+        let bare = confined_screenshot_document(b"<h1>hi</h1>", false).unwrap();
+        assert!(bare.starts_with(b"<meta http-equiv=\"Content-Security-Policy\""));
+    }
+
+    /// A page's own `http-equiv` (a meta refresh to file://, or a looser CSP)
+    /// is disarmed whatever its case; only ours survives.
+    #[test]
+    fn confined_screenshot_document_disarms_http_equiv() {
+        let page = b"<meta HTTP-Equiv=\"refresh\" content=\"0;url=file:///etc/passwd\">\
+                     <meta http-equiv=\"Content-Security-Policy\" content=\"default-src *\">";
+        let out = String::from_utf8(confined_screenshot_document(page, false).unwrap()).unwrap();
+        assert_eq!(out.to_ascii_lowercase().matches("http-equiv").count(), 1, "{out}");
+        assert!(out.contains("data-inert=\"refresh\""), "{out}");
+    }
+
+    #[test]
+    fn confined_screenshot_document_keeps_a_utf8_bom_first_and_refuses_utf16() {
+        let out = confined_screenshot_document(b"\xEF\xBB\xBF<p>x</p>", false).unwrap();
+        assert!(out.starts_with(b"\xEF\xBB\xBF<meta"));
+        assert!(confined_screenshot_document(b"\xFF\xFE<\0p\0>\0", false).is_err());
+        assert!(confined_screenshot_document(b"\xFE\xFF\0<\0p", false).is_err());
+    }
+
+    /// SVG is embedded as a data: image (secure image mode), never loaded as
+    /// a document of its own.
+    #[test]
+    fn confined_screenshot_document_wraps_svg_as_an_image() {
+        let svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"file:///etc/passwd\"/></svg>";
+        let out = String::from_utf8(confined_screenshot_document(svg, true).unwrap()).unwrap();
+        assert!(out.contains("<img src=\"data:image/svg+xml;base64,"), "{out}");
+        assert!(!out.contains("<svg"), "{out}");
+        assert!(!out.contains("file:///etc/passwd"), "{out}");
+        assert!(out.contains("default-src 'none'"), "{out}");
+    }
+
+    /// Jozkah/jan#236: a rendered page cannot reach the network, even the
+    /// loopback. A listener sees no connection after the screenshot.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn screenshot_page_cannot_reach_the_network() {
+        if chrome_binary().is_none() {
+            return;
+        }
+        let _guard = CHROME_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let root = unique_root();
+        std::fs::write(
+            root.join("page.html"),
+            format!(
+                "<html><body><img src=\"http://127.0.0.1:{port}/img\">\
+                 <iframe src=\"http://127.0.0.1:{port}/frame\"></iframe>\
+                 <link rel=\"stylesheet\" href=\"http://127.0.0.1:{port}/css\"></body></html>"
+            ),
+        )
+        .unwrap();
+
+        let _ = screenshot(
+            &json!({"path": "page.html", "width": 400, "height": 300}),
+            &root,
+            None,
+            &[],
+        )
+        .await;
+        match listener.accept() {
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            other => panic!("the rendered page reached the listener: {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
