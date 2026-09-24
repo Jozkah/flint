@@ -189,11 +189,19 @@ pub async fn estimate_kv_cache_internal(
             let total_heads = meta
                 .get(&n_head_key)
                 .and_then(|s| s.parse::<u64>().ok())
+                .filter(|&n| n > 0)
                 .unwrap_or(n_head);
 
+            // Only fill in the length that is missing: a key or value length
+            // the file does declare is authoritative, and architectures with
+            // asymmetric attention have key_length != value_length.
             let head_dim = emb_len / total_heads;
-            key_len = head_dim;
-            val_len = head_dim;
+            if key_len == 0 {
+                key_len = head_dim;
+            }
+            if val_len == 0 {
+                val_len = head_dim;
+            }
 
             log::info!(
                 "Calculated key_len and val_len from embedding_length: {} / {} heads = {} per head",
@@ -332,5 +340,61 @@ mod remote_fetch_status_tests {
         let url = serve("206 Partial Content", body.clone()).await;
         let data = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap();
         assert_eq!(data, body);
+    }
+}
+
+#[cfg(test)]
+mod kv_estimate_fallback_tests {
+    use super::*;
+
+    fn meta(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    // Regression for #66: a declared key_length must survive when only
+    // value_length is missing (and vice versa).
+    #[tokio::test]
+    async fn declared_key_length_is_kept_when_value_length_is_missing() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.attention.key_length", "192"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        // key 192 (declared) + value 512/4 = 128 (derived)
+        assert_eq!(est.per_token_size, 2 * 4 * (192 + 128) * 2);
+    }
+
+    #[tokio::test]
+    async fn declared_value_length_is_kept_when_key_length_is_missing() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.attention.value_length", "64"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 2 * 4 * (128 + 64) * 2);
+    }
+
+    #[tokio::test]
+    async fn both_lengths_missing_still_derive_from_embedding_length() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 2 * 4 * (128 + 128) * 2);
     }
 }
