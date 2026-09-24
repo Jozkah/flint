@@ -508,3 +508,21 @@ describe('guidelines', () => {
     expect(prompt).toContain('fails the same way twice')
   })
 })
+
+describe('session block and managed worktrees', () => {
+  it('does not name the source branch for a worktree session', () => {
+    const prompt = buildCoworkSystemPrompt({
+      planMode: false,
+      subagentNames: [],
+      webSearch: false,
+      workspacePath: '/ws',
+      readOnlyFolder: '/jan/worktrees/abc/s1',
+      folderAccess: 'worktree',
+      worktreeBranch: 'jan/cowork/s1',
+      gitBranch: 'main',
+      bashAvailable: true,
+    } as Parameters<typeof buildCoworkSystemPrompt>[0])
+    expect(prompt).toContain('jan/cowork/s1')
+    expect(prompt).not.toContain('The attached folder is on git branch `main`')
+  })
+})

@@ -62,9 +62,16 @@ const SESSIONS_BLOCK = [
  * What changes during a session -- the date and the attached folder's branch --
  * last, so it does not invalidate the cached prompt before it.
  */
-function sessionBlock(opts: { gitBranch?: string | null; readOnlyFolder: string | null }): string {
+function sessionBlock(opts: {
+  gitBranch?: string | null
+  readOnlyFolder: string | null
+  folderAccess?: PromptFolderAccess
+}): string {
   const lines = ['# Session', '', todayLine()]
-  if (opts.readOnlyFolder && opts.gitBranch) {
+  // A managed worktree names its own branch in the workspace block; the
+  // source checkout's branch here read as "the worktree is on main", which
+  // is how runs came to report their changes as "on main".
+  if (opts.readOnlyFolder && opts.gitBranch && opts.folderAccess !== 'worktree') {
     lines.push(`The attached folder is on git branch \`${opts.gitBranch}\`.`)
   }
   return lines.join('\n')
