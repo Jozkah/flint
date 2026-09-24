@@ -45,6 +45,7 @@ pub mod interaction;
 pub mod licenses;
 pub mod r#loop;
 pub mod lsp;
+pub mod mcp_catalog;
 #[cfg(not(feature = "cli"))]
 pub mod memory_consolidation;
 pub mod notify;
