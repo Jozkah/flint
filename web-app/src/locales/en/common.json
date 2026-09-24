@@ -529,6 +529,10 @@
     "filesDescription": "Add PDFs, documents, or other text for these conversations to reference.",
     "uploadingFiles": "Processing files…",
     "processButton": "Add",
+    "deleteFileDialog": {
+      "title": "Delete file",
+      "description": "\"{{fileName}}\" and its indexed content will be removed from this collection. This can't be undone."
+    },
     "deleteProjectDialog": {
       "title": "Delete collection",
       "permanentDelete": "This will permanently delete all threads.",
