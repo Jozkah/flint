@@ -2,7 +2,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 
 import {
   useGeneralSetting,
-  HUGGINGFACE_TOKEN_SECRET_KEY,
+  loadHuggingfaceToken,
 } from '@/hooks/useGeneralSetting'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
@@ -246,9 +246,7 @@ export function DataProvider() {
     })
     // Re-seed the Hugging Face token from the keyring (no longer persisted to
     // settings storage) into the store + download extension for this session.
-    invoke<string | null>('get_secret', {
-      key: HUGGINGFACE_TOKEN_SECRET_KEY,
-    })
+    loadHuggingfaceToken((command, args) => invoke(command, args))
       .then((token) => {
         if (token) useGeneralSetting.getState().setHuggingfaceToken(token)
       })

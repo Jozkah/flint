@@ -11,7 +11,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({ core: () => ({ invoke }) }),
 }))
 vi.mock('@/hooks/useGeneralSetting', () => ({
-  HUGGINGFACE_TOKEN_SECRET_KEY: 'huggingface',
+  HUGGINGFACE_TOKEN_SECRET_KEY: 'general:huggingface-token',
 }))
 
 import { migrateLocalStorageToBackend } from '../migrateLocalStorageSettings'
@@ -140,7 +140,7 @@ describe('migrateLocalStorageToBackend', () => {
     )
     await migrateLocalStorageToBackend()
     expect(invoke).toHaveBeenCalledWith('set_secret', {
-      key: 'huggingface',
+      key: 'general:huggingface-token',
       value: 'hf_secret',
     })
     const stored = backend.get('setting-general')!
