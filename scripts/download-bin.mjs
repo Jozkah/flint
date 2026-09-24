@@ -353,7 +353,9 @@ async function main() {
     } else if (platform === 'linux') {
       copyFile(
         path.join(binDir, 'uv'),
-        path.join(binDir, `uv-${uvPlatform}`),
+        // Tauri resolves sidecars by the host triple (uv-aarch64-alpine-linux-musl
+        // on Alpine), not by the name of the uv release asset.
+        path.join(binDir, `uv-${rustPlatform}`),
         (err) => {
           if (err) {
             console.log('Error Found:', err)
