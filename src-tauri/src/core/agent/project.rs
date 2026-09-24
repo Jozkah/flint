@@ -268,6 +268,11 @@ pub(crate) struct SkillsSection {
 pub(crate) struct BudgetSection {
     #[serde(default)]
     pub max_tokens: Option<u64>,
+    /// USD a run may spend before it stops (upstream #9034). Priced from the
+    /// declared `prices.toml`, so a model with no declared price cannot be
+    /// capped and a run that asks for one is refused rather than run uncapped.
+    #[serde(default)]
+    pub max_usd: Option<f64>,
 }
 
 /// `[agent]` — resolves the model and per-run knobs for CLI agent runs.

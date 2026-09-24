@@ -4892,7 +4892,8 @@ async fn orchestrate_inner(
     };
 
     let max_session_tokens = body_session_budget(json_body);
-    let mut budget = SessionBudget::new(max_session_tokens);
+    let mut budget =
+        SessionBudget::new(max_session_tokens).with_cost_ceiling(body_cost_ceiling(json_body));
 
     if let Some(root) = project_root {
         // Background subagents are scoped to this run: `_bg_guard` aborts any
@@ -5408,6 +5409,47 @@ pub(crate) fn body_send_reasoning(json_body: &serde_json::Value) -> bool {
 
 /// Token-spend ceiling for a request body, the real bound on run length.
 /// `0` is the explicit "no ceiling" encoding, matching `max_turns`.
+/// Money ceiling for a request body (upstream #9034): `max_budget_usd` plus the
+/// `token_rates` to meter it against. Both or neither: a limit with no rates
+/// has nothing to meter, which the CLI refuses up front (`resolve_cost_ceiling`);
+/// here it simply does not meter.
+fn body_cost_ceiling(
+    json_body: &serde_json::Value,
+) -> Option<crate::core::agent::session::CostCeiling> {
+    let max_usd = json_body
+        .get("max_budget_usd")
+        .and_then(|v| v.as_f64())
+        .filter(|v| v.is_finite() && *v >= 0.0)?;
+    let rates = json_body.get("token_rates")?;
+    let rate = |key: &str| rates.get(key).and_then(|v| v.as_f64());
+    Some(crate::core::agent::session::CostCeiling {
+        rates: crate::core::agent::session::TokenRates {
+            prompt_usd: rate("prompt_usd")?,
+            completion_usd: rate("completion_usd")?,
+            cache_read_usd: rate("cache_read_usd"),
+            cache_write_usd: rate("cache_write_usd"),
+        },
+        max_usd,
+    })
+}
+
+/// The last completion of a run stopped by its money ceiling, rewritten into a
+/// terminal answer: `finish_reason` becomes `budget_exceeded`, and any
+/// `tool_calls` are dropped because they will never be answered.
+fn halted_over_budget(mut completion: serde_json::Value) -> serde_json::Value {
+    if let Some(choice) = completion
+        .get_mut("choices")
+        .and_then(|c| c.as_array_mut())
+        .and_then(|choices| choices.first_mut())
+    {
+        if let Some(message) = choice.get_mut("message").and_then(|m| m.as_object_mut()) {
+            message.remove("tool_calls");
+        }
+        choice["finish_reason"] = serde_json::json!("budget_exceeded");
+    }
+    completion
+}
+
 fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
     json_body
         .get("max_session_tokens")
@@ -5590,8 +5632,35 @@ async fn run_turn_cycle(
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
     );
+    // The last completion this cycle received, so a run stopped by its money
+    // ceiling returns the work it actually did rather than an error with no
+    // answer in it. `None` only before the first request.
+    let mut last_completion: Option<serde_json::Value> = None;
 
     while unlimited || turn < max_turns {
+        // The money ceiling (upstream #9034) is enforced here, at the one point
+        // every path that would start another request passes through. A
+        // ceiling stops the run; it does not fail it: the answer comes back
+        // with `finish_reason: "budget_exceeded"`.
+        if budget.over_cost_ceiling() {
+            if let Some(completion) = last_completion.take() {
+                let spent = budget.spent_usd().unwrap_or(0.0);
+                let max = budget.max_usd().unwrap_or(0.0);
+                log::info!("agent: stopping the run, spent ${spent:.4} of a ${max:.4} ceiling");
+                conversation_messages.push(serde_json::json!({
+                    "role": "system",
+                    "content": format!(
+                        "[cost ceiling reached] This run stopped after spending about \
+                         ${spent:.4} against its ${max:.4} ceiling. The task may be \
+                         unfinished; raising --max-budget-usd and resuming continues it."
+                    ),
+                }));
+                let _ = events.send(StreamEvent::MessagesUpdated {
+                    messages: conversation_messages.clone(),
+                });
+                return Ok(halted_over_budget(completion));
+            }
+        }
         // The safe boundary: every tool result of the last turn is in and the
         // next model call has not been made, so anything the user typed
         // meanwhile reaches the model now rather than after the run ends.
@@ -5862,6 +5931,9 @@ async fn run_turn_cycle(
             });
         }
         budget.record(&turn_usage);
+        if budget.max_usd().is_some() {
+            last_completion = Some(completion.clone());
+        }
 
         let mut tool_calls = extract_tool_calls(&completion);
 
@@ -6658,6 +6730,73 @@ mod tests {
                 }],
             }],
         }))
+    }
+
+    /// Upstream #9034: a money ceiling stops the run without failing it. The
+    /// first turn's usage puts spend past the ceiling, so the second turn's
+    /// tool calls are never dispatched again: the answer comes back with
+    /// `finish_reason: "budget_exceeded"` and no unanswered `tool_calls`.
+    #[tokio::test]
+    async fn the_cost_ceiling_stops_the_run_and_keeps_the_answer() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "working on it",
+                        "tool_calls": [{
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": "{\"path\":\"a\"}"}
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0, "total_tokens": 1_000_000}
+            }),
+            json!({"choices": [{"message": {"content": "never sent"}, "finish_reason": "stop"}]}),
+        ]);
+        let mut budget = SessionBudget::new(None).with_cost_ceiling(Some(
+            crate::core::agent::session::CostCeiling {
+                rates: crate::core::agent::session::TokenRates {
+                    // $1 per million prompt tokens, so the first request costs $1.
+                    prompt_usd: 1e-6,
+                    completion_usd: 1e-6,
+                    cache_read_usd: None,
+                    cache_write_usd: None,
+                },
+                max_usd: 0.01,
+            },
+        ));
+        let result = run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "go"})],
+            0,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("a ceiling stops the run, it does not fail it");
+
+        assert_eq!(result["choices"][0]["finish_reason"], json!("budget_exceeded"));
+        assert!(
+            result["choices"][0]["message"].get("tool_calls").is_none(),
+            "unanswered tool calls are dropped: {result}"
+        );
+        assert_eq!(
+            model.requests.lock().unwrap().len(),
+            1,
+            "no request is made past the ceiling"
+        );
     }
 
     /// jan#8976: the proactive compaction policy is exercised through the real

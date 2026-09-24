@@ -106,6 +106,11 @@ struct BudgetArgs {
     /// (0 = no ceiling)
     #[arg(long, value_name = "N")]
     max_session_tokens: Option<u64>,
+    /// Stop the run once it has spent this much in USD, overriding
+    /// [budget].max_usd. Priced from prices.toml, so a model with no declared
+    /// price is refused rather than run uncapped
+    #[arg(long, value_name = "USD")]
+    max_budget_usd: Option<f64>,
 }
 
 #[derive(Args, Clone, Copy)]
@@ -1791,6 +1796,7 @@ async fn handle_agent(cmd: AgentCommands) {
                     interrupted: resume.interrupted,
                     max_turns: budget.max_turns,
                     max_session_tokens: budget.max_session_tokens,
+                    max_budget_usd: budget.max_budget_usd,
                     ..Default::default()
                 },
                 resume.into_request(),
@@ -3197,6 +3203,17 @@ mod tests {
         let zero = parsed_budget(&["--max-turns", "0", "--max-session-tokens", "0"]);
         assert_eq!(zero.max_turns, Some(0));
         assert_eq!(zero.max_session_tokens, Some(0));
+
+        // A decimal amount, not a token count, and `0` is a real ceiling.
+        assert_eq!(parsed_budget(&[]).max_budget_usd, None);
+        assert_eq!(
+            parsed_budget(&["--max-budget-usd", "2.50"]).max_budget_usd,
+            Some(2.50)
+        );
+        assert_eq!(
+            parsed_budget(&["--max-budget-usd", "0"]).max_budget_usd,
+            Some(0.0)
+        );
     }
 
     #[test]

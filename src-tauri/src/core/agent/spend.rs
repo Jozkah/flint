@@ -423,7 +423,7 @@ fn cached_of(record: &tauri_plugin_agent_tools::usage::PayloadUsage) -> u64 {
 
 /// The declared price for a model, by its exact name or by the part after the
 /// provider prefix -- `llm-host/claude-sonnet-4-5` finds `claude-sonnet-4-5`.
-fn price_for(prices: &BTreeMap<String, Price>, model: &str) -> Option<Price> {
+pub(crate) fn price_for(prices: &BTreeMap<String, Price>, model: &str) -> Option<Price> {
     if let Some(price) = prices.get(model) {
         return Some(*price);
     }

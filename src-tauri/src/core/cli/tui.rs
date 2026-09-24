@@ -18467,6 +18467,7 @@ mod tests {
             max_tokens: None,
             max_session_tokens: 128_000,
             max_turns: None,
+            cost_ceiling: None,
         };
         let app = App::new(
             "m".into(),
@@ -18797,6 +18798,7 @@ mod tests {
                     max_tokens: None,
                     max_session_tokens: 128_000,
                     max_turns: None,
+                    cost_ceiling: None,
                 },
                 false,
                 agent_dir,

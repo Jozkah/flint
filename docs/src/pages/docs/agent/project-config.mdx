@@ -115,6 +115,7 @@ Desktop. Most projects don't need it. See [Providers](/docs/agent/providers#per-
 | Key | Default | Description |
 | --- | --- | --- |
 | `max_tokens` | `128000` | Token-spend ceiling for one run (new spend across all turns). Set `0` to disable the cap. Overridden per invocation by `--max-session-tokens`; `--max-turns` adds a turn cap. Defaults to `128000` when unset |
+| `max_usd` | unset | USD one run may spend before it stops. Priced from `prices.toml`; a model with no declared price is refused. Overridden per invocation by `--max-budget-usd` |
 
 A bound on how far one run goes, distinct from the per-request context window. It bounds the run's
 marginal token spend (replayed context is not recharged each turn).

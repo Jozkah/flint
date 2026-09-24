@@ -813,6 +813,48 @@ fn session_budget_source(flag: Option<u64>, configured: Option<u64>) -> &'static
 /// `DEFAULT_MAX_SESSION_TOKENS` - the same flag/config/default shape the
 /// sandbox setting resolves with. `0` from either source means unbounded and is
 /// carried through as-is (see `body_session_budget`).
+/// The money ceiling for a run (upstream #9034): `--max-budget-usd`, then
+/// `[budget].max_usd`, then none.
+///
+/// A ceiling is only meaningful if the run can be priced, and in this fork the
+/// price is what a person declared in `<data folder>/prices.toml`. So a model
+/// with no declared price is **refused** rather than run uncapped, and a
+/// negative limit is refused as a typo. `0` is allowed and honest: it stops at
+/// the first billed request. Refused at startup, before any paid request.
+fn resolve_cost_ceiling(
+    flag: Option<f64>,
+    configured: Option<f64>,
+    prices: &std::collections::BTreeMap<String, crate::core::agent::spend::Price>,
+    model: &str,
+) -> Result<Option<crate::core::agent::session::CostCeiling>, String> {
+    let Some(max_usd) = flag.or(configured) else {
+        return Ok(None);
+    };
+    if !max_usd.is_finite() || max_usd < 0.0 {
+        return Err(format!(
+            "a cost ceiling must be a non-negative amount in USD, not {max_usd}"
+        ));
+    }
+    let price = crate::core::agent::spend::price_for(prices, model).ok_or_else(|| {
+        format!(
+            "cannot cap spend for {model}: no price is declared for it in prices.toml, so \
+             there is nothing to meter a ${max_usd} ceiling against. Remove the limit to run \
+             uncapped, or declare the model's price (dollars per million tokens)."
+        )
+    })?;
+    // prices.toml is dollars per million tokens.
+    let per_token = |per_million: f64| per_million / 1_000_000.0;
+    Ok(Some(crate::core::agent::session::CostCeiling {
+        rates: crate::core::agent::session::TokenRates {
+            prompt_usd: per_token(price.input),
+            completion_usd: per_token(price.output),
+            cache_read_usd: price.cached_input.map(per_token),
+            cache_write_usd: None,
+        },
+        max_usd,
+    }))
+}
+
 fn resolve_session_budget(flag: Option<u64>, configured: Option<u64>) -> u64 {
     flag.or(configured).unwrap_or(DEFAULT_MAX_SESSION_TOKENS)
 }
@@ -863,6 +905,9 @@ pub fn cli_agent_status(
         // `--sandbox` below, cannot be reflected in a config dump.
         "max_session_tokens": resolve_session_budget(None, cfg.budget.max_tokens),
         "max_session_tokens_source": session_budget_source(None, cfg.budget.max_tokens),
+        // The configured money ceiling, or null when the project sets none.
+        // Whether it can be enforced depends on the model a run resolves.
+        "max_budget_usd": cfg.budget.max_usd,
         "tools": {
             "default": cfg.tools.default,
             "allow": cfg.tools.allow,
@@ -1132,6 +1177,10 @@ pub(crate) struct SessionLimits {
     /// body, which the engine reads as unbounded; `0` means unbounded too (see
     /// `body_turn_cap`).
     pub max_turns: Option<u64>,
+    /// `--max-budget-usd`, else `[budget].max_usd`: the run's money ceiling and
+    /// the rates to meter it against, resolved once at startup by
+    /// `resolve_cost_ceiling`. `None` leaves the run unmetered.
+    pub cost_ceiling: Option<crate::core::agent::session::CostCeiling>,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -1196,6 +1245,17 @@ fn request_body(
     if let Some(turns) = limits.max_turns {
         body["max_turns"] = serde_json::json!(turns);
     }
+    // The ceiling travels with the rates it is metered against: the loop is
+    // not `cli`-gated, so prices resolved here are the only ones it sees.
+    if let Some(ceiling) = limits.cost_ceiling {
+        body["max_budget_usd"] = serde_json::json!(ceiling.max_usd);
+        body["token_rates"] = serde_json::json!({
+            "prompt_usd": ceiling.rates.prompt_usd,
+            "completion_usd": ceiling.rates.completion_usd,
+            "cache_read_usd": ceiling.rates.cache_read_usd,
+            "cache_write_usd": ceiling.rates.cache_write_usd,
+        });
+    }
     // Reasoning resend policy: the request-level flag the loop reads to
     // decide whether prior assistant `reasoning_content` goes back out.
     body["send_reasoning"] = serde_json::json!(send_reasoning);
@@ -1248,6 +1308,10 @@ pub struct SessionFlags {
     /// `[budget].max_tokens`. `None` (not passed) defers to that, then to
     /// `DEFAULT_MAX_SESSION_TOKENS`.
     pub max_session_tokens: Option<u64>,
+    /// `--max-budget-usd`: hard USD ceiling for the run, outranking
+    /// `[budget].max_usd`. A run that asks for one but cannot be priced is
+    /// refused (see `resolve_cost_ceiling`).
+    pub max_budget_usd: Option<f64>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1568,6 +1632,19 @@ fn prepare_agent_session(
     )
     .map_err(|e| e.message().to_string())?;
 
+    // Resolved before the session is built: a run that asked for a ceiling it
+    // cannot be priced against is refused here, before any paid request.
+    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd) {
+        None => None,
+        Some(_) => {
+            let prices = crate::core::agent::spend::prices(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+            )
+            .map_err(|e| e.message)?;
+            resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?
+        }
+    };
+
     Ok(AgentSession {
         args,
         permission_requests,
@@ -1584,6 +1661,7 @@ fn prepare_agent_session(
                 cfg.budget.max_tokens,
             ),
             max_turns: flags.max_turns,
+            cost_ceiling,
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
@@ -4375,6 +4453,52 @@ mod tests {
     /// `--max-session-tokens` outranks `[budget].max_tokens`, which outranks
     /// the built-in default; `0` from either source survives as the unbounded
     /// marker `body_session_budget` expects rather than falling through.
+    /// The money ceiling resolves flag > config > none, and a run that asks
+    /// for one it cannot price is refused rather than run uncapped.
+    #[test]
+    fn a_cost_ceiling_is_refused_rather_than_run_uncapped() {
+        let none = std::collections::BTreeMap::new();
+        let unpriced = "no-such-model/never-priced";
+        assert_eq!(resolve_cost_ceiling(None, None, &none, unpriced), Ok(None));
+        let refused = resolve_cost_ceiling(Some(2.0), None, &none, unpriced)
+            .expect_err("an unpriceable ceiling must not silently run uncapped");
+        assert!(refused.contains("no price is declared"), "{refused}");
+        assert!(resolve_cost_ceiling(None, Some(2.0), &none, unpriced).is_err());
+        let precedence = resolve_cost_ceiling(Some(2.0), Some(9.0), &none, unpriced)
+            .expect_err("still unpriceable");
+        assert!(precedence.contains("$2") && !precedence.contains("$9"), "{precedence}");
+        let negative = resolve_cost_ceiling(Some(-1.0), None, &none, unpriced)
+            .expect_err("a negative ceiling is rejected");
+        assert!(negative.contains("non-negative"), "{negative}");
+        assert!(resolve_cost_ceiling(Some(f64::NAN), None, &none, unpriced).is_err());
+
+        // A declared price (dollars per million) becomes per-token rates, and
+        // a provider-qualified id finds a bare declaration.
+        let mut prices = std::collections::BTreeMap::new();
+        prices.insert(
+            "claude-x".to_string(),
+            crate::core::agent::spend::Price {
+                input: 3.0,
+                output: 15.0,
+                cached_input: Some(0.3),
+            },
+        );
+        let ceiling = resolve_cost_ceiling(Some(0.0), None, &prices, "anthropic/claude-x")
+            .expect("priced")
+            .expect("a ceiling");
+        assert_eq!(ceiling.max_usd, 0.0);
+        assert!((ceiling.rates.prompt_usd - 3e-6).abs() < 1e-15);
+        assert!((ceiling.rates.completion_usd - 15e-6).abs() < 1e-15);
+        assert_eq!(ceiling.rates.cache_read_usd, Some(0.3 / 1_000_000.0));
+
+        // It reaches the request body with its rates.
+        let mut limits = limits_with(None, 0);
+        limits.cost_ceiling = Some(ceiling);
+        let body = request_body("m", &limits, true, serde_json::json!([]));
+        assert_eq!(body["max_budget_usd"], 0.0);
+        assert!(body["token_rates"]["prompt_usd"].as_f64().is_some());
+    }
+
     #[test]
     fn session_budget_precedence_is_flag_then_config_then_default() {
         assert_eq!(
@@ -4402,6 +4526,7 @@ mod tests {
             max_tokens: None,
             max_session_tokens,
             max_turns,
+            cost_ceiling: None,
         }
     }
 

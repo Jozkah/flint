@@ -100,6 +100,7 @@ jan cli agent run --max-turns 5 --max-session-tokens 20000 "triage the build fai
 | `--no-worktree` | Work in the project directory, overriding a persistent `worktree` setting |
 | `--max-turns <N>` | Hard cap on agentic turns. If the model is still calling tools at N the run fails with `reached the N-turn limit...` and a non-zero exit; with `--output-format json` the partial answer is still in `result`. Bounds the parent run only - subagent turns are not counted. `0` means unbounded, which is the default |
 | `--max-session-tokens <N>` | Token-spend ceiling for this run, overriding `[budget].max_tokens`. The run stops once it is spent. `0` means no ceiling |
+| `--max-budget-usd <USD>` | Stop the run once it has spent this much, overriding `[budget].max_usd`. Priced from `<data folder>/prices.toml`; a model with no declared price is refused rather than run uncapped. The answer so far comes back with `finish_reason: budget_exceeded`. `0` stops at the first billed request |
 | `--provider`, `--api-key` | Credential overrides for this run |
 | `--output-format <FORMAT>` | `text` (default) streams the answer; `json` prints one result object; `stream-json` prints one JSON event per line |
 | `--input-format <FORMAT>` | `text` (default) ignores stdin; `stream-json` reads client messages while the run is in flight. Requires `--output-format stream-json` |
