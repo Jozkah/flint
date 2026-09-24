@@ -119,6 +119,82 @@ impl ConfinedMcpLaunch {
 /// The environment is rebuilt rather than filtered. `Command` inherits the
 /// parent's environment by default, and Flint's process holds the user's whole
 /// session — so `env_clear` first, then exactly the names the user approved.
+/// The program to start for a configured MCP command (Jozkah/jan#224).
+///
+/// On Windows `npx`, `uvx`, `npm`, `pnpm` and most Node tools are `.cmd`
+/// shims, and `CreateProcessW` only ever tries `.exe` for a bare name, so the
+/// spawn failed with "file not found". A bare name (no directory, no
+/// extension) is resolved here through PATH in PATHEXT order. Anything else,
+/// and every name on other platforms, is returned as written.
+pub(super) fn launchable_program(command: &str) -> std::ffi::OsString {
+    if !cfg!(windows) {
+        return command.into();
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    resolve_bare_program(command, &path, &pathext)
+        .map(|p| p.into_os_string())
+        .unwrap_or_else(|| command.into())
+}
+
+/// The first `<dir>/<name><ext>` that is a file, over `path`'s directories and
+/// `pathext`'s extensions, for a bare `name`. `None` when `name` has a
+/// directory or an extension of its own, or nothing matches.
+fn resolve_bare_program(
+    name: &str,
+    path: &std::ffi::OsStr,
+    pathext: &str,
+) -> Option<std::path::PathBuf> {
+    let as_path = std::path::Path::new(name);
+    if name.is_empty()
+        || name.contains(['/', '\\'])
+        || as_path.extension().is_some()
+    {
+        return None;
+    }
+    std::env::split_paths(path).find_map(|dir| {
+        pathext
+            .split(';')
+            .filter(|e| !e.is_empty())
+            .map(|ext| dir.join(format!("{name}{}", ext.to_ascii_lowercase())))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+#[cfg(test)]
+mod launchable_tests {
+    #[test]
+    fn a_bare_name_finds_its_cmd_shim_on_path() {
+        let dir = std::env::temp_dir().join(format!("jan_mcp_shim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // The extensionless script Node also installs must not be chosen.
+        std::fs::write(dir.join("npx"), "#!/bin/sh").unwrap();
+        std::fs::write(dir.join("npx.cmd"), "@echo off").unwrap();
+        let path = std::env::join_paths([dir.clone()]).unwrap();
+        let found = super::resolve_bare_program("npx", &path, ".COM;.EXE;.BAT;.CMD").unwrap();
+        assert_eq!(found, dir.join("npx.cmd"));
+        // Names with a directory or an extension are left as written.
+        assert!(super::resolve_bare_program("C:/tools/npx", &path, ".CMD").is_none());
+        assert!(super::resolve_bare_program("npx.cmd", &path, ".CMD").is_none());
+        assert!(super::resolve_bare_program("absent", &path, ".CMD").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The real thing: where Node is installed, `npx` as configured now starts.
+    #[cfg(windows)]
+    #[test]
+    fn npx_as_configured_actually_starts_on_windows() {
+        let program = super::launchable_program("npx");
+        if program == std::ffi::OsString::from("npx") {
+            eprintln!("skipped: npx is not on PATH here");
+            return;
+        }
+        let out = std::process::Command::new(&program).arg("--version").output().expect("spawn");
+        assert!(out.status.success(), "{:?}", out);
+    }
+}
+
 pub(super) fn confined_mcp_command(
     cmd: Command,
     params: &crate::core::mcp::models::McpServerConfig,
