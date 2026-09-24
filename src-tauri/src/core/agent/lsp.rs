@@ -833,7 +833,7 @@ impl Drop for LspPool {
 /// than a line is worth. Only a file inside the project and within
 /// `MAX_FILE_BYTES` -- the bound the queried file is held to -- is read, and
 /// only up to the line wanted; anything else shows no snippet.
-fn location_line(project: &Path, path: &Path, line0: u32) -> String {
+fn location_line(project: &Path, path: &Path, line0: u64) -> String {
     use std::io::BufRead;
     let inside = match (std::fs::canonicalize(project), std::fs::canonicalize(path)) {
         (Ok(root), Ok(file)) => file.starts_with(root),
