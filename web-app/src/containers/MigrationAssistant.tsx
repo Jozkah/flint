@@ -60,6 +60,13 @@ export function MigrationAssistant() {
   const [busy, setBusy] = useState(false)
   const [rolledBack, setRolledBack] = useState(false)
 
+  // Read by the manual-open effect without re-running it on every step change.
+  const stepRef = useRef<Step>(step)
+  stepRef.current = step
+  // Set when a migration finished while the dialog was hidden, so the next
+  // open shows that outcome (and Roll back) instead of starting over.
+  const unseenResultRef = useRef(false)
+
   // Detect once on first mount so the assistant can auto-open on a first launch
   // that has legacy data. A manual open (from Settings) sets `open` directly.
   const autoChecked = useRef(false)
@@ -93,6 +100,12 @@ export function MigrationAssistant() {
   // When opened manually (Settings), run detection each time it opens.
   useEffect(() => {
     if (!open || !openedManually) return
+    // A migration is still running, or finished while hidden: resume it
+    // rather than resetting to detection and losing the result.
+    if (stepRef.current === 'running' || unseenResultRef.current) {
+      unseenResultRef.current = false
+      return
+    }
     let alive = true
     setStep('detect')
     setResult(null)
@@ -177,6 +190,9 @@ export function MigrationAssistant() {
         setStep('result')
       } finally {
         setBusy(false)
+        if (!useMigrationAssistant.getState().open) {
+          unseenResultRef.current = true
+        }
       }
     },
     []
@@ -238,13 +254,27 @@ export function MigrationAssistant() {
     [plan]
   )
 
+  // While the migration (or a plan/rollback call) is in flight the dialog must
+  // stay up: hiding it would hide the progress and, later, the Roll back option.
+  const locked = busy || step === 'running'
+
   const onOpenChange = (next: boolean) => {
-    if (!next) closeAssistant()
+    if (next || locked) return
+    closeAssistant()
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-w-[92vw]">
+      <DialogContent
+        className="sm:max-w-[560px] max-w-[92vw]"
+        showCloseButton={!locked}
+        onEscapeKeyDown={(e) => {
+          if (locked) e.preventDefault()
+        }}
+        onInteractOutside={(e) => {
+          if (locked) e.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Migrate from JAN</DialogTitle>
           <DialogDescription>

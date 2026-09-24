@@ -19,7 +19,15 @@ vi.mock('@/lib/migration', async (importOriginal) => {
 vi.mock('@/components/ui/dialog', () => {
   const Pass = ({ children }: any) => <div>{children}</div>
   return {
-    Dialog: ({ children, open }: any) => (open ? <div>{children}</div> : null),
+    // "mock-dismiss" stands in for Escape / outside click / the X button,
+    // which all reach the component through onOpenChange(false).
+    Dialog: ({ children, open, onOpenChange }: any) =>
+      open ? (
+        <div>
+          <button onClick={() => onOpenChange?.(false)}>mock-dismiss</button>
+          {children}
+        </div>
+      ) : null,
     DialogContent: Pass,
     DialogHeader: Pass,
     DialogTitle: Pass,
@@ -151,5 +159,67 @@ describe('MigrationAssistant', () => {
     expect(await screen.findByText('Migration did not complete.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Roll back' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+})
+
+describe('MigrationAssistant while a migration runs (#249)', () => {
+  const FAILED = {
+    status: 'failed',
+    mode: 'copy',
+    per_category: [],
+    skipped: [],
+    backup_path: null,
+    reuse_path: null,
+    quarantine_dir: '/f/cfg/.quarantine',
+    manifest_path: '/f/cfg/migration_manifest.json',
+    error: 'disk full',
+    rolled_back: false,
+  }
+
+  async function startMigration() {
+    let finish!: (r: unknown) => void
+    detect.mockResolvedValue(FOUND)
+    plan.mockResolvedValue(PLAN)
+    execute.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      })
+    )
+    render(<MigrationAssistant />)
+    useMigrationAssistant.getState().openAssistant()
+    fireEvent.click(await screen.findByTestId('mode-copy'))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Migrate' }))
+    expect(await screen.findByText(/Migrating your data/)).toBeInTheDocument()
+    return (r: unknown) => finish(r)
+  }
+
+  it('cannot be dismissed while the migration is running', async () => {
+    const finish = await startMigration()
+
+    fireEvent.click(screen.getByRole('button', { name: 'mock-dismiss' }))
+
+    expect(useMigrationAssistant.getState().open).toBe(true)
+    expect(screen.getByText(/Migrating your data/)).toBeInTheDocument()
+
+    finish(FAILED)
+    expect(await screen.findByText('Migration did not complete.')).toBeInTheDocument()
+  })
+
+  it('shows the finished result and Roll back when reopened after a hidden run', async () => {
+    const finish = await startMigration()
+
+    // Any other path that hides the dialog mid-run.
+    useMigrationAssistant.getState().closeAssistant()
+    await waitFor(() => expect(screen.queryByText(/Migrating your data/)).toBeNull())
+    finish(FAILED)
+    await waitFor(() => expect(execute).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 0))
+
+    useMigrationAssistant.getState().openAssistant()
+
+    expect(await screen.findByText('Migration did not complete.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Roll back' })).toBeInTheDocument()
+    expect(screen.queryByTestId('mode-copy')).toBeNull()
   })
 })
