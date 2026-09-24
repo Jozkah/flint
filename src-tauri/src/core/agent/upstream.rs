@@ -2354,6 +2354,33 @@ fn flush_trailing_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Jozkah/jan#46: a truncated ("poisoned") MCP call is refused with an
+    /// invalid-args result, never dispatched with `{}`. `/orchestrations`
+    /// reaches MCP only through this function, so the refusal covers it. No
+    /// server is registered: a call that got past the argument check would
+    /// come back as an unknown-tool error instead.
+    #[tokio::test]
+    async fn execute_mcp_tool_calls_refuses_truncated_arguments() {
+        let calls = vec![serde_json::json!({
+            "id": "call-1",
+            "type": "function",
+            "function": { "name": "delete_rows", "arguments": "{\"table\": \"us" }
+        })];
+        let servers: crate::core::state::SharedMcpServers =
+            Arc::new(Mutex::new(HashMap::new()));
+        let settings = Arc::new(Mutex::new(McpSettings::default()));
+        let results =
+            execute_mcp_tool_calls(&calls, &HashMap::new(), &HashMap::new(), &servers, &settings)
+                .await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "call-1");
+        assert!(
+            results[0].1.starts_with("ERROR: invalid-args"),
+            "{}",
+            results[0].1
+        );
+    }
     use serde_json::json;
 
     /// Breadcrumbs are bounded, on a char boundary, and keep the failure.
