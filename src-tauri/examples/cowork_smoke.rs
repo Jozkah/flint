@@ -5955,22 +5955,28 @@ fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
     let session = current_cowork_session(ctx)?;
     ctx.type_into("[data-testid=\"chat-input\"]", "Read the README and summarise it. INTERRUPTED-RUN")?;
     send_armed(ctx)?;
-    // The session's persisted record, not the screen: what a fresh process
-    // will read back.
+    // The session's record as it is on disk, not in the settings store's
+    // memory or on the screen: what a fresh process will read back. Reading
+    // the store instead let this exit before the checkpoint was ever flushed.
+    let settings = data_folder()?.join("settings.json");
     let deadline = Instant::now() + Duration::from_secs(90);
     let checkpoint = loop {
-        let found = ctx.eval(&format!(
-            "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions' }}).catch(() => null);
-         let state; try {{ state = JSON.parse(raw); state = state.state ?? state; }} catch {{ return null; }}
-         const s = (state.sessions || []).find(x => x.id === {session:?});
-             const f = s && s.inFlight;
-             if (!f) return null;
-             const calls = f.turns.filter(t => t.role === 'tool' && (t.result || '').length > 0);
-             const last = f.turns[f.turns.length - 1];
-             const partial = last && last.role === 'assistant' ? last.content : '';
-             return calls.length > 0 && partial.includes('working') ? {{ runId: f.runId, turns: f.turns.length, partial: partial.length }} : null;"
-        ))?;
-        if found.is_object() {
+        let on_disk = || -> Option<Value> {
+            let file: Value = serde_json::from_str(&std::fs::read_to_string(&settings).ok()?).ok()?;
+            let sessions: Value = serde_json::from_str(file.get("code-sessions")?.as_str()?).ok()?;
+            let state = sessions.get("state").unwrap_or(&sessions);
+            let f = state["sessions"].as_array()?.iter().find(|x| x["id"] == session.as_str())?.get("inFlight")?;
+            let turns = f["turns"].as_array()?;
+            let calls = turns
+                .iter()
+                .filter(|t| t["role"] == "tool" && t["result"].as_str().is_some_and(|r| !r.is_empty()))
+                .count();
+            let last = turns.last()?;
+            let partial = if last["role"] == "assistant" { last["content"].as_str().unwrap_or("") } else { "" };
+            (calls > 0 && partial.contains("working"))
+                .then(|| serde_json::json!({ "runId": f["runId"], "turns": turns.len(), "partial": partial.len() }))
+        };
+        if let Some(found) = on_disk() {
             break found;
         }
         ensure!(
