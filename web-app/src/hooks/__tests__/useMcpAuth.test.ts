@@ -157,3 +157,45 @@ describe('useMcpAuth', () => {
     expect(mcp.clearMCPAuth).toHaveBeenCalledWith('a')
   })
 })
+
+describe('useMcpAuth refresh ordering (#259)', () => {
+  beforeEach(() => {
+    listeners.length = 0
+    vi.clearAllMocks()
+    mcp.getMCPAuthStatus.mockResolvedValue(status())
+  })
+
+  it('keeps the newest refresh when an older one resolves later', async () => {
+    const { result } = renderHook(() => useMcpAuth(['a']))
+    await waitFor(() => expect(result.current.statuses.a).toBeDefined())
+
+    const pending: Array<(s: MCPAuthStatus) => void> = []
+    mcp.getMCPAuthStatus.mockImplementation(
+      () =>
+        new Promise<MCPAuthStatus>((resolve) => {
+          pending.push(resolve)
+        })
+    )
+
+    let older!: Promise<void>
+    let newer!: Promise<void>
+    act(() => {
+      older = result.current.refresh()
+      newer = result.current.refresh()
+    })
+    expect(pending).toHaveLength(2)
+
+    // The newer call settles first, then the stale one.
+    await act(async () => {
+      pending[1](status({ state: 'authenticated', hasCredentials: true }))
+      await newer
+    })
+    expect(result.current.statuses.a.state).toBe('authenticated')
+
+    await act(async () => {
+      pending[0](status({ state: 'unauthenticated' }))
+      await older
+    })
+    expect(result.current.statuses.a.state).toBe('authenticated')
+  })
+})

@@ -50,8 +50,13 @@ export function useMcpAuth(serverNames: string[]) {
   const namesKey = serverNames.join('\u0000')
   const namesRef = useRef(serverNames)
   namesRef.current = serverNames
+  // Bumped by every refresh. `refresh` runs from the names effect and from
+  // authorize/clearAuth, so calls overlap; only the most recently started one
+  // may write, or a slow earlier read would overwrite a newer result.
+  const requestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current
     const names = namesRef.current
     const entries = await Promise.all(
       names.map(async (name) => {
@@ -65,6 +70,7 @@ export function useMcpAuth(serverNames: string[]) {
         }
       })
     )
+    if (requestId !== requestIdRef.current) return
     setStatuses(Object.fromEntries(entries.filter((e) => e !== null)))
   }, [])
 
