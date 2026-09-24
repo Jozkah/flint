@@ -3315,10 +3315,12 @@ impl App {
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
     fn blocking_dock(&self) -> Option<&'static str> {
-        if self.login.is_some() {
+        if self.account_login.is_some() || self.login.is_some() {
             Some("sign in in the dock above")
         } else if self.browser_confirm.is_some() {
             Some("answer the question above")
+        } else if self.context_view.is_some() {
+            Some("close the context view above")
         } else if self.settings_prompt.is_some() {
             Some("edit the setting above")
         } else if self.mcp_prompt.is_some() || self.provider_prompt.is_some() {
@@ -22957,6 +22959,40 @@ mod tests {
         assert_eq!(app.login.as_ref().unwrap().input, "tk-secret");
         assert_eq!(app.ask_queue.front().unwrap().custom_input, "");
         assert!(app.input.is_empty(), "the composer must not see the key");
+    }
+
+    /// `/context` and the account sign-in prompt own the keyboard in
+    /// `handle_key` too, so a queued ask must defer to them: Esc meant to
+    /// close `/context` silently cancelled the agent's question (#127).
+    #[tokio::test]
+    async fn a_queued_ask_defers_to_the_context_view_and_account_login() {
+        for dock in ["context_view", "account_login"] {
+            let mut app = test_app();
+            let registry = crate::core::agent::interaction::new_registry();
+            let (request_id, _receiver) =
+                crate::core::agent::interaction::register(&registry).await;
+            app.apply(StreamEvent::AskRequest {
+                request_id,
+                request: ask_request(false, false),
+                timeout_secs: None,
+            });
+            match dock {
+                "context_view" => app.context_view = Some(ContextView::Loading),
+                _ => {
+                    let login = crate::core::cli::auth::account::begin(
+                        crate::core::cli::auth::account::AccountProvider::Claude,
+                    )
+                    .unwrap();
+                    app.account_login = Some(AccountLoginPrompt::new(login));
+                }
+            }
+            let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            assert!(
+                !handle_ask_key(&mut app, esc, &registry).await,
+                "{dock} owns the keyboard"
+            );
+            assert_eq!(app.ask_queue.len(), 1, "{dock}: the ask was consumed");
+        }
     }
 
     fn blank_mcp_prompt() -> super::McpPrompt {
