@@ -182,14 +182,20 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // the rest of the app -- and a conversation shown on its own -- reads.
   const pane = useConversationPane()
   const inSplitPane = Boolean(pane?.isSplit)
-  const drivesGlobalSelection = !pane?.isSplit || pane.isActive
+  // A caller that passes `onModelChange` keeps the choice itself (Cowork
+  // records it on its session). Such a picker shows and changes that caller's
+  // model only; writing it into the global store too would silently change
+  // the model every ordinary chat uses, and the store is persisted.
+  const ownsSelection = Boolean(onModelChange)
+  const drivesGlobalSelection =
+    !ownsSelection && (!pane?.isSplit || pane.isActive)
   const paneThreadModel = pane?.isSplit
     ? threads?.[pane.threadId]?.model
     : undefined
   const { selectedProvider, selectedModel } = useMemo(
     () =>
-      inSplitPane
-        ? selectionForThreadModel(paneThreadModel, {
+      inSplitPane || ownsSelection
+        ? selectionForThreadModel(inSplitPane ? paneThreadModel : model, {
             selectedProvider: globalProvider,
             selectedModel: globalModel,
             getProviderByName,
@@ -199,6 +205,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       inSplitPane,
+      ownsSelection,
+      model,
       paneThreadModel,
       globalProvider,
       globalModel,
@@ -309,12 +317,16 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     const initializeModel = async () => {
       // A split pane the user is not working in leaves the global picker to
       // the pane they are; it becomes the one deciding when it is activated.
-      if (!drivesGlobalSelection) return
+      if (pane?.isSplit && !pane.isActive) return
       // Auto select model when existing thread is passed
       if (model) {
-        selectModelProvider(model?.provider as string, model?.id as string)
-        if (!checkModelExists(model.provider, model.id)) {
-          selectModelProvider('', '')
+        // A caller that owns its model shows it from the prop; the global
+        // selection is not the place to record it.
+        if (drivesGlobalSelection) {
+          selectModelProvider(model?.provider as string, model?.id as string)
+          if (!checkModelExists(model.provider, model.id)) {
+            selectModelProvider('', '')
+          }
         }
         // Check mmproj existence for llamacpp models
         if (model?.provider === 'llamacpp') {
@@ -388,6 +400,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     getProviderByName,
     checkAndUpdateModelVisionCapability,
     drivesGlobalSelection,
+    pane,
 
     // selectedModel and selectedProvider intentionally excluded to prevent race conditions
   ])
@@ -606,14 +619,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       else if (pane?.isSplit) updateThreadModel(pane.threadId, choice)
       else updateCurrentThreadModel(choice)
 
-      // Store the selected model as last used
-      setLastUsedModel(
-        searchableModel.provider.provider,
-        searchableModel.model.id
-      )
-      // …and in the history the "recently used" order reads, which keeps one
-      // entry per model rather than only the single most recent one.
-      markUsed(searchableModel.provider.provider, searchableModel.model.id)
+      // Store the selected model as last used, unless the caller owns the
+      // choice: a scoped pick must not become the next new chat's default.
+      if (!ownsSelection) {
+        setLastUsedModel(
+          searchableModel.provider.provider,
+          searchableModel.model.id
+        )
+        // …and in the history the "recently used" order reads, which keeps
+        // one entry per model rather than only the single most recent one.
+        markUsed(searchableModel.provider.provider, searchableModel.model.id)
+      }
 
 
       // Check mmproj existence for llamacpp models (async, don't block UI)
@@ -649,6 +665,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       selectModelProvider,
       updateCurrentThreadModel,
       onModelChange,
+      ownsSelection,
       updateThreadModel,
       drivesGlobalSelection,
       pane,
