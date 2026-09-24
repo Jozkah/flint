@@ -369,7 +369,12 @@ pub(crate) fn diff_worktree_to(repo: &Path, commit: &str) -> Result<String, Stri
 /// under `repo`, honouring `.gitignore`. The scratch index is the caller's to
 /// remove. The user's own index is never touched: everything goes through
 /// `GIT_INDEX_FILE`.
+///
+/// R22: `add -A` runs every clean filter the repository's config names, so
+/// the refusal gate runs here, in the one helper every whole-tree staging
+/// path shares, rather than being left to each caller to remember.
 fn stage_worktree(repo: &Path, idx: &Path, base: &str) -> Result<(), String> {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     run(repo, Some(idx), &["read-tree", base])?;
     run(repo, Some(idx), &["add", "-A", "--", "."])?;
     Ok(())
@@ -630,6 +635,8 @@ pub(crate) fn restore_worktree(
     repo: &Path,
     target: &str,
 ) -> Result<RestoreOutcome, RestoreError> {
+    // R22: `checkout-index -f` runs every smudge filter the repository names.
+    crate::core::agent::vcs::refuse_filter_programs(repo).map_err(RestoreError::Refused)?;
     let current_idx = temp_index();
     let target_idx = temp_index();
     let result = (|| {
@@ -1692,6 +1699,33 @@ mod tests {
         run(&root, None, &["config", "--local", "filter.lfs.process", "git-lfs filter-process"]).unwrap();
         assert!(snapshot(&root, None, "base", "r22-lfs", &[PathBuf::from("a.txt")]).is_ok(), "a git-lfs repository lost its checkpoints");
         cleanup_snapshot_index("r22-lfs");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// R22 for managed worktrees: whole-tree checkpoint capture and restore
+    /// refuse a repository whose config names a filter program, even when the
+    /// attribute reaching it comes from `.git/info/attributes`, which the
+    /// empty `GIT_ATTR_SOURCE` does not neutralize.
+    #[test]
+    fn a_managed_checkpoint_runs_no_filter_program_the_repository_names() {
+        let Some(root) = init_repo() else { return };
+        let base = snapshot_worktree(&root, None, "base").expect("clean repo snapshots");
+        let marker = root.join("filter-ran.txt");
+        let marker_sh = marker.to_string_lossy().replace('\\', "/");
+        let info = root.join(".git").join("info");
+        std::fs::create_dir_all(&info).unwrap();
+        std::fs::write(info.join("attributes"), "*.txt filter=evil\n").unwrap();
+        let cmd = format!("sh -c 'echo ran > \"{marker_sh}\"; cat'");
+        run(&root, None, &["config", "--local", "filter.evil.clean", &cmd]).unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.smudge", &cmd]).unwrap();
+        std::fs::write(root.join("a.txt"), "changed\n").unwrap();
+
+        let taken = snapshot_worktree(&root, Some(&base), "turn");
+        assert!(taken.as_ref().is_err_and(|e| e.contains("filter.evil")), "snapshot_worktree: {taken:?}");
+        assert!(changed_since(&root, &base).is_err(), "changed_since staged through the filter");
+        let restored = restore_worktree(&root, &base);
+        assert!(matches!(restored, Err(RestoreError::Refused(ref e)) if e.contains("filter.evil")), "restore_worktree was not refused");
+        assert!(!marker.exists(), "a managed checkpoint ran the repository's filter program");
         let _ = std::fs::remove_dir_all(&root);
     }
 
