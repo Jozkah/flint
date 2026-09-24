@@ -620,8 +620,48 @@ fn append_legacy(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), St
     writeln!(file, "{line}").map_err(|e| e.to_string())?;
     // Per record: a crash costs the event that was mid-write, not the run.
     file.flush().map_err(|e| e.to_string())?;
-    seqs.insert(path, next + 1);
-    Ok(())
+    drop(file);
+    seqs.insert(path.clone(), next + 1);
+    // Bounded like the session logs (Jozkah/jan#260): every run through the
+    // Local API Server's orchestration endpoint lands here, and this file
+    // otherwise grew for the life of the install. Still under the sequence
+    // lock, so no append races the trim.
+    trim_legacy(&path, crate::event_log::MAX_LOG_BYTES)
+}
+
+/// When `path` is over `max` bytes, keep only its newest half, cut at a line
+/// boundary so every kept line is whole.
+fn trim_legacy(path: &Path, max: u64) -> Result<(), String> {
+    let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if len <= max {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let from = bytes.len().saturating_sub((max / 2) as usize);
+    let start = bytes[from..]
+        .iter()
+        .position(|b| *b == b'\n')
+        .map_or(bytes.len(), |i| from + i + 1);
+    crate::workspace::write_atomic(path, &bytes[start..]).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod legacy_trim_tests {
+    #[test]
+    fn an_oversized_legacy_log_keeps_its_newest_whole_lines() {
+        let dir = std::env::temp_dir().join(format!("jan_legacy_trim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tool-activity.jsonl");
+        let body: String = (0..1000).map(|i| format!("{{\"n\":{i}}}\n")).collect();
+        std::fs::write(&path, &body).unwrap();
+        super::trim_legacy(&path, 2000).unwrap();
+        let kept = std::fs::read_to_string(&path).unwrap();
+        assert!(kept.len() as u64 <= 1000, "{}", kept.len());
+        assert!(kept.ends_with("{\"n\":999}\n"));
+        assert!(kept.lines().all(|l| l.starts_with("{\"n\":") && l.ends_with('}')));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// The legacy file's events, in file order. A line that does not parse costs
