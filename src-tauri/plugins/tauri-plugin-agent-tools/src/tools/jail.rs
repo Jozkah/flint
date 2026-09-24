@@ -689,9 +689,19 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
              (deny file-write* (subpath (param \"{name}\")))\n"
         ));
     }
+    // IP only (Jozkah/jan#206). A bare `(allow network*)` also covers
+    // `network-outbound` to a `unix-socket` remote, i.e. connect() to any
+    // unix socket the command can name -- among them the launchd ssh-agent
+    // under `/private/tmp/com.apple.launchd.*/Listeners`, which would hand the
+    // sandbox the user's SSH identities that stripping SSH_AUTH_SOCK and
+    // denying `$HOME` are meant to keep out. The one unix socket allowed is
+    // mDNSResponder's, which name resolution goes through.
     if policy.allow_network {
         p.push_str(
-            "(allow network*)\n\
+            "(allow network-outbound (remote ip \"*:*\"))\n\
+             (allow network-inbound (local ip \"*:*\"))\n\
+             (allow network-bind (local ip \"*:*\"))\n\
+             (allow network-outbound (literal \"/private/var/run/mDNSResponder\"))\n\
              (allow system-socket)\n\
              (allow mach-lookup\n\
              \x20 (global-name \"com.apple.SystemConfiguration.DNSConfiguration\")\n\
@@ -1880,8 +1890,28 @@ mod tests {
     fn seatbelt_denies_network_unless_allowed() {
         assert!(seatbelt_policy(&policy()).contains("(deny network*)"));
         let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
-        assert!(open.contains("(allow network*)"));
+        assert!(open.contains("(allow network-outbound (remote ip \"*:*\"))"), "{open}");
         assert!(!open.contains("(deny network*)"));
+    }
+
+    /// Jozkah/jan#206: network on grants IP traffic, not connect() to every
+    /// unix socket on the host (the launchd ssh-agent among them). Only the
+    /// mDNSResponder socket DNS needs is named.
+    #[test]
+    fn seatbelt_network_is_ip_only() {
+        let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
+        assert!(!open.contains("(allow network*)"), "{open}");
+        assert!(!open.contains("unix-socket"), "{open}");
+        for line in open.lines().filter(|l| l.contains("(allow network")) {
+            assert!(
+                line.contains("(remote ip ")
+                    || line.contains("(local ip ")
+                    || line.contains("/private/var/run/mDNSResponder"),
+                "network rule not scoped to IP: {line}"
+            );
+        }
+        assert!(open.contains("(allow network-inbound (local ip \"*:*\"))"), "{open}");
+        assert!(open.contains("(allow network-bind (local ip \"*:*\"))"), "{open}");
     }
 
     #[test]
@@ -2710,6 +2740,34 @@ mod enforcement_tests {
         let _ = std::fs::remove_file(&sock);
         let _ = std::fs::remove_dir_all(&ws);
         assert!(out.contains("HIDDEN"), "the runtime-dir socket is reachable: {out}");
+    }
+
+    /// Jozkah/jan#206: with the network on, a sandboxed command still cannot
+    /// connect to a unix socket outside the workspace (where the launchd
+    /// ssh-agent lives), while IP networking is left to the other tests.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn network_on_does_not_open_host_unix_sockets() {
+        require_backend!();
+        let sock = PathBuf::from(format!("/private/tmp/jan_sb_probe_{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind probe socket");
+        listener.set_nonblocking(true).unwrap();
+        let ws = workspace();
+        let (_, out) = run(
+            &ws,
+            true,
+            &format!("nc -w 1 -U {} </dev/null && echo CONNECTED", sock.display()),
+        )
+        .await;
+        let accepted = listener.accept();
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(
+            matches!(&accepted, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
+            "the sandbox connected to a host unix socket: {accepted:?} {out}"
+        );
+        assert!(!out.contains("CONNECTED"), "{out}");
     }
 
     /// A relocated store root (e.g. `JAN_DATA_FOLDER` outside `$HOME`) must not
