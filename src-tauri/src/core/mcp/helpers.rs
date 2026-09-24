@@ -742,11 +742,14 @@ async fn schedule_mcp_start_task<R: Runtime>(
             let log_folder = crate::core::app::commands::resolve_jan_data_folder();
             tokio::spawn(async move {
                 let mut buf = [0u8; 1024];
+                // #187: bytes of a UTF-8 character split across two reads.
+                let mut carry: Vec<u8> = Vec::new();
                 while let Ok(n) = stderr_stream.read(&mut buf).await {
                     if n == 0 {
                         break;
                     }
-                    if let Ok(text) = std::str::from_utf8(&buf[..n]) {
+                    let text = decode_stderr_chunk(&mut carry, &buf[..n]);
+                    {
                         for line in text.lines() {
                             if !line.trim().is_empty() {
                                 log_mcp_stderr_line(&stderr_name, line);
@@ -1407,8 +1410,66 @@ pub fn add_server_config_with_path<R: Runtime>(
     Ok(())
 }
 
+/// Decodes one raw stderr read, carrying a trailing incomplete UTF-8
+/// sequence over to the next call instead of dropping the whole chunk
+/// (#187). Genuinely invalid bytes are replaced lossily.
+fn decode_stderr_chunk(carry: &mut Vec<u8>, chunk: &[u8]) -> String {
+    carry.extend_from_slice(chunk);
+    let mut out = String::new();
+    let mut rest: &[u8] = carry;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(s) => {
+                out.push_str(s);
+                rest = &[];
+                break;
+            }
+            Err(e) => {
+                let valid = e.valid_up_to();
+                // Safe: from_utf8 validated this prefix.
+                out.push_str(std::str::from_utf8(&rest[..valid]).unwrap_or_default());
+                match e.error_len() {
+                    // Truncated sequence at the end: keep it for the next read.
+                    None => {
+                        rest = &rest[valid..];
+                        break;
+                    }
+                    Some(bad) => {
+                        out.push('\u{FFFD}');
+                        rest = &rest[valid + bad..];
+                    }
+                }
+            }
+        }
+    }
+    *carry = rest.to_vec();
+    out
+}
+
 #[cfg(test)]
 mod stderr_log_tests {
+    #[test]
+    fn a_utf8_character_split_across_reads_loses_no_lines() {
+        let mut carry = Vec::new();
+        let full = "boot ok\n\u{65E5}\u{672C} ready\n".as_bytes();
+        // Split inside the 3-byte first CJK character.
+        let split = "boot ok\n".len() + 2;
+        let first = super::decode_stderr_chunk(&mut carry, &full[..split]);
+        assert_eq!(first, "boot ok\n");
+        assert_eq!(carry.len(), 2);
+        let second = super::decode_stderr_chunk(&mut carry, &full[split..]);
+        assert_eq!(second, "\u{65E5}\u{672C} ready\n");
+        assert!(carry.is_empty());
+    }
+
+    #[test]
+    fn invalid_stderr_bytes_are_replaced_not_dropped() {
+        let mut carry = Vec::new();
+        let text = super::decode_stderr_chunk(&mut carry, b"a\xFFb\n");
+        assert_eq!(text, "a\u{FFFD}b\n");
+        assert!(carry.is_empty());
+    }
+
     #[test]
     fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
         let (level, text) =
