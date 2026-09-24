@@ -11,8 +11,11 @@
 //! - writes: nothing is writable until an ACE names the container, so granting
 //!   one on the thread workspace is the whole write policy. The container also
 //!   gets a private `AC\Temp` that Windows creates and ACLs for it.
-//! - network: denied unless the spawn supplies the `internetClient` capability.
-//!   AppContainer blocks loopback as well, which the Unix backends do not.
+//! - network: denied unless the spawn supplies the `internetClient` and
+//!   `privateNetworkClientServer` capabilities. The second is what reaches LAN
+//!   addresses -- including the home router most machines use as their DNS
+//!   resolver, without which every hostname fails to resolve. AppContainer
+//!   blocks loopback as well, which the Unix backends do not.
 //!
 //! Unlike bubblewrap and Seatbelt there is no argv to wrap: the confinement is a
 //! token attribute passed to `CreateProcessW`, and `tokio::process::Command`
@@ -517,7 +520,8 @@ mod win {
         DeriveAppContainerSidFromAppContainerName,
     };
     use windows_sys::Win32::Security::{
-        CreateWellKnownSid, FreeSid, WinCapabilityInternetClientSid, ACL, CONTAINER_INHERIT_ACE,
+        CreateWellKnownSid, FreeSid, WinCapabilityInternetClientSid,
+        WinCapabilityPrivateNetworkClientServerSid, WELL_KNOWN_SID_TYPE, ACL, CONTAINER_INHERIT_ACE,
         DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE, PSECURITY_DESCRIPTOR, PSID,
         SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
     };
@@ -691,11 +695,30 @@ mod win {
     /// The `internetClient` capability, which is what makes outbound network calls
     /// possible at all for a lowbox token.
     fn internet_capability(buffer: &mut Vec<u8>) -> Result<SID_AND_ATTRIBUTES, String> {
+        capability_sid(buffer, WinCapabilityInternetClientSid, "internetClient")
+    }
+
+    /// The `privateNetworkClientServer` capability. `internetClient` excludes
+    /// private (LAN) addresses, so without this a resolver on the local network
+    /// is unreachable and DNS fails for every host even with network on.
+    fn private_network_capability(buffer: &mut Vec<u8>) -> Result<SID_AND_ATTRIBUTES, String> {
+        capability_sid(
+            buffer,
+            WinCapabilityPrivateNetworkClientServerSid,
+            "privateNetworkClientServer",
+        )
+    }
+
+    fn capability_sid(
+        buffer: &mut Vec<u8>,
+        kind: WELL_KNOWN_SID_TYPE,
+        name: &str,
+    ) -> Result<SID_AND_ATTRIBUTES, String> {
         buffer.resize(SECURITY_MAX_SID_SIZE as usize, 0);
         let mut len = buffer.len() as u32;
         let ok = unsafe {
             CreateWellKnownSid(
-                WinCapabilityInternetClientSid,
+                kind,
                 std::ptr::null_mut(),
                 buffer.as_mut_ptr() as PSID,
                 &mut len,
@@ -703,7 +726,7 @@ mod win {
         };
         if ok == 0 {
             return Err(format!(
-                "could not build the internetClient capability: {}",
+                "could not build the {name} capability: {}",
                 last_error()
             ));
         }
@@ -940,12 +963,17 @@ mod win {
             eprintln!("sandbox: stage=environment {}", env.redacted().join(" "));
         }
 
-        let mut capability_sid = Vec::new();
+        // Each SID buffer must outlive the spawn: `capabilities` points into them.
+        let mut internet_sid = Vec::new();
+        let mut private_sid = Vec::new();
         let mut capabilities = Vec::new();
         if req.allow_network {
-            capabilities.push(internet_capability(&mut capability_sid).map_err(|detail| {
+            let policy_failure = |detail: String| {
                 LaunchFailure::new(Stage::SandboxPolicy, "CreateWellKnownSid", detail)
-            })?);
+            };
+            capabilities.push(internet_capability(&mut internet_sid).map_err(policy_failure)?);
+            capabilities
+                .push(private_network_capability(&mut private_sid).map_err(policy_failure)?);
         }
         let mut security = SECURITY_CAPABILITIES {
             AppContainerSid: sid.0,

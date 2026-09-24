@@ -514,10 +514,352 @@ pub fn web_fetch_recovery_note(url: &str, err: &str, read_roots: &[PathBuf]) -> 
     Some(note)
 }
 
+// ---------------------------------------------------------------------------
+// `git_clone`: the one network-and-write Git operation the agent may run.
+//
+// Git (and Git Bash) cannot run inside the AppContainer `bash` sandbox, so a
+// clone is performed here by host Git as a direct process. It is deliberately
+// narrow: only an `https://github.com/<owner>/<repo>` URL, only into an empty
+// or new folder inside a write-allowed root, only when the run has network,
+// and with hooks disabled and credential prompts off. The gate classifies it
+// as a write, so it is approved like any other change to the workspace.
+// ---------------------------------------------------------------------------
+
+/// How long a clone may run before it is killed.
+const CLONE_TIMEOUT_SECS: u64 = 300;
+
+/// What a `git_clone` URL names: a single repository, or only an owner
+/// (user/organization) with no repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloneTarget {
+    Repo { owner: String, repo: String },
+    OwnerOnly { owner: String },
+}
+
+/// A GitHub owner or repository name: ASCII letters, digits, `-`, `_`, `.`,
+/// never starting with `-` or `.` (so it can never be read as an option or a
+/// relative path segment).
+fn valid_github_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 100
+        && !s.starts_with(['-', '.'])
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+/// Strictly parse a clone URL. Only `https://github.com/<owner>` (owner only)
+/// or `https://github.com/<owner>/<repo>` with an optional `.git` suffix and
+/// an optional trailing slash is accepted. Anything else -- other hosts, other
+/// schemes (ssh, file, `ext::`), userinfo, ports, queries, fragments, or extra
+/// path segments -- is refused.
+pub fn parse_clone_url(input: &str) -> Result<CloneTarget, String> {
+    let s = input.trim();
+    let Some(rest) = s.strip_prefix("https://github.com/") else {
+        return Err(format!(
+            "only https://github.com/<owner>/<repo> URLs can be cloned, got: {s}"
+        ));
+    };
+    if rest.contains(['?', '#', '@', '\\', ':', '%']) || rest.chars().any(char::is_whitespace) {
+        return Err(format!(
+            "the URL must be a plain GitHub repository URL, got: {s}"
+        ));
+    }
+    let rest = rest.strip_suffix('/').unwrap_or(rest);
+    let segments: Vec<&str> = rest.split('/').collect();
+    match segments.as_slice() {
+        [owner] if valid_github_name(owner) => Ok(CloneTarget::OwnerOnly {
+            owner: owner.to_string(),
+        }),
+        [owner, repo] => {
+            let repo = repo.strip_suffix(".git").unwrap_or(repo);
+            if valid_github_name(owner) && valid_github_name(repo) {
+                Ok(CloneTarget::Repo {
+                    owner: owner.to_string(),
+                    repo: repo.to_string(),
+                })
+            } else {
+                Err(format!("not a valid GitHub owner/repository: {s}"))
+            }
+        }
+        _ => Err(format!(
+            "the URL must name exactly one repository (https://github.com/<owner>/<repo>), got: {s}"
+        )),
+    }
+}
+
+/// Resolve and check a clone destination. It must stay inside a write-allowed
+/// root (the project, scratch, or a granted write root) and must not already
+/// exist as a file or a non-empty directory.
+pub fn validate_clone_dest(
+    project_root: &Path,
+    scratch: Option<&Path>,
+    write_roots: &[PathBuf],
+    raw: &str,
+) -> Result<PathBuf, String> {
+    use crate::tools::sandbox::{escapes_write_roots, resolve_path};
+    if raw.trim().is_empty() {
+        return Err("destination must not be empty".to_string());
+    }
+    if escapes_write_roots(project_root, scratch, write_roots, raw).unwrap_or(true) {
+        return Err(format!(
+            "destination is outside the folders this run may write to: {raw}"
+        ));
+    }
+    let target = resolve_path(project_root, scratch, raw);
+    if target.is_file() {
+        return Err(format!(
+            "destination already exists as a file: {}",
+            target.display()
+        ));
+    }
+    if target.is_dir() {
+        let non_empty = std::fs::read_dir(&target)
+            .map(|mut it| it.next().is_some())
+            .unwrap_or(true);
+        if non_empty {
+            return Err(format!(
+                "destination already exists and is not empty: {}",
+                target.display()
+            ));
+        }
+    }
+    Ok(target)
+}
+
+/// Best effort: the owner's repositories via `gh`, when it is installed. Never
+/// required; an empty list just means the model asks without a menu.
+async fn list_owner_repos(owner: &str) -> Vec<String> {
+    let Some(gh) = on_path(if cfg!(windows) { "gh.exe" } else { "gh" }) else {
+        return Vec::new();
+    };
+    let mut cmd = tokio::process::Command::new(gh);
+    cmd.args([
+        "repo", "list", owner, "--limit", "100", "--json", "name", "--jq", ".[].name",
+    ])
+    .env("GH_PROMPT_DISABLED", "1")
+    .stdin(std::process::Stdio::null())
+    .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    match tokio::time::timeout(std::time::Duration::from_secs(20), cmd.output()).await {
+        Ok(Ok(out)) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|l| valid_github_name(l))
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The `git_clone` tool. See the section comment above for the constraints.
+pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
+    let Some(url) = args
+        .get("url")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return "ERROR: git_clone requires a 'url' string (https://github.com/<owner>/<repo>)."
+            .to_string();
+    };
+    let (owner, repo) = match parse_clone_url(url) {
+        Ok(CloneTarget::Repo { owner, repo }) => (owner, repo),
+        Ok(CloneTarget::OwnerOnly { owner }) => {
+            let repos = list_owner_repos(&owner).await;
+            let listed = if repos.is_empty() {
+                String::new()
+            } else {
+                format!(" (their repositories include: {})", repos.join(", "))
+            };
+            return json!({
+                "status": "owner_only",
+                "owner": owner,
+                "repositories": repos,
+                "message": format!(
+                    "{url} names the GitHub user or organization '{owner}', not a repository. Nothing was cloned. Ask the user which repository to clone{listed}, then call git_clone with https://github.com/{owner}/<repo>."
+                ),
+                "recommended_actions": ["ask_user_which_repository"],
+            })
+            .to_string();
+        }
+        Err(e) => return format!("ERROR: git_clone: {e}"),
+    };
+    if !ctx.allow_network {
+        return json!({
+            "status": "network_disabled",
+            "repository": format!("{owner}/{repo}"),
+            "message": "Network access is off for this run, so the repository cannot be cloned. Ask the user to enable network access for the agent, or to clone it themselves and attach the folder.",
+            "recommended_actions": ["ask_user_to_enable_network", "ask_user_to_attach_clone"],
+        })
+        .to_string();
+    }
+    let dest_raw = args
+        .get("dest")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| repo.clone());
+    let dest = match validate_clone_dest(
+        ctx.project_root,
+        ctx.scratch_root,
+        ctx.write_roots,
+        &dest_raw,
+    ) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: git_clone: {e}"),
+    };
+    let Some(git) = discover_git() else {
+        return json!({
+            "status": "git_unavailable",
+            "repository": format!("{owner}/{repo}"),
+            "message": "Native Git is not installed on this machine, so the repository cannot be cloned. Ask the user to install Git, or to clone it themselves and attach the folder.",
+            "recommended_actions": ["ask_user_to_install_git", "ask_user_to_attach_clone"],
+        })
+        .to_string();
+    };
+    // Rebuilt from the validated parts, never the raw argument.
+    let canonical = format!("https://github.com/{owner}/{repo}.git");
+    let mut cmd = tokio::process::Command::new(&git);
+    // Hooks off (empty hooksPath), https as the only transport, no credential
+    // prompt, and `--` so the URL can never be read as an option.
+    cmd.args([
+        "-c",
+        "core.hooksPath=",
+        "-c",
+        "protocol.allow=never",
+        "-c",
+        "protocol.https.allow=always",
+        "clone",
+        "--no-recurse-submodules",
+        "--",
+    ])
+    .arg(&canonical)
+    .arg(&dest)
+    .env("GIT_TERMINAL_PROMPT", "0")
+    .env("GCM_INTERACTIVE", "never")
+    .stdin(std::process::Stdio::null())
+    .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    let out = match tokio::time::timeout(
+        std::time::Duration::from_secs(CLONE_TIMEOUT_SECS),
+        cmd.output(),
+    )
+    .await
+    {
+        Err(_) => {
+            return format!(
+                "ERROR: git_clone timed out after {CLONE_TIMEOUT_SECS}s cloning {canonical}"
+            )
+        }
+        Ok(Err(e)) => return format!("ERROR: git_clone failed to launch git: {e}"),
+        Ok(Ok(out)) => out,
+    };
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return json!({
+            "status": "clone_failed",
+            "repository": format!("{owner}/{repo}"),
+            "message": format!("git clone failed: {}", err.trim()),
+            "recommended_actions": ["check_repository_name_with_user", "ask_user_to_clone_and_attach"],
+        })
+        .to_string();
+    }
+    format!(
+        "Cloned {owner}/{repo} into {} with native Git (hooks disabled). Read it with the read/ls/grep tools. Git does not run inside the bash sandbox; use git_inspect for Git facts about this clone.",
+        dest.display()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::process::Command;
+
+    #[test]
+    fn clone_url_accepts_owner_repo_and_git_suffix() {
+        let want = CloneTarget::Repo {
+            owner: "janhq".into(),
+            repo: "jan".into(),
+        };
+        assert_eq!(
+            parse_clone_url("https://github.com/janhq/jan").unwrap(),
+            want
+        );
+        assert_eq!(
+            parse_clone_url("https://github.com/janhq/jan.git").unwrap(),
+            want
+        );
+        assert_eq!(
+            parse_clone_url(" https://github.com/janhq/jan/ ").unwrap(),
+            want
+        );
+    }
+
+    #[test]
+    fn clone_url_owner_only() {
+        let want = CloneTarget::OwnerOnly {
+            owner: "janhq".into(),
+        };
+        assert_eq!(parse_clone_url("https://github.com/janhq").unwrap(), want);
+        assert_eq!(parse_clone_url("https://github.com/janhq/").unwrap(), want);
+    }
+
+    #[test]
+    fn clone_url_rejects_everything_else() {
+        for bad in [
+            "http://github.com/o/r",
+            "https://gitlab.com/o/r",
+            "https://github.com.evil.com/o/r",
+            "git@github.com:o/r.git",
+            "ssh://git@github.com/o/r",
+            "file:///C:/repo",
+            "ext::sh -c touch% /tmp/pwned",
+            "https://user@github.com/o/r",
+            "https://github.com:443/o/r",
+            "https://github.com/o/r/tree/main",
+            "https://github.com/o/r?tab=readme",
+            "https://github.com/o/r#readme",
+            "https://github.com/o//r",
+            "https://github.com/-o/r",
+            "https://github.com/o/..",
+            "https://github.com/",
+            "o/r",
+        ] {
+            assert!(parse_clone_url(bad).is_err(), "accepted {bad}");
+        }
+    }
+
+    #[test]
+    fn clone_dest_must_be_inside_write_roots_and_empty() {
+        let base = std::env::temp_dir().join(format!("jan-clone-dest-{}", std::process::id()));
+        let project = base.join("project");
+        let granted = base.join("granted");
+        let outside = base.join("outside");
+        for d in [&project, &granted, &outside] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        // New folder inside the project: fine.
+        assert!(validate_clone_dest(&project, None, &[], "jan").is_ok());
+        // Existing empty folder: fine.
+        std::fs::create_dir_all(project.join("empty")).unwrap();
+        assert!(validate_clone_dest(&project, None, &[], "empty").is_ok());
+        // Existing non-empty folder or file: refused.
+        std::fs::create_dir_all(project.join("full")).unwrap();
+        std::fs::write(project.join("full").join("x"), "x").unwrap();
+        assert!(validate_clone_dest(&project, None, &[], "full").is_err());
+        std::fs::write(project.join("file"), "x").unwrap();
+        assert!(validate_clone_dest(&project, None, &[], "file").is_err());
+        // Escaping the project: refused, unless it is a granted write root.
+        assert!(validate_clone_dest(&project, None, &[], "../outside/r").is_err());
+        let g = granted.join("r").display().to_string();
+        assert!(validate_clone_dest(&project, None, &[], &g).is_err());
+        assert!(validate_clone_dest(&project, None, &[granted.clone()], &g).is_ok());
+        assert!(validate_clone_dest(&project, None, &[], "  ").is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     fn init_repo(dir: &Path, remote: &str) {
         let git = discover_git().expect("git");

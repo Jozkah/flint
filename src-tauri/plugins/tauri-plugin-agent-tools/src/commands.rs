@@ -1112,7 +1112,9 @@ async fn execute_tool_inner(
         _ => read_roots.first().map(|r| workspace::project_store(r)),
     };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
-        .with_network(allow_network.unwrap_or(false))
+        // The toggle, clamped by the project's `agent.toml` and the machine's
+        // policy: either one can turn the shell's network off.
+        .with_network(policy.network.allowed && allow_network.unwrap_or(false))
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
