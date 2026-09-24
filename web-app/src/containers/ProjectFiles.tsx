@@ -11,6 +11,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -636,6 +645,20 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
   }
 
+  // Deleting drops the file's embeddings with no undo, so both row entry
+  // points (trash icon, context menu) only ask; the dialog does the delete.
+  const [pendingDelete, setPendingDelete] = useState<ProjectFile | null>(null)
+
+  const requestDeleteFile = (fileId: string) => {
+    setPendingDelete(files.find((f) => f.id === fileId) ?? null)
+  }
+
+  const confirmDeleteFile = () => {
+    const file = pendingDelete
+    setPendingDelete(null)
+    if (file) void handleDeleteFile(file.id)
+  }
+
   const handleDeleteFile = async (fileId: string) => {
     try {
       const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
@@ -733,7 +756,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             <FileRow
               key={file.id}
               file={file}
-              onDelete={handleDeleteFile}
+              onDelete={requestDeleteFile}
               t={t}
             />
           ))}
@@ -757,6 +780,39 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         </div>
         </div>
       )}
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common:projects.deleteFileDialog.title')}</DialogTitle>
+            <DialogDescription>
+              {t('common:projects.deleteFileDialog.description', {
+                fileName: pendingDelete?.name ?? '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
+                {t('common:cancel')}
+              </Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={confirmDeleteFile}
+            >
+              {t('common:delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
