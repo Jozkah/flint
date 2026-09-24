@@ -704,11 +704,12 @@ enum AgentCommands {
         /// The session it belongs to. Needed to send; a read does not use it.
         #[arg(long)]
         session: Option<String>,
-        /// Send instead of read: the run the message is from.
-        #[arg(long)]
+        /// Send instead of read: the run the message is from. Requires
+        /// `--body`: half a send must be refused, not read as a read (#150).
+        #[arg(long, requires = "body")]
         from: Option<String>,
         /// What to say. Requires `--from`.
-        #[arg(long)]
+        #[arg(long, requires = "from")]
         body: Option<String>,
         #[arg(long, default_value = "")]
         subject: String,
@@ -2987,6 +2988,22 @@ mod tests {
                 "{flag} must not exist"
             );
         }
+    }
+
+    /// `--from` without `--body` (or the reverse) is half a send; it must be
+    /// refused rather than fall through to reading the mailbox (#150).
+    #[test]
+    fn agent_mail_refuses_half_a_send() {
+        let base = ["jan", "cli", "agent", "mail", "--run", "r1"];
+        let with = |extra: &[&'static str]| {
+            let mut args = base.to_vec();
+            args.extend_from_slice(extra);
+            Cli::try_parse_from(args)
+        };
+        assert!(with(&["--from", "r2"]).is_err(), "--from alone was accepted");
+        assert!(with(&["--body", "hi"]).is_err(), "--body alone was accepted");
+        assert!(with(&[]).is_ok(), "a plain read must still parse");
+        assert!(with(&["--from", "r2", "--body", "hi", "--session", "s"]).is_ok());
     }
 
     // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must
