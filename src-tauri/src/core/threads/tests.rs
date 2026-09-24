@@ -308,10 +308,17 @@ async fn test_modify_and_delete_thread() {
         tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
     }
 
+    // An agent tool call made the thread a scratch dir (Jozkah/jan#186).
+    let scratch = tauri_plugin_agent_tools::workspace::ensure_scratch_dir(&thread_id)
+        .await
+        .unwrap();
+    fs::write(scratch.join("work.txt"), b"x").unwrap();
+
     // Delete the thread
     delete_thread(app.handle().clone(), thread_id.clone())
         .await
         .unwrap();
+    assert!(!scratch.exists(), "a deleted thread's scratch dir must go with it");
 
     // Verify deletion
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -261,6 +261,10 @@ pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
     if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
         eprintln!("could not remove the records of thread {thread_id}: {e}");
     }
+    // Its agent scratch dir goes too (Jozkah/jan#186).
+    if let Some(scratch) = crate::core::threads::utils::thread_scratch_dir(thread_id) {
+        let _ = fs::remove_dir_all(scratch);
+    }
     Ok(())
 }
 
