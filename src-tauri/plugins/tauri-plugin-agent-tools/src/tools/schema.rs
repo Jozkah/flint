@@ -241,8 +241,17 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_list",
-                "description": "List the project skills — reusable procedures for this project — with a one-line description of each. Takes no arguments. Check it when a task looks like one a skill might cover, then load the full procedure with `skill_read` before following it.",
-                "parameters": { "type": "object", "properties": {}, "required": [] }
+                "description": "List the skills — reusable procedures — with a one-line summary of each. Pass `query` to list only skills whose name or summary contains it; the system prompt lists only part of a large library, so search here for the rest. Check it when a task looks like one a skill might cover, then load the full procedure with `skill_read` before following it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Optional text to match, case-insensitively, against each skill's name and summary."
+                        }
+                    },
+                    "required": []
+                }
             }
         }),
         json!({

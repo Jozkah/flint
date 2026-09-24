@@ -421,6 +421,13 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn ask_user_guidance(&self, _summary: &str) -> UserGuidance {
         UserGuidance::Unavailable
     }
+
+    /// Tool schemas added during the run -- MCP tools the model loaded on
+    /// demand (`mcp_catalog`) -- appended after the run's own tools on every
+    /// later request. The default adds none.
+    fn loaded_tools(&self) -> Vec<serde_json::Value> {
+        Vec::new()
+    }
 }
 
 /// One provider request, as the canonical record names it (AH-004).
@@ -1075,6 +1082,10 @@ struct SubagentContext {
 /// and everything else to the existing `McpToolInvoker`, preserving input order.
 struct CompositeToolInvoker {
     mcp: McpToolInvoker,
+    /// MCP tools held back from the request because there were too many to
+    /// send every turn; the model searches and loads them with `mcp_tools`.
+    /// `None` when every MCP schema is sent as before.
+    deferred_mcp: Option<crate::core::agent::mcp_catalog::DeferredMcpTools>,
     /// The conversation as it stood when this turn's calls were dispatched
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
@@ -2837,6 +2848,13 @@ impl ToolInvoker for CompositeToolInvoker {
         out
     }
 
+    fn loaded_tools(&self) -> Vec<serde_json::Value> {
+        self.deferred_mcp
+            .as_ref()
+            .map(|d| d.loaded_schemas())
+            .unwrap_or_default()
+    }
+
     async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
         if self.ask_requests.is_none() {
             return UserGuidance::Unavailable;
@@ -3031,6 +3049,19 @@ impl CompositeToolInvoker {
                 let content = self.handle_todo_tool(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
+            }
+            // Searching and loading held-back MCP schemas reads only this
+            // run's own tool list, so it needs no gate.
+            if name == crate::core::agent::mcp_catalog::TOOL_NAME {
+                if let Some(deferred) = &self.deferred_mcp {
+                    let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let Some(args) = parse_tool_args(tc) else {
+                        out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                        continue;
+                    };
+                    out.push(ToolOutcome::plain(id, deferred.handle(&args)));
+                    continue;
+                }
             }
             // AH-057: read-only, so it is answered in Plan mode as well, and it
             // needs no subagent context.
@@ -4312,6 +4343,14 @@ pub(crate) async fn context_advertised_tools(
         todo_enabled,
         !tool_to_server.is_empty(),
     );
+    // Sized as a run sends them: held back behind `mcp_tools` when too many.
+    if project_root.is_some() {
+        if let Some(deferred) =
+            crate::core::agent::mcp_catalog::DeferredMcpTools::hold_back(&mut tools, &tool_to_server)
+        {
+            tools.push(deferred.tool_schema());
+        }
+    }
     tools
 }
 
@@ -4721,6 +4760,17 @@ async fn orchestrate_inner(
         todo_registry.is_some(),
         !tool_to_server.is_empty(),
     );
+    // Too many MCP schemas to send every turn: hold them back behind
+    // `mcp_tools`. Only for a project run, whose invoker can answer it, and
+    // not under a per-run allowlist, which already names the few it wants.
+    let deferred_mcp = if project_root.is_some() && allowed_names.is_none() {
+        crate::core::agent::mcp_catalog::DeferredMcpTools::hold_back(&mut openai_tools, &tool_to_server)
+    } else {
+        None
+    };
+    if let Some(deferred) = &deferred_mcp {
+        openai_tools.push(deferred.tool_schema());
+    }
 
     let (upstream_url, session_api_keys) = resolve_upstream_for_model(
         &model_id,
@@ -4874,6 +4924,7 @@ async fn orchestrate_inner(
         let auto_approve_limit_from_body =
             normalize_auto_approve_limit(json_body.get("auto_approve_limit"));
         let tools = CompositeToolInvoker {
+            deferred_mcp,
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
             auto_approve_limit: auto_approve_limit_from_body,
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
@@ -5632,10 +5683,19 @@ async fn run_turn_cycle(
             let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
             loop {
+                // MCP tools loaded on demand go after the run's own, in the
+                // order they were loaded: the array only grows at its end, so
+                // a prefix cache over the rest still holds.
+                let loaded = tools.loaded_tools();
+                let turn_tools: std::borrow::Cow<'_, [serde_json::Value]> = if loaded.is_empty() {
+                    std::borrow::Cow::Borrowed(openai_tools)
+                } else {
+                    std::borrow::Cow::Owned(openai_tools.iter().cloned().chain(loaded).collect())
+                };
                 let request_value = build_completion_request(
                     model_id,
                     &conversation_messages,
-                    openai_tools,
+                    &turn_tools,
                     json_body,
                     (turn == 0).then_some(force_first_tool).flatten(),
                 );
@@ -9285,6 +9345,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            deferred_mcp: None,
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::disabled()),
             auto_approve_limit: DEFAULT_AUTO_APPROVE_LIMIT,
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
