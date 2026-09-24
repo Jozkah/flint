@@ -210,3 +210,29 @@ describe('CodeBlockCopyButton', () => {
     })
   })
 })
+
+describe('CodeBlock async highlight ordering (#269)', () => {
+  it('shows the newest code even when an older highlight resolves later', async () => {
+    const resolvers = new Map<string, Array<(html: string) => void>>()
+    vi.mocked(codeToHtml).mockImplementation(
+      (code: string) =>
+        new Promise<string>((resolve) => {
+          resolvers.set(code, [...(resolvers.get(code) ?? []), resolve])
+        }) as ReturnType<typeof codeToHtml>
+    )
+
+    const { container, rerender } = render(
+      <CodeBlock code="A" language="json" />
+    )
+    rerender(<CodeBlock code="B" language="json" />)
+
+    await waitFor(() => expect(resolvers.has('B')).toBe(true))
+    // The older run resolves first, after the newer run has started.
+    resolvers.get('A')!.forEach((r) => r('<pre>old-A</pre>'))
+    await new Promise((r) => setTimeout(r, 0))
+    resolvers.get('B')!.forEach((r) => r('<pre>new-B</pre>'))
+
+    await waitFor(() => expect(container.innerHTML).toContain('new-B'))
+    expect(container.innerHTML).not.toContain('old-A')
+  })
+})
