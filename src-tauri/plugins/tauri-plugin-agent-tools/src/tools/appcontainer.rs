@@ -1600,12 +1600,12 @@ mod tests {
         let is_dir = |p: &Path| dirs.iter().any(|d| d == p);
 
         assert_eq!(
-            write_root_acl_plan(&[], &[a.clone()], is_dir),
+            write_root_acl_plan(&[], std::slice::from_ref(&a), is_dir),
             vec![AclStep::IsolateJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
         );
         // `a` dropped: its .jan and its grant are revoked, `b` granted.
         assert_eq!(
-            write_root_acl_plan(&[a.clone(), gone.clone()], &[b.clone()], is_dir),
+            write_root_acl_plan(&[a.clone(), gone.clone()], std::slice::from_ref(&b), is_dir),
             vec![
                 AclStep::Revoke(a.join(".jan")),
                 AclStep::Revoke(a.clone()),
@@ -1615,12 +1615,12 @@ mod tests {
         );
         // A dropped root without a .jan: only the root is revoked.
         assert_eq!(
-            write_root_acl_plan(&[b.clone()], &[], is_dir),
+            write_root_acl_plan(std::slice::from_ref(&b), &[], is_dir),
             vec![AclStep::Revoke(b.clone())]
         );
         // Still granted: re-applied, nothing revoked.
         assert_eq!(
-            write_root_acl_plan(&[a.clone()], &[a.clone()], is_dir),
+            write_root_acl_plan(std::slice::from_ref(&a), std::slice::from_ref(&a), is_dir),
             vec![AclStep::IsolateJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
         );
     }
@@ -1649,7 +1649,7 @@ mod tests {
         // The record already lists it, as after an upgrade: nothing is revoked.
         std::fs::write(&record, wt.to_string_lossy().as_bytes()).unwrap();
 
-        win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
         let allows: Vec<u32> = win::aces_for(&wt, psid)
             .into_iter()
             .filter(|&(ty, flags, _)| ty == 0 && flags & 0x10 == 0)
@@ -1694,7 +1694,7 @@ mod tests {
         let jan = wt.join(".jan");
         let policy = jan.join("agent/agent.toml");
         for pass in 0..3 {
-            win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
+            win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
             let aces = win::aces_for(&jan, psid);
             assert!(aces.is_empty(), "pass {pass}: .jan names the container: {aces:x?}");
             let aces = win::aces_for(&policy, psid);
@@ -1732,14 +1732,14 @@ mod tests {
         };
         let psid = win::sid_ptr(&sid);
 
-        win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
         assert!(win::acl_names(&wt, psid), "the authorized worktree was not granted");
         // Jozkah/jan#124: its `.jan` exists and names the container nowhere.
         assert!(wt.join(".jan").is_dir(), "the worktree's .jan was not created");
         let jan_aces = win::aces_for(&wt.join(".jan"), psid);
         assert!(jan_aces.is_empty(), "the worktree's .jan names the container: {jan_aces:?}");
 
-        win::sync_write_roots(&record, psid, &[other.clone()]).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&other)).unwrap();
         assert!(!win::acl_names(&wt, psid), "the revoked worktree kept its ACE");
         assert!(
             win::aces_for(&wt.join(".jan"), psid).is_empty(),
