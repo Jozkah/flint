@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
+import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
@@ -417,6 +418,12 @@ const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
+
+/** A session title for a request: a `/command` is named as typed. */
+const slashTitle = (text: string) => {
+  const slash = parseSlashMarker(text)
+  return slash ? slashDisplay(slash.invocation) : text
+}
 
 function CoworkPage() {
   const { t } = useTranslation()
@@ -1903,7 +1910,7 @@ function CoworkPage() {
     }
     // Another session's message is not what this session is about.
     if (text && !from && current?.title === 'New session')
-      store.setTitle(sid, text.slice(0, 40))
+      store.setTitle(sid, slashTitle(text).slice(0, 40))
 
     /**
      * A managed worktree still being the thing this session recorded.
@@ -3718,6 +3725,23 @@ function CoworkPage() {
   runRequestRef.current = runRequest
 
   const handleSubmit = (text: string) => void runRequest(text)
+  // Cowork's own `/` built-ins; `/help` is added by the composer.
+  const slashBuiltins = useMemo(
+    () => [
+      {
+        name: 'new',
+        description: t('slash:builtin.newSession'),
+        run: () => {
+          // Same rule as the sidebar's entry point: one press, at most one
+          // session. The draft is the `/new` being consumed, so it is no draft.
+          const store = useCoworkSessions.getState()
+          const id = store.startSession({ running, hasDraft: false })
+          store.selectSession(id)
+        },
+      },
+    ],
+    [t, running]
+  )
 
   /**
    * Take the last turn again. Rewinding to the question and resuming is the
@@ -4603,6 +4627,9 @@ function CoworkPage() {
                 // `@` names files in the folder the run works in, nothing else.
                 referenceRoot={treeRoot}
                 referenceSources={referenceSources}
+                slashSurface="cowork"
+                slashProject={folder}
+                slashBuiltins={slashBuiltins}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}

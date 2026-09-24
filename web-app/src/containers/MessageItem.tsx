@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { memo, useState, useCallback, useEffect, useMemo } from 'react'
+import { SlashInvocation } from '@/components/SlashInvocation'
+import { parseSlashMarker } from '@/lib/slashCommands'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
 import { cn } from '@/lib/utils'
@@ -346,6 +348,10 @@ export const MessageItem = memo(
           ? extractFilesFromPrompt(part.text).cleanPrompt
           : part.text
 
+      // A `/command` the user sent reads as typed; the expansion folds away.
+      const slashInvocation =
+        message.role === 'user' ? parseSlashMarker(displayText) : null
+
       if (
         !displayText.trim() &&
         message.role === 'user' &&
@@ -401,11 +407,17 @@ export const MessageItem = memo(
                     ))}
                   </div>
                 )}
-                {displayText && (
-                  <div dir="auto" className="select-text whitespace-pre-wrap">
-                    {displayText}
-                  </div>
-                )}
+                {displayText &&
+                  (slashInvocation ? (
+                    <SlashInvocation
+                      invocation={slashInvocation.invocation}
+                      body={slashInvocation.body}
+                    />
+                  ) : (
+                    <div dir="auto" className="select-text whitespace-pre-wrap">
+                      {displayText}
+                    </div>
+                  ))}
               </div>
             </div>
           ) : (

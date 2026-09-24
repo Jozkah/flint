@@ -1,6 +1,8 @@
 import { memo, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
+import { SlashInvocation } from '@/components/SlashInvocation'
+import { parseSlashMarker } from '@/lib/slashCommands'
 
 /**
  * A room message rendered as markdown (so a participant can write **bold**,
@@ -113,6 +115,15 @@ export const RoomMessageText = memo(function RoomMessageText({
     () => linkifyMentions(normalizeToolBlocks(stripAddressPrefix(text)), mentionColors),
     [text, mentionColors]
   )
+  // A `/command` the user sent: shown as typed, expansion folded away.
+  const slash = useMemo(() => parseSlashMarker(text), [text])
+  if (slash) {
+    return (
+      <div className={className}>
+        <SlashInvocation invocation={slash.invocation} body={slash.body} />
+      </div>
+    )
+  }
   return (
     <RenderMarkdown
       content={content}

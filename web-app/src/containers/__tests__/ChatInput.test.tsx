@@ -260,6 +260,14 @@ vi.mock('sonner', () => ({
 
 vi.mock('ai', () => ({ generateId: () => 'gen-id-1' }))
 
+// The `/` catalog for the composer: one plugin command, per surface.
+let slashCatalog: any[] = []
+const loadSlashCatalogMock = vi.fn(async () => slashCatalog)
+vi.mock('@/lib/slashCatalog', () => ({
+  loadSlashCatalog: (...args: any[]) => (loadSlashCatalogMock as any)(...args),
+  invokeSlashSkill: vi.fn(),
+}))
+
 // Stub heavy children
 vi.mock('@/containers/QueuedMessageBubble', () => ({
   QueuedMessageChip: ({ message }: any) => (
@@ -962,3 +970,69 @@ describe('ChatInput', () => {
     })
   })
 })
+
+describe('ChatInput slash commands', () => {
+  beforeEach(() => {
+    resetAll()
+    slashCatalog = [
+      {
+        kind: 'command',
+        name: 'commit',
+        plugin: 'git',
+        description: 'Make a commit',
+        scope: 'project',
+        body: 'Commit: $ARGUMENTS',
+      },
+    ]
+    loadSlashCatalogMock.mockClear()
+  })
+
+  it('reads the catalog for its surface and folder', async () => {
+    renderInput({ slashSurface: 'cowork', slashProject: 'C:/work' })
+    await waitFor(() =>
+      expect(loadSlashCatalogMock).toHaveBeenCalledWith('cowork', 'C:/work')
+    )
+  })
+
+  it('opens the menu on a leading slash', async () => {
+    const view = renderInput()
+    await waitFor(() => expect(loadSlashCatalogMock).toHaveBeenCalled())
+    promptState = '/com'
+    fireEvent.change(getTextarea(), { target: { value: '/com' } })
+    view.rerender(<ChatInput />)
+    await waitFor(() =>
+      expect(screen.getByTestId('slash-menu')).toBeInTheDocument()
+    )
+    expect(screen.getByText('/commit')).toBeInTheDocument()
+    // Enter picks the command instead of sending.
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    expect(setPromptMock).toHaveBeenLastCalledWith('/commit ')
+  })
+
+  it('sends the expanded command and keeps the typed text in history', async () => {
+    const onSubmit = vi.fn()
+    promptState = '/commit fix typo'
+    renderInput({ onSubmit })
+    await waitFor(() => expect(loadSlashCatalogMock).toHaveBeenCalled())
+    // Let the catalog land before sending.
+    await act(async () => {})
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const [text] = onSubmit.mock.calls[0]
+    expect(text).toContain('Commit: fix typo')
+    expect(text.startsWith('<!-- flint:slash ')).toBe(true)
+    expect(addToHistoryMock).toHaveBeenCalledWith('/commit fix typo')
+  })
+
+  it('sends a path-like or unknown slash message unchanged', async () => {
+    const onSubmit = vi.fn()
+    promptState = '/usr/bin/env is missing'
+    renderInput({ onSubmit })
+    await waitFor(() => expect(loadSlashCatalogMock).toHaveBeenCalled())
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith('/usr/bin/env is missing', undefined)
+    )
+  })
+})
+
