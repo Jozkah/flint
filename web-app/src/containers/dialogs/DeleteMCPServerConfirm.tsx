@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -24,9 +25,16 @@ export default function DeleteMCPServerConfirm({
   onConfirm,
 }: DeleteMCPServerConfirmProps) {
   const { t } = useTranslation()
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          // Open on Cancel: a reflexive Enter must not delete (#78).
+          cancelButtonRef.current?.focus()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{t('mcp-servers:deleteServer.title')}</DialogTitle>
           <DialogDescription>
@@ -45,6 +53,7 @@ export default function DeleteMCPServerConfirm({
             size="sm"
             variant="ghost"
             className="pointer-coarse:h-11"
+            ref={cancelButtonRef}
             onClick={() => onOpenChange(false)}
           >
             {t('common:cancel')}
@@ -53,7 +62,6 @@ export default function DeleteMCPServerConfirm({
             size="sm"
             variant="destructive"
             className="pointer-coarse:h-11"
-            autoFocus
             onClick={() => {
               onConfirm()
               onOpenChange(false)

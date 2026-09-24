@@ -20,17 +20,11 @@ interface DeleteMessageDialogProps {
 export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
-  const deleteButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
 
   const handleDelete = () => {
     onDelete()
     setIsOpen(false)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleDelete()
-    }
   }
 
   const trigger = (
@@ -58,7 +52,8 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
       <DialogContent
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          deleteButtonRef.current?.focus()
+          // Open on Cancel: a reflexive Enter must not delete (#78).
+          cancelButtonRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -69,15 +64,18 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
           </DialogDescription>
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <DialogClose asChild>
-              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
+              <Button
+                ref={cancelButtonRef}
+                variant="ghost"
+                size="sm"
+                className="w-full sm:w-auto"
+              >
                 {t('common:cancel')}
               </Button>
             </DialogClose>
             <Button
-              ref={deleteButtonRef}
               variant="destructive"
               onClick={handleDelete}
-              onKeyDown={handleKeyDown}
               size="sm"
               className="w-full sm:w-auto"
               aria-label={t('common:deleteMessage')}
