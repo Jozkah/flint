@@ -68,6 +68,11 @@ pub struct PolicyChange {
     /// Whether the default mode changes, and to what.
     #[serde(default)]
     pub default_changed_to: Option<String>,
+    /// What the default was before, when it changes. Whether a new default
+    /// widens depends on what it replaces: `read-only` is a narrowing from
+    /// `allow` and a widening from `deny`.
+    #[serde(default)]
+    pub default_changed_from: Option<String>,
 }
 
 impl PolicyChange {
@@ -77,7 +82,25 @@ impl PolicyChange {
         self.deny_removed.is_empty()
             && self.allow_write_added.is_empty()
             && self.allow_added.is_empty()
-            && !matches!(self.default_changed_to.as_deref(), Some("allow"))
+            && !self.loosens_default()
+    }
+
+    /// Whether the default moves up the `deny` < `read-only` < `allow` order,
+    /// the same ranking an org policy holds a project to. Only `allow` used to
+    /// count, so `deny` to `read-only` -- which advertises every MCP tool that
+    /// `deny` hid -- was imported without consent (Jozkah/jan#44).
+    fn loosens_default(&self) -> bool {
+        let Some(to) = self.default_changed_to.as_deref() else {
+            return false;
+        };
+        let rank = |value: &str| {
+            crate::org_policy::permissiveness(crate::permissions::PermissionDefault::from_str_lenient(
+                value,
+            ))
+        };
+        // No previous value recorded: judge against the tightest default.
+        let from = self.default_changed_from.as_deref().map_or(0, rank);
+        rank(to) > from
     }
 
     /// Everything this change would let the agent do that it cannot do now:
@@ -92,8 +115,14 @@ impl PolicyChange {
                 .iter()
                 .map(|r| format!("allows writing with {r}")),
         );
-        if self.default_changed_to.as_deref() == Some("allow") {
-            out.push("allows everything by default".to_string());
+        if self.loosens_default() {
+            let to = self.default_changed_to.as_deref().unwrap_or_default();
+            let from = self.default_changed_from.as_deref().unwrap_or("unknown");
+            out.push(if to == "allow" {
+                format!("allows everything by default (was {from})")
+            } else {
+                format!("loosens the default from {from} to {to}")
+            });
         }
         out
     }
@@ -205,6 +234,8 @@ pub fn compare(current: &PolicyDocument, document: &PolicyDocument) -> PolicyCha
         allow_write_removed: added(&document.allow_write, &current.allow_write),
         default_changed_to: (current.default != document.default)
             .then(|| document.default.clone()),
+        default_changed_from: (current.default != document.default)
+            .then(|| current.default.clone()),
     }
 }
 
@@ -279,6 +310,32 @@ mod tests {
             &["bash".to_string(), "write(/etc/**)".to_string()],
             &[],
         )
+    }
+
+    /// Jozkah/jan#44: any move up deny < read-only < allow is a widening, not
+    /// only a move to allow; moves down are still accepted without consent.
+    #[test]
+    fn loosening_the_default_to_read_only_is_a_widening() {
+        let doc = |default: &str| export(default, &[], &[], &[]);
+        for (from, to) in [("deny", "read-only"), ("deny", "allow"), ("read-only", "allow")] {
+            let refusal = plan_import(&doc(from), &render(&doc(to)), Widening::Refuse)
+                .expect_err("a looser default needs consent");
+            assert_eq!(refusal.kind(), ErrorKind::PolicyViolation, "{from} -> {to}");
+            let (_, change) = plan_import(&doc(from), &render(&doc(to)), Widening::Accept)
+                .expect("accepted when asked");
+            assert!(!change.is_narrowing_or_equal(), "{from} -> {to}");
+            assert!(
+                change.widenings().iter().any(|w| w.contains(from) && w.contains(to)),
+                "{from} -> {to}: {:?}",
+                change.widenings()
+            );
+        }
+        for (from, to) in [("read-only", "deny"), ("allow", "read-only"), ("allow", "deny")] {
+            let (_, change) = plan_import(&doc(from), &render(&doc(to)), Widening::Refuse)
+                .expect("a tighter default needs no consent");
+            assert!(change.is_narrowing_or_equal(), "{from} -> {to}");
+            assert!(change.widenings().is_empty(), "{from} -> {to}");
+        }
     }
 
     /// A policy goes out as a file and comes back as the same policy.
