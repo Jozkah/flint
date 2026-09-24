@@ -164,6 +164,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_resolve_extensions,
+        core::agent::commands::agent_slash_catalog,
+        core::agent::commands::agent_slash_invoke_skill,
         core::agent::commands::agent_extensions_matrix_get,
         core::agent::commands::agent_extensions_matrix_set,
         core::agent::commands::agent_extensions_matrix_set_item,
