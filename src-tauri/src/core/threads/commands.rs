@@ -5,7 +5,7 @@ use uuid::Uuid;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use super::db;
 use super::helpers::{
-    append_message_line, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
+    append_message_line_if_new, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
     update_thread_metadata, write_file_atomically, write_messages_to_file,
 };
 use super::{
@@ -197,24 +197,14 @@ pub async fn create_message<R: Runtime>(
         // Ensure directory exists right before file operations to handle race conditions
         ensure_thread_dir_exists(&data_folder, &thread_id)?;
 
-        // Dedupe against a modify_message upsert that landed first.
+        // Dedupe against a modify_message upsert that landed first, and settle
+        // a torn tail an earlier interrupted write left so this message is not
+        // glued onto it (janhq/jan#8019) - from one read of the file.
         let message_id = message
             .get("id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        if let Some(ref id) = message_id {
-            let existing = read_messages_from_file(&data_folder, &thread_id)?;
-            if existing
-                .iter()
-                .any(|m| m.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-            {
-                return Ok(message);
-            }
-        }
-
-        // Settles a torn tail an earlier interrupted write left, so this
-        // message is not glued onto it (janhq/jan#8019).
-        append_message_line(&path, &message)?;
+        append_message_line_if_new(&path, &message, message_id.as_deref())?;
     }
 
     Ok(message)
