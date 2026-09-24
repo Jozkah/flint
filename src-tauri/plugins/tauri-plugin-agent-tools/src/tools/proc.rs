@@ -770,7 +770,7 @@ foreach ($n in 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe') { Set-Item -P
 pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
     match flavor {
         ShellFlavor::PowerShell => {
-            let ws = ps_literal(&cwd.to_string_lossy());
+            let ws = ps_literal(&without_verbatim_prefix(&cwd.to_string_lossy()));
             let body = ps_literal(&format!("{command}\n$global:__JanOk = $?"));
             let nested = NESTED_SHELL;
             format!(
@@ -787,6 +787,23 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             )
         }
         _ => command.to_string(),
+    }
+}
+
+/// A canonicalized Windows path without its verbatim `\\?\` prefix.
+///
+/// Windows PowerShell 5.1 can set its location to a `\\?\C:\...` drive root
+/// and run scripts there, but creating a new file under it fails ("An object
+/// at the specified path progress.log does not exist"). A managed worktree
+/// arrives canonicalized, so a script run from it could not write a single
+/// relative file. `\\?\UNC\server\share` becomes `\\server\share`.
+pub(crate) fn without_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
     }
 }
 
@@ -850,6 +867,40 @@ pub(crate) fn ps_literal(text: &str) -> String {
 #[cfg(test)]
 mod located_tests {
     use super::*;
+
+    #[test]
+    fn verbatim_prefix_is_dropped() {
+        assert_eq!(without_verbatim_prefix(r"\\?\C:\a\b"), r"C:\a\b");
+        assert_eq!(without_verbatim_prefix(r"\\?\UNC\srv\share\x"), r"\\srv\share\x");
+        assert_eq!(without_verbatim_prefix(r"C:\a"), r"C:\a");
+    }
+
+    /// The same run from a canonicalized (`\\?\`) workspace, which is how a
+    /// managed worktree arrives: the relative write must still land.
+    #[cfg(windows)]
+    #[test]
+    fn nested_powershell_writes_under_a_verbatim_workspace() {
+        let dir = std::env::temp_dir().join(format!("jan-verbatim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir = dir.canonicalize().unwrap();
+        assert!(dir.to_string_lossy().starts_with(r"\\?\"));
+        std::fs::write(dir.join("s.ps1"), "Add-Content -Path progress.log -Value ok\n").unwrap();
+        let script = located(
+            ShellFlavor::PowerShell,
+            "powershell -NoProfile -ExecutionPolicy Bypass -File .\\s.ps1",
+            &dir,
+        );
+        let status = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        let log = std::fs::read_to_string(dir.join("progress.log")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(log.trim(), "ok");
+        assert_eq!(status.code(), Some(0));
+    }
 
     /// A nested `powershell -File` runs at the workspace: its relative write
     /// lands there, its parameters arrive, and its exit code is the call's.
