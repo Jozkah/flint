@@ -35,8 +35,30 @@ actor ModelRunner {
     func load(modelPath: String) async throws {
         log("[mlx] Loading model from: \(modelPath)")
 
+        // Fail loudly: returning normally here would let the server print its
+        // readiness lines and serve requests with no model loaded.
+        guard let dir = Self.resolveModelDirectory(modelPath: modelPath) else {
+            log("[mlx] Could not resolve a model directory with config.json for: \(modelPath)")
+            throw MLXServerError.modelPathNotResolved(modelPath)
+        }
+
+        self.model = try await loadModel(
+            from: dir,
+            using: SwiftTransformersTokenizerLoader()
+        )
+        self.injectsThinkingOpener = Self.detectInjectsThinkingOpener(in: dir)
+        log("[mlx] injectsThinkingOpener=\(injectsThinkingOpener)")
+    }
+
+    /// Resolve the directory to load a model from: the path itself when it is a
+    /// directory holding `config.json`, else its parent when that holds
+    /// `config.json`, or the parent of a single file. Returns nil when the path
+    /// does not exist or no candidate directory contains `config.json`.
+    nonisolated static func resolveModelDirectory(
+        modelPath: String,
+        fileManager: FileManager = .default
+    ) -> URL? {
         let modelURL = URL(fileURLWithPath: modelPath)
-        let fileManager = FileManager.default
 
         var isDirectory: ObjCBool = false
         let pathExists = fileManager.fileExists(atPath: modelPath, isDirectory: &isDirectory)
@@ -63,14 +85,7 @@ actor ModelRunner {
             log("[mlx] Using parent directory: \(modelDir!.path)")
         }
 
-        if let dir = modelDir {
-            self.model = try await loadModel(
-                from: dir,
-                using: SwiftTransformersTokenizerLoader()
-            )
-            self.injectsThinkingOpener = Self.detectInjectsThinkingOpener(in: dir)
-            log("[mlx] injectsThinkingOpener=\(injectsThinkingOpener)")
-        }
+        return modelDir
     }
 
     /// Inspect the model folder to see if the chat template injects a `<think>`
@@ -415,11 +430,14 @@ enum StreamEvent {
 enum MLXServerError: Error, LocalizedError {
     case modelNotLoaded
     case invalidRequest(String)
+    case modelPathNotResolved(String)
 
     var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
             return "No model is currently loaded"
+        case .modelPathNotResolved(let path):
+            return "Model path not found or missing config.json: \(path)"
         case .invalidRequest(let msg):
             return "Invalid request: \(msg)"
         }
