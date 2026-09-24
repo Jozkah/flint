@@ -246,6 +246,8 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
+        core::preview::preview_register,
+        core::preview::preview_release,
         // App lifecycle
         confirm_exit,
         cancel_exit,
@@ -519,6 +521,13 @@ pub fn build_app() -> tauri::App {
         println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
         // when defining deep link schemes at runtime, you must also check `argv` here
     }));
+
+    // #135: HTML previews are served from their own scheme so they carry
+    // their own CSP instead of inheriting the app's through `about:srcdoc`.
+    let builder = builder.register_uri_scheme_protocol(
+        core::preview::PREVIEW_SCHEME,
+        |_ctx, request| core::preview::handle(request.uri().path()),
+    );
 
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())

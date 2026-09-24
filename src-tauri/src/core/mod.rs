@@ -11,6 +11,9 @@ pub mod mcp;
 pub mod migration;
 pub mod net;
 pub mod openai_schema;
+// Sandboxed HTML preview scheme (#135); desktop-only like filesystem.
+#[cfg(not(feature = "cli"))]
+pub mod preview;
 // Discussion room files; the commands are desktop-only like filesystem.
 #[cfg(not(feature = "cli"))]
 pub mod rooms;
