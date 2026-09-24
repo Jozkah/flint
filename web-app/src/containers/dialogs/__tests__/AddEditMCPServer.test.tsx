@@ -321,3 +321,35 @@ describe('AddEditMCPServer', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('AddEditMCPServer JSON duplicate names (#221)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const pasteJson = (value: unknown) => {
+    fireEvent.click(document.querySelector('[title="Add server by JSON"]')!)
+    fireEvent.change(screen.getByTestId('code-editor'), {
+      target: { value: JSON.stringify(value) },
+    })
+    fireEvent.click(screen.getByText('mcp-servers:save'))
+  }
+
+  it('rejects pasted JSON whose key names an existing server', () => {
+    const props = { ...baseProps(), existingNames: ['github'] }
+    render(<AddEditMCPServer {...props} />)
+    pasteJson({ github: { command: 'other-cmd' } })
+
+    expect(props.onSave).not.toHaveBeenCalled()
+    expect(props.onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(
+      screen.getByText(/mcp-servers:editJson\.errorNameDuplicate.*github/)
+    ).toBeInTheDocument()
+  })
+
+  it('saves nothing when any pasted entry is a duplicate', () => {
+    const props = { ...baseProps(), existingNames: ['github'] }
+    render(<AddEditMCPServer {...props} />)
+    pasteJson({ fresh: { command: 'a' }, github: { command: 'b' } })
+
+    expect(props.onSave).not.toHaveBeenCalled()
+  })
+})

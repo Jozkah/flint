@@ -132,6 +132,7 @@
     "errorServerName": "Server name is required and cannot be empty",
     "errorMissingServerNameKey": "JSON must be structured as {\"serverName\": {config}} - missing server name key",
     "errorInvalidType": "Invalid type '{{type}}' for server '{{serverName}}'. Type must be 'stdio', 'http', or 'sse'",
+    "errorNameDuplicate": "A server named '{{serverName}}' already exists. Edit that server instead, or use a different name.",
     "save": "Save"
   },
   "checkParams": "Please check the parameters according to the tutorial.",
