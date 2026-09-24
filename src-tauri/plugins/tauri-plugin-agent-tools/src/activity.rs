@@ -417,8 +417,33 @@ pub fn diff_path(data_folder: &Path, session: &str, call: &str) -> PathBuf {
         .join(format!("{}.diff", safe(call)))
 }
 
-/// A call's stored diff, when one was kept.
-pub fn read_diff(data_folder: &Path, session: &str, call: &str) -> Option<String> {
+/// Where one call's diff is stored for one invocation (Jozkah/jan#244). A
+/// provider can reuse a call id across requests (`call_0` every turn), so the
+/// invocation is part of the key, as it is in `item_id`.
+pub fn invocation_diff_path(data_folder: &Path, session: &str, invocation: &str, call: &str) -> PathBuf {
+    let by_call = diff_path(data_folder, session, call);
+    let call_file = by_call.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let safe_inv: String = invocation
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .take(96)
+        .collect();
+    by_call.with_file_name(format!("{safe_inv}__{call_file}"))
+}
+
+/// A call's stored diff, when one was kept. With the invocation, that exact
+/// call's; without it, the latest diff stored under the call id.
+pub fn read_diff(
+    data_folder: &Path,
+    session: &str,
+    invocation: Option<&str>,
+    call: &str,
+) -> Option<String> {
+    if let Some(inv) = invocation.filter(|i| !i.is_empty()) {
+        if let Ok(text) = std::fs::read_to_string(invocation_diff_path(data_folder, session, inv, call)) {
+            return Some(text);
+        }
+    }
     std::fs::read_to_string(diff_path(data_folder, session, call)).ok()
 }
 
@@ -544,13 +569,26 @@ fn store_diff(data_folder: &Path, event: &mut ToolActivityEvent) -> Result<(), S
         if diff.len() > MAX_DIFF_BYTES {
             change.oversized = true;
         } else if !diff.is_empty() {
-            let target = diff_path(data_folder, &event.session, &event.call);
-            if let Some(dir) = target.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            // Kept per invocation, so a reused call id never overwrites an
+            // earlier call's diff (Jozkah/jan#244), and under the call id as
+            // before, which a reader that does not pass the invocation reads.
+            let mut targets = vec![diff_path(data_folder, &event.session, &event.call)];
+            if !event.invocation.is_empty() {
+                targets.push(invocation_diff_path(
+                    data_folder,
+                    &event.session,
+                    &event.invocation,
+                    &event.call,
+                ));
             }
-            let tmp = target.with_extension("diff.tmp");
-            std::fs::write(&tmp, diff.as_bytes()).map_err(|e| e.to_string())?;
-            std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+            for target in targets {
+                if let Some(dir) = target.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+                }
+                let tmp = target.with_extension("diff.tmp");
+                std::fs::write(&tmp, diff.as_bytes()).map_err(|e| e.to_string())?;
+                std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+            }
             change.diff_stored = true;
         }
     }
@@ -1354,8 +1392,28 @@ mod tests {
         let raw = std::fs::read_to_string(event_log::log_path(&dir, "s1")).unwrap();
         assert!(!raw.contains("sk-not-a-real-key"), "{raw}");
         assert!(!raw.contains("hunter2"), "{raw}");
-        let diff = read_diff(&dir, "s1", "c1").unwrap();
+        let diff = read_diff(&dir, "s1", None, "c1").unwrap();
         assert!(!diff.contains("sk-not-a-real-key"), "{diff}");
+    }
+
+    /// Jozkah/jan#244: two calls in one session that reuse a call id keep
+    /// their own diffs.
+    #[test]
+    fn a_reused_call_id_keeps_each_invocations_diff() {
+        let dir = scratch();
+        let mut first = ev("call_0", "edit", Phase::Succeeded);
+        first.invocation = "inv-a".into();
+        first.diff = Some("+first file\n".into());
+        append(&dir, &first.redacted());
+        let mut second = ev("call_0", "edit", Phase::Succeeded);
+        second.invocation = "inv-b".into();
+        second.diff = Some("+second file\n".into());
+        append(&dir, &second.redacted());
+
+        assert!(read_diff(&dir, "s1", Some("inv-a"), "call_0").unwrap().contains("first file"));
+        assert!(read_diff(&dir, "s1", Some("inv-b"), "call_0").unwrap().contains("second file"));
+        // Without the invocation: the latest, as before.
+        assert!(read_diff(&dir, "s1", None, "call_0").unwrap().contains("second file"));
     }
 
     #[test]
@@ -1420,7 +1478,7 @@ mod tests {
         assert_eq!((change.added, change.removed), (Some(2), Some(1)));
         assert!(change.diff_stored && !change.oversized);
         assert_eq!(change.path, "src/lib.rs");
-        assert!(read_diff(&dir, "s1", "e1").unwrap().contains("+more"));
+        assert!(read_diff(&dir, "s1", None, "e1").unwrap().contains("+more"));
         // The diff lives beside the log, not in it.
         assert!(!std::fs::read_to_string(event_log::log_path(&dir, "s1")).unwrap().contains("+more"));
     }
@@ -1444,7 +1502,7 @@ mod tests {
         assert!(change.oversized && !change.diff_stored);
         assert_eq!(change.kind, "created");
         assert_eq!(change.added, Some(1));
-        assert!(read_diff(&dir, "s1", "big").is_none());
+        assert!(read_diff(&dir, "s1", None, "big").is_none());
     }
 
     #[test]
