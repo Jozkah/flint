@@ -1379,6 +1379,27 @@ fn output_sink(
 ///
 /// Its own function so the wording is identical wherever a call is cancelled,
 /// and so the reason -- deadline or person -- always reaches the transcript.
+/// Run blocking `work` off the async runtime, with the run's cancellation
+/// mirrored into the flag it polls: stopping `token` stops the work instead of
+/// waiting for it, and the runtime's worker thread is never held (#247).
+/// `None` when the blocking task itself failed.
+async fn blocking_with_cancel<T: Send + 'static>(
+    token: tauri_plugin_agent_tools::lifecycle::Token,
+    work: impl FnOnce(&std::sync::atomic::AtomicBool) -> T + Send + 'static,
+) -> Option<T> {
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watcher = cancelled.clone();
+    let mirror = tokio::spawn(async move {
+        while !token.is_stopped() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        watcher.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let result = tokio::task::spawn_blocking(move || work(&cancelled)).await;
+    mirror.abort();
+    result.ok()
+}
+
 fn return_cancelled_outcome(
     out: &mut Vec<ToolOutcome>,
     id: &str,
@@ -1916,8 +1937,18 @@ impl CompositeToolInvoker {
                     .unwrap_or(false);
                 let data = crate::core::app::commands::resolve_jan_data_folder();
                 let project = self.project_root.clone();
-                let cancel = std::sync::atomic::AtomicBool::new(false);
-                match crate::core::agent::index::refresh(&data, &project, &cancel) {
+                // The first build of a large project can take a while: off the
+                // runtime, and stopped with the run.
+                let registered = self.call_token("symbol_find");
+                let refreshed = blocking_with_cancel(registered.token().clone(), move |cancel| {
+                    crate::core::agent::index::refresh(&data, &project, cancel)
+                })
+                .await;
+                drop(registered);
+                let Some(refreshed) = refreshed else {
+                    return "ERROR [io]: the symbol index build stopped unexpectedly.".to_string();
+                };
+                match refreshed {
                     Ok((index, _)) => {
                         let mut out = String::new();
                         let definitions =
@@ -3611,22 +3642,13 @@ impl CompositeToolInvoker {
         // is mirrored into the flag it polls -- so stopping the run stops the
         // compiler instead of waiting for it.
         let registered = self.call_token("diagnostics");
-        let token = registered.token().clone();
-        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let watcher = cancelled.clone();
-        let mirror = tokio::spawn(async move {
-            while !token.is_stopped() {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-            watcher.store(true, std::sync::atomic::Ordering::Relaxed);
-        });
-        let flag = cancelled.clone();
-        let report =
-            tokio::task::spawn_blocking(move || diagnostics::collect(&project, &flag, 60)).await;
-        mirror.abort();
+        let report = blocking_with_cancel(registered.token().clone(), move |flag| {
+            diagnostics::collect(&project, flag, 60)
+        })
+        .await;
         drop(registered);
 
-        let Ok(Ok(report)) = report else { return };
+        let Some(Ok(report)) = report else { return };
         let Some(note) = report.render_for(&touched) else { return };
         // Appended to the last changing call's result: the model reads tool
         // results, and a note that arrives anywhere else is a note it may not
@@ -6433,6 +6455,40 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    /// #247: blocking work started for a call (the symbol index build) stops
+    /// when the run is stopped, and does not hold the async worker meanwhile.
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_work_stops_when_the_run_is_stopped() {
+        use std::sync::atomic::Ordering;
+        use tauri_plugin_agent_tools::lifecycle::{StopReason, Token};
+        let token = Token::detached();
+        let stopper = token.clone();
+        // On a single-threaded runtime this only gets to run if the work is off
+        // the runtime's thread.
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            stopper.stop(StopReason::Cancelled);
+        });
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            super::blocking_with_cancel(token, |cancel| {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while !cancel.load(Ordering::Relaxed) {
+                    if std::time::Instant::now() > deadline {
+                        return false;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                true
+            }),
+        )
+        .await
+        .expect("the work never returned");
+        assert_eq!(outcome, Some(true), "the work never saw the run's stop");
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
     use super::*;
     use serde_json::json;
 

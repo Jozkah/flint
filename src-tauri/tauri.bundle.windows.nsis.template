@@ -99,6 +99,11 @@ Var LockedFile
 !macroend
 
 !macro UnlockBundledBinary path
+  ; A copy renamed aside by an earlier locked update must go even when this
+  ; update's Delete succeeds, or it leaks until uninstall (#289).
+  ClearErrors
+  Delete "${path}.old"
+  ClearErrors
   ${If} ${FileExists} "${path}"
     StrCpy $R6 0
     ${Do}
@@ -148,6 +153,13 @@ Var LockedFile
 
 !macro FreeBundledFiles
   !insertmacro StopBundledProcess "flint-llama-worker.exe"
+  ; Best-effort sweep of every copy an earlier locked update renamed aside,
+  ; including pattern-matched DLLs that no longer ship. Still-locked ones fail
+  ; silently and are retried next update.
+  ClearErrors
+  Delete "$INSTDIR\resources\bin\*.old"
+  Delete "$INSTDIR\*.old"
+  ClearErrors
   !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint.exe"
   !insertmacro UnlockBundledBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
   !insertmacro UnlockBundledPattern "$INSTDIR\resources\bin" "ggml*.dll"
