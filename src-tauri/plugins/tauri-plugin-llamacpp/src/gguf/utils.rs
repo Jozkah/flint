@@ -187,18 +187,32 @@ pub async fn estimate_kv_cache_internal(
     // Assume fp16
     const BYTES_PER_ELEMENT: u64 = 2;
 
+    // Every factor below comes from the file's own metadata. Release builds
+    // disable overflow checks, so plain arithmetic on a crafted or corrupt
+    // value would wrap to a small, plausible-looking estimate. Checked
+    // arithmetic turns that into an error instead.
+    let overflow = || KVCacheError::SizeOverflow;
+
     // Per-token KV size
-    let kv_per_token = n_layer * n_head * (key_len + val_len) * BYTES_PER_ELEMENT;
+    let kv_per_token = key_len
+        .checked_add(val_len)
+        .and_then(|kv| kv.checked_mul(n_layer))
+        .and_then(|v| v.checked_mul(n_head))
+        .and_then(|v| v.checked_mul(BYTES_PER_ELEMENT))
+        .ok_or_else(overflow)?;
 
     // Pure full-attention cost
-    let full_cost = ctx_len * kv_per_token;
+    let full_cost = ctx_len.checked_mul(kv_per_token).ok_or_else(overflow)?;
 
     // Pure sliding-window cost (tiny, only keeps last W tokens)
-    let sliding_cost = sliding_window.map(|w| w * kv_per_token);
+    let sliding_cost = match sliding_window {
+        Some(w) => Some(w.checked_mul(kv_per_token).ok_or_else(overflow)?),
+        None => None,
+    };
 
     // Middle estimate: average of sliding + full if sliding_window is present
     let chosen_size = if let Some(slide) = sliding_cost {
-        let middle = (full_cost + slide) / 2;
+        let middle = full_cost / 2 + slide / 2 + (full_cost % 2 + slide % 2) / 2;
         log::info!(
             "KV estimates -> sliding: {} bytes (~{:.2} MB), full: {} bytes (~{:.2} MB), middle: {} bytes (~{:.2} MB)",
             slide,
@@ -222,4 +236,60 @@ pub async fn estimate_kv_cache_internal(
         size: chosen_size,
         per_token_size: kv_per_token,
     })
+}
+
+#[cfg(test)]
+mod kv_estimate_overflow_tests {
+    use super::*;
+
+    fn meta(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    // Regression for #154: implausible metadata must be rejected, not wrapped.
+    #[tokio::test]
+    async fn implausible_metadata_is_an_error_not_a_wrapped_estimate() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "18446744073709551615"),
+            ("llama.attention.head_count", "4294967296"),
+            ("llama.attention.key_length", "4294967296"),
+            ("llama.attention.value_length", "4294967296"),
+            ("llama.context_length", "4096"),
+        ]);
+        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        assert!(matches!(err, KVCacheError::SizeOverflow));
+    }
+
+    #[tokio::test]
+    async fn context_multiplication_overflow_is_an_error() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "32"),
+            ("llama.attention.head_count", "32"),
+            ("llama.attention.key_length", "128"),
+            ("llama.attention.value_length", "128"),
+            ("llama.context_length", "18446744073709551615"),
+        ]);
+        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        assert!(matches!(err, KVCacheError::SizeOverflow));
+    }
+
+    #[tokio::test]
+    async fn ordinary_metadata_still_estimates() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "32"),
+            ("llama.attention.head_count", "32"),
+            ("llama.attention.key_length", "128"),
+            ("llama.attention.value_length", "128"),
+            ("llama.context_length", "4096"),
+        ]);
+        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        assert_eq!(est.per_token_size, 32 * 32 * 256 * 2);
+        assert_eq!(est.size, 4096 * 32 * 32 * 256 * 2);
+    }
 }
