@@ -8,7 +8,12 @@ concurrency:
 
 jobs:
   base_branch_cov:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -48,7 +53,12 @@ jobs:
           path: coverage/lcov.info
 
   base_branch_rust_cov:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -125,7 +135,10 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
   test-on-windows:
-    if: github.event_name == 'push'
+    # Ran only on push, which this manual-dispatch workflow no longer has, and
+    # needs self-hosted antivirus runners; disabled explicitly (#56).
+    # test-on-windows-pr covers Windows on dispatch.
+    if: false
     strategy:
       fail-fast: false
       matrix:
@@ -245,7 +258,12 @@ jobs:
           make check-cli
 
   coverage-check:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs a pull request (base-branch coverage comparison), but this workflow
+    # is manual-dispatch only to save Actions minutes, so the job is disabled
+    # explicitly rather than by a guard that can never be true (#56).
+    # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
+    # if a pull_request trigger is added back.
+    if: false
     runs-on: ubuntu-latest
     needs: [base_branch_cov, base_branch_rust_cov]
     continue-on-error: true
