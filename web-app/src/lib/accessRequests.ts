@@ -90,6 +90,13 @@ export const listAccessGrants = (dataFolder: string, sessionId?: string) =>
 /** How the user answered. `session` expires with the session; `always` is kept. */
 export type AccessDecision = 'session' | 'always' | 'deny'
 
+/**
+ * How long a request waits for an answer before it is treated as declined.
+ * A run once sat behind an unanswered prompt for over ten minutes; past this
+ * the model is told to carry on without the access instead.
+ */
+export const ACCESS_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
+
 export type PendingAccessRequest = {
   id: string
   threadId: string
@@ -99,7 +106,7 @@ export type PendingAccessRequest = {
   origin?: string
   reason: string
   prepared: PreparedAccess
-  resolve: (decision: AccessDecision | 'cancelled') => void
+  resolve: (decision: AccessDecision | 'cancelled' | 'timed-out') => void
 }
 
 type AccessRequestsState = {
@@ -113,7 +120,7 @@ type AccessRequestsState = {
   ask: (
     request: Omit<PendingAccessRequest, 'id' | 'resolve'>,
     signal?: AbortSignal
-  ) => Promise<AccessDecision | 'cancelled' | 'unavailable'>
+  ) => Promise<AccessDecision | 'cancelled' | 'unavailable' | 'timed-out'>
   answer: (id: string, decision: AccessDecision) => void
   withdraw: (id: string) => void
   withdrawThread: (threadId: string) => void
@@ -129,8 +136,19 @@ export const useAccessRequests = create<AccessRequestsState>()((set, get) => ({
   ask: (request, signal) => {
     if (get().presenters === 0) return Promise.resolve('unavailable' as const)
     if (signal?.aborted) return Promise.resolve('cancelled' as const)
-    return new Promise((resolve) => {
+    return new Promise((settle) => {
       const id = `access-${Date.now().toString(36)}-${++nextId}`
+      // Unanswered for too long: taken off the queue and answered as timed
+      // out. Cleared by whichever answer comes first.
+      const timer = setTimeout(() => {
+        if (!get().queue.some((e) => e.id === id)) return
+        set((s) => ({ queue: s.queue.filter((e) => e.id !== id) }))
+        settle('timed-out')
+      }, ACCESS_REQUEST_TIMEOUT_MS)
+      const resolve: PendingAccessRequest['resolve'] = (decision) => {
+        clearTimeout(timer)
+        settle(decision)
+      }
       const entry: PendingAccessRequest = { ...request, id, resolve }
       set((s) => ({ queue: [...s.queue, entry] }))
       signal?.addEventListener('abort', () => get().withdraw(id), {
@@ -250,6 +268,21 @@ export async function runAccessRequest(
       message:
         'No approval prompt can be shown right now, so nothing was granted.',
       next: 'Do not retry. Ask the user in your reply to paste or attach what you need.',
+    })
+  }
+  if (decision === 'timed-out') {
+    void recordAccessDecision({
+      dataFolder: opts.dataFolder,
+      sessionId: threadId,
+      path: prepared.display,
+      accessMode,
+      decision: 'cancelled',
+    }).catch(() => undefined)
+    return result('timed_out', {
+      path: prepared.display,
+      message:
+        'The access request timed out without an answer; continue without it.',
+      next: 'Do not request this path again in this run. Say in your reply what you could not check.',
     })
   }
   if (decision === 'cancelled' || decision === 'deny') {

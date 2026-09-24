@@ -73,8 +73,14 @@ function estimateMethod(accounting: ContextAccounting): string {
 
 export function CoworkReadinessCard({
   manifest,
+  settingsMcpServers = 0,
 }: {
   manifest: ReadinessManifest
+  /**
+   * MCP servers switched on in Settings. Cowork does not offer them, and
+   * someone who enabled one would otherwise expect it here.
+   */
+  settingsMcpServers?: number
 }) {
   const { t } = useTranslation()
   const total = accountedTotal(manifest.context)
@@ -194,6 +200,14 @@ export function CoworkReadinessCard({
           {manifest.tools.mcpServers.length > 0
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}
+          {manifest.tools.mcpServers.length === 0 && settingsMcpServers > 0 ? (
+            <span
+              className="block text-muted-foreground"
+              data-testid="readiness-mcp-not-offered"
+            >
+              {t('common:readiness.mcpNotOffered')}
+            </span>
+          ) : null}
         </Row>
         {manifest.folder && manifest.tooling ? (
           // AH-068 / AH-069 / AH-070. What the model will be told about how

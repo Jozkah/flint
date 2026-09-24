@@ -1,5 +1,7 @@
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
+import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
+import { normalizeEditInput } from '@/lib/coworkEditInput'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import {
   noteAutoApproved,
@@ -337,6 +339,10 @@ async function routeCoworkTool(
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
+  // `edit` with one top-level `old_string`/`new_string` pair is the shape
+  // models reach for most often; it is the same request as a one-item
+  // `edits` list, so it is sent as that rather than refused.
+  if (toolName === 'edit') call = { ...call, input: normalizeEditInput(call.input) }
 
   // Stopping another session: asked every time, in every mode that offers it,
   // whatever grants exist; refused in review mode and where nothing can ask.
@@ -402,8 +408,15 @@ async function routeCoworkTool(
           ctx.worktreePath ?? ctx.readOnlyFolder ?? ''
         )
       : null
+    // A shell line that only reads (listing, reading, `git status`, a tool's
+    // `--version`) is not a change, so "Ask before changes" does not ask for
+    // it, and it does not count toward the unasked streak either.
+    const readOnlyShell =
+      command !== undefined && !destructive && isReadOnlyCommand(command)
+    const needsApproval = decision.needsApproval && !readOnlyShell
     const overLimit =
-      !decision.needsApproval &&
+      !needsApproval &&
+      !readOnlyShell &&
       !destructive &&
       noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
     const forced: { alwaysAsk: true; reason: string } | undefined = destructive
@@ -418,7 +431,7 @@ async function routeCoworkTool(
           }
         : undefined
 
-    if (decision.needsApproval || forced) {
+    if (needsApproval || forced) {
       resetAutoApproveStreak(ctx.sessionId)
       // Recorded separately from the outcome: "the user was asked" and "the
       // user said no" are different facts, and a refused call that was never

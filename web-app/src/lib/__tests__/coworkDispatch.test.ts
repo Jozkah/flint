@@ -231,6 +231,40 @@ describe('dispatchCoworkTool', () => {
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
+  it('does not ask about a read-only shell line in ask mode', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('bash', { command: 'Get-ChildItem -Force | Select-Object Name; git status' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  it('still asks about a shell line that is not plainly read-only', async () => {
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('bash', { command: 'Get-ChildItem > list.txt' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(onApprove).toHaveBeenCalled()
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('sends the one-edit shorthand as an edits list', async () => {
+    await dispatchCoworkTool(
+      call('edit', { path: 'a', old_string: 'x', new_string: 'y' }),
+      ctx()
+    )
+    expect(executeAgentTool).toHaveBeenCalledWith(
+      'edit',
+      { path: 'a', edits: [{ old_string: 'x', new_string: 'y' }] },
+      's1',
+      expect.anything()
+    )
+  })
+
   it('does not ask about a read in ask mode', async () => {
     const onApprove = vi.fn(async () => true)
     await dispatchCoworkTool(call('read'), ctx({ mode: 'ask', onApprove }))
