@@ -226,6 +226,7 @@ export function DataProvider() {
     setLastServerModels,
     defaultModelLocalApiServer,
     runInBackground,
+    enableServerToolExecution,
   } = useLocalApiServer()
   const setServerStatus = useAppState((state) => state.setServerStatus)
 
@@ -447,6 +448,9 @@ export function DataProvider() {
               isCorsEnabled: corsEnabled,
               isVerboseEnabled: verboseLogs,
               proxyTimeout: proxyTimeout,
+              // Omitted, the backend reads it as false and silently turns off
+              // the setting the user enabled (#156).
+              enableServerToolExecution,
             })
             .then(async (actualPort: number) => {
               // Store the actual port that was assigned (important for mobile with port 0)

@@ -550,6 +550,20 @@ describe('DataProvider', () => {
     })
   })
 
+  // #156: an omitted flag reads as false on the backend, so the auto-start
+  // must pass the persisted "Execute tools on server" setting through.
+  it('auto-starts the server with the persisted server tool execution setting', async () => {
+    h.localApi.enableOnStartup = true
+    ;(h.localApi as Record<string, unknown>).enableServerToolExecution = true
+    hubState.getServerStatus.mockResolvedValue(false)
+    render(<DataProvider />)
+    await waitFor(() => expect(hubState.startServer).toHaveBeenCalled())
+    expect(hubState.startServer).toHaveBeenCalledWith(
+      expect.objectContaining({ enableServerToolExecution: true })
+    )
+    delete (h.localApi as Record<string, unknown>).enableServerToolExecution
+  })
+
   it('sets server status to stopped on startup failure', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     h.localApi.enableOnStartup = true
