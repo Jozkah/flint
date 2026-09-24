@@ -231,6 +231,28 @@ impl Resource {
         }
     }
 
+    /// For a destructive git command, the same subcommand with nothing that
+    /// made it destructive: `git push --force origin main` becomes `git push`.
+    ///
+    /// The AH-046 guard asks whether an allow rule *names* the operation, and a
+    /// rule that also covers this harmless twin does not -- `bash(git *)` and
+    /// `bash(git:*)` cover every git command, so they say nothing about force
+    /// pushes in particular (Jozkah/jan#47).
+    pub fn harmless_git_twin(&self) -> Option<Resource> {
+        let Resource::Command { program, argv, git } = self else {
+            return None;
+        };
+        if !git.is_destructive() {
+            return None;
+        }
+        let end = (subcommand_index(argv) + 1).min(argv.len());
+        Some(Resource::Command {
+            program: program.clone(),
+            argv: argv[..end].to_vec(),
+            git: GitOp::Other,
+        })
+    }
+
     /// A path resource from `raw`, resolved against `root` when relative and
     /// lexically normalized. No filesystem access, so it works for paths that
     /// do not exist yet (a write target) and cannot be raced.
@@ -707,6 +729,30 @@ impl ResourceRule {
         &self.source
     }
 
+    /// Whether the rule names a resource, `tool(pattern)`, rather than the
+    /// whole tool.
+    pub fn is_resource_qualified(&self) -> bool {
+        self.resource.is_some()
+    }
+
+    /// The filesystem-path pattern this rule matches, with any `path:` kind
+    /// prefix stripped, or `None` for a bare tool rule or a non-path kind
+    /// (`git:`, `command:`, `mcp:`, `net:`, `process:`, `unknown:`). Used to
+    /// derive sandbox read roots from a project's allow rules, so an
+    /// `allow = ["read(C:/data/**)"]` widens what reads may reach without a
+    /// prompt. A bare drive letter like `C:` is not a kind prefix.
+    pub fn read_root_pattern(&self) -> Option<&str> {
+        let raw = self.resource.as_ref()?.as_str();
+        if let Some(rest) = raw.strip_prefix("path:") {
+            return Some(rest);
+        }
+        if let Some((kind, _)) = raw.split_once(':') {
+            if ["git", "command", "mcp", "net", "process", "unknown"].contains(&kind) {
+                return None;
+            }
+        }
+        Some(raw)
+    }
 }
 
 /// Match one pattern against one resource.
