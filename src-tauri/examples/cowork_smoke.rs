@@ -2937,13 +2937,13 @@ fn apply_child(ctx: &Ctx, task: &str) -> Result<String, Failure> {
 /// 4. the review list names each child's task, branch, base, worktree, files
 ///    and ending -- one completed, one completed after it, one failed, one
 ///    cancelled by stopping the run;
-/// 5-7. one child's diff is opened and one hunk of two is applied: the folder
-///    holds that hunk and not the other;
+/// 5. (through 7) one child's diff is opened and one hunk of two is applied:
+///    the folder holds that hunk and not the other;
 /// 8. a second child's change is refused against an edit made in the folder
 ///    since, and nothing of it -- not even its new file -- is written;
 /// 11. the failed and cancelled children are shown as such and cannot be
-///    reviewed until the person acknowledges it, and a proposal made anyway
-///    says so;
+///     reviewed until the person acknowledges it, and a proposal made anyway
+///     says so;
 /// 10. a junction out of a child's worktree refuses its proposal.
 ///
 /// Phase two restarts the app and checks what is still waiting.
@@ -8070,13 +8070,11 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
                 "return !!document.querySelector('[data-testid=\"session-stop-notice\"]');",
                 Duration::from_secs(30),
             )?;
-            let notice = ctx.eval_string(&format!(
-                "const n = document.querySelector('[data-testid=\"session-stop-notice\"]');
-                 return JSON.stringify({{ text: n.textContent, from: n.getAttribute('data-from-session'),
+            let notice = ctx.eval_string("const n = document.querySelector('[data-testid=\"session-stop-notice\"]');
+                 return JSON.stringify({ text: n.textContent, from: n.getAttribute('data-from-session'),
                    markup: n.querySelectorAll('strong,em,a,img,code').length,
                    stop: !!document.querySelector('[data-testid=\"cowork-stop\"]'),
-                   send: !!document.querySelector('[data-test-id=\"send-message-button\"]') }});"
-            ))?;
+                   send: !!document.querySelector('[data-test-id=\"send-message-button\"]') });")?;
             println!("B stop notice: {notice}");
             let n: Value = serde_json::from_str(&notice).map_err(|e| Failure(e.to_string()))?;
             let t = n["text"].as_str().unwrap_or_default();
@@ -10035,13 +10033,12 @@ fn recorded_dispatch(needle: &str) -> Option<Value> {
     text.lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .filter(|s| s["agent"] != "replay")
-        .filter(|s| {
+        .rfind(|s| {
             s["payload"]["messages"].as_array().is_some_and(|m| {
                 m.iter()
                     .any(|x| x["role"] == "user" && x["content"].to_string().contains(needle))
             })
         })
-        .last()
 }
 
 /// JS for the `i`th prompt snapshot panel, opened.
@@ -11458,8 +11455,7 @@ impl Ctx {
             let ours = records
                 .iter()
                 .skip(before)
-                .filter(|r| r.get("marker").and_then(Value::as_str) == Some(text))
-                .last();
+                .rfind(|r| r.get("marker").and_then(Value::as_str) == Some(text));
             if idle {
                 if let Some(record) = ours {
                     std::thread::sleep(Duration::from_millis(1500));
@@ -11616,8 +11612,8 @@ fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> Scenar
             shown.get("total")
         );
         ensure!(
-            shown.get("cached").map_or(true, Value::is_null)
-                && shown.get("uncached").map_or(true, Value::is_null),
+            shown.get("cached").is_none_or(Value::is_null)
+                && shown.get("uncached").is_none_or(Value::is_null),
             "{label}: a cached/uncached split was shown for a request whose cache was not reported"
         );
         // The row's text is its label and its value together.
@@ -11657,7 +11653,7 @@ fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> Scenar
         );
     }
     ensure!(
-        shown.get("unreported").map_or(true, Value::is_null),
+        shown.get("unreported").is_none_or(Value::is_null),
         "{label}: the popover says the cache was not reported, but the provider reported it"
     );
     let note = shown.get("note").and_then(Value::as_str).unwrap_or_default();
@@ -12552,7 +12548,7 @@ fn set_user_recall(ctx: &Ctx, on: bool) -> ScenarioResult {
     )
 }
 
-fn user_store_text(ctx: &Ctx) -> Result<String, Failure> {
+fn user_store_text(_ctx: &Ctx) -> Result<String, Failure> {
     let path = data_folder()?.join("agent-workspace/memory/records/user.jsonl");
     Ok(std::fs::read_to_string(path).unwrap_or_default())
 }
@@ -13497,7 +13493,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         .collect();
     if let Some(names) = &only {
         for name in names {
-            if !scenarios.iter().any(|s| &s.name == name) && !(self_test && name == SELF_TEST_FAIL.name) {
+            if !scenarios.iter().any(|s| s.name == name) && !(self_test && name == SELF_TEST_FAIL.name) {
                 eprintln!("FATAL: no scenario named {name:?}");
                 return 2;
             }
@@ -16301,24 +16297,20 @@ fn scenario_picker_rows_keyboard(ctx: &Ctx) -> ScenarioResult {
         if selected.is_err() {
             println!(
                 "      picker after Enter: {}",
-                ctx.eval_string(&format!(
-                    "const rows = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
+                ctx.eval_string("const rows = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
                        .filter(r => (r.textContent || '').includes('smoke'))
                        .map(r => (r.textContent || '').trim().slice(0, 40) + ' pressed=' + r.getAttribute('aria-pressed'));
                      const open = [...document.querySelectorAll('input')].some(i =>
                        /search|find|model/i.test(i.getAttribute('placeholder') || ''));
                      const triggers = [...document.querySelectorAll('button')]
                        .map(b => (b.textContent || '').trim()).filter(t => /smoke/i.test(t)).slice(0, 4);
-                     return JSON.stringify({{ open, rows, triggers, active: (document.activeElement && document.activeElement.textContent || '').slice(0, 40) }});"
-                ))
+                     return JSON.stringify({ open, rows, triggers, active: (document.activeElement && document.activeElement.textContent || '').slice(0, 40) });")
                 .unwrap_or_default()
             );
             // Put the default model back by pointer so later scenarios are not
             // judged against a selection this failure left behind.
-            let _ = ctx.eval(&format!(
-                "document.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Escape', bubbles: true }}));
-                 return true;"
-            ));
+            let _ = ctx.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                 return true;");
         }
         selected
     };
@@ -18371,7 +18363,7 @@ fn rooms_round_robin_batch(ctx: &Ctx, models: &[String]) -> ScenarioResult {
         } else {
             (name_of(author_pid(speeches[i - 1])), s(speeches[i - 1], &["text"]).to_string())
         };
-        let body_after_name = text.splitn(2, ':').nth(1).unwrap_or(text).to_lowercase();
+        let body_after_name = text.split_once(':').map(|x| x.1).unwrap_or(text).to_lowercase();
         if body_after_name.contains(&prev_name.to_lowercase()) {
             prev_ok += 1;
         } else {
@@ -18795,8 +18787,7 @@ fn rooms_single_room_batch(
         let prev = msgs
             .iter()
             .filter(|x| seq_of(x) < seq_of(m))
-            .filter(|x| kind_is(x, "user") || (kind_is(x, "speech") && s(x, &["status"]) != "failed" && !s(x, &["text"]).trim().is_empty()))
-            .last();
+            .rfind(|x| kind_is(x, "user") || (kind_is(x, "speech") && s(x, &["status"]) != "failed" && !s(x, &["text"]).trim().is_empty()));
         let (prev_name, prev_text) = match prev {
             Some(x) if kind_is(x, "user") => ("User".to_string(), s(x, &["text"]).to_string()),
             Some(x) => (s(x, &["author", "name"]).to_string(), s(x, &["text"]).to_string()),
@@ -18814,7 +18805,7 @@ fn rooms_single_room_batch(
         if starts_with_name(text, &me) {
             self_ok += 1;
         }
-        let body = text.splitn(2, ':').nth(1).unwrap_or(text).to_lowercase();
+        let body = text.split_once(':').map(|x| x.1).unwrap_or(text).to_lowercase();
         if !prev_name.is_empty() && body.contains(&prev_name.to_lowercase()) {
             prev_ok += 1;
             e.2 += 1;
