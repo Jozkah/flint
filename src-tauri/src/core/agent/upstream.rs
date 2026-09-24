@@ -1477,6 +1477,16 @@ pub(crate) async fn list_mcp_resources(mcp_servers: &SharedMcpServers) -> String
     tauri_plugin_agent_tools::harness_error::scrub(out.trim_end())
 }
 
+/// How many bytes a base64 blob decodes to, without decoding it: every four
+/// characters are three bytes, less one per `=` of padding. Whitespace a
+/// server wrapped the blob with is not counted. Used to report a binary MCP
+/// resource's real size, which read_mcp_resource used to give as 0 (#42).
+fn base64_decoded_len(blob: &str) -> usize {
+    let chars = blob.bytes().filter(|b| !b.is_ascii_whitespace()).count();
+    let padding = blob.trim_end().bytes().rev().take_while(|b| *b == b'=').count();
+    (chars / 4 * 3).saturating_sub(padding.min(2))
+}
+
 /// Read one resource by uri.
 ///
 /// The server is named explicitly rather than guessed at: two servers can
@@ -1511,10 +1521,12 @@ pub(crate) async fn read_mcp_resource(
                     // Not decoded and not passed through: a blob is bytes this
                     // run has no way to read, and base64 in a transcript is
                     // context spent on nothing.
-                    rmcp::model::ResourceContents::BlobResourceContents { mime_type, .. } => {
+                    rmcp::model::ResourceContents::BlobResourceContents {
+                        blob, mime_type, ..
+                    } => {
                         text.push_str(&format!(
                             "[{} bytes of {}, not shown]\n",
-                            0,
+                            base64_decoded_len(&blob),
                             mime_type.unwrap_or_else(|| "binary".into())
                         ));
                     }
@@ -2028,8 +2040,9 @@ async fn consume_converted_sse(
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("Upstream stream error: {e}"))?;
-        let text = String::from_utf8_lossy(&chunk);
-        for event in frame.push(&text) {
+        // Bytes, not per-chunk text: a UTF-8 character split across two
+        // network chunks was decoded as two replacement characters (#195).
+        for event in frame.push_bytes(&chunk) {
             for payload in converter.convert_stream_event(&event, &mut state) {
                 // Each payload is one chat-shaped JSON chunk or `[DONE]`.
                 acc.ingest(&payload, events);
@@ -4102,5 +4115,20 @@ mod tests {
         );
         let tc = json!({ "id": "x", "function": { "name": "n" } });
         assert_eq!(malformed_arguments_reason(&tc), None);
+    }
+}
+
+#[cfg(test)]
+mod blob_size_tests {
+    use super::base64_decoded_len;
+
+    /// #42: a binary resource reports its real size, not 0.
+    #[test]
+    fn a_blob_reports_the_bytes_it_decodes_to() {
+        assert_eq!(base64_decoded_len("aGVsbG8="), 5); // "hello"
+        assert_eq!(base64_decoded_len("aGk="), 2); // "hi"
+        assert_eq!(base64_decoded_len("YWJj"), 3); // "abc"
+        assert_eq!(base64_decoded_len("aGVs\nbG8="), 5); // wrapped
+        assert_eq!(base64_decoded_len(""), 0);
     }
 }
