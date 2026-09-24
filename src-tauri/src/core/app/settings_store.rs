@@ -25,6 +25,11 @@ use crate::core::app::constants::CONFIGURATION_FILE_NAME;
 /// How long to wait after the last mutation before flushing to disk. Bursts of
 /// writes within this window coalesce into one rewrite.
 const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
+/// The longest a write may wait for disk however often the settings keep
+/// changing. Without a cap a key rewritten faster than the debounce -- the
+/// in-flight turn's checkpoint while a reply streams -- never flushes until
+/// the writes stop, so a crash mid-stream loses the whole turn.
+const FLUSH_MAX_DELAY: Duration = Duration::from_secs(2);
 
 /// In-memory settings map plus flush bookkeeping.
 struct SettingsMap {
@@ -32,8 +37,11 @@ struct SettingsMap {
     /// Set on mutation, cleared once the current contents reach disk.
     dirty: bool,
     /// Earliest instant at which the background thread may flush; pushed
-    /// forward on each write so rapid successive writes keep coalescing.
+    /// forward on each write so rapid successive writes keep coalescing, but
+    /// never past `dirty_since + FLUSH_MAX_DELAY`.
     flush_at: Option<Instant>,
+    /// When the oldest write not yet on disk was made.
+    dirty_since: Option<Instant>,
     /// Keys changed since the last flush, for the dev-build write log. Only
     /// populated under `debug_assertions`.
     pending_keys: BTreeSet<String>,
@@ -62,8 +70,13 @@ impl SettingsMap {
     }
 
     fn mark_dirty(&mut self) {
+        self.mark_dirty_at(Instant::now());
+    }
+
+    fn mark_dirty_at(&mut self, now: Instant) {
         self.dirty = true;
-        self.flush_at = Some(Instant::now() + FLUSH_DEBOUNCE);
+        let since = *self.dirty_since.get_or_insert(now);
+        self.flush_at = Some((now + FLUSH_DEBOUNCE).min(since + FLUSH_MAX_DELAY));
     }
 
     /// Snapshot the contents for disk and clear the dirty/pending state.
@@ -72,6 +85,7 @@ impl SettingsMap {
         let keys = std::mem::take(&mut self.pending_keys).into_iter().collect();
         self.dirty = false;
         self.flush_at = None;
+        self.dirty_since = None;
         (snapshot, keys)
     }
 }
@@ -124,6 +138,7 @@ fn store() -> &'static Store {
             map: read_map(&settings_file_path()),
             dirty: false,
             flush_at: None,
+            dirty_since: None,
             pending_keys: BTreeSet::new(),
         };
         std::thread::Builder::new()
@@ -228,6 +243,7 @@ mod tests {
             map: BTreeMap::new(),
             dirty: false,
             flush_at: None,
+            dirty_since: None,
             pending_keys: BTreeSet::new(),
         }
     }
@@ -258,6 +274,32 @@ mod tests {
         m.mark_dirty();
         assert!(m.dirty);
         assert!(m.flush_at.is_some());
+    }
+
+    /// A key rewritten more often than the debounce -- the in-flight turn's
+    /// checkpoint while a reply streams -- must still reach disk: the flush is
+    /// deferred at most FLUSH_MAX_DELAY after the first unflushed write, or a
+    /// crash mid-stream loses the whole turn.
+    #[test]
+    fn a_steady_stream_of_writes_still_flushes_within_the_max_delay() {
+        let mut m = new_map();
+        let t0 = Instant::now();
+        let mut now = t0;
+        while now < t0 + Duration::from_secs(10) {
+            m.mark_dirty_at(now);
+            now += Duration::from_millis(200);
+        }
+        let deadline = m.flush_at.expect("armed");
+        assert!(
+            deadline <= t0 + FLUSH_MAX_DELAY,
+            "flush deferred {:?} past the first write",
+            deadline - t0
+        );
+        // A lone write still waits out the ordinary debounce.
+        let (_, _) = m.take_flush_batch();
+        let later = t0 + Duration::from_secs(60);
+        m.mark_dirty_at(later);
+        assert_eq!(m.flush_at, Some(later + FLUSH_DEBOUNCE));
     }
 
     #[test]
