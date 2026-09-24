@@ -14,7 +14,6 @@ pub mod core;
 #[cfg(not(feature = "cli"))]
 use core::{
     app::commands::get_jan_data_folder_path,
-    downloads::models::DownloadManagerState,
     mcp::models::McpSettings,
     setup::{self, setup_mcp},
     state::AppState,
@@ -247,10 +246,6 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
-        // Download
-        core::downloads::commands::download_files,
-        core::downloads::commands::cancel_download_task,
-        core::downloads::commands::pause_download_task,
         // App lifecycle
         confirm_exit,
         // Theme
@@ -475,7 +470,6 @@ pub fn build_app() -> tauri::App {
         .manage(AppState {
             app_token: Some(generate_app_token()),
             mcp_servers: Arc::new(Mutex::new(HashMap::new())),
-            download_manager: Arc::new(Mutex::new(DownloadManagerState::default())),
             mcp_active_servers: Arc::new(Mutex::new(HashMap::new())),
             server_handle: Arc::new(Mutex::new(None)),
             tool_call_cancellations: Arc::new(Mutex::new(HashMap::new())),
