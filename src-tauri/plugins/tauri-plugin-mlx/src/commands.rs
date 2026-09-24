@@ -47,7 +47,9 @@ pub async fn load_mlx_model_impl(
     is_embedding: bool,
     timeout: u64,
 ) -> ServerResult<SessionInfo> {
-    let mut process_map = process_map_arc.lock().await;
+    // The session map is locked only to insert the finished session (below).
+    // Holding it across the readiness wait would stall every other MLX
+    // command (lookup, unload, chat, shutdown cleanup) for up to `timeout`.
 
     log::info!("Attempting to launch MLX server at path: {:?}", binary_path);
     log::info!("Using MLX configuration: {:?}", config);
@@ -271,7 +273,7 @@ pub async fn load_mlx_model_impl(
         api_key,
     };
 
-    process_map.insert(
+    process_map_arc.lock().await.insert(
         pid,
         MlxBackendSession {
             child,
@@ -391,4 +393,51 @@ pub async fn get_mlx_all_sessions<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
 ) -> Result<Vec<SessionInfo>, String> {
     get_all_active_sessions(app_handle).await
+}
+
+#[cfg(all(test, unix))]
+mod load_lock_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    // Regression for #71: the session map must stay lockable while a model
+    // load is waiting for the server to become ready.
+    #[tokio::test]
+    async fn session_map_is_not_locked_during_the_readiness_wait() {
+        let dir = std::env::temp_dir().join(format!("mlx-lock-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("fake-mlx-server");
+        std::fs::write(&bin, "#!/bin/sh\nsleep 5\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let model = dir.join("model.safetensors");
+        std::fs::write(&model, b"").unwrap();
+
+        let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let (map2, bin2, model2) = (map.clone(), bin.clone(), model.display().to_string());
+        let load = tokio::spawn(async move {
+            load_mlx_model_impl(
+                map2,
+                &bin2,
+                "m".into(),
+                model2,
+                0,
+                MlxConfig { ctx_size: 0 },
+                HashMap::new(),
+                false,
+                2,
+            )
+            .await
+        });
+
+        // Give the load time to spawn the child and enter its wait loop.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let lock = tokio::time::timeout(Duration::from_millis(500), map.lock()).await;
+        assert!(lock.is_ok(), "session map stayed locked during the model load");
+        drop(lock);
+
+        let result = load.await.unwrap();
+        assert!(result.is_err(), "fake server never signals readiness");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
