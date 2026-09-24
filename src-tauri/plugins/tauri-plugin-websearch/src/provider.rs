@@ -22,6 +22,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const FETCH_MAX_CHARS: usize = 40_000;
+/// Hard cap on the bytes read from any response body (Jozkah/jan#182). The
+/// body is read chunk by chunk and reading stops here, so a huge or endless
+/// response never has to fit in memory before the character bound applies.
+/// 4 MiB leaves room for a 40k-character page in any encoding plus markup,
+/// and for every provider's JSON result list.
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 pub const SEARCH_DEFAULT_COUNT: u32 = 5;
 pub const SEARCH_MAX_COUNT: u32 = 20;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -305,8 +311,7 @@ impl ExaProvider {
             .await
             .map_err(|e| format!("Exa request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Exa: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -353,8 +358,7 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa search request failed: {e}"))?;
                 let status = resp.status();
-                let text = resp
-                    .text()
+                let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa search: failed to read response body: {e}"))?;
                 if !status.is_success() {
@@ -394,8 +398,7 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa fetch request failed: {e}"))?;
                 let status = resp.status();
-                let text = resp
-                    .text()
+                let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa fetch: failed to read response body: {e}"))?;
                 if !status.is_success() {
@@ -624,8 +627,7 @@ impl TavilyProvider {
             .await
             .map_err(|e| format!("Tavily request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Tavily: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -767,8 +769,7 @@ impl YouComProvider {
             .await
             .map_err(|e| format!("You.com request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("You.com: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -956,8 +957,7 @@ impl SearchProvider for SearxngProvider {
             .await
             .map_err(|e| format!("SearXNG request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("SearXNG: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -990,8 +990,7 @@ async fn http_get_page(
 ) -> Result<FetchedPage, String> {
     let resp = public_get(url, provider).await?;
     let status = resp.status();
-    let body = resp
-        .text()
+    let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
     if !status.is_success() {
@@ -1040,8 +1039,7 @@ impl SearchProvider for BraveProvider {
             .await
             .map_err(|e| format!("Brave request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -1125,8 +1123,7 @@ impl SearchProvider for SerperProvider {
             .await
             .map_err(|e| format!("Serper request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -1233,8 +1230,7 @@ async fn fetch_url_direct(
 ) -> Result<FetchedPage, String> {
     let resp = public_get(url, provider).await?;
     let status = resp.status();
-    let body = resp
-        .text()
+    let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
     if !status.is_success() {
@@ -1289,9 +1285,95 @@ pub fn clamp_count(requested: Option<u64>) -> u32 {
     }
 }
 
+/// Read `resp`'s body as text, stopping after `cap` bytes. `.text()` buffers
+/// the whole body first, however large; this never holds more than `cap`
+/// bytes (plus one network chunk). Bytes are decoded as UTF-8, lossily, and a
+/// character split by the cap is dropped.
+async fn read_body_capped(mut resp: reqwest::Response, cap: usize) -> reqwest::Result<String> {
+    let mut buf: Vec<u8> = Vec::new();
+    if let Some(len) = resp.content_length() {
+        buf.reserve(usize::try_from(len).unwrap_or(cap).min(cap));
+    }
+    while let Some(chunk) = resp.chunk().await? {
+        let room = cap - buf.len();
+        if chunk.len() >= room {
+            buf.extend_from_slice(&chunk[..room]);
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    // Drop the connection instead of draining the rest of the body.
+    drop(resp);
+    let valid = match std::str::from_utf8(&buf) {
+        Ok(_) => buf.len(),
+        // Only a character cut short at the very end is dropped; bad bytes
+        // elsewhere are replaced, as `.text()` would.
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        Err(_) => buf.len(),
+    };
+    Ok(String::from_utf8_lossy(&buf[..valid]).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Jozkah/jan#182: an endless response body is cut off at the cap instead
+    /// of being buffered until the request timeout (or memory) runs out.
+    #[tokio::test]
+    async fn an_endless_body_is_read_only_up_to_the_cap() {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut sock, &mut req).await;
+            let _ = sock
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n")
+                .await;
+            let chunk = vec![b'a'; 16 * 1024];
+            while sock.write_all(&chunk).await.is_ok() {}
+        });
+        let resp = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap();
+        let body = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            read_body_capped(resp, 64 * 1024),
+        )
+        .await
+        .expect("reading an endless body must stop at the cap")
+        .unwrap();
+        assert_eq!(body.len(), 64 * 1024);
+    }
+
+    #[tokio::test]
+    async fn a_split_utf8_character_at_the_cap_is_dropped() {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut sock, &mut req).await;
+            let body = "ab\u{e9}".as_bytes(); // the last character is two bytes
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.write_all(body).await;
+        });
+        let resp = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(read_body_capped(resp, 3).await.unwrap(), "ab");
+    }
 
     /// Jozkah/jan#189: a model-driven `web_fetch` must not reach this machine
     /// or the local network. A listener on loopback stands in for a local
