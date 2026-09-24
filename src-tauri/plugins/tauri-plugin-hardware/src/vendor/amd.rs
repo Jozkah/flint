@@ -173,8 +173,13 @@ mod windows_impl {
             if adlmaincontrolcreate(Some(adl_malloc), 1) != 0 {
                 return Err("ADL initialization error!".into());
             }
-            // NOTE: after this call, we must call AdlMainControlDestroy
-            // whenver we encounter an error
+            // After a successful create, ADL_Main_Control_Destroy must run on
+            // every exit path, including the early error returns below. The
+            // guard is declared after `lib` and the symbols, so it drops (and
+            // destroys the context) before they are unloaded.
+            let _destroy = super::CallOnDrop::new(|| {
+                adlmaincontroldestroy();
+            });
 
             let mut num_adapters: c_int = 0;
             if adl_adapter_number_of_adapters_get(&mut num_adapters as *mut _) != 0 {
@@ -214,9 +219,55 @@ mod windows_impl {
                 }
             }
 
-            adlmaincontroldestroy();
-
             Ok(vram_usages)
         }
+    }
+}
+
+/// Runs a cleanup closure when dropped, so it also runs on early returns.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+struct CallOnDrop<F: FnOnce()>(Option<F>);
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+impl<F: FnOnce()> CallOnDrop<F> {
+    fn new(f: F) -> Self {
+        Self(Some(f))
+    }
+}
+
+impl<F: FnOnce()> Drop for CallOnDrop<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
+#[cfg(test)]
+mod call_on_drop_tests {
+    use super::CallOnDrop;
+    use std::cell::Cell;
+
+    fn fails_after_init(calls: &Cell<u32>) -> Result<(), &'static str> {
+        let _guard = CallOnDrop::new(|| calls.set(calls.get() + 1));
+        Err("Cannot get number of adapters")
+    }
+
+    // Regression for #53: the ADL context must be destroyed on the early
+    // error returns after a successful create, not only on success.
+    #[test]
+    fn cleanup_runs_on_an_early_error_return() {
+        let calls = Cell::new(0);
+        assert!(fails_after_init(&calls).is_err());
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn cleanup_runs_exactly_once_on_success() {
+        let calls = Cell::new(0);
+        {
+            let _guard = CallOnDrop::new(|| calls.set(calls.get() + 1));
+        }
+        assert_eq!(calls.get(), 1);
     }
 }
