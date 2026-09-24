@@ -1308,7 +1308,29 @@ async fn run_subagent(
     use crate::core::agent::r#loop::run_orchestration_streamed;
 
     let name = resolved.definition.name.clone();
-    let child_args = configure_child_args(parent_args, &resolved, &run_id);
+    // Host tools are the client's to execute, and a client answers only a
+    // `tool_request` it can see at the top level. A child's own events reach
+    // stdout wrapped in `Subagent { .. }`, a shape no client may answer, so the
+    // child keeps the parent's tool set, gate and -- crucially -- the *same*
+    // request registry, but emits its requests on the parent's sender instead,
+    // unwrapped and attributed by `run_id`. `events` is the root channel here
+    // (children cannot nest), so the printer's strand guard and the stdin
+    // reader see a child's request exactly as they see the main run's.
+    // `configure_child_args` clears the set for every other kind of child (a
+    // durable one has no route back to the client), so it is restored here.
+    #[cfg(feature = "cli")]
+    let parent_host_tools = (
+        parent_args.host_tools.clone(),
+        parent_args.host_tool_requests.clone(),
+    );
+    #[allow(unused_mut)]
+    let mut child_args = configure_child_args(parent_args, &resolved, &run_id);
+    #[cfg(feature = "cli")]
+    {
+        child_args.host_tools = parent_host_tools.0;
+        child_args.host_tool_requests = parent_host_tools.1;
+        child_args.host_tool_route = Some((events.clone(), run_id.clone()));
+    }
 
     let body = child_body(
         &resolved,
@@ -3373,6 +3395,8 @@ mod tests {
             permission_requests: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             host_tools: crate::core::agent::host_tools::HostToolSet::new(),
             host_tool_requests: crate::core::agent::host_tools::new_registry(),
+            host_owns_gate: false,
+            host_tool_route: None,
             ask_requests: None,
             todo_registry: None,
             system_prompt_override: None,
@@ -4121,8 +4145,9 @@ mod tests {
     /// forwarder is a *negative* match: anything not explicitly held back is
     /// forwarded, so a nested `ToolRequest` would be handed to a client that is
     /// told nothing about the wrapper and could not answer it. Nothing here
-    /// filters that shape, which is exactly why `run_subagent` clears the
-    /// child's host tool set instead: the request is never raised at all.
+    /// filters that shape, which is exactly why a child's host calls never
+    /// enter its own channel: `run_subagent` routes them to the root sender
+    /// (`host_tool_route`), unwrapped.
     #[test]
     fn a_nested_tool_request_would_reach_the_parent_unfiltered() {
         use crate::core::agent::events::StreamEvent;
@@ -4131,9 +4156,10 @@ mod tests {
                 request_id: "host-1".to_string(),
                 tool_name: "robot_arm_move".to_string(),
                 args: serde_json::json!({}),
+                run_id: None,
             }),
-            "the forwarder does not hold back a nested tool_request, so a child \
-             must never own host tools in the first place"
+            "the forwarder does not hold back a nested tool_request, so a child's \
+             request must be routed around it"
         );
     }
 

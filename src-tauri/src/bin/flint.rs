@@ -448,12 +448,19 @@ enum AgentCommands {
         #[arg(long, value_enum, default_value_t = InputFormat::Text)]
         input_format: InputFormat,
         /// JSON file declaring tools this host executes: a list of
-        /// `{"name", "description", "parameters"}`. The model calls them as
-        /// `host__<name>`; each call arrives as a `tool_request` on stdout and
+        /// `{"name", "description", "parameters", "capability"}`. The model
+        /// calls them as `host__<name>` (a name outside `[A-Za-z0-9_-]` is
+        /// mapped to a safe one); each call arrives as a `tool_request` on stdout and
         /// must be answered with a `tool_result` on stdin, so this requires
         /// `--input-format stream-json`
         #[arg(long, value_name = "FILE")]
         host_tools: Option<String>,
+        /// The host approves its own tool calls: no `permission_request` is
+        /// raised for any host tool (built-ins are unaffected). For a host
+        /// whose `tool_request` handler is itself the approval step; requires
+        /// `--host-tools`
+        #[arg(long, requires = "host_tools")]
+        host_gate: bool,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -1612,6 +1619,7 @@ async fn handle_agent(cmd: AgentCommands) {
             output_format,
             input_format,
             host_tools,
+            host_gate,
             events,
             profile,
             output_density,
@@ -1660,6 +1668,7 @@ async fn handle_agent(cmd: AgentCommands) {
                 output_format,
                 input_format,
                 host_tools.as_deref(),
+                host_gate,
             )
             .await
         }

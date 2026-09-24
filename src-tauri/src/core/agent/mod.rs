@@ -48,6 +48,9 @@ pub mod index;
 // that could answer a `tool_request`.
 #[cfg(feature = "cli")]
 pub mod host_tools;
+// Only host tools consume these helpers, so they share host_tools' gate.
+#[cfg(feature = "cli")]
+pub mod host_schema;
 pub mod interaction;
 pub mod licenses;
 pub mod r#loop;
