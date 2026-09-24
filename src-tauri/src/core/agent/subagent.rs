@@ -1164,16 +1164,21 @@ impl BackgroundSubagents {
             // awaited -- announced its end and settled its checkout then, and
             // announcing either twice (or relabelling a finished child as
             // cancelled) would tell a consumer two different stories about it.
-            if entry
-                .phase
-                .fetch_update(
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                    |p| matches!(p, PHASE_QUEUED | PHASE_RUNNING).then_some(PHASE_CANCELLED),
-                )
-                .is_err()
-            {
-                continue;
+            let previous = match entry.phase.fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |p| matches!(p, PHASE_QUEUED | PHASE_RUNNING).then_some(PHASE_CANCELLED),
+            ) {
+                Ok(previous) => previous,
+                Err(_) => continue,
+            };
+            // A queued child's own task is what takes it off the queue count,
+            // after its wait -- and an aborted task never gets there, so the
+            // slot is released here instead (upstream janhq/jan#9046). A
+            // running child's permit is a local of its task and is returned
+            // when the abort drops that future.
+            if previous == PHASE_QUEUED {
+                self.queued.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             }
             // An aborted task never reaches its own settle, so an isolated
             // child would stay "running" in its review record for the life of
@@ -1509,6 +1514,13 @@ pub(crate) fn spawn_subagent(
     // stop its siblings.
     let child_token = tauri_plugin_agent_tools::lifecycle::current()
         .map(|parent| tauri_plugin_agent_tools::lifecycle::Token::new(parent.scope().clone()));
+    // Spawn and register under one hold of the registry lock (upstream
+    // janhq/jan#9046). Spawning first and inserting after left a window where
+    // the child was running but unowned: a teardown's `abort_all` walked the
+    // registry, missed it, and the child kept streaming into a run nobody was
+    // watching. With the lock held across both, a teardown either finds the
+    // entry or runs before the child exists.
+    let mut registry_guard = bg.inner.lock().unwrap();
     let handle = tokio::spawn(async move {
         // Registered for the life of the child so a scope-wide stop finds it.
         let _child_registered = child_token
@@ -1597,7 +1609,7 @@ pub(crate) fn spawn_subagent(
         let _ = tx.send(result);
     });
 
-    bg.inner.lock().unwrap().insert(
+    registry_guard.insert(
         run_id.clone(),
         BackgroundEntry {
             result: Some(rx),
@@ -1610,6 +1622,7 @@ pub(crate) fn spawn_subagent(
             phase,
         },
     );
+    drop(registry_guard);
     Ok(run_id)
 }
 
@@ -3787,6 +3800,13 @@ mod tests {
         assert!(
             bg.inner.lock().unwrap().is_empty(),
             "abort_all drains queued dispatches too"
+        );
+        // Every queued child's slot is released by the teardown itself: an
+        // aborted task never reaches the decrement after its wait.
+        assert_eq!(
+            bg.queued.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "abort_all releases the queue slots it cancels"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
