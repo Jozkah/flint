@@ -287,7 +287,12 @@ type CoworkSessionsState = {
   clearSession: (id: string) => void
 }
 
-import { decideSessionStart } from '@/lib/coworkSessionStart'
+import {
+  decideSessionStart,
+  DEFAULT_SESSION_TITLE,
+  isSessionEmpty,
+  pruneEmptySessions,
+} from '@/lib/coworkSessionStart'
 import {
   recover as recoverInterrupted,
   type InFlightRecord,
@@ -339,7 +344,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         const id = crypto.randomUUID()
         const session: CoworkSession = {
           id,
-          title: 'New session',
+          title: DEFAULT_SESSION_TITLE,
           folder: null,
           turns: [],
           messages: [],
@@ -746,6 +751,18 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
+      // Blank sessions left over from earlier launches are dropped as the
+      // store loads, except the one that is selected.
+      merge: (persisted, current) => {
+        const merged = {
+          ...current,
+          ...(persisted as Partial<CoworkSessionsState> | undefined),
+        }
+        return {
+          ...merged,
+          sessions: pruneEmptySessions(merged.sessions ?? [], merged.currentId ?? null),
+        }
+      },
       version: 4,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
@@ -899,5 +916,17 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 export function ensureCurrentSession(): string {
   const { currentId, sessions, createSession } = useCoworkSessions.getState()
   if (currentId && sessions.some((s) => s.id === currentId)) return currentId
+  // The selection points nowhere. A blank session already in the list is the
+  // new one; creating another each time is how blanks accumulated.
+  const blank = sessions.find(
+    (s) =>
+      isSessionEmpty(s) &&
+      s.title === DEFAULT_SESSION_TITLE &&
+      useFileActivity.getState().eventsFor(s.id).length === 0
+  )
+  if (blank) {
+    useCoworkSessions.getState().selectSession(blank.id)
+    return blank.id
+  }
   return createSession()
 }

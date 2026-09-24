@@ -70,3 +70,27 @@ export function decideSessionStart(input: SessionStartInput): SessionStartDecisi
   if (input.hasFileActivity) return 'create'
   return isSessionEmpty(input.current) ? 'reuse' : 'create'
 }
+
+/**
+ * Drop the blank sessions that piled up, keeping the one the user is on.
+ *
+ * Every path that needed "a session" used to create one when the selection
+ * pointed nowhere, and each was persisted at once, so the list filled with
+ * "New session" entries nobody wrote in. A blank session holds nothing to
+ * lose. One the user renamed is kept: the name is something they put there.
+ */
+export function pruneEmptySessions(
+  sessions: CoworkSession[],
+  keepId: string | null
+): CoworkSession[] {
+  const pruned = sessions.filter(
+    (session) =>
+      session.id === keepId ||
+      !isSessionEmpty(session) ||
+      session.title !== DEFAULT_SESSION_TITLE
+  )
+  return pruned.length === sessions.length ? sessions : pruned
+}
+
+/** The title every session starts with. */
+export const DEFAULT_SESSION_TITLE = 'New session'
