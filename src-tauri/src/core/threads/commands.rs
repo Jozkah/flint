@@ -40,12 +40,26 @@ pub async fn list_threads<R: Runtime>(
     }
 
     for entry in fs::read_dir(&data_dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let Ok(entry) = entry else {
+            continue;
+        };
         let path = entry.path();
         if path.is_dir() {
             let thread_metadata_path = path.join(THREADS_FILE);
             if thread_metadata_path.exists() {
-                let data = fs::read_to_string(&thread_metadata_path).map_err(|e| e.to_string())?;
+                // One thread that cannot be read (deleted between the check
+                // and the read, locked, permission denied) must not hide
+                // every other thread: skip it like an unparsable one.
+                let data = match fs::read_to_string(&thread_metadata_path) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        log::warn!(
+                            "Skipping unreadable thread file {}: {e}",
+                            thread_metadata_path.display()
+                        );
+                        continue;
+                    }
+                };
                 match serde_json::from_str(&data) {
                     Ok(thread) => threads.push(thread),
                     Err(e) => {

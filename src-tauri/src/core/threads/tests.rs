@@ -91,6 +91,25 @@ async fn test_create_and_list_threads() {
 }
 
 #[tokio::test]
+async fn list_threads_skips_a_thread_file_it_cannot_read() {
+    let (app, data_folder) = mock_app_with_temp_data_dir();
+    let created = create_thread(app.handle().clone(), create_test_thread("Readable"))
+        .await
+        .unwrap();
+    // A thread.json that exists but cannot be read as a file.
+    let broken = get_data_dir(&data_folder)
+        .join(format!("unreadable-{}", uuid::Uuid::new_v4()))
+        .join(THREADS_FILE);
+    fs::create_dir_all(&broken).unwrap();
+
+    let threads = list_threads(app.handle().clone())
+        .await
+        .expect("one unreadable thread must not fail the whole listing");
+    assert!(threads.iter().any(|t| t["id"] == created["id"]));
+    let _ = fs::remove_dir_all(broken.parent().unwrap());
+}
+
+#[tokio::test]
 async fn test_create_and_list_messages() {
     let (app, _data_dir) = mock_app_with_temp_data_dir();
     // Create a thread first
