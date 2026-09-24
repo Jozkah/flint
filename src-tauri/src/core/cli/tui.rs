@@ -1844,6 +1844,10 @@ struct App {
     display_log: Vec<DisplayEntry>,
     /// Background journal writer, created on the first dump and joined on exit.
     journal_writer: Option<journal::Writer>,
+    /// Background thread saver for mid-turn `MessagesUpdated` snapshots, so a
+    /// model step does not stall the render loop on a full-history rewrite
+    /// and fsync (#63). Flushed before every synchronous save and on exit.
+    thread_saver: Option<ThreadSaver>,
     /// In-progress assistant text for the current turn, flushed on the next
     /// step/tool/terminal event.
     assistant_buf: String,
@@ -2451,6 +2455,7 @@ impl App {
             transcript: Vec::new(),
             display_log: Vec::new(),
             journal_writer: None,
+            thread_saver: None,
             assistant_buf: String::new(),
             reasoning_segs: Vec::new(),
             tool_group: None,
@@ -4483,6 +4488,13 @@ impl App {
         }
         if let Some(base) = self.base_snapshot.as_ref() {
             meta.insert("base_snapshot".to_string(), serde_json::json!(base));
+            // So `flint threads delete` can drop the snapshot ref (#143).
+            if let Some(repo) = self.repo_root.as_ref() {
+                meta.insert(
+                    super::SNAPSHOT_REPO_KEY.to_string(),
+                    serde_json::json!(repo.to_string_lossy()),
+                );
+            }
             meta.insert(
                 "checkpoints".to_string(),
                 serde_json::json!(self.checkpoints),
@@ -4571,6 +4583,9 @@ impl App {
         if self.history.is_empty() {
             return;
         }
+        // A queued background save must land first, or it could overwrite
+        // this newer snapshot after the fact.
+        self.flush_thread_saves();
         match super::cli_save_thread(
             &self.agent_dir,
             self.thread_id.as_deref(),
@@ -4583,6 +4598,43 @@ impl App {
                 self.dump_display_log();
             }
             Err(e) => self.detail = format!("save failed: {e}"),
+        }
+    }
+
+    /// `persist` off the render loop: the mid-turn save on every model step
+    /// hands the snapshot to a writer thread instead of rewriting the whole
+    /// history (with an fsync) inside a frame. The first save of a new thread
+    /// still runs inline, because it is what assigns the thread id.
+    fn persist_in_background(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        let Some(id) = self.thread_id.clone() else {
+            self.persist();
+            return;
+        };
+        let saver = self.thread_saver.get_or_insert_with(ThreadSaver::new);
+        if let Some(err) = saver.take_error() {
+            self.detail = format!("save failed: {err}");
+        }
+        saver.save(ThreadSave {
+            base: self.agent_dir.clone(),
+            id,
+            model: self.model.clone(),
+            history: self.history.clone(),
+            metadata: self.thread_metadata(),
+        });
+        self.dump_display_log();
+    }
+
+    /// Wait for queued background thread saves to reach disk, surfacing the
+    /// last failure in the status line.
+    fn flush_thread_saves(&mut self) {
+        if let Some(saver) = self.thread_saver.as_ref() {
+            saver.flush();
+            if let Some(err) = saver.take_error() {
+                self.detail = format!("save failed: {err}");
+            }
         }
     }
 
@@ -4600,6 +4652,8 @@ impl App {
 
     /// Wait for queued journal dumps to reach disk (session exit, tests).
     fn join_journal(&mut self) {
+        self.flush_thread_saves();
+        self.thread_saver = None;
         if let Some(writer) = self.journal_writer.as_mut() {
             writer.join();
         }
@@ -5326,7 +5380,7 @@ impl App {
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
-                self.persist();
+                self.persist_in_background();
             }
             StreamEvent::TodoUpdate { list } => {
                 self.todos = list;
@@ -9397,10 +9451,99 @@ fn apply_repaint<B: Backend>(terminal: &mut Terminal<B>) {
     }
 }
 
+/// One snapshot for [`ThreadSaver`].
+struct ThreadSave {
+    base: std::path::PathBuf,
+    id: String,
+    model: String,
+    history: Vec<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
+}
+
+enum ThreadSaveJob {
+    Save(ThreadSave),
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// Writes thread snapshots on a dedicated thread, in the order queued, so the
+/// newest snapshot is always the last one written.
+struct ThreadSaver {
+    tx: Option<std::sync::mpsc::Sender<ThreadSaveJob>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl ThreadSaver {
+    fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<ThreadSaveJob>();
+        let error = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let sink = error.clone();
+        let handle = std::thread::spawn(move || {
+            for job in rx {
+                match job {
+                    ThreadSaveJob::Save(s) => {
+                        if let Err(e) = super::cli_save_thread(
+                            &s.base,
+                            Some(&s.id),
+                            &s.model,
+                            &s.history,
+                            s.metadata,
+                        ) {
+                            if let Ok(mut slot) = sink.lock() {
+                                *slot = Some(e);
+                            }
+                        }
+                    }
+                    ThreadSaveJob::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        Self {
+            tx: Some(tx),
+            handle: Some(handle),
+            error,
+        }
+    }
+
+    fn save(&self, save: ThreadSave) {
+        if let Some(tx) = self.tx.as_ref() {
+            let _ = tx.send(ThreadSaveJob::Save(save));
+        }
+    }
+
+    /// Block until every save queued before this call has been written.
+    fn flush(&self) {
+        let Some(tx) = self.tx.as_ref() else {
+            return;
+        };
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        if tx.send(ThreadSaveJob::Flush(done_tx)).is_ok() {
+            let _ = done_rx.recv();
+        }
+    }
+
+    fn take_error(&self) -> Option<String> {
+        self.error.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
+impl Drop for ThreadSaver {
+    fn drop(&mut self) {
+        drop(self.tx.take());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 /// Route a bracketed paste event to the active input owner. The order mirrors
-/// `handle_key`: each docked prompt owns the keyboard while open, so a paste
-/// must land in its fields rather than the chat composer (where a pasted API
-/// key would echo).
+/// the key path (`handle_ask_key`, then `handle_key`): each docked prompt owns
+/// the keyboard while open, so a paste must land in its fields rather than the
+/// chat composer (where a pasted API key would echo). An overlay that owns the
+/// keyboard but has no text field drops the paste; it must never fall through
+/// to the composer hidden behind it.
 fn route_paste_event(app: &mut App, event: Event) {
     let Event::Paste(text) = event else {
         return;
@@ -9408,25 +9551,57 @@ fn route_paste_event(app: &mut App, event: Event) {
     if let Some(prompt) = app.account_login.as_mut() {
         // A pasted redirect/code belongs to the OAuth prompt, not chat.
         prompt.paste(&text);
-    } else if let Some(prompt) = app.login.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.login.as_mut() {
         // A pasted API key belongs to the login field, not the chat composer
         // (where it would echo).
         prompt.paste(&text);
-    } else if let Some(prompt) = app.settings_prompt.as_mut() {
+        return;
+    }
+    // A yes/no question has no text field: the paste is dropped.
+    if app.browser_confirm.is_some() {
+        return;
+    }
+    if let Some(prompt) = app.settings_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.mcp_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.mcp_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.provider_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.provider_prompt.as_mut() {
         prompt.paste(&text);
-    } else if !app.ask_queue.is_empty() {
+        return;
+    }
+    if !app.ask_queue.is_empty() {
         handle_ask_paste(app, &text);
-    } else {
-        // Bracketed paste of a split SGR report is the same leak as typing it
-        // a character at a time; strip before the composer sees it.
-        let text = strip_sgr_mouse_reports(&text);
-        for c in text.chars() {
-            app.input_insert(c);
+        return;
+    }
+    // The context view and a waiting permission prompt take keys, not text.
+    if app.context_view.is_some() || !app.pending_queue.is_empty() {
+        return;
+    }
+    if let Some(picker) = app.model_picker.as_mut() {
+        // The model picker's only text field is its filter.
+        if picker.focus == ModelPickerFocus::Models {
+            picker
+                .query
+                .extend(text.chars().filter(|c| !c.is_control()));
+            picker.refresh_items();
         }
+        return;
+    }
+    // List pickers navigate by key and have no text field.
+    if app.picker.is_some() {
+        return;
+    }
+    // Bracketed paste of a split SGR report is the same leak as typing it
+    // a character at a time; strip before the composer sees it.
+    let text = strip_sgr_mouse_reports(&text);
+    for c in text.chars() {
+        app.input_insert(c);
     }
 }
 
@@ -12218,6 +12393,28 @@ fn grapheme_prefix(s: &str, n: usize) -> String {
 /// Enter validates and writes (an empty field clears the key, except for a
 /// `Glyph`, where it writes the off value), Esc cancels. Mirrors
 /// `handle_login_key`, minus the secret/verify machinery.
+/// Parse the field of an `Int` setting into the TOML integer to write, or
+/// `None` for a cleared field (unset). TOML integers are signed 64-bit, so a
+/// value above `i64::MAX` is refused here: casting it would wrap negative,
+/// and a negative value in a `u64` field makes agent.toml fail to load, which
+/// stops the TUI from starting for that project (#133).
+fn parse_int_setting(input: &str, default: Option<u64>, min: u64) -> Result<Option<i64>, String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(None);
+    }
+    let default = default
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "unset".into());
+    match input.parse::<u64>() {
+        Ok(n) if n < min => Err(format!("must be at least {min} (default: {default})")),
+        Ok(n) => i64::try_from(n)
+            .map(Some)
+            .map_err(|_| format!("must be at most {} (default: {default})", i64::MAX)),
+        Err(_) => Err(format!("'{input}' is not an integer")),
+    }
+}
+
 fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
     if (key.code == KeyCode::Esc || (ctrl && key.code == KeyCode::Char('c')))
         && app.settings_prompt.is_some()
@@ -12233,25 +12430,11 @@ fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
             let toml_path = app.agent_dir.join("agent.toml");
             let value: Option<toml_edit::Item> = match prompt.def().kind {
                 AgentSettingKind::Int { default, min } => {
-                    if prompt.input.trim().is_empty() {
-                        None
-                    } else {
-                        match prompt.input.trim().parse::<u64>() {
-                            Ok(n) if n >= min => Some(toml_edit::value(n as i64)),
-                            Ok(_) => {
-                                prompt.error = Some(format!(
-                                    "must be at least {min} (default: {})",
-                                    default
-                                        .map(|d| d.to_string())
-                                        .unwrap_or_else(|| "unset".into())
-                                ));
-                                return;
-                            }
-                            Err(_) => {
-                                prompt.error =
-                                    Some(format!("'{}' is not an integer", prompt.input));
-                                return;
-                            }
+                    match parse_int_setting(&prompt.input, default, min) {
+                        Ok(v) => v.map(toml_edit::value),
+                        Err(err) => {
+                            prompt.error = Some(err);
+                            return;
                         }
                     }
                 }
@@ -18019,6 +18202,24 @@ fn footer_spans(app: &App) -> Vec<Span<'static>> {
 #[cfg(test)]
 mod tests {
 
+    /// #133: a value above i64::MAX used to be cast with `as i64`, wrapping
+    /// negative into agent.toml and bricking the next startup.
+    #[test]
+    fn int_setting_refuses_values_that_do_not_fit_a_toml_integer() {
+        use super::parse_int_setting;
+        assert_eq!(parse_int_setting("", Some(8), 1), Ok(None));
+        assert_eq!(parse_int_setting(" 42 ", Some(8), 1), Ok(Some(42)));
+        assert_eq!(
+            parse_int_setting(&i64::MAX.to_string(), None, 1),
+            Ok(Some(i64::MAX))
+        );
+        assert!(parse_int_setting("0", Some(8), 1).is_err(), "below min");
+        assert!(parse_int_setting("abc", Some(8), 1).is_err(), "not a number");
+        let over = (i64::MAX as u64 + 1).to_string();
+        assert!(parse_int_setting(&over, None, 1).is_err(), "wraps negative");
+        assert!(parse_int_setting(&u64::MAX.to_string(), None, 1).is_err());
+    }
+
     /// An empty MCP map, for the `run_command`/`handle_key` paths that take one
     /// but whose behaviour under test has nothing to do with MCP.
     fn no_mcp() -> crate::core::state::SharedMcpServers {
@@ -18335,6 +18536,38 @@ mod tests {
         assert!(receiver.try_recv().unwrap().is_empty());
         assert!(app.history.is_empty());
         assert!(app.message_queue.is_empty());
+    }
+
+    /// #63: a mid-turn `MessagesUpdated` on an existing thread is saved by
+    /// the background saver, not inline in the render loop, and still reaches
+    /// disk (in order) once the saver is flushed.
+    #[tokio::test]
+    async fn mid_turn_messages_updated_saves_off_the_render_loop() {
+        let mut app = test_app();
+        app.submit_user("first".into());
+        app.persist();
+        assert!(app.thread_id.is_some(), "first save assigns the id");
+        assert!(app.thread_saver.is_none(), "first save runs inline");
+
+        for text in ["step one", "step two"] {
+            app.apply(StreamEvent::MessagesUpdated {
+                messages: vec![
+                    json!({ "role": "user", "content": "first" }),
+                    json!({ "role": "assistant", "content": text }),
+                ],
+            });
+        }
+        assert!(
+            app.thread_saver.is_some(),
+            "a mid-turn save must go through the background saver"
+        );
+        app.join_journal();
+
+        let mut restored = test_app();
+        restored.agent_dir = app.agent_dir.clone();
+        apply_resume(&mut restored, &ResumeRequest::resume(ResumeTarget::Latest)).await;
+        let last = restored.history.last().expect("history restored");
+        assert_eq!(last["content"], "step two", "newest snapshot wins");
     }
 
     #[tokio::test]
@@ -34408,6 +34641,30 @@ mod tests {
         picker.select_scope(1);
         assert_eq!(picker.scopes[picker.active_scope].label, "anthropic");
         assert!(picker.items.iter().all(|item| item.provider == "anthropic"));
+    }
+
+    /// #69: a paste while a picker owns the keyboard must not reach the chat
+    /// composer hidden behind it. The model picker takes it as its filter.
+    #[test]
+    fn paste_does_not_leak_past_open_pickers() {
+        let mut app = test_app();
+        app.model_picker = super::ModelPicker::from_pairs(
+            vec![("openai".into(), "gpt-5-codex".into())],
+            "missing-current",
+        );
+        route_paste_event(&mut app, Event::Paste("codex".into()));
+        assert!(app.input.is_empty(), "paste leaked past the model picker");
+        assert_eq!(app.model_picker.as_ref().unwrap().query, "codex");
+
+        let mut app = test_app();
+        app.picker = Some(super::Picker {
+            kind: PickerKind::AgentSettings,
+            items: Vec::new(),
+            selected: 0,
+            armed_delete: None,
+        });
+        route_paste_event(&mut app, Event::Paste("must not become chat".into()));
+        assert!(app.input.is_empty(), "paste leaked past the list picker");
     }
 
     #[tokio::test]

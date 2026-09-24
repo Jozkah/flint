@@ -248,14 +248,36 @@ pub fn cli_list_messages(thread_id: &str) -> Result<Vec<serde_json::Value>, Stri
 
 /// Delete a thread directory.
 pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
+    delete_thread_at(&resolve_jan_data_folder(), thread_id)
+}
+
+/// Metadata key naming the repository that holds a thread's snapshot ref.
+/// Written by the TUI with its snapshots; read back on delete, which otherwise
+/// has no repository in hand to drop the ref from (Jozkah/jan#143).
+pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
+
+fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
-    let data_folder = resolve_jan_data_folder();
-    let thread_dir = get_thread_dir(&data_folder, thread_id);
+    // Read where the snapshots live before the thread's files go away.
+    let snapshot_repo = fs::read_to_string(get_thread_metadata_path(data_folder, thread_id))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|t| {
+            t.pointer(&format!("/metadata/{SNAPSHOT_REPO_KEY}"))
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from)
+        });
+    let thread_dir = get_thread_dir(data_folder, thread_id);
     if thread_dir.exists() {
         fs::remove_dir_all(thread_dir).map_err(|e| e.to_string())?;
     }
     crate::core::agent::git::cleanup_snapshot_index(thread_id);
+    // The ref is what keeps the snapshot commit chain alive; the index above
+    // is only scratch. Same pair the desktop's checkpoint::forget drops.
+    if let Some(repo) = snapshot_repo.filter(|r| r.is_dir()) {
+        let _ = crate::core::agent::git::drop_ref(&repo, thread_id);
+    }
     // What the thread's runs recorded goes with it, as on the desktop
     // (Jozkah/jan#294): snapshots, usage, diffs, decisions, undo journal.
     if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
@@ -2894,6 +2916,60 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// #143: deleting a thread drops its snapshot ref in the repository the
+    /// thread recorded, not only the scratch index.
+    #[test]
+    fn deleting_a_thread_drops_its_snapshot_ref() {
+        use crate::core::agent::git;
+        let git_in = |dir: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let repo = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        git_in(repo.path(), &["init", "-q"]);
+        // The empty tree (stdin is empty), written so commit-tree can use it.
+        let tree = git_in(repo.path(), &["hash-object", "-t", "tree", "-w", "--stdin"]);
+        let sha = git_in(
+            repo.path(),
+            &[
+                "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                "commit-tree", &tree, "-m", "s",
+            ],
+        );
+        let id = "cli-delete-drops-ref";
+        git::update_ref(repo.path(), id, &sha).unwrap();
+        let reference = git::snapshot_ref(id);
+        git_in(repo.path(), &["rev-parse", "--verify", &reference]);
+
+        let meta_path = super::get_thread_metadata_path(data.path(), id);
+        std::fs::create_dir_all(meta_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &meta_path,
+            serde_json::json!({
+                "id": id,
+                "metadata": { super::SNAPSHOT_REPO_KEY: repo.path().to_string_lossy() },
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        super::delete_thread_at(data.path(), id).unwrap();
+
+        let still = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "--quiet", &reference])
+            .current_dir(repo.path())
+            .output()
+            .unwrap();
+        assert!(!still.status.success(), "snapshot ref survived the delete");
+        assert!(!meta_path.exists());
+    }
+
     /// AH-181: a declared density is read, and anything that is not one is
     /// refused rather than quietly treated as the default -- a run that says
     /// less than somebody asked it to is a run whose log is missing what they
