@@ -1761,6 +1761,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         policy = policy.with_write_roots(write_abs.clone());
         if ctx.sandbox {
             policy = hide_write_root_jans(policy, &write_abs);
+            // From the host, before the shell sees the hidden `.jan`: a
+            // tracked file there must not look deleted to the sandboxed git.
+            for wr in &write_abs {
+                if let Err(e) = crate::tools::git_native::skip_worktree_jan(wr) {
+                    eprintln!("could not mark {}/.jan skip-worktree: {e}", wr.display());
+                }
+            }
         }
         // #322: a run whose destination is a managed worktree starts its shell
         // there, so `npm test` or `.\check.ps1` mean the project. See
