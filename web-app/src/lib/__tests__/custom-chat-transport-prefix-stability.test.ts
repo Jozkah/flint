@@ -272,9 +272,12 @@ describe('CustomChatTransport prompt-prefix stability across turns', () => {
     const transport = new CustomChatTransport('you are jan', 'thread-1')
     await drain(
       await send(transport, [
-        user('u1', `first-user ${'context '.repeat(1_200)}`),
-        assistant('a1', `first-assistant ${'context '.repeat(1_200)}`),
-        user('u2', `latest-user ${'context '.repeat(1_200)}`),
+        // About 1,400 estimated tokens each: the three fit the configured
+        // 12,000-token window after output headroom and safety margin, and
+        // would not fit the 4,096 the live context reports.
+        user('u1', `first-user ${'context '.repeat(600)}`),
+        assistant('a1', `first-assistant ${'context '.repeat(600)}`),
+        user('u2', `latest-user ${'context '.repeat(600)}`),
       ])
     )
 

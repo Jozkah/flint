@@ -125,9 +125,12 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
   if (!room.folder) {
     // No folder means no file tools; whether any tools exist depends on web
     // search and connected MCP servers. Don't promise tools that aren't there.
+    // The tool list itself travels with the request, so the prompt names only
+    // what is certain and points at that list for the rest (MCP tools depend
+    // on which servers are connected and trusted when the turn starts).
     const webNote = web
-      ? ' You do have web tools (web_search / web_fetch), plus any connected MCP tools.'
-      : ' Unless connected MCP tools are available, you have no tools this turn; do not attempt file or command tools.'
+      ? ' You have web tools (web_search / web_fetch); any other tool you may use is in your tool list.'
+      : ' Use only the tools in your tool list this turn; if it is empty, answer without tools. Do not attempt file or command tools.'
     return `No working folder is attached, so file tools are unavailable.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')

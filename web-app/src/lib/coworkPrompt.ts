@@ -134,9 +134,9 @@ export type CoworkPromptOptions = {
   /**
    * Verbatim `FLINT.md` from the attached project root, when it has one.
    *
-   * `FLINT.md` is the one instructions file Jan reads — `AGENTS.md` and
+   * `FLINT.md` is the one instructions file Flint reads — `AGENTS.md` and
    * `CLAUDE.md` are deliberately not ingested, here or in `core::agent`, so
-   * only what a user wrote for Jan is treated as authoritative.
+   * only what a user wrote for Flint is treated as authoritative.
    */
   projectInstructions?: string | null
   /**
@@ -144,7 +144,7 @@ export type CoworkPromptOptions = {
    * compatibility on for this folder.
    *
    * Wrapped and labelled with the file they came from, and ranked below
-   * `FLINT.md`: a user's own instructions for Jan outrank instructions written
+   * `FLINT.md`: a user's own instructions for Flint outrank instructions written
    * for something else. Neither outranks this prompt — no instruction file
    * moves the repository, grants a tool, or changes where changes go, however
    * it is phrased.
@@ -255,10 +255,10 @@ function environmentBlock(opts: CoworkPromptOptions): string | null {
 /**
  * Stop ingested text from closing the envelope it is being placed in.
  *
- * `FLINT.md` is something the user wrote for Jan. A compatibility file is
+ * `FLINT.md` is something the user wrote for Flint. A compatibility file is
  * whatever was in a repository they may have merely cloned, and it arrives here
  * verbatim — so a file containing `</project_instructions>` would end its own
- * block and put everything after it at the same level as Jan's own
+ * block and put everything after it at the same level as Flint's own
  * instructions. That is the one thing ingested content must never be able to
  * do, and no amount of telling the model to ignore it is as good as the text
  * not being there.
@@ -293,7 +293,7 @@ function instructionsBlock(
   }
   if (compat.length > 0) {
     // Said once, above the files themselves: these are documents found in the
-    // repository, not instructions from the user or from Jan. They inform the
+    // repository, not instructions from the user or from Flint. They inform the
     // work and decide nothing about what the run may do.
     parts.push(
       'The files below were written for another tool and found in this',
