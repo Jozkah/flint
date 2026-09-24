@@ -365,8 +365,10 @@ function FileRow({ file, onDelete, t }: FileRowProps) {
         size="icon-xs"
         className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
         onClick={() => onDelete(file.id)}
+        aria-label={`${t('common:delete')} ${file.name}`}
+        title={t('common:delete')}
       >
-        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" aria-hidden />
       </Button>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger className="sr-only" tabIndex={-1} />

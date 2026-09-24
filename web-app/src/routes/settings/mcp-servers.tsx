@@ -1005,8 +1005,9 @@ function MCPServersDesktop() {
                     </div>
                   }
                   descriptionOutside={
-                    !expanded ? undefined : (
                     <div className="min-w-0 pt-2 text-sm text-muted-foreground">
+                      {expanded && (
+                      <>
                       <div className="mb-1">
                         Transport:{' '}
                         <span className="font-mono text-xs uppercase text-ink-2">
@@ -1083,6 +1084,11 @@ function MCPServersDesktop() {
                           />
                         </>
                       )}
+                      </>
+                      )}
+                      {/* Outside the collapsed part: a failed connection and
+                          what to do about it must show without expanding the
+                          card, and the switch's aria-describedby points here. */}
                       <McpServerStatus
                         serverName={key}
                         snapshot={snapshot}
@@ -1091,6 +1097,8 @@ function MCPServersDesktop() {
                         onRetry={() => toggleServer(key, true)}
                         onAuthorize={() => void handleAuthorize(key)}
                       />
+                      {expanded && (
+                      <>
                       <McpServerDetails
                         profile={profile}
                         toolNames={toolNames}
@@ -1125,8 +1133,9 @@ function MCPServersDesktop() {
                           {t('mcp-servers:approval.changedSinceApproval')}
                         </p>
                       )}
+                      </>
+                      )}
                     </div>
-                    )
                   }
                   actions={
                     <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end">
