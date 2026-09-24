@@ -615,7 +615,9 @@ function ArtifactInspector({
               variant="outline"
               className="pointer-coarse:h-11"
               onClick={onOpen}
-              disabled={missing}
+              // Same precondition as the external/folder actions: a path that
+              // never resolved inside the session root cannot be previewed.
+              disabled={!abs || missing}
               data-testid="artifact-inspector-open"
             >
               <Eye />

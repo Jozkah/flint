@@ -171,6 +171,29 @@ describe('Library route (/artifacts)', () => {
     ).toBeEnabled()
   })
 
+  it('disables the preview for a path outside the session root (#183)', async () => {
+    h.sessions = [
+      {
+        ...session,
+        turns: [
+          {
+            role: 'tool',
+            name: 'write',
+            content: '',
+            args: { path: '/etc/outside.html' },
+            result: 'Created /etc/outside.html (1 bytes)',
+          },
+        ],
+      },
+    ]
+    await renderPage()
+    await selectFirst()
+    expect(screen.getByTestId('artifact-inspector-open')).toBeDisabled()
+    expect(
+      screen.getByTestId('artifact-inspector-go-to-session')
+    ).toBeEnabled()
+  })
+
   it('narrows the list with the search box', async () => {
     await renderPage()
     fireEvent.change(screen.getByLabelText('common:artifactsSearch'), {
