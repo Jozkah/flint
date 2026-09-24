@@ -367,6 +367,15 @@ fn execute_reuse(
 }
 
 fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut MigrationResult) {
+    // #67: the same schema gate as execute_reuse. Refuse before creating or
+    // writing anything, so data from a newer, unsupported schema is never
+    // copied or moved into the profile.
+    if !plan.compatible {
+        result.status = Status::Failed;
+        result.error = Some("source schema newer than supported; copy/move refused".to_string());
+        return;
+    }
+
     let flint_config = plan.dest_config_dir.clone();
     let flint_data = plan.dest_data_folder.clone();
     let quarantine_dir = flint_config.join(QUARANTINE_DIR_NAME);
@@ -900,6 +909,25 @@ mod tests {
         let d = detect_legacy(roots).unwrap();
         let f = flint_paths(roots);
         plan(&d, &f, Category::all(), mode, conflict)
+    }
+
+    #[test]
+    fn an_incompatible_schema_refuses_copy_and_move() {
+        for mode in [Mode::Copy, Mode::Move] {
+            let (_td, roots) = setup();
+            let mut p = make_plan(&roots, mode, Conflict::KeepBoth);
+            p.compatible = false;
+            let r = execute(&p, &ExecuteOpts::with_holder("test"));
+            assert_eq!(r.status, Status::Failed, "mode={mode:?}");
+            assert!(r.error.as_deref().unwrap_or("").contains("schema"), "{:?}", r.error);
+
+            let f = flint_paths(&roots);
+            assert!(!f.data_folder.join("threads/thread_1/thread.json").exists());
+            assert!(!f.config_dir.join("settings.json").exists());
+            // A Move must leave the source where it was.
+            let l = legacy_paths(&roots);
+            assert!(l.data_folder.join("threads/thread_1/thread.json").is_file());
+        }
     }
 
     #[test]
