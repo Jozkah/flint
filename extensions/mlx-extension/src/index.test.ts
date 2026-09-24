@@ -258,6 +258,33 @@ describe('chat', () => {
       'MLX model has crashed! Please reload!'
     )
   })
+
+  it('handles a rejected cleanup unload when the health check fails (#171)', async () => {
+    const ext = newExt()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'plugin:mlx|find_mlx_session_by_model')
+        return { pid: 5, port: 1, model_id: 'foo' }
+      if (cmd === 'plugin:mlx|is_mlx_process_running') return true
+      return undefined
+    })
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('connection refused'))
+    let catchSpy: ReturnType<typeof vi.spyOn> | undefined
+    ext.unload = vi.fn(() => {
+      const rejected = Promise.reject(new Error('No active MLX session'))
+      catchSpy = vi.spyOn(rejected, 'catch')
+      return rejected
+    })
+
+    await expect(ext.chat({ model: 'foo' })).rejects.toThrow(
+      'MLX model appears to have crashed! Please reload!'
+    )
+    expect(ext.unload).toHaveBeenCalledWith('foo')
+    // The floating cleanup promise must have a rejection handler attached.
+    expect(catchSpy).toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
 })
 
 describe('isVisionSupported', () => {
