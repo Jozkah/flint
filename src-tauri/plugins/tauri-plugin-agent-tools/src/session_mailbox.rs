@@ -40,6 +40,12 @@ pub const RATE_WINDOW_MS: i64 = 60_000;
 /// Per sender->target pair: at most `PAIR_LIMIT` per rolling `PAIR_WINDOW_MS`.
 pub const PAIR_LIMIT: usize = 30;
 pub const PAIR_WINDOW_MS: i64 = 3_600_000;
+/// How long mailbox records are kept (Jozkah/jan#147), matching the stop
+/// mailbox's `STOP_RETENTION_MS`. Outbox entries older than this are past
+/// every rate window; inbox envelopes older than this are dropped once read.
+/// Without it inbox/outbox/state files grew for the life of the project and
+/// every send and read re-parsed the whole history under the global lock.
+pub const MAIL_RETENTION_MS: i64 = 7 * 24 * 3_600_000;
 /// `wait_for_reply` bounds, in seconds.
 pub const MIN_WAIT_SECS: u64 = 1;
 pub const MAX_WAIT_SECS: u64 = 120;
@@ -382,6 +388,31 @@ fn ends_without_newline(path: &Path) -> bool {
     }
     let mut last = [0u8; 1];
     file.read_exact(&mut last).is_ok() && last[0] != b'\n'
+}
+
+/// Replace a JSONL file with `values`, through a temp file and rename, so a
+/// crash leaves either the old records or the new ones. Callers hold the
+/// mailbox lock, which is what every append also holds.
+fn write_jsonl_atomically<T: Serialize>(path: &Path, values: &[T]) -> Result<()> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut buf = String::new();
+    for value in values {
+        buf.push_str(
+            &serde_json::to_string(value).map_err(|e| MailboxError::io("encode record", e))?,
+        );
+        buf.push('
+');
+    }
+    let temp = path.with_extension(format!(
+        "tmp-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&temp, buf).map_err(|e| MailboxError::io("write mailbox file", e))?;
+    std::fs::rename(&temp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        MailboxError::io("replace mailbox file", e)
+    })
 }
 
 /// Write through a temp file and rename, so a crash leaves either the old
@@ -797,7 +828,14 @@ impl Mailbox {
             };
 
             let now = self.now();
-            let sent = read_jsonl::<OutboxEntry>(&self.outbox_path(from_id));
+            let mut sent = read_jsonl::<OutboxEntry>(&self.outbox_path(from_id));
+            // Retention: entries past MAIL_RETENTION_MS are outside every rate
+            // window and too old to wait on, so the file is compacted here
+            // instead of growing forever.
+            if sent.iter().any(|e| e.at <= now - MAIL_RETENTION_MS) {
+                sent.retain(|e| e.at > now - MAIL_RETENTION_MS);
+                write_jsonl_atomically(&self.outbox_path(from_id), &sent)?;
+            }
             let recent = sent.iter().filter(|e| e.at > now - RATE_WINDOW_MS).count();
             if recent >= RATE_LIMIT {
                 return Err(MailboxError::new(
@@ -1015,6 +1053,29 @@ impl Mailbox {
             .collect())
     }
 
+    /// Retention for an inbox (#147): drop envelopes that are both `read` and
+    /// older than [`MAIL_RETENTION_MS`], and their delivery-state entries.
+    /// Unread mail is never dropped. Returns whether `state` changed, so the
+    /// caller persists it. Caller holds the lock.
+    fn compact_inbox_locked(
+        &self,
+        session_id: &str,
+        inbox: &[MailEnvelope],
+        state: &mut DeliveryState,
+    ) -> Result<bool> {
+        let cutoff = self.now() - MAIL_RETENTION_MS;
+        let expired = |e: &MailEnvelope| {
+            e.created_at < cutoff && Self::status_in(state, &e.id) == DeliveryStatus::Read
+        };
+        if !inbox.iter().any(expired) {
+            return Ok(false);
+        }
+        let kept: Vec<&MailEnvelope> = inbox.iter().filter(|e| !expired(*e)).collect();
+        write_jsonl_atomically(&self.inbox_path(session_id), &kept)?;
+        state.retain(|id, _| kept.iter().any(|e| &e.id == id));
+        Ok(true)
+    }
+
     fn mark_read_locked(&self, session_id: &str, ids: &[String]) -> Result<usize> {
         let (inbox, mut state) = self.inbox_with_state(session_id);
         let now = self.now();
@@ -1034,7 +1095,8 @@ impl Mailbox {
                 changed += 1;
             }
         }
-        if changed > 0 {
+        let compacted = self.compact_inbox_locked(session_id, &inbox, &mut state)?;
+        if changed > 0 || compacted {
             write_json_atomically(&self.state_path(session_id), &state)?;
         }
         Ok(changed)
@@ -1074,7 +1136,8 @@ impl Mailbox {
             );
             claimed.push(id.clone());
         }
-        if !claimed.is_empty() {
+        let compacted = self.compact_inbox_locked(session_id, &inbox, &mut state)?;
+        if !claimed.is_empty() || compacted {
             write_json_atomically(&self.state_path(session_id), &state)?;
         }
         Ok(claimed)
