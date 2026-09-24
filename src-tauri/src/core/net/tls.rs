@@ -171,21 +171,23 @@ pub fn forbidden_by(policy: Option<&tauri_plugin_agent_tools::org_policy::OrgPol
         .map(|p| p.source.display().to_string())
 }
 
-/// Lexically normal form of an absolute path, for comparing it with what the
-/// filesystem resolves it to.
-fn normal_form(path: &Path) -> String {
-    let mut out = PathBuf::new();
+/// The first link on the way to `path` -- the file itself or any directory
+/// above it that is a symlink, junction or other name-surrogate reparse point.
+/// Each component is checked on disk rather than comparing the path with what
+/// `canonicalize` returns, which differs for UNC paths, mapped network drives
+/// and 8.3 short names without any link being involved.
+fn first_link(path: &Path) -> Option<PathBuf> {
+    let mut walked = PathBuf::new();
     for part in path.components() {
-        match part {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
+        walked.push(part.as_os_str());
+        if !matches!(part, std::path::Component::Normal(_)) {
+            continue;
+        }
+        if std::fs::symlink_metadata(&walked).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Some(walked);
         }
     }
-    let text = out.to_string_lossy().trim_start_matches(r"\\?\").replace('/', "\\");
-    if cfg!(windows) { text.to_lowercase() } else { text }
+    None
 }
 
 /// [`load`], with the machine policy given.
@@ -218,18 +220,17 @@ pub fn load_with_policy(
     }
     // A link anywhere in the path -- the file itself, or a directory junction
     // on the way to it -- makes the trusted file whatever the link points to
-    // today. The resolved path must be the path that was named.
-    let is_link = std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
-    let resolved = std::fs::canonicalize(path).map_err(|e| {
-        refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} cannot be resolved: {e}"))
-    })?;
-    if is_link || normal_form(&resolved) != normal_form(path) {
+    // today.
+    if let Some(link) = first_link(path) {
+        let target = std::fs::canonicalize(path)
+            .map(|r| r.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+            .unwrap_or_default();
         return Err(refuse(
             CaErrorKind::Link,
             path,
             format!(
-                "the CA bundle {shown} is reached through a link or junction (it resolves to {}); name the file itself",
-                resolved.to_string_lossy().trim_start_matches(r"\\?\")
+                "the CA bundle {shown} is reached through a link or junction ({} resolves to {target}); name the file itself",
+                link.display()
             ),
         ));
     }
@@ -652,6 +653,19 @@ pub(crate) mod tests {
             match std::os::windows::fs::symlink_file(&real, &file_link) {
                 Ok(()) => assert_eq!(kind(&file_link), CaErrorKind::Link),
                 Err(e) => println!("file symbolic link not created here ({e}); the junction case stands"),
+            }
+            // The same file named through a UNC path is not a link, though
+            // `canonicalize` spells it differently (\\?\UNC\...).
+            let canonical = std::fs::canonicalize(&real).unwrap();
+            let plain = canonical.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+            if let Some((drive, rest)) = plain.split_once(":\\") {
+                let unc = PathBuf::from(format!(r"\\localhost\{drive}$\{rest}"));
+                if unc.is_file() {
+                    let loaded = load_with_policy(&unc, Source::Environment, none);
+                    assert!(loaded.is_ok(), "{:?}", loaded.err());
+                } else {
+                    println!("administrative share not reachable here; the UNC case is not checked");
+                }
             }
         }
         let forbidding = tauri_plugin_agent_tools::org_policy::OrgPolicy {
