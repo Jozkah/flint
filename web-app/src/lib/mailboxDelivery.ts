@@ -59,6 +59,14 @@ type QueueState = { queues: Record<string, QueuedMessage[]> }
 const claiming = new Set<string>()
 
 /**
+ * Mail ids already claimed by a drain whose message was put back in its
+ * session's queue unsent (see `drainIdleSession`). The backend now reports
+ * them read, so claiming them again would drop them; the next drain takes
+ * them as claimed instead.
+ */
+const preclaimed = new Set<string>()
+
+/**
  * Take messages out of a session's queue at a drain boundary and keep only
  * what may reach the model.
  *
@@ -92,15 +100,21 @@ export async function takeClaimed(
   for (const id of readyMail) if (!takenMail.has(id)) claiming.delete(id)
   if (takenMail.size === 0) return taken
 
+  const already = [...takenMail].filter((id) => preclaimed.has(id))
+  for (const id of already) preclaimed.delete(id)
+  const toClaim = [...takenMail].filter((id) => !already.includes(id))
   let claimed: Set<string>
   try {
-    claimed = new Set(await mailbox.claim(sid, [...takenMail]))
+    claimed = new Set(
+      toClaim.length > 0 ? await mailbox.claim(sid, toClaim) : []
+    )
   } catch (e) {
     console.warn('[mailbox] claim failed; delivering anyway:', e)
-    claimed = takenMail
+    claimed = new Set(toClaim)
   } finally {
     for (const id of takenMail) claiming.delete(id)
   }
+  for (const id of already) claimed.add(id)
   return taken.filter((m) => !m.from || claimed.has(m.from.messageId))
 }
 
@@ -126,6 +140,33 @@ export async function dequeueClaimedReady(
     if (next) return next
     if (!dequeued) return undefined
   }
+}
+
+/**
+ * The idle drain for the session in view: take its next ready message and
+ * send it with `run`, which always sends into the session currently in view.
+ *
+ * The claim is a backend round trip, and the user can switch sessions while
+ * it is in flight. A message drained from `sid` belongs to `sid` and is never
+ * sent into another session (#211): if `sid` is no longer in view when the
+ * claim answers, the message goes back to the front of its own queue, still
+ * ready and recorded as claimed, and is sent when `sid` is next in view.
+ */
+export async function drainIdleSession(
+  sid: string,
+  run: (text: string, from?: QueuedMessageSender) => void,
+  mailbox: ClaimMailbox = sessionMailbox
+): Promise<void> {
+  const next = await dequeueClaimedReady(sid, mailbox)
+  if (!next) return
+  if (useCoworkSessions.getState().currentId !== sid) {
+    if (next.from) preclaimed.add(next.from.messageId)
+    useMessageQueue.setState((state) => ({
+      queues: { ...state.queues, [sid]: [next, ...(state.queues[sid] ?? [])] },
+    }))
+    return
+  }
+  run(next.text, next.from)
 }
 
 /** The sender fields a transcript row carries, from a queued message's sender. */

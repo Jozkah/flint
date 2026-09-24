@@ -769,6 +769,22 @@ describe('CoworkCodePanel — external files', () => {
     )
   })
 
+  it('opens every file of a multi-file selection as its own tab', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(
+      pickedFile('a.ts', 'const a = 1'),
+      pickedFile('b.ts', 'const b = 2'),
+      pickedFile('c.ts', 'const c = 3')
+    )
+
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(3))
+    const names = screen.getAllByRole('tab').map((t) => t.textContent ?? '')
+    for (const name of ['a.ts', 'b.ts', 'c.ts']) {
+      expect(names.some((n) => n.includes(name))).toBe(true)
+    }
+  })
+
   it('refuses a credentials file without opening a tab', async () => {
     render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
 

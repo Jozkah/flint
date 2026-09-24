@@ -80,11 +80,12 @@ import {
 } from '@/stores/message-queue-store'
 import {
   agentAttribution,
-  dequeueClaimedReady,
+  drainIdleSession,
   takeClaimed,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import {
@@ -417,7 +418,29 @@ const messageOf = errorText
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
-  const { selectedModel, selectedProvider } = useModelProvider()
+  // The session's own model when it has one (#215): the picker no longer
+  // mirrors a session's choice into the global store, so the readiness card
+  // and capability checks read it from the session, as the run does.
+  const {
+    selectedModel: globalModel,
+    selectedProvider: globalProvider,
+    getProviderByName,
+    providers: modelProviders,
+  } = useModelProvider()
+  const viewedModel = useCoworkSessions(
+    (s) => s.sessions.find((x) => x.id === s.currentId)?.model
+  )
+  const { selectedModel, selectedProvider } = useMemo(
+    () =>
+      selectionForThreadModel(viewedModel, {
+        selectedModel: globalModel,
+        selectedProvider: globalProvider,
+        getProviderByName,
+      }),
+    // `modelProviders` is why getProviderByName's answer can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewedModel, globalModel, globalProvider, getProviderByName, modelProviders]
+  )
   // Resolved once for the route: the readiness card, the context measurement
   // and the run all have to be talking about the same window.
   // The snapshot of the dispatch now in flight, so its reply's usage can be
@@ -1044,9 +1067,19 @@ function CoworkPage() {
       setGitBranch(null)
       return
     }
+    // Like the tooling effect below: a slow answer for a folder no longer
+    // attached must not name the branch of the one that is.
+    let alive = true
     invoke<string | null>('agent_git_branch', { project: folder })
-      .then(setGitBranch)
-      .catch(() => setGitBranch(null))
+      .then((branch) => {
+        if (alive) setGitBranch(branch)
+      })
+      .catch(() => {
+        if (alive) setGitBranch(null)
+      })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Read once per attached folder. A failure is a typed state, never a throw,
@@ -3776,10 +3809,13 @@ function CoworkPage() {
     // Held input waits for the user; only what is ready goes. Mail is claimed
     // first, so a reply a tool already consumed is not sent again.
     idleDrainRef.current = true
-    void dequeueClaimedReady(session.id)
-      .then((next) => {
+    // The message is sent only into the session it was drained from; see
+    // drainIdleSession.
+    void drainIdleSession(session.id, (text, from) => {
+      void runRequestRef.current(text, from)
+    })
+      .then(() => {
         idleDrainRef.current = false
-        if (next) void runRequestRef.current(next.text, next.from)
       })
       .catch(() => {
         idleDrainRef.current = false

@@ -316,6 +316,9 @@ export function ThreadConversation({
   const processingEmbeddings = useAppState(
     (s) => !!s.embeddingThreads[threadId]
   )
+  // Set while a finished turn's tools await approval or run. Reactive, unlike
+  // `sessionData.tools`, so the queue drains once they settle.
+  const threadBusy = useAppState((s) => !!s.busyThreads[threadId])
   const { t } = useTranslation()
 
   // llama-server's overflow string is raw English; localize it, interpolating
@@ -1985,7 +1988,7 @@ export function ThreadConversation({
 
   useEffect(() => {
     if (status !== 'ready' || processingQueueRef.current) return
-    if (sessionData.tools.length > 0) return
+    if (threadBusy || sessionData.tools.length > 0) return
 
     const next = useMessageQueue.getState().dequeue(threadId)
     if (!next) return
@@ -1998,7 +2001,7 @@ export function ThreadConversation({
       .finally(() => {
         processingQueueRef.current = false
       })
-  }, [status, threadId, sendQueuedMessage, sessionData.tools.length])
+  }, [status, threadId, sendQueuedMessage, sessionData.tools.length, threadBusy])
 
   // If streaming errors out, discard any queued messages so they don't sit there stuck
   useEffect(() => {
