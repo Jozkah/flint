@@ -973,7 +973,11 @@ function MCPServersDesktop() {
               const toolNames = snapshot.connected
                 ? serverTools[key]
                 : undefined
-              const expanded = expandedServers.has(key)
+              // A server that failed to start is shown open: its inline error
+              // and status chip live in the expanded body, and the switch's
+              // aria-describedby points at that error. Collapsed, a failed
+              // activation showed only the switch flipping back.
+              const expanded = expandedServers.has(key) || !!snapshot.failure
               return (
               <div
                 key={`${key}-${index}`}

@@ -198,15 +198,12 @@ describe('ProjectFiles', () => {
     listAttachmentsForProjectMock.mockResolvedValueOnce([])
     deleteFileForProjectMock.mockResolvedValue(undefined)
 
-    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    render(<ProjectFiles projectId="p1" lng="en" />)
     await waitFor(() =>
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
 
-    // The trash button is the 2nd button (first is Upload)
-    const buttons = container.querySelectorAll('button')
-    // Last button in a file row is the delete button
-    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete' }))
 
     await waitFor(() => expect(deleteFileForProjectMock).toHaveBeenCalledWith('p1', 'f1'))
     await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
@@ -218,12 +215,11 @@ describe('ProjectFiles', () => {
     ])
     deleteFileForProjectMock.mockRejectedValue(new Error('nope'))
 
-    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    render(<ProjectFiles projectId="p1" lng="en" />)
     await waitFor(() =>
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
-    const buttons = container.querySelectorAll('button')
-    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete' }))
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
   })
 
