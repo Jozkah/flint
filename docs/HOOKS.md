@@ -1,67 +1,74 @@
-# Hook events
+# Hooks
 
-`src-tauri/src/core/agent/hooks.rs` runs configurable commands on agent
-lifecycle events.
+Hooks are shell commands you ask Flint to run at defined points in an agent
+run: a linter before every write, a policy check that refuses a command the
+project does not allow, a notification after a tool runs. They are implemented
+in `src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs` and run from the
+tool dispatcher in `tools/handlers.rs`.
 
-## Configuration
+## Where hooks live
 
-```jsonc
-{
-  "<event>": [
-    {
-      "matcher": "<glob over the event subject>",   // absent or "*" = all
-      "hooks": [
-        { "type": "command", "command": "<shell command>" }
-      ]
-    }
-  ]
-}
+`<project>/.jan/agent/hooks.toml`
+
+The model cannot create or edit this file: `.jan` is refused to every
+file-writing tool and to `bash`. A `hooks.toml` that is a symlink resolving
+outside the project is not read. A project without the file has no hooks.
+
+## Format
+
+```toml
+[[hook]]
+event = "pre-tool"          # required: pre-tool | post-tool | run-end
+command = "npm run lint"    # required: a shell command, at most 4096 characters
+on_failure = "block"        # optional: block | warn | ignore (default warn)
+timeout_secs = 30           # optional: 1 to 120 (default 30)
+tools = ["write", "edit"]   # optional: tool names; empty or absent = every tool
 ```
 
-Validated at load (`HookRegistry::compile`): an unknown event key, a hook whose
-`type` is not `command`, an empty command, or an invalid-glob matcher is an error
-naming what to fix.
+At most 32 hooks are read. Hooks run in the order the file declares them.
+
+A file with any mistake (invalid TOML, a missing `event` or `command`, an
+unknown event or failure policy, a limit exceeded, `block` on an event that
+cannot block) disables all hooks in it and reports the reason, rather than
+running the subset that happened to parse.
 
 ## Events
 
-| Event | Subject matched | Blocking? |
+| Event | When | Can block? |
 | --- | --- | --- |
-| `PreToolUse` | tool name | yes |
-| `PostToolUse` | tool name | no |
-| `PostToolUseFailure` | tool name | no |
-| `Stop` | — | no |
-| `StopFailure` | — | no |
-| `PreCompact` | — | yes |
-| `PostCompact` | — | no |
-| `PermissionRequest` | operation | yes |
-| `PermissionDenied` | operation | no |
-| `CwdChanged` | — | no |
-| `FileChanged` | path | no |
+| `pre-tool` | before a tool call executes | yes |
+| `post-tool` | after a tool call has produced its result | no |
+| `run-end` | accepted by the parser; not fired by the current tool path | no |
 
-**Blocking** hooks guard an action that has not happened yet; a non-zero exit or
-a timeout blocks it. **Non-blocking** (post/observation) hooks never fail the
-caller — their outcomes are recorded, not enforced.
+`session-start` is refused: nothing fires it yet.
 
-## Payload
+## Failure policy
 
-Each hook receives JSON on stdin: common metadata (`event`, `sessionId`,
-`conversationId`, `timestampMs`, `cwd`, `workspaceId`, `correlationId`,
-`chainDepth`) plus a `data` object with event-specific fields (failure category
-and safe message; compaction trigger/token counts/result; permission
-operation/decision/reason; old/new cwd; changed path/kind/source). Values whose
-key names a secret (token, secret, password, api key, authorization) are redacted
-before the payload leaves Jan.
+A hook fails when it exits non-zero, times out, is cancelled, or cannot start.
 
-## Safety
+- `block` refuses the tool call the hook ran before, and stops the remaining
+  hooks for that point. Only `pre-tool` hooks may use it; a block hook can only
+  stop work, never grant any.
+- `warn` lets the work proceed and reports the failure.
+- `ignore` records the run and nothing else.
 
-- **Recursion** — every payload carries a `chainDepth`; a hook-caused event uses
-  `HookPayload::child`, which deepens the chain. `fire` refuses once the bound is
-  reached, so hooks cannot loop unboundedly.
-- **Ordering** — groups fire in configuration order, each group's hooks in order,
-  within one correlation chain.
-- **Bounds** — each hook has a wall-clock timeout (killed on expiry) and a capped
-  captured output.
-- **Privilege** — hooks run under the same sandbox/permission context as the
-  session; they gain nothing the run does not have.
-- **No UI coupling** — the module runs processes and builds payloads; it does not
-  touch UI components.
+## What a hook is told
+
+Only these environment variables (the `JAN_` names are kept as legacy aliases
+with the same values):
+
+- `FLINT_HOOK_EVENT` / `JAN_HOOK_EVENT`: the event name
+- `FLINT_HOOK_TOOL` / `JAN_HOOK_TOOL`: the tool name, when there is one
+- `FLINT_PROJECT_ROOT` / `JAN_PROJECT_ROOT`: the project root
+
+Stdin is empty. The prompt, the tool's arguments and provider keys are never
+passed. Captured output is capped at 4096 characters per hook and scrubbed.
+
+## Confinement
+
+A hook is never more privileged than the `bash` tool on the same surface. It
+runs through the same shell selection, the same jail policy (project as the
+workspace, network only if the run allows it, the Flint data folder masked),
+and the project's `.jan` folder is hidden from a confined hook. A hook written
+for a POSIX shell is refused, not rewritten, when no POSIX shell can run
+confined.

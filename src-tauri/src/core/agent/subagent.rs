@@ -1146,13 +1146,19 @@ impl BackgroundSubagents {
         let mut guard = self.inner.lock().unwrap();
         for (_, entry) in guard.drain() {
             entry.abort.abort();
-            // Cancelled on its own already: its end was announced and its
-            // checkout settled then, and announcing either twice would tell a
-            // consumer two different stories about the same child.
+            // Only a child still queued or running is cancelled here. One that
+            // already ended -- cancelled on its own, or finished but never
+            // awaited -- announced its end and settled its checkout then, and
+            // announcing either twice (or relabelling a finished child as
+            // cancelled) would tell a consumer two different stories about it.
             if entry
                 .phase
-                .swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
-                == PHASE_CANCELLED
+                .fetch_update(
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                    |p| matches!(p, PHASE_QUEUED | PHASE_RUNNING).then_some(PHASE_CANCELLED),
+                )
+                .is_err()
             {
                 continue;
             }
@@ -3110,6 +3116,39 @@ mod tests {
         assert_eq!(await_subagent(&bg, "r1").await.unwrap(), "done");
         assert!(await_subagent(&bg, "r1").await.is_err(), "run is consumed");
         handle.abort();
+    }
+
+    #[tokio::test]
+    async fn abort_all_leaves_a_finished_child_alone() {
+        // A finished child that was never awaited already sent its own
+        // SubagentEnd. Teardown must neither announce it again nor relabel it
+        // as cancelled.
+        let bg = Arc::new(BackgroundSubagents::default());
+        let (_tx, rx) = tokio::sync::oneshot::channel::<Result<String, SubagentError>>();
+        let handle = tokio::spawn(async {});
+        let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel();
+        let phase = Arc::new(std::sync::atomic::AtomicU8::new(PHASE_FINISHED));
+        bg.inner.lock().unwrap().insert(
+            "r1".to_string(),
+            BackgroundEntry {
+                result: Some(rx),
+                abort: handle.abort_handle(),
+                run_id: "r1".to_string(),
+                name: "reviewer".to_string(),
+                events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: phase.clone(),
+            },
+        );
+        bg.abort_all();
+        assert!(ev_rx.try_recv().is_err(), "no second SubagentEnd for a finished child");
+        assert_eq!(
+            phase.load(std::sync::atomic::Ordering::SeqCst),
+            PHASE_FINISHED,
+            "a finished child stays finished"
+        );
+        assert!(bg.inner.lock().unwrap().is_empty(), "the entry is still drained");
     }
 
     #[tokio::test]
