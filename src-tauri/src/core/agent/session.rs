@@ -68,6 +68,14 @@ impl SessionBudget {
         self.spent_tokens
     }
 
+    /// Charge a side request's whole cost (the completion verifier's), which
+    /// is not part of the conversation's prompt growth and so must not move
+    /// the baselines `record` measures that growth from (#131).
+    pub(crate) fn charge(&mut self, tokens: u64) -> u64 {
+        self.spent_tokens = self.spent_tokens.saturating_add(tokens);
+        self.spent_tokens
+    }
+
     pub(crate) fn spent(&self) -> u64 {
         self.spent_tokens
     }
@@ -166,6 +174,18 @@ mod tests {
         assert_eq!(budget.record(&usage_with_parts(1050, 60, 1110)), 1110);
         // And the next request is charged by its prompt growth as usual.
         assert_eq!(budget.record(&usage_with_parts(1150, 40, 1190)), 1110 + 40 + 100);
+    }
+
+    /// A verifier's cost counts toward the ceiling and leaves the worker's
+    /// prompt-growth baseline alone (#131).
+    #[test]
+    fn a_side_request_is_charged_without_moving_the_baseline() {
+        let mut budget = SessionBudget::new(Some(1200));
+        budget.record(&usage_with_parts(1000, 50, 1050));
+        assert_eq!(budget.charge(200), 1250);
+        assert!(budget.exhausted());
+        // The next worker turn is charged by its own growth, as before.
+        assert_eq!(budget.record(&usage_with_parts(1100, 20, 1120)), 1250 + 20 + 100);
     }
 
     #[test]
