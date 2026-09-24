@@ -265,6 +265,9 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<Removed, Stri
     }
     // What the conversation's tool calls wrote and decided goes with it
     // (Jozkah/jan#234): its stored diffs and its permission decisions.
+    // And its undo journal, with the file contents only it referred to
+    // (Jozkah/jan#294).
+    crate::undo::forget(data_folder, session);
     if let Some(dir) = diff_dir(data_folder, session).filter(|d| d.is_dir()) {
         std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
         removed.diff_sessions = 1;
