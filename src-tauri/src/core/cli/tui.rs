@@ -14247,8 +14247,12 @@ fn finish_tokamak_login(app: &mut App, result: Result<super::tokamak::Login, Str
                 models,
                 config_path,
                 default_model,
+                replaced_default,
                 account,
             } = login;
+            if replaced_default {
+                app.note("your previous default model is no longer offered by any provider; it was replaced");
+            }
             finish_login(
                 app,
                 Ok(crate::core::cli::auth::LoginResult {
@@ -23538,6 +23542,7 @@ mod tests {
                 models: vec!["tokamak-1-preview".into()],
                 config_path: std::path::PathBuf::from("/tmp/config.toml"),
                 default_model: None,
+                replaced_default: false,
                 account: Some("a@b.c".into()),
             }),
         ));
