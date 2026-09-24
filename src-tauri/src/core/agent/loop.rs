@@ -4526,14 +4526,19 @@ async fn orchestrate_inner(
     // The BM25 "# Project Memory" block that used to be appended here recalled
     // raw past answers keyed by the project's path text: transcript, not
     // memory, with no provenance, no session scope and no way to forget it.
-    // Always tell the model today's date, including isolated child runs.
-    let date_line = format!(
-        "Today's date is {}.",
-        chrono::Local::now().format("%Y-%m-%d")
-    );
-    let system_prompt = match system_prompt {
-        Some(sys) => format!("{date_line}\n\n{sys}"),
-        None => date_line,
+    // Always tell the model today's date, including isolated child runs. A
+    // project run carries it in the runtime environment block; any other run
+    // gets it at the end, where a daily change does not invalidate a cached
+    // prefix.
+    let system_prompt = match (system_prompt, project_root.is_some()) {
+        (Some(sys), true) => sys,
+        (system_prompt, _) => {
+            let date_line = format!("Today's date is {}.", chrono::Local::now().format("%Y-%m-%d"));
+            match system_prompt {
+                Some(sys) => format!("{sys}\n\n{date_line}"),
+                None => date_line,
+            }
+        }
     };
     let system_prompt = Some(system_prompt);
     // Child (subagent) runs are excluded via `system_prompt_override`, the
