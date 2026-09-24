@@ -3337,11 +3337,18 @@ async fn print_event(
             ..
         } => {
             eprintln!(
-                "\x1b[33m[host tool] '{tool_name}' - awaiting '{request_id}' on stdin\x1b[0m"
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!("[host tool] '{tool_name}' - awaiting '{request_id}' on stdin"),
+                ),
             );
         }
         StreamEvent::ToolRequestCancelled { request_id, reason } => {
-            eprintln!("\x1b[2m[host tool] '{request_id}' cancelled ({reason})\x1b[0m");
+            eprintln!(
+                "{}",
+                color::paint("2", format_args!("[host tool] '{request_id}' cancelled ({reason})")),
+            );
         }
         // Structured data for a host's own display; text output has none.
         StreamEvent::ToolDetails { .. } => {}
