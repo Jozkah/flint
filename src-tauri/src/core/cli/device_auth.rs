@@ -58,6 +58,11 @@ const DEFAULT_INTERVAL: u64 = 5;
 const MIN_INTERVAL: u64 = 1;
 const MAX_INTERVAL: u64 = 30;
 
+/// Upper bound on the server-suggested session lifetime. A larger value (or
+/// one big enough to overflow `Instant + Duration`) would otherwise stall the
+/// claim loop indefinitely or panic it.
+const MAX_EXPIRES_IN: u64 = 3600;
+
 /// How long a single HTTP call waits before failing, so a hung server cannot
 /// stall the poll loop past one tick's worth of patience.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -213,6 +218,13 @@ fn build_authorize_url(web_root: &str, user_code: &str, wake: Option<(u16, &str)
     url.to_string()
 }
 
+fn clamp_expires_in(seconds: Option<u64>) -> u64 {
+    seconds
+        .filter(|s| *s > 0)
+        .unwrap_or(DEFAULT_EXPIRES_IN)
+        .min(MAX_EXPIRES_IN)
+}
+
 fn clamp_interval(seconds: Option<u64>) -> u64 {
     seconds
         .filter(|s| *s > 0)
@@ -272,10 +284,7 @@ pub(crate) async fn begin(base_url: &str) -> Result<PendingAuth, BeginError> {
             session_id,
             user_code,
             authorize_url,
-            expires_in: payload
-                .expires_in
-                .filter(|s| *s > 0)
-                .unwrap_or(DEFAULT_EXPIRES_IN),
+            expires_in: clamp_expires_in(payload.expires_in),
             interval: clamp_interval(payload.interval),
         },
         verifier,
@@ -317,7 +326,10 @@ impl PendingAuth {
             mut wake,
         } = self;
 
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(session.expires_in);
+        let now = tokio::time::Instant::now();
+        let deadline = now
+            .checked_add(Duration::from_secs(session.expires_in.min(MAX_EXPIRES_IN)))
+            .unwrap_or(now + Duration::from_secs(DEFAULT_EXPIRES_IN));
         let mut interval = Duration::from_secs(session.interval);
         // The last reachability blip, and whether it landed on the final poll:
         // then it, not the clock, is why the sign-in is being abandoned.
@@ -776,6 +788,14 @@ mod tests {
     }
 
     #[test]
+    fn expires_in_is_capped_and_defaulted() {
+        assert_eq!(clamp_expires_in(None), DEFAULT_EXPIRES_IN);
+        assert_eq!(clamp_expires_in(Some(0)), DEFAULT_EXPIRES_IN);
+        assert_eq!(clamp_expires_in(Some(300)), 300);
+        assert_eq!(clamp_expires_in(Some(u64::MAX)), MAX_EXPIRES_IN);
+    }
+
+    #[test]
     fn interval_is_clamped_and_defaulted() {
         assert_eq!(clamp_interval(None), DEFAULT_INTERVAL);
         assert_eq!(clamp_interval(Some(0)), DEFAULT_INTERVAL);
@@ -832,6 +852,33 @@ mod tests {
     /// Spin up a mock of the two endpoints and drive the whole flow: create,
     /// one `pending` poll, then `approved`. Asserts the request bodies match the
     /// reference client's field names -- the thing a mock-only test can still
+    /// A server that sends an absurd `expires_in` must not panic the claim
+    /// loop (`Instant + Duration` overflow, #191).
+    #[test]
+    fn an_overflowing_expires_in_is_capped_instead_of_panicking() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (host, _requests) = mock_server(vec![
+                (
+                    200,
+                    r#"{"session_id":"s","user_code":"A-1","expires_in":18446744073709551615,"interval":1}"#,
+                ),
+                (
+                    200,
+                    r#"{"status":"approved","api_key":{"id":"k-1","key":"sk_live_x","expires_at":"2023-11-14T22:13:20Z"},"user":{"email":"a@b.c"}}"#,
+                ),
+            ])
+            .await;
+            let pending = begin(&format!("{host}/v1")).await.expect("begin");
+            assert_eq!(pending.session().expires_in, MAX_EXPIRES_IN);
+            pending.claim().await.expect("claim");
+        });
+    }
+
     /// get wrong is exactly what this pins.
     #[test]
     fn create_poll_and_claim_use_the_reference_wire_format() {
