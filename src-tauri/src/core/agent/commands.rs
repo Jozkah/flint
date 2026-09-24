@@ -1268,7 +1268,15 @@ pub async fn agent_prompt_snapshots_delete(
     session: String,
 ) -> Result<usize, String> {
     let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
-    tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
+    if session.trim().is_empty() {
+        // Refused, as before, rather than read as "all".
+        return tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session);
+    }
+    // Everything recorded for the session, not only its snapshots: its usage,
+    // stored diffs, permission decisions and undo journal (Jozkah/jan#294).
+    // A Cowork session is deleted through here alone.
+    tauri_plugin_agent_tools::retention::delete_session(&data_folder, &session)
+        .map(|removed| removed.snapshots)
 }
 
 /// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.

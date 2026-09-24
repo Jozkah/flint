@@ -626,7 +626,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
         // way to reach the process builder for a local server.
         let build_cmd = |use_override: bool| -> Command {
-            let mut cmd = Command::new(config_params.command.clone());
+            let mut cmd = Command::new(super::launch::launchable_program(&config_params.command));
             if use_override
                 && config_params.command == "npx"
                 && can_override_npx(bun_x_path.display().to_string())

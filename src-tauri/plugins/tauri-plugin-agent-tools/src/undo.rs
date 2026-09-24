@@ -601,6 +601,54 @@ pub fn redo(
 /// Drop a session's journal, when the session itself is deleted.
 pub fn forget(data_folder: &Path, session: &str) {
     let _ = std::fs::remove_file(journal_path(data_folder, session));
+    // Blobs are shared by content across sessions, so only the ones no
+    // remaining journal refers to go with it (Jozkah/jan#294).
+    collect_blobs(data_folder);
+}
+
+/// Remove every stored blob no journal refers to. A journal that cannot be
+/// read makes this do nothing: removing a blob on a guess could strand an
+/// undo that is still possible.
+pub fn collect_blobs(data_folder: &Path) {
+    let root = root_dir(data_folder);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return;
+    };
+    let mut referenced = std::collections::HashSet::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(journal) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Journal>(&t).ok())
+        else {
+            return;
+        };
+        for turn in &journal.turns {
+            for file in &turn.files {
+                referenced.extend(file.before.iter().cloned());
+                referenced.extend(file.after.iter().cloned());
+            }
+        }
+    }
+    let Ok(blobs) = std::fs::read_dir(root.join("blobs")) else {
+        return;
+    };
+    // A turn in another session stores its blobs before it writes its journal;
+    // a blob younger than this may be one of those, not an orphan.
+    let settled = std::time::SystemTime::now() - std::time::Duration::from_secs(60 * 60);
+    for blob in blobs.flatten() {
+        let id = blob.file_name().to_string_lossy().into_owned();
+        let old = blob
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t < settled);
+        if old && !referenced.contains(&id) {
+            let _ = std::fs::remove_file(blob.path());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -869,6 +917,25 @@ mod tests {
         undo(&data, "s1", "run-2", &[ws.clone()]).unwrap();
         undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
         assert!(!a.exists());
+    }
+
+    /// Jozkah/jan#294: forgetting a session removes its journal and the file
+    /// contents only it referred to, and keeps another session's.
+    #[test]
+    fn forgetting_a_session_removes_its_journal_and_its_own_blobs() {
+        let (data, ws) = dirs("forget");
+        let a = ws.join("a.txt");
+        record(&data, "s1", "run-1", &a, None, Some(b"only in s1"), None).unwrap();
+        record(&data, "s2", "run-1", &a, None, Some(b"only in s2"), None).unwrap();
+        let blobs = root_dir(&data).join("blobs");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        for blob in std::fs::read_dir(&blobs).unwrap().flatten() {
+            std::fs::File::options().write(true).open(blob.path()).unwrap().set_modified(old).unwrap();
+        }
+        forget(&data, "s1");
+        assert!(!journal_path(&data, "s1").exists());
+        assert!(!blob_path(&data, &hex(b"only in s1")).exists(), "s1's content was kept");
+        assert!(blob_path(&data, &hex(b"only in s2")).exists(), "s2's content was removed");
     }
 
     /// Scope is checked when the undo is asked for, not when the turn ran: a

@@ -108,6 +108,82 @@ impl ConfinedMcpLaunch {
 
 /// Turn the entry's configured `headers` map into a `HeaderMap`, skipping any
 /// pair that is not a valid header name/value. Shared by both remote transports.
+/// The program to start for a configured MCP command (Jozkah/jan#224).
+///
+/// On Windows `npx`, `uvx`, `npm`, `pnpm` and most Node tools are `.cmd`
+/// shims, and `CreateProcessW` only ever tries `.exe` for a bare name, so the
+/// spawn failed with "file not found". A bare name (no directory, no
+/// extension) is resolved here through PATH in PATHEXT order. Anything else,
+/// and every name on other platforms, is returned as written.
+pub(super) fn launchable_program(command: &str) -> std::ffi::OsString {
+    if !cfg!(windows) {
+        return command.into();
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    resolve_bare_program(command, &path, &pathext)
+        .map(|p| p.into_os_string())
+        .unwrap_or_else(|| command.into())
+}
+
+/// The first `<dir>/<name><ext>` that is a file, over `path`'s directories and
+/// `pathext`'s extensions, for a bare `name`. `None` when `name` has a
+/// directory or an extension of its own, or nothing matches.
+fn resolve_bare_program(
+    name: &str,
+    path: &std::ffi::OsStr,
+    pathext: &str,
+) -> Option<std::path::PathBuf> {
+    let as_path = std::path::Path::new(name);
+    if name.is_empty()
+        || name.contains(['/', '\\'])
+        || as_path.extension().is_some()
+    {
+        return None;
+    }
+    std::env::split_paths(path).find_map(|dir| {
+        pathext
+            .split(';')
+            .filter(|e| !e.is_empty())
+            .map(|ext| dir.join(format!("{name}{}", ext.to_ascii_lowercase())))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+#[cfg(test)]
+mod launchable_tests {
+    #[test]
+    fn a_bare_name_finds_its_cmd_shim_on_path() {
+        let dir = std::env::temp_dir().join(format!("jan_mcp_shim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // The extensionless script Node also installs must not be chosen.
+        std::fs::write(dir.join("npx"), "#!/bin/sh").unwrap();
+        std::fs::write(dir.join("npx.cmd"), "@echo off").unwrap();
+        let path = std::env::join_paths([dir.clone()]).unwrap();
+        let found = super::resolve_bare_program("npx", &path, ".COM;.EXE;.BAT;.CMD").unwrap();
+        assert_eq!(found, dir.join("npx.cmd"));
+        // Names with a directory or an extension are left as written.
+        assert!(super::resolve_bare_program("C:/tools/npx", &path, ".CMD").is_none());
+        assert!(super::resolve_bare_program("npx.cmd", &path, ".CMD").is_none());
+        assert!(super::resolve_bare_program("absent", &path, ".CMD").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The real thing: where Node is installed, `npx` as configured now starts.
+    #[cfg(windows)]
+    #[test]
+    fn npx_as_configured_actually_starts_on_windows() {
+        let program = super::launchable_program("npx");
+        if program == std::ffi::OsString::from("npx") {
+            eprintln!("skipped: npx is not on PATH here");
+            return;
+        }
+        let out = std::process::Command::new(&program).arg("--version").output().expect("spawn");
+        assert!(out.status.success(), "{:?}", out);
+    }
+}
+
 /// Rebuild a command so it runs inside the session's sandbox.
 ///
 /// The policy is not invented here: it comes from the agent-tools plugin,
@@ -173,6 +249,17 @@ pub(super) fn confined_mcp_command(
     // Nothing inherited. Only the names the user approved, and only where the
     // configuration actually supplied a value for them.
     confined.env_clear();
+    // Except what the AppContainer helper itself needs to build the sandbox
+    // (Jozkah/jan#284): it refuses to start without SystemRoot and
+    // LOCALAPPDATA, so a cleared block stopped every imported server on
+    // Windows. The helper builds the server's own environment from its
+    // allowlist; these reach the helper, not the server as given.
+    #[cfg(windows)]
+    for name in tauri_plugin_agent_tools::tools::win_env::REQUIRED {
+        if let Some(value) = std::env::var_os(name) {
+            confined.env(name, value);
+        }
+    }
     for name in &confinement.allowed_env {
         if let Some(value) = params.envs.get(name).and_then(Value::as_str) {
             confined.env(name, value);
@@ -244,6 +331,32 @@ mod tests {
             .expect("a host with a backend must produce a confined launch");
 
         assert!(launch.is_confined());
+    }
+
+    /// Jozkah/jan#284: the AppContainer helper refuses to start without
+    /// SystemRoot and LOCALAPPDATA, so a confined launch passes those two to
+    /// it and nothing else from the host.
+    #[cfg(windows)]
+    #[test]
+    fn the_confinement_helper_keeps_what_it_needs_to_start() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            eprintln!("skipped: no confinement backend here");
+            return;
+        }
+        let cmd = confined_mcp_command(build(), &params(true, Some(confinement())), &confinement())
+            .expect("confined");
+        let names: Vec<String> = cmd
+            .as_std()
+            .get_envs()
+            .filter(|(_, v)| v.is_some())
+            .map(|(k, _)| k.to_string_lossy().to_ascii_uppercase())
+            .collect();
+        for required in tauri_plugin_agent_tools::tools::win_env::REQUIRED {
+            if std::env::var_os(required).is_some() {
+                assert!(names.contains(&required.to_ascii_uppercase()), "{names:?}");
+            }
+        }
+        assert!(!names.contains(&"PATH".to_string()), "the host PATH leaked: {names:?}");
     }
 
     /// Nothing about the command leaks through the debug output — the argv can

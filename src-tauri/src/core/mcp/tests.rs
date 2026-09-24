@@ -1176,10 +1176,19 @@ mod mcp_confinement_tests {
             return;
         };
 
+        // On Windows the AppContainer helper also gets the two names it needs
+        // to start (Jozkah/jan#284); nothing else from the host.
+        let helper_needs = |k: &str| {
+            cfg!(windows)
+                && tauri_plugin_agent_tools::tools::win_env::REQUIRED
+                    .iter()
+                    .any(|r| r.eq_ignore_ascii_case(k))
+        };
         let passed: Vec<String> = cmd
             .as_std()
             .get_envs()
             .map(|(k, _)| k.to_string_lossy().into_owned())
+            .filter(|k| !helper_needs(k))
             .collect();
 
         assert_eq!(passed, vec!["API_TOKEN".to_string()]);
