@@ -39,39 +39,48 @@ export const DialogDeleteModel = ({
   const { setProviders, deleteModel: deleteModelCache } = useModelProvider()
   const { removeFavorite } = useFavoriteModel()
   const serviceHub = useServiceHub()
+  const [open, setOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const removeModel = async () => {
-    // Remove model from favorites if it exists
-    removeFavorite(selectedModelId)
-
-    deleteModelCache(selectedModelId)
-    serviceHub
-      .models()
-      .deleteModel(selectedModelId, provider.provider)
-      .then(() => {
-        serviceHub
-          .providers()
-          .getProviders()
-          .then((providers) => {
-            // Filter out the deleted model from all providers
-            const filteredProviders = providers.map((provider) => ({
-              ...provider,
-              models: provider.models.filter(
-                (model) => model.id !== selectedModelId
-              ),
-            }))
-            setProviders(filteredProviders)
-          })
-        toast.success(
-          t('providers:deleteModel.title', { modelId: selectedModel?.id }),
-          {
-            id: `delete-model-${selectedModel?.id}`,
-            description: t('providers:deleteModel.success', {
-              modelId: selectedModel?.id,
-            }),
-          }
-        )
+    const id = selectedModelId
+    setDeleting(true)
+    try {
+      // Delete on the backend first. Local state (favorites, provider cache)
+      // only changes once that has succeeded, so a failed delete never makes
+      // a model vanish from the UI while its files are still on disk.
+      await serviceHub.models().deleteModel(id, provider.provider)
+    } catch (error) {
+      console.error(`Failed to delete model ${id}`, error)
+      toast.error(t('providers:deleteModel.title', { modelId: id }), {
+        id: `delete-model-${id}`,
+        description: error instanceof Error ? error.message : String(error),
       })
+      return
+    } finally {
+      setDeleting(false)
+    }
+
+    removeFavorite(id)
+    deleteModelCache(id)
+    setOpen(false)
+    toast.success(t('providers:deleteModel.title', { modelId: id }), {
+      id: `delete-model-${id}`,
+      description: t('providers:deleteModel.success', { modelId: id }),
+    })
+
+    try {
+      const providers = await serviceHub.providers().getProviders()
+      // Filter out the deleted model from all providers
+      setProviders(
+        providers.map((p) => ({
+          ...p,
+          models: p.models.filter((model) => model.id !== id),
+        }))
+      )
+    } catch (error) {
+      console.error('Failed to refresh providers after deleting a model', error)
+    }
   }
 
   // Initialize with the provided model ID or the first model if available
@@ -94,7 +103,7 @@ export const DialogDeleteModel = ({
   }
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
@@ -136,18 +145,19 @@ export const DialogDeleteModel = ({
               {t('providers:deleteModel.cancel')}
             </Button>
           </DialogClose>
-          <DialogClose asChild>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="pointer-coarse:h-11"
-              onClick={removeModel}
-            >
-              {selectedModel.imported
-                ? t('providers:deleteModel.removeFromJan')
-                : t('providers:deleteModel.delete')}
-            </Button>
-          </DialogClose>
+          {/* Not a DialogClose: the dialog stays open until the delete has
+              succeeded, so a failure can be reported where it happened. */}
+          <Button
+            variant="destructive"
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={removeModel}
+            disabled={deleting}
+          >
+            {selectedModel.imported
+              ? t('providers:deleteModel.removeFromJan')
+              : t('providers:deleteModel.delete')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
