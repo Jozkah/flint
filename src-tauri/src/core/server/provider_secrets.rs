@@ -528,6 +528,30 @@ pub fn delete_provider_keys(provider: &str) -> Result<(), String> {
     removed
 }
 
+/// Delete every secret this app stored: each name in the presence index or in
+/// the fallback file, from both the OS keyring and the fallback file, then the
+/// index itself. For a full factory reset, which otherwise removed only the
+/// fallback file and left every keyring entry to be reloaded on next launch.
+///
+/// Returns how many names were wiped. Individual failures are logged, never
+/// fatal: the reset should remove whatever it can.
+pub fn wipe_all_secrets() -> usize {
+    let mut names = read_index();
+    names.extend(read_file_map(&secrets_file_path()).into_keys());
+    for name in &names {
+        if let Err(err) = delete_provider_keys(name) {
+            log::warn!("Factory reset: failed to delete stored secret {name}: {err}");
+        }
+    }
+    let _guard = INDEX_LOCK.lock();
+    match fs::remove_file(secrets_index_path()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!("Factory reset: failed to remove the secret index: {e}"),
+    }
+    names.len()
+}
+
 /// Read a provider's key chain: keyring first, then the fallback file. Returns
 /// an empty vec when neither has it (caller falls back to env/flag).
 pub fn load_provider_keys(provider: &str) -> Vec<String> {
@@ -848,6 +872,27 @@ mod tests {
     fn staging_paths_are_unique_per_writer() {
         let p = PathBuf::from("provider_secrets.index.json");
         assert_ne!(unique_tmp(&p, "json"), unique_tmp(&p, "json"));
+    }
+
+    /// A full reset removes every stored secret and the index, so nothing is
+    /// reloaded into the freshly reset app (#136).
+    #[test]
+    fn wipe_all_secrets_removes_every_record_and_the_index() {
+        let _tmp = TempDataFolder::new();
+        force_file_secrets();
+        store_provider_keys("openai", &["sk-a".to_string()]).unwrap();
+        store_provider_keys("anthropic", &["sk-b".to_string()]).unwrap();
+        store_secret_record("anthropic", "{\"token\":1}").unwrap();
+        assert!(secrets_index_path().exists());
+
+        assert_eq!(wipe_all_secrets(), 3);
+
+        for provider in ["openai", "anthropic", "auth:anthropic"] {
+            assert!(load_provider_keys(provider).is_empty(), "{provider} survived");
+            assert!(!has_stored_key(provider));
+        }
+        assert_eq!(load_secret_record("anthropic"), None);
+        assert!(!secrets_index_path().exists());
     }
 
     #[cfg(unix)]

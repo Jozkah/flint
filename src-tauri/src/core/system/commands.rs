@@ -291,6 +291,10 @@ pub fn factory_reset<R: Runtime>(
 
             // store.json spans all categories; only wipe it when nothing is kept
             if !keep_app_data && !keep_models_and_configs {
+                // Secrets live mostly in the OS keyring, not the data folder;
+                // clear them while the index can still name them.
+                let wiped = crate::core::server::provider_secrets::wipe_all_secrets();
+                log::info!("Factory reset: wiped {wiped} stored secret(s)");
                 delete_settings(&data_folder);
             }
         }
@@ -1194,6 +1198,12 @@ mod tests {
         assert!(!d.join("settings.json").exists());
         assert!(!exists_any(d, JAN_DATA_SUBDIRS));
         assert!(!exists_any(d, JAN_DATA_FILES));
+    }
+
+    #[test]
+    fn test_full_wipe_list_includes_the_secret_index() {
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.enc"));
+        assert!(JAN_DATA_FILES_SETTINGS.contains(&"provider_secrets.index.json"));
     }
 
     #[test]
