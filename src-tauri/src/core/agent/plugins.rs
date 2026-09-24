@@ -1526,7 +1526,14 @@ fn install_git(
 
     let r#ref = r#ref.or(source.r#ref.as_deref());
     let mut cmd = git_command();
-    cmd.args(["clone", "--depth", "1"]);
+    // A repository's symbolic links are checked out as plain files holding
+    // the link text, never as links. A link in a plugin would otherwise lead
+    // out of it: a skill file pointing at the project's `.env` is read and
+    // handed to the model by `skill_read`, and a directory link named in a
+    // tree URL's subdirectory makes the installer move a real directory from
+    // outside the clone into the plugin store. The local-folder install
+    // already skips links for the same reason.
+    cmd.args(["-c", "core.symlinks=false", "clone", "--depth", "1"]);
     if let Some(r#ref) = r#ref {
         cmd.args(["--branch", r#ref]);
     }
@@ -1557,6 +1564,23 @@ fn install_git(
         .as_deref()
         .map(|subdir| tmp.join(subdir))
         .unwrap_or_else(|| tmp.clone());
+    // Whatever the checkout holds, the payload must resolve inside the clone.
+    let inside = match (payload_root.canonicalize(), tmp.canonicalize()) {
+        (Ok(p), Ok(t)) => p.starts_with(&t),
+        // A subdirectory that does not exist is reported as such below.
+        (Err(_), _) => true,
+        (Ok(_), Err(_)) => false,
+    };
+    if !inside {
+        remove_staging(&tmp);
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin subdirectory leads outside the repository: '{}'",
+                source.subdir.as_deref().unwrap_or("")
+            ),
+        ));
+    }
     let staged = Staged {
         tmp,
         payload_root,
@@ -2505,6 +2529,29 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("already installed"), "{err}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A symbolic link committed to a plugin repository is never checked out
+    /// as a link, so a skill cannot be a window onto a file outside the
+    /// plugin (here, a `.env` two levels up).
+    #[tokio::test]
+    async fn install_never_checks_out_a_symlink() {
+        let repo = make_repo("symlink", true);
+        let r = repo.to_str().unwrap();
+        std::fs::write(repo.join("link.txt"), "../../../.env").unwrap();
+        let blob = git(&["-C", r, "hash-object", "-w", "link.txt"]).unwrap();
+        std::fs::remove_file(repo.join("link.txt")).unwrap();
+        let info = format!("120000,{},skills/notes.md", blob.trim());
+        git(&["-C", r, "update-index", "--add", "--cacheinfo", &info]).unwrap();
+        git(&["-C", r, "commit", "-m", "link", "--author=Jan Test <test@jan.ai>"]).unwrap();
+
+        let root = unique_root("symlink");
+        let p = install(&root, &format!("file://{}", repo.display())).await.unwrap();
+        let notes = skills::plugins_dir(&root).join(&p.name).join("skills/notes.md");
+        let meta = std::fs::symlink_metadata(&notes).expect("the link's path is still there");
+        assert!(!meta.file_type().is_symlink(), "a repository symlink was checked out as a link");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     #[tokio::test]
