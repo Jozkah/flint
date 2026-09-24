@@ -366,6 +366,10 @@ function LibraryRow({
   const Icon = ARTIFACT_ICON[row.group]
   const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
   const updated = formatUpdated(row.updated)
+  // #183: a row whose path never resolved inside its session root has nothing
+  // to preview; the double-click and Open button are gated the same way as
+  // the inspector's Open Preview.
+  const canOpen = Boolean(row.root && resolveInRoot(row.root, row.path))
   return (
     <li
       data-testid="artifact-card"
@@ -378,7 +382,7 @@ function LibraryRow({
       <button
         type="button"
         onClick={onSelect}
-        onDoubleClick={onOpen}
+        onDoubleClick={canOpen ? onOpen : undefined}
         aria-current={selected || undefined}
         aria-label={t('common:artifactShowDetails', { name: row.title })}
         data-testid="artifact-row"
@@ -427,6 +431,7 @@ function LibraryRow({
           size="icon-sm"
           className="pointer-coarse:size-11"
           onClick={onOpen}
+          disabled={!canOpen}
           title={t('common:artifactOpenPreview')}
           aria-label={`${t('common:artifactOpenPreview')}: ${row.title}`}
           data-testid="artifact-open"
