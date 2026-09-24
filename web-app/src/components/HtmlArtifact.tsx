@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { CodeBlock } from '@/components/ai-elements/code-block'
 import { countUnresolvedAssetRefs } from '@/lib/htmlAssets'
 import { buildSrcDoc } from '@/lib/htmlSandbox'
+import { usePreviewSource } from '@/hooks/usePreviewSource'
 import type { BundledLanguage } from 'shiki'
 
 interface HtmlArtifactProps {
@@ -46,6 +47,9 @@ function HtmlArtifactComponent({
       view === 'preview' ? buildSrcDoc(code, allowNetwork, allowScripts) : '',
     [view, code, allowNetwork, allowScripts]
   )
+  // Served from the flintpreview: scheme in the desktop app so its scripts
+  // are not blocked by the app CSP an about:srcdoc frame inherits (#135).
+  const source = usePreviewSource(srcDoc, allowNetwork, allowScripts)
 
   const previewDisabled = isStreaming ?? false
   const activeView: View = previewDisabled ? 'code' : view
@@ -117,7 +121,7 @@ function HtmlArtifactComponent({
           className="h-[600px] max-h-[80vh] min-h-64 w-full resize-y overflow-auto border-0 bg-white"
           sandbox={allowScripts ? 'allow-scripts' : ''}
           referrerPolicy="no-referrer"
-          srcDoc={srcDoc}
+          {...source}
           />
         </>
       ) : (
