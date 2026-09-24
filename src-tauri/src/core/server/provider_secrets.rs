@@ -9,7 +9,8 @@
 //! is often absent on headless/CI/SSH boxes. When the keyring is unavailable we
 //! fall back to an encrypted, permission-restricted file
 //! (`<jan_data>/provider_secrets.enc`, AES-256-GCM, `0600` on unix). The key is
-//! derived from a stable per-machine id + an app salt: this defeats casual disk
+//! derived from a stable per-machine id + an app salt (or, on a machine with no
+//! usable id, a random per-install key kept under `~/.jan`): this defeats casual disk
 //! or backup inspection, the realistic threat for a headless fallback. It is not
 //! proof against an attacker who already has code + disk access on the box (no
 //! local-key scheme can be). Keyring failure is never fatal; callers additionally
@@ -21,6 +22,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
 use keyring::Entry;
@@ -31,6 +33,7 @@ use crate::core::app::commands::resolve_jan_data_folder;
 const KEYRING_SERVICE: &str = "jan-providers";
 const SECRETS_FILE_NAME: &str = "provider_secrets.enc";
 const SECRETS_INDEX_FILE_NAME: &str = "provider_secrets.index.json";
+const INSTALL_KEY_FILE_NAME: &str = "provider_secrets.key";
 const NONCE_LEN: usize = 12;
 
 /// Serializes read-modify-write on the fallback file.
@@ -153,14 +156,94 @@ fn secrets_file_path() -> PathBuf {
     resolve_jan_data_folder().join(SECRETS_FILE_NAME)
 }
 
-/// Derive a stable 32-byte key from a per-machine id and a versioned app salt.
-fn derive_cipher() -> Result<Aes256Gcm, String> {
-    let machine_id = machine_uid::get().unwrap_or_else(|_| "jan-fallback-machine".to_string());
+/// The id a machine-id lookup produced, if it is one worth keying on. A failed
+/// lookup and an empty (or whitespace-only) id are both "no machine id": each
+/// would otherwise hash to a key every such install shares.
+fn usable_machine_id<E>(lookup: Result<String, E>) -> Option<String> {
+    lookup.ok().filter(|id| !id.trim().is_empty())
+}
+
+/// SHA-256 of the versioned app salt and `material`, the AES-256 key bytes.
+fn key_bytes(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(b"jan-provider-secrets-v1");
-    hasher.update(machine_id.as_bytes());
-    let key = hasher.finalize();
-    Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())
+    hasher.update(material);
+    hasher.finalize().into()
+}
+
+fn cipher_from(key: &[u8; 32]) -> Result<Aes256Gcm, String> {
+    Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())
+}
+
+/// Where the random per-install key lives when the machine has no usable id.
+/// Deliberately outside the data folder, so a copy of that folder (a backup,
+/// a Docker volume) does not carry the key along with the file it unlocks.
+fn install_key_path() -> Option<PathBuf> {
+    crate::core::app::commands::jan_home_dir()
+        .map(|home| home.join(".jan").join(INSTALL_KEY_FILE_NAME))
+}
+
+/// Read the random per-install key, creating it on first use.
+fn load_or_create_install_key(path: &PathBuf) -> Result<[u8; 32], String> {
+    if let Ok(bytes) = fs::read(path) {
+        if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
+            return Ok(key);
+        }
+        log::warn!(
+            "Ignoring malformed provider secrets key file {}; generating a new one",
+            path.display()
+        );
+    }
+    let mut key = [0u8; 32];
+    OsRng.fill_bytes(&mut key);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!("key.{}.tmp", std::process::id()));
+    fs::write(&tmp, key).map_err(|e| e.to_string())?;
+    restrict_permissions(&tmp);
+    fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    restrict_permissions(path);
+    Ok(key)
+}
+
+static NO_MACHINE_ID_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// The key bytes for this install: from the machine id when there is a usable
+/// one, otherwise from a random key persisted under `~/.jan`. Never from a
+/// constant baked into the source, which any reader of it could recompute.
+fn current_key(
+    machine_id: Option<String>,
+    install_key: &Option<PathBuf>,
+) -> Result<[u8; 32], String> {
+    if let Some(id) = machine_id {
+        return Ok(key_bytes(id.as_bytes()));
+    }
+    if !NO_MACHINE_ID_WARNED.swap(true, Ordering::Relaxed) {
+        log::warn!(
+            "No machine id available; protecting the provider secrets file with a random per-install key instead"
+        );
+    }
+    let path = install_key
+        .as_ref()
+        .ok_or_else(|| "no machine id and no home directory for the secrets key".to_string())?;
+    let random = load_or_create_install_key(path)?;
+    Ok(key_bytes(&random))
+}
+
+/// Derive the 32-byte key for the fallback file.
+fn derive_cipher() -> Result<Aes256Gcm, String> {
+    cipher_from(&current_key(
+        usable_machine_id(machine_uid::get()),
+        &install_key_path(),
+    )?)
+}
+
+/// The keys older builds derived when the machine id was missing or empty.
+/// Only ever used to read a file those builds wrote; the next write
+/// re-encrypts it under [`derive_cipher`].
+fn legacy_no_machine_id_keys() -> [[u8; 32]; 2] {
+    [key_bytes(b"jan-fallback-machine"), key_bytes(b"")]
 }
 
 fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
@@ -171,14 +254,26 @@ fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
         return BTreeMap::new();
     }
     let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
-    let plaintext = match derive_cipher().and_then(|c| {
-        c.decrypt(Nonce::from_slice(nonce), ciphertext)
+    let decrypt = |cipher: Aes256Gcm| {
+        cipher
+            .decrypt(Nonce::from_slice(nonce), ciphertext)
             .map_err(|e| e.to_string())
-    }) {
+    };
+    let plaintext = match derive_cipher().and_then(decrypt) {
         Ok(pt) => pt,
         Err(err) => {
-            log::warn!("Failed to decrypt provider secrets file: {err}");
-            return BTreeMap::new();
+            // A file an older build wrote on a machine without an id used a
+            // constant key; still read it so the upgrade loses nothing.
+            let legacy = legacy_no_machine_id_keys()
+                .iter()
+                .find_map(|key| cipher_from(key).and_then(decrypt).ok());
+            match legacy {
+                Some(pt) => pt,
+                None => {
+                    log::warn!("Failed to decrypt provider secrets file: {err}");
+                    return BTreeMap::new();
+                }
+            }
         }
     };
     serde_json::from_slice(&plaintext).unwrap_or_default()
@@ -592,6 +687,51 @@ mod tests {
             !haystack.contains("openai"),
             "provider name must not appear in plaintext"
         );
+    }
+
+    /// A missing or empty machine id must not key the file with a constant
+    /// anyone can recompute from the source (#164).
+    #[test]
+    fn no_machine_id_never_derives_a_public_key() {
+        let _tmp = TempDataFolder::new();
+        assert_eq!(usable_machine_id::<()>(Err(())), None);
+        assert_eq!(usable_machine_id::<()>(Ok(String::new())), None);
+        assert_eq!(usable_machine_id::<()>(Ok(" 	 ".into())), None);
+        assert_eq!(usable_machine_id::<()>(Ok("abc".into())), Some("abc".into()));
+
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let key_a = current_key(None, &Some(a.path().join("k"))).unwrap();
+        let key_b = current_key(None, &Some(b.path().join("k"))).unwrap();
+        for legacy in legacy_no_machine_id_keys() {
+            assert_ne!(key_a, legacy);
+            assert_ne!(key_b, legacy);
+        }
+        assert_ne!(key_a, key_b, "two installs without a machine id share no key");
+        assert_eq!(
+            key_a,
+            current_key(None, &Some(a.path().join("k"))).unwrap(),
+            "the per-install key is stable across calls"
+        );
+    }
+
+    /// A file an older build encrypted under the constant key still loads.
+    #[test]
+    fn a_legacy_constant_key_file_still_reads() {
+        let _tmp = TempDataFolder::new();
+        let path = secrets_file_path();
+        let mut map = BTreeMap::new();
+        map.insert("openai".to_string(), vec!["sk-old".to_string()]);
+        let cipher = cipher_from(&key_bytes(b"jan-fallback-machine")).unwrap();
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut blob = nonce.to_vec();
+        blob.extend(
+            cipher
+                .encrypt(&nonce, serde_json::to_vec(&map).unwrap().as_ref())
+                .unwrap(),
+        );
+        fs::write(&path, blob).unwrap();
+        assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
     }
 
     #[cfg(unix)]
