@@ -196,13 +196,32 @@ fn detect_shell_env_file(home_dir: &str, is_macos: bool) -> (&'static str, Strin
     }
 }
 
+/// Quote `value` for a POSIX shell: single quotes, with each embedded single
+/// quote written as `'\''`, so no character in it is ever interpreted (#95).
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// `export` lines for the shell config, keys validated, values quoted (#95).
+fn render_env_exports(env_vars: &[(String, String)]) -> String {
+    env_vars
+        .iter()
+        .map(|(k, v)| format!("export {}={}\n", k, sh_single_quote(v)))
+        .collect()
+}
+
+/// A shell variable name: `[A-Za-z_][A-Za-z0-9_]*`.
+fn is_valid_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+
 // Helper function to write env vars to a shell config file
 fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Result<(), String> {
     let marker = "# Jan Local API Server - Claude Code Config";
-    let new_entries: String = env_vars
-        .iter()
-        .map(|(k, v)| format!("export {}='{}'\n", k, v))
-        .collect();
+    let new_entries = render_env_exports(env_vars);
 
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
     // Drop the whole block written last time, custom variables included, so a
@@ -510,6 +529,16 @@ fn build_claude_code_env_vars(
             env.get("key").and_then(|v| v.as_str()),
             env.get("value").and_then(|v| v.as_str()),
         ) {
+            // #95: these are written into a shell startup file.
+            if !is_valid_env_key(key) {
+                return Err(format!(
+                    "Invalid environment variable name {key:?}: use letters, digits and \
+                     underscores, not starting with a digit."
+                ));
+            }
+            if value.contains('\0') {
+                return Err(format!("The value of {key} contains a NUL byte."));
+            }
             env_vars.push((key.to_string(), value.to_string()));
         }
     }
@@ -549,10 +578,7 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
                 let existing_content = std::fs::read_to_string(&env_file_path).unwrap_or_default();
                 let cleaned = strip_jan_env_block(&existing_content);
 
-                let env_content: String = env_vars
-                    .iter()
-                    .map(|(k, v)| format!("export {}='{}'\n", k, v))
-                    .collect();
+                let env_content = render_env_exports(env_vars);
 
                 let new_block = format!("{}\n{}", marker, env_content);
 
@@ -1171,6 +1197,71 @@ mod tests {
         assert!(keys.contains(&"MY_TOKEN".to_string()));
         assert!(keys.contains(&"ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string()));
         assert_eq!(keys.iter().filter(|k| *k == "ANTHROPIC_BASE_URL").count(), 1);
+    }
+
+    #[test]
+    fn shell_env_values_are_quoted_so_quotes_cannot_break_out() {
+        assert_eq!(sh_single_quote("O'Reilly"), "'O'\\''Reilly'");
+        let dir = tempdir().unwrap();
+        let file = dir.path().join(".zshenv");
+        let file_s = file.to_str().unwrap();
+        let vars = vec![
+            ("MY_VAR".to_string(), "O'Reilly".to_string()),
+            ("X".to_string(), "a'; touch /tmp/pwned; echo '".to_string()),
+        ];
+        write_env_to_shell(file_s, &vars).unwrap();
+        let written = fs::read_to_string(&file).unwrap();
+        assert!(written.contains("export MY_VAR='O'\\''Reilly'\n"), "{written}");
+        assert!(written.contains("export X='a'\\''; touch /tmp/pwned; echo '\\'''\n"), "{written}");
+
+        #[cfg(unix)]
+        {
+            let marker = dir.path().join("pwned");
+            let evil = vec![(
+                "X".to_string(),
+                format!("a'; touch {}; echo '", marker.display()),
+            ), ("MY_VAR".to_string(), "O'Reilly".to_string())];
+            write_env_to_shell(file_s, &evil).unwrap();
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!(". '{}'; printf %s \"$MY_VAR\"", file_s))
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+            assert_eq!(String::from_utf8_lossy(&out.stdout), "O'Reilly");
+            assert!(!marker.exists(), "an env value ran a shell command");
+        }
+    }
+
+    #[test]
+    fn a_resave_replaces_custom_variables_and_keeps_user_lines() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join(".bashrc");
+        fs::write(&file, "alias ll='ls -l'\n").unwrap();
+        let file_s = file.to_str().unwrap();
+        write_env_to_shell(file_s, &[("OLD_CUSTOM".to_string(), "1".to_string())]).unwrap();
+        write_env_to_shell(file_s, &[("NEW_CUSTOM".to_string(), "2".to_string())]).unwrap();
+        let written = fs::read_to_string(&file).unwrap();
+        assert!(!written.contains("OLD_CUSTOM"), "{written}");
+        assert!(written.contains("export NEW_CUSTOM='2'"), "{written}");
+        assert!(written.contains("alias ll='ls -l'"), "{written}");
+        assert_eq!(written.matches("# Jan Local API Server").count(), 2, "{written}");
+    }
+
+    #[test]
+    fn an_invalid_custom_env_key_is_rejected() {
+        let result = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            None,
+            None,
+            None,
+            vec![serde_json::json!({"key": "FOO; id", "value": "x"})],
+        );
+        assert!(result.unwrap_err().contains("FOO; id"));
+        assert!(is_valid_env_key("_MY_VAR1"));
+        assert!(!is_valid_env_key("1ABC"));
+        assert!(!is_valid_env_key(""));
     }
 
     #[test]
