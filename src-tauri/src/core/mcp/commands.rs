@@ -214,6 +214,11 @@ pub async fn deactivate_mcp_server<R: Runtime>(
         generations.insert(name.clone(), next);
     }
 
+    // The monitor for this instance must stop with it. Its handle is removed
+    // here rather than left for a later start to overwrite, which would only
+    // detach it (#112).
+    super::helpers::abort_mcp_monitor(&state.mcp_monitoring_tasks, &name).await;
+
     // Explicit deactivation is the only thing that should drop the last-known
     // tool schema — a transient disconnect must not (collect_mcp_tools keeps
     // serving it until the server is actually turned off).

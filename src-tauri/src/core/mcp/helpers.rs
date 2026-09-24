@@ -482,10 +482,15 @@ pub async fn start_mcp_server<R: Runtime>(
                 .await;
             });
 
-            // Store the monitoring task handle so it can be aborted on shutdown
+            // Store the monitoring task handle so it can be aborted on shutdown.
+            // A monitor already stored under this name watches an earlier
+            // definition; dropping its handle would only detach it, so it is
+            // aborted instead of left to reconnect the old config (#112).
             {
                 let mut monitoring_tasks = app_state.mcp_monitoring_tasks.lock().await;
-                monitoring_tasks.insert(name.clone(), monitor_handle);
+                if let Some(previous) = monitoring_tasks.insert(name.clone(), monitor_handle) {
+                    previous.abort();
+                }
             }
 
             Ok(())
@@ -1351,6 +1356,21 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     Ok(())
+}
+
+/// Stop the health monitor watching `name`, if one is running.
+///
+/// The monitor holds the definition it was started with and exits only on
+/// shutdown or when the name leaves the active list. A same-name edit puts the
+/// name straight back, so without this the old monitor would keep running and
+/// could relaunch the pre-edit config on the next disconnect (#112).
+pub async fn abort_mcp_monitor(
+    monitoring_tasks: &Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
+    name: &str,
+) {
+    if let Some(handle) = monitoring_tasks.lock().await.remove(name) {
+        handle.abort();
+    }
 }
 
 /// Store active server configuration for restart purposes
