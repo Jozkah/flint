@@ -91,6 +91,32 @@ describe('RoomEditor', () => {
     expect(within(alice).getByText(/Approvals never apply in rooms/)).toBeInTheDocument()
   })
 
+  it('flags a limit below its minimum and saves the raised value (#175)', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+
+    const rounds = screen.getByLabelText('Rounds') as HTMLInputElement
+    await user.clear(rounds)
+    await user.type(rounds, '-3')
+    expect(screen.getByText('Raised to the minimum of 1.')).toBeInTheDocument()
+    fireEvent.blur(rounds)
+    expect(rounds.value).toBe('1')
+
+    const minutes = screen.getByLabelText('Running time (minutes)') as HTMLInputElement
+    await user.clear(minutes)
+    await user.type(minutes, '0')
+    // The minimum is shown in minutes, the input's unit, not milliseconds.
+    expect(screen.getByText('Raised to the minimum of 1.')).toBeInTheDocument()
+    fireEvent.blur(minutes)
+    expect(minutes.value).toBe('1')
+
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    const patch = api.updateRoomSettings.mock.calls[0][1]
+    expect(patch.limits.maxRounds).toBe(1)
+    expect(patch.limits.maxDurationMs).toBe(60_000)
+  })
+
   it('shows ceilings, caps limits above them and saves the clamped value', async () => {
     const user = userEvent.setup()
     const { api } = createFakeApi()

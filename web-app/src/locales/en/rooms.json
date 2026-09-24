@@ -97,6 +97,7 @@
     "limitsHint": "Every limit is capped by a fixed ceiling.",
     "ceiling": "Max {{max}}",
     "clamped": "Capped at {{max}}.",
+    "raisedToMin": "Raised to the minimum of {{min}}.",
     "costHint": "The cost limit works only when every model that speaks has pricing. Without it, cost is not tracked.",
     "costMissingPricing": "Some models have no pricing, so the cost limit will not be enforced.",
     "costNone": "No cost limit",
