@@ -269,33 +269,57 @@ async fn accept_callback(
 ) -> Result<String, String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut stream = listener
-        .accept()
+    const OK: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 71\r\nConnection: close\r\n\r\n<html><body>Sign-in completed. You can close this window.</body></html>";
+    const BAD: &str = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 56\r\nConnection: close\r\n\r\n<html><body>Sign-in could not be verified.</body></html>";
+    const NOT_FOUND: &str =
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    // Serve connections until one carries this login's state. A browser may
+    // open a speculative connection and close it empty, send a Private Network
+    // Access preflight, or probe `/favicon.ico`; any other local process can
+    // touch the fixed port too. None of those may end the login.
+    loop {
+        let mut stream = listener
+            .accept()
+            .await
+            .map_err(|_| "could not receive the account callback".to_string())?;
+        let mut request = [0; 8192];
+        // A preconnect that never sends anything must not hold the loop.
+        let read = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stream.read(&mut request),
+        )
         .await
-        .map_err(|_| "could not receive the account callback".to_string())?;
-    let mut request = [0; 8192];
-    let read = stream
-        .read(&mut request)
-        .await
-        .map_err(|_| "could not read the account callback".to_string())?;
-    let target = std::str::from_utf8(&request[..read])
-        .ok()
-        .and_then(|request| request.lines().next())
-        .and_then(|line| line.split_whitespace().nth(1))
-        .ok_or_else(|| "the account callback was malformed".to_string())?;
-    let callback = format!(
-        "{}/{}",
-        login.redirect_uri.trim_end_matches('/'),
-        target.trim_start_matches('/')
-    );
-    let result = parse_callback(&callback, &login.state);
-    let response = if result.is_ok() {
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 71\r\nConnection: close\r\n\r\n<html><body>Sign-in completed. You can close this window.</body></html>"
-    } else {
-        "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 56\r\nConnection: close\r\n\r\n<html><body>Sign-in could not be verified.</body></html>"
-    };
-    let _ = stream.write_all(response.as_bytes()).await;
-    result
+        {
+            Ok(Ok(read)) => read,
+            _ => continue,
+        };
+        let target = std::str::from_utf8(&request[..read])
+            .ok()
+            .and_then(|request| request.lines().next())
+            .and_then(|line| line.split_whitespace().nth(1));
+        let Some(target) = target else {
+            let _ = stream.write_all(NOT_FOUND.as_bytes()).await;
+            continue;
+        };
+        let callback = format!(
+            "{}/{}",
+            login.redirect_uri.trim_end_matches('/'),
+            target.trim_start_matches('/')
+        );
+        let carries_our_state = url::Url::parse(&callback).is_ok_and(|url| {
+            url.query_pairs()
+                .any(|(key, value)| key == "state" && value == login.state.as_str())
+        });
+        if !carries_our_state {
+            let _ = stream.write_all(NOT_FOUND.as_bytes()).await;
+            continue;
+        }
+        let result = parse_callback(&callback, &login.state);
+        let response = if result.is_ok() { OK } else { BAD };
+        let _ = stream.write_all(response.as_bytes()).await;
+        return result;
+    }
 }
 
 /// A loopback listener for the OAuth redirect.
@@ -1775,6 +1799,44 @@ mod tests {
             "Content-Type: application/x-www-form-urlencoded",
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn loopback_listener_survives_stray_requests_before_the_redirect() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let login = begin(AccountProvider::Codex).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = login.state.clone();
+        let client = tokio::spawn(async move {
+            // A speculative connection that closes without a request.
+            drop(tokio::net::TcpStream::connect(address).await.unwrap());
+            // A PNA preflight, a favicon probe and a redirect with a foreign state.
+            for request in [
+                "OPTIONS /auth/callback HTTP/1.1\r\nHost: x\r\n\r\n".to_string(),
+                "GET /favicon.ico HTTP/1.1\r\nHost: x\r\n\r\n".to_string(),
+                "GET /auth/callback?code=evil&state=other HTTP/1.1\r\nHost: x\r\n\r\n"
+                    .to_string(),
+            ] {
+                let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.starts_with("HTTP/1.1 404"), "{response}");
+            }
+            let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+            let callback = format!(
+                "GET /auth/callback?code=authorization-code&state={state} HTTP/1.1\r\nHost: x\r\n\r\n"
+            );
+            stream.write_all(callback.as_bytes()).await.unwrap();
+        });
+
+        assert_eq!(
+            accept_callback(&listener.into(), &login).await.unwrap(),
+            "authorization-code"
+        );
+        client.await.unwrap();
     }
 
     #[tokio::test]
