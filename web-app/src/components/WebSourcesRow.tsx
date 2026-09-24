@@ -3,27 +3,40 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Citations, type WebCitation } from '@/components/Citations'
-import { siteInitial } from '@/lib/webUrl'
+import { hostOf, siteInitial } from '@/lib/webUrl'
+import { summarizeWebSources } from '@/lib/webSources'
+
+const NO_READS: string[] = []
 
 export const WebSourcesRow = memo(
-  ({ citations }: { citations: WebCitation[] }) => {
+  ({
+    citations,
+    readUrls = NO_READS,
+  }: {
+    citations: WebCitation[]
+    /** Pages the reply fetched and read, counted apart from search hits. */
+    readUrls?: string[]
+  }) => {
     const { t } = useTranslation()
     const [expanded, setExpanded] = useState(false)
 
-    const unique = useMemo(() => {
-      const seen = new Set<string>()
-      const out: WebCitation[] = []
-      for (const c of citations) {
-        if (seen.has(c.url)) continue
-        seen.add(c.url)
-        out.push(c)
-      }
-      return out
-    }, [citations])
+    const { sources: unique, read, found } = useMemo(
+      () => summarizeWebSources(citations, readUrls),
+      [citations, readUrls]
+    )
 
     if (!unique.length) return null
 
-    const preview = unique.slice(0, 4)
+    // One chip per site: four pages from one domain are one letter, not four.
+    const preview: WebCitation[] = []
+    const hosts = new Set<string>()
+    for (const c of unique) {
+      const host = hostOf(c.url)
+      if (hosts.has(host)) continue
+      hosts.add(host)
+      preview.push(c)
+      if (preview.length === 4) break
+    }
 
     return (
       <div className="mt-3">
@@ -45,7 +58,11 @@ export const WebSourcesRow = memo(
             ))}
           </span>
           <span className="font-medium">
-            {t('chat:webSources', { count: unique.length })}
+            {read === 0
+              ? t('chat:webSources', { count: found })
+              : found === 0
+                ? t('chat:webSourcesRead', { count: read })
+                : t('chat:webSourcesReadFound', { read, found })}
           </span>
           <ChevronRightIcon
             className={cn(
