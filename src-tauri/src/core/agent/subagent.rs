@@ -242,28 +242,7 @@ impl SubagentRegistry {
         scope: SubagentScope,
         overwrite: bool,
     ) -> Result<bool, SubagentError> {
-        validate_name(&def.name)?;
-        if scope == SubagentScope::Builtin {
-            return Err(SubagentError::PermissionDenied(
-                "built-in roles are read-only".to_string(),
-            ));
-        }
-        if scope == SubagentScope::Plugin {
-            return Err(SubagentError::Upstream(
-                "plugin scope is read-only: plugin agents are managed via plugin install/remove"
-                    .to_string(),
-            ));
-        }
-        let collides = self
-            .defs
-            .iter()
-            .any(|d| d.name == def.name && d.scope == scope);
-        if collides && !overwrite {
-            return Err(SubagentError::PermissionDenied(format!(
-                "a {scope:?}-scope subagent named '{}' already exists; pass overwrite to replace it",
-                def.name
-            )));
-        }
+        self.check_create(&def.name, scope, overwrite)?;
         std::fs::create_dir_all(dir).map_err(|e| {
             SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
         })?;
@@ -291,6 +270,40 @@ impl SubagentRegistry {
             .retain(|d| !(d.name == def.name && d.scope == scope));
         self.defs.push(SubagentDefinition { scope, ..def });
         Ok(shadows_user)
+    }
+
+    /// Every refusal `create_in` can make before it writes: an illegal name, a
+    /// read-only scope, or a same-scope name that exists without `overwrite`.
+    /// A batch caller runs this over the whole batch first, so a refusal
+    /// arrives before anything is on disk.
+    pub fn check_create(
+        &self,
+        name: &str,
+        scope: SubagentScope,
+        overwrite: bool,
+    ) -> Result<(), SubagentError> {
+        validate_name(name)?;
+        if scope == SubagentScope::Builtin {
+            return Err(SubagentError::PermissionDenied(
+                "built-in roles are read-only".to_string(),
+            ));
+        }
+        if scope == SubagentScope::Plugin {
+            return Err(SubagentError::Upstream(
+                "plugin scope is read-only: plugin agents are managed via plugin install/remove"
+                    .to_string(),
+            ));
+        }
+        let collides = self
+            .defs
+            .iter()
+            .any(|d| d.name == name && d.scope == scope);
+        if collides && !overwrite {
+            return Err(SubagentError::PermissionDenied(format!(
+                "a {scope:?}-scope subagent named '{name}' already exists; pass overwrite to replace it"
+            )));
+        }
+        Ok(())
     }
 }
 
