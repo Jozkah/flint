@@ -177,7 +177,7 @@ fn start_turn(
             tokio::pin!(engine);
             loop {
                 tokio::select! {
-                    run = &mut engine => break run,
+                    run = &mut engine => break run.map_err(|e| e.message().to_string()),
                     event = rx.recv() => {
                         match event {
                             Some(event) => {
@@ -539,13 +539,13 @@ mod tests {
         let (upstream, mut source) = mpsc::unbounded_channel();
         let (downstream, _blocked) = mpsc::channel(1);
         downstream
-            .send(TurnMessage::Event(StreamEvent::Parked))
+            .send(TurnMessage::Event(StreamEvent::Token { text: "x".into() }))
             .await
             .unwrap();
         let forward = tokio::spawn(async move { forward_events(&mut source, &downstream).await });
 
-        upstream.send(StreamEvent::Parked).unwrap();
+        upstream.send(StreamEvent::Token { text: "x".into() }).unwrap();
         assert!(forward.await.unwrap().unwrap_err().contains("overloaded"));
-        assert!(upstream.send(StreamEvent::Parked).is_err(), "events should stop at the bounded boundary");
+        assert!(upstream.send(StreamEvent::Token { text: "x".into() }).is_err(), "events should stop at the bounded boundary");
     }
 }

@@ -219,9 +219,11 @@ const SESSION_TO_HOST: &[OutputRow] = &[
     },
     OutputRow {
         contract: "notice",
-        here: Some("notice"),
+        // This fork's event stream has no `notice` record: a compaction or
+        // background notice is not surfaced on the headless channel.
+        here: None,
         contract_requires: &[("text", "\"compacted\"")],
-        build_produces: &["text"],
+        build_produces: &[],
         optional: &[],
     },
     OutputRow {
@@ -429,9 +431,6 @@ fn every_implemented_session_row_carries_exactly_the_fields_claimed() {
                 content: "ok".to_string(),
                 is_error: false,
                 diff: full.then(|| "--- a\n+++ b\n".to_string()),
-            }),
-            "notice" => serde_json::to_value(StreamEvent::Notice {
-                text: "compacted".to_string(),
             }),
             "error" => serde_json::to_value(StreamEvent::Error {
                 code: "upstream_error".to_string(),
