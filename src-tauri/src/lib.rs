@@ -316,6 +316,10 @@ async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
         )
         .await;
         core::app::settings_store::flush_settings();
+        // #168: the migration reuse lock is otherwise only released in
+        // RunEvent::Exit, which exit(0) skips; a force quit left the profile
+        // refused as "held" for hours.
+        core::migration::lock::release_session_locks();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
     });
