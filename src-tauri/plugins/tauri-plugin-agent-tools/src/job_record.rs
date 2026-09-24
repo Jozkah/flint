@@ -212,16 +212,35 @@ fn path_for(data_folder: &Path, owner: &str) -> PathBuf {
 ///
 /// Best effort by design: losing the note must not fail the job it describes.
 pub fn save(data_folder: &Path, record: &JobRecord) -> Result<(), String> {
+    write(data_folder, record, false).map(|_| ())
+}
+
+/// Write an ending for a job unless the stored record has one already.
+///
+/// A caller that decides an ending (cancel, reconcile) judged a record it read
+/// earlier; the supervisor may have written the real `Completed`/`Failed` in
+/// the meantime. The first ending written is the one that stands, so the check
+/// is made against the stored record in the same read that the write replaces.
+/// Returns the stored record when it was already ended and nothing was
+/// written.
+pub fn save_ending(data_folder: &Path, record: &JobRecord) -> Result<Option<JobRecord>, String> {
+    write(data_folder, record, true)
+}
+
+fn write(data_folder: &Path, record: &JobRecord, keep_ended: bool) -> Result<Option<JobRecord>, String> {
     // AH-008: the owner names the file this is written to and the id is a key
     // in it, so both are parsed before either is used.
     crate::identity::SessionId::parse(record.owner.as_str()).map_err(|e| e.message().to_string())?;
     crate::identity::JobId::parse(record.id.as_str()).map_err(|e| e.message().to_string())?;
     let path = path_for(data_folder, &record.owner);
     std::fs::create_dir_all(jobs_dir(data_folder)).map_err(|e| e.to_string())?;
-    let mut kept: Vec<JobRecord> = read_owner(data_folder, &record.owner)
-        .into_iter()
-        .filter(|r| r.id != record.id)
-        .collect();
+    let stored = read_owner(data_folder, &record.owner);
+    if keep_ended {
+        if let Some(ended) = stored.iter().find(|r| r.id == record.id && r.state.is_ended()) {
+            return Ok(Some(ended.clone()));
+        }
+    }
+    let mut kept: Vec<JobRecord> = stored.into_iter().filter(|r| r.id != record.id).collect();
     kept.push(record.clone());
     kept.sort_by_key(|r| r.started_at_ms);
     if kept.len() > MAX_RECORDS_PER_OWNER {
@@ -236,7 +255,8 @@ pub fn save(data_folder: &Path, record: &JobRecord) -> Result<(), String> {
     // Atomic: a half-written listing must not replace a whole one.
     let temp = path.with_extension("jsonl.tmp");
     std::fs::write(&temp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&temp, &path).map_err(|e| e.to_string())
+    std::fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+    Ok(None)
 }
 
 /// One owner's records, oldest first. A line that cannot be read is skipped:

@@ -620,8 +620,13 @@ pub fn cancel(data_folder: &Path, owner: &str, id: &str) -> Result<JobState, Har
     }
     record.ended_at_ms = Some(now_ms());
     record.identity = ProcessIdentity::default();
-    crate::job_record::save(data_folder, &record)
-        .map_err(|e| HarnessError::new(ErrorKind::Io, e).at(Stage::Job))?;
+    // The supervisor may have written the real ending since `record` was
+    // read; that one stands (Jozkah/jan#169).
+    if let Some(stored) = crate::job_record::save_ending(data_folder, &record)
+        .map_err(|e| HarnessError::new(ErrorKind::Io, e).at(Stage::Job))?
+    {
+        return Ok(stored.state);
+    }
     let _ = std::fs::remove_file(claim_path(data_folder, id));
     Ok(record.state)
 }
@@ -644,16 +649,20 @@ pub fn reconcile(data_folder: &Path, owner: &str) -> Vec<JobRecord> {
                 record.note = "its supervisor was gone when the app next looked".to_string();
                 record.ended_at_ms = Some(now_ms());
                 record.identity = ProcessIdentity::default();
-                let _ = crate::job_record::save(data_folder, &record);
-                changed.push(record);
+                // An ending the supervisor wrote meanwhile stands (#169).
+                if let Ok(None) = crate::job_record::save_ending(data_folder, &record) {
+                    changed.push(record);
+                }
             }
             Attachment::Foreign => {
                 record.state = JobState::Orphaned;
                 record.note = "its claim does not match this job, so nothing was assumed".to_string();
                 record.ended_at_ms = Some(now_ms());
                 record.identity = ProcessIdentity::default();
-                let _ = crate::job_record::save(data_folder, &record);
-                changed.push(record);
+                // An ending the supervisor wrote meanwhile stands (#169).
+                if let Ok(None) = crate::job_record::save_ending(data_folder, &record) {
+                    changed.push(record);
+                }
             }
         }
     }
@@ -791,6 +800,38 @@ mod tests {
         ended.state = JobState::Completed;
         crate::job_record::save(&d, &ended).unwrap();
         assert_eq!(attach(&d, &ended), Attachment::Ended);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// An ending judged from a record read before the supervisor wrote the
+    /// real one must not replace it (Jozkah/jan#169).
+    #[test]
+    fn a_stale_ending_does_not_overwrite_the_supervisors() {
+        let d = dir("stale-ending");
+        let mut stale = JobRecord::started("job-race", "s", "sleep", me());
+        stale.token_hash = hash("t");
+        crate::job_record::save(&d, &stale).unwrap();
+
+        // The supervisor finishes in the gap and records the real outcome.
+        let mut done = find(&d, "s", "job-race").unwrap();
+        done.state = JobState::Completed;
+        done.exit_code = Some(0);
+        crate::job_record::save(&d, &done).unwrap();
+
+        // Cancel/reconcile then write the ending they decided from `stale`.
+        stale.state = JobState::Interrupted;
+        let kept = crate::job_record::save_ending(&d, &stale).unwrap();
+        assert_eq!(kept.map(|r| r.state), Some(JobState::Completed));
+        let stored = find(&d, "s", "job-race").unwrap();
+        assert_eq!(stored.state, JobState::Completed);
+        assert_eq!(stored.exit_code, Some(0));
+
+        // An unended record is still written.
+        let mut other = JobRecord::started("job-open", "s", "sleep", me());
+        crate::job_record::save(&d, &other).unwrap();
+        other.state = JobState::Cancelled;
+        assert!(crate::job_record::save_ending(&d, &other).unwrap().is_none());
+        assert_eq!(find(&d, "s", "job-open").unwrap().state, JobState::Cancelled);
         let _ = std::fs::remove_dir_all(&d);
     }
 
