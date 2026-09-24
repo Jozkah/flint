@@ -1,6 +1,5 @@
 {
   "sortNewest": "Terbaru",
-  "sortMostDownloaded": "Paling Banyak Diunduh",
   "newChat": "Chat baru",
   "download": "Unduh",
   "downloaded": "Telah Diunduh",
@@ -11,7 +10,6 @@
   "variants": "Varian",
   "showVariants": "Tampilkan Varian",
   "useModel": "Gunakan model ini",
-  "downloadModel": "Unduh model",
   "tools": "Alat",
   "searchPlaceholder": "Cari model di Hugging Face..."
 }

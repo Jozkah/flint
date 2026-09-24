@@ -1,6 +1,5 @@
 {
   "sortNewest": "Najnowsze",
-  "sortMostDownloaded": "Najczęściej pobierane",
   "newChat": "Nowy czat",
   "download": "Pobierz",
   "downloaded": "Pobrany",
@@ -11,7 +10,6 @@
   "variants": "Warianty",
   "showVariants": "Pokaż warianty",
   "useModel": "Użyj tego modelu",
-  "downloadModel": "Pobierz model",
   "tools": "Narzędzia",
   "searchPlaceholder": "Szukaj modeli na Hugging Face…"
 }

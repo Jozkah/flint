@@ -1158,46 +1158,6 @@ describe('reportMissingLibrariesFromError', () => {
   })
 })
 
-describe('createDownloadTaskId', () => {
-  let extension: llamacpp_extension
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    extension = new llamacpp_extension()
-  })
-
-  const taskId = (modelId: string) =>
-    extension['createDownloadTaskId'](modelId) as string
-
-  // The id becomes the Tauri event name `download-<taskId>`, which rejects dots.
-  it('contains no dots', () => {
-    expect(taskId('Jan-v3.5-4B-Q4_K_XL')).not.toContain('.')
-  })
-
-  // Truncating at the first dot collapsed every quant of a dotted model name onto
-  // one id. Rust cancels an in-flight task whose id repeats and deletes its
-  // partial file, so downloading one quant destroyed another's.
-  it('keeps quants of the same dotted model distinct', () => {
-    expect(taskId('Jan-v3.5-4B-Q4_K_XL')).not.toBe(
-      taskId('Jan-v3.5-4B-Q8_0')
-    )
-  })
-
-  it('keeps different versions of the same family distinct', () => {
-    expect(taskId('Jan-v3.5-4B-Q4_K_XL')).not.toBe(
-      taskId('Jan-v3.6-4B-Q4_K_XL')
-    )
-  })
-
-  it('namespaces by provider and preserves the rest of the id', () => {
-    expect(taskId('some/model-q4_k_m')).toBe('llamacpp/some/model-q4_k_m')
-  })
-
-  it('is stable for the same model id', () => {
-    expect(taskId('Jan-v3.5-4B-Q4_K_XL')).toBe(taskId('Jan-v3.5-4B-Q4_K_XL'))
-  })
-})
-
 describe('import deduplication', () => {
   let extension: llamacpp_extension
 

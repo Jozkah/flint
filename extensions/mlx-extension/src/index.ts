@@ -687,14 +687,6 @@ export default class mlx_extension extends AIEngine {
     })
   }
 
-  private createDownloadTaskId(modelId: string) {
-    // prepend provider to make taksId unique across providers
-    const cleanModelId = modelId.includes('.')
-      ? modelId.slice(0, modelId.indexOf('.'))
-      : modelId
-    return `${this.provider}/${cleanModelId}`
-  }
-
   override async abortImport(modelId: string): Promise<void> {
     // No download to cancel; a failed import leaves only its folder behind.
     await this.deleteModelFolder(modelId)
