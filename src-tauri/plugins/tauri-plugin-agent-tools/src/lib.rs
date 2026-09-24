@@ -162,6 +162,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::memory_delete,
             commands::tool_schemas,
             commands::sandbox_status,
+            commands::sandbox_toolchains,
             commands::environment_readiness,
             commands::environment_readiness_retry,
             commands::advertised_tool_schemas,

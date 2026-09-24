@@ -6,6 +6,7 @@ const executeToolStreaming = vi.fn()
 const threadWorkspaceDelete = vi.fn()
 const threadWorkspaceSweep = vi.fn()
 const sandboxStatus = vi.fn()
+const sandboxToolchains = vi.fn()
 const getJanDataFolder = vi.fn()
 
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
@@ -15,6 +16,7 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   threadWorkspaceDelete: (...args: unknown[]) => threadWorkspaceDelete(...args),
   threadWorkspaceSweep: (...args: unknown[]) => threadWorkspaceSweep(...args),
   sandboxStatus: () => sandboxStatus(),
+  sandboxToolchains: () => sandboxToolchains(),
 }))
 
 const invoke = vi.fn()
@@ -690,5 +692,17 @@ describe('agentTools host-answered tools', () => {
     expect(out.error).toBeUndefined()
     expect(JSON.parse(out.content as string).code).toBe('drive_root')
     expect(invoke.mock.calls[0][0]).toBe('plugin:agent-tools|access_prepare')
+  })
+})
+
+describe('getSandboxToolchains', () => {
+  it('passes the probe through and turns unknown or a failure into null', async () => {
+    const { getSandboxToolchains } = await import('../agentTools')
+    sandboxToolchains.mockResolvedValueOnce({ runnable: ['node'], unavailable: ['python'] })
+    expect(await getSandboxToolchains()).toEqual({ runnable: ['node'], unavailable: ['python'] })
+    sandboxToolchains.mockResolvedValueOnce(null)
+    expect(await getSandboxToolchains()).toBeNull()
+    sandboxToolchains.mockRejectedValueOnce(new Error('boom'))
+    expect(await getSandboxToolchains()).toBeNull()
   })
 })

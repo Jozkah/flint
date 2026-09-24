@@ -33,6 +33,10 @@ import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 const h = vi.hoisted(() => ({
   /** Tauri commands, by name. Tests install answers per case. */
   invoke: vi.fn(),
+  getSandboxToolchains: vi.fn(
+    async (): Promise<{ runnable: string[]; unavailable: string[] } | null> =>
+      null
+  ),
   directEditCapability: vi.fn(async () => true),
   managedWorktreeCapability: vi.fn(async () => true),
   directEditAuthorize: vi.fn(async () => 'grant-1'),
@@ -107,6 +111,7 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
 
 vi.mock('@/lib/agentTools', () => ({
   executeAgentTool: h.executeAgentTool,
+  getSandboxToolchains: h.getSandboxToolchains,
   sandboxEnforces: () => true,
   getSandboxStatus: vi.fn(async () => ({
     backend: 'bubblewrap',
@@ -664,6 +669,21 @@ describe('what a run carries, decided by the route', () => {
       projectRoot: FOLDER,
       temporary: false,
     })
+  })
+
+  it('tells the model which toolchains the sandbox can run', async () => {
+    h.getSandboxToolchains.mockResolvedValueOnce({
+      runnable: ['node', 'npm'],
+      unavailable: ['python', 'git'],
+    })
+    await renderRoute()
+    await runOneTurn()
+    expect(h.transports.at(-1)?.config).toEqual(
+      expect.objectContaining({
+        runnable: ['node', 'npm'],
+        unavailable: ['python', 'git'],
+      })
+    )
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {

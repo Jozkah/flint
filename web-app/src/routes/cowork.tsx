@@ -334,7 +334,11 @@ import {
   planReviewDecision,
   renderPlanReviewResult,
 } from '@/lib/coworkPlanReview'
-import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
+import {
+  getSandboxStatus,
+  getSandboxToolchains,
+  sandboxEnforces,
+} from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
@@ -2219,6 +2223,10 @@ function CoworkPage() {
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     if ((await prepared(getSandboxStatus())) === STOPPED) return
+    // Which runtimes the shell can start, so the model does not spend calls
+    // finding out. Never throws; null (unknown) leaves the lines out.
+    const toolchains = await prepared(getSandboxToolchains())
+    if (toolchains === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -2338,6 +2346,8 @@ function CoworkPage() {
       // syntax, and hunting for MCP servers Cowork never offers.
       platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
       shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+      runnable: toolchains?.runnable,
+      unavailable: toolchains?.unavailable,
       networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
       mcpServers: [],
     })
@@ -2598,6 +2608,8 @@ function CoworkPage() {
             compatInstructions: compatInstructionBlocks(runCompat),
             platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
             shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+            runnable: toolchains?.runnable,
+            unavailable: toolchains?.unavailable,
             networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
             mcpServers: [],
           },
