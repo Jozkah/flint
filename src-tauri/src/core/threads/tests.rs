@@ -262,6 +262,47 @@ async fn test_desktop_storage_backend() {
     }
 }
 
+#[test]
+fn a_thread_id_must_be_one_plain_path_component() {
+    // Jozkah/jan#35.
+    use super::utils::validate_thread_id;
+    for ok in ["3f0c9a52-1b7e-4d8e-9a3c-2f1d7e6b5a40", "aaaa1111", "cowork-thread.v2"] {
+        assert!(validate_thread_id(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "", ".", "..", "../x", "a/b", r"a\b", r"..\x", "/etc", r"C:\Windows", "C:x", "x\0y",
+    ] {
+        assert!(validate_thread_id(bad).is_err(), "{bad:?} must be refused");
+    }
+}
+
+#[tokio::test]
+async fn thread_commands_refuse_an_id_that_escapes_the_threads_directory() {
+    // Jozkah/jan#35: `delete_thread("../victim")` removed a sibling of the
+    // threads directory, and `modify_thread` planted a thread.json there.
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    ensure_data_dirs(&jan_data).unwrap();
+    let victim = jan_data.join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), "x").unwrap();
+
+    for id in ["../victim", r"..\victim"] {
+        assert!(delete_thread(app.handle().clone(), id.to_string()).await.is_err());
+        assert!(victim.join("keep.txt").exists(), "{id} deleted outside threads/");
+
+        let planted = json!({ "id": id, "title": "x" });
+        assert!(modify_thread(app.handle().clone(), planted).await.is_err());
+        assert!(!victim.join(THREADS_FILE).exists(), "{id} wrote outside threads/");
+
+        assert!(list_messages(app.handle().clone(), id.to_string()).await.is_err());
+        let message = json!({ "thread_id": id, "role": "user", "content": [] });
+        assert!(create_message(app.handle().clone(), message).await.is_err());
+        assert!(!victim.join(MESSAGES_FILE).exists(), "{id} wrote messages outside threads/");
+    }
+    let _ = fs::remove_dir_all(&victim);
+}
+
 #[tokio::test]
 async fn test_modify_and_delete_thread() {
     let (app, data_dir) = mock_app_with_temp_data_dir();

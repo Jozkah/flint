@@ -278,12 +278,12 @@ function environmentBlock(opts: CoworkPromptOptions): string | null {
  * inserting a zero-width space, which no longer parses as a tag and still reads
  * as what the author wrote.
  */
-function sealed(content: string): string {
+export function sealed(content: string): string {
   return content.replace(/<(\/?)project_(instructions|context)/gi, '<\u200b$1project_$2')
 }
 
 /** A filename is attribute text; it must not be able to add attributes. */
-const attribute = (value: string): string =>
+export const attribute = (value: string): string =>
   value.replace(/[<>"'&]/g, '')
 
 function instructionsBlock(
