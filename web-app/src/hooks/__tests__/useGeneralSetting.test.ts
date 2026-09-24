@@ -308,6 +308,41 @@ describe('loadHuggingfaceToken (#138)', () => {
     expect(invoke).not.toHaveBeenCalledWith('set_secret', expect.objectContaining({ key: 'huggingface' }))
   })
 
+  // A fake keyring: get_secret reads it, set_secret writes it ('' deletes).
+  const keyring = (entries: Record<string, string>) =>
+    vi.fn(async (c: string, a: Record<string, unknown>) => {
+      const key = a.key as string
+      if (c === 'set_secret') {
+        if (a.value) entries[key] = a.value as string
+        else delete entries[key]
+        return undefined
+      }
+      return entries[key] ?? null
+    })
+
+  it('migrates once: a cleared token is not copied back on the next load', async () => {
+    const { loadHuggingfaceToken } = await import('../useGeneralSetting')
+    const entries: Record<string, string> = { huggingface: 'hf_old' }
+    const invoke = keyring(entries)
+    expect(await loadHuggingfaceToken(invoke)).toBe('hf_old')
+    expect(entries['general:huggingface-token-migrated']).toBeTruthy()
+
+    // The user clears the General token.
+    delete entries['general:huggingface-token']
+    expect(await loadHuggingfaceToken(invoke)).toBeNull()
+    expect(entries['general:huggingface-token']).toBeUndefined()
+    expect(entries.huggingface).toBe('hf_old')
+  })
+
+  it("does not copy the huggingface provider's own key", async () => {
+    const { loadHuggingfaceToken } = await import('../useGeneralSetting')
+    const entries: Record<string, string> = { huggingface: 'hf_provider' }
+    const invoke = keyring(entries)
+    expect(await loadHuggingfaceToken(invoke, 'hf_provider')).toBeNull()
+    expect(entries['general:huggingface-token']).toBeUndefined()
+    expect(entries['general:huggingface-token-migrated']).toBeTruthy()
+  })
+
   it('returns null when nothing is stored', async () => {
     const { loadHuggingfaceToken } = await import('../useGeneralSetting')
     expect(await loadHuggingfaceToken(vi.fn(async () => null))).toBeNull()
