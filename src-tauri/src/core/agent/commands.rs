@@ -382,6 +382,62 @@ pub async fn agent_resolve_extensions(
     ))
 }
 
+/// The surface a slash request comes from, plus the project folder it may
+/// read. Cowork passes its folder; the matrix keys Cowork by the folder's
+/// registered project id, so the folder is looked up in the registry.
+fn slash_surface(
+    surface: &str,
+    project: Option<&str>,
+) -> (
+    crate::core::agent::extensions::Surface,
+    Option<std::path::PathBuf>,
+) {
+    let folder = project
+        .filter(|p| !p.trim().is_empty() && surface == "cowork")
+        .map(std::path::PathBuf::from);
+    let id = folder.as_ref().and_then(|f| {
+        crate::core::agent::projects_registry::list_projects()
+            .into_iter()
+            .find(|p| std::path::Path::new(&p.folder) == f.as_path())
+            .map(|p| p.id)
+    });
+    (resolve_surface(surface, id.as_deref()), folder)
+}
+
+/// What the composer's `/` menu offers on `surface` ("home" | "rooms" |
+/// "cowork"): plugin commands (with their template bodies) and user-invocable
+/// skills, filtered by the per-surface enablement matrix.
+#[tauri::command]
+pub async fn agent_slash_catalog(
+    surface: String,
+    project: Option<String>,
+) -> Result<Vec<crate::core::agent::slash::SlashEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (surface, folder) = slash_surface(&surface, project.as_deref());
+        crate::core::agent::slash::catalog(&surface, folder.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The message that invokes skill `name` from the `/` menu with `args` as
+/// the task. Err when the surface does not offer that skill.
+#[tauri::command]
+pub async fn agent_slash_invoke_skill(
+    surface: String,
+    project: Option<String>,
+    name: String,
+    args: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (surface, folder) = slash_surface(&surface, project.as_deref());
+        crate::core::agent::slash::invoke_skill(&surface, folder.as_deref(), &name, &args)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(ui_error)
+}
+
 /// The raw global skills/plugins enablement matrix (`extensions.json`).
 #[tauri::command]
 pub async fn agent_extensions_matrix_get() -> Result<serde_json::Value, String> {

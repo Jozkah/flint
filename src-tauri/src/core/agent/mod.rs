@@ -80,6 +80,7 @@ pub mod session;
 pub mod session_bundle;
 pub mod skill_hub;
 pub mod skills;
+pub mod slash;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;
