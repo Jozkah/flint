@@ -6,7 +6,6 @@
  * only worth having if it actually rejects a registry that has been quietly
  * damaged, which is the failure mode a 200-item backlog invites.
  */
-import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
@@ -21,7 +20,7 @@ import {
   renderMarkdown,
   validateRegistry,
 } from './registry.mjs'
-import { JSON_PATH, MARKDOWN_PATH, REPO_ROOT } from './paths.mjs'
+import { JSON_PATH, REPO_ROOT } from './paths.mjs'
 
 const pristine = () => structuredClone(loadRegistry(JSON_PATH))
 
@@ -60,8 +59,19 @@ test('every feature is owned by exactly one declared lane', () => {
   }
 })
 
-test('the rendered markdown matches the committed file', () => {
-  assert.equal(readFileSync(MARKDOWN_PATH, 'utf8'), renderMarkdown(pristine()))
+// docs/AGENT_HARNESS_FEATURE_REGISTRY.md is gitignored and generated on demand
+// (#37), so check the renderer rather than a committed copy.
+test('the rendered markdown lists every feature', () => {
+  const markdown = renderMarkdown(pristine())
+  for (const feature of pristine().features) {
+    assert.ok(markdown.includes(feature.id), `${feature.id} missing from the rendered registry`)
+  }
+})
+
+test('no implemented item still points at the old jan CLI binary', () => {
+  for (const feature of pristine().features) {
+    assert.ok(!(feature.files ?? []).includes('src-tauri/src/bin/jan.rs'), feature.id)
+  }
 })
 
 test('deleting a backlog item is rejected', () => {

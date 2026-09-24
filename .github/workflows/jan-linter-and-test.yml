@@ -219,6 +219,12 @@ jobs:
         with:
           node-version: 20
 
+      # Dependency-free node:test suites (registry gate, archive/local-only
+      # guards, installer templates). Same files as `yarn test:scripts`; the
+      # shell expands the globs because node 20's --test does not (#37).
+      - name: Script tests
+        run: node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs
+
       - name: Install Tauri dependencies
         run: |
           sudo apt update
