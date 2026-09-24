@@ -221,6 +221,7 @@ vi.mock('@/lib/coworkTransport', () => ({
 vi.mock('@/lib/coworkTeamControl', async (orig) => ({
   ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
   DECISION_WINDOW_MS: 0,
+  COWORK_DECISION_WINDOW_MS: 0,
 }))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
