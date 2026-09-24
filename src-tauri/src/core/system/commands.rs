@@ -205,21 +205,87 @@ fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Res
         .collect();
 
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
-    let cleaned: Vec<&str> = existing_content
+    // Drop the whole block written last time, custom variables included, so a
+    // re-save replaces it instead of piling up copies.
+    let cleaned = strip_jan_env_block(&existing_content);
+
+    let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
+
+    let final_content = cleaned + "\n" + &new_content;
+    std::fs::write(env_file_path, &final_content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+const JAN_ENV_MARKER: &str = "# Jan Local API Server - Claude Code Config";
+
+/// `content` without the block Jan wrote between its two marker lines, every
+/// variable in it included (custom ones too, not only `ANTHROPIC_*`). Stray
+/// marker lines and `export ANTHROPIC_` lines outside a block, left by older
+/// versions, are dropped as well. An unclosed block runs to the end of the
+/// file, since Jan always appends its block last.
+fn strip_jan_env_block(content: &str) -> String {
+    let mut inside = false;
+    let kept: Vec<&str> = content
         .split('\n')
         .filter(|line| {
-            // Remove Flint config markers and existing ANTHROPIC env vars to replace them
-            !line.starts_with(marker)
+            if line.starts_with(JAN_ENV_MARKER) {
+                inside = !inside;
+                return false;
+            }
+            !inside
                 && !line.starts_with("# Jan Local API Server")
                 && !line.starts_with("export ANTHROPIC_")
         })
         .collect();
+    kept.join("\n").trim_end().to_string()
+}
 
-    let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
+/// Where the names of the variables `setx` wrote on Windows are recorded, so
+/// Reset can remove custom ones too, not only the fixed `ANTHROPIC_*` names.
+fn claude_code_env_keys_path() -> PathBuf {
+    crate::core::app::commands::resolve_jan_data_folder().join("claude-code-env-keys.json")
+}
 
-    let final_content = cleaned.join("\n") + &new_content;
-    std::fs::write(env_file_path, &final_content).map_err(|e| e.to_string())?;
-    Ok(())
+fn load_claude_code_env_keys(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn record_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Result<(), String> {
+    let mut all = load_claude_code_env_keys(path);
+    for key in keys {
+        if !all.contains(key) {
+            all.push(key.clone());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, serde_json::to_string(&all).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
+/// Every user variable Reset removes on Windows: the fixed Claude Code names
+/// plus whatever was recorded when it was written.
+fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
+    let mut keys: Vec<String> = [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    ]
+    .iter()
+    .map(|k| k.to_string())
+    .collect();
+    for key in recorded {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
 }
 
 #[tauri::command]
@@ -475,16 +541,9 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
             }
             Err(_) => {
                 // Use admin privileges to write
-                let marker = "# Jan Local API Server - Claude Code Config";
+                let marker = JAN_ENV_MARKER;
                 let existing_content = std::fs::read_to_string(&env_file_path).unwrap_or_default();
-                let cleaned: Vec<&str> = existing_content
-                    .split('\n')
-                    .filter(|line| {
-                        !line.starts_with(marker)
-                            && !line.starts_with("# Jan Local API Server")
-                            && !line.starts_with("export ANTHROPIC_")
-                    })
-                    .collect();
+                let cleaned = strip_jan_env_block(&existing_content);
 
                 let env_content: String = env_vars
                     .iter()
@@ -493,7 +552,7 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
 
                 let new_block = format!("{}\n{}", marker, env_content);
 
-                let final_content = cleaned.join("\n") + "\n" + &new_block + marker;
+                let final_content = cleaned + "\n" + &new_block + marker;
 
                 // Write to a temp file first, then use osascript to move it
                 let temp_script_path = format!("{}/.jan_env_update.sh", home_dir);
@@ -545,7 +604,13 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
             }
         }
     } else {
-        // On Windows, set persistent user environment variables using setx
+        // On Windows, set persistent user environment variables using setx.
+        // Record the names first, so Reset can find every one even if a later
+        // setx fails part-way.
+        let names: Vec<String> = env_vars.iter().map(|(k, _)| k.clone()).collect();
+        if let Err(e) = record_claude_code_env_keys(&claude_code_env_keys_path(), &names) {
+            log::warn!("Could not record the Claude Code env var names: {e}");
+        }
         for (key, value) in env_vars {
             use jan_process::CommandConsole;
             let output = std::process::Command::new("setx")
@@ -780,16 +845,8 @@ pub fn uninstall_jan_cli() -> Result<(), String> {
 /// Build the cleaned shell-file content with all Flint CC env vars stripped out.
 fn build_cleaned_env_content(env_file_path: &str) -> String {
     let existing_content = std::fs::read_to_string(env_file_path).unwrap_or_default();
-    let cleaned: Vec<&str> = existing_content
-        .split('\n')
-        .filter(|line| {
-            !line.starts_with("# Jan Local API Server - Claude Code Config")
-                && !line.starts_with("# Jan Local API Server")
-                && !line.starts_with("export ANTHROPIC_")
-        })
-        .collect();
-    // Trim trailing blank lines left behind by the removed block
-    cleaned.join("\n").trim_end().to_string() + "\n"
+    // Trailing blank lines left behind by the removed block are trimmed too.
+    strip_jan_env_block(&existing_content) + "\n"
 }
 
 /// Clear all Flint-written Claude Code environment variables from the shell config.
@@ -865,13 +922,8 @@ pub fn clear_claude_code_env() -> Result<(), String> {
         }
     } else {
         // Windows: delete the persistent user env vars from the registry
-        let keys = [
-            "ANTHROPIC_BASE_URL",
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        ];
+        let keys_path = claude_code_env_keys_path();
+        let keys = claude_code_env_keys_to_clear(load_claude_code_env_keys(&keys_path));
         for key in &keys {
             // No console window per deletion (Jozkah/jan#253), like `setx` above.
             use jan_process::CommandConsole;
@@ -880,6 +932,7 @@ pub fn clear_claude_code_env() -> Result<(), String> {
                 .background()
                 .output();
         }
+        let _ = std::fs::remove_file(&keys_path);
         log::info!("CC env vars removed from Windows registry.");
         Ok(())
     }
@@ -1070,6 +1123,51 @@ mod tests {
     use crate::core::app::constants::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn rewriting_the_env_block_drops_custom_vars_instead_of_duplicating_them() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".zshenv");
+        fs::write(&path, "export PATH=/usr/bin\n").unwrap();
+        let vars = vec![
+            ("ANTHROPIC_BASE_URL".to_string(), "http://x".to_string()),
+            ("HTTPS_PROXY".to_string(), "http://u:p@proxy".to_string()),
+        ];
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        write_env_to_shell(path.to_str().unwrap(), &vars).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert_eq!(written.matches("export HTTPS_PROXY=").count(), 1, "{written}");
+        assert_eq!(written.matches(JAN_ENV_MARKER).count(), 2, "{written}");
+        assert!(written.starts_with("export PATH=/usr/bin\n"));
+
+        let cleaned = build_cleaned_env_content(path.to_str().unwrap());
+        assert_eq!(cleaned, "export PATH=/usr/bin\n");
+    }
+
+    #[test]
+    fn strip_keeps_lines_after_the_block() {
+        let content = format!(
+            "a\n{JAN_ENV_MARKER}\nexport FOO='bar'\n{JAN_ENV_MARKER}\nb\n"
+        );
+        assert_eq!(strip_jan_env_block(&content), "a\nb");
+    }
+
+    #[test]
+    fn windows_reset_clears_recorded_custom_keys() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        record_claude_code_env_keys(&path, &["HTTPS_PROXY".to_string()]).unwrap();
+        record_claude_code_env_keys(
+            &path,
+            &["ANTHROPIC_BASE_URL".to_string(), "MY_TOKEN".to_string()],
+        )
+        .unwrap();
+        let keys = claude_code_env_keys_to_clear(load_claude_code_env_keys(&path));
+        assert!(keys.contains(&"HTTPS_PROXY".to_string()));
+        assert!(keys.contains(&"MY_TOKEN".to_string()));
+        assert!(keys.contains(&"ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string()));
+        assert_eq!(keys.iter().filter(|k| *k == "ANTHROPIC_BASE_URL").count(), 1);
+    }
 
     #[test]
     fn bundled_cli_uses_flint_executable_name() {
