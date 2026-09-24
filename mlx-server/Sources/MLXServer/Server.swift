@@ -101,6 +101,7 @@ struct MLXHTTPServer {
                 let stop = chatRequest.stop ?? []
                 let isStreaming = chatRequest.stream ?? false
                 let tools = chatRequest.tools
+                try validateToolEntries(tools)
 
                 log("[mlx] Request: model=\(chatRequest.model), messages=\(chatRequest.messages.count), stream=\(isStreaming), tools=\(tools?.count ?? 0)")
 
@@ -175,6 +176,7 @@ struct MLXHTTPServer {
                 let stop = anthropicReq.stop_sequences ?? []
                 let isStreaming = anthropicReq.stream ?? false
                 let tools: [AnyCodable]? = anthropicReq.tools.map { anthropicToolsToOpenAI($0) }
+                try validateToolEntries(tools)
 
                 log("[mlx] Anthropic request: model=\(anthropicReq.model), messages=\(messages.count), stream=\(isStreaming), tools=\(tools?.count ?? 0)")
 
