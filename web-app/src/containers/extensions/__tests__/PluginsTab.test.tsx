@@ -48,6 +48,11 @@ vi.mock('@/lib/pluginStore', async () => {
   }
 })
 
+// The enablement grid reads its own backend; it is not under test here.
+vi.mock('@/containers/extensions/EnablementGrid', () => ({
+  default: () => null,
+}))
+
 import PluginsTab from '../PluginsTab'
 
 const stubPlugin = {
@@ -137,5 +142,51 @@ describe('PluginsTab', () => {
     expect(screen.getByLabelText('plugins:install.local')).toBeInTheDocument()
     expect(screen.getByLabelText('plugins:install.git')).toBeInTheDocument()
     expect(screen.getByLabelText('plugins:install.marketplace')).toBeInTheDocument()
+  })
+})
+
+describe('PluginsTab details ordering (#241)', () => {
+  const pluginB = { ...stubPlugin, id: 'other-plugin', name: 'Other Plugin' }
+  const detailsFor = (p: typeof stubPlugin) => ({
+    ...p,
+    installedPath: `/installed/${p.id}`,
+    installedAtMs: null,
+    gitRef: null,
+    skillNames: [],
+    commandNames: [],
+    agentNames: [],
+    hasMcpConfig: false,
+    executableFiles: [],
+    executableFileCount: 0,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    listPlugins.mockResolvedValue([stubPlugin, pluginB])
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+  })
+
+  it('keeps the newer selection when an older details request resolves last', async () => {
+    const resolvers: Record<string, (d: unknown) => void> = {}
+    getPluginDetails.mockImplementation(
+      (_folder: string, id: string) =>
+        new Promise((resolve) => {
+          resolvers[id] = resolve
+        })
+    )
+    render(<PluginsTab />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Demo Plugin/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Other Plugin/ }))
+    await waitFor(() => expect(resolvers['other-plugin']).toBeDefined())
+
+    resolvers['other-plugin'](detailsFor(pluginB))
+    expect(await screen.findByText('/installed/other-plugin')).toBeInTheDocument()
+
+    resolvers['demo-plugin'](detailsFor(stubPlugin))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(screen.getByText('/installed/other-plugin')).toBeInTheDocument()
+    expect(screen.queryByText('plugins:details.loading')).toBeNull()
   })
 })
