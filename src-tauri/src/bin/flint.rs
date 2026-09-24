@@ -770,6 +770,13 @@ enum AgentCommands {
         #[arg(long)]
         show: Option<String>,
     },
+    /// Print the protocol's JSON Schema, generated from the types that define
+    /// the channel (see `protocol/schema.json`)
+    Schema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
 }
 
 /// Read/write the user-wide `~/.jan/config.toml` provider store. This is the
@@ -2345,6 +2352,11 @@ async fn handle_agent(cmd: AgentCommands) {
                 }
                 Err(e) => Err(HarnessError::legacy(e)),
             }
+        }
+        // No project and no provider: the schema comes from the types alone, so
+        // it is the same document on any machine and in any directory.
+        AgentCommands::Schema { out } => {
+            app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
         }
     };
     if let Err(e) = result {

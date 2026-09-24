@@ -17,10 +17,12 @@
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// `Deserialize` as well as `Serialize`: a consumer validates what it received
-/// against these shapes (and, for a future `jan cli agent schema`, generates its
-/// own types from them), so the wire has to survive a round trip, not just a
-/// write. `#[serde(tag = "type")]` keeps the tag on both sides.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+/// against these shapes, and `JsonSchema` is what `jan cli agent schema`
+/// publishes them as -- a consumer generates its own types from
+/// `protocol/schema.json` rather than copying this declaration. The wire has to
+/// survive a round trip, not just a write, so `#[serde(tag = "type")]` keeps the
+/// tag on both sides.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// A snapshot of the exact payload that was just dispatched. AH-078.
@@ -282,7 +284,7 @@ fn arg_name(args: &serde_json::Value) -> String {
         .unwrap_or_default()
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Usage {
     pub prompt_tokens: Option<u64>,
     pub completion_tokens: Option<u64>,
