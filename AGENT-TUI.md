@@ -9,7 +9,7 @@ The CLI binary (`jan`) is separate from the desktop binary (`jan-desktop`). They
 ### Architecture
 
 ```
-jan (binary, src-tauri/src/bin/jan.rs)
+flint (binary, src-tauri/src/bin/flint.rs)
   └── app_lib (library, src-tauri/src/core/)
         └── cli/
               ├── mod.rs       — CLI entry points, thread management
@@ -24,7 +24,7 @@ jan (binary, src-tauri/src/bin/jan.rs)
 
 | File | Purpose |
 |------|---------|
-| `src-tauri/src/bin/jan.rs` | CLI binary entry point (clap argument parsing) |
+| `src-tauri/src/bin/flint.rs` | CLI binary entry point (clap argument parsing) |
 | `src-tauri/src/core/cli/mod.rs` | CLI public API + thread listing |
 | `src-tauri/src/core/cli/tui.rs` | Main TUI (~4600+ lines): `App` struct, event loop, rendering, commands |
 | `src-tauri/Cargo.toml` | Crate config; `cli` feature gates TUI dependencies |
@@ -53,7 +53,7 @@ cd /path/to/jan
 ./build-tui.sh release    # release (optimized, slower build)
 
 # Release build (optimized, smaller binary):
-cd src-tauri && cargo build --no-default-features --features cli --bin jan --release
+cd src-tauri && cargo build --no-default-features --features cli --bin flint --release
 ```
 
 ### Using the Build Script
@@ -68,7 +68,7 @@ The `build-tui.sh` script at the project root automates building and installing:
 ./build-tui.sh help     # show help
 ```
 
-The script installs the binary to `~/.local/bin/jan-agent`. Make sure `~/.local/bin` is in your `PATH`.
+The script installs the binary to `~/.local/bin/flint`. Make sure `~/.local/bin` is in your `PATH`.
 
 ### Binary vs Library
 
@@ -261,11 +261,11 @@ The TUI supports Tab-based slash command completion:
 ## Running the TUI
 
 ```bash
-# After building (binary at ~/.local/bin/jan-agent):
-jan-agent tui
+# After building (binary at ~/.local/bin/flint):
+flint tui
 
 # Or from the project:
-cd src-tauri && cargo run --no-default-features --features cli --bin jan -- tui
+cd src-tauri && cargo run --no-default-features --features cli --bin flint -- tui
 
 # With a specific model:
 jan-agent tui --model my-model
@@ -346,7 +346,7 @@ The Rust compiler may run out of memory on large builds. Try:
 
 ```bash
 # Limit parallel codegen units
-cd src-tauri && CARGO_BUILD_JOBS=2 cargo build --no-default-features --features cli --bin jan
+cd src-tauri && CARGO_BUILD_JOBS=2 cargo build --no-default-features --features cli --bin flint
 ```
 
 ### TUI rendering artifacts
