@@ -64,8 +64,9 @@ describe('SkillsManagerDialog', () => {
     expect(
       screen.getByText(/connections:skills\.summary.*"enabled":1.*"installed":2/)
     ).toBeInTheDocument()
-    expect(screen.getByText('connections:skills.state.enabled')).toBeInTheDocument()
-    expect(screen.getByText('connections:skills.state.disabled')).toBeInTheDocument()
+    // The state line also carries the skill's scope ("<state> · Global").
+    expect(screen.getByText(/^connections:skills\.state\.enabled · /)).toBeInTheDocument()
+    expect(screen.getByText(/^connections:skills\.state\.disabled · /)).toBeInTheDocument()
   })
 
   it('announces an import only after it resolves', async () => {
