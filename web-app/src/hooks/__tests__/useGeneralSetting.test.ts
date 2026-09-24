@@ -169,9 +169,21 @@ describe('useGeneralSetting', () => {
 
       expect(result.current.huggingfaceToken).toBe('test-token-123')
       expect(mockInvoke).toHaveBeenCalledWith('set_secret', {
-        key: 'huggingface',
+        key: 'general:huggingface-token',
         value: 'test-token-123',
       })
+    })
+
+    // #138: the token shared the provider's 'huggingface' keyring entry.
+    it('never writes the huggingface provider entry', () => {
+      const { result } = renderHook(() => useGeneralSetting())
+      act(() => {
+        result.current.setHuggingfaceToken('')
+      })
+      const keys = mockInvoke.mock.calls.map(
+        (c) => (c[1] as { key?: string } | undefined)?.key
+      )
+      expect(keys).not.toContain('huggingface')
     })
 
     it('should update huggingface token', () => {
@@ -270,5 +282,34 @@ describe('useGeneralSetting', () => {
       expect(result.current.currentLanguage).toBe('en')
       expect(result.current.spellCheckChatInput).toBe(true)
     })
+  })
+})
+
+describe('loadHuggingfaceToken (#138)', () => {
+  it('reads the namespaced entry', async () => {
+    const { loadHuggingfaceToken } = await import('../useGeneralSetting')
+    const invoke = vi.fn(async (_c: string, a: Record<string, unknown>) =>
+      a.key === 'general:huggingface-token' ? 'hf_new' : 'provider-key'
+    )
+    expect(await loadHuggingfaceToken(invoke)).toBe('hf_new')
+    expect(invoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('copies a token an older build saved, leaving the provider entry alone', async () => {
+    const { loadHuggingfaceToken } = await import('../useGeneralSetting')
+    const invoke = vi.fn(async (c: string, a: Record<string, unknown>) =>
+      c === 'get_secret' && a.key === 'huggingface' ? 'hf_old' : null
+    )
+    expect(await loadHuggingfaceToken(invoke)).toBe('hf_old')
+    expect(invoke).toHaveBeenCalledWith('set_secret', {
+      key: 'general:huggingface-token',
+      value: 'hf_old',
+    })
+    expect(invoke).not.toHaveBeenCalledWith('set_secret', expect.objectContaining({ key: 'huggingface' }))
+  })
+
+  it('returns null when nothing is stored', async () => {
+    const { loadHuggingfaceToken } = await import('../useGeneralSetting')
+    expect(await loadHuggingfaceToken(vi.fn(async () => null))).toBeNull()
   })
 })

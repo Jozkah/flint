@@ -4,7 +4,35 @@ import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
-export const HUGGINGFACE_TOKEN_SECRET_KEY = 'huggingface'
+// Namespaced (#138): the bare 'huggingface' entry is also where the built-in
+// huggingface provider keeps its API keys, so the two overwrote and deleted
+// each other.
+export const HUGGINGFACE_TOKEN_SECRET_KEY = 'general:huggingface-token'
+/** Where builds before #138 kept the token. */
+export const LEGACY_HUGGINGFACE_TOKEN_SECRET_KEY = 'huggingface'
+
+type SecretInvoke = (
+  command: 'get_secret' | 'set_secret',
+  args: Record<string, unknown>
+) => Promise<unknown>
+
+/**
+ * The General Hugging Face token from the keyring. A token saved by an older
+ * build sits under the provider's entry; it is copied to the namespaced one,
+ * and the provider's entry is left alone, since it may be the provider's key.
+ */
+export async function loadHuggingfaceToken(
+  invoke: SecretInvoke
+): Promise<string | null> {
+  const token = await invoke('get_secret', { key: HUGGINGFACE_TOKEN_SECRET_KEY })
+  if (typeof token === 'string' && token) return token
+  const legacy = await invoke('get_secret', {
+    key: LEGACY_HUGGINGFACE_TOKEN_SECRET_KEY,
+  })
+  if (typeof legacy !== 'string' || !legacy) return null
+  await invoke('set_secret', { key: HUGGINGFACE_TOKEN_SECRET_KEY, value: legacy })
+  return legacy
+}
 type GeneralSettingState = {
   currentLanguage: Language
   spellCheckChatInput: boolean
