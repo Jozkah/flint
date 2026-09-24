@@ -286,6 +286,27 @@ fn record_claude_code_env_keys(path: &std::path::Path, keys: &[String]) -> Resul
         .map_err(|e| e.to_string())
 }
 
+/// Recorded names that the new variable set no longer contains: they were
+/// written by an earlier `setx` and must be deleted, or a removed custom
+/// variable lingers in the user environment.
+fn stale_claude_code_env_keys(recorded: &[String], current: &[String]) -> Vec<String> {
+    recorded
+        .iter()
+        .filter(|k| !current.contains(k))
+        .cloned()
+        .collect()
+}
+
+/// Drop `forget` from the recorded names.
+fn forget_claude_code_env_keys(path: &std::path::Path, forget: &[String]) -> Result<(), String> {
+    let kept: Vec<String> = load_claude_code_env_keys(path)
+        .into_iter()
+        .filter(|k| !forget.contains(k))
+        .collect();
+    std::fs::write(path, serde_json::to_string(&kept).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
 /// Every user variable Reset removes on Windows: the fixed Claude Code names
 /// plus whatever was recorded when it was written.
 fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
@@ -638,7 +659,30 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
         // Record the names first, so Reset can find every one even if a later
         // setx fails part-way.
         let names: Vec<String> = env_vars.iter().map(|(k, _)| k.clone()).collect();
-        if let Err(e) = record_claude_code_env_keys(&claude_code_env_keys_path(), &names) {
+        let keys_path = claude_code_env_keys_path();
+        // Delete what an earlier apply wrote but this one no longer sets, so a
+        // removed custom variable does not linger (#122).
+        let stale = stale_claude_code_env_keys(&load_claude_code_env_keys(&keys_path), &names);
+        let mut deleted = Vec::with_capacity(stale.len());
+        for key in stale {
+            use jan_process::CommandConsole;
+            // A missing value makes `reg delete` fail, which also means it is
+            // gone; only a command that could not run keeps the name recorded.
+            if std::process::Command::new("reg")
+                .args(["delete", "HKCU\\Environment", "/v", &key, "/f"])
+                .background()
+                .output()
+                .is_ok()
+            {
+                deleted.push(key);
+            }
+        }
+        if !deleted.is_empty() {
+            if let Err(e) = forget_claude_code_env_keys(&keys_path, &deleted) {
+                log::warn!("Could not update the recorded Claude Code env var names: {e}");
+            }
+        }
+        if let Err(e) = record_claude_code_env_keys(&keys_path, &names) {
             log::warn!("Could not record the Claude Code env var names: {e}");
         }
         for (key, value) in env_vars {
@@ -1197,6 +1241,25 @@ mod tests {
         assert!(keys.contains(&"MY_TOKEN".to_string()));
         assert!(keys.contains(&"ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string()));
         assert_eq!(keys.iter().filter(|k| *k == "ANTHROPIC_BASE_URL").count(), 1);
+    }
+
+    /// #122: re-applying without a custom variable deletes it and stops
+    /// recording it, while the still-set names stay recorded.
+    #[test]
+    fn windows_reapply_forgets_removed_custom_keys() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        record_claude_code_env_keys(
+            &path,
+            &["ANTHROPIC_BASE_URL".to_string(), "HTTPS_PROXY".to_string()],
+        )
+        .unwrap();
+        let current = vec!["ANTHROPIC_BASE_URL".to_string()];
+        let stale = stale_claude_code_env_keys(&load_claude_code_env_keys(&path), &current);
+        assert_eq!(stale, vec!["HTTPS_PROXY".to_string()]);
+        forget_claude_code_env_keys(&path, &stale).unwrap();
+        record_claude_code_env_keys(&path, &current).unwrap();
+        assert_eq!(load_claude_code_env_keys(&path), current);
     }
 
     #[test]
