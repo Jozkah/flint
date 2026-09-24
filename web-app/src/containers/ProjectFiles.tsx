@@ -33,6 +33,7 @@ import { ExtensionTypeEnum, FileStat, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
+import { collectFilesFromDirectory } from '@/lib/directoryWalk'
 
 type ProjectFilesProps = {
   projectId: string
@@ -290,30 +291,14 @@ async function getFilesFromPaths(paths: string[]): Promise<string[]> {
   return files
 }
 
-async function getFilesFromDirectory(
+function getFilesFromDirectory(
   dirPath: string,
   fs: typeof import('@janhq/core').fs
 ): Promise<string[]> {
-  const files: string[] = []
-  try {
-    const entries = await fs.readdirSync(dirPath)
-    for (const entry of entries) {
-      console.log('Reading entry:', entry)
-      const stat = await fs.fileStat(entry)
-      if (stat?.isDirectory) {
-        const nestedFiles = await getFilesFromDirectory(entry, fs)
-        files.push(...nestedFiles)
-      } else if (!stat?.isDirectory) {
-        const ext = entry.split('.').pop()?.toLowerCase()
-        if (ext && SUPPORTED_EXTENSIONS.includes(ext)) {
-          files.push(entry)
-        }
-      }
-    }
-  } catch (e) {
-    console.warn(`Failed to read directory ${dirPath}:`, e)
-  }
-  return files
+  return collectFilesFromDirectory(dirPath, fs, (entry) => {
+    const ext = entry.split('.').pop()?.toLowerCase()
+    return !!ext && SUPPORTED_EXTENSIONS.includes(ext)
+  })
 }
 
 type FileRowProps = {

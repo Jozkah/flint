@@ -1,6 +1,8 @@
 export type FileStat = {
   isDirectory: boolean
   size: number
+  /** The path itself is a symbolic link (the other fields describe its target). */
+  isSymlink?: boolean
 }
 
 export type DownloadState = {
