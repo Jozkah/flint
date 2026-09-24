@@ -63,7 +63,50 @@ pub async fn web_fetch(
         .fetch(url)
         .await
         .map_err(|e| WebSearchError::new(augment_code_host_error(url, &e)))?;
-    Ok(page)
+    Ok(strip_front_matter(page))
+}
+
+/// Drop a leading YAML front matter block (`---` ... `---`) from fetched text.
+///
+/// Docs sites built from Markdown (learn.microsoft.com among them) can hand a
+/// crawler the source file, so the page opened with dozens of metadata lines
+/// and no title. The block is removed, and its `title:` fills in a missing
+/// title. Content without such a block is returned unchanged.
+fn strip_front_matter(mut page: FetchedPage) -> FetchedPage {
+    let text = page.content.trim_start();
+    let mut lines = text.split_inclusive('\n');
+    match lines.next() {
+        Some(first) if first.trim_end() == "---" => {}
+        _ => return page,
+    }
+    let mut consumed = text.len() - lines.clone().map(str::len).sum::<usize>();
+    let mut title: Option<String> = None;
+    let mut closed = false;
+    for line in lines {
+        consumed += line.len();
+        let trimmed = line.trim_end();
+        if trimmed == "---" || trimmed == "..." {
+            closed = true;
+            break;
+        }
+        if let Some(v) = trimmed.strip_prefix("title:") {
+            let v = v.trim().trim_matches(|c: char| c == '"' || c == '\'');
+            if !v.is_empty() && title.is_none() {
+                title = Some(v.to_string());
+            }
+        }
+    }
+    if !closed {
+        return page;
+    }
+    page.content = text[consumed..].trim_start().to_string();
+    let untitled = page.title.trim().is_empty() || page.title.trim() == "(no title)";
+    if untitled {
+        if let Some(t) = title {
+            page.title = t;
+        }
+    }
+    page
 }
 
 /// Turn a bare fetch failure on a code-hosting URL into an actionable one.
@@ -100,6 +143,48 @@ fn augment_code_host_error(url: &str, err: &str) -> String {
         )
     } else {
         err.to_string()
+    }
+}
+
+#[cfg(test)]
+mod front_matter_tests {
+    use super::*;
+
+    fn page(title: &str, content: &str) -> FetchedPage {
+        FetchedPage {
+            url: "https://learn.microsoft.com/x".into(),
+            title: title.into(),
+            content: content.into(),
+            truncated: false,
+        }
+    }
+
+    #[test]
+    fn front_matter_is_removed_and_supplies_the_title() {
+        let got = strip_front_matter(page(
+            "(no title)",
+            "---\nlayout: Conceptual\ntitle: \"Get-ChildItem (Microsoft.PowerShell.Management)\"\nadobe-target: true\n---\n\n# Get-ChildItem\nBody",
+        ));
+        assert_eq!(got.title, "Get-ChildItem (Microsoft.PowerShell.Management)");
+        assert_eq!(got.content, "# Get-ChildItem\nBody");
+    }
+
+    #[test]
+    fn an_existing_title_is_kept() {
+        let got = strip_front_matter(page("Real", "---\r\ntitle: Other\r\n---\r\nText"));
+        assert_eq!(got.title, "Real");
+        assert_eq!(got.content, "Text");
+    }
+
+    #[test]
+    fn content_without_front_matter_is_unchanged() {
+        for c in ["Plain text", "--- not yaml", "---\nnever closed\n"] {
+            let got = strip_front_matter(page("", c));
+            assert_eq!(got.content, c);
+            assert_eq!(got.title, "");
+        }
+        let rule = strip_front_matter(page("T", "Intro\n---\ntitle: x\n---\n"));
+        assert_eq!(rule.content, "Intro\n---\ntitle: x\n---\n");
     }
 }
 
