@@ -330,10 +330,10 @@ jobs:
             TAR_NAME=Jan.app.tar.gz
           fi
 
-          echo "::set-output name=MAC_UNIVERSAL_SIG::$MAC_UNIVERSAL_SIG"
-          echo "::set-output name=FILE_NAME::$FILE_NAME"
-          echo "::set-output name=DMG_NAME::$DMG_NAME"
-          echo "::set-output name=TAR_NAME::$TAR_NAME"
+          echo "MAC_UNIVERSAL_SIG=$MAC_UNIVERSAL_SIG" >> $GITHUB_OUTPUT
+          echo "FILE_NAME=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "DMG_NAME=$DMG_NAME" >> $GITHUB_OUTPUT
+          echo "TAR_NAME=$TAR_NAME" >> $GITHUB_OUTPUT
         id: metadata
 
       ## Upload to s3 for nightly and beta

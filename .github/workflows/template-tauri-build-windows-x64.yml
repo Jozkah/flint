@@ -367,10 +367,10 @@ jobs:
             # PORTABLE_FILE_NAME="Jan_${{ inputs.new_version }}_x64-portable.exe"
           fi
 
-          echo "::set-output name=WIN_SIG::$WIN_SIG"
-          echo "::set-output name=FILE_NAME::$FILE_NAME"
-          echo "::set-output name=MSI_FILE_NAME::$MSI_FILE"
-          # echo "::set-output name=PORTABLE_FILE_NAME::$PORTABLE_FILE_NAME"
+          echo "WIN_SIG=$WIN_SIG" >> $GITHUB_OUTPUT
+          echo "FILE_NAME=$FILE_NAME" >> $GITHUB_OUTPUT
+          echo "MSI_FILE_NAME=$MSI_FILE" >> $GITHUB_OUTPUT
+          # echo "PORTABLE_FILE_NAME=$PORTABLE_FILE_NAME" >> $GITHUB_OUTPUT
         id: metadata
 
       ## Upload to s3 for nightly and beta
