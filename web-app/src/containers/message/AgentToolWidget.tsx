@@ -384,7 +384,14 @@ export const AgentToolWidget = memo(
           activateLabel={t('common:codePanel.openInCode')}
           trailing={
             bar.detail ? (
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              // The detail is often an absolute search root (a managed
+              // worktree path runs past 100 characters), so it must shrink
+              // and truncate rather than push the transcript sideways.
+              <span
+                data-testid="tool-bar-detail"
+                title={bar.detail}
+                className="min-w-0 max-w-[45%] truncate font-mono text-xs text-muted-foreground"
+              >
                 {bar.detail}
               </span>
             ) : undefined

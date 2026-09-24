@@ -285,6 +285,9 @@ import { measureContextPack } from '@/lib/coworkContext'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
+  acceptsProposal,
+  continuationInstruction,
+  PROPOSAL_ACCEPTED_RESULT,
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
@@ -2848,6 +2851,13 @@ function CoworkPage() {
       deadlineBudgetMs: runDeadline.budgetMs,
     })
 
+    /**
+     * The instruction to continue with once this run ends, set when the
+     * opening proposal is accepted (#296). The opening run is read-only by
+     * construction and its tools are frozen, so the accepted step cannot run
+     * here: it runs in a new request under the session's stored mode.
+     */
+    let continueWith: string | null = null
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -3009,6 +3019,24 @@ function CoworkPage() {
                           folder: current.folder,
                           proposal: proposal.question,
                         })
+                      }
+                      // An accepted opening proposal ends this read-only run
+                      // and continues in a new one that can write (#296).
+                      if (
+                        inspecting &&
+                        proposal &&
+                        answers &&
+                        acceptsProposal(parsed, answers)
+                      ) {
+                        continueWith = continuationInstruction(
+                          proposal.question,
+                          answers
+                        )
+                        resolve({
+                          output: PROPOSAL_ACCEPTED_RESULT,
+                          endsTurn: true,
+                        })
+                        return
                       }
                       // A plan review changes the session's mode, from the next
                       // message: this run's tools are frozen. Only ever towards
@@ -3641,6 +3669,11 @@ function CoworkPage() {
       // dropping it silently nor sending it on its own is right.
       // janhq/jan#8864.
       if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
+      // Only after a clean finish: a stopped or failed opening run must not
+      // start work on its own.
+      if (continueWith && stop === 'done') {
+        void runRequestRef.current(continueWith)
+      }
     }
   }
 

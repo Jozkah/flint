@@ -137,19 +137,22 @@ export function isExplicitDirective(text: string): boolean {
     return false
   }
   const verbs = DIRECTIVE_VERBS.join('|')
-  // Start of the text, or after a clause break. `please` is allowed in front.
+  // Start of a sentence, or after `and`/`then` inside it. `please` is
+  // allowed in front.
   const anchored = new RegExp(
-    `(?:^|[.;\\n]|\\band\\b|\\bthen\\b)\\s*(?:please\\s+)?(?:${verbs})\\b`
+    `(?:^|\\band\\b|\\bthen\\b)\\s*(?:please\\s+)?(?:${verbs})\\b`
   )
-  if (!anchored.test(clean)) return false
-  // "the plan says to implement X" reports rather than instructs.
-  if (/\b(says?|according to|suggests?|recommends?)\b[^.]*\b(?:to\s+)?(?:$|\w)/.test(clean)) {
-    const beforeVerb = clean.split(new RegExp(`\\b(?:${verbs})\\b`))[0] ?? ''
-    if (/\b(says?|according to|suggests?|recommends?)\b/.test(beforeVerb)) {
-      return false
-    }
-  }
-  return true
+  const reporting = /\b(says?|according to|suggests?|recommends?)\b/
+  // Judged sentence by sentence: "Customers say 100.00 gets no discount. Fix
+  // it." reports a symptom and then instructs, and the report in the first
+  // sentence must not disqualify the instruction in the second (the s01
+  // smoke prompt, #296). Within one sentence, a reporting word before the
+  // verb still means the verb is being quoted: "the plan says to implement X".
+  return clean.split(/[.;!?]+(?:\s|$)|\n+/).some((sentence) => {
+    const match = anchored.exec(sentence)
+    if (!match) return false
+    return !reporting.test(sentence.slice(0, match.index + match[0].length))
+  })
 }
 
 export type OpeningDecision =
@@ -241,3 +244,68 @@ export const INSPECT_AND_PROPOSE_ADDENDUM = [
 
 /** The reserved question id the opening turn ends on. */
 export const CONTINUE_QUESTION_ID = 'continue_proposal'
+
+/**
+ * Words that accept a proposal when typed as a free-text answer.
+ *
+ * Anchored at the start and refused on any negation, so "no, do it later" or
+ * "don't apply it" never reads as a yes.
+ */
+const AFFIRMATIVE =
+  /^(?:yes|yeah|yep|ok|okay|sure|please|do it|go ahead|go for it|proceed|apply it|continue|sounds good)\b/i
+const NEGATION = /\b(?:no|not|don'?t|do not|never|stop|cancel|wait|instead)\b/i
+
+/**
+ * Did the user accept the opening turn's proposal? (#296)
+ *
+ * The opening addendum asks for the proposed step as the first option and an
+ * alternative after it, so choosing the first option is a yes. A free-text
+ * answer is a yes only when it plainly says so. Anything else -- the
+ * alternative, a dismissed card, a question back -- is not, and the session
+ * stays where it is.
+ */
+export function acceptsProposal(
+  request: {
+    questions: { id: string; options?: { label: string }[] }[]
+  },
+  answers: { id: string; selected?: string[]; custom_input?: string }[] | null
+): boolean {
+  const question = request.questions.find(
+    (one) => one.id === CONTINUE_QUESTION_ID
+  )
+  if (!question || !answers) return false
+  const answer = answers.find((one) => one.id === CONTINUE_QUESTION_ID)
+  if (!answer) return false
+  const chosen = answer.selected?.[0]
+  if (chosen !== undefined) {
+    if (answer.selected && answer.selected.length > 1) return false
+    if (chosen === question.options?.[0]?.label) return true
+    return AFFIRMATIVE.test(chosen.trim()) && !NEGATION.test(chosen)
+  }
+  const typed = answer.custom_input?.trim() ?? ''
+  return typed.length > 0 && AFFIRMATIVE.test(typed) && !NEGATION.test(typed)
+}
+
+/**
+ * The instruction the continuation run is started with.
+ *
+ * Sent as the user's next message, so the transcript shows what the new run
+ * was asked to do and the model reads it as a plain instruction under the
+ * session's own mode rather than as an answer to a read-only turn.
+ */
+export function continuationInstruction(
+  proposal: string,
+  answers: { id: string; selected?: string[]; custom_input?: string }[]
+): string {
+  const answer = answers.find((one) => one.id === CONTINUE_QUESTION_ID)
+  const said = answer?.selected?.[0] ?? answer?.custom_input?.trim() ?? ''
+  return [
+    `Go ahead with the step you proposed${said ? ` ("${said}")` : ''}.`,
+    `Your question was: ${proposal}`,
+  ].join('\n')
+}
+
+/** The ask result when an accepted proposal hands the work to a new run. */
+export const PROPOSAL_ACCEPTED_RESULT =
+  'The user accepted the proposal. This read-only opening turn ends here; ' +
+  'the step runs next, in a new turn with the session’s own tools.'
