@@ -4130,6 +4130,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -4158,6 +4164,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -32815,6 +32827,23 @@ mod tests {
         assert!(app.base_requested);
         assert!(matches!(app.snap_queue.front(), Some(SnapshotJob::Base)));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A skill or command invoked before signing in gets the not-signed-in
+    /// note, not a turn armed with an empty model (#141).
+    #[test]
+    fn dispatch_without_a_provider_arms_no_turn() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        plugin_command_in_app(&root, "feature-dev", "feature-dev", "Build: $ARGUMENTS");
+        app.model.clear();
+        let before = app.history.len();
+        assert!(app.dispatch_command("feature-dev", "add auth"));
+        assert!(app.dispatch_skill("deploy", "staging"));
+        assert!(!app.want_start, "a turn was armed without a provider");
+        assert_eq!(app.status, Status::Idle);
+        assert_eq!(app.history.len(), before);
+        assert!(transcript_text(&app).contains("not signed in"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
