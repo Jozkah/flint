@@ -501,9 +501,12 @@ function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | nul
   let outcome: CheckOutcome
   if (phase === 'refused') outcome = 'not-run'
   else if (isUnfinished(phase)) outcome = 'unknown'
+  // Killed or timed out: an exit status recorded on the way down is not a
+  // verdict, so neither a pass nor a failure (checkVerdict: did not finish).
+  else if (phase === 'timed-out' || phase === 'cancelled' || phase === 'stale')
+    outcome = code !== null || signaled ? 'unknown' : 'not-run'
   else if (code === 0 && !signaled) outcome = 'passed'
   else if (code !== null || signaled) outcome = 'failed'
-  else if (phase === 'cancelled') outcome = 'not-run'
   // Finished without an exit status — an error before the command ran, or a
   // tool that reported nothing. Neither proves a pass or a failure.
   else outcome = 'unknown'
