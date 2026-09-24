@@ -296,6 +296,8 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_Graphics_Gdi",
   "Win32_Storage_FileSystem",
   "Win32_System_Threading",
+  # Turn on VT sequences for the headless CLI's colored stderr (core::cli::color).
+  "Win32_System_Console",
   # Read the Git-for-Windows install path the installer records, so native Git
   # is found even when it is not on PATH (core::agent::github_recovery).
   "Win32_System_Registry",
