@@ -15,7 +15,8 @@ vi.mock('@/lib/eventLog', () => ({
     return { events, lastSeq: all.at(-1)?.seq ?? 0, truncated: false }
   }),
 }))
-vi.mock('@/lib/toolActivity', () => ({ loadToolDiff: vi.fn(async () => h.diff) }))
+const loadToolDiff = vi.hoisted(() => vi.fn(async (..._a: unknown[]): Promise<string | null> => h.diff))
+vi.mock('@/lib/toolActivity', () => ({ loadToolDiff }))
 // The app's own translator, so labels are asserted as a person reads them.
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const i18n = (await import('@/i18n/setup')).default
@@ -102,6 +103,17 @@ describe('CoworkTimelinePanel', () => {
     await waitFor(() => expect(screen.getByTestId('timeline-diff').dataset.hunks).toBe('1'))
     expect(screen.getByTestId('timeline-diff').dataset.path).toBe('README.md')
     expect(screen.getByTestId('timeline-diff')).toHaveTextContent('New')
+  })
+
+  // #244: a provider can reuse a call id across requests, so the diff is
+  // asked for by the edit's invocation as well as its call.
+  it('loads an edit\'s diff by its invocation, not by the call id alone', async () => {
+    render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    await waitFor(() => expect(rows()).toHaveLength(6))
+    const edit = rows().find((r) => r.dataset.categories?.includes('edits'))!
+    fireEvent.click(edit.querySelector('[data-row-toggle]')!)
+    await waitFor(() => expect(loadToolDiff).toHaveBeenCalled())
+    expect(loadToolDiff).toHaveBeenLastCalledWith('s1', 'e1', 'inv-1')
   })
 
   it('shows a typed refusal in the row details', async () => {
