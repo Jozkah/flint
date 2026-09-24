@@ -750,11 +750,8 @@ async fn claude_code_access_token() -> Option<String> {
             Ok(fresh) => {
                 // Write the rotated token back into omp's keychain entry so the
                 // shared credential stays fresh even if Flint is the only client
-                // running. On writeback failure we still return the refreshed
-                // token so Flint keeps working for this session.
-                if write_claude_code_keychain(&entry, &raw, &fresh).is_err() {
-                    debug_log("claude alias: refreshed but could not write back to the Claude Code keychain");
-                }
+                // running.
+                keep_rotated_claude_token(write_claude_code_keychain(&entry, &raw, &fresh), &fresh);
                 #[cfg(not(test))]
                 CLAUDE_ALIAS_ENGAGED.store(true, std::sync::atomic::Ordering::Relaxed);
                 return Some(fresh.access_token);
@@ -797,6 +794,26 @@ fn rotate_claude_code_secret(raw: &str, fresh: &OAuthToken) -> Result<String, St
 /// Refresh-rotate the `claudeAiOauth` block inside a Claude Code keychain JSON
 /// document in place, preserving all other top-level fields (e.g. `mcpOAuth`,
 /// `claudeOauth`), so omp's entry is updated rather than replaced.
+/// Handle the outcome of writing a refreshed alias token back to Claude Code.
+///
+/// The refresh already rotated the refresh token server-side, so Claude Code's
+/// stored copy is dead either way. If the write-back failed, the only live
+/// copy was this call's local value: persist it in Flint's own credential
+/// store so Flint keeps using it past this process, and warn that Claude Code
+/// will have to sign in again rather than logging it at debug level only.
+fn keep_rotated_claude_token(writeback: Result<(), String>, fresh: &OAuthToken) {
+    let Err(error) = writeback else {
+        return;
+    };
+    log::warn!(
+        "Refreshed the Claude Code token but could not write it back ({error});          Claude Code will need to sign in again. Flint keeps the new token."
+    );
+    debug_log("claude alias: refreshed but could not write back to the Claude Code keychain");
+    if let Err(error) = store(AccountProvider::Claude, fresh) {
+        log::warn!("Could not keep the refreshed Claude token either: {error}");
+    }
+}
+
 fn write_claude_code_keychain(
     entry: &keyring::Entry,
     raw: &str,
@@ -1106,6 +1123,30 @@ mod tests {
 
     async fn alias_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
         ALIAS_TEST_LOCK.lock().await
+    }
+
+    /// #132: when the write-back to Claude Code's keychain fails, the rotated
+    /// token survives in Flint's own credential store.
+    #[test]
+    fn a_failed_claude_code_writeback_keeps_the_rotated_token() {
+        let _tmp = TempSecrets::new();
+        let fresh = OAuthToken {
+            access_token: "fresh-access".into(),
+            refresh_token: Some("fresh-refresh".into()),
+            expires_at: Some(4_000_000_000),
+            token_type: "Bearer".into(),
+            scopes: Vec::new(),
+        };
+        keep_rotated_claude_token(Ok(()), &fresh);
+        assert!(
+            CredentialStore::load(AccountProvider::Claude.credential_provider())
+                .unwrap()
+                .is_none(),
+            "a successful write-back leaves the alias as the only copy"
+        );
+        keep_rotated_claude_token(Err("denied".into()), &fresh);
+        let kept = CredentialStore::load(AccountProvider::Claude.credential_provider()).unwrap();
+        assert_eq!(kept, Some(Credential::OAuthToken(fresh)));
     }
 
     struct TempSecrets {
