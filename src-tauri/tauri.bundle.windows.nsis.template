@@ -98,6 +98,16 @@ Var LockedFile
   ${Loop}
 !macroend
 
+; Frees one path that a still-running process may have mapped.
+;
+; The path is freed by *renaming* it, never by deleting it. The rename works for
+; an idle file and for a mapped image alike, and the `.old` copy it leaves is
+; what the abort path in FreeBundledFiles puts back when a later path turns out
+; to be locked. Deleting an idle file would free the name just as well, but an
+; install that then aborts has destroyed a file it cannot restore (upstream
+; janhq/jan#9041). The `.old` copies are deleted by CleanFreedBinaries once the
+; new files are written; one a process still has mapped stays until the next
+; install or the uninstaller.
 !macro UnlockBundledBinary path
   ; A copy renamed aside by an earlier locked update must go even when this
   ; update's Delete succeeds, or it leaks until uninstall (#289).
@@ -107,11 +117,6 @@ Var LockedFile
   ${If} ${FileExists} "${path}"
     StrCpy $R6 0
     ${Do}
-      ClearErrors
-      Delete "${path}"
-      ${IfNot} ${Errors}
-        ${ExitDo}
-      ${EndIf}
       ClearErrors
       Delete "${path}.old"
       ClearErrors
@@ -151,6 +156,69 @@ Var LockedFile
   ${Loop}
 !macroend
 
+; Puts a freed file back under its real name, so an install that cannot go ahead
+; leaves the previous one exactly as it was. Only ever called from the abort
+; path: after the frees and before the first `File` write. The real name is
+; restored only when it is free, so a `.old` copy never lands on a new file.
+!macro RestoreBundledBinary path
+  ${If} ${FileExists} "${path}.old"
+  ${AndIfNot} ${FileExists} "${path}"
+    ClearErrors
+    Rename "${path}.old" "${path}"
+    ClearErrors
+  ${EndIf}
+!macroend
+
+; The same, over a wildcard. Rescanned like the unlock pass, because the renames
+; mutate the directory being enumerated.
+!macro RestoreBundledPattern dir pattern
+  StrCpy $R2 0
+  ${Do}
+    FindFirst $R8 $R9 "${dir}\${pattern}.old"
+    ${Do}
+      ${If} $R9 == ""
+        ${ExitDo}
+      ${EndIf}
+      ; Strip the trailing ".old" with an explicit length.
+      StrLen $R3 "$R9"
+      IntOp $R3 $R3 - 4
+      StrCpy $R7 "$R9" $R3
+      !insertmacro RestoreBundledBinary "${dir}\$R7"
+      FindNext $R8 $R9
+    ${Loop}
+    FindClose $R8
+    IntOp $R2 $R2 + 1
+    ${If} $R2 >= 3
+      ${ExitDo}
+    ${EndIf}
+  ${Loop}
+!macroend
+
+; Deletes a `.old` copy the frees left behind, once the new file is on disk.
+; Best effort: a copy a running process still has mapped cannot be deleted.
+!macro DeleteFreedBinary path
+  Delete "${path}.old"
+  ClearErrors
+!macroend
+
+!macro DeleteFreedPattern dir pattern
+  Delete "${dir}\${pattern}.old"
+  ClearErrors
+!macroend
+
+; The frees rename rather than delete, so on a successful install every bundled
+; binary is briefly on disk twice. Called once the writes are done and the
+; section can no longer abort.
+!macro CleanFreedBinaries
+  !insertmacro DeleteFreedBinary "$INSTDIR\resources\bin\flint.exe"
+  !insertmacro DeleteFreedBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
+  !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "ggml*.dll"
+  !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
+  !insertmacro DeleteFreedPattern "$INSTDIR\resources\bin" "cublas*.dll"
+  !insertmacro DeleteFreedBinary "$INSTDIR\bun.exe"
+  !insertmacro DeleteFreedBinary "$INSTDIR\uv.exe"
+!macroend
+
 !macro FreeBundledFiles
   !insertmacro StopBundledProcess "flint-llama-worker.exe"
   ; Best-effort sweep of every copy an earlier locked update renamed aside,
@@ -168,6 +236,15 @@ Var LockedFile
   !insertmacro UnlockBundledBinary "$INSTDIR\bun.exe"
   !insertmacro UnlockBundledBinary "$INSTDIR\uv.exe"
   ${If} $LockedFile != ""
+    ; Nothing has been written yet, so undo the frees: the install refuses and
+    ; the previous one stays usable (upstream janhq/jan#9041).
+    !insertmacro RestoreBundledBinary "$INSTDIR\resources\bin\flint.exe"
+    !insertmacro RestoreBundledBinary "$INSTDIR\resources\bin\flint-llama-worker.exe"
+    !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "ggml*.dll"
+    !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "cudart64_*.dll"
+    !insertmacro RestoreBundledPattern "$INSTDIR\resources\bin" "cublas*.dll"
+    !insertmacro RestoreBundledBinary "$INSTDIR\bun.exe"
+    !insertmacro RestoreBundledBinary "$INSTDIR\uv.exe"
     nsis_tauri_utils::StrReplace "$(failedToKillApp)" "{{product_name}}" "${PRODUCTNAME}"
     Pop $R3
     Abort "$R3$\n$LockedFile"
@@ -828,6 +905,10 @@ Section Install
   ; Copy external binaries
     File /a "/oname=bun.exe" "flint_workspace\src-tauri\resources\bin\bun-x86_64-pc-windows-msvc.exe"
     File /a "/oname=uv.exe" "flint_workspace\src-tauri\resources\bin\uv-x86_64-pc-windows-msvc.exe"
+
+  ; Every bundled binary has been written, and nothing below can abort, so the
+  ; `.old` copies the frees left are no longer needed as a way back.
+  !insertmacro CleanFreedBinaries
 
   ; Create file associations
 
