@@ -2,6 +2,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useRef } from 'react'
 import { Handshake, MessageSquare } from 'lucide-react'
 import { route, isCoworkRoute } from '@/constants/routes'
+import { isCoworkEnabled } from '@/lib/version'
 import { cn } from '@/lib/utils'
 import { useThreads } from '@/hooks/useThreads'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -44,6 +45,10 @@ export function NavTabs({ surfacePath }: { surfacePath?: string } = {}) {
   const threadExists = useThreads(
     (s) => !threadId || Boolean(s.threads[threadId])
   )
+
+  // Home is the only surface left when a gated build does not ship Cowork, so
+  // there is no switcher to render - a lone Home pill is not a choice.
+  if (!isCoworkEnabled()) return null
 
   const tabs: TabItem[] = [
     {

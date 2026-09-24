@@ -258,6 +258,16 @@ In `Settings -> General`:
 - [ ] Ensure that the fresh install of Jan launch
 - [ ] Do some basic check to see that all function still behaved as expected. To be extra careful, you can go through the whole list again. However, it is more advisable to just check to make sure that all the core functionality like `Thread` and `Model Providers` work as intended.
 
+## H. Channel gate (preview surfaces)
+Cowork ships in every channel by default. Only a build made with `VITE_COWORK_CHANNEL_GATE=true` restricts it to `nightly` and dev builds, as upstream Jan does; run this section only for such a build.
+On the stable build:
+- [ ] The left bar shows no `Cowork` tab, and no `Home` / `Cowork` switcher above the chat list
+- [ ] Opening `/cowork` or `/artifacts` lands on `Home`
+- [ ] A thread, a project and a chat turn still work - the gate must not take the app down with it
+- [ ] A profile whose last surface was `Cowork` (open Cowork in a nightly build on the same data folder, then launch the stable build) opens on `Home` - a restored last surface must not resurrect the tab
+On the nightly build of the same commit:
+- [ ] The `Cowork` tab and switcher are present, and `/cowork` opens the surface
+
 # II. After release
 - [ ] Check that the App Updater works and user can update to the latest release without any problem
 - [ ] App restarts after the user finished an update

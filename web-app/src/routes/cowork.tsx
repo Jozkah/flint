@@ -5,6 +5,7 @@ import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
+import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   Fragment,
@@ -388,6 +389,7 @@ import { sessionDetailsLabel } from '@/lib/windowTitle'
 const JOB_POLL_MS = 3000
 
 export const Route = createFileRoute(route.cowork as any)({
+  beforeLoad: () => ensureCoworkEnabled(),
   component: CoworkPage,
 })
 
