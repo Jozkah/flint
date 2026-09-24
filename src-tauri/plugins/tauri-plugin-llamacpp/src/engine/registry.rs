@@ -314,6 +314,7 @@ impl Registry {
         m.last_used = next_tick();
         if m.inflight == 0 && self.stale.remove(model_id) {
             self.loaded.remove(model_id);
+            self.dropped.push(model_id.to_string());
             self.events
                 .emit(model_id, Transition::Unloaded { exit_code: 0 });
         }
@@ -561,6 +562,22 @@ mod tests {
         let mut dropped = r.take_dropped();
         dropped.sort();
         assert_eq!(dropped, vec!["d".to_string(), "e".to_string()]);
+    }
+
+    /// #281: a model superseded while busy is dropped by `release` once its
+    /// last request ends, and that drop path has to record itself like the
+    /// others, or its stale slot claims survive the reload.
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn a_deferred_retirement_records_the_model_when_released() {
+        let mut r = Registry::new(2);
+        resident(&mut r, &["a"]);
+        r.loaded.get_mut("a").unwrap().inflight = 1;
+        r.retire("a");
+        assert!(r.take_dropped().is_empty(), "a busy model was recorded before it was dropped");
+        r.release("a");
+        assert!(!r.loaded.contains_key("a"));
+        assert_eq!(r.take_dropped(), vec!["a".to_string()]);
     }
 
     /// A busy model is not dropped, so it must not be recorded as dropped
