@@ -227,6 +227,20 @@ jobs:
       - name: Getting the repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # Every third-party action must be pinned to a full 40-hex commit SHA
+      # (#194). Local actions (`uses: ./...`) and docker:// references are exempt.
+      - name: Check actions are pinned to commit SHAs
+        shell: bash
+        run: |
+          bad=$(grep -rnE '^[[:space:]-]*uses:[[:space:]]*' .github/workflows .github/actions 2>/dev/null \
+            | grep -vE 'uses:[[:space:]]*["'"'"']?(\./|docker://)' \
+            | grep -vE 'uses:[[:space:]]*["'"'"']?[^@[:space:]]+@[0-9a-f]{40}([[:space:]"'"'"']|$)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Actions not pinned to a 40-hex commit SHA:"
+            echo "$bad"
+            exit 1
+          fi
+
       - name: Installing node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
