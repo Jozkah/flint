@@ -1327,6 +1327,18 @@ async fn read(
     // Looked at before it is read (Jozkah/jan#250): a multi-GB file would be
     // allocated whole just to be cut to 64 KB, and a FIFO would block the read
     // forever.
+    // A missing file is said plainly, with where relative paths resolve --
+    // the raw "os error 2" sent the model hunting through other directories.
+    if !target.exists() {
+        return (
+            format!(
+                "ERROR: File not found: {path}. Relative paths resolve against your \
+                 workspace ({}).",
+                root.display()
+            ),
+            None,
+        );
+    }
     if let Err(e) = readable_file(&target).await {
         return (format!("ERROR: {path}: {e}"), None);
     }
