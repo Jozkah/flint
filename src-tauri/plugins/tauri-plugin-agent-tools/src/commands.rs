@@ -1181,11 +1181,20 @@ async fn execute_tool_inner(
             }),
         _ => None,
     };
-    let (content, diff, _images) = handlers::execute_builtin_with_diff(tool, &args, &ctx).await;
+    let ((content, diff, _images), read_ok) =
+        handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
     // AH-009: what the call was is decided once, by classification. A shell
     // command that exited non-zero is a tool failure even though it said so in
-    // its own words rather than in the tool protocol's.
-    let failure = crate::harness_error::classify_tool(&name, &content).or_else(|| {
+    // its own words rather than in the tool protocol's. A `read` that
+    // succeeded on a file whose text starts with "ERROR" is not one
+    // (Jozkah/jan#62).
+    let read_succeeded = read_ok.is_some_and(|ok| content.starts_with(&ok));
+    let failure = if read_succeeded {
+        None
+    } else {
+        crate::harness_error::classify_tool(&name, &content)
+    }
+    .or_else(|| {
         (name == "bash" && handlers::bash_result_failed(&content)).then(|| {
             crate::harness_error::HarnessError::new(
                 crate::harness_error::ErrorKind::ToolFailed,

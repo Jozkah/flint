@@ -1431,15 +1431,39 @@ async fn read(
         content
     };
 
-    (
-        cap_output(
-            &selected,
-            MAX_LINES,
-            MAX_BYTES,
-            "\n[truncated: use offset/limit to read more]",
-        ),
-        None,
-    )
+    let out = cap_output(
+        &selected,
+        MAX_LINES,
+        MAX_BYTES,
+        "\n[truncated: use offset/limit to read more]",
+    );
+    // File text that happens to start with "ERROR" reads like a handler
+    // failure to `classify_tool`; say that this one succeeded (Jozkah/jan#62).
+    if out.trim_start().starts_with("ERROR") {
+        let _ = READ_SUCCESS.try_with(|slot| *slot.borrow_mut() = Some(out.clone()));
+    }
+    (out, None)
+}
+
+tokio::task_local! {
+    /// The text a successful `read` returned, when it starts with "ERROR" and
+    /// so could be mistaken for a failure. Set only inside
+    /// [`with_read_success`].
+    static READ_SUCCESS: std::cell::RefCell<Option<String>>;
+}
+
+/// Run `work` (a tool call) and also return the output of any `read` in it
+/// that succeeded with text starting with "ERROR". Content that starts with
+/// that text is file content, not a handler error, and the caller must not
+/// classify it as a failure (Jozkah/jan#62).
+pub async fn with_read_success<F: std::future::Future>(work: F) -> (F::Output, Option<String>) {
+    READ_SUCCESS
+        .scope(std::cell::RefCell::new(None), async {
+            let out = work.await;
+            let success = READ_SUCCESS.with(|slot| slot.borrow_mut().take());
+            (out, success)
+        })
+        .await
 }
 
 /// " (it resolves to X)" for a symlink refusal, so the model can see where the
@@ -5217,6 +5241,25 @@ on_failure = \"warn\"
             .filter(|n| n.contains(".tmp-"))
             .collect();
         assert!(stray.is_empty(), "temp files left behind: {stray:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#62: a file whose text starts with "ERROR" reads
+    /// successfully and is reported as such; a real read error is not.
+    #[tokio::test]
+    async fn a_read_of_a_file_starting_with_error_is_marked_successful() {
+        let root = unique_root();
+        std::fs::write(root.join("app.log"), "ERROR: connection refused").unwrap();
+        let r = lookup("read").unwrap();
+        let (out, success) =
+            with_read_success(execute_builtin(r, &json!({"path": "app.log"}), &root)).await;
+        assert!(out.starts_with("ERROR: connection refused"), "{out}");
+        assert!(success.is_some_and(|s| out.starts_with(&s)));
+
+        let (missing, success) =
+            with_read_success(execute_builtin(r, &json!({"path": "nope.log"}), &root)).await;
+        assert!(missing.starts_with("ERROR"), "{missing}");
+        assert!(success.is_none(), "a failed read was marked successful");
         let _ = std::fs::remove_dir_all(&root);
     }
 
