@@ -234,7 +234,7 @@ describe('dispatchCoworkTool', () => {
   it('does not ask about a read-only shell line in ask mode', async () => {
     const onApprove = vi.fn(async () => true)
     await dispatchCoworkTool(
-      call('bash', { command: 'Get-ChildItem -Force | Select-Object Name; git status' }),
+      call('bash', { command: 'Get-ChildItem -Force | Select-Object Name; node --version' }),
       ctx({ mode: 'ask', onApprove })
     )
     expect(onApprove).not.toHaveBeenCalled()

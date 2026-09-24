@@ -52,8 +52,9 @@ const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set([
   // Shaping piped output (no script blocks: those are refused below)
   'select-object',
   'select',
+  // Not `sort`: under cmd and bash that is the real program, whose
+  // `/O` / `-o<file>` writes a file.
   'sort-object',
-  'sort',
   'measure-object',
   'measure',
   'format-table',
@@ -65,27 +66,48 @@ const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set([
   'where',
 ])
 
-/** `git` subcommands that only read. */
-const READ_ONLY_GIT: ReadonlySet<string> = new Set([
-  'status',
-  'log',
-  'diff',
-  'show',
-])
-
-const VERSION_FLAGS: ReadonlySet<string> = new Set([
-  '--version',
-  '-v',
-  '-V',
-  'version',
+/**
+ * Programs whose `--version` is asked often enough to be worth skipping the
+ * prompt for. A fixed list, not "any bare name": cmd.exe looks in the
+ * current folder first, so `install.bat --version` would run a script from
+ * the project, and `-v` is "verbose" as often as "version".
+ *
+ * `git` is not here and none of its subcommands are allowlisted: `status`
+ * runs `core.fsmonitor` and `diff`/`show` run `diff.external` and textconv
+ * drivers, all taken from the repository's own config.
+ */
+const VERSION_TOOLS: ReadonlySet<string> = new Set([
+  'node',
+  'npm',
+  'npx',
+  'yarn',
+  'pnpm',
+  'bun',
+  'deno',
+  'python',
+  'python3',
+  'py',
+  'pip',
+  'cargo',
+  'rustc',
+  'go',
+  'dotnet',
+  'java',
+  'javac',
+  'git',
+  'pwsh',
+  'powershell',
+  'uv',
 ])
 
 /**
  * Anything that redirects, substitutes, groups, escapes or calls: `>`/`<`,
  * `$(`, backticks, braces (script blocks, hashtables), parentheses, a lone
- * `&` (call operator or background), and line breaks.
+ * `&` (call operator or background), line breaks, and `\\`/`//`: a UNC path
+ * (`Get-Content \\host\share\x`) opens an SMB connection that leaks the
+ * Windows login hash.
  */
-const UNSAFE_SYNTAX = /[<>`{}()\r\n]|\$\(|(^|[^&])&(?!&)/
+const UNSAFE_SYNTAX = /[<>`{}()\r\n]|\$\(|(^|[^&])&(?!&)|\\\\|\/\//
 
 /** Words that write, create, delete, or run something else, anywhere. */
 const UNSAFE_WORDS =
@@ -102,22 +124,13 @@ function segmentIsReadOnly(segment: string): boolean {
   if (words.length === 0) return false
   const first = words[0].toLowerCase()
 
-  if (first === 'git') {
-    // Only `git <subcommand> ...`, optionally after `--no-pager`: an option
-    // before the subcommand (`-c core.pager=...`) can run a program.
-    let i = 1
-    if (words[i]?.toLowerCase() === '--no-pager') i++
-    return READ_ONLY_GIT.has(words[i]?.toLowerCase() ?? '')
-  }
-
   if (READ_ONLY_COMMANDS.has(first)) return true
 
-  // `<tool> --version`: a bare program name and one version flag, nothing
-  // else. A path (`.\x.ps1 --version`) is not a bare name and still asks.
+  // `<tool> --version`, for a known tool only, and nothing else.
   return (
     words.length === 2 &&
-    /^[a-z0-9][a-z0-9._-]*$/i.test(words[0]) &&
-    VERSION_FLAGS.has(words[1])
+    VERSION_TOOLS.has(first) &&
+    words[1] === '--version'
   )
 }
 

@@ -12,10 +12,7 @@ describe('isReadOnlyCommand', () => {
     'Test-Path C:/repo/Cargo.toml',
     'Get-Command node; where.exe python',
     'node --version',
-    'cargo -V',
-    'git status',
-    'git --no-pager log --oneline -5',
-    'git diff HEAD~1 && git show HEAD',
+    'git --version',
     'Select-String -Path *.ts -Pattern foo',
     'rg -n TODO src || grep -rn TODO src',
     'Get-Location',
@@ -67,6 +64,19 @@ describe('isReadOnlyCommand', () => {
     'cmd /c dir',
     'powershell -c ls',
     'Get-Content a < b',
+    // Found by review: each of these passed an earlier allowlist.
+    String.raw`echo x && sort /O src\main.rs notes.txt`,
+    'sort -osrc/main.rs notes.txt',
+    'install.bat --version',
+    'evil.exe --version',
+    'python -v',
+    'cargo -V',
+    String.raw`Get-Content \\attacker.example\s\x`,
+    'dir //host/share',
+    'git status',
+    'git diff HEAD~1',
+    'git show HEAD',
+    'git --no-pager log --oneline -5',
   ])('asks about %s', (cmd) => {
     expect(isReadOnlyCommand(cmd)).toBe(false)
   })
