@@ -5433,6 +5433,66 @@ fn body_cost_ceiling(
     })
 }
 
+/// The `job_id`s of background `bash` commands started by the tool results in
+/// `messages`. The bash tool reports a backgrounded command as
+/// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
+fn background_jobs_started(messages: &[serde_json::Value]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for message in messages {
+        if message.get("role").and_then(|r| r.as_str()) != Some("tool") {
+            continue;
+        }
+        let Some(content) = message.get("content").and_then(|c| c.as_str()) else {
+            continue;
+        };
+        let mut rest = content;
+        while let Some(start) = rest.find("(job_id=") {
+            let after = &rest[start + "(job_id=".len()..];
+            let Some(end) = after.find(')') else { break };
+            let id = &after[..end];
+            if id.starts_with("bash-") && !ids.iter().any(|seen| seen == id) {
+                ids.push(id.to_string());
+            }
+            rest = &after[end..];
+        }
+    }
+    ids
+}
+
+/// The doorbell for backgrounded shells (upstream #9033, adapted to this
+/// fork's explicit `job_id` jobs): a reminder naming every owed job that has
+/// finished since the last turn, removing each from `owed`. A job that is gone
+/// (collected, cancelled) is dropped without a notice -- the model already
+/// knows its outcome. `None` when nothing finished.
+fn finished_background_jobs(owed: &mut Vec<String>) -> Option<String> {
+    if owed.is_empty() {
+        return None;
+    }
+    let mut lines = Vec::new();
+    owed.retain(|job_id| {
+        // The agent loop starts its jobs without an owner.
+        match tauri_plugin_agent_tools::tools::handlers::inspect_bash_job(job_id, None) {
+            None => false,
+            Some(status) if !status.finished => true,
+            Some(status) => {
+                let outcome = match (status.stopped_by_request, status.exit_code) {
+                    (true, _) => "was stopped".to_string(),
+                    (false, Some(code)) => format!("exited {code}"),
+                    (false, None) if status.signalled => "was terminated by a signal".to_string(),
+                    (false, None) => "finished".to_string(),
+                };
+                lines.push(format!(
+                    "Background job {job_id} ({}) {outcome}. Collect its output with \
+                     {{\"job_id\": \"{job_id}\"}}.",
+                    status.command
+                ));
+                false
+            }
+        }
+    });
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
 /// The last completion of a run stopped by its money ceiling, rewritten into a
 /// terminal answer: `finish_reason` becomes `budget_exceeded`, and any
 /// `tool_calls` are dropped because they will never be answered.
@@ -5636,8 +5696,20 @@ async fn run_turn_cycle(
     // ceiling returns the work it actually did rather than an error with no
     // answer in it. `None` only before the first request.
     let mut last_completion: Option<serde_json::Value> = None;
+    // Background `bash` jobs this cycle started and has not yet been told the
+    // outcome of (upstream #9033's doorbell, adapted): scanned out of the tool
+    // results as they land, and announced once at the next turn boundary after
+    // the job finishes, so the model need not poll for them.
+    let mut shells_owed: Vec<String> = Vec::new();
+    let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
+        shells_owed.extend(background_jobs_started(&conversation_messages[shells_scanned..]));
+        shells_scanned = conversation_messages.len();
+        if let Some(text) = finished_background_jobs(&mut shells_owed) {
+            crate::core::agent::reminder::attach(&mut conversation_messages, &text);
+            shells_scanned = conversation_messages.len();
+        }
         // The money ceiling (upstream #9034) is enforced here, at the one point
         // every path that would start another request passes through. A
         // ceiling stops the run; it does not fail it: the answer comes back
@@ -6730,6 +6802,26 @@ mod tests {
                 }],
             }],
         }))
+    }
+
+    /// The doorbell reads the job ids a backgrounded `bash` result names, once
+    /// each, and ignores everything that is not a tool result.
+    #[test]
+    fn background_job_ids_are_read_from_tool_results() {
+        let messages = vec![
+            json!({"role": "user", "content": "(job_id=bash-fake-0)"}),
+            json!({"role": "tool", "content": "Command exceeded 30s and is continuing in the background (job_id=bash-a-1). Call bash again with {\"job_id\": \"bash-a-1\"}"}),
+            json!({"role": "tool", "content": "(job_id=bash-a-1) and (job_id=bash-b-2)"}),
+            json!({"role": "tool", "content": "(job_id=not-a-bash-id)"}),
+        ];
+        assert_eq!(
+            background_jobs_started(&messages),
+            vec!["bash-a-1".to_string(), "bash-b-2".to_string()]
+        );
+        // An id the registry does not know is dropped without a notice.
+        let mut owed = vec!["bash-never-registered-9".to_string()];
+        assert_eq!(finished_background_jobs(&mut owed), None);
+        assert!(owed.is_empty());
     }
 
     /// Upstream #9034: a money ceiling stops the run without failing it. The
