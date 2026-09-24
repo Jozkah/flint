@@ -280,18 +280,50 @@ export type BuildPromptInput = {
   summaryCache?: Map<string, string>
 }
 
+/** The most of a room prompt the skill catalog may take, in characters. Same
+ * budget as the agent's catalog (`core::agent::context`): unbounded, a few
+ * plugin packs put hundreds of skills in front of every turn. */
+export const SKILL_CATALOG_BUDGET_CHARS = 8_000
+/** The longest description one catalog line carries; `skill_read` has the rest. */
+export const SKILL_SUMMARY_MAX_CHARS = 120
+
+/** A description cut to its first line and [`SKILL_SUMMARY_MAX_CHARS`]. */
+export function skillSummary(description: string | undefined): string {
+  const first = (description ?? '').trim().split('\n')[0].trim()
+  const chars = [...first]
+  if (chars.length <= SKILL_SUMMARY_MAX_CHARS) return first
+  return `${chars.slice(0, SKILL_SUMMARY_MAX_CHARS - 3).join('').trimEnd()}...`
+}
+
 /**
- * Render the resolved skills into a catalog block, matching the agent's own
- * skill catalog rendering exactly (`## Skill: <name>` per entry, description
- * on the next paragraph when present). Returns null when there is nothing to
- * advertise, so callers append nothing rather than an empty header.
+ * Render the resolved skills into a catalog block, in the agent's own format:
+ * one line per skill, name and a short summary, within
+ * [`SKILL_CATALOG_BUDGET_CHARS`]. Standalone skills come before plugin skills,
+ * so they are what stays listed when the budget runs out; the rest are
+ * counted. Returns null when there is nothing to advertise, so callers append
+ * nothing rather than an empty header.
  */
 export function renderSkillsCatalog(skills: SkillMeta[]): string | null {
   if (skills.length === 0) return null
-  const list = skills
-    .map((s) => (s.description ? `## Skill: ${s.name}\n\n${s.description}` : `## Skill: ${s.name}`))
-    .join('\n\n')
-  return `# Skills\n\n${list}`
+  const ordered = [...skills].sort((a, b) => Number(Boolean(a.plugin)) - Number(Boolean(b.plugin)))
+  const lines: string[] = []
+  let used = 0
+  let omitted = 0
+  for (const s of ordered) {
+    const summary = skillSummary(s.description)
+    const line = summary ? `- \`${s.name}\`: ${summary}` : `- \`${s.name}\``
+    if (used + line.length + 1 > SKILL_CATALOG_BUDGET_CHARS) {
+      omitted += 1
+      continue
+    }
+    used += line.length + 1
+    lines.push(line)
+  }
+  let block = `# Skills\n\n${lines.join('\n')}`
+  if (omitted > 0) {
+    block += `\n\n${omitted} more skill${omitted === 1 ? ' is' : 's are'} not listed here to keep the prompt small.`
+  }
+  return block
 }
 
 export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt> {
