@@ -6,7 +6,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
 }))
 
-import { runAccessRequest, useAccessRequests } from '../accessRequests'
+import {
+  ACCESS_REQUEST_TIMEOUT_MS,
+  runAccessRequest,
+  useAccessRequests,
+} from '../accessRequests'
 
 const PREPARED = {
   status: 'ok',
@@ -86,6 +90,39 @@ describe('runAccessRequest', () => {
       // What was shown, never the model's spelling.
       path: 'D:\\projects\\notes',
     })
+  })
+
+  it('gives up on an unanswered request and tells the model to continue', async () => {
+    vi.useFakeTimers()
+    try {
+      const run = runAccessRequest({ path: 'D:/p', reason: 'r' }, 't1', opts)
+      await vi.waitFor(() => {
+        expect(useAccessRequests.getState().queue).toHaveLength(1)
+      })
+      await vi.advanceTimersByTimeAsync(ACCESS_REQUEST_TIMEOUT_MS)
+      const out = JSON.parse(await run)
+      expect(out.status).toBe('timed_out')
+      expect(out.message).toBe(
+        'The access request timed out without an answer; continue without it.'
+      )
+      expect(useAccessRequests.getState().queue).toHaveLength(0)
+      expect(calls('access_grant')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an answer before the timeout stands', async () => {
+    vi.useFakeTimers()
+    try {
+      const run = runAccessRequest({ path: 'D:/p', reason: 'r' }, 't1', opts)
+      await answerNext('session')
+      expect(JSON.parse(await run).status).toBe('granted')
+      await vi.advanceTimersByTimeAsync(ACCESS_REQUEST_TIMEOUT_MS)
+      expect(calls('access_record_decision')).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps a grant only when the user explicitly chooses always', async () => {
