@@ -433,6 +433,18 @@ export function cleanUpstreamErrorMessage(raw: string): string {
  * useful to users. Returns null when `err` is not a recognised transport error.
  */
 export function describeTransportError(err: unknown): string | null {
+  const failure = describeTransportFailure(err)
+  return failure ? withTransportDetail(failure.friendly, failure.detail) : null
+}
+
+/** The friendly text, then the raw cause on its own line. */
+function withTransportDetail(friendly: string, detail: string): string {
+  return detail ? `${friendly}\nDetails: ${detail}` : friendly
+}
+
+function describeTransportFailure(
+  err: unknown
+): { friendly: string; detail: string } | null {
   const raw = err instanceof Error ? err.message : String(err)
   if (typeof raw !== 'string' || !raw) return null
   const m = raw.toLowerCase()
@@ -449,16 +461,48 @@ export function describeTransportError(err: unknown): string | null {
     /unreachable/.test(m)
   if (!isTransport) return null
 
-  if (/dns error|failed to lookup|name resolution|unreachable/.test(m)) {
-    return "Couldn't reach the provider — the address could not be resolved. Check the provider's Base URL and your internet connection."
+  // The friendly line says what kind of failure it was; the raw text keeps
+  // the actual cause (the OS error, the address tried) for the user and logs.
+  const detail = transportErrorDetail(raw)
+  const withDetail = (friendly: string) => ({ friendly, detail })
+
+  // Unreachable is checked before DNS: the name resolved, but there is no
+  // route to the address (a VPN/Tailscale peer that is offline, a host that
+  // is down), which is a different fix from a mistyped hostname.
+  if (/unreachable|no route to host/.test(m)) {
+    return withDetail(
+      "Couldn't reach the provider — the host or network is unreachable. Check that the server is running and that any VPN or Tailscale connection to it is up."
+    )
+  }
+  if (/dns error|failed to lookup|name resolution/.test(m)) {
+    return withDetail(
+      "Couldn't reach the provider — the address could not be resolved. Check the provider's Base URL and your internet connection."
+    )
   }
   if (/timed out|timeout/.test(m)) {
-    return 'The provider took too long to respond and the request timed out. It may be overloaded or slow to start — try again.'
+    return withDetail(
+      'The provider took too long to respond and the request timed out. It may be overloaded or slow to start — try again.'
+    )
   }
   if (/tls|certificate|ssl|handshake/.test(m)) {
-    return "Couldn't establish a secure connection to the provider (TLS/certificate error). Verify the endpoint URL."
+    return withDetail(
+      "Couldn't establish a secure connection to the provider (TLS/certificate error). Verify the endpoint URL."
+    )
   }
-  return "Couldn't reach the provider — the connection failed. Check the provider's Base URL and your internet connection, then try again."
+  return withDetail(
+    "Couldn't reach the provider — the connection failed. Check the provider's Base URL and your internet connection, then try again."
+  )
+}
+
+/** Longest raw cause kept alongside a friendly transport message. */
+const MAX_TRANSPORT_DETAIL = 300
+
+/** The raw transport error, on one line and bounded, for display and logs. */
+function transportErrorDetail(raw: string): string {
+  const oneLine = raw.replace(/\s+/g, ' ').trim()
+  return oneLine.length > MAX_TRANSPORT_DETAIL
+    ? `${oneLine.slice(0, MAX_TRANSPORT_DETAIL)}…`
+    : oneLine
 }
 
 function requestUrlOf(input: RequestInfo | URL): string {
@@ -608,8 +652,13 @@ export function createCustomFetch(
     try {
       res = await baseFetch(input, init)
     } catch (err) {
-      const friendly = describeTransportError(err)
-      if (!friendly) throw err
+      const failure = describeTransportFailure(err)
+      if (!failure) throw err
+      // The URL belongs with the summary; the raw cause stays on its own line.
+      const friendly = withTransportDetail(
+        `${failure.friendly} (${requestUrlOf(input)})`,
+        failure.detail
+      )
       // A real request just failed at the transport layer. That, and only
       // that, is what marks a provider offline — nothing probes for it.
       if (origin) {
@@ -617,7 +666,7 @@ export function createCustomFetch(
           .getState()
           .markUnreachable(origin, friendly)
       }
-      throw new Error(`${friendly} (${requestUrlOf(input)})`)
+      throw new Error(friendly)
     }
     // Answered at all: whatever was wrong with the endpoint is over. A 4xx is
     // still an answer, so it clears the offline mark too.

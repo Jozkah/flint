@@ -334,6 +334,34 @@ describe('describeTransportError', () => {
     expect(msg).toMatch(/could not be resolved/i)
   })
 
+  it('maps unreachable hosts to their own message, not a DNS one', () => {
+    const msg = describeTransportError(
+      new Error(
+        'v100:8081 could not connect: error trying to connect: A socket operation was attempted to an unreachable host. (os error 10065)'
+      )
+    )
+    expect(msg).toMatch(/host or network is unreachable/i)
+    expect(msg).not.toMatch(/could not be resolved/i)
+  })
+
+  it('keeps the raw underlying error as a detail line', () => {
+    const msg = describeTransportError(
+      new Error('dns error: failed to lookup address\n  (os error 11001)')
+    )
+    expect(msg).toContain(
+      '\nDetails: dns error: failed to lookup address (os error 11001)'
+    )
+  })
+
+  it('bounds a very long raw error', () => {
+    const msg = describeTransportError(
+      new Error(`error sending request ${'x'.repeat(1000)}`)
+    )!
+    const detail = msg.split('\nDetails: ')[1]
+    expect(detail.length).toBeLessThanOrEqual(301)
+    expect(detail.endsWith('…')).toBe(true)
+  })
+
   it('maps timeouts to a timeout message', () => {
     expect(describeTransportError(new Error('operation timed out'))).toMatch(/timed out/i)
   })
