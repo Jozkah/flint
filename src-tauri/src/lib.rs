@@ -306,12 +306,71 @@ mod exit_cancel_tests {
 
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
-async fn confirm_exit<R: tauri::Runtime>(_app_handle: tauri::AppHandle<R>) {
+async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
     SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-    tokio::spawn(async {
+    tokio::spawn(async move {
+        // #79: std::process::exit skips RunEvent::Exit, so reap agent process
+        // trees and MCP servers here first or they outlive the app.
+        let state = app_handle.state::<AppState>();
+        force_quit_cleanup(
+            tauri_plugin_agent_tools::tools::proc::kill_all,
+            crate::core::mcp::helpers::background_cleanup_mcp_servers(&app_handle, &state),
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+        core::app::settings_store::flush_settings();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
     });
+}
+
+/// The cleanup a force quit owes before `std::process::exit` (#79): kill the
+/// agent process trees, then stop MCP servers, bounded by `limit` so a stuck
+/// server cannot keep the app from quitting.
+#[cfg(not(feature = "cli"))]
+async fn force_quit_cleanup<F: std::future::Future>(
+    kill_agent_processes: impl FnOnce(),
+    stop_mcp_servers: F,
+    limit: std::time::Duration,
+) {
+    kill_agent_processes();
+    if tokio::time::timeout(limit, stop_mcp_servers).await.is_err() {
+        log::warn!("MCP cleanup timed out during force quit");
+    }
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod force_quit_tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_force_quit_kills_agent_processes_and_stops_mcp_servers() {
+        let killed = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let (k, s) = (killed.clone(), stopped.clone());
+        super::force_quit_cleanup(
+            move || k.store(true, Ordering::SeqCst),
+            async move { s.store(true, Ordering::SeqCst) },
+            Duration::from_secs(5),
+        )
+        .await;
+        assert!(killed.load(Ordering::SeqCst));
+        assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_stuck_mcp_server_cannot_block_the_force_quit() {
+        let started = std::time::Instant::now();
+        super::force_quit_cleanup(
+            || {},
+            std::future::pending::<()>(),
+            Duration::from_millis(100),
+        )
+        .await;
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
 }
 
 #[cfg(not(feature = "cli"))]
