@@ -630,7 +630,10 @@ export function ThreadConversation({
       // Tools run one at a time below, so the rest are genuinely queued.
       useToolCallRuntime
         .getState()
-        .enqueue(sessionData.tools.map((tc) => tc.toolCallId))
+        .enqueue(
+          sessionData.tools.map((tc) => tc.toolCallId),
+          threadId
+        )
 
       ;(async () => {
         for (const toolCall of sessionData.tools) {
@@ -894,7 +897,7 @@ export function ThreadConversation({
           }
         }
 
-        useToolCallRuntime.getState().settleRemaining()
+        useToolCallRuntime.getState().settleRemaining(threadId)
         sessionData.tools = []
         toolApprovalPromises.current.clear()
         toolCallAbortController.current = null
@@ -903,7 +906,7 @@ export function ThreadConversation({
         if (error.name !== 'AbortError') {
           console.error('Tool call error:', error)
         }
-        useToolCallRuntime.getState().settleRemaining()
+        useToolCallRuntime.getState().settleRemaining(threadId)
         sessionData.tools = []
         toolApprovalPromises.current.clear()
         toolCallAbortController.current = null
