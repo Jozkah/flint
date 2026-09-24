@@ -869,13 +869,14 @@ export default class mlx_extension extends AIEngine {
               args: [tokenizerConfigPath],
             }
           )
-          // Check for tool/function calling indicators
+          // Check for tool/function calling indicators. Not 'assistant':
+          // that is the chat role name in nearly every chat template, so it
+          // marked almost every safetensors model as tool-capable (#64).
           const tcLower = tokenizerConfigContent.toLowerCase()
           if (
             tcLower.includes('function_call') ||
             tcLower.includes('tool_use') ||
-            tcLower.includes('tools') ||
-            tcLower.includes('assistant')
+            tcLower.includes('tools')
           ) {
             logger.info(
               `Tool support detected from tokenizer_config.json for ${modelId}`
