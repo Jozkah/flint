@@ -112,6 +112,12 @@ pub const SYSTEM_PASSTHROUGH: &[&str] = &[
 pub const HOME_KEYS: &[&str] = &["HOME", "USERPROFILE", "APPDATA"];
 
 /// Every spelling of "where temporary files go".
+/// Tool caches pointed into the synthetic home, and where under it.
+pub const HOME_CACHES: &[(&str, &str)] = &[
+    ("GOCACHE", r"AppData\Local\go-build"),
+    ("PIP_CACHE_DIR", r"AppData\Local\pip\Cache"),
+];
+
 pub const TEMP_KEYS: &[&str] = &["TEMP", "TMP", "TMPDIR"];
 
 /// Names that must never be copied to a sandboxed process even if some future
@@ -380,6 +386,16 @@ pub fn build<H: HostEnv>(host: &H, spec: &SandboxEnvSpec<'_>) -> Result<SandboxE
         env.set(name, value.clone());
     }
 
+    // Per-user tool caches whose Windows default is under `LOCALAPPDATA`. That
+    // variable must stay the host's (see REQUIRED), and the host's is not
+    // writable from the container, so without this `go build` fails on its
+    // build cache. Everything else a toolchain defaults to (`GOPATH`,
+    // `%APPDATA%\npm-cache`, `DOTNET_CLI_HOME`, `~\.nuget`) already resolves
+    // into the synthetic home. Only filled when the caller did not set one.
+    for (name, sub) in HOME_CACHES {
+        env.set_if_absent(name, spec.home.join(sub).into_os_string());
+    }
+
     for name in REQUIRED {
         if !env.contains(name) {
             return Err(EnvError::MissingRequired { name });
@@ -458,6 +474,32 @@ mod tests {
             }
         }
         out
+    }
+
+    /// Go's build cache defaults under the host `LOCALAPPDATA`, which the
+    /// container cannot write; it must land in the synthetic home instead,
+    /// unless the caller chose a location.
+    #[test]
+    fn tool_caches_default_into_the_synthetic_home() {
+        let env = built(&host());
+        let (home, _) = spec_paths();
+        assert_eq!(
+            env.get("GOCACHE"),
+            Some(home.join(r"AppData\Local\go-build").as_os_str())
+        );
+        let (home, temp) = spec_paths();
+        let extra = [("GOCACHE", OsString::from(r"D:\cache"))];
+        let chosen = build(
+            &host(),
+            &SandboxEnvSpec {
+                home: &home,
+                temp: &temp,
+                path: None,
+                extra: &extra,
+            },
+        )
+        .expect("built");
+        assert_eq!(chosen.get("GOCACHE"), Some(OsStr::new(r"D:\cache")));
     }
 
     #[test]

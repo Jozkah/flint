@@ -272,6 +272,49 @@ pub fn release(workspace: &Path) {
 #[cfg(not(windows))]
 pub fn release(_workspace: &Path) {}
 
+/// Does this SDDL string carry an allow ACE for every AppContainer?
+///
+/// That is `ALL APPLICATION PACKAGES` (`AC`, `S-1-15-2-1`). A lowbox token
+/// passes an access check only when the DACL grants its package SID, one of its
+/// capabilities, or that group; `Everyone` (`WD`) alone is not enough, which is
+/// exactly the case this answers. Pure so it is testable on every platform.
+pub fn sddl_admits_app_packages(sddl: &str) -> bool {
+    let dacl = match sddl.find("D:") {
+        Some(at) => &sddl[at + 2..],
+        None => return false,
+    };
+    // The DACL ends where the SACL (`S:`) begins.
+    let dacl = dacl.split("S:").next().unwrap_or(dacl);
+    dacl.split('(').skip(1).any(|ace| {
+        let fields: Vec<&str> = ace.trim_end_matches(')').split(';').collect();
+        fields.len() >= 6
+            && fields[0] == "A"
+            && matches!(fields[5].trim_end_matches(')'), "AC" | "S-1-15-2-1")
+    })
+}
+
+/// Whether a process in the sandbox can open the NUL device on this machine.
+///
+/// `Some(false)` means `\Device\Null`'s DACL grants `Everyone` but not `ALL
+/// APPLICATION PACKAGES`, so every open of `NUL` / `\.\NUL` from inside an
+/// AppContainer is refused with "Access is denied" -- Go's buildID probe and
+/// telemetry child, git's `/dev/null`, `> NUL` in cmd. The container itself is
+/// a plain (not less-privileged) AppContainer, so no capability can fix this:
+/// the only remedy is an ACE on the device object, a machine-wide security
+/// change that needs an administrator and that Jan deliberately does not make
+/// on its own. What Jan can do is say so instead of blaming a folder grant.
+/// `None` when the descriptor could not be read (the answer is unknown).
+#[cfg(windows)]
+pub fn null_device_admits_sandbox() -> Option<bool> {
+    static CACHE: std::sync::OnceLock<Option<bool>> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| win::null_device_sddl().map(|sddl| sddl_admits_app_packages(&sddl)))
+}
+
+#[cfg(not(windows))]
+pub fn null_device_admits_sandbox() -> Option<bool> {
+    None
+}
+
 /// Where a sandboxed launch got to before it failed.
 ///
 /// The point of naming the stage is that the fixes are completely different.
@@ -648,6 +691,68 @@ mod win {
 
     fn last_error_code() -> i32 {
         std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
+    }
+
+    /// The DACL of `\.\NUL` as SDDL, read with `READ_CONTROL` only.
+    pub fn null_device_sddl() -> Option<String> {
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo,
+            SDDL_REVISION_1,
+        };
+        use windows_sys::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+        };
+        const READ_CONTROL: u32 = 0x0002_0000;
+        let name = wide(OsStr::new(r"\\.\NUL"));
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                READ_CONTROL,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let status = unsafe {
+            GetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut sd,
+            )
+        };
+        unsafe { CloseHandle(handle) };
+        if status != ERROR_SUCCESS || sd.is_null() {
+            return None;
+        }
+        let mut text: PWSTR = std::ptr::null_mut();
+        let ok = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                sd,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut text,
+                std::ptr::null_mut(),
+            )
+        };
+        unsafe { LocalFree(sd as _) };
+        if ok == 0 || text.is_null() {
+            return None;
+        }
+        let len = (0..).take_while(|&i| unsafe { *text.add(i) } != 0).count();
+        let sddl = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, len) });
+        unsafe { LocalFree(text as _) };
+        Some(sddl)
     }
 
     /// Owns a `PSID` allocated by the isolation APIs.
@@ -1569,6 +1674,19 @@ mod tests {
 
     fn ws() -> PathBuf {
         PathBuf::from(r"C:\Users\me\.jan\agent-workspace\threads\t1")
+    }
+
+    #[test]
+    fn app_package_aces_are_recognised_in_the_dacl_only() {
+        // The descriptor \Device\Null carried on the machine the bug was found on.
+        let observed = "D:(A;;0x1201bf;;;WD)(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;RC)S:AI(ML;;NW;;;LW)";
+        assert!(!sddl_admits_app_packages(observed));
+        assert!(sddl_admits_app_packages("D:(A;;GRGWGX;;;WD)(A;;GRGWGX;;;AC)"));
+        assert!(sddl_admits_app_packages("D:(A;;0x1201bf;;;S-1-15-2-1)"));
+        // A deny ACE, or an AC entry only in the SACL, admits nobody.
+        assert!(!sddl_admits_app_packages("D:(D;;FA;;;AC)"));
+        assert!(!sddl_admits_app_packages("D:(A;;FA;;;WD)S:(AU;SA;FA;;;AC)"));
+        assert!(!sddl_admits_app_packages(""));
     }
 
     #[test]

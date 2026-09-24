@@ -1983,7 +1983,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 {
                     None
                 }
-                ref c => jail::failure_hint(&policy, c),
+                ref c => jail::failure_hint(&policy, c, &out),
             };
             if let Some(hint) = hint {
                 out.push_str(&hint);
