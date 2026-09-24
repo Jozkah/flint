@@ -85,6 +85,7 @@ import {
   parseServerContextLimit,
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
+import { unloadForContextResize } from '@/lib/contextResizeUnload'
 import { Button } from '@/components/ui/button'
 import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -1924,7 +1925,13 @@ export function ThreadConversation({
         return
       }
     } else {
-      await serviceHub.models().stopModel(selectedModel.id)
+      // MLX's unload throws when no session is tracked for the model (it was
+      // never loaded, or already unloaded). The new ctx_len still applies on
+      // the next load, so a failed unload must not abort the resize.
+      await unloadForContextResize(
+        (id) => serviceHub.models().stopModel(id),
+        selectedModel.id
+      )
     }
 
     // Consume any pending partial captured at the `finishReason === 'length'`
