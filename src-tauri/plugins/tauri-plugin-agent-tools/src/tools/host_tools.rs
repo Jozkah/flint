@@ -236,6 +236,112 @@ pub fn python_launcher_missing(command: &str, output: &str) -> Option<String> {
     launcher_code.then(|| "py".to_string())
 }
 
+/// Toolchain programs the environment probe reports on. A fixed list: the
+/// question is "which of the usual runtimes can the shell start", and each
+/// name costs prompt space.
+pub const PROBED_PROGRAMS: &[&str] = &[
+    "python", "python3", "py", "node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "cargo",
+    "rustc", "go", "dotnet", "java", "git", "uv", "pip", "make", "cmake", "gcc", "clang",
+];
+
+/// Which probed programs the confined shell can start, and which are installed
+/// on the host but cannot be started there. A program on neither list is not
+/// installed; it is left out to keep the prompt short.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolchainReport {
+    pub runnable: Vec<String>,
+    pub unavailable: Vec<String>,
+}
+
+/// Classify `names` without starting the sandbox: a program is runnable when
+/// it resolves on `sandbox_path` to a file in a folder the container may
+/// execute from (`can_execute`) that is not part of an MSYS2 installation;
+/// installed-but-unrunnable when it is not runnable yet resolves on
+/// `host_path`.
+pub fn classify_programs(
+    names: &[&str],
+    sandbox_path: &OsString,
+    host_path: &OsString,
+    pathext: &str,
+    can_execute: impl Fn(&Path) -> Option<bool>,
+) -> ToolchainReport {
+    let mut report = ToolchainReport::default();
+    for name in names {
+        let runnable = locate_on_host(name, sandbox_path, pathext).is_some_and(|found| {
+            let dir = found.parent().unwrap_or(&found);
+            !is_msys_install(dir) && can_execute(dir) == Some(true)
+        });
+        if runnable {
+            report.runnable.push(name.to_string());
+        } else if locate_on_host(name, host_path, pathext).is_some() {
+            report.unavailable.push(name.to_string());
+        }
+    }
+    report
+}
+
+/// The system folders at the head of the AppContainer shell's `PATH`, as
+/// `appcontainer::sandbox_path` builds them. The shell's own runtime folders
+/// that follow are either these or an MSYS2 installation, which runs nothing
+/// here, so they do not change the answer.
+fn system_dirs() -> Vec<PathBuf> {
+    let Some(root) = std::env::var_os("SystemRoot").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    let system32 = root.join("system32");
+    vec![
+        system32.clone(),
+        root,
+        system32.join("Wbem"),
+        system32.join("WindowsPowerShell").join("v1.0"),
+    ]
+}
+
+/// The probe for this machine. `None` where the answer is not known: any
+/// backend but AppContainer (bubblewrap and Seatbelt expose the host's
+/// programs, so there is nothing surprising to warn about, and a guess would
+/// only mislead). Computed once per app session; [`reset_toolchain_probe`]
+/// drops the cached answer.
+pub fn probe_toolchains() -> Option<ToolchainReport> {
+    let mut cache = TOOLCHAINS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(done) = cache.as_ref() {
+        return done.clone();
+    }
+    let answer = compute_toolchains();
+    *cache = Some(answer.clone());
+    answer
+}
+
+/// Forget the cached probe, so the next call looks again.
+pub fn reset_toolchain_probe() {
+    *TOOLCHAINS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+static TOOLCHAINS: std::sync::Mutex<Option<Option<ToolchainReport>>> =
+    std::sync::Mutex::new(None);
+
+fn compute_toolchains() -> Option<ToolchainReport> {
+    if !cfg!(windows) || crate::tools::jail::backend() != crate::tools::jail::Backend::AppContainer
+    {
+        return None;
+    }
+    let host = std::env::var_os("PATH").unwrap_or_default();
+    let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
+    let mut dirs = system_dirs();
+    let extra = usable_host_dirs(&host, profile.as_deref(), &dirs, container_can_execute);
+    dirs.extend(extra);
+    let sandbox = std::env::join_paths(&dirs).ok()?;
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    Some(classify_programs(
+        PROBED_PROGRAMS,
+        &sandbox,
+        &host,
+        &pathext,
+        container_can_execute,
+    ))
+}
+
 #[cfg(windows)]
 mod win {
     use std::ffi::OsStr;
@@ -528,6 +634,48 @@ mod tests {
         assert!(hint.contains("git_inspect"), "{hint}");
         assert!(hint.contains("Do not retry"), "{hint}");
         assert!(!hint.contains("  "), "no runs of spaces: {hint}");
+    }
+
+    #[test]
+    fn classifies_runnable_unrunnable_and_absent_programs() {
+        let root = TempDir::new("classify");
+        let open = root.path().join("open");
+        let locked = root.path().join("locked");
+        let git = root.path().join("Git");
+        let git_cmd = git.join("cmd");
+        for d in [&open, &locked, &git_cmd, &git.join("usr").join("bin")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(git.join("usr").join("bin").join("msys-2.0.dll"), "x").unwrap();
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        for (dir, name) in [(&open, "node"), (&locked, "python"), (&git_cmd, "git"), (&open, "npm")] {
+            std::fs::write(dir.join(format!("{name}{ext}")), "x").unwrap();
+        }
+        // The sandbox PATH carries `open` and (wrongly) Git's folder; the host
+        // PATH has all three. `locked` denies app packages.
+        let sandbox = std::env::join_paths([open.clone(), git_cmd.clone()]).unwrap();
+        let host = std::env::join_paths([open.clone(), locked.clone(), git_cmd.clone()]).unwrap();
+        let got = classify_programs(
+            &["node", "python", "git", "cargo", "npm"],
+            &sandbox,
+            &host,
+            ".EXE;.CMD",
+            |d| Some(!d.ends_with("locked")),
+        );
+        assert_eq!(got.runnable, vec!["node", "npm"]);
+        assert_eq!(got.unavailable, vec!["python", "git"]);
+        // An ACL that cannot be read is not a yes.
+        let unknown = classify_programs(&["node"], &sandbox, &host, ".EXE", |_| None);
+        assert!(unknown.runnable.is_empty());
+        assert_eq!(unknown.unavailable, vec!["node"]);
+    }
+
+    #[test]
+    fn probed_list_has_no_duplicates() {
+        let mut v = PROBED_PROGRAMS.to_vec();
+        v.sort();
+        v.dedup();
+        assert_eq!(v.len(), PROBED_PROGRAMS.len());
     }
 
     #[cfg(windows)]

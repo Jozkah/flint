@@ -186,7 +186,7 @@ export type CoworkEnvironmentOptions = {
   shellFlavor?: 'powershell' | 'posix' | null
   /** Programs the sandbox can run, from the readiness probe. */
   runnable?: readonly string[]
-  /** Programs the task may want that the sandbox cannot run. */
+  /** Programs installed on the host that the sandbox cannot run. */
   unavailable?: readonly string[]
   /** Whether commands run by `bash` can reach the network. */
   networkFromShell?: boolean
@@ -223,7 +223,9 @@ function environmentBlock(opts: CoworkPromptOptions): string | null {
         : null
   if (os || shell) facts.push([os, shell].filter(Boolean).join(' '))
   if (opts.runnable?.length) facts.push(`Runnable here: ${opts.runnable.join(', ')}.`)
-  if (opts.unavailable?.length) facts.push(`Not runnable: ${opts.unavailable.join(', ')}.`)
+  if (opts.unavailable?.length) facts.push(
+      `Installed but not runnable in the sandbox: ${opts.unavailable.join(', ')}.`
+    )
   if (opts.networkFromShell === false) facts.push('The shell has no network access.')
   if (opts.mcpServers) {
     const names = opts.mcpServers.length ? opts.mcpServers.join(', ') : 'none'

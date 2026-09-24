@@ -567,6 +567,19 @@ pub async fn sandbox_status() -> Result<SandboxStatus, AgentToolsError> {
     })
 }
 
+/// Which common toolchain programs the confined shell can run, and which are
+/// installed on the host but cannot run in the sandbox. `None` where this is
+/// not known (any backend but AppContainer). Worked out from `PATH` and folder
+/// ACLs without starting the sandbox, once per app session; a readiness retry
+/// asks again.
+#[tauri::command]
+pub async fn sandbox_toolchains(
+) -> Result<Option<crate::tools::host_tools::ToolchainReport>, AgentToolsError> {
+    tokio::task::spawn_blocking(crate::tools::host_tools::probe_toolchains)
+        .await
+        .map_err(|e| AgentToolsError::from(format!("toolchain probe failed: {e}")))
+}
+
 /// What a session can do right now, component by component.
 ///
 /// The tool list, the run preflight and the Environment readiness card all read
@@ -605,6 +618,8 @@ pub async fn environment_readiness_retry(
     component: Option<readiness::Component>,
     reported: Option<Vec<readiness::ComponentReport>>,
 ) -> Result<readiness::EnvironmentReadiness, AgentToolsError> {
+    // The user asked to look again; programs may have been installed since.
+    crate::tools::host_tools::reset_toolchain_probe();
     let root = project_root.map(PathBuf::from);
     let mut report = tokio::task::spawn_blocking(move || match component {
         Some(component) => readiness::retry(root.as_deref(), component),

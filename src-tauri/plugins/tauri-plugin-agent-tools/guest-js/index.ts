@@ -959,6 +959,15 @@ export type SandboxStatus = {
   enforces: boolean
 }
 
+/**
+ * Toolchain programs the sandboxed shell can run, and those installed on the
+ * host that it cannot.
+ */
+export type ToolchainReport = {
+  runnable: string[]
+  unavailable: string[]
+}
+
 /** One independently-probed part of a session's environment. */
 export type ReadinessComponent =
   | 'model'
@@ -1100,6 +1109,15 @@ export async function advertisedToolSchemas(
  */
 export async function sandboxStatus(): Promise<SandboxStatus> {
   return await invoke('plugin:agent-tools|sandbox_status')
+}
+
+/**
+ * Which common toolchain programs the sandboxed shell can run, worked out
+ * without starting it. `null` when the backend cannot tell (only the Windows
+ * AppContainer sandbox reports this). Cached per app session in the backend.
+ */
+export async function sandboxToolchains(): Promise<ToolchainReport | null> {
+  return await invoke('plugin:agent-tools|sandbox_toolchains')
 }
 
 /**

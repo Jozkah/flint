@@ -8,11 +8,13 @@ import {
   executeToolStreaming,
   previewChange,
   sandboxStatus,
+  sandboxToolchains,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
   type ComponentReport,
   type OmittedTool,
   type SandboxStatus,
+  type ToolchainReport,
   type ToolSchema,
   type WorkspaceScope,
 } from '@janhq/tauri-plugin-agent-tools-api'
@@ -94,6 +96,23 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
 }
 
 let enforcesNow = false
+
+/**
+ * Which common toolchain programs the sandboxed shell can run, and which are
+ * installed but cannot run there, for the prompt's `# Environment` block.
+ * `null` when unknown (the backend only reports this for the Windows
+ * sandbox, and a failure is treated the same): the block then says nothing
+ * rather than guess. The backend caches the answer per app session and drops
+ * it on a readiness retry, so asking once per run is cheap.
+ */
+export async function getSandboxToolchains(): Promise<ToolchainReport | null> {
+  try {
+    return (await sandboxToolchains()) ?? null
+  } catch (e) {
+    console.warn('[agentTools] Failed to probe sandbox toolchains:', messageOf(e))
+    return null
+  }
+}
 
 /**
  * `advertised_tool_schemas` with its `scope` argument.

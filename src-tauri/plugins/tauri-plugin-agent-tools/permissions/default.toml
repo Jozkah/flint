@@ -55,6 +55,7 @@ permissions = [
     "allow-memory-record-uses",
     "allow-tool-schemas",
     "allow-sandbox-status",
+    "allow-sandbox-toolchains",
     "allow-environment-readiness",
     "allow-environment-readiness-retry",
     "allow-advertised-tool-schemas",

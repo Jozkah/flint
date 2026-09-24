@@ -430,7 +430,7 @@ describe('the environment block', () => {
 
     expect(prompt).toContain('OS: Windows. Shell commands run in PowerShell (no POSIX shell).')
     expect(prompt).toContain('Runnable here: git, node.')
-    expect(prompt).toContain('Not runnable: python, cargo.')
+    expect(prompt).toContain('Installed but not runnable in the sandbox: python, cargo.')
     expect(prompt).toContain('The shell has no network access.')
     expect(prompt).toContain('MCP servers in this session: none.')
     expect(prompt).toContain('never download or install a runtime')
