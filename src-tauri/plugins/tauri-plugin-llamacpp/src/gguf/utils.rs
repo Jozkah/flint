@@ -27,12 +27,52 @@ where
             let start = total_downloaded;
             let end = std::cmp::min(start + chunk_size - 1, max_total_size - 1);
 
-            let resp = client
+            let mut resp = client
                 .get(path)
                 .header("Range", format!("bytes={}-{}", start, end))
                 .send()
                 .await
                 .map_err(|e| format!("Failed to fetch chunk {}-{}: {}", start, end, e))?;
+
+            let status = resp.status();
+            if status == reqwest::StatusCode::OK {
+                // The server ignored Range and is sending the whole file from
+                // byte 0. Appending it as "the next chunk" would duplicate the
+                // file, and reading it with bytes() would pull down every byte
+                // of a multi-GB model. Stream it once, up to the cap, instead.
+                let mut data = Vec::new();
+                let mut parsed_at = 0;
+                loop {
+                    let next = resp
+                        .chunk()
+                        .await
+                        .map_err(|e| format!("Failed to read response: {}", e))?;
+                    let done = match next {
+                        Some(bytes) => {
+                            data.extend_from_slice(&bytes);
+                            data.len() >= max_total_size
+                        }
+                        None => true,
+                    };
+                    if done || data.len() - parsed_at >= chunk_size {
+                        parsed_at = data.len();
+                        let mut cursor = std::io::Cursor::new(data.as_slice());
+                        if let Ok(parsed) = parse(&mut cursor) {
+                            return Ok(parsed);
+                        }
+                    }
+                    if done {
+                        break;
+                    }
+                }
+                return Err(format!("Could not read {} from downloaded data", what));
+            }
+            if status != reqwest::StatusCode::PARTIAL_CONTENT {
+                return Err(format!(
+                    "Failed to fetch {} from {}: HTTP {}",
+                    what, path, status
+                ));
+            }
 
             let chunk_data = resp
                 .bytes()
@@ -222,4 +262,75 @@ pub async fn estimate_kv_cache_internal(
         size: chosen_size,
         per_token_size: kv_per_token,
     })
+}
+
+#[cfg(test)]
+mod remote_fetch_status_tests {
+    use super::*;
+    use std::io::Read;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Serves every request with the same status line and body.
+    async fn serve(status: &'static str, body: Vec<u8>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut req = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => req.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let head = format!(
+                        "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        status,
+                        body.len()
+                    );
+                    let _ = sock.write_all(head.as_bytes()).await;
+                    let _ = sock.write_all(&body).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        format!("http://{}/model.gguf", addr)
+    }
+
+    fn read_all(r: &mut (dyn ReadSeek + '_)) -> std::io::Result<Vec<u8>> {
+        let mut out = Vec::new();
+        r.read_to_end(&mut out)?;
+        if out.starts_with(b"GGUF") {
+            Ok(out)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "not gguf"))
+        }
+    }
+
+    // Regression for #161: an HTTP error must be reported, not parsed as bytes.
+    #[tokio::test]
+    async fn an_http_error_is_reported_with_its_status() {
+        let url = serve("404 Not Found", b"GGUF-looking error page".to_vec()).await;
+        let err = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap_err();
+        assert!(err.contains("404"), "status missing from error: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_server_ignoring_range_yields_the_file_once() {
+        let body = b"GGUF-whole-file".to_vec();
+        let url = serve("200 OK", body.clone()).await;
+        let data = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap();
+        assert_eq!(data, body);
+    }
+
+    #[tokio::test]
+    async fn a_partial_content_response_is_parsed() {
+        let body = b"GGUF-range".to_vec();
+        let url = serve("206 Partial Content", body.clone()).await;
+        let data = parse_gguf(&url, "GGUF metadata", read_all).await.unwrap();
+        assert_eq!(data, body);
+    }
 }
