@@ -1313,6 +1313,12 @@ async fn read(
         );
     }
 
+    // Looked at before it is read (Jozkah/jan#250): a multi-GB file would be
+    // allocated whole just to be cut to 64 KB, and a FIFO would block the read
+    // forever.
+    if let Err(e) = readable_file(&target).await {
+        return (format!("ERROR: {path}: {e}"), None);
+    }
     let bytes = match tokio::fs::read(&target).await {
         Ok(b) => b,
         Err(e) => return (format!("ERROR: {e}"), None),
@@ -2876,6 +2882,27 @@ async fn find(
 mod find_cap_tests {
     use super::*;
 
+    /// Jozkah/jan#250: a file too large to load whole is refused by `read`
+    /// and skipped (with a note) by `grep`, which still searches the rest.
+    #[tokio::test]
+    async fn huge_files_are_not_loaded_whole() {
+        let root = std::env::temp_dir().join(format!("jan_huge_read_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let huge = std::fs::File::create(root.join("model.gguf")).unwrap();
+        huge.set_len(READ_MAX_BYTES + 1).unwrap(); // sparse: no real 32 MiB write
+        drop(huge);
+        std::fs::write(root.join("notes.txt"), "needle\n").unwrap();
+
+        let (out, _) = read(&serde_json::json!({"path": "model.gguf"}), &root, None, &[]).await;
+        assert!(out.starts_with("ERROR") && out.contains("too large"), "{out}");
+
+        let out = grep(&serde_json::json!({"pattern": "needle", "path": "."}), &root, None, false, &[]).await;
+        assert!(out.contains("notes.txt"), "{out}");
+        assert!(out.contains("Skipped 1 file(s) over"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Jozkah/jan#251: however many files match, the result stays within the
     /// byte cap every sibling tool applies, and says it was cut.
     #[tokio::test]
@@ -2950,6 +2977,7 @@ async fn grep(
         let mut count = 0usize;
         let mut truncated = false;
         let mut skipped_secrets = 0usize;
+        let mut skipped_large = 0usize;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -2964,6 +2992,14 @@ async fn grep(
                 {
                     return true;
                 }
+            }
+            // Not loaded whole unless it is a regular file of a readable size
+            // (Jozkah/jan#250): skipped, not an error, so the rest is searched.
+            let fits = std::fs::metadata(file)
+                .is_ok_and(|m| m.is_file() && m.len() <= READ_MAX_BYTES);
+            if !fits {
+                skipped_large += 1;
+                return true;
             }
             let content = match std::fs::read_to_string(file) {
                 Ok(c) => c,
@@ -3049,13 +3085,19 @@ async fn grep(
             }
         }
 
-        let skipped_note = if skipped_secrets > 0 {
+        let mut skipped_note = if skipped_secrets > 0 {
             format!(
                 "\n\n[Skipped {skipped_secrets} credential file(s) (.env, keys, tokens); read one by name with a rule that allows it]"
             )
         } else {
             String::new()
         };
+        if skipped_large > 0 {
+            skipped_note.push_str(&format!(
+                "\n\n[Skipped {skipped_large} file(s) over {} MiB or not regular files; search those with bash (rg)]",
+                READ_MAX_BYTES / (1024 * 1024)
+            ));
+        }
         if groups.is_empty() {
             format!("No matches.{skipped_note}")
         } else {
@@ -3071,6 +3113,29 @@ async fn grep(
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+/// The largest file `read` or `grep` loads. Above the 20 MiB image limit, far
+/// above what fits the 64 KB output; bigger files are for `bash` (`head`,
+/// `rg`), which stream.
+const READ_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Whether `path` is a regular file small enough to load whole
+/// (Jozkah/jan#250). A FIFO, device or other special file is refused: reading
+/// one blocks or never ends.
+async fn readable_file(path: &Path) -> Result<(), String> {
+    let meta = tokio::fs::metadata(path).await.map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("not a regular file".to_string());
+    }
+    if meta.len() > READ_MAX_BYTES {
+        return Err(format!(
+            "{} MiB is too large to read here (limit {} MiB); use bash with head, tail or rg",
+            meta.len() / (1024 * 1024),
+            READ_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    Ok(())
 }
 
 /// Whether a file a directory walk reached is a credential file by the AH-044
