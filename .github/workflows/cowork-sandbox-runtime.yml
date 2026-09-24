@@ -43,7 +43,9 @@ jobs:
           bwrap --ro-bind / / --dev /dev --unshare-all -- /bin/true
           echo 'backend=bubblewrap (verified)' >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
 
       - name: Sandbox policy and real confined processes
         run: |
@@ -61,7 +63,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
 
       - name: Record what this platform can enforce
         run: echo "backend=appcontainer (edit-folder unsupported by design)" >> $env:GITHUB_STEP_SUMMARY
@@ -84,7 +88,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
 
       - name: Confirm the backend is really available
         run: |
