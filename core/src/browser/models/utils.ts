@@ -164,8 +164,8 @@ export const extractModelLoadParams = (
       if (validate && !validate(normalizeValue(key, value))) {
         // Invalid value - fall back to origin value
         if (originParams && key in originParams) {
-          Object.assign(modelParams, {
-            ...modelParams,
+          Object.assign(settingParams, {
+            ...settingParams,
             [key]: originParams[key as keyof typeof originParams],
           })
         }
