@@ -831,6 +831,29 @@ fn write_claude_code_keychain(
 /// [`claude_code_access_token`]) so the enterprise subscription quota is the
 /// same one omp uses.
 pub async fn access_token(provider: &str) -> Result<Option<String>, String> {
+    access_token_via(provider, |kind, token| async move { refresh(kind, &token).await }).await
+}
+
+/// Serializes account-token refreshes within the process. Both providers
+/// rotate the refresh token and reject reuse, so callers that saw the same
+/// expired token at once (parallel subagents starting together) must not each
+/// send their own refresh: all but the first were rejected and aborted their
+/// run, and reuse detection could revoke the whole token family.
+static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn unix_now() -> Result<i64, String> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "could not read the system clock".to_string())?
+        .as_secs() as i64)
+}
+
+/// [`access_token`] with the network refresh injectable, for tests.
+async fn access_token_via<F, Fut>(provider: &str, refresh_with: F) -> Result<Option<String>, String>
+where
+    F: Fn(AccountProvider, OAuthToken) -> Fut,
+    Fut: std::future::Future<Output = Result<OAuthToken, String>>,
+{
     let Some(provider_kind) = AccountProvider::from_credential_provider(provider) else {
         return Ok(None);
     };
@@ -850,16 +873,24 @@ pub async fn access_token(provider: &str) -> Result<Option<String>, String> {
         // A stored API key is a deliberate choice; never substitute a token.
         return Ok(None);
     };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| "could not read the system clock".to_string())?
-        .as_secs() as i64;
-    if token.expires_at.is_some_and(|expires_at| expires_at <= now) {
-        let refreshed = refresh(provider_kind, &token).await?;
-        store(provider_kind, &refreshed)?;
-        return Ok(Some(refreshed.access_token));
+    let expired = |token: &OAuthToken, now: i64| token.expires_at.is_some_and(|at| at <= now);
+    if !expired(&token, unix_now()?) {
+        return Ok(Some(token.access_token));
     }
-    Ok(Some(token.access_token))
+    let _refreshing = REFRESH_LOCK.lock().await;
+    // Re-read under the lock: whoever held it may already have refreshed and
+    // stored a new token (in this process, or another sharing the store), and
+    // refreshing again would spend the refresh token it just rotated out.
+    let token = match CredentialStore::load(provider)? {
+        Some(Credential::OAuthToken(current)) => current,
+        _ => return Ok(None),
+    };
+    if !expired(&token, unix_now()?) {
+        return Ok(Some(token.access_token));
+    }
+    let refreshed = refresh_with(provider_kind, token).await?;
+    store(provider_kind, &refreshed)?;
+    Ok(Some(refreshed.access_token))
 }
 /// Whether `provider` is authenticated with an OAuth account token rather
 /// than a plain API key. This is the discriminator for selecting the OAuth
@@ -1123,6 +1154,47 @@ mod tests {
 
     async fn alias_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
         ALIAS_TEST_LOCK.lock().await
+    }
+
+    /// #113: callers that find the same expired token at once send exactly
+    /// one refresh and all get the new token.
+    #[tokio::test]
+    async fn concurrent_expired_token_callers_refresh_once() {
+        let _tmp = TempSecrets::new();
+        let expired = OAuthToken {
+            access_token: "old".into(),
+            refresh_token: Some("r0".into()),
+            expires_at: Some(1),
+            token_type: "Bearer".into(),
+            scopes: Vec::new(),
+        };
+        store(AccountProvider::Claude, &expired).unwrap();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let refresher = |_kind: AccountProvider, token: OAuthToken| {
+            let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                if n > 0 || token.refresh_token.as_deref() != Some("r0") {
+                    return Err("refresh token reused".to_string());
+                }
+                Ok(OAuthToken {
+                    access_token: "fresh".into(),
+                    refresh_token: Some("r1".into()),
+                    expires_at: Some(4_000_000_000),
+                    token_type: "Bearer".into(),
+                    scopes: Vec::new(),
+                })
+            }
+        };
+        let provider = AccountProvider::Claude.credential_provider();
+        let results = futures::future::join_all(
+            (0..5).map(|_| access_token_via(provider, refresher)),
+        )
+        .await;
+        for result in results {
+            assert_eq!(result, Ok(Some("fresh".to_string())));
+        }
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     /// #132: when the write-back to Claude Code's keychain fails, the rotated
