@@ -330,26 +330,43 @@ pub async fn unload_mlx_model<R: Runtime>(
     pid: i32,
 ) -> ServerResult<UnloadResult> {
     let state: State<MlxState> = app_handle.state();
-    let mut map = state.mlx_server_process.lock().await;
+    Ok(unload_mlx_model_impl(state.mlx_server_process.clone(), pid).await)
+}
 
-    if let Some(session) = map.remove(&pid) {
+/// Core unload logic, decoupled from Tauri AppHandle.
+///
+/// A PID that is not tracked is reported as a failure: the caller asked to
+/// unload something this plugin never started (or already unloaded), and a
+/// `success: true` there would be indistinguishable from a real termination.
+pub async fn unload_mlx_model_impl(
+    process_map_arc: Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
+    pid: i32,
+) -> UnloadResult {
+    // Take the session out under the lock, then release it before waiting
+    // for the process to exit.
+    let session = process_map_arc.lock().await.remove(&pid);
+
+    if let Some(session) = session {
+        #[allow(unused_mut)]
         let mut child = session.child;
 
         #[cfg(unix)]
         {
             graceful_terminate_process(&mut child).await;
         }
+        #[cfg(not(unix))]
+        drop(child);
 
-        Ok(UnloadResult {
+        UnloadResult {
             success: true,
             error: None,
-        })
+        }
     } else {
         log::warn!("No MLX server with PID '{}' found", pid);
-        Ok(UnloadResult {
-            success: true,
-            error: None,
-        })
+        UnloadResult {
+            success: false,
+            error: Some(format!("No MLX server with PID '{}' found", pid)),
+        }
     }
 }
 
@@ -439,5 +456,20 @@ mod load_lock_tests {
         let result = load.await.unwrap();
         assert!(result.is_err(), "fake server never signals readiness");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression for #160: unloading an untracked PID must not report success.
+    #[tokio::test]
+    async fn unloading_an_untracked_pid_reports_failure() {
+        let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let result = unload_mlx_model_impl(map, 4242).await;
+        assert!(!result.success);
+        assert!(result.error.as_deref().unwrap_or("").contains("4242"));
     }
 }
