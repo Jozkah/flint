@@ -855,9 +855,6 @@ mod tests {
         assert!(describe_create_failure(401, None).contains("should not require auth"));
     }
 
-    /// Spin up a mock of the two endpoints and drive the whole flow: create,
-    /// one `pending` poll, then `approved`. Asserts the request bodies match the
-    /// reference client's field names -- the thing a mock-only test can still
     /// A server that sends an absurd `expires_in` must not panic the claim
     /// loop (`Instant + Duration` overflow, #191).
     #[test]
@@ -885,6 +882,9 @@ mod tests {
         });
     }
 
+    /// Spin up a mock of the two endpoints and drive the whole flow: create,
+    /// one `pending` poll, then `approved`. Asserts the request bodies match the
+    /// reference client's field names -- the thing a mock-only test can still
     /// get wrong is exactly what this pins.
     #[test]
     fn create_poll_and_claim_use_the_reference_wire_format() {
