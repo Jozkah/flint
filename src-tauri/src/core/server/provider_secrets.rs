@@ -118,6 +118,86 @@ impl Drop for TestEnvGuard {
 /// `FILE_LOCK` because the index is updated around calls that take it.
 static INDEX_LOCK: Mutex<()> = Mutex::new(());
 
+/// Lock files guarding the fallback file and the index across processes.
+const FILE_XLOCK_NAME: &str = "provider_secrets.enc.lock";
+const INDEX_XLOCK_NAME: &str = "provider_secrets.index.lock";
+/// A lock file older than this is from a writer that died mid-update.
+const XLOCK_STALE: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long a writer waits for another process before going ahead anyway.
+const XLOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A cross-process lock on one of the secret files.
+///
+/// The in-process `FILE_LOCK`/`INDEX_LOCK` only serialize threads; the
+/// desktop app and `flint` CLI processes share the same data folder and each
+/// do a whole-file read-modify-write, so without this the last writer
+/// silently dropped the other's change. A `create_new` lock file is portable
+/// to every supported toolchain; one left behind by a crashed writer is
+/// reclaimed once it is stale.
+struct CrossProcessLock {
+    path: Option<PathBuf>,
+}
+
+impl CrossProcessLock {
+    fn acquire(name: &str) -> Self {
+        let path = resolve_jan_data_folder().join(name);
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let started = std::time::Instant::now();
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Self { path: Some(path) },
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age >= XLOCK_STALE);
+                    if stale {
+                        let _ = fs::remove_file(&path);
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Cannot take secrets lock {}: {e}", path.display());
+                    return Self { path: None };
+                }
+            }
+            if started.elapsed() >= XLOCK_WAIT {
+                log::warn!(
+                    "Secrets lock {} still held after {:?}; proceeding without it",
+                    path.display(),
+                    XLOCK_WAIT
+                );
+                return Self { path: None };
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+}
+
+impl Drop for CrossProcessLock {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// A staging path no concurrent writer shares: the process id plus a
+/// per-process counter. A fixed `.tmp` name let two writers truncate each
+/// other's in-flight file before the rename.
+fn unique_tmp(path: &std::path::Path, ext: &str) -> PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!("{ext}.{}.{n}.tmp", std::process::id()))
+}
+
 /// Latched on the first infrastructure-level keyring failure (D-Bus timeout,
 /// platform/storage-access failure). Once set, every secret op skips the
 /// keyring and goes straight to the encrypted file fallback for the rest of the
@@ -295,7 +375,7 @@ fn write_file_map_atomic(
     let mut blob = nonce.to_vec();
     blob.extend_from_slice(&ciphertext);
 
-    let tmp = path.with_extension("enc.tmp");
+    let tmp = unique_tmp(path, "enc");
     fs::write(&tmp, &blob).map_err(|e| e.to_string())?;
     restrict_permissions(&tmp);
     fs::rename(&tmp, path).map_err(|e| e.to_string())?;
@@ -334,7 +414,7 @@ fn write_index(names: &BTreeSet<String>) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let body = serde_json::to_vec(names).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
+    let tmp = unique_tmp(&path, "json");
     fs::write(&tmp, &body).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
@@ -345,6 +425,7 @@ fn index_set(provider: &str, present: bool) {
     let Ok(_guard) = INDEX_LOCK.lock() else {
         return;
     };
+    let _xlock = CrossProcessLock::acquire(INDEX_XLOCK_NAME);
     let mut names = read_index();
     let changed = match present {
         true => names.insert(provider.to_string()),
@@ -375,6 +456,7 @@ pub fn has_stored_key(provider: &str) -> bool {
 
 fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
     let mut map = read_file_map(&path);
     map.insert(provider.to_string(), keys.to_vec());
@@ -383,6 +465,7 @@ fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
 
 fn file_remove(provider: &str) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
+    let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
     let mut map = read_file_map(&path);
     if map.remove(provider).is_some() {
@@ -732,6 +815,39 @@ mod tests {
         );
         fs::write(&path, blob).unwrap();
         assert_eq!(file_load("openai"), vec!["sk-old".to_string()]);
+    }
+
+    /// A writer in another process holds the lock file: an update waits for
+    /// it rather than racing its read-modify-write, and a lock abandoned by a
+    /// crashed writer is reclaimed (#114).
+    #[test]
+    fn index_updates_wait_for_another_process_lock() {
+        let _tmp = TempDataFolder::new();
+        let lock = resolve_jan_data_folder().join(INDEX_XLOCK_NAME);
+        fs::write(&lock, b"other process").unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        // The environment is process-wide, so the writer thread resolves the
+        // same temp data folder this test set up.
+        let writer = std::thread::spawn(move || {
+            index_set("anthropic", true);
+            tx.send(()).unwrap();
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(300)).is_err(),
+            "the update ran while another process held the lock"
+        );
+        fs::remove_file(&lock).unwrap();
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the update proceeds once the lock is released");
+        writer.join().unwrap();
+        assert!(read_index().contains("anthropic"));
+        assert!(!lock.exists(), "the writer releases its own lock");
+    }
+
+    #[test]
+    fn staging_paths_are_unique_per_writer() {
+        let p = PathBuf::from("provider_secrets.index.json");
+        assert_ne!(unique_tmp(&p, "json"), unique_tmp(&p, "json"));
     }
 
     #[cfg(unix)]
