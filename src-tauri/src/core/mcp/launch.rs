@@ -247,7 +247,13 @@ pub(super) fn confined_mcp_command(
     confined.kill_on_drop(true);
 
     // Nothing inherited. Only the names the user approved, and only where the
-    // configuration actually supplied a value for them.
+    // configuration actually supplied a value for them. That deliberately
+    // includes the bundled npx/uvx override's `BUN_INSTALL` / `UV_CACHE_DIR`
+    // set on `cmd` (Jozkah/jan#73): both point under Flint's data folder,
+    // which the policy hides from the server (`with_hide_root(jan_data)`), so
+    // forwarding them would aim the package cache at a directory the server
+    // cannot write. Without them the tools use their default cache under the
+    // sandbox's own private home.
     confined.env_clear();
     // Except what the AppContainer helper itself needs to build the sandbox
     // (Jozkah/jan#284): it refuses to start without SystemRoot and
@@ -357,6 +363,31 @@ mod tests {
             }
         }
         assert!(!names.contains(&"PATH".to_string()), "the host PATH leaked: {names:?}");
+    }
+
+    /// Jozkah/jan#73: env set on the incoming command (the bundled npx/uvx
+    /// override's cache dirs, which live in the hidden Flint data folder) is
+    /// not carried into the confined launch.
+    #[test]
+    fn internal_override_env_does_not_reach_the_confined_server() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            eprintln!("skipped: no confinement backend here");
+            return;
+        }
+        let mut cmd = build();
+        cmd.env("BUN_INSTALL", "/flint-data/.npx");
+        cmd.env("UV_CACHE_DIR", "/flint-data/.uvx");
+        let confined =
+            confined_mcp_command(cmd, &params(true, Some(confinement())), &confinement())
+                .expect("confined");
+        let names: Vec<String> = confined
+            .as_std()
+            .get_envs()
+            .filter(|(_, v)| v.is_some())
+            .map(|(k, _)| k.to_string_lossy().to_ascii_uppercase())
+            .collect();
+        assert!(!names.contains(&"BUN_INSTALL".to_string()), "{names:?}");
+        assert!(!names.contains(&"UV_CACHE_DIR".to_string()), "{names:?}");
     }
 
     /// Nothing about the command leaks through the debug output — the argv can
