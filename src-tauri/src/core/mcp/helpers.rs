@@ -884,18 +884,18 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
     log::log!(level, "{text}");
 }
 
-/// The level and text an MCP server's stderr line is logged with.
-///
-/// A server's stderr is third-party text, and servers print credentials in
-/// their banners: it is scrubbed before the application log keeps a copy.
-/// Found by the AH-140 scenario, which saw a fixture's key land verbatim in
-/// the app log while the server's own log was clean.
 /// Stderr captured from a server that died during the handshake, scrubbed of
 /// credential-shaped text before it is logged or returned to the UI.
 fn scrub_handshake_stderr(stderr: &str) -> String {
     tauri_plugin_agent_tools::harness_error::scrub(stderr)
 }
 
+/// The level and text an MCP server's stderr line is logged with.
+///
+/// A server's stderr is third-party text, and servers print credentials in
+/// their banners: it is scrubbed before the application log keeps a copy.
+/// Found by the AH-140 scenario, which saw a fixture's key land verbatim in
+/// the app log while the server's own log was clean.
 fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
     let level_token = scrubbed.split_whitespace().next().map(|t| {
