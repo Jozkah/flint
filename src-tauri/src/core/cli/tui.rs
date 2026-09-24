@@ -12201,6 +12201,28 @@ fn grapheme_prefix(s: &str, n: usize) -> String {
 /// Enter validates and writes (an empty field clears the key, except for a
 /// `Glyph`, where it writes the off value), Esc cancels. Mirrors
 /// `handle_login_key`, minus the secret/verify machinery.
+/// Parse the field of an `Int` setting into the TOML integer to write, or
+/// `None` for a cleared field (unset). TOML integers are signed 64-bit, so a
+/// value above `i64::MAX` is refused here: casting it would wrap negative,
+/// and a negative value in a `u64` field makes agent.toml fail to load, which
+/// stops the TUI from starting for that project (#133).
+fn parse_int_setting(input: &str, default: Option<u64>, min: u64) -> Result<Option<i64>, String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(None);
+    }
+    let default = default
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "unset".into());
+    match input.parse::<u64>() {
+        Ok(n) if n < min => Err(format!("must be at least {min} (default: {default})")),
+        Ok(n) => i64::try_from(n)
+            .map(Some)
+            .map_err(|_| format!("must be at most {} (default: {default})", i64::MAX)),
+        Err(_) => Err(format!("'{input}' is not an integer")),
+    }
+}
+
 fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
     if (key.code == KeyCode::Esc || (ctrl && key.code == KeyCode::Char('c')))
         && app.settings_prompt.is_some()
@@ -12216,25 +12238,11 @@ fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
             let toml_path = app.agent_dir.join("agent.toml");
             let value: Option<toml_edit::Item> = match prompt.def().kind {
                 AgentSettingKind::Int { default, min } => {
-                    if prompt.input.trim().is_empty() {
-                        None
-                    } else {
-                        match prompt.input.trim().parse::<u64>() {
-                            Ok(n) if n >= min => Some(toml_edit::value(n as i64)),
-                            Ok(_) => {
-                                prompt.error = Some(format!(
-                                    "must be at least {min} (default: {})",
-                                    default
-                                        .map(|d| d.to_string())
-                                        .unwrap_or_else(|| "unset".into())
-                                ));
-                                return;
-                            }
-                            Err(_) => {
-                                prompt.error =
-                                    Some(format!("'{}' is not an integer", prompt.input));
-                                return;
-                            }
+                    match parse_int_setting(&prompt.input, default, min) {
+                        Ok(v) => v.map(toml_edit::value),
+                        Err(err) => {
+                            prompt.error = Some(err);
+                            return;
                         }
                     }
                 }
@@ -18005,6 +18013,24 @@ fn footer_spans(app: &App) -> Vec<Span<'static>> {
 
 #[cfg(test)]
 mod tests {
+
+    /// #133: a value above i64::MAX used to be cast with `as i64`, wrapping
+    /// negative into agent.toml and bricking the next startup.
+    #[test]
+    fn int_setting_refuses_values_that_do_not_fit_a_toml_integer() {
+        use super::parse_int_setting;
+        assert_eq!(parse_int_setting("", Some(8), 1), Ok(None));
+        assert_eq!(parse_int_setting(" 42 ", Some(8), 1), Ok(Some(42)));
+        assert_eq!(
+            parse_int_setting(&i64::MAX.to_string(), None, 1),
+            Ok(Some(i64::MAX))
+        );
+        assert!(parse_int_setting("0", Some(8), 1).is_err(), "below min");
+        assert!(parse_int_setting("abc", Some(8), 1).is_err(), "not a number");
+        let over = (i64::MAX as u64 + 1).to_string();
+        assert!(parse_int_setting(&over, None, 1).is_err(), "wraps negative");
+        assert!(parse_int_setting(&u64::MAX.to_string(), None, 1).is_err());
+    }
 
     /// An empty MCP map, for the `run_command`/`handle_key` paths that take one
     /// but whose behaviour under test has nothing to do with MCP.
