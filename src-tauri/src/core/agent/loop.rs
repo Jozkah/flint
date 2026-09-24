@@ -4224,13 +4224,12 @@ fn build_run_system_prompt(
             .0
         }
         None => {
-            // No project, so no guide or catalog of project tools -- but the
-            // rules on tool content and destructive actions hold everywhere.
+            // No project: the API-server proxy, whose caller brings its own
+            // system message. No skill catalog -- the run has no `skill_read`
+            // -- but the rules on tool content and destructive actions hold
+            // for every run that executes tools.
             let mut blocks: Vec<String> = base.map(str::to_string).into_iter().collect();
             blocks.push(format!("# Guidelines\n\n{}", crate::core::agent::context::safety_guidelines()));
-            if let Some(block) = crate::core::agent::context::load_global_skills() {
-                blocks.push(block);
-            }
             Some(blocks.join("\n\n"))
         }
     }
@@ -4573,9 +4572,8 @@ async fn orchestrate_inner(
         }
     };
     let system_prompt = Some(system_prompt);
-    // Child (subagent) runs are excluded via `system_prompt_override`, the
-    // same gate the memory-recall block above uses to distinguish a
-    // top-level run from a subagent's isolated context.
+    // Child (subagent) runs are excluded from the forced goal plan via
+    // `system_prompt_override`, which only a child run sets.
     // `/goal` is a per-request flag like `run_mode`: the TUI sets it while a
     // goal is active, and nothing else does, so every other surface (a plain
     // turn, `flint cli agent run`, a subagent) leaves the model free to reach for
@@ -4594,9 +4592,9 @@ async fn orchestrate_inner(
             None => addendum.to_string(),
         })
     } else if let Some(addendum) = todo_prompt_addendum(eager_todo_plan, todo_registry).await {
-        // Child (subagent) runs are excluded via `system_prompt_override`, the
-        // same gate the memory-recall block above uses to distinguish a
-        // top-level run from a subagent's isolated context.
+        // Never reaches a child (subagent) run: its `todo_registry` is `None`
+        // (`configure_child_args`), so `todo_prompt_addendum` has no list to
+        // describe.
         Some(match system_prompt {
             Some(sys) => format!("{sys}\n\n{addendum}"),
             None => addendum.to_string(),
