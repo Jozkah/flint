@@ -25,9 +25,13 @@ struct MLXServerCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Model ID reported by the API (defaults to parent directory name)")
     var modelId: String = ""
 
+    /// MLX buffer cache limit: 20 GiB. It was `20 * 1024 * 1024`, 20 MiB,
+    /// which made the allocator churn buffers on every step (#75).
+    static let gpuCacheLimitBytes: Int = 20 * 1024 * 1024 * 1024
+
     func run() async throws {
         // Set GPU memory limit to prevent OOM issues
-        Memory.cacheLimit = 20 * 1024 * 1024  // 20GB limit
+        Memory.cacheLimit = Self.gpuCacheLimitBytes
 
         // Print startup info
         log("[mlx] MLX-Swift Server starting...")

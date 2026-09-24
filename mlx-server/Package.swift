@@ -37,6 +37,11 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
             ],
             path: "Sources/MLXServer"
-        )
+        ),
+        .testTarget(
+            name: "MLXServerTests",
+            dependencies: ["MLXServer"],
+            path: "Tests/MLXServerTests"
+        ),
     ]
 )
