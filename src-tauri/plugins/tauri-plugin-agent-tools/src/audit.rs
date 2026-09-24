@@ -235,6 +235,16 @@ fn redact_word(word: &str) -> String {
 
 fn names_a_secret(key: &str) -> bool {
     let k = key.trim_start_matches('-').to_ascii_lowercase();
+    // An assignment's key is a name: `PGPASSWORD`, `--token`, `api.key`. A
+    // destructuring pattern in code -- `const {user,pass}=JSON.parse(...)` --
+    // is not, and was redacted for containing "pass".
+    if k.is_empty()
+        || !k
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    {
+        return false;
+    }
     [
         "password",
         "passwd",
@@ -548,6 +558,7 @@ mod tests {
         for line in [
             "test('t',()=>assert.equal(calcTotal([{price:2,qty:3}]),6))",
             "fmt.Println(strings.Repeat(\"X\",40)+strconv.Itoa(12345))",
+            "const {user,pass}=JSON.parse(req.body);",
         ] {
             assert_eq!(redact(line), line);
         }
