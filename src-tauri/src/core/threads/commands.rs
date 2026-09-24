@@ -12,7 +12,7 @@ use super::{
     constants::THREADS_FILE,
     utils::{
         ensure_data_dirs, ensure_thread_dir_exists, get_data_dir, get_messages_path,
-        get_thread_dir, get_thread_metadata_path,
+        get_thread_dir, get_thread_metadata_path, validate_thread_id,
     },
 };
 use crate::core::app::commands::get_jan_data_folder_path;
@@ -105,6 +105,7 @@ pub async fn modify_thread<R: Runtime>(
         .get("id")
         .and_then(|id| id.as_str())
         .ok_or("Missing thread id")?;
+    validate_thread_id(thread_id)?;
     let thread_dir = get_thread_dir(&data_folder, thread_id);
     if !thread_dir.exists() {
         return Err("Thread directory does not exist".to_string());
@@ -121,6 +122,7 @@ pub async fn delete_thread<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<(), String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_delete_thread(app_handle, &thread_id).await;
@@ -151,6 +153,7 @@ pub async fn list_messages<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<Vec<serde_json::Value>, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_list_messages(app_handle, &thread_id).await;
@@ -182,6 +185,7 @@ pub async fn create_message<R: Runtime>(
             .ok_or("Missing thread_id")?;
         id.to_string()
     };
+    validate_thread_id(&thread_id)?;
     let path = get_messages_path(&data_folder, &thread_id);
 
     if message.get("id").is_none() {
@@ -239,6 +243,7 @@ pub async fn modify_message<R: Runtime>(
         .get("thread_id")
         .and_then(|v| v.as_str())
         .ok_or("Missing thread_id")?;
+    validate_thread_id(thread_id)?;
     let message_id = message
         .get("id")
         .and_then(|v| v.as_str())
@@ -280,6 +285,7 @@ pub async fn delete_message<R: Runtime>(
     thread_id: String,
     message_id: String,
 ) -> Result<(), String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_delete_message(app_handle, &thread_id, &message_id).await;
@@ -310,6 +316,7 @@ pub async fn get_thread_assistant<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_get_thread_assistant(app_handle, &thread_id).await;
@@ -342,6 +349,7 @@ pub async fn create_thread_assistant<R: Runtime>(
     thread_id: String,
     assistant: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_create_thread_assistant(app_handle, &thread_id, assistant).await;
@@ -374,6 +382,7 @@ pub async fn modify_thread_assistant<R: Runtime>(
     thread_id: String,
     assistant: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_modify_thread_assistant(app_handle, &thread_id, assistant).await;
