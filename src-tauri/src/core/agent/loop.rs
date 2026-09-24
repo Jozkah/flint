@@ -578,6 +578,10 @@ struct HttpModelInvoker {
     /// this converter translates the request and decodes the upstream stream
     /// back into chat shape. `None` keeps the verbatim chat/completions path.
     converter: Option<Box<dyn UpstreamConverter>>,
+    /// The wire API `converter` was built for (`anthropic`, `google`,
+    /// `openai-responses`), `None` for chat/completions. Reported in each
+    /// request's provenance record (upstream janhq/jan#9056).
+    api_type: Option<String>,
     /// Native provider converters still use reqwest 0.12 while the default
     /// agent path uses genai's reqwest 0.13 client.
     converter_client: reqwest::Client,
@@ -597,6 +601,19 @@ struct HttpModelInvoker {
     /// through, including a retry, a fallback and a compaction summary. `None`
     /// is the ordinary case -- no quotas.toml, no ceilings, no ledger read.
     quota: Option<(std::path::PathBuf, crate::core::agent::quota::Quotas)>,
+}
+
+/// The converter a model's provider needs, and the wire API it speaks: one
+/// lookup answers both, so the provenance record cannot name a different API
+/// from the one the request is built for.
+async fn wire_for(
+    model_id: &str,
+    provider_configs: Arc<Mutex<HashMap<String, ProviderConfig>>>,
+) -> (Option<Box<dyn UpstreamConverter>>, Option<String>) {
+    match resolve_api_type_for_model(model_id, provider_configs).await {
+        Some((api_type, oauth)) => (converter_for(Some(&api_type), oauth), Some(api_type)),
+        None => (None, None),
+    }
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -689,6 +706,23 @@ impl ModelInvoker for HttpModelInvoker {
                 hash: snapshot.hash.clone(),
                 redactions: snapshot.redactions.len(),
             });
+        }
+        // Upstream janhq/jan#9056: a content-free identity record for the
+        // request, on the run's stream, before it goes out -- so a harness sees
+        // it even when the call then fails.
+        {
+            fn non_empty(v: &str) -> Option<&str> {
+                (!v.is_empty()).then_some(v)
+            }
+            let _ = events.send(crate::core::agent::provenance::of_request(
+                &normalized,
+                crate::core::agent::provenance::RequestIdentity {
+                    run_id: non_empty(&self.snapshot_identity.run),
+                    session_id: non_empty(&self.snapshot_identity.session),
+                    provider: non_empty(&self.snapshot_identity.provider),
+                    api_type: self.api_type.as_deref(),
+                },
+            ));
         }
 
         let mut out = self
@@ -4841,6 +4875,7 @@ async fn orchestrate_inner(
         (!jan_data_folder.is_empty()).then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
     ));
 
+    let (converter, api_type) = wire_for(&model_id, provider_configs.clone()).await;
     let http_model = HttpModelInvoker {
         // AH-191/AH-192: read once per run. A quotas.toml that will not parse
         // refuses the run here rather than being ignored, which is the only
@@ -4850,9 +4885,8 @@ async fn orchestrate_inner(
         upstream_url,
         api_keys: session_api_keys,
         provider_configs: provider_configs.clone(),
-        converter: resolve_api_type_for_model(&model_id, provider_configs.clone())
-            .await
-            .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
+        converter,
+        api_type,
         converter_client: converter_http_client(),
         // Session and thread are the same id on this path; the run id matches
         // the cancellation scope so a snapshot and a stop name the same run.
@@ -5241,6 +5275,7 @@ pub(crate) async fn compact_history(
         args.mlx_sessions.clone(),
     )
     .await?;
+    let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
     let model = HttpModelInvoker {
         // The run this compaction belongs to is judged at every turn of its
         // own (AH-191/AH-192). Stopping a compaction against a ceiling would
@@ -5250,9 +5285,8 @@ pub(crate) async fn compact_history(
         upstream_url,
         api_keys,
         provider_configs: args.provider_configs.clone(),
-        converter: resolve_api_type_for_model(model_id, args.provider_configs.clone())
-            .await
-            .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
+        converter,
+        api_type,
         converter_client: converter_http_client(),
         // Its own ids: a compaction is a dispatch of its own, and folding it
         // into the turn's numbering would renumber the turn's requests.
@@ -5314,6 +5348,7 @@ pub(crate) async fn evaluate_goal(
         args.mlx_sessions.clone(),
     )
     .await?;
+    let (converter, api_type) = wire_for(smol_model_id, args.provider_configs.clone()).await;
     let model = HttpModelInvoker {
         // As above: this is a helper dispatch inside a run already judged.
         quota: None,
@@ -5321,9 +5356,8 @@ pub(crate) async fn evaluate_goal(
         upstream_url,
         api_keys,
         provider_configs: args.provider_configs.clone(),
-        converter: resolve_api_type_for_model(smol_model_id, args.provider_configs.clone())
-            .await
-            .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
+        converter,
+        api_type,
         converter_client: converter_http_client(),
         invocations: std::sync::Arc::new(Invocations::default()),
         // A compaction or an evaluation is the run's own bookkeeping: it is

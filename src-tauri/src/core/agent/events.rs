@@ -4,6 +4,22 @@
 //! (the upstream call streams via SSE) plus per-step progress and one terminal
 //! `Done`/`Error`.
 
+/// One image in an outbound request, as [`StreamEvent::RequestProvenance`]
+/// reports it: identity, not content.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct ProvenanceImage {
+    /// SHA-256 over the image's decoded bytes (over the URL text for a remote
+    /// image, which has no bytes here).
+    pub sha256: String,
+    pub mime_type: String,
+    /// Decoded length in bytes.
+    pub bytes: u64,
+    /// The tool call whose result carried it, when one did. `None` for an
+    /// image the user attached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
@@ -17,6 +33,41 @@ pub enum StreamEvent {
         id: String,
         hash: String,
         redactions: usize,
+    },
+    /// What the run is about to send a provider, emitted immediately before
+    /// each request goes out (upstream janhq/jan#9056): identity, not content.
+    ///
+    /// The hashes describe the body Jan built for the adapter, so two runs can
+    /// be compared field by field without copying prompts or frames around.
+    /// Nothing here is model input or output: it never joins the transcript,
+    /// and a consumer may render it, store it or ignore it.
+    RequestProvenance {
+        /// The run that made the request (the same id its prompt snapshot and
+        /// invocation records carry).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run_id: Option<String>,
+        /// The session the request belongs to, when the run has one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// The configured provider the model resolved to, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+        /// The model id the upstream receives, without a `<provider>/` prefix.
+        model: String,
+        /// The wire API the request is built for (`anthropic`, `google`,
+        /// `openai-responses`), absent for chat/completions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        api_type: Option<String>,
+        /// SHA-256 of the request body as Jan built it.
+        request_sha256: String,
+        body_bytes: u64,
+        /// SHA-256 of the `tools` array as sent, able to change while the model
+        /// id does not.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tools_sha256: Option<String>,
+        /// Every image in the body, in order, hashed over its decoded bytes.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ProvenanceImage>,
     },
     /// A streamed content delta from the model.
     Token { text: String },
