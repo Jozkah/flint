@@ -611,8 +611,10 @@ pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
     for (i, a) in records.iter().enumerate() {
         for b in records.iter().skip(i + 1) {
             // Records that cannot apply together cannot conflict: a memory in
-            // another session or project is not in the argument.
-            if a.scope != b.scope && a.project_id != b.project_id && a.session_id != b.session_id {
+            // another session or project is not in the argument. Either
+            // mismatch alone is enough to keep them apart; a differing scope
+            // is not (a user memory applies inside every project).
+            if !could_apply_together(a, b) {
                 continue;
             }
             if let Some((subject, _, _)) = incompatible_subject(&a.content, &b.content) {
@@ -625,6 +627,16 @@ pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
         }
     }
     out
+}
+
+/// Whether some single context (one session in one project) could have both
+/// records in view. Two records bound to different projects, or to different
+/// sessions, never meet, whatever their scopes.
+fn could_apply_together(a: &MemoryRecord, b: &MemoryRecord) -> bool {
+    fn differ(x: &Option<String>, y: &Option<String>) -> bool {
+        matches!((x, y), (Some(x), Some(y)) if x != y)
+    }
+    !(differ(&a.project_id, &b.project_id) || differ(&a.session_id, &b.session_id))
 }
 
 /// Whole-word containment, so "npm" does not match inside "npmrc-free".
@@ -886,6 +898,29 @@ mod tests {
         let conflicts = detect_conflicts(&[a, b]);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].subject, "package manager");
+    }
+
+    /// Same scope, different sessions (or projects): they never share a
+    /// context, so contradicting each other is not a conflict (#65).
+    #[test]
+    fn records_in_different_sessions_or_projects_do_not_conflict() {
+        let mut a = rec("a", "Use npm for installs", Scope::Session);
+        let mut b = rec("b", "Use yarn for installs", Scope::Session);
+        a.session_id = Some("s1".into());
+        b.session_id = Some("s2".into());
+        assert!(detect_conflicts(&[a, b]).is_empty(), "cross-session");
+
+        let mut a = rec("a", "Use npm for installs", Scope::Project);
+        let mut b = rec("b", "Use yarn for installs", Scope::Project);
+        a.project_id = Some("p1".into());
+        b.project_id = Some("p2".into());
+        assert!(detect_conflicts(&[a, b]).is_empty(), "cross-project");
+
+        // A user memory still meets a project memory inside that project.
+        let a = rec("a", "Use npm for installs", Scope::User);
+        let mut b = rec("b", "Use yarn for installs", Scope::Project);
+        b.project_id = Some("p1".into());
+        assert_eq!(detect_conflicts(&[a, b]).len(), 1, "user vs project");
     }
 
     #[test]
