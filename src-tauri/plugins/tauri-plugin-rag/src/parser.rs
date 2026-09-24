@@ -380,7 +380,191 @@ fn read_text_auto(file_path: &str) -> Result<String, RagError> {
 
 #[cfg(test)]
 mod tests {
+    //! #228: parser coverage. Fixtures are built in a per-test temp dir so no
+    //! binary files live in the repo.
     use super::*;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = std::env::temp_dir().join(format!(
+                "rag-parser-{tag}-{}-{nanos}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+
+        fn file(&self, name: &str, bytes: &[u8]) -> String {
+            let path = self.0.join(name);
+            fs::write(&path, bytes).unwrap();
+            path.to_string_lossy().into_owned()
+        }
+
+        fn zip(&self, name: &str, entries: &[(&str, &str)]) -> String {
+            let path = self.0.join(name);
+            let file = fs::File::create(&path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            for (entry, body) in entries {
+                zip.start_file(*entry, zip::write::FileOptions::default())
+                    .unwrap();
+                zip.write_all(body.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+            path.to_string_lossy().into_owned()
+        }
+
+        /// A sparse file just over the parse limit, without writing 200 MB.
+        fn oversized(&self, name: &str) -> String {
+            let path = self.0.join(name);
+            let file = fs::File::create(&path).unwrap();
+            file.set_len(MAX_PARSE_FILE_SIZE + 1).unwrap();
+            path.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn is_too_large(err: RagError) -> bool {
+        matches!(err, RagError::ParseError(ref m) if m.contains("too large"))
+    }
+
+    #[test]
+    fn read_text_auto_reads_utf8() {
+        let dir = TempDir::new("utf8");
+        let path = dir.file("a.txt", "hello \u{00E9}t\u{00E9} \u{65E5}\u{672C}\n".as_bytes());
+        assert_eq!(read_text_auto(&path).unwrap(), "hello \u{00E9}t\u{00E9} \u{65E5}\u{672C}\n");
+    }
+
+    #[test]
+    fn read_text_auto_decodes_a_legacy_encoding() {
+        let dir = TempDir::new("latin");
+        // windows-1252 French text: not valid UTF-8.
+        let bytes: &[u8] = b"Le caf\xE9 cr\xE8me de la r\xE9gion est tr\xE8s appr\xE9ci\xE9 \
+            par les habitu\xE9s du march\xE9, \xE0 c\xF4t\xE9 de l'\xE9glise.\n";
+        assert!(std::str::from_utf8(bytes).is_err());
+        let path = dir.file("latin.txt", bytes);
+        let text = read_text_auto(&path).unwrap();
+        assert!(text.contains("caf\u{00E9}"), "{text}");
+    }
+
+    #[test]
+    fn every_parser_rejects_an_oversized_file() {
+        let dir = TempDir::new("big");
+        for ext in ["txt", "csv", "html", "pdf", "docx", "pptx", "xlsx"] {
+            let path = dir.oversized(&format!("big.{ext}"));
+            let err = parse_document(&path, ext).unwrap_err();
+            assert!(is_too_large(err), "{ext} accepted an oversized file");
+        }
+    }
+
+    #[test]
+    fn parse_csv_joins_cells_and_tolerates_ragged_rows() {
+        let dir = TempDir::new("csv");
+        let path = dir.file("a.csv", b"name,qty\napple,3\n\"b, c\",4,extra\n");
+        let text = parse_document(&path, "csv").unwrap();
+        assert_eq!(text, "name, qty\napple, 3\nb, c, 4, extra\n");
+    }
+
+    #[test]
+    fn parse_csv_reports_invalid_utf8_as_an_error() {
+        let dir = TempDir::new("csvbad");
+        let path = dir.file("bad.csv", b"a,b\n\xFF\xFE,c\n");
+        assert!(matches!(parse_document(&path, "csv"), Err(RagError::ParseError(_))));
+    }
+
+    #[test]
+    fn parse_html_strips_markup() {
+        let dir = TempDir::new("html");
+        let path = dir.file(
+            "a.html",
+            b"<html><body><h1>Title</h1><p>Some <b>bold</b> text.</p><script>x()</script></body></html>",
+        );
+        let text = parse_document(&path, "html").unwrap();
+        assert!(text.contains("Title"), "{text}");
+        assert!(text.contains("bold"), "{text}");
+        assert!(!text.contains("<p>"), "{text}");
+    }
+
+    #[test]
+    fn parse_docx_extracts_paragraph_text() {
+        let dir = TempDir::new("docx");
+        let path = dir.zip(
+            "a.docx",
+            &[(
+                "word/document.xml",
+                r#"<?xml version="1.0"?><w:document xmlns:w="w"><w:body><w:p><w:r><w:t>First &amp; one</w:t></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:body></w:document>"#,
+            )],
+        );
+        let text = parse_document(&path, "docx").unwrap();
+        assert_eq!(text, "First & one\nSecond");
+    }
+
+    #[test]
+    fn parse_docx_without_document_xml_is_an_error() {
+        let dir = TempDir::new("docxbad");
+        let path = dir.zip("a.docx", &[("word/other.xml", "<x/>")]);
+        let err = parse_document(&path, "docx").unwrap_err();
+        assert!(matches!(err, RagError::ParseError(ref m) if m.contains("document.xml")));
+    }
+
+    #[test]
+    fn a_non_zip_office_file_is_an_error_not_a_panic() {
+        let dir = TempDir::new("notzip");
+        for ext in ["docx", "pptx", "xlsx"] {
+            let path = dir.file(&format!("a.{ext}"), b"this is not a zip archive");
+            assert!(parse_document(&path, ext).is_err(), "{ext}");
+        }
+    }
+
+    #[test]
+    fn parse_pptx_reads_slides_in_order() {
+        let dir = TempDir::new("pptx");
+        let path = dir.zip(
+            "a.pptx",
+            &[
+                ("ppt/slides/slide2.xml", r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>Second slide</a:t></p:sld>"#),
+                ("ppt/slides/slide1.xml", r#"<p:sld xmlns:a="a" xmlns:p="p"><a:t>First slide</a:t></p:sld>"#),
+                ("ppt/presentation.xml", "<p:presentation/>"),
+            ],
+        );
+        let text = parse_document(&path, "pptx").unwrap();
+        let first = text.find("First slide").expect("slide 1 text");
+        let second = text.find("Second slide").expect("slide 2 text");
+        assert!(first < second, "{text}");
+    }
+
+    #[test]
+    fn a_malformed_pdf_is_an_error_not_a_panic() {
+        let dir = TempDir::new("pdf");
+        let path = dir.file("a.pdf", b"%PDF-1.4\nthis is truncated garbage");
+        assert!(matches!(parse_document(&path, "pdf"), Err(RagError::ParseError(_))));
+    }
+
+    #[test]
+    fn unknown_extensions_without_magic_bytes_parse_as_text() {
+        let dir = TempDir::new("unknown");
+        let path = dir.file("notes.weird", b"plain words\n");
+        assert_eq!(parse_document(&path, "weird").unwrap(), "plain words\n");
+    }
+
+    #[test]
+    fn source_code_extensions_parse_as_text() {
+        let dir = TempDir::new("code");
+        let path = dir.file("main.rs", b"fn main() {}\n");
+        assert_eq!(parse_document(&path, "rs").unwrap(), "fn main() {}\n");
+    }
 
     #[test]
     fn pptx_text_resolves_entities_and_keeps_their_spacing() {
