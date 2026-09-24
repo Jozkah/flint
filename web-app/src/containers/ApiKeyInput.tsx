@@ -55,6 +55,8 @@ export function ApiKeyInput({
   }
 
   const handleBlur = () => {
+    // Read-only while the server runs: it keeps the key it started with (#111).
+    if (isServerRunning) return
     setApiKey(inputValue)
     // Validate on blur if showError is true
     if (showError) {
@@ -78,11 +80,13 @@ export function ApiKeyInput({
         value={inputValue}
         onChange={handleChange}
         onBlur={handleBlur}
+        readOnly={isServerRunning}
+        aria-readonly={isServerRunning}
         className={cn(
           'w-full text-sm pr-16',
           hasError &&
             'border border-destructive focus:border-destructive focus:ring-destructive',
-          isServerRunning && 'opacity-50 pointer-events-none'
+          isServerRunning && 'opacity-50'
         )}
         placeholder={t('common:enterApiKey')}
       />
