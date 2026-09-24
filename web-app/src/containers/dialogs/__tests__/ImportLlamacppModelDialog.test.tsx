@@ -332,6 +332,29 @@ describe('ImportLlamacppModelDialog', () => {
     expect(onSuccess).toHaveBeenCalledWith('ok.gguf')
   })
 
+  it('imports a file name with spaces and brackets under a sanitized id (#283)', async () => {
+    hoisted.dialogOpen.mockResolvedValueOnce('/tmp/My Model (1).gguf')
+    hoisted.pullModel.mockResolvedValueOnce(undefined)
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByText('Select GGUF File'))
+    await waitFor(() => expect(hoisted.validateGgufFile).toHaveBeenCalled())
+    const importBtn = await screen.findByRole('button', {
+      name: /Import Model/i,
+    })
+    await waitFor(() => expect(importBtn).not.toBeDisabled())
+    fireEvent.click(importBtn)
+    await waitFor(() => expect(hoisted.pullModel).toHaveBeenCalled())
+    const id = hoisted.pullModel.mock.calls[0][0] as string
+    expect(id).toBe('My-Model-1.gguf')
+    expect(id).toMatch(/^[a-zA-Z0-9/_\-.]+$/)
+  })
+
   it('toasts a failure when pullModel rejects', async () => {
     hoisted.dialogOpen.mockResolvedValueOnce('/tmp/fail.gguf')
     hoisted.pullModel.mockRejectedValueOnce(new Error('boom'))
