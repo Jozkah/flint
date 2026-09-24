@@ -2573,8 +2573,37 @@ async fn handle_agent(cmd: AgentCommands) {
                 eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
             }
         }
-        std::process::exit(e.exit_code());
+        std::process::exit(run_exit_code(&e));
     }
+}
+
+/// Classify a failed agent run for the shell (upstream janhq/jan 5ae763e2e8).
+///
+/// Running out of turns with the model still calling tools is not the same
+/// outcome as a crash or a usage error: the run stopped where the caller asked
+/// it to stop, but it has no final answer, so a pipeline that only reads the
+/// exit code would take an unfinished task for a finished one. It exits `53`;
+/// every other failure keeps the kind's own code.
+fn run_exit_code(e: &HarnessError) -> i32 {
+    if is_turn_limit_exhaustion(e) {
+        53
+    } else {
+        e.exit_code()
+    }
+}
+
+/// Whether the run ended because `--max-turns` ran out with tool calls still in
+/// flight. The message is the only marker that separates it from the other
+/// budget exhaustions, so the match is anchored at both ends.
+fn is_turn_limit_exhaustion(e: &HarnessError) -> bool {
+    const TURN_LIMIT: &str = "-turn limit while the model was still calling tools";
+    e.chain().into_iter().any(|cause| {
+        matches!(
+            cause.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::BudgetExhausted
+        ) && cause.message().starts_with("reached the ")
+            && cause.message().ends_with(TURN_LIMIT)
+    })
 }
 
 /// `flint cli agent prompts`: what a session sent to the model (AH-087).
@@ -3183,6 +3212,24 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    /// Running out of turns while the model is still calling tools is the one
+    /// failure the shell can read as a limit rather than a crash. The message is
+    /// the only marker it has, so the classifier must match that message and not
+    /// some phrase inside a different one.
+    #[test]
+    fn turn_limit_exhaustion_has_its_own_exit_code() {
+        use tauri_plugin_agent_tools::harness_error::ErrorKind;
+        let limit = super::HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 8-turn limit while the model was still calling tools",
+        );
+        assert_eq!(super::run_exit_code(&limit), 53);
+        let tokens = super::HarnessError::new(ErrorKind::BudgetExhausted, "session token budget spent");
+        assert_eq!(super::run_exit_code(&tokens), tokens.exit_code());
+        let upstream = super::HarnessError::new(ErrorKind::Upstream, "upstream returned 500");
+        assert_eq!(super::run_exit_code(&upstream), upstream.exit_code());
+    }
+
     #[test]
     fn usage_subcommands_parse() {
         let view = |argv: &[&str]| {

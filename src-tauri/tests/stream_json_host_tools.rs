@@ -186,6 +186,8 @@ impl Scratch {
             "stream-json",
             "--host-tools",
             host_tools,
+            "--max-turns",
+            "4",
             "move the arm",
         ])
         .stdin(Stdio::piped())
