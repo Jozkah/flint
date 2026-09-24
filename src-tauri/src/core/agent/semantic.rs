@@ -83,12 +83,15 @@ pub struct Embedder {
 
 pub const NOT_CONFIGURED: &str = "semantic search needs an embedding model, and none is configured: set embeddings_model = \"<provider>/<model>\" in ~/.jan/config.toml (or JAN_EMBEDDINGS_MODEL). Nothing was searched. grep and symbol_find search text, not meaning.";
 
+/// Answers a provider name with its base URL and key.
+pub type ProviderLookup = dyn Fn(&str) -> Option<(Option<String>, Option<String>)>;
+
 /// Resolve the embedding model from what the user named. `provider` answers a
 /// provider name with its base URL and key.
 pub fn resolve(
     env: &dyn Fn(&str) -> Option<String>,
     setting: Option<String>,
-    provider: &dyn Fn(&str) -> Option<(Option<String>, Option<String>)>,
+    provider: &ProviderLookup,
 ) -> Result<Embedder, HarnessError> {
     let get = |name: &str| env(name).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let named = get(MODEL_ENV)

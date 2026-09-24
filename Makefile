@@ -156,6 +156,12 @@ test-rust: stub-resources
 	cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-hardware/Cargo.toml
 	cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml
 	cargo test --locked --manifest-path src-tauri/utils/Cargo.toml
+# Each plugin is its own workspace, so the app's test run never executes their
+# tests (#229). No --locked: these crates do not commit a Cargo.lock.
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-rag/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-vector-db/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-websearch/Cargo.toml
 
 test: test-prepare install-rust-targets
 	yarn build:mlx-server

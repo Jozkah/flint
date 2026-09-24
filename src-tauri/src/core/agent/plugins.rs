@@ -3487,7 +3487,7 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn refusals_carry_stable_error_codes() {
         let root = project_root("codes");
-        let code = |r: Result<InstalledPlugin, PluginError>| r.err().expect("must fail").code;
+        let code = |r: Result<InstalledPlugin, PluginError>| r.expect_err("must fail").code;
 
         assert_eq!(
             remove_plugin(&root, "missing").err().unwrap().code,

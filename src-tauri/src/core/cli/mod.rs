@@ -1360,7 +1360,7 @@ fn prepare_agent_session(
     // ignored would send the run to a model nobody chose while looking as
     // though the rule had been honoured.
     let routing = crate::core::agent::routing::rules(&cfg.routing)
-        .map_err(|e| format!("{}", e.message()))?;
+        .map_err(|e| e.message().to_string())?;
     let model = match crate::core::agent::routing::route(
         &routing,
         &crate::core::agent::routing::Request {

@@ -5149,9 +5149,11 @@ mod compaction_policy_body_tests {
     /// the keys it adds are not chat parameters.
     #[test]
     fn the_policy_is_on_the_body_and_not_in_the_request() {
-        let mut policy = tauri_plugin_agent_tools::compaction_policy::Policy::default();
-        policy.keep_recent = 3;
-        policy.strategy = tauri_plugin_agent_tools::compaction_policy::Strategy::Trim;
+        let policy = tauri_plugin_agent_tools::compaction_policy::Policy {
+            keep_recent: 3,
+            strategy: tauri_plugin_agent_tools::compaction_policy::Strategy::Trim,
+            ..Default::default()
+        };
         let body = super::attach_compaction(&serde_json::json!({ "temperature": 0.2 }), &policy);
         let options = crate::core::agent::compaction::CompactOptions::from_body(&body);
         assert_eq!((options.keep_recent, options.trim), (3, true));

@@ -21,13 +21,13 @@
 
 #![cfg(windows)]
 
-use std::path::PathBuf;
+use std::path::Path;
 
 /// Read this test binary's own embedded `RT_MANIFEST` resource (id 1).
 ///
 /// Uses the resource APIs rather than shelling out to `mt.exe`, so the check
 /// works on a machine with no Windows SDK installed.
-fn embedded_manifest(path: &PathBuf) -> Option<String> {
+fn embedded_manifest(path: &Path) -> Option<String> {
     use std::ffi::c_void;
     use std::os::windows::ffi::OsStrExt;
 

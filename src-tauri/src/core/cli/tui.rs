@@ -912,6 +912,9 @@ struct CurrentRun {
     handle: JoinHandle<()>,
 }
 
+// One value at a time in the event loop and never stored in bulk, so the
+// size of the stream variant costs nothing worth a box per event.
+#[allow(clippy::large_enum_variant)]
 enum RunEvent {
     Stream(Option<StreamEvent>),
     Steering(SteeringRequest),
@@ -15239,7 +15242,6 @@ fn build_user_message(text: &str, images: &[PendingImage]) -> serde_json::Value 
 /// Split a user message's `content` into display text and one label per attached
 /// image. Handles plain-string content and the `image_url` content-part array;
 /// data-URL parts carry no filename, so their label is empty.
-
 fn user_content_parts(content: &serde_json::Value) -> (String, Vec<String>) {
     match content {
         serde_json::Value::String(s) => (crate::core::agent::reminder::strip(s), Vec::new()),
@@ -19176,9 +19178,7 @@ mod tests {
         cell.set_symbol("W");
         terminal
             .backend_mut()
-            .draw(std::iter::once((cx, cy, &cell)))
-            .ok()
-            .expect("the backend accepts the write");
+            .draw(std::iter::once((cx, cy, &cell))).expect("the backend accepts the write");
         (cx, cy)
     }
 

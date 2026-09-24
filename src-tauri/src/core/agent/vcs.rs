@@ -802,7 +802,7 @@ pub fn staged(repo: &Path) -> Result<Staged, VcsError> {
     let number_before = |word: &str| -> usize {
         stat.split(',')
             .find(|part| part.contains(word))
-            .and_then(|part| part.trim().split_whitespace().next()?.parse().ok())
+            .and_then(|part| part.split_whitespace().next()?.parse().ok())
             .unwrap_or(0)
     };
     let raw = git(repo, &["diff", "--no-ext-diff", "--no-textconv", "--cached"]).unwrap_or_default();

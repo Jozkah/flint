@@ -351,9 +351,7 @@ fn first_json_object(s: &str) -> Option<&str> {
 ///   scalar, malformed inside the object) -> None: the caller must refuse the
 ///   call and tell the model, never run it with invented arguments.
 pub(crate) fn recover_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
-    let Some(function) = tc.get("function") else {
-        return None;
-    };
+    let function = tc.get("function")?;
     match function.get("arguments") {
         // Absent and null are the providers' "no arguments" spelling: valid as-is.
         None | Some(Value::Null) => Some(Value::Object(Default::default())),
@@ -387,9 +385,7 @@ pub(crate) fn parse_tool_args(tc: &serde_json::Value) -> Option<serde_json::Valu
 /// the recovered object, so the history resends well-formed JSON and every
 /// dispatch site that re-parses the string gets the same object.
 pub(crate) fn normalize_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
-    let Some(function) = tc.get("function") else {
-        return None;
-    };
+    let function = tc.get("function")?;
     match function.get("arguments") {
         None | Some(Value::Null) | Some(Value::Object(_)) => Some(tc.clone()),
         Some(Value::String(raw)) => {
@@ -737,6 +733,8 @@ pub(crate) fn set_system_prompt(messages: &mut Vec<serde_json::Value>, system_pr
 /// configured prompt to the caller's own `system` message. There is no session
 /// to keep byte-stable across turns there, so appending a second prompt would
 /// only add bytes to every request; the head is rewritten in place instead.
+// Only the desktop's local server (`core::server::proxy`) calls it.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 pub(crate) fn replace_system_prompt(messages: &mut Vec<serde_json::Value>, system_prompt: &str) {
     messages.retain(|m| m.get("role").and_then(|r| r.as_str()) != Some("system"));
     messages.insert(

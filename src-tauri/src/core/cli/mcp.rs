@@ -203,6 +203,9 @@ pub fn validate_server_name(name: &str) -> Result<(), String> {
 /// desktop's transport contract. `env`/`headers` are already parsed maps; the
 /// callers (`flint cli mcp add` flags and the TUI form) both funnel through here
 /// so neither re-implements the shape or its validation.
+// Mirrors the fields of one configured server; a struct for them would be
+// a second copy of the config type.
+#[allow(clippy::too_many_arguments)]
 pub fn build_server_config(
     transport: &str,
     command: Option<&str>,

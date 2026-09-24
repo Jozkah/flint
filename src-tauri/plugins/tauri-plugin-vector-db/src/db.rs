@@ -797,7 +797,9 @@ mod tests {
             .expect("a bundled candidate should exist");
         let system = paths
             .iter()
-            .position(|p| !p.contains("resources") && p.starts_with('/'))
+            // By the platform's own system directories: on Windows they are
+            // `C:\...`, so an absolute-Unix-path check finds none there.
+            .position(|p| SQLITE_VEC_SYSTEM_DIRS.iter().any(|dir| p.starts_with(dir)))
             .expect("a system candidate should exist");
         assert!(bundled < system, "{paths:?}");
     }

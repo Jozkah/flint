@@ -483,10 +483,7 @@ async fn run_agent(
         _ = &mut cancel => None,
     };
     drop(tx);
-    let (mut report, conversation, checkpoint) = match forwarder.await {
-        Ok(done) => done,
-        Err(_) => (RunReport::default(), None, None),
-    };
+    let (mut report, conversation, checkpoint) = forwarder.await.unwrap_or_default();
 
     // Whatever happened, this run's servers, scratch space and pending
     // approvals end with it.
