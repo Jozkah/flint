@@ -12,10 +12,6 @@ export const formatDate = (
   const base: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     day: 'numeric',
-    // Dates in persisted activity and session records are UTC instants. Keep
-    // their calendar day stable across machines instead of letting the local
-    // timezone move midnight into the previous or next day.
-    timeZone: 'UTC',
   }
 
   if (includeTime) {
@@ -29,9 +25,14 @@ export const formatDate = (
     })
   }
 
-  // Date-only mode: long month, using local timezone
+  // Date-only mode: long month. Date-only values in persisted activity and
+  // session records are UTC instants for a calendar day; format them in UTC so
+  // the day stays stable across machines instead of the local timezone moving
+  // midnight into the previous or next day. Only this branch uses UTC: a time
+  // of day must be shown in the user's local timezone.
   return new Date(date).toLocaleDateString('en-US', {
     ...base,
     month: 'long',
+    timeZone: 'UTC',
   })
 }
