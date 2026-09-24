@@ -1637,21 +1637,20 @@ fn resolved_for_open(target: &Path) -> Result<PathBuf, String> {
     canonicalize_lenient(target)
 }
 
-/// Create or truncate `path` and write `content`, refusing to follow a
-/// symlink at `path` itself where the platform can (`O_NOFOLLOW` on Unix).
-/// `path` is already resolved, so a link found there now was planted after the
-/// checks: the open fails rather than follows it. Windows has no equivalent
-/// open flag here; there the resolution above is the whole defence, and a
-/// link swapped in between the check and the open is not caught.
+/// Replace `path` with `content` through a sibling temp file and a rename
+/// (Jozkah/jan#39), so a crash or kill mid-write leaves the user's file with
+/// its old content or the full new content, never truncated, and the file's
+/// permission bits survive the replacement. `path` is already resolved; the
+/// rename replaces whatever directory entry sits there now rather than writing
+/// through it, so a symlink planted at `path` after the checks is replaced,
+/// not followed (Jozkah/jan#192).
 async fn write_no_follow(path: &Path, content: &str) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
-    let mut file = options.open(path).await?;
-    file.write_all(content.as_bytes()).await?;
-    file.flush().await
+    let path = path.to_path_buf();
+    let bytes = content.as_bytes().to_vec();
+    tokio::task::spawn_blocking(move || crate::atomic_file::write_atomic(&path, &bytes))
+        .await
+        .map_err(std::io::Error::other)?
+        .map_err(std::io::Error::other)
 }
 
 /// `path` made absolute against this process's working directory, with `.`
@@ -5177,6 +5176,47 @@ on_failure = \"warn\"
         let created =
             execute_builtin(w, &json!({"path": "fresh.txt", "content": "new"}), &root).await;
         assert_eq!(created, "Created fresh.txt (3 bytes)");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#39: `write` and `edit` replace the file through a temp file
+    /// and a rename, so the old inode is never truncated in place and no temp
+    /// file is left next to the target.
+    #[tokio::test]
+    async fn write_and_edit_replace_the_file_atomically() {
+        let root = unique_root();
+        let target = root.join("keep.txt");
+        std::fs::write(&target, b"one two").unwrap();
+        // A handle opened before the write still sees the old bytes: a rename
+        // swaps the directory entry, an in-place truncate would empty it.
+        let mut before = std::fs::File::open(&target).unwrap();
+
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "keep.txt", "content": "three four"}),
+            &root,
+        )
+        .await;
+        assert_eq!(out, "Overwrote keep.txt (10 bytes)");
+        let mut old = String::new();
+        std::io::Read::read_to_string(&mut before, &mut old).unwrap();
+        assert_eq!(old, "one two", "the write truncated the file in place");
+        drop(before);
+
+        let out = execute_builtin(
+            lookup("edit").unwrap(),
+            &json!({"path": "keep.txt", "edits": [{"old_string": "four", "new_string": "five"}]}),
+            &root,
+        )
+        .await;
+        assert!(out.starts_with("Applied 1 edit"), "{out}");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "three five");
+        let stray: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp-"))
+            .collect();
+        assert!(stray.is_empty(), "temp files left behind: {stray:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
