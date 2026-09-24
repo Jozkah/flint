@@ -119,6 +119,7 @@ const h = vi.hoisted(() => {
 
   const toolAvailableState: any = {
     getDisabledToolsForThread: vi.fn(() => []),
+    getDisabledTools: vi.fn(() => []),
   }
   const useToolAvailableMock: any = (selector: any) => selector(toolAvailableState)
   useToolAvailableMock.getState = () => toolAvailableState
