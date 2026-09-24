@@ -1751,11 +1751,21 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // On AppContainer that means Jan-owned worktrees only: see
     // [`jail::can_confine_write_roots`].
     let owned = mask_abs.as_deref().map(crate::workspace::worktrees_dir);
+    let mut start = root.to_path_buf();
     if !write_abs.is_empty()
         && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
     {
         policy = policy.with_write_roots(write_abs.clone());
+        // #322: a run whose destination is a managed worktree starts its shell
+        // there, so `npm test` or `.\check.ps1` mean the project. See
+        // [`managed_worktree_start`] for when, and why the file tools do not
+        // follow.
+        if let Some(wt) = managed_worktree_start(&write_abs, owned.as_deref()) {
+            policy = policy.with_start_dir(&wt);
+            start = policy.start_dir().to_path_buf();
+        }
     }
+    let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
     // a surface that opted in gets here (the CLI's `--sandbox`/`sandbox`
@@ -1855,7 +1865,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     } else {
         None
     };
-    let child = match proc::spawn(&shell, command, root, sandbox_tmp.as_deref()).await {
+    let child = match proc::spawn(&shell, command, &start, sandbox_tmp.as_deref()).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
@@ -1904,7 +1914,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let shell_description = shell.description;
     let shell_flavor = shell.flavor;
     let command_text = command.to_string();
-    let cwd_display = root.display().to_string();
+    let cwd_display = start.display().to_string();
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
         // The tree has exited (or been stopped): what it used is final.
@@ -1926,12 +1936,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         }
         if bash_result_failed(&out) {
             let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
-            // PowerShell runs from a drive mounted on the workspace, not from the
-            // project, and a script it starts can land elsewhere. A path the
-            // command could not find is most often a relative path aimed at the
-            // project; say where relative paths actually go.
+            // PowerShell runs from a drive mounted on where the shell started
+            // (the workspace, or the managed worktree), and a script it starts
+            // can land elsewhere. A path the command could not find is most
+            // often a relative path aimed at the wrong place; say where
+            // relative paths actually go.
             if shell_flavor == proc::ShellFlavor::PowerShell && cwd_note_applies(&class, &out) {
-                out.insert_str(0, &cwd_note(&cwd_display));
+                out.insert_str(0, &cwd_note(&cwd_display, in_worktree));
             }
             let hint = match class {
                 super::shell_diag::FailureClass::FileAccessDenied
@@ -2537,10 +2548,40 @@ fn cwd_note_applies(class: &super::shell_diag::FailureClass, out: &str) -> bool 
         || (lower.contains("set-location") && lower.contains("access is denied"))
 }
 
-fn cwd_note(workspace: &str) -> String {
-    format!(
-        "[cwd: {workspace}. The project is not the working directory; use absolute paths.]\n"
-    )
+fn cwd_note(cwd: &str, in_worktree: bool) -> String {
+    if in_worktree {
+        format!(
+            "[cwd: {cwd} (the session worktree). Relative paths in commands resolve \
+             there; the file tools resolve relative paths against the workspace.]\n"
+        )
+    } else {
+        format!(
+            "[cwd: {cwd}. The project is not the working directory; use absolute paths.]\n"
+        )
+    }
+}
+
+/// Where `bash` starts when the run writes to a Jan-managed worktree (#322).
+///
+/// Only when the granted write roots are exactly one directory inside Jan's
+/// owned worktrees dir: that is the Managed worktree destination, and the one
+/// case where the shell is already confined to the worktree it would start in
+/// (the AppContainer ACE, the bwrap bind or the Seatbelt rule for that write
+/// root). Review-only runs have no write root and direct-edit runs a root that
+/// is not Jan's; both keep starting in the sandbox workspace.
+///
+/// Only the shell moves. The file tools keep resolving relative paths against
+/// the workspace: their gate, confinement checks, `.jan` hiding and display
+/// paths are all keyed on it, and moving them would change what every
+/// relative write in a worktree run means. The prompt and the `[cwd: ...]`
+/// note state both bases instead.
+fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
+    let [only] = write_roots else {
+        return None;
+    };
+    let owned = owned?.canonicalize().ok()?;
+    let real = only.canonicalize().ok()?;
+    (real.is_dir() && real.starts_with(&owned) && real != owned).then(|| only.clone())
 }
 
 pub fn bash_result_failed(content: &str) -> bool {
@@ -6385,8 +6426,41 @@ on_failure = \"warn\"
             &FailureClass::FileAccessDenied,
             "Get-Content : Access to the path 'C:\\x' is denied."
         ));
-        let n = cwd_note(r"C:\ws");
+        let n = cwd_note(r"C:\ws", false);
         assert!(n.starts_with("[cwd: C:\\ws. The project is not the working directory"), "{n}");
+        let n = cwd_note(r"C:\wt", true);
+        assert!(n.starts_with("[cwd: C:\\wt (the session worktree). Relative paths"), "{n}");
+        assert!(!n.contains("use absolute paths"), "{n}");
+    }
+
+    /// #322: the shell starts in the managed worktree only when that is the
+    /// run's single write root under Jan's owned worktrees dir.
+    #[test]
+    fn bash_starts_in_the_managed_worktree_only_when_it_is_the_destination() {
+        let data = unique_root();
+        let owned = crate::workspace::worktrees_dir(&data);
+        let wt = owned.join("repo").join("s1");
+        std::fs::create_dir_all(&wt).unwrap();
+        let user_repo = data.join("user-repo");
+        std::fs::create_dir_all(&user_repo).unwrap();
+
+        assert_eq!(managed_worktree_start(&[wt.clone()], Some(&owned)), Some(wt.clone()));
+        // Review-only: no write roots.
+        assert_eq!(managed_worktree_start(&[], Some(&owned)), None);
+        // Direct edit: a root that is not Jan's.
+        assert_eq!(managed_worktree_start(&[user_repo.clone()], Some(&owned)), None);
+        // The owned dir itself, several roots, no mask root, a missing root.
+        assert_eq!(managed_worktree_start(&[owned.clone()], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(&[wt.clone(), user_repo], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(&[wt.clone()], None), None);
+        assert_eq!(managed_worktree_start(&[owned.join("gone")], Some(&owned)), None);
+
+        // The policy carries it through to where the shell starts.
+        let policy = jail::Policy::new(&data, false)
+            .with_write_roots(vec![wt.clone()])
+            .with_start_dir(&wt);
+        assert_eq!(policy.start_dir(), wt.as_path());
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     #[tokio::test]

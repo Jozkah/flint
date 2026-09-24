@@ -112,6 +112,11 @@ pub struct Policy {
     /// make the access mode a statement about one of them rather than about
     /// the run.
     pub write_roots: Vec<PathBuf>,
+    /// Where the shell starts, when that is not `workspace`: the managed
+    /// worktree a run writes to. Always one of `write_roots`
+    /// ([`Policy::with_start_dir`] ignores anything else), so the shell never
+    /// starts somewhere it was not granted.
+    pub start_dir: Option<PathBuf>,
 }
 
 impl Policy {
@@ -125,7 +130,22 @@ impl Policy {
             scratch_root: None,
             read_roots: Vec::new(),
             write_roots: Vec::new(),
+            start_dir: None,
         }
+    }
+
+    /// Start the shell in `dir`, which must already be one of the write roots;
+    /// anything else leaves the start at the workspace.
+    pub fn with_start_dir(mut self, dir: &Path) -> Self {
+        if self.write_roots.iter().any(|r| r == dir) {
+            self.start_dir = Some(dir.to_path_buf());
+        }
+        self
+    }
+
+    /// The directory the shell starts in.
+    pub fn start_dir(&self) -> &Path {
+        self.start_dir.as_deref().unwrap_or(&self.workspace)
     }
 
     /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
@@ -341,8 +361,9 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
             program: helper_exe()?,
-            args: appcontainer::helper_args(
+            args: appcontainer::helper_args_at(
                 &policy.workspace,
+                policy.start_dir.as_deref(),
                 policy.scratch_root.as_deref(),
                 &policy.write_roots,
                 policy.allow_network,
@@ -506,7 +527,7 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     if let Some(hide) = &policy.hide_root {
         push(&mut args, &["--tmpfs", &hide.to_string_lossy()]);
     }
-    push(&mut args, &["--chdir", &ws]);
+    push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
     // user namespace; --share-net selectively restores networking.
@@ -1350,6 +1371,19 @@ mod tests {
         let ws = "/data/agent-workspace/threads/t1";
         assert!(text.contains(&format!("--bind {ws} {ws}")));
         assert!(text.contains(&format!("--chdir {ws}")));
+    }
+
+    /// A run writing to a managed worktree starts the shell there; a start
+    /// outside the write roots is ignored rather than trusted.
+    #[test]
+    fn bwrap_chdirs_into_the_start_dir_only_when_it_is_a_write_root() {
+        let wt = PathBuf::from("/data/agent-workspace/worktrees/repo/s1");
+        let started = policy().with_write_roots(vec![wt.clone()]).with_start_dir(&wt);
+        let text = joined(&bwrap_args(&started, &cfg()));
+        assert!(text.contains(&format!("--chdir {}", wt.display())), "{text}");
+
+        let ignored = policy().with_start_dir(&wt);
+        assert_eq!(ignored.start_dir(), ignored.workspace.as_path());
     }
 
     #[test]
