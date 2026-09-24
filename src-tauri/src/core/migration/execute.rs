@@ -682,6 +682,11 @@ fn stage_tree(
         let entry = entry.map_err(|e| e.to_string())?;
         let child = entry.path();
         let child_staging = staging.join(entry.file_name());
+        // Never descend into a directory link: one pointing at an ancestor
+        // would recurse until the stack overflows (#173).
+        if fsutil::is_linked_dir(&child) {
+            continue;
+        }
         if child.is_dir() {
             stage_tree(
                 &child,

@@ -10,6 +10,14 @@ use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Whether `path` is a symbolic link (or, on Windows, a junction) to a
+/// directory. The walks below never descend into one: a link back to an
+/// ancestor would recurse until the stack overflows (#173), and a link out of
+/// the tree would pull in data that is not the user's legacy install.
+pub fn is_linked_dir(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) && path.is_dir()
+}
+
 /// Total size in bytes of a file or directory tree. Missing paths are 0.
 /// Unreadable entries are skipped rather than aborting the walk.
 pub fn size_of(path: &Path) -> u64 {
@@ -22,7 +30,11 @@ pub fn size_of(path: &Path) -> u64 {
     let mut total = 0u64;
     if let Ok(rd) = fs::read_dir(path) {
         for entry in rd.flatten() {
-            total = total.saturating_add(size_of(&entry.path()));
+            let child = entry.path();
+            if is_linked_dir(&child) {
+                continue;
+            }
+            total = total.saturating_add(size_of(&child));
         }
     }
     total
@@ -39,7 +51,11 @@ pub fn count_files(path: &Path) -> usize {
     let mut n = 0usize;
     if let Ok(rd) = fs::read_dir(path) {
         for entry in rd.flatten() {
-            n += count_files(&entry.path());
+            let child = entry.path();
+            if is_linked_dir(&child) {
+                continue;
+            }
+            n += count_files(&child);
         }
     }
     n
@@ -60,7 +76,11 @@ fn collect_files(path: &Path, out: &mut Vec<std::path::PathBuf>) {
     }
     if let Ok(rd) = fs::read_dir(path) {
         for entry in rd.flatten() {
-            collect_files(&entry.path(), out);
+            let child = entry.path();
+            if is_linked_dir(&child) {
+                continue;
+            }
+            collect_files(&child, out);
         }
     }
 }
@@ -118,6 +138,9 @@ pub fn copy_tree_preserving_mtime(src: &Path, dst: &Path) -> io::Result<()> {
         let entry = entry?;
         let child_src = entry.path();
         let child_dst = dst.join(entry.file_name());
+        if is_linked_dir(&child_src) {
+            continue;
+        }
         if child_src.is_dir() {
             copy_tree_preserving_mtime(&child_src, &child_dst)?;
         } else {
@@ -144,6 +167,36 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let mut f = fs::File::create(path).unwrap();
         f.write_all(bytes).unwrap();
+    }
+
+    /// A directory symlink back to the root. `None` where the platform will
+    /// not let this process create one (Windows without developer mode).
+    fn loop_link(root: &Path) -> Option<std::path::PathBuf> {
+        let link = root.join("sub/loop");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(root, &link);
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(root, &link);
+        made.ok().map(|_| link)
+    }
+
+    #[test]
+    fn walks_do_not_follow_a_directory_link_back_to_an_ancestor() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        write(&root.join("a.txt"), b"1234");
+        write(&root.join("sub/b.txt"), b"56789");
+        let Some(link) = loop_link(root) else {
+            return;
+        };
+        assert!(is_linked_dir(&link));
+        assert_eq!(size_of(root), 9);
+        assert_eq!(count_files(root), 2);
+        assert_eq!(list_files(root).len(), 2);
+
+        let out = tempfile::tempdir().unwrap();
+        copy_tree_preserving_mtime(root, &out.path().join("copy")).unwrap();
+        assert_eq!(count_files(&out.path().join("copy")), 2);
     }
 
     #[test]
