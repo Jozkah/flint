@@ -3018,6 +3018,20 @@ fn confined_screenshot_document(bytes: &[u8], svg: bool) -> Result<Vec<u8>, Stri
 /// `scale` is the device pixel ratio: the PNG comes out `width*scale` pixels
 /// wide with the layout unchanged. The overlay passes the webview's own ratio
 /// so a HiDPI screen doesn't composite crisp marks over an upscaled blur.
+/// A `file:` URL for a local path. On Windows a drive path needs three
+/// slashes and forward slashes (`file:///C:/...`); `file://C:\...` names a
+/// host, which Chrome can't load (Jozkah/jan#242). `%`, spaces and `#` are
+/// escaped so the path survives as one URL.
+fn local_file_url(path: &Path) -> String {
+    let raw = path.to_string_lossy();
+    let escaped = raw.replace('%', "%25").replace(' ', "%20").replace('#', "%23");
+    if cfg!(windows) {
+        format!("file:///{}", escaped.replace('\\', "/"))
+    } else {
+        format!("file://{escaped}")
+    }
+}
+
 pub async fn render_html_png(
     target: &Path,
     width: u64,
@@ -3074,7 +3088,7 @@ pub async fn render_html_png(
     tokio::fs::write(&page, &confined)
         .await
         .map_err(|e| format!("failed to stage the page for rendering: {e}"))?;
-    let file_url = format!("file://{}", page.display());
+    let file_url = local_file_url(&page);
     // Chrome is spawned through the shell (`sh -c`): on macOS, a Chrome
     // headless-new process spawned directly by a non-bundled parent fails its
     // singleton/TCC check with "Multiple targets are not supported in headless
@@ -3084,25 +3098,59 @@ pub async fn render_html_png(
     let shot_quoted = shell_quote(shot.to_str().unwrap_or_default());
     let url_quoted = shell_quote(&file_url);
     let chrome_quoted = shell_quote(chrome.to_str().unwrap_or_default());
-    // Defense in depth behind the CSP: script off, every request sent to a
-    // dead proxy (loopback included, via `<-loopback>`), every hostname
-    // resolving to nothing, and Chrome's own background traffic disabled.
+    // Defense in depth behind the CSP: every request sent to a dead proxy
+    // (loopback included, via `<-loopback>`), every hostname resolving to
+    // nothing, and Chrome's own background traffic disabled. Script is left
+    // to the CSP (no script-src): `--blink-settings=scriptEnabled=false`
+    // stops headless Chrome from writing the screenshot at all.
     let resolver_quoted = shell_quote("--host-resolver-rules=MAP * ~NOTFOUND");
     let bypass_quoted = shell_quote("--proxy-bypass-list=<-loopback>");
     let cmd = format!(
         "{chrome_quoted} --headless=new --disable-gpu --hide-scrollbars --no-sandbox \
          --disable-dev-shm-usage --no-first-run --user-data-dir={profile_quoted} \
-         --blink-settings=scriptEnabled=false \
          --proxy-server=127.0.0.1:9 {bypass_quoted} {resolver_quoted} \
          --disable-background-networking --disable-component-update --no-pings \
          --force-device-scale-factor={scale} \
          --window-size={width},{height} --screenshot={shot_quoted} {url_quoted}"
     );
-    let shell = proc::shell();
     use jan_process::CommandConsole;
-    let mut child = match tokio::process::Command::new(shell.program.clone())
-        .args(shell.args.clone())
-        .arg(&cmd)
+    // Windows: Chrome is started directly with an argument vector. The shell
+    // detour exists only for the macOS singleton check above, and on Windows
+    // the shell may be PowerShell or cmd, which do not understand the POSIX
+    // quoting in `cmd` (Jozkah/jan#242).
+    #[cfg(windows)]
+    let mut command = {
+        let _ = &cmd;
+        let mut c = tokio::process::Command::new(&chrome);
+        c.args([
+            "--headless=new",
+            "--disable-gpu",
+            "--hide-scrollbars",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--proxy-server=127.0.0.1:9",
+            "--proxy-bypass-list=<-loopback>",
+            "--host-resolver-rules=MAP * ~NOTFOUND",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--no-pings",
+        ])
+        .arg(format!("--user-data-dir={}", profile.display()))
+        .arg(format!("--force-device-scale-factor={scale}"))
+        .arg(format!("--window-size={width},{height}"))
+        .arg(format!("--screenshot={}", shot.display()))
+        .arg(&file_url);
+        c
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let shell = proc::shell();
+        let mut c = tokio::process::Command::new(shell.program.clone());
+        c.args(shell.args.clone()).arg(&cmd);
+        c
+    };
+    let mut child = match command
         .background()
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -7898,6 +7946,23 @@ on_failure = \"warn\"
             .find(|p| p.is_file());
         assert_eq!(found.as_deref(), Some(exe.as_path()));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#242: a Windows drive path becomes a three-slash URL with
+    /// forward slashes, and characters that would end the path are escaped.
+    #[cfg(windows)]
+    #[test]
+    fn local_file_url_handles_windows_drive_paths() {
+        assert_eq!(
+            local_file_url(Path::new(r"C:\Users\a b\x#1.html")),
+            "file:///C:/Users/a%20b/x%231.html"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn local_file_url_handles_unix_paths() {
+        assert_eq!(local_file_url(Path::new("/tmp/a b.html")), "file:///tmp/a%20b.html");
     }
 
     /// Jozkah/jan#236: the CSP comes before any page content, after a leading
