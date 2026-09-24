@@ -55,7 +55,12 @@ pub const JAN_DATA_SUBDIRS: &[&str] = &[
 ];
 
 /// All known data files (union of every file category above).
-pub const JAN_DATA_FILES: &[&str] = &["mcp_config.json", "settings.json", "provider_secrets.enc"];
+pub const JAN_DATA_FILES: &[&str] = &[
+    "mcp_config.json",
+    "settings.json",
+    "provider_secrets.enc",
+    "provider_secrets.index.json",
+];
 
 #[cfg(test)]
 mod tests {
