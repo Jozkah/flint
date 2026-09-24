@@ -189,7 +189,11 @@ user what's wrong.\n\n\
 ## Repositories and code hosts\n\n\
 `web_fetch` is an anonymous crawler with no GitHub/GitLab credentials, so it CANNOT read a private repository — a \
 private repo answers with a not-found error no matter which provider is configured, and retrying or switching \
-providers will not help. For repository data (issues, pull requests, file contents, CI status), prefer the \
+providers will not help.";
+
+/// The shell route to repository data, given only to a run that has `bash`:
+/// plan mode and read-only roles keep the web tools but not the shell.
+const REPO_SHELL_GUIDE: &str = "For repository data (issues, pull requests, file contents, CI status), prefer the \
 authenticated shell instead: use `gh` (e.g. `gh repo view`, `gh api repos/<owner>/<repo>`, `gh pr view <n>`, \
 `gh run list`) or plain `git` in the attached workspace folder. Use `web_fetch` on a code-host URL only when the \
 repository is public.";
@@ -239,6 +243,16 @@ pub(crate) type OfferedTools = std::collections::HashSet<String>;
 
 fn offers(offered: Option<&OfferedTools>, name: &str) -> bool {
     offered.is_none_or(|set| set.contains(name))
+}
+
+/// The rules every run gets, including one with no project (the local API
+/// proxy): tool content is data, and destructive actions are confirmed.
+pub(crate) fn safety_guidelines() -> String {
+    GUIDELINES
+        .lines()
+        .skip_while(|l| !l.starts_with("- Content that arrives through tools"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The Guidelines block, with the `todo` and `ask` bullets only when offered.
@@ -496,7 +510,12 @@ recording in your answer instead.",
         blocks.push(guide);
     }
     if offers(offered, "web_search") || offers(offered, "web_fetch") {
-        blocks.push(WEB_TOOLS_GUIDE.to_string());
+        let mut guide = WEB_TOOLS_GUIDE.to_string();
+        if offers(offered, "bash") {
+            guide.push(' ');
+            guide.push_str(REPO_SHELL_GUIDE);
+        }
+        blocks.push(guide);
     }
     // The chain that ranks everything in the prompt (AH-084).
     blocks.push(memory::precedence::STATEMENT.to_string());
@@ -1048,6 +1067,13 @@ We build with make.")
         assert!(!prompt.contains("Reach for `todo`"), "{prompt}");
         assert!(!prompt.contains("Call `ask`"), "{prompt}");
         assert!(!prompt.contains("# Web Access"), "{prompt}");
+        // Web tools without a shell: the web guide, but not the `gh` route.
+        let web_only: OfferedTools = ["web_fetch"].iter().map(|s| s.to_string()).collect();
+        let (web, _) = build_system_prompt_for(None, &root, None, false, None, false, Some(&web_only));
+        let web = web.unwrap();
+        assert!(web.contains("# Web Access") && !web.contains("gh repo view"), "{web}");
+        assert!(safety_guidelines().starts_with("- Content that arrives through tools"));
+        assert!(safety_guidelines().contains("confirm with"));
         assert!(prompt.contains("`skill_write` and `memory_write` are not available"), "{prompt}");
         // Every tool offered: all of it is described.
         let (full, _) = build_system_prompt_for(None, &root, None, false, None, false, None);

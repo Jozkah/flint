@@ -1299,6 +1299,14 @@ pub(crate) fn configure_child_args(
     // place the child can learn it -- and without it `message_send` has no
     // address to use.
     let mut child_prompt = resolved.definition.system_prompt.clone();
+    // A built-in role states what it hands back; a one-off prompt written by
+    // the parent model usually does not, so every child is told the contract.
+    child_prompt.push_str(
+        "\n\nYou are a subagent running one errand for another agent. You cannot see its conversation \
+         and cannot ask the user questions. Your final message is the entire result returned to it: \
+         make it self-contained -- what you found or changed (with file paths), what you could not \
+         do, and anything you did not verify.",
+    );
     if let Some(parent_run) = child_args.parent_run.as_deref() {
         child_prompt.push_str(&format!(
             "\n\nThe run that dispatched you is `{parent_run}`. While you work you can send it \
