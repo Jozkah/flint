@@ -17,6 +17,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
   missingReadGuidance,
@@ -248,11 +249,15 @@ function scopedInstructionsOwed(
   path: string,
   owed: { scope: string; name: string; content: string }[]
 ): ToolOutcome {
+  // Neutralised exactly as the root-level files are in the system prompt: the
+  // content is a repository's, and must not be able to close its own envelope
+  // and speak as the harness, nor a directory name add attributes to the tag
+  // (Jozkah/jan#97).
   const blocks = owed
     .map((one) =>
       [
-        `<project_instructions path="${one.scope}/${one.name}" applies_to="${one.scope}/">`,
-        one.content.trim(),
+        `<project_instructions path="${attribute(`${one.scope}/${one.name}`)}" applies_to="${attribute(`${one.scope}/`)}">`,
+        sealed(one.content.trim()),
         '</project_instructions>',
       ].join('\n')
     )
