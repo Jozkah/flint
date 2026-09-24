@@ -714,6 +714,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
                     if let Some(mut stderr_stream) = stderr {
                         let _ = stderr_stream.read_to_string(&mut buffer).await;
                     }
+                    // The same scrub the running-server stderr pump applies: a
+                    // server that prints a credential and then crashes must
+                    // not put it in app.log or the error shown in the UI (#119).
+                    let buffer = scrub_handshake_stderr(&buffer);
 
                     if use_override && override_available {
                         log::warn!(
@@ -878,6 +882,12 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
 /// their banners: it is scrubbed before the application log keeps a copy.
 /// Found by the AH-140 scenario, which saw a fixture's key land verbatim in
 /// the app log while the server's own log was clean.
+/// Stderr captured from a server that died during the handshake, scrubbed of
+/// credential-shaped text before it is logged or returned to the UI.
+fn scrub_handshake_stderr(stderr: &str) -> String {
+    tauri_plugin_agent_tools::harness_error::scrub(stderr)
+}
+
 fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
     let level_token = scrubbed.split_whitespace().next().map(|t| {
@@ -1418,5 +1428,16 @@ mod stderr_log_tests {
         assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
         assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
         assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
+    }
+
+    /// #119: the handshake-failure path logged and returned stderr unscrubbed.
+    #[test]
+    fn handshake_failure_stderr_is_scrubbed() {
+        let text = super::scrub_handshake_stderr(
+            "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE\nexiting\n",
+        );
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.contains("ERROR boot failed"), "{text}");
+        assert!(text.contains("exiting"), "{text}");
     }
 }
