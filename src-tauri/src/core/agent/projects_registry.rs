@@ -60,8 +60,14 @@ pub(crate) fn registry_path() -> Option<PathBuf> {
     registry_root().map(|root| root.join(REGISTRY_FILE))
 }
 
+/// Serializes `register_folder`'s load-mutate-save cycle, so two overlapping
+/// registrations cannot each save a registry missing the other's new entry.
+#[cfg(not(feature = "cli"))]
+static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Loads the registry from disk. Missing or corrupt file -> empty list;
-/// never panics.
+/// never panics. A corrupt file is logged, so it is not mistaken for an
+/// install that simply has no projects yet.
 fn load_registry() -> Registry {
     let Some(path) = registry_path() else {
         return Registry::default();
@@ -69,21 +75,39 @@ fn load_registry() -> Registry {
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return Registry::default();
     };
-    serde_json::from_str(&raw).unwrap_or_default()
+    match serde_json::from_str(&raw) {
+        Ok(registry) => registry,
+        Err(err) => {
+            log::warn!(
+                "Project registry {} is corrupt ({err}); treating it as empty",
+                path.display()
+            );
+            Registry::default()
+        }
+    }
 }
 
+/// Write the registry through a sibling temp file and an atomic rename, so an
+/// interrupted write can never leave a truncated `projects.json` behind.
 #[cfg(not(feature = "cli"))]
 fn save_registry(registry: &Registry) {
     let Some(path) = registry_path() else {
         return;
     };
-    if let Some(parent) = path.parent() {
-        if std::fs::create_dir_all(parent).is_err() {
-            return;
+    let result = (|| -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
-    }
-    if let Ok(json) = serde_json::to_string_pretty(registry) {
-        let _ = std::fs::write(&path, json);
+        let json = serde_json::to_string_pretty(registry).map_err(std::io::Error::other)?;
+        let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        if let Err(e) = std::fs::write(&tmp, json).and_then(|()| std::fs::rename(&tmp, &path)) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        Ok(())
+    })();
+    if let Err(err) = result {
+        log::warn!("Failed to save project registry {}: {err}", path.display());
     }
 }
 
@@ -147,6 +171,7 @@ pub(crate) fn resolve_project_id(folder: &Path) -> Option<String> {
 pub(crate) fn register_folder(folder: &Path) -> ProjectEntry {
     let folder_str = folder.to_string_lossy().to_string();
     let name = folder_name(folder);
+    let _store = STORE.lock().unwrap_or_else(|e| e.into_inner());
     let mut registry = load_registry();
 
     // Marker carries the id across a move/rename.
@@ -207,6 +232,48 @@ mod tests {
         let e3 = register_folder(b.path());
         assert_eq!(e1.id, e3.id, "moved folder keeps id via marker");
         assert_eq!(e3.folder, b.path().to_string_lossy());
+    }
+
+    /// #43: concurrent registrations of different folders both survive.
+    #[test]
+    fn concurrent_registrations_do_not_lose_an_entry() {
+        let data = tempfile::tempdir().unwrap();
+        let root = data.path().to_path_buf();
+        let folders: Vec<_> = (0..8).map(|_| tempfile::tempdir().unwrap()).collect();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(folders.len()));
+        let handles: Vec<_> = folders
+            .iter()
+            .map(|f| {
+                let (root, path, barrier) = (root.clone(), f.path().to_path_buf(), barrier.clone());
+                std::thread::spawn(move || {
+                    // The test root is thread-local; each worker sets its own.
+                    set_test_registry_root(Some(root));
+                    barrier.wait();
+                    register_folder(&path).id
+                })
+            })
+            .collect();
+        let ids: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        set_test_registry_root(Some(root));
+        let listed: Vec<_> = list_projects().into_iter().map(|p| p.id).collect();
+        for id in ids {
+            assert!(listed.contains(&id), "registration {id} was lost");
+        }
+    }
+
+    #[test]
+    fn saving_leaves_no_staging_file() {
+        let data = tempfile::tempdir().unwrap();
+        set_test_registry_root(Some(data.path().to_path_buf()));
+        let a = tempfile::tempdir().unwrap();
+        register_folder(a.path());
+        let dir = registry_path().unwrap().parent().unwrap().to_path_buf();
+        let names: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![REGISTRY_FILE.to_string()]);
     }
 
     #[test]

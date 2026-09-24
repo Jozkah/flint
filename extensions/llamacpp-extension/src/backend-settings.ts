@@ -36,3 +36,16 @@ export async function removeBackendSetting(key: string): Promise<void> {
     logger.warn(`settings_remove failed for '${key}':`, error)
   }
 }
+
+/**
+ * Read a secret the web-app keeps in the OS keyring (`get_secret`) rather than
+ * in `settings.json`. `null` when absent or unavailable.
+ */
+export async function getBackendSecret(key: string): Promise<string | null> {
+  try {
+    return (await invoke<string | null>('get_secret', { key })) ?? null
+  } catch (error) {
+    logger.warn(`get_secret failed for '${key}':`, error)
+    return null
+  }
+}

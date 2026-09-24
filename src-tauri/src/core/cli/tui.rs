@@ -13846,17 +13846,11 @@ fn open_account_login_with_begin(
 }
 
 fn open_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
-    #[cfg(target_os = "linux")]
-    let mut command = Command::new("xdg-open");
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start"]);
-        command
-    };
-    command
+    // Shared with `browser::launch`: on Windows, `cmd /C start` cut the OAuth
+    // URL at its first `&` (#59).
+    let (program, args) = super::browser::platform_launcher();
+    Command::new(program)
+        .args(args)
         .arg(url)
         .spawn()
         .map(|_| ())

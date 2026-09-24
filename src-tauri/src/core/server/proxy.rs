@@ -152,9 +152,15 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 ///   Flint. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
 ///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
 ///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
+/// Whether an inbound header is copied onto the upstream request. Both headers
+/// that authenticate the caller to this local server (`Authorization` and
+/// `X-Api-Key`) are consumed here: forwarding them handed the local server's
+/// secret to the remote provider, and on an Anthropic upstream collided with
+/// the real `x-api-key` the converter adds.
 pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
     name != hyper::header::HOST
         && name != hyper::header::AUTHORIZATION
+        && name != "x-api-key"
         && name != hyper::header::CONTENT_LENGTH
         && name != hyper::header::TRANSFER_ENCODING
         && name != hyper::header::ORIGIN
@@ -2152,10 +2158,8 @@ async fn proxy_request(
                     fallback_req = fallback_req.header("Accept-Encoding", "identity");
 
                     for (name, value) in headers.iter() {
-                        if name != hyper::header::HOST
-                            && name != hyper::header::AUTHORIZATION
+                        if forwards_to_upstream(name)
                             && name != "content-type"
-                            && name != hyper::header::CONTENT_LENGTH
                             && name != hyper::header::ACCEPT_ENCODING
                         {
                             fallback_req = fallback_req.header(name, value);

@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useLocalApiServer } from '../useLocalApiServer'
+import {
+  useLocalApiServer,
+  persistedLocalApiServerState,
+} from '../useLocalApiServer'
+
+const invoke = vi.fn(async () => undefined)
+vi.mock('@/hooks/useServiceHub', () => ({
+  getServiceHub: () => ({ core: () => ({ invoke }) }),
+}))
 
 vi.mock('@/constants/localStorage', () => ({
   localStorageKey: {
@@ -82,6 +90,32 @@ describe('useLocalApiServer', () => {
       expect(result.current.apiKey).toBe('some-key')
       act(() => { result.current.setApiKey('') })
       expect(result.current.apiKey).toBe('')
+    })
+  })
+
+  // #130: the key is a secret -- never in the settings.json blob, always in
+  // the OS keyring.
+  describe('apiKey persistence', () => {
+    it('keeps the key out of the persisted blob', () => {
+      act(() => {
+        useLocalApiServer.getState().setApiKey('k-secret')
+      })
+      const persisted = persistedLocalApiServerState(
+        useLocalApiServer.getState()
+      )
+      expect(persisted).not.toHaveProperty('apiKey')
+      expect(JSON.stringify(persisted)).not.toContain('k-secret')
+      expect(persisted.serverPort).toBe(1337)
+    })
+
+    it('writes the key to the keyring', () => {
+      act(() => {
+        useLocalApiServer.getState().setApiKey('k-secret')
+      })
+      expect(invoke).toHaveBeenCalledWith('set_secret', {
+        key: 'local-api-server-key',
+        value: 'k-secret',
+      })
     })
   })
 
