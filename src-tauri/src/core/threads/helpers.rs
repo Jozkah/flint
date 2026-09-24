@@ -94,8 +94,28 @@ pub fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), String>
 /// both, so the tail is settled first: a fragment that does not parse is what a
 /// crash leaves and is cut off (its content was never complete), and a tail
 /// that parses but only lacked its newline gets one.
+#[cfg(test)]
 pub fn append_message_line(path: &Path, message: &serde_json::Value) -> Result<(), String> {
-    settle_unterminated_tail(path)?;
+    append_message_line_if_new(path, message, None).map(|_| ())
+}
+
+/// Append `message` unless a message with the same `id` is already in the
+/// file, reading the file once for both the duplicate check and the torn-tail
+/// check. `append_message_line` after `read_messages_from_file` read it three
+/// times per message, which made a long thread quadratic to write (#196).
+/// Returns `false` when the id was already there and nothing was written.
+pub fn append_message_line_if_new(
+    path: &Path,
+    message: &serde_json::Value,
+    id: Option<&str>,
+) -> Result<bool, String> {
+    let bytes = read_if_present(path)?;
+    if let Some(id) = id {
+        if contains_message_id(&bytes, id) {
+            return Ok(false);
+        }
+    }
+    settle_tail(path, &bytes)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -103,15 +123,31 @@ pub fn append_message_line(path: &Path, message: &serde_json::Value) -> Result<(
         .map_err(|e| e.to_string())?;
     let data = serde_json::to_string(message).map_err(|e| e.to_string())?;
     writeln!(file, "{data}").map_err(|e| e.to_string())?;
-    file.flush().map_err(|e| e.to_string())
+    file.flush().map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
-fn settle_unterminated_tail(path: &Path) -> Result<(), String> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e.to_string()),
-    };
+fn read_if_present(path: &Path) -> Result<Vec<u8>, String> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Whether any complete message line has `"id": id`. Lines are parsed only
+/// when the id text occurs in them at all, so the common case (a new id) is a
+/// plain byte scan. A line that does not parse is not a match.
+fn contains_message_id(bytes: &[u8], id: &str) -> bool {
+    let needle = id.as_bytes();
+    bytes
+        .split(|b| *b == NEWLINE)
+        .filter(|line| !needle.is_empty() && line.windows(needle.len()).any(|w| w == needle))
+        .filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok())
+        .any(|m| m.get("id").and_then(|v| v.as_str()) == Some(id))
+}
+
+fn settle_tail(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if bytes.is_empty() || bytes.ends_with(NEWLINE_BYTES) {
         return Ok(());
     }
