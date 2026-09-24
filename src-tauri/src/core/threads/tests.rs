@@ -349,10 +349,17 @@ async fn test_modify_and_delete_thread() {
         tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
     }
 
+    // An agent tool call made the thread a scratch dir (Jozkah/jan#186).
+    let scratch = tauri_plugin_agent_tools::workspace::ensure_scratch_dir(&thread_id)
+        .await
+        .unwrap();
+    fs::write(scratch.join("work.txt"), b"x").unwrap();
+
     // Delete the thread
     delete_thread(app.handle().clone(), thread_id.clone())
         .await
         .unwrap();
+    assert!(!scratch.exists(), "a deleted thread's scratch dir must go with it");
 
     // Verify deletion
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -800,6 +807,21 @@ async fn test_get_lock_for_thread_distinct_ids_distinct_locks() {
     let l1 = get_lock_for_thread("lock-thread-x").await;
     let l2 = get_lock_for_thread("lock-thread-y").await;
     assert!(!std::sync::Arc::ptr_eq(&l1, &l2));
+}
+
+/// Jozkah/jan#179: a lock nobody holds is evicted, so the map does not keep
+/// one entry per thread ever touched; a held lock is never evicted.
+#[tokio::test]
+async fn test_idle_thread_locks_are_evicted() {
+    let held = get_lock_for_thread("evict-held").await;
+    drop(get_lock_for_thread("evict-idle").await);
+    let _other = get_lock_for_thread("evict-trigger").await;
+    let map = super::helpers::MESSAGE_LOCKS.get().unwrap().lock().await;
+    assert!(!map.contains_key("evict-idle"), "an idle lock was kept");
+    assert!(map.contains_key("evict-held"), "a held lock was evicted");
+    drop(map);
+    let again = get_lock_for_thread("evict-held").await;
+    assert!(std::sync::Arc::ptr_eq(&held, &again));
 }
 
 #[tokio::test]

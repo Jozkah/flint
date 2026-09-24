@@ -470,48 +470,22 @@ fn supervise_launch(
         HarnessError::new(ErrorKind::Io, format!("the job's output file is not usable: {e}"))
             .at(Stage::Job)
     })?;
-    let mut written = 0u64;
-    let pump = |mut reader: Box<dyn std::io::Read + Send>, sink: &mut std::fs::File, written: &mut u64| {
-        let mut buffer = [0u8; 8192];
-        while let Ok(n) = reader.read(&mut buffer) {
-            if n == 0 {
-                break;
-            }
-            if *written >= MAX_OUTPUT_BYTES {
-                continue;
-            }
-            let room = (MAX_OUTPUT_BYTES - *written).min(n as u64) as usize;
-            let _ = sink.write_all(&buffer[..room]);
-            let _ = sink.flush();
-            *written += room as u64;
-        }
-    };
     // Both streams, in order of arrival, into one file: what a person reads is
-    // what the command printed.
+    // what the command printed. Each stream keeps up to its own cap. Both
+    // pumps keep reading to end of stream past the cap (and when the file
+    // cannot be opened): a pipe nobody reads fills, the child blocks writing
+    // to it, and the supervisor waits on that child forever (Jozkah/jan#58).
     let stdout = child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>);
     let stderr = child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>);
     let sink_path = out.clone();
     let err_thread = stderr.map(|reader| {
         std::thread::spawn(move || {
-            if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&sink_path) {
-                let mut count = 0u64;
-                let mut pump_err = |mut reader: Box<dyn std::io::Read + Send>| {
-                    let mut buffer = [0u8; 8192];
-                    while let Ok(n) = reader.read(&mut buffer) {
-                        if n == 0 || count >= MAX_OUTPUT_BYTES {
-                            break;
-                        }
-                        let _ = file.write_all(&buffer[..n]);
-                        let _ = file.flush();
-                        count += n as u64;
-                    }
-                };
-                pump_err(reader);
-            }
+            let mut file = std::fs::OpenOptions::new().append(true).open(&sink_path).ok();
+            drain_capped(reader, file.as_mut(), MAX_OUTPUT_BYTES);
         })
     });
     if let Some(reader) = stdout {
-        pump(reader, &mut sink, &mut written);
+        drain_capped(reader, Some(&mut sink), MAX_OUTPUT_BYTES);
     }
     if let Some(handle) = err_thread {
         let _ = handle.join();
@@ -725,9 +699,80 @@ pub fn supervisor_binary() -> Result<PathBuf, HarnessError> {
     .at(Stage::Job))
 }
 
+/// Copy `reader` into `sink` until end of stream, keeping at most `cap`
+/// bytes and discarding the rest. Never stops reading early: the reader is a
+/// child's pipe, and a pipe left unread blocks the child. Returns the bytes
+/// kept.
+fn drain_capped(
+    mut reader: impl std::io::Read,
+    mut sink: Option<&mut std::fs::File>,
+    cap: u64,
+) -> u64 {
+    use std::io::Write as _;
+    let mut buffer = [0u8; 8192];
+    let mut kept = 0u64;
+    loop {
+        let n = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        };
+        if kept >= cap {
+            continue;
+        }
+        let room = (cap - kept).min(n as u64) as usize;
+        if let Some(sink) = sink.as_deref_mut() {
+            let _ = sink.write_all(&buffer[..room]);
+            let _ = sink.flush();
+        }
+        kept += room as u64;
+    }
+    kept
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A reader that yields `total` bytes and counts how many were taken.
+    struct Counting {
+        left: u64,
+        taken: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    }
+    impl std::io::Read for Counting {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = (buf.len() as u64).min(self.left) as usize;
+            buf[..n].fill(b'e');
+            self.left -= n as u64;
+            self.taken
+                .fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
+            Ok(n)
+        }
+    }
+
+    /// Jozkah/jan#58: past the cap the pump keeps draining the pipe to its
+    /// end (so a chatty child never blocks on a full pipe), and keeps only
+    /// `cap` bytes; with no file it still drains.
+    #[test]
+    fn a_pump_drains_past_the_cap_and_keeps_only_the_cap() {
+        let d = dir("drain");
+        let path = d.join("out");
+        let mut file = std::fs::File::create(&path).unwrap();
+        let taken = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let reader = Counting { left: 100_000, taken: taken.clone() };
+        let kept = drain_capped(reader, Some(&mut file), 10_000);
+        assert_eq!(kept, 10_000);
+        assert_eq!(taken.load(std::sync::atomic::Ordering::Relaxed), 100_000);
+        drop(file);
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 10_000);
+
+        let taken = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let reader = Counting { left: 50_000, taken: taken.clone() };
+        drain_capped(reader, None, 10);
+        assert_eq!(taken.load(std::sync::atomic::Ordering::Relaxed), 50_000);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(

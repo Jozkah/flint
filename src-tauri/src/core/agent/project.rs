@@ -227,7 +227,7 @@ pub(crate) fn set_string_array_in_agent_toml(
     }
     table[key] = toml_edit::value(arr);
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
@@ -699,7 +699,7 @@ pub(crate) fn set_model_in_agent_toml(path: &Path, model: &str) -> Result<(), St
     let agent = doc["agent"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
     agent["model"] = toml_edit::value(model);
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
@@ -736,7 +736,7 @@ pub(crate) fn set_agent_key(
         }
     }
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 

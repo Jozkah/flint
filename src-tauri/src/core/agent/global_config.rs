@@ -508,7 +508,10 @@ fn write_raw(config: &GlobalConfigToml) -> Result<PathBuf, String> {
     let path = dir.join("config.toml");
     let body =
         toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {e}"))?;
-    std::fs::write(&path, &body).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    // Temp file plus rename (Jozkah/jan#36): a crash mid-write must not leave
+    // a truncated file that then fails to parse and blocks every later write.
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     restrict_permissions(&path);
     Ok(path)
 }
@@ -662,7 +665,8 @@ pub(crate) fn set_global_key(key: &str, value: Option<toml_edit::Item>) -> Resul
         }
     }
 
-    std::fs::write(&path, doc.to_string())
+    let body = doc.to_string();
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     restrict_permissions(&path);
     Ok(path)
@@ -1225,6 +1229,39 @@ models = ["gpt-4o"]
                 Some("https://api.openai.com/v1")
             );
             assert_eq!(openai.models, vec!["gpt-4o".to_string()]);
+        });
+    }
+
+    /// Jozkah/jan#36: config.toml is replaced through a temp file and a rename,
+    /// never truncated in place, so a crash mid-write cannot leave a partial
+    /// file that fails to parse. A handle opened before the write still reads
+    /// the old bytes, and no temp file is left in `~/.jan`.
+    #[test]
+    fn set_provider_replaces_config_toml_atomically() {
+        with_temp_home(|_| {
+            let path = ensure_global_config().expect("ensure");
+            let original = std::fs::read_to_string(&path).unwrap();
+            let mut before = std::fs::File::open(&path).unwrap();
+            set_provider(
+                "openai",
+                ProviderUpdate {
+                    api_key: Some("sk-1".into()),
+                    ..Default::default()
+                },
+            )
+            .expect("set");
+            let mut old = String::new();
+            std::io::Read::read_to_string(&mut before, &mut old).unwrap();
+            assert_eq!(old, original, "config.toml was truncated in place");
+            drop(before);
+            let dir = path.parent().unwrap();
+            let stray: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|n| n.contains(".tmp-"))
+                .collect();
+            assert!(stray.is_empty(), "temp files left behind: {stray:?}");
+            assert!(load_global_config().expect("load").contains_key("openai"));
         });
     }
 

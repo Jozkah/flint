@@ -10,6 +10,7 @@
 //! `commands` are gated.
 
 pub mod access;
+pub mod atomic_file;
 pub mod activity;
 pub mod audit;
 pub mod compat_env;

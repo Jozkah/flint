@@ -103,6 +103,10 @@ pub struct Writer {
     checkpoint: Checkpoint,
     last_text_write: Instant,
     dirty: bool,
+    /// `checkpoint.partial.chars().count()`, kept as text arrives so the
+    /// per-token cap check is O(1) instead of a rescan of the whole buffer
+    /// (Jozkah/jan#152).
+    partial_chars: usize,
 }
 
 impl Writer {
@@ -133,6 +137,7 @@ impl Writer {
             },
             last_text_write: Instant::now(),
             dirty: true,
+            partial_chars: 0,
         };
         writer.flush()?;
         Ok(writer)
@@ -143,6 +148,7 @@ impl Writer {
     pub fn conversation(&mut self, messages: &[Value]) {
         self.checkpoint.conversation = messages.to_vec();
         self.checkpoint.partial.clear();
+        self.partial_chars = 0;
         self.dirty = true;
         let _ = self.flush();
     }
@@ -150,8 +156,9 @@ impl Writer {
     /// The model streamed more of its reply. Written at most every
     /// `TEXT_EVERY`, so a fast stream does not become a disk loop.
     pub fn text(&mut self, delta: &str) {
-        if self.checkpoint.partial.chars().count() < MAX_PARTIAL_CHARS {
+        if self.partial_chars < MAX_PARTIAL_CHARS {
             self.checkpoint.partial.push_str(delta);
+            self.partial_chars += delta.chars().count();
             self.dirty = true;
         }
         if self.last_text_write.elapsed() >= TEXT_EVERY {
@@ -336,6 +343,27 @@ mod tests {
             w.text(&chunk);
         }
         assert!(w.checkpoint.partial.chars().count() <= MAX_PARTIAL_CHARS + chunk.len());
+        w.finish();
+    }
+
+    /// Jozkah/jan#152: the cap is checked against a running count, which must
+    /// match the buffer through multi-byte text, the cap, and a restart.
+    #[test]
+    fn the_running_partial_count_matches_the_buffer() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = Writer::begin(dir.path(), "m", Vec::new()).unwrap();
+        let chunk = "été".repeat(4_000);
+        for _ in 0..10 {
+            w.text(&chunk);
+            assert_eq!(w.partial_chars, w.checkpoint.partial.chars().count());
+        }
+        let full = w.checkpoint.partial.len();
+        w.text("more");
+        assert_eq!(w.checkpoint.partial.len(), full, "grew past the cap");
+        w.conversation(&[]);
+        assert_eq!(w.partial_chars, 0);
+        w.text("ab");
+        assert_eq!(w.partial_chars, 2);
         w.finish();
     }
 }

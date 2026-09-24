@@ -22,9 +22,16 @@ pub fn should_use_sqlite() -> bool {
 }
 
 /// Get a lock for a specific thread to ensure thread-safe message file operations
+///
+/// Entries nobody holds any more are evicted on the way (Jozkah/jan#179): the
+/// map owns one `Arc` per entry, so a strong count of 1 means no operation is
+/// using or waiting on that lock and a fresh one can stand in for it later.
+/// Without this the map kept an entry for every thread ever touched, deleted
+/// threads included, for the life of the process.
 pub async fn get_lock_for_thread(thread_id: &str) -> Arc<Mutex<()>> {
     let locks = MESSAGE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut locks = locks.lock().await;
+    locks.retain(|id, lock| id == thread_id || Arc::strong_count(lock) > 1);
     let lock = locks
         .entry(thread_id.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(())))

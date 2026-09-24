@@ -58,3 +58,18 @@ pub fn ensure_thread_dir_exists(data_folder: &Path, thread_id: &str) -> Result<(
     }
     Ok(())
 }
+
+/// The agent scratch dir of `thread_id`, or `None` when the id is not a single
+/// plain path component: a crafted id such as `x/../../dir` must never steer a
+/// recursive delete outside the temp folder.
+pub fn thread_scratch_dir(thread_id: &str) -> Option<std::path::PathBuf> {
+    let mut parts = std::path::Path::new(thread_id).components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(_)), None)
+            if !thread_id.contains(['/', '\\']) =>
+        {
+            Some(tauri_plugin_agent_tools::workspace::scratch_dir(thread_id))
+        }
+        _ => None,
+    }
+}

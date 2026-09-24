@@ -2626,6 +2626,9 @@ impl App {
         self.starting.clear();
         self.groups.clear();
         self.pending_rows.clear();
+        // Job pairings belong to the session being dropped (Jozkah/jan#134).
+        self.bash_jobs.clear();
+        self.job_origin.clear();
         self.reasoning_blocks.clear();
         self.expanded_traces.clear();
         self.subagent_blocks.clear();
@@ -3193,17 +3196,19 @@ impl App {
         // Collecting a backgrounded job: the detached command still streams under
         // the id of the call that started it, so point this call at that buffer.
         // Without the alias the row the user is waiting on shows an empty box.
-        if let Some(job) = bash_job_id(&args) {
+        let mut remembered = None;
+        if let Some(job) = bash_job_id(&args).map(str::to_string) {
             // The collecting call blocks until the job finishes, so it is no
             // longer running unattended: drop it from the status-bar count.
-            self.active_bg_jobs.remove(job);
-            if let Some(origin) = self.job_origin.get(job) {
-                self.live_alias.insert(id.to_string(), origin.clone());
+            // Its pairing entries are consumed here too, or both maps would
+            // keep one entry per backgrounded job for the whole session
+            // (Jozkah/jan#134).
+            self.active_bg_jobs.remove(&job);
+            if let Some(origin) = self.job_origin.remove(&job) {
+                self.live_alias.insert(id.to_string(), origin);
             }
+            remembered = self.bash_jobs.remove(&job);
         }
-        let remembered = bash_job_id(&args)
-            .and_then(|job| self.bash_jobs.get(job))
-            .cloned();
         if let (Some(cmd), Some(obj)) = (remembered, args.as_object_mut()) {
             self.bash_commands.insert(id.to_string(), cmd.clone());
             obj.insert("command".to_string(), serde_json::Value::String(cmd));
@@ -31836,6 +31841,9 @@ mod tests {
             args: json!({ "job_id": "bash-0" }),
         });
         assert!(app.active_bg_jobs.is_empty(), "collected job is uncounted");
+        // Jozkah/jan#134: collecting the job consumes its pairing entries.
+        assert!(app.bash_jobs.is_empty(), "collected job's command is kept");
+        assert!(app.job_origin.is_empty(), "collected job's origin is kept");
         let footer: String = super::footer_spans(&app)
             .iter()
             .map(|s| s.content.as_ref())

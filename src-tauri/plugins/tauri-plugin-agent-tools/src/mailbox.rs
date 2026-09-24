@@ -139,7 +139,7 @@ pub fn path_for(data_folder: &Path, run: &RunId) -> PathBuf {
 /// messages can be given the same seq. The lock is a file created
 /// exclusively, so it works across processes -- a run and a `jan cli agent
 /// mail` in another terminal are the same race.
-struct Held {
+pub(crate) struct Held {
     path: PathBuf,
 }
 
@@ -150,7 +150,7 @@ impl Held {
     /// forever, and the window it guards is a few milliseconds of file IO, so
     /// a bounded wait followed by taking it is the behaviour that fails least
     /// badly.
-    fn take(mailbox: &Path) -> Held {
+    pub(crate) fn take(mailbox: &Path) -> Held {
         let path = mailbox.with_extension("lock");
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);

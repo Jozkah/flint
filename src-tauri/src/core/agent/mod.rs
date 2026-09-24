@@ -82,3 +82,4 @@ pub mod vcs;
 pub mod verification;
 pub mod worktree;
 pub mod worktree_export;
+pub(crate) mod partial_dirs;

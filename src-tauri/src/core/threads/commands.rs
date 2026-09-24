@@ -143,6 +143,17 @@ pub async fn delete_thread<R: Runtime>(
     {
         log::warn!("could not remove request records for a deleted thread: {e}");
     }
+    // The thread's agent scratch dir in the OS temp folder is ours to remove
+    // too (workspace::ensure_scratch_dir assigns its teardown to thread
+    // deletion on the desktop); without this it leaked until a restart sweep
+    // (Jozkah/jan#186).
+    if let Some(scratch) = super::utils::thread_scratch_dir(&thread_id) {
+        if let Err(e) = tokio::fs::remove_dir_all(&scratch).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("could not remove a deleted thread's scratch dir: {e}");
+            }
+        }
+    }
     Ok(())
 }
 

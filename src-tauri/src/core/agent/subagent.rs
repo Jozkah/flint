@@ -256,7 +256,7 @@ impl SubagentRegistry {
         let body = toml::to_string_pretty(&file)
             .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
         let path = dir.join(format!("{}.toml", def.name));
-        std::fs::write(&path, body).map_err(|e| {
+        tauri_plugin_agent_tools::atomic_file::write_atomic(&path, body.as_bytes()).map_err(|e| {
             SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
         })?;
 

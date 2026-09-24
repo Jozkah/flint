@@ -104,10 +104,11 @@ pub async fn list() -> Result<Vec<HubSkill>, String> {
 /// Download one hub skill (SKILL.md + every bundled file) into the project's
 /// `.jan/agent/skills/<name>/`, replacing any existing skill of the same name.
 ///
-/// Atomic on failure: every file is fetched into memory first, and only once all
-/// downloads succeed is the destination cleared and rewritten — a mid-download
-/// error leaves the existing skill untouched, and re-import never leaves stale
-/// files from a prior version behind.
+/// Atomic on failure: every file is fetched into memory first, then written to
+/// a staging directory that is swapped into place only once complete (see
+/// [`install_fetched`]). A download or write error leaves the existing skill
+/// untouched, and re-import never leaves stale files from a prior version
+/// behind.
 pub async fn import(root: &Path, name: &str) -> Result<(), String> {
     // Reuse the shared workspace name guard (rejects separators, `..`, `.`, empty).
     let stem = skills::safe_stem(name)?;
@@ -151,27 +152,146 @@ pub async fn import(root: &Path, name: &str) -> Result<(), String> {
 
     // Phase 2: replace the destination with the freshly fetched files.
     let skills_dir = skills::skills_dir(&workspace::project_store(root));
-    let dest_root = skills_dir.join(&stem);
+    let fetched: Vec<(String, Vec<u8>)> = fetched
+        .into_iter()
+        .map(|(rel, bytes)| (rel, bytes.to_vec()))
+        .collect();
+    tokio::task::spawn_blocking(move || install_fetched(&skills_dir, &stem, &fetched))
+        .await
+        .map_err(|e| format!("ERROR: {e}"))?
+}
+
+/// Replace `<skills_dir>/<stem>/` with `files` so that a failure at any point
+/// leaves the previous skill in place (Jozkah/jan#40).
+///
+/// The new version is written into a staging directory beside `skills_dir`
+/// (not inside it, so the skill scanner never lists a half-written copy). Only
+/// once every file is on disk is the old directory moved aside, the staging
+/// directory renamed into place, and the old copy removed. If the swap fails,
+/// the old directory is moved back.
+fn install_fetched(
+    skills_dir: &Path,
+    stem: &str,
+    files: &[(String, Vec<u8>)],
+) -> Result<(), String> {
+    let err = |e: std::io::Error| format!("ERROR: {e}");
+    std::fs::create_dir_all(skills_dir).map_err(err)?;
+    let holding = skills_dir.parent().unwrap_or(skills_dir);
+    let nonce = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let staging = holding.join(format!(".skill-import-{stem}-{nonce}"));
+    let backup = holding.join(format!(".skill-replaced-{stem}-{nonce}"));
+    let dest_root = skills_dir.join(stem);
     let flat = skills_dir.join(format!("{stem}.md"));
-    let _ = tokio::fs::remove_dir_all(&dest_root).await;
-    let _ = tokio::fs::remove_file(&flat).await; // drop a legacy flat form, if any
-    for (rel, bytes) in fetched {
-        let target = dest_root.join(&rel);
-        if let Some(parent) = target.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| format!("ERROR: {e}"))?;
+
+    let write_all = || -> std::io::Result<()> {
+        for (rel, bytes) in files {
+            let target = staging.join(rel);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&target, bytes)?;
         }
-        tokio::fs::write(&target, &bytes)
-            .await
-            .map_err(|e| format!("ERROR: {e}"))?;
+        Ok(())
+    };
+    std::fs::create_dir_all(&staging).map_err(err)?;
+    if let Err(e) = write_all() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(err(e));
     }
+
+    let had_old = dest_root.exists();
+    if had_old {
+        if let Err(e) = std::fs::rename(&dest_root, &backup) {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(err(e));
+        }
+    }
+    if let Err(e) = std::fs::rename(&staging, &dest_root) {
+        if had_old {
+            let _ = std::fs::rename(&backup, &dest_root);
+        }
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(err(e));
+    }
+    if had_old {
+        let _ = std::fs::remove_dir_all(&backup);
+    }
+    let _ = std::fs::remove_file(&flat); // drop a legacy flat form, if any
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "skill-hub-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Jozkah/jan#40: a write failure partway through the new files must
+    /// leave the previously installed skill exactly as it was.
+    #[test]
+    fn a_failed_write_keeps_the_existing_skill() {
+        let store = scratch("fail");
+        let skills_dir = store.join("skills");
+        let old = skills_dir.join("pdf");
+        std::fs::create_dir_all(old.join("scripts")).unwrap();
+        std::fs::write(old.join("SKILL.md"), b"old skill").unwrap();
+        std::fs::write(old.join("scripts/foo.py"), b"print(1)").unwrap();
+
+        // The second file cannot be written: its parent path runs through a
+        // regular file, so create_dir_all fails after SKILL.md was written.
+        let files = vec![
+            ("SKILL.md".to_string(), b"new skill".to_vec()),
+            ("SKILL.md/nested.txt".to_string(), b"x".to_vec()),
+        ];
+        assert!(install_fetched(&skills_dir, "pdf", &files).is_err());
+
+        assert_eq!(std::fs::read(old.join("SKILL.md")).unwrap(), b"old skill");
+        assert_eq!(std::fs::read(old.join("scripts/foo.py")).unwrap(), b"print(1)");
+        let leftovers: Vec<_> = std::fs::read_dir(&store)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".skill-"))
+            .collect();
+        assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn a_successful_install_replaces_without_stale_files() {
+        let store = scratch("ok");
+        let skills_dir = store.join("skills");
+        let old = skills_dir.join("pdf");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("SKILL.md"), b"old").unwrap();
+        std::fs::write(old.join("stale.txt"), b"stale").unwrap();
+        std::fs::write(skills_dir.join("pdf.md"), b"legacy").unwrap();
+
+        let files = vec![("SKILL.md".to_string(), b"new".to_vec())];
+        install_fetched(&skills_dir, "pdf", &files).unwrap();
+
+        assert_eq!(std::fs::read(old.join("SKILL.md")).unwrap(), b"new");
+        assert!(!old.join("stale.txt").exists());
+        assert!(!skills_dir.join("pdf.md").exists());
+        let _ = std::fs::remove_dir_all(&store);
+    }
 
     #[test]
     fn skill_name_extracted_from_skill_md_path() {
