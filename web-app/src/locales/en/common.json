@@ -1174,6 +1174,7 @@
     "tools": "Tools",
     "builtins": "{{count}} built-in",
     "noMcp": "no MCP servers",
+    "mcpNotOffered": "MCP servers from Settings are not offered in Cowork",
     "context": "Context",
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",

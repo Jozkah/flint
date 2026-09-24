@@ -371,6 +371,7 @@ import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useMCPServers } from '@/hooks/useMCPServers'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -664,6 +665,10 @@ function CoworkPage() {
     approvedUserSkillRoots: skillRoots,
   })
 
+  // Counted only to say that they are not offered here (the run is given none).
+  const settingsMcpServers = useMCPServers(
+    (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
+  )
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
       available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -3999,7 +4004,10 @@ function CoworkPage() {
   // conversation: behind a dialog on wide screens, a view of its own on phones.
   const detailsBody = (
     <>
-      <CoworkReadinessCard manifest={readiness} />
+      <CoworkReadinessCard
+        manifest={readiness}
+        settingsMcpServers={settingsMcpServers}
+      />
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport
         sessionId={session?.id}
