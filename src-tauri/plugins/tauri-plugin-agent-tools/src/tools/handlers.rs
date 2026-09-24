@@ -6196,9 +6196,19 @@ on_failure = \"warn\"
             seen.lock().unwrap().is_empty(),
             "nothing printed yet at hand-off"
         );
-        // The detached task is still running and still holds the sink.
-        tokio::time::sleep(std::time::Duration::from_millis(900)).await;
-        let streamed = seen.lock().unwrap().clone();
+        // The detached task is still running and still holds the sink. The
+        // command itself sleeps a full second before printing, so a fixed
+        // wait shorter than that always races it; poll with a generous
+        // deadline instead so a loaded runner or slow sandbox spawn does not
+        // fail the test.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let streamed = loop {
+            let now_seen = seen.lock().unwrap().clone();
+            if now_seen.contains("late") || std::time::Instant::now() >= deadline {
+                break now_seen;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
         assert!(
             streamed.contains("late"),
             "a backgrounded job must keep reporting: {streamed:?}"
