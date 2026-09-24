@@ -423,7 +423,32 @@ pub async fn agent_cc_import(
 ) -> Result<CcImportResult, String> {
     let mut result = CcImportResult::default();
 
+    // One name, two sources (a user skill and a project skill both called
+    // `foo`) would land on the same target: the second would silently
+    // replace the first, or be reported as a mere skip (Jozkah/jan#290).
+    // Neither is imported; the user is asked to pick one.
+    let mut sources: std::collections::HashMap<(bool, String), Vec<String>> = Default::default();
+    for item in &items {
+        sources
+            .entry((matches!(item.kind, CcItemKind::Skill), item.name.trim().to_string()))
+            .or_default()
+            .push(item.source_path.clone());
+    }
+    let mut reported = std::collections::HashSet::new();
+
     for item in items {
+        let key = (matches!(item.kind, CcItemKind::Skill), item.name.trim().to_string());
+        if let Some(paths) = sources.get(&key).filter(|p| p.len() > 1) {
+            if reported.insert(key.clone()) {
+                result.errors.push(format!(
+                    "{}: selected from {} places ({}); choose one to import",
+                    key.1,
+                    paths.len(),
+                    paths.join(", ")
+                ));
+            }
+            continue;
+        }
         let name = match sanitize_name(&item.name) {
             Ok(n) => n,
             Err(e) => {
@@ -657,6 +682,32 @@ mod tests {
         assert!(result.imported.is_empty(), "{result:?}");
         assert!(!skills.join("foo").exists(), "the flat skill was shadowed");
         assert_eq!(fs::read_to_string(skills.join("foo.md")).unwrap(), "# flat");
+        set_test_user_skills(None);
+    }
+
+    /// Jozkah/jan#290: two selected items with one name are a collision the
+    /// user must resolve, not an overwrite or a "skipped".
+    #[test]
+    fn two_sources_for_one_name_are_reported_not_imported() {
+        let cc_home = tempdir().unwrap();
+        let global_store = tempdir().unwrap();
+        set_test_user_skills(Some(global_store.path().to_path_buf()));
+        set_test_user_plugins(None);
+        write_skill(&cc_home.path().join("a"), "foo", "# from a");
+        write_skill(&cc_home.path().join("b"), "foo", "# from b");
+        let pick = |dir: &str| CcImportSelection {
+            kind: CcItemKind::Skill,
+            name: "foo".to_string(),
+            source_path: cc_home.path().join(dir).join("foo").to_string_lossy().into_owned(),
+        };
+        for overwrite in [false, true] {
+            let result = tokio_test_block_on(agent_cc_import(vec![pick("a"), pick("b")], overwrite)).unwrap();
+            assert!(result.imported.is_empty() && result.skipped.is_empty(), "{result:?}");
+            assert_eq!(result.errors.len(), 1, "{result:?}");
+            assert!(result.errors[0].contains("2 places"));
+        }
+        let skills = tauri_plugin_agent_tools::skills::skills_dir(global_store.path());
+        assert!(!skills.join("foo").exists());
         set_test_user_skills(None);
     }
 
