@@ -1846,6 +1846,10 @@ struct App {
     display_log: Vec<DisplayEntry>,
     /// Background journal writer, created on the first dump and joined on exit.
     journal_writer: Option<journal::Writer>,
+    /// Background thread saver for mid-turn `MessagesUpdated` snapshots, so a
+    /// model step does not stall the render loop on a full-history rewrite
+    /// and fsync (#63). Flushed before every synchronous save and on exit.
+    thread_saver: Option<ThreadSaver>,
     /// In-progress assistant text for the current turn, flushed on the next
     /// step/tool/terminal event.
     assistant_buf: String,
@@ -2453,6 +2457,7 @@ impl App {
             transcript: Vec::new(),
             display_log: Vec::new(),
             journal_writer: None,
+            thread_saver: None,
             assistant_buf: String::new(),
             reasoning_segs: Vec::new(),
             tool_group: None,
@@ -4554,6 +4559,9 @@ impl App {
         if self.history.is_empty() {
             return;
         }
+        // A queued background save must land first, or it could overwrite
+        // this newer snapshot after the fact.
+        self.flush_thread_saves();
         match super::cli_save_thread(
             &self.agent_dir,
             self.thread_id.as_deref(),
@@ -4566,6 +4574,43 @@ impl App {
                 self.dump_display_log();
             }
             Err(e) => self.detail = format!("save failed: {e}"),
+        }
+    }
+
+    /// `persist` off the render loop: the mid-turn save on every model step
+    /// hands the snapshot to a writer thread instead of rewriting the whole
+    /// history (with an fsync) inside a frame. The first save of a new thread
+    /// still runs inline, because it is what assigns the thread id.
+    fn persist_in_background(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        let Some(id) = self.thread_id.clone() else {
+            self.persist();
+            return;
+        };
+        let saver = self.thread_saver.get_or_insert_with(ThreadSaver::new);
+        if let Some(err) = saver.take_error() {
+            self.detail = format!("save failed: {err}");
+        }
+        saver.save(ThreadSave {
+            base: self.agent_dir.clone(),
+            id,
+            model: self.model.clone(),
+            history: self.history.clone(),
+            metadata: self.thread_metadata(),
+        });
+        self.dump_display_log();
+    }
+
+    /// Wait for queued background thread saves to reach disk, surfacing the
+    /// last failure in the status line.
+    fn flush_thread_saves(&mut self) {
+        if let Some(saver) = self.thread_saver.as_ref() {
+            saver.flush();
+            if let Some(err) = saver.take_error() {
+                self.detail = format!("save failed: {err}");
+            }
         }
     }
 
@@ -4583,6 +4628,8 @@ impl App {
 
     /// Wait for queued journal dumps to reach disk (session exit, tests).
     fn join_journal(&mut self) {
+        self.flush_thread_saves();
+        self.thread_saver = None;
         if let Some(writer) = self.journal_writer.as_mut() {
             writer.join();
         }
@@ -5309,7 +5356,7 @@ impl App {
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
-                self.persist();
+                self.persist_in_background();
             }
             StreamEvent::TodoUpdate { list } => {
                 self.todos = list;
@@ -9377,6 +9424,93 @@ fn route_resize_event(app: &mut App, event: Event) {
 fn apply_repaint<B: Backend>(terminal: &mut Terminal<B>) {
     if let Ok(size) = terminal.size() {
         let _ = terminal.resize(size.into());
+    }
+}
+
+/// One snapshot for [`ThreadSaver`].
+struct ThreadSave {
+    base: std::path::PathBuf,
+    id: String,
+    model: String,
+    history: Vec<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
+}
+
+enum ThreadSaveJob {
+    Save(ThreadSave),
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// Writes thread snapshots on a dedicated thread, in the order queued, so the
+/// newest snapshot is always the last one written.
+struct ThreadSaver {
+    tx: Option<std::sync::mpsc::Sender<ThreadSaveJob>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl ThreadSaver {
+    fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<ThreadSaveJob>();
+        let error = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let sink = error.clone();
+        let handle = std::thread::spawn(move || {
+            for job in rx {
+                match job {
+                    ThreadSaveJob::Save(s) => {
+                        if let Err(e) = super::cli_save_thread(
+                            &s.base,
+                            Some(&s.id),
+                            &s.model,
+                            &s.history,
+                            s.metadata,
+                        ) {
+                            if let Ok(mut slot) = sink.lock() {
+                                *slot = Some(e);
+                            }
+                        }
+                    }
+                    ThreadSaveJob::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        Self {
+            tx: Some(tx),
+            handle: Some(handle),
+            error,
+        }
+    }
+
+    fn save(&self, save: ThreadSave) {
+        if let Some(tx) = self.tx.as_ref() {
+            let _ = tx.send(ThreadSaveJob::Save(save));
+        }
+    }
+
+    /// Block until every save queued before this call has been written.
+    fn flush(&self) {
+        let Some(tx) = self.tx.as_ref() else {
+            return;
+        };
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        if tx.send(ThreadSaveJob::Flush(done_tx)).is_ok() {
+            let _ = done_rx.recv();
+        }
+    }
+
+    fn take_error(&self) -> Option<String> {
+        self.error.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
+impl Drop for ThreadSaver {
+    fn drop(&mut self) {
+        drop(self.tx.take());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -18382,6 +18516,38 @@ mod tests {
         assert!(receiver.try_recv().unwrap().is_empty());
         assert!(app.history.is_empty());
         assert!(app.message_queue.is_empty());
+    }
+
+    /// #63: a mid-turn `MessagesUpdated` on an existing thread is saved by
+    /// the background saver, not inline in the render loop, and still reaches
+    /// disk (in order) once the saver is flushed.
+    #[tokio::test]
+    async fn mid_turn_messages_updated_saves_off_the_render_loop() {
+        let mut app = test_app();
+        app.submit_user("first".into());
+        app.persist();
+        assert!(app.thread_id.is_some(), "first save assigns the id");
+        assert!(app.thread_saver.is_none(), "first save runs inline");
+
+        for text in ["step one", "step two"] {
+            app.apply(StreamEvent::MessagesUpdated {
+                messages: vec![
+                    json!({ "role": "user", "content": "first" }),
+                    json!({ "role": "assistant", "content": text }),
+                ],
+            });
+        }
+        assert!(
+            app.thread_saver.is_some(),
+            "a mid-turn save must go through the background saver"
+        );
+        app.join_journal();
+
+        let mut restored = test_app();
+        restored.agent_dir = app.agent_dir.clone();
+        apply_resume(&mut restored, &ResumeRequest::resume(ResumeTarget::Latest)).await;
+        let last = restored.history.last().expect("history restored");
+        assert_eq!(last["content"], "step two", "newest snapshot wins");
     }
 
     #[tokio::test]
