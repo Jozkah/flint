@@ -1686,6 +1686,13 @@ mod tests {
             "git push --force origin main",
             "git branch -D topic",
             "git -C . push -f",
+            // Jozkah/jan#209: spellings the shell still resolves to git.
+            "GIT reset --hard HEAD~1",
+            "git.exe push --force origin main",
+            r#""C:\Program Files\Git\cmd\git.exe" reset --hard"#,
+            // Jozkah/jan#45: the long form of -f.
+            "git clean --force",
+            "git clean --force -X",
         ] {
             let d = resolve_decision(
                 lookup("bash").unwrap(),

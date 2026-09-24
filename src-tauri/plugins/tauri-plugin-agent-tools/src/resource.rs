@@ -31,7 +31,8 @@ use glob::Pattern;
 pub enum GitOp {
     /// `reset --hard`, `reset --merge`, `reset --keep`: discards the tree.
     ResetHard,
-    /// `clean -f`/`-x`/`-d`: deletes untracked files, including ignored ones.
+    /// `clean` other than a dry run: deletes untracked files, including
+    /// ignored ones with `-x`.
     Clean,
     /// `push --force`, `push -f`, `push +ref:ref`.
     ForcePush,
@@ -59,21 +60,7 @@ impl GitOp {
     /// a commit message that mentions it and misses `reset --hard` written with
     /// two spaces; both are wrong in the direction that matters.
     pub fn classify(argv: &[String]) -> Self {
-        // Skip git's own global options so `git -C /tmp push --force` is still
-        // a force push. Options that take a value consume the next word.
-        let mut idx = 0;
-        while idx < argv.len() {
-            let word = argv[idx].as_str();
-            if word == "-C" || word == "-c" || word == "--git-dir" || word == "--work-tree" {
-                idx += 2;
-                continue;
-            }
-            if word.starts_with('-') {
-                idx += 1;
-                continue;
-            }
-            break;
-        }
+        let idx = subcommand_index(argv);
         let Some(sub) = argv.get(idx).map(String::as_str) else {
             return GitOp::Other;
         };
@@ -82,7 +69,14 @@ impl GitOp {
 
         match sub {
             "reset" if has(&["--hard", "--merge", "--keep"]) => GitOp::ResetHard,
-            "clean" if rest.iter().any(|a| is_short_flag_with(a, &['f', 'x', 'd'])) => GitOp::Clean,
+            // Anything but a dry run: `--force` is the long spelling of `-f`,
+            // and `-c clean.requireForce=false` makes a bare `clean` delete
+            // with no force flag at all (Jozkah/jan#45).
+            "clean"
+                if !(has(&["--dry-run"]) || rest.iter().any(|a| is_short_flag_with(a, &['n']))) =>
+            {
+                GitOp::Clean
+            }
             "push" if has(&["--delete"]) => GitOp::DeleteBranch,
             "push"
                 if has(&["--force", "-f", "--force-with-lease", "--force-if-includes"])
@@ -132,6 +126,26 @@ impl GitOp {
             GitOp::Other => "other",
         }
     }
+}
+
+/// Where the subcommand sits in a git argv, past git's own global options, so
+/// `git -C /tmp push --force` is still a force push. Options that take a value
+/// consume the next word.
+fn subcommand_index(argv: &[String]) -> usize {
+    let mut idx = 0;
+    while idx < argv.len() {
+        let word = argv[idx].as_str();
+        if word == "-C" || word == "-c" || word == "--git-dir" || word == "--work-tree" {
+            idx += 2;
+            continue;
+        }
+        if word.starts_with('-') {
+            idx += 1;
+            continue;
+        }
+        break;
+    }
+    idx
 }
 
 /// Whether `word` is a clustered short flag (`-fdx`) containing any of `wanted`.
@@ -248,12 +262,18 @@ impl Resource {
             };
         };
         // `/usr/bin/git` and `git` are the same program for rule purposes.
-        let program_name = Path::new(program)
+        let mut program_name = Path::new(program)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| program.clone());
         let argv = argv.to_vec();
-        let git = if program_name == "git" {
+        // Every spelling the shell resolves to the git binary is git: `GIT` on
+        // a case-insensitive filesystem, `git.exe` or a full Windows path, and
+        // `\git` with its escape. Comparing the raw file name with "git" let
+        // those through as an unrelated program, past the AH-046 guard and
+        // every `git:` rule (Jozkah/jan#209).
+        let git = if is_git_program(program) {
+            program_name = "git".to_string();
             GitOp::classify(&argv)
         } else {
             GitOp::Other
@@ -450,6 +470,27 @@ fn win32_name(name: &std::ffi::OsStr) -> std::ffi::OsString {
     } else {
         folded.into()
     }
+}
+
+/// Whether the first word of a command names the git binary, in any spelling
+/// a shell would still resolve to it.
+///
+/// Both separators are path separators here, whatever the host: a Windows path
+/// reaches a POSIX build through Git Bash, and `Path::file_name` would keep the
+/// whole of it. Leading backslashes are escapes (`\git` runs git), casing is
+/// folded (NTFS and default APFS open `GIT` as `git`), and the extensions
+/// `PATHEXT` would append are dropped.
+fn is_git_program(program: &str) -> bool {
+    let name = program
+        .rsplit(['/', '\\'])
+        .find(|part| !part.is_empty())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let stem = [".exe", ".cmd", ".bat", ".com"]
+        .iter()
+        .find_map(|ext| name.strip_suffix(ext))
+        .unwrap_or(&name);
+    stem == "git"
 }
 
 /// Split a command line into words, honouring single and double quotes.
@@ -666,24 +707,6 @@ impl ResourceRule {
         &self.source
     }
 
-    /// The filesystem-path pattern this rule matches, with any `path:` kind
-    /// prefix stripped, or `None` for a bare tool rule or a non-path kind
-    /// (`git:`, `command:`, `mcp:`, `net:`, `process:`, `unknown:`). Used to
-    /// derive sandbox read roots from a project's allow rules, so an
-    /// `allow = ["read(C:/data/**)"]` widens what reads may reach without a
-    /// prompt. A bare drive letter like `C:` is not a kind prefix.
-    pub fn read_root_pattern(&self) -> Option<&str> {
-        let raw = self.resource.as_ref()?.as_str();
-        if let Some(rest) = raw.strip_prefix("path:") {
-            return Some(rest);
-        }
-        if let Some((kind, _)) = raw.split_once(':') {
-            if ["git", "command", "mcp", "net", "process", "unknown"].contains(&kind) {
-                return None;
-            }
-        }
-        Some(raw)
-    }
 }
 
 /// Match one pattern against one resource.
@@ -938,6 +961,47 @@ mod tests {
             Resource::command("/usr/bin/git push --force").destructive_git(),
             Some(GitOp::ForcePush)
         );
+    }
+
+    #[test]
+    fn every_spelling_the_shell_resolves_to_git_is_git() {
+        // Jozkah/jan#209: each of these runs the git binary, so each is git.
+        for line in [
+            "GIT reset --hard HEAD~1",
+            "Git reset --hard",
+            "git.exe reset --hard",
+            "GIT.EXE reset --hard",
+            r#""C:\Program Files\Git\cmd\git.exe" reset --hard"#,
+            r"\git reset --hard",
+        ] {
+            let resource = Resource::command(line);
+            assert_eq!(
+                resource.destructive_git(),
+                Some(GitOp::ResetHard),
+                "{line} is a hard reset"
+            );
+        }
+        // ...and a program that only contains the letters is not.
+        for line in ["gitk reset --hard", "legit reset --hard", "git-lfs reset --hard"] {
+            assert_eq!(Resource::command(line).destructive_git(), None, "{line}");
+        }
+    }
+
+    #[test]
+    fn git_clean_is_destructive_unless_it_is_a_dry_run() {
+        // Jozkah/jan#45: the long flag, and a clean with requireForce off.
+        for line in [
+            "clean --force",
+            "clean --force -X",
+            "clean -X --force",
+            "-c clean.requireForce=false clean",
+            "clean",
+        ] {
+            assert_eq!(git(line), GitOp::Clean, "git {line}");
+        }
+        for line in ["clean -n", "clean --dry-run", "clean -nd", "clean -fdn"] {
+            assert_eq!(git(line), GitOp::Other, "git {line} deletes nothing");
+        }
     }
 
     // ---- failing closed --------------------------------------------------

@@ -321,7 +321,14 @@ fn tokenize(s: &str) -> Vec<String> {
         if let Some(q) = quote {
             if c == q {
                 quote = None;
-            } else if c == '\\' && q == '"' && i + 1 < chars.len() {
+            } else if c == '\\'
+                && q == '"'
+                && i + 1 < chars.len()
+                // Inside double quotes a backslash escapes only these; before
+                // anything else it is literal, so `"C:\Program Files\git.exe"`
+                // keeps its separators (Jozkah/jan#209).
+                && matches!(chars[i + 1], '$' | '`' | '"' | '\\' | '\n')
+            {
                 cur.push(chars[i + 1]);
                 has = true;
                 i += 2;
