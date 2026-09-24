@@ -4199,6 +4199,7 @@ fn build_run_system_prompt(
     session_id: Option<&str>,
     subagents_enabled: bool,
     sandbox: bool,
+    offered: Option<&crate::core::agent::context::OfferedTools>,
 ) -> Option<String> {
     let base = override_prompt.or(assistant_instructions);
     match project_root {
@@ -4218,6 +4219,7 @@ fn build_run_system_prompt(
                 subagents_enabled,
                 session_id,
                 false,
+                offered,
             )
             .0
         }
@@ -4259,6 +4261,7 @@ pub(crate) fn context_system_prompt_preview(
         session_id,
         subagents_enabled,
         settings.sandbox,
+        None,
     )
 }
 
@@ -4513,6 +4516,34 @@ async fn orchestrate_inner(
     }
     let json_body = &annotated_body;
 
+    // The local tools this run will be offered, worked out the same way the
+    // tool list below is, so the prompt describes only tools the model can
+    // call: a subagent has no `todo` or `ask`, plan mode has no write tools,
+    // and a denied or allowlisted-away web tool is not promised.
+    let offered: crate::core::agent::context::OfferedTools = {
+        let allowed: Option<std::collections::HashSet<String>> = json_body
+            .get("allowed_tools")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        let mut local = Vec::new();
+        advertise_local_tools(
+            &mut local,
+            allowed.as_ref(),
+            permissions,
+            subject,
+            project_root.as_deref(),
+            run_mode,
+            *subagents_enabled,
+            *max_parallel_subagents,
+            ask_requests.is_some(),
+            todo_registry.is_some(),
+            false,
+        );
+        local
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str().map(String::from))
+            .collect()
+    };
     let system_prompt = build_run_system_prompt(
         assistant_instructions.as_deref(),
         system_prompt_override.as_deref(),
@@ -4520,6 +4551,7 @@ async fn orchestrate_inner(
         session_id.as_deref(),
         *subagents_enabled,
         settings.as_ref().is_some_and(|s| s.sandbox),
+        Some(&offered),
     );
     // Memory reaches the prompt only through `build_run_system_prompt`, which
     // selects canonical records by session, project identity and user scope.
@@ -6650,6 +6682,7 @@ mod tests {
             Some("test-session"),
             false,
             true,
+            None,
         )
         .expect("prompt");
 
@@ -10263,6 +10296,7 @@ mod tests {
             Some("s1"),
             false,
             true,
+            None,
         )
         .expect("prompt");
         assert!(confined.contains("Scratch:"), "{confined}");
@@ -10273,6 +10307,7 @@ mod tests {
             Some("s1"),
             false,
             false,
+            None,
         )
         .expect("prompt");
         assert!(!bare.contains("Scratch:"), "{bare}");
