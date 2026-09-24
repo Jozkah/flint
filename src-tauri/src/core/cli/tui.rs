@@ -4842,6 +4842,7 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
             args.max_parallel_subagents,
             args.ask_requests.is_some(),
             args.todo_registry.is_some(),
+            &args.host_tools,
         )
         .await
         .iter()
@@ -5283,6 +5284,11 @@ impl App {
                 ));
                 self.publish_agent_status();
             }
+            // Host tools belong to a headless run driven by a host process.
+            // The TUI is that host's opposite number -- there is no peer on
+            // stdin to execute a callback -- so it never declares them and
+            // cannot receive this.
+            StreamEvent::ToolRequest { .. } => {}
             // The loop auto-answered a timed-out ask; drop its now-dead prompt.
             // A user answer clears the queue in `resolve_front_ask` instead, so
             // this only fires for the timeout path.

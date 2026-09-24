@@ -232,6 +232,13 @@ pub(crate) struct OrchestrationArgs {
     pub profile: Option<String>,
     pub project_root: Option<std::path::PathBuf>,
     pub permission_requests: PermissionRegistry,
+    /// Tools a host process registered for this run, and the registry their
+    /// calls are answered through. Only a client on the headless stdio channel
+    /// can execute one, so these exist only in that build.
+    #[cfg(feature = "cli")]
+    pub host_tools: crate::core::agent::host_tools::HostToolSet,
+    #[cfg(feature = "cli")]
+    pub host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
     /// Present only when a client can render and answer structured questions.
     pub ask_requests: Option<crate::core::agent::interaction::AskRegistry>,
     /// Session's canonical todo list. Present for the top-level run only;
@@ -1210,6 +1217,15 @@ pub(crate) fn normalize_auto_approve_limit(value: Option<&serde_json::Value>) ->
         }
         _ => DEFAULT_AUTO_APPROVE_LIMIT,
     }
+    /// Tools a host process declared for this run, and the registry their calls
+    /// are answered through. Unlike every other tool here, these do not execute
+    /// in this process at all: the call goes out as a `tool_request` and the
+    /// host sends the result back. Empty on every surface but a duplex headless
+    /// run, since nothing else has a peer that could answer.
+    #[cfg(feature = "cli")]
+    host_tools: crate::core::agent::host_tools::HostToolSet,
+    #[cfg(feature = "cli")]
+    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -1593,8 +1609,71 @@ impl CompositeToolInvoker {
             .with_output_sink(output_sink(&self.events, id))
     }
 
+    /// Whether `name` is a tool the client executes. Always `false` where there
+    /// is no client: the desktop build has no peer that could answer one.
+    fn is_host_tool(&self, name: &str) -> bool {
+        #[cfg(feature = "cli")]
+        {
+            self.host_tools.is_host_tool(name)
+        }
+        #[cfg(not(feature = "cli"))]
+        {
+            let _ = name;
+            false
+        }
+    }
+
+    /// Hand a host tool call to the client and wait for its answer.
+    ///
+    /// The returned string is what the model sees, in every outcome: a host
+    /// that fails, or one that goes away mid-call, still produces a tool
+    /// message. An unanswered call would otherwise leave the conversation with
+    /// an assistant turn whose call is never resolved, which is not a state the
+    /// run can be resumed from.
+    ///
+    /// Upstream brackets this call with the PreToolUse / PostToolUse lifecycle
+    /// hooks; this fork has no tool-call hook bracket, so the call goes out as
+    /// soon as the permission gate has approved it.
+    #[cfg(feature = "cli")]
+    async fn call_host_tool(&self, name: &str, args: &serde_json::Value) -> String {
+        let Some(tool) = self.host_tools.get(name) else {
+            return format!("ERROR: host tool '{name}' is not registered");
+        };
+        let (request_id, receiver) =
+            crate::core::agent::host_tools::register(&self.host_tool_requests).await;
+        // The host declared `observe` and dispatches on `observe`; the `host__`
+        // prefix is this layer's business, not the host's.
+        let _ = self.events.send(StreamEvent::ToolRequest {
+            request_id: request_id.clone(),
+            tool_name: tool.name.clone(),
+            args: args.clone(),
+        });
+        match receiver.await {
+            Ok(Ok(result)) => {
+                if result.is_error {
+                    format!("ERROR: {}", result.content)
+                } else {
+                    result.content
+                }
+            }
+            // Stranded by a closed pipe, or the sender dropped with the run.
+            Ok(Err(crate::core::agent::host_tools::HostToolError::ClientGone)) | Err(_) => {
+                self.host_tool_requests.lock().await.remove(&request_id);
+                format!("ERROR: host tool '{}' was not answered: the client is gone", tool.name)
+            }
+        }
+    }
+
     /// Prompt the user to approve an MCP tool call, mirroring the built-in gate.
     /// A dropped responder (client gone / run cancelled) resolves to Deny.
+    ///
+    /// Plugin and host tools are prompted through here too: `prompt_kind` is
+    /// `"mcp"` for all three because it names the *class* a consumer renders --
+    /// an opaque third-party capability -- not which subsystem runs the call.
+    /// The `tool_name` is the qualified one the model called (`host__move`),
+    /// which is what a user needs to see; note that the matching `tool_request`
+    /// carries the host's bare name (`move`) instead, since the host dispatches
+    /// on the name it declared.
     async fn prompt_mcp_permission(&self, tool_name: &str) -> PermissionDecision {
         let request_id = next_permission_id();
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -3157,6 +3236,52 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                // Host tools execute in the client, not here. Dispatched on the
+                // same terms as an MCP tool -- opaque capability, so prompted and
+                // withheld in Plan mode -- but the call leaves the process instead
+                // of running in it. `is_host_tool` is constant `false` off the
+                // headless build, which has no client to ask.
+                if self.is_host_tool(name) {
+                    if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+                        out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
+                        continue;
+                    }
+                    if self.permissions.is_denied(name, &self.subject) {
+                        out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
+                        continue;
+                    }
+                    let args: serde_json::Value = tc
+                        .get("function")
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or(serde_json::Value::Object(Default::default()));
+                    let approved = self.auto_approve
+                        || self.grants.lock().unwrap().covers_mcp("host", name)
+                        || match self.prompt_mcp_permission(name).await {
+                            PermissionDecision::AllowOnce => true,
+                            PermissionDecision::AllowAlways => {
+                                self.grants.lock().unwrap().grant_mcp("host", name);
+                                true
+                            }
+                            PermissionDecision::Deny => false,
+                        };
+                    if !approved {
+                        out.push(ToolOutcome::plain(id, format!("ERROR: tool '{name}' denied by user")));
+                        continue;
+                    }
+                    #[cfg(feature = "cli")]
+                    let content = self.call_host_tool(name, &args).await;
+                    // Unreachable off the headless build, where `is_host_tool` is
+                    // constant `false`.
+                    #[cfg(not(feature = "cli"))]
+                    let content = {
+                        let _ = &args;
+                        String::new()
+                    };
+                    out.push(ToolOutcome::plain(id, content));
+                    continue;
+                }
                 // Plan mode blocks all MCP tools: their capability is arbitrary
                 // and unknowable, so they are never advertised in Plan and are
                 // hard-denied here as defense in depth. Auto-approval cannot override.
@@ -3868,6 +3993,7 @@ fn advertise_local_tools(
     // Whether any MCP server is connected to this run, which is what decides
     // whether its documents are worth offering (AH-137).
     mcp_connected: bool,
+    #[cfg(feature = "cli")] host_tools: &crate::core::agent::host_tools::HostToolSet,
 ) {
     let planning = run_mode == crate::core::agent::plan::RunMode::Plan;
     if project_root.is_some() {
@@ -4225,6 +4351,24 @@ fn advertise_local_tools(
     if todo_enabled && allowed_names.is_none_or(|allowed| allowed.contains("todo")) {
         openai_tools.push(crate::core::agent::todo::todo_tool_schema());
     }
+    // Host tools run in the client, not here, so they need no project root --
+    // like `ask` and `todo` they are advertised independent of that gate. What
+    // they do share with plugin and MCP tools is an opaque capability, so they
+    // are withheld entirely in read-only Plan mode and honor the deny list.
+    #[cfg(feature = "cli")]
+    if !planning {
+        for tool in host_tools.all() {
+            if permissions.is_denied(&tool.qualified_name) {
+                continue;
+            }
+            if let Some(allow) = allowed_names {
+                if !allow.contains(&tool.qualified_name) {
+                    continue;
+                }
+            }
+            openai_tools.push(tool.schema());
+        }
+    }
 }
 
 fn stop_reason_of(completion: &serde_json::Value) -> String {
@@ -4336,6 +4480,7 @@ pub(crate) async fn context_advertised_tools(
     max_parallel_subagents: u32,
     ask_enabled: bool,
     todo_enabled: bool,
+    host_tools: &crate::core::agent::host_tools::HostToolSet,
 ) -> Vec<serde_json::Value> {
     let (mut tools, mut tool_to_server, _tool_call_names) =
         crate::core::agent::upstream::collect_mcp_openai_tools(mcp_servers, mcp_settings)
@@ -4364,6 +4509,7 @@ pub(crate) async fn context_advertised_tools(
         ask_enabled,
         todo_enabled,
         !tool_to_server.is_empty(),
+        host_tools,
     );
     // Sized as a run sends them: held back behind `mcp_tools` when too many.
     if project_root.is_some() {
@@ -4462,6 +4608,10 @@ async fn orchestrate_inner(
         permissions,
         project_root,
         permission_requests,
+        #[cfg(feature = "cli")]
+        host_tools,
+        #[cfg(feature = "cli")]
+        host_tool_requests,
         ask_requests,
         todo_registry,
         system_prompt_override,
@@ -4781,6 +4931,8 @@ async fn orchestrate_inner(
         ask_requests.is_some(),
         todo_registry.is_some(),
         !tool_to_server.is_empty(),
+        #[cfg(feature = "cli")]
+        host_tools,
     );
     // Too many MCP schemas to send every turn: hold them back behind
     // `mcp_tools`. Only for a project run, whose invoker can answer it, and
@@ -4990,6 +5142,10 @@ async fn orchestrate_inner(
             subagents,
             auto_approve: *auto_approve,
             run_mode,
+            #[cfg(feature = "cli")]
+            host_tools: host_tools.clone(),
+            #[cfg(feature = "cli")]
+            host_tool_requests: host_tool_requests.clone(),
         };
         // AH-023. The run's own token becomes ambient for everything the turn
         // cycle awaits, which is how layers far below the dispatcher -- the
@@ -9454,6 +9610,10 @@ mod tests {
             auto_approve: false,
             auto_mode: crate::core::agent::auto_mode::AutoModePolicy::default(),
             run_mode: crate::core::agent::plan::RunMode::Normal,
+            #[cfg(feature = "cli")]
+            host_tools: crate::core::agent::host_tools::HostToolSet::new(),
+            #[cfg(feature = "cli")]
+            host_tool_requests: crate::core::agent::host_tools::new_registry(),
         }
     }
 
@@ -9783,6 +9943,184 @@ mod tests {
         assert!(
             events.windows(2).all(|w| w[0].seq < w[1].seq),
             "the order is the log's own: {events:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A stub host: answers the run's `tool_request` the way a client on stdin
+    /// would, and reports what it was asked. Spawned before the call because
+    /// the dispatch parks until it replies.
+    #[cfg(feature = "cli")]
+    fn stub_host(
+        registry: crate::core::agent::host_tools::HostToolRegistry,
+        mut events: mpsc::UnboundedReceiver<StreamEvent>,
+        reply: Result<crate::core::agent::host_tools::HostToolResult, ()>,
+    ) -> tokio::task::JoinHandle<(String, serde_json::Value)> {
+        tokio::spawn(async move {
+            while let Some(ev) = events.recv().await {
+                if let StreamEvent::ToolRequest {
+                    request_id,
+                    tool_name,
+                    args,
+                } = ev
+                {
+                    match reply {
+                        Ok(result) => {
+                            crate::core::agent::host_tools::respond(
+                                &registry,
+                                &request_id,
+                                Ok(result),
+                            )
+                            .await
+                            .expect("the run is waiting on this id");
+                        }
+                        // The host went away mid-call.
+                        Err(()) => {
+                            crate::core::agent::host_tools::strand_all(&registry).await;
+                        }
+                    }
+                    return (tool_name, args);
+                }
+            }
+            panic!("the run never emitted a tool_request");
+        })
+    }
+
+    #[cfg(feature = "cli")]
+    fn host_invoker(
+        root: std::path::PathBuf,
+        tools: crate::core::agent::host_tools::HostToolSet,
+    ) -> (CompositeToolInvoker, mpsc::UnboundedReceiver<StreamEvent>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut invoker = build_prompting_invoker(root, tx, PermissionRegistry::default());
+        invoker.sandbox = false;
+        invoker.auto_approve = true;
+        invoker.host_tools = tools;
+        (invoker, rx)
+    }
+
+    #[cfg(feature = "cli")]
+    fn host_tool_set(names: &[&str]) -> crate::core::agent::host_tools::HostToolSet {
+        crate::core::agent::host_tools::HostToolSet::declare(
+            names
+                .iter()
+                .map(|n| crate::core::agent::host_tools::HostToolDecl {
+                    name: n.to_string(),
+                    description: String::new(),
+                    parameters: None,
+                    unknown: Default::default(),
+                })
+                .collect(),
+        )
+        .expect("the test names are valid")
+    }
+
+    /// R1 end to end: the call leaves as a `tool_request` carrying the host's
+    /// own name, and the host's answer comes back as the tool message content.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn a_host_tool_call_round_trips_through_the_client() {
+        let root = hooks_root("hosttoolroundtrip");
+        let (invoker, events) = host_invoker(root.clone(), host_tool_set(&["observe"]));
+        let host = stub_host(
+            invoker.host_tool_requests.clone(),
+            events,
+            Ok(crate::core::agent::host_tools::HostToolResult {
+                content: "two cameras, both clear".to_string(),
+                is_error: false,
+            }),
+        );
+
+        let out = invoker
+            .invoke(&[hooked_tool_call(
+                "host__observe",
+                r#"{"camera":"front"}"#,
+            )])
+            .await
+            .unwrap();
+
+        let (asked_name, asked_args) = host.await.expect("the stub host ran");
+        // The host declared `observe` and is asked for `observe`: the `host__`
+        // prefix is this layer's business and never reaches the host.
+        assert_eq!(asked_name, "observe");
+        assert_eq!(asked_args, json!({ "camera": "front" }));
+        assert_eq!(out[0].content, "two cameras, both clear");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A host tool that failed is still an answer: the model is told, and the
+    /// turn continues rather than ending on it.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn a_failed_host_tool_result_reaches_the_model_as_an_error() {
+        let root = hooks_root("hosttoolerror");
+        let (invoker, events) = host_invoker(root.clone(), host_tool_set(&["command"]));
+        let host = stub_host(
+            invoker.host_tool_requests.clone(),
+            events,
+            Ok(crate::core::agent::host_tools::HostToolResult {
+                content: "arm is estopped".to_string(),
+                is_error: true,
+            }),
+        );
+
+        let out = invoker
+            .invoke(&[hooked_tool_call("host__command", "{}")])
+            .await
+            .unwrap();
+
+        host.await.expect("the stub host ran");
+        assert_eq!(out[0].content, "ERROR: arm is estopped");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The wedge: a host that dies mid-call must settle the turn, not park it.
+    /// An unanswered call would leave an assistant turn whose call is never
+    /// resolved, which is not a conversation the run can be resumed from.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn a_host_that_leaves_mid_call_settles_the_turn() {
+        let root = hooks_root("hosttoolgone");
+        let (invoker, events) = host_invoker(root.clone(), host_tool_set(&["observe"]));
+        let host = stub_host(invoker.host_tool_requests.clone(), events, Err(()));
+
+        let out = invoker
+            .invoke(&[hooked_tool_call("host__observe", "{}")])
+            .await
+            .unwrap();
+
+        host.await.expect("the stub host ran");
+        assert!(
+            out[0].content.contains("was not answered"),
+            "{}",
+            out[0].content
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Host tools carry an opaque capability, so they get the plugin/MCP
+    /// treatment: withheld entirely in read-only Plan mode, and never dispatched
+    /// to the host at all.
+    #[cfg(feature = "cli")]
+    #[tokio::test]
+    async fn a_host_tool_is_withheld_in_plan_mode() {
+        let root = hooks_root("hosttoolplan");
+        let (mut invoker, mut events) = host_invoker(root.clone(), host_tool_set(&["command"]));
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+
+        let out = invoker
+            .invoke(&[hooked_tool_call("host__command", "{}")])
+            .await
+            .unwrap();
+
+        assert!(
+            out[0].content.contains("plan_mode_read_only"),
+            "{}",
+            out[0].content
+        );
+        assert!(
+            !matches!(events.try_recv(), Ok(StreamEvent::ToolRequest { .. })),
+            "a withheld tool must not reach the host"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
