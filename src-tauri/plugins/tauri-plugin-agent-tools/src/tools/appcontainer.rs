@@ -41,6 +41,10 @@ const NET_ON: &str = "--net";
 const NET_OFF: &str = "--no-net";
 /// Prefix of a helper argument naming one authorized write root.
 const WRITE_ROOT: &str = "--write-root=";
+/// Prefix of the helper argument naming the directory the shell starts in, when
+/// that is not the workspace. It must be one of the write roots (see
+/// [`parse_request`]): the container can only start somewhere it was granted.
+const START_DIR: &str = "--start-dir=";
 
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
@@ -86,6 +90,21 @@ pub fn helper_args(
     program: &Path,
     args: &[String],
 ) -> Vec<String> {
+    helper_args_at(workspace, None, scratch, write_roots, allow_network, program, args)
+}
+
+/// [`helper_args`], with the shell started in `start` rather than the
+/// workspace. Used for a run whose write destination is a managed worktree, so
+/// relative commands (`npm test`, `.\x.ps1`) run against the project.
+pub fn helper_args_at(
+    workspace: &Path,
+    start: Option<&Path>,
+    scratch: Option<&Path>,
+    write_roots: &[PathBuf],
+    allow_network: bool,
+    program: &Path,
+    args: &[String],
+) -> Vec<String> {
     let mut out = vec![
         SANDBOX_EXEC_FLAG.to_string(),
         if allow_network { NET_ON } else { NET_OFF }.to_string(),
@@ -98,6 +117,9 @@ pub fn helper_args(
     // mistaken for the separator or for the shell that follows it.
     for root in write_roots {
         out.push(format!("{WRITE_ROOT}{}", root.to_string_lossy()));
+    }
+    if let Some(start) = start.filter(|s| *s != workspace) {
+        out.push(format!("{START_DIR}{}", start.to_string_lossy()));
     }
     out.push("--".to_string());
     out.push(program.to_string_lossy().to_string());
@@ -161,6 +183,8 @@ struct Request {
     /// caller only passes Jan-owned worktrees here (see
     /// [`super::jail::can_confine_write_roots`]); the helper grants each an ACE.
     write_roots: Vec<PathBuf>,
+    /// Where the shell starts: the workspace, or one of `write_roots`.
+    start_dir: PathBuf,
     allow_network: bool,
     program: PathBuf,
     args: Vec<String>,
@@ -185,18 +209,34 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         s => Some(PathBuf::from(s)),
     };
     let mut write_roots = Vec::new();
+    let mut start_dir = None;
     loop {
         let next = it.next()?;
         if next == "--" {
             break;
         }
+        if let Some(start) = next.strip_prefix(START_DIR) {
+            if start_dir.is_some() {
+                return None;
+            }
+            start_dir = Some(PathBuf::from(start));
+            continue;
+        }
         write_roots.push(PathBuf::from(next.strip_prefix(WRITE_ROOT)?));
     }
+    // A start directory the container was not granted would fail at spawn with
+    // an opaque error, or start somewhere no ACE vouches for: refuse it here.
+    let start_dir = match start_dir {
+        None => workspace.clone(),
+        Some(start) if write_roots.contains(&start) => start,
+        Some(_) => return None,
+    };
     let program = PathBuf::from(it.next()?);
     Some(Request {
         workspace,
         scratch,
         write_roots,
+        start_dir,
         allow_network,
         program,
         args: it.collect(),
@@ -1144,7 +1184,9 @@ mod win {
         startup.lpAttributeList = attributes;
 
         let mut line = wide(OsStr::new(&command_line(&req.program, &req.args)));
-        let cwd = wide(req.workspace.as_os_str());
+        // The workspace, or the managed worktree the run writes to. Either way
+        // a directory the ACEs above were just granted on.
+        let cwd = wide(req.start_dir.as_os_str());
         let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
         // The environment is passed explicitly. A null pointer here means "give
         // the child the parent's environment", and the parent's is deliberately
@@ -1390,6 +1432,26 @@ mod tests {
             "bash.exe".to_string(),
         ];
         assert!(parse_request(argv).is_none());
+    }
+
+    /// A start directory crosses the re-exec only when it is one of the write
+    /// roots; the workspace is the default.
+    #[test]
+    fn the_helper_round_trips_a_start_dir_inside_the_write_roots() {
+        let wt = PathBuf::from(r"C:\Users\me\.jan\worktrees\repo\session-1");
+        let roots = vec![wt.clone()];
+        let args = helper_args_at(&ws(), Some(&wt), None, &roots, false, Path::new("bash.exe"), &[]);
+        let req = parse_request(args).expect("parsed");
+        assert_eq!(req.start_dir, wt);
+        assert_eq!(req.write_roots, roots);
+
+        let args = helper_args(&ws(), None, &roots, false, Path::new("bash.exe"), &[]);
+        assert_eq!(parse_request(args).expect("parsed").start_dir, ws());
+
+        let elsewhere = PathBuf::from(r"C:\Users\me\repo");
+        let args =
+            helper_args_at(&ws(), Some(&elsewhere), None, &roots, false, Path::new("bash.exe"), &[]);
+        assert!(parse_request(args).is_none(), "a start dir outside the grants must be refused");
     }
 
     /// The scratch has to reach the helper, because the ACE that makes it

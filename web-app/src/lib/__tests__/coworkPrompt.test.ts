@@ -465,6 +465,26 @@ describe('where bash runs (#322)', () => {
     expect(prompt).toContain('Put absolute project')
   })
 
+  it('says bash starts in the session worktree when the run works in one', () => {
+    const prompt = buildCoworkSystemPrompt(
+      opts({ readOnlyFolder: '/data/wt/s1', folderAccess: 'worktree' as const })
+    )
+
+    expect(prompt).toContain('`bash` starts in the session worktree (`/data/wt/s1`)')
+    expect(prompt).toContain('still resolve relative paths against your workspace')
+    expect(prompt).not.toContain('cannot cd into the project')
+    expect(prompt).not.toContain('not in the project;')
+  })
+
+  it('keeps the workspace note for an editable folder', () => {
+    const prompt = buildCoworkSystemPrompt(
+      opts({ readOnlyFolder: '/home/u/repo', folderAccess: 'editable' as const })
+    )
+
+    expect(prompt).toContain('`bash` runs in your sandbox workspace')
+    expect(prompt).not.toContain('starts in the session worktree')
+  })
+
   it('says nothing about it when there is no shell', () => {
     const prompt = buildCoworkSystemPrompt(
       opts({ readOnlyFolder: '/home/u/repo', bashAvailable: false })
