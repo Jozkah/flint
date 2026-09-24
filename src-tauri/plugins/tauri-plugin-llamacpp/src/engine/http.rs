@@ -672,8 +672,8 @@ impl EngineServer {
             body
         };
 
-        let out = run(engine, route, body, STREAM_BUFFER).await;
-        self.registry.lock().await.release(&model);
+        let (out, done) = run(engine, route, body, STREAM_BUFFER).await;
+        release_when_done(self.registry.clone(), model, done).await;
         out
     }
 
@@ -698,8 +698,8 @@ impl EngineServer {
             }
         };
         let (eng, id) = engine;
-        let out = run(eng, route, body, STREAM_BUFFER).await;
-        self.registry.lock().await.release(&id);
+        let (out, done) = run(eng, route, body, STREAM_BUFFER).await;
+        release_when_done(self.registry.clone(), id, done).await;
         out
     }
 }
@@ -825,13 +825,37 @@ async fn slot_tokens(engine: &Arc<super::Engine>, slot: i32) -> u64 {
         .unwrap_or(0)
 }
 
+/// Releases `model`'s registry reference once its request is really done:
+/// now, or -- for a stream, whose response head is returned while generation
+/// still runs -- when `done` resolves (#273).
+async fn release_when_done(
+    registry: Arc<Mutex<Registry>>,
+    model: String,
+    done: Option<tokio::sync::oneshot::Receiver<()>>,
+) {
+    match done {
+        None => registry.lock().await.release(&model),
+        // Resolves when the drain task drops its sender, however it ended.
+        Some(done) => {
+            tokio::spawn(async move {
+                let _ = done.await;
+                registry.lock().await.release(&model);
+            });
+        }
+    }
+}
+
 /// Issues one request and adapts the engine's response to an HTTP body.
+///
+/// For a stream the response is returned while generation still runs; the
+/// receiver resolves once it has finished draining, and the caller holds the
+/// model busy until then.
 async fn run(
     engine: Arc<super::Engine>,
     route: Route,
     body: String,
     buffer: usize,
-) -> HttpResponse<Body> {
+) -> (HttpResponse<Body>, Option<tokio::sync::oneshot::Receiver<()>>) {
     let name = route.as_shim_name();
 
     // The engine call itself blocks: it takes the server queue and may wait on
@@ -855,30 +879,32 @@ async fn run(
     .await;
 
     let Ok((status, content_type, first, is_stream, mut res)) = head else {
-        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "engine task panicked");
+        return (json_error(StatusCode::INTERNAL_SERVER_ERROR, "engine task panicked"), None);
     };
 
     let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     if !is_stream {
-        return HttpResponse::builder()
+        let response = HttpResponse::builder()
             .status(status)
             .header(hyper::header::CONTENT_TYPE, content_type)
             .body(Full::new(Bytes::from(first)).boxed())
             .unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "bad response"));
+        return (response, None);
     }
 
     // Streaming: drain the blocking generator on its own thread into a bounded
     // channel. Dropping the receiver (client gone) makes the send fail, which
     // cancels generation instead of running it to completion for nobody.
     let (tx, rx) = mpsc::channel::<Result<Frame<Bytes>, Infallible>>(buffer);
+    let (finished, done) = tokio::sync::oneshot::channel::<()>();
     tokio::task::spawn_blocking(move || {
-        // `res` is a bare handle into the engine's server context, and
-        // `dispatch` releases its registry reference the moment `run` returns
-        // -- which is now, while this is still draining. Without an owning
-        // clone here the model looks idle, eviction or an unload drops the last
-        // Arc, and `next_chunk` reads a deleted server_context.
+        // `res` is a bare handle into the engine's server context. The caller
+        // keeps the model busy until `finished` is dropped at the end of this
+        // closure, so eviction and unload wait for the drain; the owning clone
+        // also keeps the engine alive for `next_chunk` regardless.
         let _engine = engine;
+        let _finished = finished;
         loop {
             match res.next_chunk() {
                 Ok(Some(chunk)) => {
@@ -899,12 +925,13 @@ async fn run(
         }
     });
 
-    HttpResponse::builder()
+    let response = HttpResponse::builder()
         .status(status)
         .header(hyper::header::CONTENT_TYPE, content_type)
         .header(hyper::header::CACHE_CONTROL, "no-cache")
         .body(StreamBody::new(tokio_stream_wrapper(rx)).boxed())
-        .unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "bad response"))
+        .unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "bad response"));
+    (response, Some(done))
 }
 
 fn tokio_stream_wrapper(
@@ -959,6 +986,31 @@ fn json_error(status: StatusCode, message: &str) -> HttpResponse<Body> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #273: a streamed completion keeps its model busy until the stream has
+    /// drained, so an unload in the meantime is refused instead of dropping a
+    /// model that is still generating (and a later request starting a second
+    /// engine for it).
+    #[cfg(not(feature = "engine"))]
+    #[tokio::test]
+    async fn a_stream_keeps_its_model_busy_until_it_has_drained() {
+        let registry = Arc::new(Mutex::new(Registry::new(1)));
+        registry.lock().await.insert_resident_for_test("m", 1);
+        let (finished, done) = tokio::sync::oneshot::channel::<()>();
+
+        release_when_done(registry.clone(), "m".into(), Some(done)).await;
+        assert_eq!(registry.lock().await.busy_models(), vec!["m".to_string()]);
+        assert!(!registry.lock().await.unload("m"), "unloaded while still streaming");
+
+        drop(finished);
+        for _ in 0..200 {
+            if registry.lock().await.busy_models().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(registry.lock().await.unload("m"), "still busy after the stream ended");
+    }
 
     #[test]
     fn extract_model_reads_the_openai_field() {

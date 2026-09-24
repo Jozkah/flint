@@ -160,6 +160,21 @@ impl Registry {
         v
     }
 
+    /// Makes `model_id` resident with `inflight` requests, which the default
+    /// feature config cannot reach through `acquire`. For tests elsewhere in
+    /// the engine that need a busy model.
+    #[cfg(all(test, not(feature = "engine")))]
+    pub(crate) fn insert_resident_for_test(&mut self, model_id: &str, inflight: usize) {
+        self.loaded.insert(
+            model_id.to_string(),
+            LoadedModel {
+                engine: Arc::new(Engine::stub()),
+                inflight,
+                last_used: next_tick(),
+            },
+        );
+    }
+
     /// Models with at least one request in flight.
     ///
     /// The router could only report "loaded", which conflated a model that is
