@@ -1503,6 +1503,38 @@ struct Staged {
     record: InstallRecord,
 }
 
+/// Refuse a git argument that git would parse as an option (`--upload-pack=`,
+/// `-c`, ...), which runs a command before any clone happens.
+fn reject_option_like(value: &str, what: &str) -> Result<(), PluginError> {
+    if value.trim_start().starts_with('-') {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("invalid plugin {what} '{value}' (must not start with '-')"),
+        ));
+    }
+    Ok(())
+}
+
+/// Checks for a marketplace entry's `repo` and `ref`, which come from a remote
+/// index and are no more trusted than user input: the repo must be a git URL
+/// and neither may read as a git option. (git is spawned without a shell, so
+/// the option check is what matters; a `file://` repo may carry a Windows
+/// path's backslashes, so the shell-metacharacter check is left to the ref.)
+fn validate_marketplace_entry(repo: &str, r#ref: Option<&str>) -> Result<(), PluginError> {
+    reject_option_like(repo, "repository")?;
+    if !looks_like_git(repo.trim()) {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("marketplace entry repo '{repo}' is not a git URL"),
+        ));
+    }
+    if let Some(r#ref) = r#ref {
+        validate_spec(r#ref)?;
+        reject_option_like(r#ref, "ref")?;
+    }
+    Ok(())
+}
+
 /// Clone a plugin source into a staging dir, then install from it. A failed
 /// or cancelled clone, or an empty repo, leaves nothing behind.
 ///
@@ -1519,18 +1551,23 @@ fn install_git(
     source_kind: &str,
 ) -> Result<GitInstall, PluginError> {
     let source = parse_git_source(url)?;
+    let r#ref = r#ref.or(source.r#ref.as_deref());
+    reject_option_like(&source.url, "repository")?;
+    if let Some(r#ref) = r#ref {
+        reject_option_like(r#ref, "ref")?;
+    }
     let plugins = plugin_root_dir(scope);
     std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
     ctx.check()?;
     let tmp = new_staging(&plugins);
 
-    let r#ref = r#ref.or(source.r#ref.as_deref());
     let mut cmd = git_command();
     cmd.args(["clone", "--depth", "1"]);
     if let Some(r#ref) = r#ref {
         cmd.args(["--branch", r#ref]);
     }
-    cmd.arg(&source.url).arg(&tmp);
+    // `--` ends option parsing: a positional can never be read as a git option.
+    cmd.arg("--").arg(&source.url).arg(&tmp);
     if !ctx.terminal_prompts {
         // No terminal to answer a credential prompt: fail instead of hanging.
         cmd.env("GIT_TERMINAL_PROMPT", "0");
@@ -2143,6 +2180,7 @@ async fn install_marketplace(
             format!("plugin '{name}' not found on the marketplace"),
         )
     })?;
+    validate_marketplace_entry(&entry.repo, entry.r#ref.as_deref())?;
     // Marketplace installs clone a git repo too: same blocking-work treatment.
     let scope = scope.clone();
     spawn_blocking(move || {
@@ -2563,6 +2601,24 @@ mod tests {
         assert!(!skills::plugins_dir(&root).join(&p.name).exists());
         assert!(remove(&root, &p.name).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #51: a marketplace entry cannot smuggle a git option into `git clone`.
+    #[test]
+    fn marketplace_entries_that_read_as_git_options_are_refused() {
+        for repo in [
+            "--upload-pack=touch INJECTED; false",
+            " -cprotocol.ext.allow=always",
+            "not-a-url",
+        ] {
+            let err = validate_marketplace_entry(repo, None).unwrap_err();
+            assert_eq!(err.code, PluginErrorCode::InvalidSource, "{repo}");
+        }
+        let ok = "https://github.com/o/r.git";
+        assert!(validate_marketplace_entry(ok, Some("main")).is_ok());
+        assert!(validate_marketplace_entry(ok, Some("--upload-pack=x")).is_err());
+        assert!(reject_option_like("-x", "ref").is_err());
+        assert!(reject_option_like("v1.0", "ref").is_ok());
     }
 
     #[tokio::test]
