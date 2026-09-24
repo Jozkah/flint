@@ -537,7 +537,7 @@ mod tests {
                 None,
             ))
             .unwrap(),
-            serde_json::to_value(RunReport::default().finish(None, None, "m", 1, None)).unwrap(),
+            serde_json::to_value(RunReport::default().finish(None, "m", 1, None)).unwrap(),
             serde_json::to_value(PermissionDecisionRecord::new(
                 "req",
                 PermissionDecision::AllowOnce,
@@ -707,7 +707,7 @@ mod tests {
     /// caller -- which never sees an `init` record -- can pin it too.
     #[test]
     fn the_envelope_carries_the_protocol_version() {
-        let out = RunReport::default().finish(None, None, "m", 1, None);
+        let out = RunReport::default().finish(None, "m", 1, None);
         let out = serde_json::to_value(out).unwrap();
         assert_eq!(
             out["protocol_version"],

@@ -233,7 +233,7 @@ mod tests {
 
         // The envelope is only ever built by `RunReport::finish`, which is what
         // `jan cli agent run` prints: its tag comes from there, not from a name.
-        let report = RunReport::default().finish(None, None, "stub-model", 1, None);
+        let report = RunReport::default().finish(None, "stub-model", 1, None);
         [
             serde_json::to_value(Init::new(
                 "session",

@@ -1186,6 +1186,15 @@ struct CompositeToolInvoker {
     auto_approve_limit: u32,
     /// Consecutive auto-approved calls since the user last answered a prompt.
     auto_approved_streak: std::sync::atomic::AtomicU32,
+    /// Tools a host process declared for this run, and the registry their calls
+    /// are answered through. Unlike every other tool here, these do not execute
+    /// in this process at all: the call goes out as a `tool_request` and the
+    /// host sends the result back. Empty on every surface but a duplex headless
+    /// run, since nothing else has a peer that could answer.
+    #[cfg(feature = "cli")]
+    host_tools: crate::core::agent::host_tools::HostToolSet,
+    #[cfg(feature = "cli")]
+    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
 }
 
 /// Default for [`CompositeToolInvoker::auto_approve_limit`].
@@ -1217,15 +1226,6 @@ pub(crate) fn normalize_auto_approve_limit(value: Option<&serde_json::Value>) ->
         }
         _ => DEFAULT_AUTO_APPROVE_LIMIT,
     }
-    /// Tools a host process declared for this run, and the registry their calls
-    /// are answered through. Unlike every other tool here, these do not execute
-    /// in this process at all: the call goes out as a `tool_request` and the
-    /// host sends the result back. Empty on every surface but a duplex headless
-    /// run, since nothing else has a peer that could answer.
-    #[cfg(feature = "cli")]
-    host_tools: crate::core::agent::host_tools::HostToolSet,
-    #[cfg(feature = "cli")]
-    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -4358,7 +4358,7 @@ fn advertise_local_tools(
     #[cfg(feature = "cli")]
     if !planning {
         for tool in host_tools.all() {
-            if permissions.is_denied(&tool.qualified_name) {
+            if permissions.is_denied(&tool.qualified_name, subject) {
                 continue;
             }
             if let Some(allow) = allowed_names {
@@ -4748,6 +4748,8 @@ async fn orchestrate_inner(
             ask_requests.is_some(),
             todo_registry.is_some(),
             false,
+            #[cfg(feature = "cli")]
+            host_tools,
         );
         local
             .iter()
@@ -6709,6 +6711,8 @@ mod tests {
                 false,
                 false,
                 false,
+                #[cfg(feature = "cli")]
+                &crate::core::agent::host_tools::HostToolSet::new(),
             );
             let names: Vec<&str> = tools
                 .iter()
@@ -9945,6 +9949,28 @@ mod tests {
             "the order is the log's own: {events:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(feature = "cli")]
+    fn hooks_root(tag: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "jan_loop_hosttools_{tag}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+        root
+    }
+
+    #[cfg(feature = "cli")]
+    fn hooked_tool_call(name: &str, arguments: &str) -> serde_json::Value {
+        json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": name, "arguments": arguments }
+        })
     }
 
     /// A stub host: answers the run's `tool_request` the way a client on stdin

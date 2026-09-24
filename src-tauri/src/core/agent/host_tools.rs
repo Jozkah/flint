@@ -338,7 +338,6 @@ fn empty_schema() -> serde_json::Value {
 /// every name this process would otherwise dispatch itself.
 fn is_reserved(name: &str) -> bool {
     tauri_plugin_agent_tools::tools::lookup(name).is_some()
-        || name == tauri_plugin_agent_tools::tools::monitor::MONITOR_TOOL_NAME
         || matches!(name, "ask" | "todo")
         || crate::core::agent::subagent::is_subagent_tool(name)
 }
@@ -482,7 +481,6 @@ mod tests {
             "bash",
             "read",
             "edit",
-            "monitor",
             "ask",
             "todo",
             "dispatch_subagent",

@@ -23621,6 +23621,8 @@ mod tests {
                 permission_requests: std::sync::Arc::new(tokio::sync::Mutex::new(
                     std::collections::HashMap::new(),
                 )),
+                host_tools: crate::core::agent::host_tools::HostToolSet::new(),
+                host_tool_requests: crate::core::agent::host_tools::new_registry(),
                 ask_requests: None,
                 todo_registry: None,
                 system_prompt_override: None,

@@ -361,6 +361,14 @@ pub(crate) mod tests {
     /// the build until it is added here too.
     pub(crate) fn sample_events() -> Vec<(&'static str, StreamEvent)> {
         vec![
+            (
+                "PromptSnapshot",
+                StreamEvent::PromptSnapshot {
+                    id: "p1".into(),
+                    hash: "fnv1a64:0000000000000001".into(),
+                    redactions: 0,
+                },
+            ),
             ("Token", StreamEvent::Token { text: "hi".into() }),
             ("Reasoning", StreamEvent::Reasoning { text: "hmm".into() }),
             ("Step", StreamEvent::Step { index: 1, max: 0 }),
@@ -424,16 +432,6 @@ pub(crate) mod tests {
                 StreamEvent::SubagentEnd {
                     run_id: "r1".into(),
                     name: "scout".into(),
-                    error: Some("boom".into()),
-                },
-            ),
-            (
-                "SubagentPlan",
-                StreamEvent::SubagentPlan {
-                    pending: vec![PendingSubagent {
-                        name: "scout".into(),
-                        phase: 2,
-                    }],
                 },
             ),
             (
@@ -445,23 +443,18 @@ pub(crate) mod tests {
                 },
             ),
             (
-                "Notice",
-                StreamEvent::Notice {
-                    text: "monitor matched".into(),
+                "RunResources",
+                StreamEvent::RunResources {
+                    resources: tauri_plugin_agent_tools::resources::RunResources {
+                        commands: 2,
+                        measured_commands: 1,
+                        cpu_ms: 40,
+                        peak_memory_bytes: 1024,
+                        processes: 1,
+                        unmeasured_reason: Some("exited too fast".into()),
+                    },
                 },
             ),
-            (
-                "Monitors",
-                StreamEvent::Monitors {
-                    monitors: vec![tauri_plugin_agent_tools::tools::monitor::MonitorSnapshot {
-                        monitor_id: "m1".into(),
-                        name: "ci".into(),
-                        script: "true".into(),
-                        polls: 3,
-                    }],
-                },
-            ),
-            ("Parked", StreamEvent::Parked),
             (
                 "MessagesUpdated",
                 StreamEvent::MessagesUpdated {
@@ -514,7 +507,7 @@ pub(crate) mod tests {
                         prompt_tokens: Some(120),
                         completion_tokens: Some(8),
                         total_tokens: Some(128),
-                        cached_tokens: Some(64),
+                        cached_prompt_tokens: Some(64),
                         cache_write_tokens: None,
                     },
                 },
@@ -542,8 +535,10 @@ pub(crate) mod tests {
                     path: None,
                     command: Some("ls".into()),
                     diff: None,
+                    patch: None,
                     prompt_kind: "exec".into(),
                     offers_always: true,
+                    reason: None,
                 },
             ),
             (
@@ -574,11 +569,9 @@ pub(crate) mod tests {
             | StreamEvent::SubagentStart { .. }
             | StreamEvent::SubagentQueued { .. }
             | StreamEvent::SubagentEnd { .. }
-            | StreamEvent::SubagentPlan { .. }
             | StreamEvent::Subagent { .. }
-            | StreamEvent::Notice { .. }
-            | StreamEvent::Monitors { .. }
-            | StreamEvent::Parked
+            | StreamEvent::PromptSnapshot { .. }
+            | StreamEvent::RunResources { .. }
             | StreamEvent::MessagesUpdated { .. }
             | StreamEvent::AskRequest { .. }
             | StreamEvent::AskResolved { .. }
