@@ -1131,6 +1131,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_execution_timeline,
     },
     Scenario {
+        name: "timeline-diff-by-invocation",
+        run: scenario_timeline_diff_by_invocation,
+    },
+    Scenario {
         name: "timeline-shows-what-a-command-used",
         run: scenario_timeline_resources,
     },
@@ -2394,7 +2398,7 @@ fn choose_access(ctx: &Ctx, label: &str) -> ScenarioResult {
 /// The run mode, chosen the same way: attaching a repository starts a session
 /// in Review first, which withholds every tool that could change anything.
 fn choose_mode(ctx: &Ctx, label: &str) -> ScenarioResult {
-    choose_from_menu(ctx, "What Jan may do", label)
+    choose_from_menu(ctx, "What Flint may do", label)
 }
 
 /// Open the dropdown whose trigger is labelled `trigger` and pick `label`.
@@ -5289,6 +5293,137 @@ fn scenario_execution_timeline(ctx: &Ctx) -> ScenarioResult {
 
 /// A new process on the kept profile: the same rows, in the same order, with
 /// the same states, read from disk, with nothing sent.
+/// Jozkah/jan#244: a provider numbers its tool calls per request, so two turns
+/// that each edit a file reuse the same call id (`call_1` here). Each edit's
+/// row on the timeline still opens to its own diff: the diff is looked up by
+/// the call's invocation, not by the call id alone, which would give both rows
+/// the later turn's diff.
+fn scenario_timeline_diff_by_invocation(ctx: &Ctx) -> ScenarioResult {
+    let turn = |file: &str, before: &str, after: &str| {
+        [
+            format!("write:{}", serde_json::json!({ "path": file, "content": format!("{before}\nbody\n") })),
+            format!(
+                "edit:{}",
+                serde_json::json!({ "path": file, "edits": [{ "old_string": before, "new_string": after }] })
+            ),
+        ]
+    };
+    // The fixture routes on a session's first user message, so the second
+    // turn is scripted by re-scripting the same route before it is sent;
+    // `fresh_turns` makes it answer that turn afresh despite turn one's results.
+    let script = |file: &str, before: &str, after: &str, done: &str| {
+        script_routes(
+            ctx,
+            &serde_json::json!([{ "match": "DIFF-TURNS", "tools": turn(file, before, after), "summary": done }]),
+            true,
+        )
+    };
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    for (file, before, after, done) in [
+        ("alpha.txt", "alpha before", "alpha after", "alpha turn done"),
+        ("bravo.txt", "bravo before", "bravo after", "bravo turn done"),
+    ] {
+        script(file, before, after, done)?;
+        // A directive verb, so the turn is offered write and edit.
+        ctx.type_into("[data-testid=\"chat-input\"]", &format!("Update the file now. DIFF-TURNS {file}"))?;
+        send_armed(ctx)?;
+        let deadline = Instant::now() + Duration::from_secs(120);
+        loop {
+            ctx.eval(
+                "const b = [...document.querySelectorAll('button')].find(x =>
+                   /^allow once$/i.test((x.textContent || '').trim()));
+                 if (b) b.click();
+                 return true;",
+            )?;
+            let finished = ctx.eval_bool(&format!(
+                "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+                   && document.body.innerText.includes({done:?});"
+            ))?;
+            if finished {
+                break;
+            }
+            ensure!(Instant::now() < deadline, "the {file} turn did not finish: {}", run_state_page(ctx));
+            std::thread::sleep(Duration::from_millis(600));
+        }
+    }
+    show_timeline(ctx)?;
+    const EDIT_ROWS: &str = "[...document.querySelectorAll('[data-testid=\"timeline-row\"]')]
+        .filter(r => (r.dataset.categories || '').includes('edits') && r.dataset.status === 'completed')";
+    // Two turns, each a write and an edit.
+    ctx.wait_until(
+        "every change on the timeline",
+        &format!("return {EDIT_ROWS}.length >= 4;"),
+        Duration::from_secs(20),
+    )?;
+    let count = ctx.eval_string(&format!("return String({EDIT_ROWS}.length);"))?;
+    let count: usize = count.parse().map_err(|e| Failure(format!("{e}: {count}")))?;
+    let invocations = ctx.eval_string(&format!(
+        "return JSON.stringify({EDIT_ROWS}.map(r => r.dataset.invocation || ''));"
+    ))?;
+    println!("      change rows' invocations: {invocations}");
+    let mut shown: Vec<(String, String)> = Vec::new();
+    for index in 0..count {
+        // Close whatever diff is open, then open this row's.
+        ctx.eval(&format!(
+            "document.querySelectorAll('[data-testid=\"timeline-diff\"]').forEach(d => {{
+               const row = d.closest('[data-testid=\"timeline-row\"]');
+               const t = row && row.querySelector('[data-row-toggle]');
+               if (t) t.click();
+             }});
+             {EDIT_ROWS}[{index}].querySelector('[data-row-toggle]').click();
+             return true;"
+        ))?;
+        ctx.wait_until(
+            &format!("the diff of change {index}"),
+            "const d = document.querySelectorAll('[data-testid=\"timeline-diff\"]');
+             return d.length === 1 && Number(d[0].dataset.hunks) >= 1;",
+            Duration::from_secs(15),
+        )?;
+        let raw = ctx.eval_string(
+            "const d = document.querySelector('[data-testid=\"timeline-diff\"]');
+             return JSON.stringify({ path: d.dataset.path || '', text: d.innerText || '' });",
+        )?;
+        let v: Value = serde_json::from_str(&raw).map_err(|e| Failure(format!("{e}: {raw}")))?;
+        let path = v["path"].as_str().unwrap_or("").to_string();
+        let text = v["text"].as_str().unwrap_or("").to_string();
+        println!(
+            "      change {index}: path={path:?} alpha={} bravo={}",
+            text.contains("alpha"),
+            text.contains("bravo")
+        );
+        shown.push((path, text));
+    }
+    for (file, own, other) in [("alpha.txt", "alpha", "bravo"), ("bravo.txt", "bravo", "alpha")] {
+        let rows: Vec<&(String, String)> = shown.iter().filter(|(p, _)| p.ends_with(file)).collect();
+        ensure!(rows.len() >= 2, "expected {file}'s write and edit on the timeline: {shown:?}");
+        for (path, text) in rows {
+            ensure!(
+                text.contains(own) && !text.contains(other),
+                "a change to {path} opened another call's diff: {text:?}"
+            );
+        }
+    }
+    // And the edits proper show their own replacement.
+    ensure!(shown.iter().any(|(p, t)| p.ends_with("alpha.txt") && t.contains("alpha after")), "alpha's edit diff is missing");
+    ensure!(shown.iter().any(|(p, t)| p.ends_with("bravo.txt") && t.contains("bravo after")), "bravo's edit diff is missing");
+    Ok(())
+}
+
 fn scenario_execution_timeline_restart(ctx: &Ctx) -> ScenarioResult {
     let handoff = read_handoff(ctx, TIMELINE_HANDOFF, "execution-timeline")?;
     let session = handoff["session"].as_str().unwrap_or_default().to_string();
