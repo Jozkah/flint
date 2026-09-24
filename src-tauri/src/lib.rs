@@ -833,6 +833,10 @@ pub fn run_app(app: tauri::App) {
             // jan CLI never reads a stale settings.json.
             core::app::settings_store::flush_settings();
 
+            // A profile reused by the migration stays locked for the session;
+            // unlock it so the next launch is not refused by our dead pid.
+            core::migration::lock::release_session_locks();
+
             #[cfg(not(any(target_os = "ios", target_os = "android")))]
             {
                 if let Some(window) = app_handle.get_webview_window("main") {

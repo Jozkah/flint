@@ -86,6 +86,30 @@ impl ProfileLock {
     }
 }
 
+/// Locks this process holds until it exits: the profile a Reuse migration
+/// wired in (#168). Held here rather than by a caller because nothing above
+/// the migration command lives as long as the session.
+static SESSION_LOCKS: std::sync::Mutex<Vec<ProfileLock>> = std::sync::Mutex::new(Vec::new());
+
+/// Keep `lock` until [`release_session_locks`]. A lock already held on the
+/// same file is replaced, not duplicated.
+pub fn hold_for_session(lock: ProfileLock) {
+    let mut held = SESSION_LOCKS.lock().unwrap_or_else(|p| p.into_inner());
+    held.retain(|l| l.path != lock.path);
+    held.push(lock);
+}
+
+/// Release every lock taken with [`hold_for_session`]; called on app exit so
+/// the next launch does not find its own profile locked by a dead pid.
+pub fn release_session_locks() {
+    let held = std::mem::take(&mut *SESSION_LOCKS.lock().unwrap_or_else(|p| p.into_inner()));
+    for lock in held {
+        if let Err(e) = lock.release() {
+            log::warn!("could not release a profile lock on exit: {e}");
+        }
+    }
+}
+
 fn lock_path(profile_dir: &Path) -> PathBuf {
     profile_dir.join(LOCK_FILE_NAME)
 }

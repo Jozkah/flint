@@ -328,12 +328,11 @@ fn execute_reuse(
         return;
     }
 
-    // Take (and immediately release) the lock to prove we can; the caller wires
-    // the profile and must hold the lock for the session's lifetime.
-    match super::lock::acquire(&reuse_path, if opts.holder.is_empty() { "flint-migration" } else { &opts.holder }) {
-        Ok(lock) => {
-            let _ = lock.release();
-        }
+    // Take the lock and keep it: the reused profile is this session's data
+    // folder, so it stays locked until the app exits (#168). It is released
+    // straight away only when the reuse then fails.
+    let lock = match super::lock::acquire(&reuse_path, if opts.holder.is_empty() { "flint-migration" } else { &opts.holder }) {
+        Ok(lock) => lock,
         Err(super::lock::LockError::Held(info)) => {
             m.mark_failed();
             let _ = manifest::write(flint_config, &m);
@@ -348,9 +347,10 @@ fn execute_reuse(
             result.error = Some(format!("reuse lock io error: {e}"));
             return;
         }
-    }
+    };
 
     if let Err(e) = std::fs::create_dir_all(flint_config) {
+        let _ = lock.release();
         result.status = Status::Failed;
         result.error = Some(format!("create flint config: {e}"));
         return;
@@ -358,10 +358,12 @@ fn execute_reuse(
     m.reuse_path = Some(reuse_path.clone());
     m.mark_complete();
     if let Err(e) = manifest::write(flint_config, &m) {
+        let _ = lock.release();
         result.status = Status::Failed;
         result.error = Some(e);
         return;
     }
+    super::lock::hold_for_session(lock);
     result.status = Status::Complete;
     result.reuse_path = Some(reuse_path);
 }
@@ -1033,6 +1035,13 @@ mod tests {
         let r = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
         assert_eq!(r.reuse_path.as_ref(), Some(&p.source_data_folder));
+
+        // #168: the reused profile stays locked by this process after the
+        // migration returns, so another process sees it as held.
+        let held = super::super::lock::read_lock(&p.source_data_folder)
+            .expect("the reused profile keeps its lock for the session");
+        assert_eq!(held.pid, std::process::id());
+        assert_eq!(held.holder, "test");
 
         // Now simulate another live process holding the lock -> refuse.
         let foreign = super::super::lock::LockInfo {
