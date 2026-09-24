@@ -797,7 +797,12 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
       )}
       {row.usage && <TokenUsageBreakdown usage={row.usage} testIdPrefix="timeline-usage" />}
       {row.change && row.call && (
-        <EditDiff sessionId={sessionId} call={row.call} change={row.change} />
+        <EditDiff
+          sessionId={sessionId}
+          call={row.call}
+          invocation={row.invocation}
+          change={row.change}
+        />
       )}
     </div>
   )
@@ -807,10 +812,12 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
 function EditDiff({
   sessionId,
   call,
+  invocation,
   change,
 }: {
   sessionId: string
   call: string
+  invocation?: string
   change: NonNullable<TimelineRow['change']>
 }) {
   const { t } = useTranslation()
@@ -821,13 +828,13 @@ function EditDiff({
       setDiff(null)
       return
     }
-    void loadToolDiff(sessionId, call).then((d) => {
+    void loadToolDiff(sessionId, call, invocation).then((d) => {
       if (current) setDiff(d)
     })
     return () => {
       current = false
     }
-  }, [sessionId, call, change.diffStored])
+  }, [sessionId, call, invocation, change.diffStored])
   const hunks = useMemo(() => (diff ? parseUnifiedDiff(diff).hunks.length : 0), [diff])
   return (
     <div data-testid="timeline-diff" data-path={change.path} data-hunks={hunks}>
