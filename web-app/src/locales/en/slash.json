@@ -1,0 +1,30 @@
+{
+  "menu": {
+    "title": "Commands",
+    "helpTitle": "Available commands",
+    "keys": "↑↓ choose · Enter/Tab insert · Esc close",
+    "empty": "No commands available here"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "skill",
+    "builtin": "built-in"
+  },
+  "scope": {
+    "project": "project",
+    "global": "global"
+  },
+  "builtin": {
+    "help": "List available commands",
+    "new": "Start a new conversation",
+    "newSession": "Start a new Cowork session"
+  },
+  "sent": {
+    "command": "Command",
+    "skill": "Skill",
+    "showCommand": "Show expanded command",
+    "showSkill": "Show loaded skill"
+  },
+  "error": "Could not run {{command}}: {{error}}"
+}
