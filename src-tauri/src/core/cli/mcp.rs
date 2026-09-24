@@ -464,7 +464,9 @@ async fn connect_in(
                 // capability: there is no second, unconfined way to start a local
                 // MCP server.
                 let build = || {
-                    let mut cmd = Command::new(&params.command);
+                    // A bare `npx`/`uvx` is a `.cmd` shim on Windows, which
+                    // CreateProcessW will not find by name (#224).
+                    let mut cmd = Command::new(crate::core::mcp::launch::launchable_program(&params.command));
                     #[cfg(windows)]
                     {
                         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
