@@ -334,4 +334,21 @@ describe('isToolSupported', () => {
     )
     expect(await ext.isToolSupported('foo')).toBe(true)
   })
+
+  it('does not treat the assistant chat role as tool support (#64)', async () => {
+    const ext = newExt()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_yaml') return { model_path: '/abs/model.safetensors' }
+      if (cmd === 'read_file_sync')
+        return JSON.stringify({
+          chat_template:
+            "{% for message in messages %}<|im_start|>{{ message['role'] }}\n{{ message['content'] }}<|im_end|>{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}",
+        })
+      return undefined
+    })
+    mockExistsSync.mockImplementation(async (p: string) =>
+      p.endsWith('tokenizer_config.json')
+    )
+    expect(await ext.isToolSupported('foo')).toBe(false)
+  })
 })
