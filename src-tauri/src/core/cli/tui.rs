@@ -4613,17 +4613,20 @@ impl App {
             self.persist();
             return;
         };
-        let saver = self.thread_saver.get_or_insert_with(ThreadSaver::new);
-        if let Some(err) = saver.take_error() {
-            self.detail = format!("save failed: {err}");
-        }
-        saver.save(ThreadSave {
+        // Built first: `thread_metadata` borrows `self`, which the saver below
+        // holds mutably.
+        let job = ThreadSave {
             base: self.agent_dir.clone(),
             id,
             model: self.model.clone(),
             history: self.history.clone(),
             metadata: self.thread_metadata(),
-        });
+        };
+        let saver = self.thread_saver.get_or_insert_with(ThreadSaver::new);
+        if let Some(err) = saver.take_error() {
+            self.detail = format!("save failed: {err}");
+        }
+        saver.save(job);
         self.dump_display_log();
     }
 
@@ -23249,7 +23252,7 @@ mod tests {
                         crate::core::cli::auth::account::AccountProvider::Claude,
                     )
                     .unwrap();
-                    app.account_login = Some(AccountLoginPrompt::new(login));
+                    app.account_login = Some(crate::core::cli::tui::AccountLoginPrompt::new(login));
                 }
             }
             let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);

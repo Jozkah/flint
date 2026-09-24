@@ -359,6 +359,10 @@ impl DesktopUi for FileSettingsUi {
         Err("no interactive desktop surface is attached to this session".to_string())
     }
     fn apply_setting(&self, key: &str, value: &Value) -> Result<SettingChange, String> {
+        // The desktop's settings store (and its lock) exists only in the app
+        // build; the CLI has no webview writing the same file, so it writes
+        // the file directly below.
+        #[cfg(not(feature = "cli"))]
         if self.shared {
             let previous = crate::core::app::settings_store::settings_get(key.to_string())
                 .map_or(Value::Null, |s| from_store_value(&s));
