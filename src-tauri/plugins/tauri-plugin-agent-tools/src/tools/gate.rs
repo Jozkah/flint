@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::permissions::ToolPermissions;
 use crate::tools::cmdscan::normalize;
 use crate::tools::sandbox::{
-    command_touches_hidden_jan_path, escapes_read_roots, escapes_write_roots, is_hidden_jan_path,
+    command_touches_hidden_jan_path_in, escapes_read_roots, escapes_write_roots,
+    is_hidden_jan_path_in,
 };
 use crate::tools::{BuiltinTool, Capability};
 
@@ -455,12 +456,17 @@ pub fn resolve_decision(
     // are shell commands run around every call. A model that can write one has
     // granted itself everything the policy withheld, so the rule that stops it
     // cannot be conditional on a sandbox the CLI does not use.
+    //
+    // Every granted write root counts, not only the workspace: a managed
+    // worktree or a repository edited in place has the project's own
+    // `.jan/agent` in it (Jozkah/jan#124).
     let mutating = matches!(tool.capability, Capability::Write | Capability::Exec);
+    let write_roots = grants.write_roots();
     let hits_hidden = (hide_jan || mutating)
         && tool.path_args.iter().any(|key| {
             args.get(key)
                 .and_then(|v| v.as_str())
-                .map(|p| is_hidden_jan_path(project_root, p))
+                .map(|p| is_hidden_jan_path_in(project_root, write_roots, p))
                 .unwrap_or(false)
         });
     let exec_hits_hidden = (hide_jan || mutating)
@@ -468,7 +474,7 @@ pub fn resolve_decision(
         && args
             .get("command")
             .and_then(|v| v.as_str())
-            .map(|c| command_touches_hidden_jan_path(project_root, c))
+            .map(|c| command_touches_hidden_jan_path_in(project_root, write_roots, c))
             .unwrap_or(false);
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
@@ -1497,6 +1503,59 @@ mod tests {
         for d in [&root, &repo, &elsewhere] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+
+    /// Jozkah/jan#124: the `.jan` of a granted write root (a managed worktree,
+    /// or a repository edited in place) is as off-limits as the workspace's.
+    /// Writing it would let the model rewrite the project's tool policy and
+    /// hooks; the refusal holds with or without the hide flag.
+    #[test]
+    fn a_write_roots_jan_is_refused_to_file_tools_and_the_shell() {
+        let root = unique_root();
+        let repo = unique_root();
+        std::fs::create_dir_all(repo.join(".jan/agent")).unwrap();
+        std::fs::write(repo.join(".jan/agent/agent.toml"), b"x").unwrap();
+        let perms = ToolPermissions::allow_all();
+        let grants = SessionGrants::default().with_write_roots(vec![repo.clone()]);
+        let policy = repo.join(".jan/agent/agent.toml").to_string_lossy().into_owned();
+        let hooks = repo.join(".jan/agent/hooks.toml").to_string_lossy().into_owned();
+        let verdict = |tool: &str, args: serde_json::Value, hide: bool| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                hide,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let hidden = Decision::HardDeny(DenyReason::Hidden);
+        for hide in [true, false] {
+            assert_eq!(verdict("write", json!({"path": hooks, "content": "y"}), hide), hidden);
+            assert_eq!(
+                verdict("edit", json!({"path": policy, "old": "x", "new": "y"}), hide),
+                hidden
+            );
+            assert_eq!(verdict("bash", json!({"command": format!("cat {policy}")}), hide), hidden);
+            // The shell may start in the worktree, where a relative spelling
+            // means the worktree's own .jan.
+            assert_eq!(
+                verdict("bash", json!({"command": "echo x > .jan/agent/hooks.toml"}), hide),
+                hidden
+            );
+        }
+        // Reads are refused while hiding, like the workspace's own .jan.
+        assert_eq!(verdict("read", json!({"path": policy}), true), hidden);
+        // The rest of the repository is untouched by this.
+        assert_ne!(
+            verdict("write", json!({"path": repo.join("main.rs").to_string_lossy(), "content": "y"}), true),
+            hidden
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 
     /// The gate itself, not the helper underneath it.

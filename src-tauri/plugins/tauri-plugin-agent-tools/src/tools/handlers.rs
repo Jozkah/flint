@@ -16,7 +16,7 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
+    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path_in, lexical_normalize, resolve_path,
     scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
@@ -606,7 +606,7 @@ pub(crate) async fn execute_text(
         // deliberately do not, which is what keeps an attached folder
         // readable and unwritable.
         "read" => read(args, project_root, scratch, ctx.read_roots).await.0,
-        "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
+        "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         "write" => {
             write(
                 args,
@@ -628,8 +628,8 @@ pub(crate) async fn execute_text(
             .await
         }
         "bash" => bash(args, ctx).await,
-        "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
-        "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
+        "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
+        "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         // Memory and skills live in the store root, not the sandbox: they must
         // outlive the conversation the filesystem tools are scoped to.
         "memory_list" => memory_list(ctx.store_root).await,
@@ -1442,6 +1442,7 @@ async fn ls(
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let path = arg_str(args, "path").unwrap_or(".");
     let limit = arg_u64(args, "limit")
@@ -1478,7 +1479,9 @@ async fn ls(
                 // Hidden state is omitted, not reported-then-denied: an entry the
                 // agent can never open is only an invitation to try. Skipped when
                 // not hiding, so an unconfined CLI run sees its own `.jan`.
-                if hide_jan && is_hidden_jan_path(root, &entry.path().to_string_lossy()) {
+                if hide_jan
+                    && is_hidden_jan_path_in(root, write_roots, &entry.path().to_string_lossy())
+                {
                     continue;
                 }
                 let mut name = entry.file_name().to_string_lossy().into_owned();
@@ -1756,6 +1759,16 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
     {
         policy = policy.with_write_roots(write_abs.clone());
+        if ctx.sandbox {
+            policy = hide_write_root_jans(policy, &write_abs);
+            // From the host, before the shell sees the hidden `.jan`: a
+            // tracked file there must not look deleted to the sandboxed git.
+            for wr in &write_abs {
+                if let Err(e) = crate::tools::git_native::skip_worktree_jan(wr) {
+                    eprintln!("could not mark {}/.jan skip-worktree: {e}", wr.display());
+                }
+            }
+        }
         // #322: a run whose destination is a managed worktree starts its shell
         // there, so `npm test` or `.\check.ps1` mean the project. See
         // [`managed_worktree_start`] for when, and why the file tools do not
@@ -2575,6 +2588,18 @@ fn cwd_note(cwd: &str, in_worktree: bool) -> String {
 /// paths are all keyed on it, and moving them would change what every
 /// relative write in a worktree run means. The prompt and the `[cwd: ...]`
 /// note state both bases instead.
+/// Hide each write root's own `.jan` from the shell. The shell may write
+/// there, and a managed worktree or a repository edited in place carries the
+/// project's agent policy, hooks and skills under `.jan/agent`; it is hidden
+/// the same way the workspace's is (Jozkah/jan#124). Only for a sandboxed
+/// shell, like the workspace hide.
+fn hide_write_root_jans(mut policy: jail::Policy, write_roots: &[PathBuf]) -> jail::Policy {
+    for root in write_roots {
+        policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
+    }
+    policy
+}
+
 fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
     let [only] = write_roots else {
         return None;
@@ -2978,6 +3003,7 @@ async fn find(
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let pattern = arg_str(args, "pattern").map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
@@ -2992,6 +3018,7 @@ async fn find(
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
     }
     let root_owned = root.to_path_buf();
+    let write_owned = write_roots.to_vec();
 
     let Some(pattern) = pattern else {
         return "ERROR: missing required argument 'pattern'".to_string();
@@ -3016,7 +3043,9 @@ async fn find(
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
                 continue;
             }
-            if hide_jan && is_hidden_jan_path(&root_owned, &entry.path().to_string_lossy()) {
+            if hide_jan
+                && is_hidden_jan_path_in(&root_owned, &write_owned, &entry.path().to_string_lossy())
+            {
                 continue;
             }
             let rel = rel_to(&base, entry.path());
@@ -3058,7 +3087,7 @@ mod find_cap_tests {
         let (out, _) = read(&serde_json::json!({"path": "model.gguf"}), &root, None, &[]).await;
         assert!(out.starts_with("ERROR") && out.contains("too large"), "{out}");
 
-        let out = grep(&serde_json::json!({"pattern": "needle", "path": "."}), &root, None, false, &[]).await;
+        let out = grep(&serde_json::json!({"pattern": "needle", "path": "."}), &root, None, false, &[], &[]).await;
         assert!(out.contains("notes.txt"), "{out}");
         assert!(out.contains("Skipped 1 file(s) over"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
@@ -3075,7 +3104,7 @@ mod find_cap_tests {
         for i in 0..1500 {
             std::fs::write(deep.join(format!("{}_{i}.txt", "c".repeat(40))), b"").unwrap();
         }
-        let out = find(&serde_json::json!({"pattern": "**/*.txt", "limit": 1_000_000}), &root, None, false, &[]).await;
+        let out = find(&serde_json::json!({"pattern": "**/*.txt", "limit": 1_000_000}), &root, None, false, &[], &[]).await;
         assert!(out.len() <= MAX_BYTES + 64, "{} bytes", out.len());
         assert!(out.contains("[truncated: 64KB limit]"));
         let _ = std::fs::remove_dir_all(&root);
@@ -3088,6 +3117,7 @@ async fn grep(
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let pattern = arg_str(args, "pattern").map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
@@ -3104,6 +3134,7 @@ async fn grep(
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
     }
     let root_owned = root.to_path_buf();
+    let write_owned = write_roots.to_vec();
     let scratch_owned = scratch.map(Path::to_path_buf);
     // Owned for the blocking walk closure, which outlives this frame.
     let roots_owned = read_roots.to_vec();
@@ -3230,7 +3261,13 @@ async fn grep(
                 {
                     continue;
                 }
-                if hide_jan && is_hidden_jan_path(&root_owned, &entry.path().to_string_lossy()) {
+                if hide_jan
+                    && is_hidden_jan_path_in(
+                        &root_owned,
+                        &write_owned,
+                        &entry.path().to_string_lossy(),
+                    )
+                {
                     continue;
                 }
                 // AH-044 for the files a walk finds (Jozkah/jan#239): the gate
@@ -6433,6 +6470,64 @@ on_failure = \"warn\"
         assert!(!n.contains("use absolute paths"), "{n}");
     }
 
+    /// Jozkah/jan#124: the sandboxed shell's policy hides the `.jan` of every
+    /// write root as well as the workspace's.
+    #[test]
+    fn bash_policy_hides_each_write_roots_jan() {
+        let ws = PathBuf::from("/data/threads/t1");
+        let wt = PathBuf::from("/data/worktrees/repo/s1");
+        let repo = PathBuf::from("/home/dev/repo");
+        let policy = jail::Policy::new(&ws, false)
+            .with_hide_root(&ws.join(crate::tools::sandbox::JAN_DIR))
+            .with_write_roots(vec![wt.clone(), repo.clone()]);
+        let policy = hide_write_root_jans(policy, &[wt.clone(), repo.clone()]);
+        assert_eq!(
+            policy.hide_roots,
+            vec![ws.join(".jan"), wt.join(".jan"), repo.join(".jan")]
+        );
+    }
+
+    /// Listings omit a write root's `.jan` while hiding, as they do the
+    /// workspace's (Jozkah/jan#124).
+    #[tokio::test]
+    async fn listings_omit_a_write_roots_jan() {
+        let root = unique_root();
+        let wt = unique_root();
+        std::fs::create_dir_all(wt.join(".jan/agent")).unwrap();
+        std::fs::write(wt.join(".jan/agent/agent.toml"), b"needle").unwrap();
+        std::fs::write(wt.join("main.rs"), b"needle").unwrap();
+        let roots = vec![wt.clone()];
+        let path = wt.to_string_lossy().into_owned();
+
+        let listed = ls(&serde_json::json!({"path": path}), &root, None, true, &[], &roots).await;
+        assert!(listed.contains("main.rs") && !listed.contains(".jan"), "{listed}");
+        let found = find(
+            &serde_json::json!({"pattern": "**/*", "path": path}),
+            &root,
+            None,
+            true,
+            &[],
+            &roots,
+        )
+        .await;
+        assert!(found.contains("main.rs") && !found.contains("agent.toml"), "{found}");
+        let hits = grep(
+            &serde_json::json!({"pattern": "needle", "path": path}),
+            &root,
+            None,
+            true,
+            &[],
+            &roots,
+        )
+        .await;
+        assert!(hits.contains("main.rs") && !hits.contains("agent.toml"), "{hits}");
+        // Not hiding (an unconfined CLI run): listed like any directory.
+        let open = ls(&serde_json::json!({"path": path}), &root, None, false, &[], &roots).await;
+        assert!(open.contains(".jan"), "{open}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&wt);
+    }
+
     /// #322: the shell starts in the managed worktree only when that is the
     /// run's single write root under Jan's owned worktrees dir.
     #[test]
@@ -6482,13 +6577,13 @@ on_failure = \"warn\"
         let (bin, _) = read(&serde_json::json!({"path": "blob.bin"}), &root, None, &[]).await;
         assert_eq!(bin, "ERROR: Binary file (4 bytes); read only returns text.");
 
-        let git = ls(&serde_json::json!({"path": ".git"}), &root, None, false, &[]).await;
+        let git = ls(&serde_json::json!({"path": ".git"}), &root, None, false, &[], &[]).await;
         assert!(git.contains("is a file, not a directory") && git.contains("read it"), "{git}");
-        let plain = ls(&serde_json::json!({"path": "plain.txt"}), &root, None, false, &[]).await;
+        let plain = ls(&serde_json::json!({"path": "plain.txt"}), &root, None, false, &[], &[]).await;
         assert!(plain.ends_with("use read."), "{plain}");
 
         // A call with no arguments at all lists the workspace.
-        let listed = ls(&serde_json::Value::Null, &root, None, false, &[]).await;
+        let listed = ls(&serde_json::Value::Null, &root, None, false, &[], &[]).await;
         assert!(listed.contains("plain.txt"), "{listed}");
         let _ = std::fs::remove_dir_all(&root);
     }
