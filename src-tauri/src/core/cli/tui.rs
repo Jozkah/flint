@@ -320,17 +320,15 @@ impl Pending {
         let Some(command) = self.command.as_deref() else {
             return "Allow always (this thread)".to_string();
         };
+        // The grant is the exact command (AH-037: `grant_command` records the
+        // string shown, `covers_command` matches only it), so the label says
+        // so. It used to name the base commands -- "Allow all 'git' commands"
+        // -- a scope the grant has not had since (Jozkah/jan#126).
         match scan_command(command) {
-            CommandScan::Bases(bases) if !bases.is_empty() => {
-                let list = bases
-                    .iter()
-                    .map(|b| format!("'{b}'"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("Allow all {list} commands (this thread)")
+            CommandScan::Bases(bases) if bases.is_empty() => "Allow always (this thread)".to_string(),
+            CommandScan::Bases(_) | CommandScan::Opaque => {
+                "Allow this exact command (this thread)".to_string()
             }
-            CommandScan::Bases(_) => "Allow always (this thread)".to_string(),
-            CommandScan::Opaque => "Allow this exact command (this thread)".to_string(),
         }
     }
 
@@ -19076,7 +19074,7 @@ mod tests {
     fn always_label_is_command_scoped_for_exec() {
         assert_eq!(
             pending(true).always_label(),
-            "Allow all 'git' commands (this thread)"
+            "Allow this exact command (this thread)"
         );
         let mut p = pending(true);
         p.command = None;
