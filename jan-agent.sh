@@ -8,10 +8,12 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JAN_BIN="$DIR/src-tauri/resources/bin/flint"
+# ./build-tui.sh installs the CLI to ~/.local/bin; FLINT_BIN overrides it.
+JAN_BIN="${FLINT_BIN:-$HOME/.local/bin/flint}"
 
 if [ ! -x "$JAN_BIN" ]; then
   echo "error: flint binary not found or not executable at $JAN_BIN" >&2
+  echo "build and install it with ./build-tui.sh, or set FLINT_BIN" >&2
   exit 1
 fi
 
