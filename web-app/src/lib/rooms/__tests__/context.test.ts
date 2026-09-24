@@ -93,6 +93,23 @@ describe('context projection', () => {
     expect(built.system).not.toContain('# Skills')
   })
 
+  it('points a tool-capable speaker with no folder at its tool list, and edit access at the delete rule', () => {
+    const noFolder = makeRoom({ folder: undefined })
+    const reader = {
+      kind: 'participant' as const,
+      participant: { ...noFolder.participants[0], toolAccess: 'read' as const },
+    }
+    const s = buildSystemPrompt(noFolder, reader)
+    expect(s).toContain('tool list')
+    expect(s).not.toContain('Unless connected MCP tools')
+    const withFolder = makeRoom({ folder: '/work' })
+    const editor = {
+      kind: 'participant' as const,
+      participant: { ...withFolder.participants[0], toolAccess: 'edit' as const },
+    }
+    expect(buildSystemPrompt(withFolder, editor)).toContain('Do not delete, overwrite or move files')
+  })
+
   it('renderSkillsCatalog renders name + description, and null for an empty list', () => {
     expect(renderSkillsCatalog([])).toBeNull()
     const block = renderSkillsCatalog([{ name: 'caveman', description: 'Talk terse.' } as never])
