@@ -588,6 +588,7 @@ pub(crate) mod tests {
                         cached_prompt_tokens: Some(64),
                         cache_write_tokens: None,
                     },
+                    execution_id: Some("exec-1".into()),
                 },
             ),
             (
@@ -642,6 +643,25 @@ pub(crate) mod tests {
                     details: serde_json::json!({ "pose": [0, 1] }),
                 },
             ),
+            (
+                "RequestProvenance",
+                StreamEvent::RequestProvenance {
+                    run_id: Some("run-1".into()),
+                    session_id: Some("session-9".into()),
+                    provider: Some("anthropic".into()),
+                    model: "claude-sonnet-5".into(),
+                    api_type: Some("anthropic".into()),
+                    request_sha256: "0".repeat(64),
+                    body_bytes: 41,
+                    tools_sha256: Some("1".repeat(64)),
+                    images: vec![ProvenanceImage {
+                        sha256: "2".repeat(64),
+                        mime_type: "image/png".into(),
+                        bytes: 3,
+                        tool_call_id: Some("call_7".into()),
+                    }],
+                },
+            ),
         ]
     }
 
@@ -675,7 +695,8 @@ pub(crate) mod tests {
             | StreamEvent::PermissionRequest { .. }
             | StreamEvent::ToolRequest { .. }
             | StreamEvent::ToolRequestCancelled { .. }
-            | StreamEvent::ToolDetails { .. } => {}
+            | StreamEvent::ToolDetails { .. }
+            | StreamEvent::RequestProvenance { .. } => {}
         }
     }
 

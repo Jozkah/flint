@@ -6,6 +6,8 @@ export const PROTOCOL_VERSION = 1
 
 /** The `type` tag of every event, which is also its `item/<tag>` method name. */
 export const EVENT_TAGS = Object.freeze([
+  "prompt_snapshot",
+  "request_provenance",
   "token",
   "reasoning",
   "step",
@@ -14,14 +16,11 @@ export const EVENT_TAGS = Object.freeze([
   "tool_call",
   "tool_output_delta",
   "tool_result",
+  "run_resources",
   "subagent_start",
   "subagent_queued",
   "subagent_end",
-  "subagent_plan",
   "subagent",
-  "notice",
-  "monitors",
-  "parked",
   "messages_updated",
   "ask_request",
   "ask_resolved",

@@ -189,17 +189,59 @@ thing that can answer a permission request and it needs to be reading them.
 A follow-up joins the run at the next turn boundary. A `user` message carries either `text` or
 `content`, not both. `content` is the OpenAI content-part array: `text` parts and `image_url` parts
 whose `url` is a base64 `data:` URL. The run shares no filesystem with a client, so a path would
-only work for a client on the same machine. The parts reach the provider exactly as written -- they
-are not re-encoded -- and `init.input_content_parts` publishes the caps before a client sends
-anything: at most 5 MiB decoded per image, 10 MiB across a message's images, 8 images per message,
-and 16 MiB for one input line. Only `image/png`, `image/jpeg`, `image/gif` and `image/webp` are
-accepted. A line over the cap is rejected without being parsed, and `input_error.line` carries at
-most the first 4 KiB of it, with `line_truncated: true`: a rejected line can be as large as the cap
-it crossed.
+only work for a client on the same machine. `init.input_content_parts` publishes the caps before a
+client sends anything: at most 5 MiB decoded per image, 10 MiB across a message's images, 8 images
+per message, and 16 MiB for one input line. Only `image/png`, `image/jpeg`, `image/gif` and
+`image/webp` are accepted. A line over the cap is rejected without being parsed, and
+`input_error.line` carries at most the first 4 KiB of it, with `line_truncated: true`: a rejected
+line can be as large as the cap it crossed.
+
+<Callout type="info">
+A message's parts travel to the provider as written, images included: a `user` turn keeps its text
+and `image_url` parts in order. Whether a model accepts an image is the model's business, not the
+channel's - a provider without vision answers with its own error.
+</Callout>
 
 `decision` is `allow_once`, `allow_always`, or `deny`, and each `request_id` is answerable once. A
 line that parses as none of these is reported as an `input_error` record and skipped, so one bad
 line cannot end a healthy run.
+
+#### Request provenance
+
+Every outbound provider request emits a `request_provenance` record immediately before it goes out,
+so a harness that records runs can tell **what was sent** without being handed the prompt. The
+record is identity, not content:
+
+```json
+{"type":"request_provenance","session_id":"3f7a91c2","provider":"anthropic","model":"claude-sonnet-5","api_type":"anthropic","request_sha256":"9f2c...","body_bytes":9011,"tools_sha256":"1ab4...","images":[{"sha256":"77de...","mime_type":"image/png","bytes":41234,"tool_call_id":"call_7"}]}
+```
+
+| Field | Notes |
+| --- | --- |
+| `run_id` | The run that made the request. Absent for the main run, set to the subagent's own id for a child's turns |
+| `session_id` | The session the request belongs to, as the `init` record names it. The correlation id the request itself carries is derived from it |
+| `provider`, `model`, `api_type` | The configured provider the model resolved to, the bare model id the upstream receives, and the wire API the body is built for (`anthropic`, `google`, `openai-responses`; absent when the body is chat/completions) |
+| `request_sha256` | SHA-256 of the request body as Jan built it, as canonical JSON (object keys sorted): the whole request's identity, so two runs are comparable even when something this record does not itemize changed |
+| `body_bytes` | The built body's serialized length, measured before the provider adapter serializes it its own way |
+| `tools_sha256` | SHA-256 of the `tools` array exactly as sent. Absent when the request carries no non-empty tool list. The tool array can change while the model id does not, which is why it is hashed separately from the body |
+| `images` | One entry per image in the body, in order. Absent when there are none |
+
+`images` hashes each image over its **decoded** bytes, so a host can hash the same frame it captured
+and match it: `sha256` is that digest, `mime_type` and `bytes` describe the image, and
+`tool_call_id` names the host tool call whose result carried it (`null` for an image the user
+attached).
+
+Emitted for subagent turns as well as the main run's, and for the side calls a run makes (a
+compaction summary, a `/goal` evaluation inside a turn), since those are real requests with real
+spend. A record rides the stream of the run that made the request, so it also reaches RPC clients as
+`item/request_provenance`. A request made with no run in flight -- the TUI's `/compact`, a `/goal`
+evaluation between turns -- has no run stream to ride and is not reported.
+
+The record deliberately carries no prompt, completion, header, or credential -- `request_sha256` is
+how the two sides agree they are talking about the same request. The digest covers the body Jan
+built, before the provider's adapter serializes it into that provider's own shape, so it is stable
+for a given run and comparable across runs against the same provider. Two runs on different wire
+APIs differ by construction: the tool array each provider is sent is not the same shape.
 
 #### Host tools
 
@@ -238,6 +280,13 @@ call that breaks the schema never reaches you; the model is told
 and can try again. The check covers `type`, `properties`, `required`, `additionalProperties`,
 `items`, `minItems`, `maxItems`, `enum`, `const`, `minLength`, `maxLength`, `minimum`, `maximum`,
 `exclusiveMinimum`, `exclusiveMaximum` and `pattern`; any other keyword is ignored, never failed.
+
+A host tool is gated exactly as an MCP tool is: auto-approved in a default run like every other
+call, prompted under `--safe` (its `permission_request` carries `prompt_kind: "mcp"`, the class for
+any opaque third-party capability, naming the qualified `host__<name>`), withheld entirely in
+read-only plan mode, and subject to the same deny list. The `init` handshake echoes the schemas
+actually advertised in `tool_specs`, so a tool you declared but that is missing there was withheld
+by policy and will never be called.
 
 `content` is required even for a failure -- set `is_error: true` and put the reason in `content`,
 which reaches the model as the tool's error. It is either a string or a content-part array of
@@ -376,13 +425,15 @@ jan cli agent rpc-schema   # generated request/event schemas on stdout
 One client flow:
 
 ```text
-initialize {protocolVersion:1,clientInfo:{name,version}} -> version and serverInfo
+initialize {protocolVersion:1,clientInfo:{name,version}}   -> version, serverInfo, input_content_parts
 initialized                                                -> notification
 session/start {cwd,model?,ephemeral?}                      -> {sessionId}
 turn/start {sessionId,input:"Hello"}                       -> {turnId} immediately
 item/<stream-json tag>                                     -> {sessionId,turnId,event}
 turn/completed                                             -> {sessionId,turnId,stopReason,error?}
 ```
+
+The `initialize` result carries the same `input_content_parts` object `init` does - the MIME types and the image, message and line caps a content-part array is held to - so a client that sends an image learns the limits from the handshake rather than by having a message rejected.
 
 The `item/*` payload contains the existing `StreamEvent` object unchanged. A client can also call `session/list`, `session/resume`, `session/fork`, `session/archive`, `turn/steer`, `turn/interrupt` and `permission/respond {requestId,decision}`. Session ids address this **process**, not another RPC process. `turn/interrupt` closes the turn with one `turn/completed` carrying `stopReason: "interrupted"`, and puts that record on the wire before it answers the request. A client that closes stdin ends the process, and the turn that is still running is closed with `stopReason: "interrupted"` before it exits. An outstanding permission request is never granted - closing the channel is not an approval, and the gate's fallback for a request that is dropped without an answer is denial. Only one turn is active per process; a second `turn/start` returns `-32001` with `data.retryable: true` rather than silently queueing it, and so does a `turn/start` arriving while the output queue has no room left for the terminal record - the turn is refused instead of accepted and then lost. `turn/completed.stopReason` is the turn's outcome (`completed`, `error`, `interrupted`), not the upstream finish reason: that one is the `stop_reason` inside `item/done`. Transport errors (`-32700` malformed JSON, `-32600` invalid request, `-32601` unknown method, `-32602` bad params) differ from an agent failure reported by `turn/completed` with `stopReason: "error"`.
 

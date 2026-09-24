@@ -1416,6 +1416,10 @@ pub(crate) fn configure_child_args(
     // AH-008: the dispatch this run answers, so the parent's record of asking
     // for it and this run's own events name each other.
     child_args.dispatch_id = Some(run_id.to_string());
+    // Upstream #9056: every build gets the child's own id, not just the
+    // headless one: a provenance record has to name the run that made the
+    // request.
+    child_args.run_id = Some(run_id.to_string());
     // AH-007: the child asks the permission gate as itself, so a rule
     // qualified `agent:<name>` binds this subagent and not its parent. An
     // unqualified rule still covers every subject, so a project that never
@@ -3418,6 +3422,7 @@ mod tests {
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
+            run_id: None,
             subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             sandbox: None,
         }

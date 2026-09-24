@@ -291,6 +291,11 @@ pub(crate) struct OrchestrationArgs {
     /// code paths with no session (server proxy runs) keeps the default
     /// throwaway per-command tmpfs.
     pub session_id: Option<String>,
+    /// This run's own id when it is a child run: `None` for the main run, the
+    /// id the dispatch gave it (the same one that tags its events and its host
+    /// tool requests) for a subagent. Provenance records carry it so a harness
+    /// can attribute a request to the run that made it (upstream #9056).
+    pub run_id: Option<String>,
     /// Who this run acts as, for permission decisions. AH-007: a rule may be
     /// qualified with a subject (`agent(reviewer)/write`), so the gate has to
     /// be told which one is asking. The top-level run is the main agent; a
@@ -655,6 +660,12 @@ struct HttpModelInvoker {
     /// Who this dispatch belongs to, so a snapshot can be found by run or
     /// session later. AH-078.
     snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity,
+    /// Who a provenance record names (upstream #9056): the child run's id
+    /// (`None` for the main run), the session as the handshake reports it, and
+    /// the configured provider the model resolved to. Kept apart from
+    /// `snapshot_identity`, whose run id is the cancellation scope's and is
+    /// minted for the main run too.
+    provenance: ProvenanceIdentity,
     /// The run's request ids (AH-004): minted here, read by the tool invoker.
     invocations: std::sync::Arc<Invocations>,
     /// Providers to try after this one, in order (AH-193). Empty unless the
@@ -690,6 +701,47 @@ async fn wire_for(
 fn converter_http_client() -> reqwest::Client {
     static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
     CLIENT.clone()
+}
+
+/// The identity a provenance record is reported under (upstream #9056).
+#[derive(Debug, Default, Clone)]
+struct ProvenanceIdentity {
+    run_id: Option<String>,
+    session_id: Option<String>,
+    provider: Option<String>,
+}
+
+impl ProvenanceIdentity {
+    /// Resolved once per invoker: the same model-to-provider lookup the request
+    /// itself resolves through, without a URL or a credential -- the record
+    /// names the provider, it does not authenticate to it.
+    async fn resolve(
+        model_id: &str,
+        provider_configs: &Arc<Mutex<HashMap<String, ProviderConfig>>>,
+        session_id: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Self {
+        let provider = {
+            let configs = provider_configs.lock().await;
+            match model_id.split_once('/') {
+                Some((prefix, _)) if configs.contains_key(prefix) => Some(prefix.to_string()),
+                _ => {
+                    let mut offering: Vec<&String> = configs
+                        .iter()
+                        .filter(|(_, c)| c.models.iter().any(|m| m == model_id))
+                        .map(|(name, _)| name)
+                        .collect();
+                    offering.sort();
+                    offering.first().map(|name| name.to_string())
+                }
+            }
+        };
+        Self {
+            run_id: run_id.map(str::to_string),
+            session_id: session_id.map(str::to_string),
+            provider,
+        }
+    }
 }
 
 #[async_trait]
@@ -788,9 +840,9 @@ impl ModelInvoker for HttpModelInvoker {
             let _ = events.send(crate::core::agent::provenance::of_request(
                 &normalized,
                 crate::core::agent::provenance::RequestIdentity {
-                    run_id: non_empty(&self.snapshot_identity.run),
-                    session_id: non_empty(&self.snapshot_identity.session),
-                    provider: non_empty(&self.snapshot_identity.provider),
+                    run_id: self.provenance.run_id.as_deref().and_then(non_empty),
+                    session_id: self.provenance.session_id.as_deref().and_then(non_empty),
+                    provider: self.provenance.provider.as_deref().and_then(non_empty),
                     api_type: self.api_type.as_deref(),
                 },
             ));
@@ -4039,6 +4091,8 @@ pub(crate) async fn run_server_side_openai_orchestration(
         auto_approve: false,
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
+        // The top-level run is not a child: no dispatch gave it an id.
+        run_id: None,
         subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
         sandbox: None,
     };
@@ -4835,6 +4889,7 @@ async fn orchestrate_inner(
         auto_approve,
         run_mode,
         session_id,
+        run_id: child_run_id,
         subject,
         sandbox,
     } = args;
@@ -5211,7 +5266,15 @@ async fn orchestrate_inner(
     ));
 
     let (converter, api_type) = wire_for(&model_id, provider_configs.clone()).await;
+    let provenance = ProvenanceIdentity::resolve(
+        &model_id,
+        provider_configs,
+        session_id.as_deref(),
+        child_run_id.as_deref(),
+    )
+    .await;
     let http_model = HttpModelInvoker {
+        provenance,
         // AH-191/AH-192: read once per run. A quotas.toml that will not parse
         // refuses the run here rather than being ignored, which is the only
         // reading of an unreadable ceiling that is not a licence to spend.
@@ -5623,7 +5686,15 @@ pub(crate) async fn compact_history(
     )
     .await?;
     let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
+    let provenance = ProvenanceIdentity::resolve(
+        model_id,
+        &args.provider_configs,
+        args.session_id.as_deref(),
+        args.run_id.as_deref(),
+    )
+    .await;
     let model = HttpModelInvoker {
+        provenance,
         // The run this compaction belongs to is judged at every turn of its
         // own (AH-191/AH-192). Stopping a compaction against a ceiling would
         // strand the run with a history it cannot send.
@@ -5700,7 +5771,15 @@ pub(crate) async fn evaluate_goal(
     )
     .await?;
     let (converter, api_type) = wire_for(smol_model_id, args.provider_configs.clone()).await;
+    let provenance = ProvenanceIdentity::resolve(
+        smol_model_id,
+        &args.provider_configs,
+        args.session_id.as_deref(),
+        args.run_id.as_deref(),
+    )
+    .await;
     let model = HttpModelInvoker {
+        provenance,
         // As above: this is a helper dispatch inside a run already judged.
         quota: None,
         // Billed to the same session, so one correlation lookup finds it.

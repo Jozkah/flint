@@ -297,6 +297,34 @@ fn rpc_serves_a_session_lifecycle_after_the_handshake() {
     let _ = std::fs::remove_dir_all(scratch);
 }
 
+/// A client that sends an image sends bytes into a channel with no
+/// backpressure, so the caps are part of the handshake rather than something to
+/// discover by being rejected. The RPC handshake carries the same object `init`
+/// gives a stream-json client; this asserts the field is on the wire, and that
+/// it is that object - compared against the builder, not against a copy of the
+/// numbers, so a cap cannot move in one place only.
+#[test]
+fn the_handshake_advertises_the_content_part_caps() {
+    let scratch = scratch("caps");
+    let home = scratch.join("home");
+    let provider_url = provider(1, 0);
+    configure(&home, &provider_url);
+    let mut rpc = Rpc::open(&home);
+
+    let init = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"test","version":"1"},"capabilities":{}}}));
+    let caps = &init["result"]["input_content_parts"];
+    assert!(!caps.is_null(), "{init}");
+    assert_eq!(
+        caps,
+        &serde_json::to_value(app_lib::core::cli::run_report::InputContentParts::current())
+            .expect("the caps serialize"),
+        "the handshake advertises the caps the parser enforces",
+    );
+
+    rpc.close();
+    let _ = std::fs::remove_dir_all(scratch);
+}
+
 #[test]
 fn failed_fork_does_not_close_other_sessions() {
     let scratch = scratch("failed-fork");
@@ -859,6 +887,90 @@ fn interrupting_withdraws_pending_host_requests() {
     let late = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tool/respond","params":{"requestId":request_id,"content":"too late"}}));
     assert_eq!(late["error"]["code"], -32602, "{late}");
     assert_eq!(late["error"]["data"]["kind"], "not_pending", "{late}");
+
+    rpc.close();
+    let _ = std::fs::remove_dir_all(scratch);
+}
+
+/// The provenance a client receives names the session that client holds, and
+/// goes on naming it after the session is rebuilt for a model change. A record
+/// naming some internal id, or a new one after `session/model/set`, cannot be
+/// joined to the turn it belongs to, which is the whole use of the field.
+#[test]
+fn provenance_names_the_session_the_client_holds() {
+    let scratch = scratch("provenance-session");
+    let home = scratch.join("home");
+    let (url, _seen) = scripted_provider(&[PROSE]);
+    configure(&home, &url);
+    let mut rpc = Rpc::open(&home);
+    rpc.handshake();
+    let project = scratch.join("project");
+    let session_id = rpc.start_session(&project);
+
+    let provenance = |rpc: &mut Rpc, id: u64| {
+        let turn = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":id,"method":"turn/start","params":{"sessionId":session_id,"input":"hi"}}));
+        assert!(turn["result"]["turnId"].is_string(), "{turn}");
+        let record = rpc
+            .read_until(|frame| frame["method"] == "item/request_provenance")
+            .expect("the turn's request is reported");
+        rpc.read_until(|frame| frame["method"] == "turn/completed")
+            .expect("the turn completes");
+        record["params"]["event"]["session_id"].clone()
+    };
+
+    assert_eq!(provenance(&mut rpc, 4), serde_json::json!(session_id));
+
+    // Rebuilding the agent for a model change must not rename the session: the
+    // client's id is the session's, not the agent's.
+    let set = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"session/model/set","params":{"sessionId":session_id,"model":"stub-model"}}));
+    assert_eq!(set["result"]["model"], "stub-model", "{set}");
+    assert_eq!(provenance(&mut rpc, 6), serde_json::json!(session_id));
+
+    rpc.close();
+    let _ = std::fs::remove_dir_all(scratch);
+}
+
+/// A session's provider and model are pinned when it starts: a model the
+/// configuration cannot resolve is refused at `session/model/set` instead of
+/// being accepted and only failing the next turn, and the session keeps serving
+/// the model it already had. Adopting some other reachable model, or failing a
+/// turn the client had every reason to believe was valid, is what this refuses.
+#[test]
+fn model_set_refuses_a_model_no_provider_serves() {
+    let scratch = scratch("model-pin");
+    let home = scratch.join("home");
+    let (url, seen) = scripted_provider(&[PROSE]);
+    configure(&home, &url);
+    let mut rpc = Rpc::open(&home);
+    rpc.handshake();
+    let project = scratch.join("project");
+    let session_id = rpc.start_session(&project);
+
+    let refused = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"session/model/set","params":{"sessionId":session_id,"model":"no-such-model"}}));
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no-such-model"),
+        "the refusal names the model: {refused}"
+    );
+    assert!(refused["result"].is_null(), "a refusal carries no model: {refused}");
+
+    // The session is still on the model it started with: the turn goes out with
+    // `stub-model` in the body, to the provider that serves it.
+    let turn = rpc.ask(serde_json::json!({"jsonrpc":"2.0","id":5,"method":"turn/start","params":{"sessionId":session_id,"input":"hi"}}));
+    assert!(turn["result"]["turnId"].is_string(), "{turn}");
+    rpc.read_until(|record| record["method"] == "turn/completed")
+        .expect("the turn completes");
+    let requests = seen.lock().unwrap().clone();
+    assert!(!requests.is_empty(), "the provider saw the turn");
+    for request in &requests {
+        assert_eq!(
+            request["model"], "stub-model",
+            "no substitution: the session stays on the model it was given: {request}"
+        );
+    }
 
     rpc.close();
     let _ = std::fs::remove_dir_all(scratch);

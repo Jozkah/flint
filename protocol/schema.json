@@ -69,6 +69,77 @@
           ]
         },
         {
+          "description": "What the run is about to send a provider, emitted immediately before\neach request goes out (upstream janhq/jan#9056): identity, not content.\n\nThe hashes describe the body Jan built for the adapter, so two runs can\nbe compared field by field without copying prompts or frames around.\nNothing here is model input or output: it never joins the transcript,\nand a consumer may render it, store it or ignore it.",
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "description": "The run that made the request (the same id its prompt snapshot and\ninvocation records carry).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "session_id": {
+              "description": "The session the request belongs to, when the run has one.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "description": "The configured provider the model resolved to, when known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "model": {
+              "description": "The model id the upstream receives, without a `<provider>/` prefix.",
+              "type": "string"
+            },
+            "api_type": {
+              "description": "The wire API the request is built for (`anthropic`, `google`,\n`openai-responses`), absent for chat/completions.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "request_sha256": {
+              "description": "SHA-256 of the request body as Jan built it.",
+              "type": "string"
+            },
+            "body_bytes": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "tools_sha256": {
+              "description": "SHA-256 of the `tools` array as sent, able to change while the model\nid does not.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "images": {
+              "description": "Every image in the body, in order, hashed over its decoded bytes.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ProvenanceImage"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "request_provenance"
+            }
+          },
+          "required": [
+            "type",
+            "model",
+            "request_sha256",
+            "body_bytes"
+          ]
+        },
+        {
           "description": "A streamed content delta from the model.",
           "type": "object",
           "properties": {
@@ -456,6 +527,13 @@
             "usage": {
               "$ref": "#/$defs/Usage"
             },
+            "execution_id": {
+              "description": "The provider's id for the execution that produced this usage, when\nit reported one. This is the handle a per-request billing lookup is\nkeyed by. A sibling of `usage` rather than a field inside it, because\nit is a billing handle and not a token count. Absent on the default\nupstream path, which cannot see the response headers (see\n[`crate::core::agent::correlation`]).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "type": {
               "type": "string",
               "const": "turn_usage"
@@ -657,6 +735,37 @@
             "details"
           ]
         }
+      ]
+    },
+    "ProvenanceImage": {
+      "description": "One image in an outbound request, as [`StreamEvent::RequestProvenance`]\nreports it: identity, not content.",
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "description": "SHA-256 over the image's decoded bytes (over the URL text for a remote\nimage, which has no bytes here).",
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "description": "Decoded length in bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "tool_call_id": {
+          "description": "The tool call whose result carried it, when one did. `None` for an\nimage the user attached.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sha256",
+        "mime_type",
+        "bytes"
       ]
     },
     "RunResources": {
@@ -1185,6 +1294,16 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0
+        },
+        "execution_ids": {
+          "description": "Provider execution ids for the requests this run made, when the upstream\nreturned them. `flint usage generation <id>` turns one into the recorded\ncharge. Omitted rather than empty when none were reported, so its\nabsence is never read as \"no requests were made\".",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [

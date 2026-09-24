@@ -29,6 +29,8 @@ RPC_METHODS: tuple[str, ...] = (
 
 #: The ``type`` tag of an event, which is also its ``item/<tag>`` method name.
 EVENT_TAGS: tuple[str, ...] = (
+    "prompt_snapshot",
+    "request_provenance",
     "token",
     "reasoning",
     "step",
@@ -37,14 +39,11 @@ EVENT_TAGS: tuple[str, ...] = (
     "tool_call",
     "tool_output_delta",
     "tool_result",
+    "run_resources",
     "subagent_start",
     "subagent_queued",
     "subagent_end",
-    "subagent_plan",
     "subagent",
-    "notice",
-    "monitors",
-    "parked",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -77,6 +76,8 @@ RpcMethod = Literal[
 ]
 
 EventTag = Literal[
+    "prompt_snapshot",
+    "request_provenance",
     "token",
     "reasoning",
     "step",
@@ -85,14 +86,11 @@ EventTag = Literal[
     "tool_call",
     "tool_output_delta",
     "tool_result",
+    "run_resources",
     "subagent_start",
     "subagent_queued",
     "subagent_end",
-    "subagent_plan",
     "subagent",
-    "notice",
-    "monitors",
-    "parked",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -128,24 +126,38 @@ class HostToolDeclSchema(TypedDict):
     parameters: NotRequired[Union[dict[str, Any], None]]
     capability: NotRequired[Union[HostCapability, None]]
 
-# Display-only view of one active monitor, for a status panel.
-class MonitorSnapshot(TypedDict):
-    monitorId: str
-    name: str
-    script: str
-    polls: int
+# One contiguous change: lines removed from the base and lines put in their place. Line numbers are 1-based, against the base and against the full proposal respectively.
+class Hunk(TypedDict):
+    # Position in [`StagedPatch::hunks`], and the id a selection names.
+    index: int
+    oldStart: int
+    oldLen: int
+    newStart: int
+    newLen: int
+    removed: list[str]
+    added: list[str]
 
 class OptionItem(TypedDict):
     label: str
     description: NotRequired[Union[str, None]]
 
-# A subagent in a not-yet-started phase of a phased dispatch: its name (unique across the plan, and its blackboard file) and 1-based phase number. Carried by [`StreamEvent::SubagentPlan`] so a consumer can show it waiting on the phase before it.
-class PendingSubagent(TypedDict):
-    name: str
-    phase: int
+# What a client receives: the hunks and the base they were computed against.
+class PatchView(TypedDict):
+    base: str
+    hunks: list[Hunk]
 
 # Who gates host tool calls. `jan` prompts through `permission_request` the way any opaque tool is prompted; `host` means the host's own callback is the gate, so Jan never asks about a host tool.
 PermissionOwner = Literal["jan", "host"]
+
+# One image in an outbound request, as [`StreamEvent::RequestProvenance`] reports it: identity, not content.
+class ProvenanceImage(TypedDict):
+    # SHA-256 over the image's decoded bytes (over the URL text for a remote image, which has no bytes here).
+    sha256: str
+    mime_type: str
+    # Decoded length in bytes.
+    bytes: int
+    # The tool call whose result carried it, when one did. `None` for an image the user attached.
+    tool_call_id: NotRequired[Union[str, None]]
 
 class Question(TypedDict):
     id: str
@@ -153,6 +165,21 @@ class Question(TypedDict):
     options: list[OptionItem]
     multi: NotRequired[bool]
     recommended: NotRequired[Union[int, None]]
+
+# What a whole run's commands used.
+class RunResources(TypedDict):
+    # Commands the run started.
+    commands: int
+    # Of those, how many were measured.
+    measuredCommands: int
+    # CPU time across the measured commands, in milliseconds.
+    cpuMs: int
+    # The highest peak of any one measured command, in bytes. Commands can overlap, so this is a floor on the run's peak, not a sum.
+    peakMemoryBytes: int
+    # Processes across the measured commands.
+    processes: int
+    # Why some were not measured, when some were not.
+    unmeasuredReason: NotRequired[Union[str, None]]
 
 class TodoItem(TypedDict):
     content: str
@@ -174,9 +201,9 @@ class Usage(TypedDict):
     prompt_tokens: NotRequired[Union[int, None]]
     completion_tokens: NotRequired[Union[int, None]]
     total_tokens: NotRequired[Union[int, None]]
-    # Prompt tokens served from the provider's prompt cache (a read/hit). OpenAI reports it under `prompt_tokens_details.cached_tokens`; Anthropic under `cache_read_input_tokens`. A thrashing cache shows here as a low value against a high `prompt_tokens`.
-    cached_tokens: NotRequired[Union[int, None]]
-    # Prompt tokens written into the provider cache this request (a write). Only Anthropic bills this separately (`cache_creation_input_tokens`); absent for providers that do not distinguish reads from writes.
+    # Prompt tokens the provider read from its cache (`prompt_tokens_details.cached_tokens`). `None` when the provider did not say, which is not the same as nothing having been cached.
+    cached_prompt_tokens: NotRequired[Union[int, None]]
+    # Prompt tokens written to the provider's cache. Part of the prompt total, never added to it again.
     cache_write_tokens: NotRequired[Union[int, None]]
 
 # -------------------------------------------------------------------------
@@ -254,6 +281,36 @@ class SessionModelSetParams(TypedDict):
 # Events: the payload of an ``item/<tag>`` notification
 # -------------------------------------------------------------------------
 
+class PromptSnapshotEvent(TypedDict):
+    """`item/prompt_snapshot`"""
+
+    id: str
+    hash: str
+    redactions: int
+    type: Literal["prompt_snapshot"]
+
+class RequestProvenanceEvent(TypedDict):
+    """`item/request_provenance`"""
+
+    # The run that made the request (the same id its prompt snapshot and invocation records carry).
+    run_id: NotRequired[Union[str, None]]
+    # The session the request belongs to, when the run has one.
+    session_id: NotRequired[Union[str, None]]
+    # The configured provider the model resolved to, when known.
+    provider: NotRequired[Union[str, None]]
+    # The model id the upstream receives, without a `<provider>/` prefix.
+    model: str
+    # The wire API the request is built for (`anthropic`, `google`, `openai-responses`), absent for chat/completions.
+    api_type: NotRequired[Union[str, None]]
+    # SHA-256 of the request body as Jan built it.
+    request_sha256: str
+    body_bytes: int
+    # SHA-256 of the `tools` array as sent, able to change while the model id does not.
+    tools_sha256: NotRequired[Union[str, None]]
+    # Every image in the body, in order, hashed over its decoded bytes.
+    images: NotRequired[list[ProvenanceImage]]
+    type: Literal["request_provenance"]
+
 class TokenEvent(TypedDict):
     """`item/token`"""
 
@@ -311,6 +368,12 @@ class ToolResultEvent(TypedDict):
     diff: NotRequired[Union[str, None]]
     type: Literal["tool_result"]
 
+class RunResourcesEvent(TypedDict):
+    """`item/run_resources`"""
+
+    resources: RunResources
+    type: Literal["run_resources"]
+
 class SubagentStartEvent(TypedDict):
     """`item/subagent_start`"""
 
@@ -334,15 +397,7 @@ class SubagentEndEvent(TypedDict):
 
     run_id: str
     name: str
-    # Why the child failed, when it did: the same reason the parent's `<SYSTEM>` completion ping carries. Carried on the event because a background child's answer never reaches a consumer -- only the model reads it -- so without this a failed run is indistinguishable from a clean one on screen. `None` for a clean finish, and for a child cut off at parent teardown, which is not its own failure.
-    error: NotRequired[Union[str, None]]
     type: Literal["subagent_end"]
-
-class SubagentPlanEvent(TypedDict):
-    """`item/subagent_plan`"""
-
-    pending: list[PendingSubagent]
-    type: Literal["subagent_plan"]
 
 class SubagentEvent(TypedDict):
     """`item/subagent`"""
@@ -351,23 +406,6 @@ class SubagentEvent(TypedDict):
     name: str
     event: Any
     type: Literal["subagent"]
-
-class NoticeEvent(TypedDict):
-    """`item/notice`"""
-
-    text: str
-    type: Literal["notice"]
-
-class MonitorsEvent(TypedDict):
-    """`item/monitors`"""
-
-    monitors: list[MonitorSnapshot]
-    type: Literal["monitors"]
-
-class ParkedEvent(TypedDict):
-    """`item/parked`"""
-
-    type: Literal["parked"]
 
 class MessagesUpdatedEvent(TypedDict):
     """`item/messages_updated`"""
@@ -399,7 +437,7 @@ class TurnUsageEvent(TypedDict):
     """`item/turn_usage`"""
 
     usage: Usage
-    # The provider's id for the execution that produced this usage, when it reported one. This is the handle a per-request billing lookup is keyed by, so a consumer can ask what this one request actually cost rather than only what it estimates. A sibling of `usage` rather than a field inside it, because it is a billing handle and not a token count. Absent on the default upstream path, which cannot see the response headers (see [`crate::core::agent::correlation`]); that is a limitation to report, not a reason to synthesize one.
+    # The provider's id for the execution that produced this usage, when it reported one. This is the handle a per-request billing lookup is keyed by. A sibling of `usage` rather than a field inside it, because it is a billing handle and not a token count. Absent on the default upstream path, which cannot see the response headers (see [`crate::core::agent::correlation`]).
     execution_id: NotRequired[Union[str, None]]
     type: Literal["turn_usage"]
 
@@ -428,8 +466,12 @@ class PermissionRequestEvent(TypedDict):
     command: NotRequired[Union[str, None]]
     # Focused diff preview for `write`/`edit` prompts so the user sees the change before approving; `None` for other tools.
     diff: NotRequired[Union[str, None]]
+    # The same change as reviewable hunks, with the base it was computed against. AH-146. The text diff above is for reading; this is for a client that wants to present, or decide on, one hunk at a time.
+    patch: NotRequired[Union[PatchView, None]]
     prompt_kind: str
     offers_always: bool
+    # Why this call is being asked about when a grant or auto-approval would otherwise have let it run: a destructive shell command, or the check-in after a long streak of auto-approved calls. `None` for an ordinary prompt.
+    reason: NotRequired[Union[str, None]]
     type: Literal["permission_request"]
 
 class ToolRequestEvent(TypedDict):
@@ -459,6 +501,8 @@ class ToolDetailsEvent(TypedDict):
 
 #: Every event a session may report, discriminated on ``type``.
 StreamEvent = Union[
+    PromptSnapshotEvent,
+    RequestProvenanceEvent,
     TokenEvent,
     ReasoningEvent,
     StepEvent,
@@ -467,14 +511,11 @@ StreamEvent = Union[
     ToolCallEvent,
     ToolOutputDeltaEvent,
     ToolResultEvent,
+    RunResourcesEvent,
     SubagentStartEvent,
     SubagentQueuedEvent,
     SubagentEndEvent,
-    SubagentPlanEvent,
     SubagentEvent,
-    NoticeEvent,
-    MonitorsEvent,
-    ParkedEvent,
     MessagesUpdatedEvent,
     AskRequestEvent,
     AskResolvedEvent,

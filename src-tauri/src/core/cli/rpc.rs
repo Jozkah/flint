@@ -353,6 +353,11 @@ fn start_turn(
 
 /// A new agent for `source`'s project, on `model` or the one it has, carrying
 /// its host tools and gate. History and registry are the caller's to decide.
+///
+/// The rebuilt agent keeps the session's own id: a model change replaces the
+/// agent, not the session, and a run that reported a different session after
+/// `session/model/set` would rename something the client is still holding.
+/// `session/fork` names its new session itself, after this returns.
 fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession, String> {
     let project = source
         .agent
@@ -367,6 +372,7 @@ fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession
         SessionFlags { require_model: true, ..Default::default() },
         None,
     )?;
+    agent.args.session_id = Some(source.id.clone());
     agent.args.host_tools = source.agent.args.host_tools.clone();
     agent.args.host_owns_gate = source.agent.args.host_owns_gate;
     Ok(agent)
@@ -477,7 +483,18 @@ pub async fn serve() -> Result<(), String> {
                     let reply = match serde_json::from_value::<InitializeParams>(params.clone()) {
                         Ok(init) if init.protocol_version == PROTOCOL_VERSION && !init.client_info.name.is_empty() && !init.client_info.version.is_empty() => {
                             negotiated = true;
-                            response(&id, json!({"protocolVersion":PROTOCOL_VERSION,"serverInfo":{"name":"jan","version":env!("CARGO_PKG_VERSION")},"capabilities":{"session":true,"turn":true}}))
+                            // The caps a content-part array is held to -- a `turn/start`
+                            // input's and a `tool/respond` content's, the same limits
+                            // `init` advertises to a stream-json client. A client that
+                            // sends an image is sending bytes into a channel with no
+                            // backpressure, so it learns the limits from the handshake
+                            // rather than by having a message rejected.
+                            response(&id, json!({
+                                "protocolVersion": PROTOCOL_VERSION,
+                                "serverInfo": {"name":"jan","version":env!("CARGO_PKG_VERSION")},
+                                "capabilities": {"session":true,"turn":true},
+                                "input_content_parts": super::run_report::InputContentParts::current(),
+                            }))
                         }
                         _ => error(&id, -32602, "Unsupported protocol version or malformed clientInfo"),
                     };
@@ -506,6 +523,11 @@ pub async fn serve() -> Result<(), String> {
                                         agent.args.host_tools = host_tools;
                                         agent.args.host_owns_gate = start.permissions == PermissionOwner::Host;
                                         let sid = uuid::Uuid::new_v4().to_string();
+                                        // The run reports the session by the id this client holds, not
+                                        // by the private one the agent was built with: provenance and the
+                                        // correlation id are the client's handle on the session, and an id
+                                        // nothing else can name is not a handle.
+                                        agent.args.session_id = Some(sid.clone());
                                         let session = Session { agent, history: Vec::new(), id: sid.clone(), turns: 0, ephemeral: start.ephemeral, builtins: start.builtins };
                                         let mut result = tools_view(&session).await;
                                         result["sessionId"] = json!(sid);
@@ -544,17 +566,41 @@ pub async fn serve() -> Result<(), String> {
                         Ok(set) if active.as_ref().is_some_and(|t| t.session_id == set.session_id) => turn_active(&id),
                         Ok(set) if set.model.trim().is_empty() => error(&id, -32602, "model must not be empty"),
                         Ok(set) => {
-                            let session = sessions.get_mut(&set.session_id).expect("checked");
-                            match rebuild_agent(session, Some(set.model)) {
-                                Ok(agent) => {
-                                    // The same registry: nothing is pending between
-                                    // turns, and keeping it keeps one per session.
-                                    let registry = Arc::clone(&session.agent.args.host_tool_requests);
-                                    session.agent = agent;
-                                    session.agent.args.host_tool_requests = registry;
-                                    response(&id, json!({"model":session.agent.model}))
-                                }
+                            // Refuse a model no configured provider serves. The
+                            // turn would fail closed on it too -- nothing goes
+                            // out on the session's behalf -- but this is the
+                            // point at which a client can still be told, and the
+                            // session must not be left pinned to a model that
+                            // cannot serve it, which the next turn would report
+                            // as a failure of the client's own input.
+                            let provider_configs = sessions
+                                .get(&set.session_id)
+                                .expect("checked")
+                                .agent
+                                .args
+                                .provider_configs
+                                .clone();
+                            match crate::core::agent::upstream::resolve_upstream_for_model(
+                                &set.model,
+                                provider_configs,
+                            )
+                            .await
+                            {
                                 Err(message) => error(&id, -32602, &message),
+                                Ok(_) => {
+                                    let session = sessions.get_mut(&set.session_id).expect("checked");
+                                    match rebuild_agent(session, Some(set.model)) {
+                                        Ok(agent) => {
+                                            // The same registry: nothing is pending between
+                                            // turns, and keeping it keeps one per session.
+                                            let registry = Arc::clone(&session.agent.args.host_tool_requests);
+                                            session.agent = agent;
+                                            session.agent.args.host_tool_requests = registry;
+                                            response(&id, json!({"model":session.agent.model}))
+                                        }
+                                        Err(message) => error(&id, -32602, &message),
+                                    }
+                                }
                             }
                         }
                     },
@@ -616,8 +662,10 @@ pub async fn serve() -> Result<(), String> {
                             // A fresh registry (from the rebuild): the fork is its
                             // own session, and a reply must never cross into it.
                             match rebuild_agent(source, None) {
-                                Ok(agent) => {
+                                Ok(mut agent) => {
                                     let fork = uuid::Uuid::new_v4().to_string();
+                                    // The fork is its own session, so it reports its own id.
+                                    agent.args.session_id = Some(fork.clone());
                                     let history = source.history.clone();
                                     let ephemeral = source.ephemeral;
                                     let builtins = source.builtins;

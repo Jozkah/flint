@@ -24,6 +24,8 @@ export type RpcMethod =
 
 /** The `type` tag of an event, which is also its `item/<tag>` method name. */
 export type EventTag =
+  | "prompt_snapshot"
+  | "request_provenance"
   | "token"
   | "reasoning"
   | "step"
@@ -32,14 +34,11 @@ export type EventTag =
   | "tool_call"
   | "tool_output_delta"
   | "tool_result"
+  | "run_resources"
   | "subagent_start"
   | "subagent_queued"
   | "subagent_end"
-  | "subagent_plan"
   | "subagent"
-  | "notice"
-  | "monitors"
-  | "parked"
   | "messages_updated"
   | "ask_request"
   | "ask_resolved"
@@ -79,12 +78,16 @@ export interface HostToolDeclSchema {
   "capability"?: HostCapability | null
 }
 
-/** Display-only view of one active monitor, for a status panel. */
-export interface MonitorSnapshot {
-  "monitorId": string
-  "name": string
-  "script": string
-  "polls": number
+/** One contiguous change: lines removed from the base and lines put in their place. Line numbers are 1-based, against the base and against the full proposal respectively. */
+export interface Hunk {
+  /** Position in [`StagedPatch::hunks`], and the id a selection names. */
+  "index": number
+  "oldStart": number
+  "oldLen": number
+  "newStart": number
+  "newLen": number
+  "removed": string[]
+  "added": string[]
 }
 
 export interface OptionItem {
@@ -92,14 +95,25 @@ export interface OptionItem {
   "description"?: string | null
 }
 
-/** A subagent in a not-yet-started phase of a phased dispatch: its name (unique across the plan, and its blackboard file) and 1-based phase number. Carried by [`StreamEvent::SubagentPlan`] so a consumer can show it waiting on the phase before it. */
-export interface PendingSubagent {
-  "name": string
-  "phase": number
+/** What a client receives: the hunks and the base they were computed against. */
+export interface PatchView {
+  "base": string
+  "hunks": Hunk[]
 }
 
 /** Who gates host tool calls. `jan` prompts through `permission_request` the way any opaque tool is prompted; `host` means the host's own callback is the gate, so Jan never asks about a host tool. */
 export type PermissionOwner = "jan" | "host"
+
+/** One image in an outbound request, as [`StreamEvent::RequestProvenance`] reports it: identity, not content. */
+export interface ProvenanceImage {
+  /** SHA-256 over the image's decoded bytes (over the URL text for a remote image, which has no bytes here). */
+  "sha256": string
+  "mime_type": string
+  /** Decoded length in bytes. */
+  "bytes": number
+  /** The tool call whose result carried it, when one did. `None` for an image the user attached. */
+  "tool_call_id"?: string | null
+}
 
 export interface Question {
   "id": string
@@ -107,6 +121,22 @@ export interface Question {
   "options": OptionItem[]
   "multi"?: boolean
   "recommended"?: number | null
+}
+
+/** What a whole run's commands used. */
+export interface RunResources {
+  /** Commands the run started. */
+  "commands": number
+  /** Of those, how many were measured. */
+  "measuredCommands": number
+  /** CPU time across the measured commands, in milliseconds. */
+  "cpuMs": number
+  /** The highest peak of any one measured command, in bytes. Commands can overlap, so this is a floor on the run's peak, not a sum. */
+  "peakMemoryBytes": number
+  /** Processes across the measured commands. */
+  "processes": number
+  /** Why some were not measured, when some were not. */
+  "unmeasuredReason"?: string | null
 }
 
 export interface TodoItem {
@@ -132,9 +162,9 @@ export interface Usage {
   "prompt_tokens"?: number | null
   "completion_tokens"?: number | null
   "total_tokens"?: number | null
-  /** Prompt tokens served from the provider's prompt cache (a read/hit). OpenAI reports it under `prompt_tokens_details.cached_tokens`; Anthropic under `cache_read_input_tokens`. A thrashing cache shows here as a low value against a high `prompt_tokens`. */
-  "cached_tokens"?: number | null
-  /** Prompt tokens written into the provider cache this request (a write). Only Anthropic bills this separately (`cache_creation_input_tokens`); absent for providers that do not distinguish reads from writes. */
+  /** Prompt tokens the provider read from its cache (`prompt_tokens_details.cached_tokens`). `None` when the provider did not say, which is not the same as nothing having been cached. */
+  "cached_prompt_tokens"?: number | null
+  /** Prompt tokens written to the provider's cache. Part of the prompt total, never added to it again. */
   "cache_write_tokens"?: number | null
 }
 
@@ -225,6 +255,36 @@ export type RpcParams<M extends RpcMethod> =
 // Events: the payload of an `item/<tag>` notification
 // ---------------------------------------------------------------------------
 
+/** A snapshot of the exact payload that was just dispatched. AH-078. Carries the identity and the hash, never the payload: the activity timeline links to the record rather than embedding a copy that could drift from it, and the redaction count tells a reader that something was removed without saying what. */
+export interface PromptSnapshotEvent {
+  "id": string
+  "hash": string
+  "redactions": number
+  "type": "prompt_snapshot"
+}
+
+/** What the run is about to send a provider, emitted immediately before each request goes out (upstream janhq/jan#9056): identity, not content. The hashes describe the body Jan built for the adapter, so two runs can be compared field by field without copying prompts or frames around. Nothing here is model input or output: it never joins the transcript, and a consumer may render it, store it or ignore it. */
+export interface RequestProvenanceEvent {
+  /** The run that made the request (the same id its prompt snapshot and invocation records carry). */
+  "run_id"?: string | null
+  /** The session the request belongs to, when the run has one. */
+  "session_id"?: string | null
+  /** The configured provider the model resolved to, when known. */
+  "provider"?: string | null
+  /** The model id the upstream receives, without a `<provider>/` prefix. */
+  "model": string
+  /** The wire API the request is built for (`anthropic`, `google`, `openai-responses`), absent for chat/completions. */
+  "api_type"?: string | null
+  /** SHA-256 of the request body as Jan built it. */
+  "request_sha256": string
+  "body_bytes": number
+  /** SHA-256 of the `tools` array as sent, able to change while the model id does not. */
+  "tools_sha256"?: string | null
+  /** Every image in the body, in order, hashed over its decoded bytes. */
+  "images"?: ProvenanceImage[]
+  "type": "request_provenance"
+}
+
 /** A streamed content delta from the model. */
 export interface TokenEvent {
   "text": string
@@ -266,7 +326,7 @@ export interface ToolCallEvent {
   "type": "tool_call"
 }
 
-/** A chunk of a tool's output, as it is produced. Emitted between [`ToolCall`] and [`ToolResult`] so a consumer can show a command's output while it runs instead of only once it exits. Deltas, not the accumulated buffer, for the same reason as [`ToolCallArgsDelta`]: resending the prefix on every chunk is quadratic in the output size. Chunks are raw fragments and may split a line. Keeps arriving after a `bash` call has backgrounded itself, so a long-running job reports progress under the id of the call that started it. */
+/** A chunk of a tool's output, as it is produced. Emitted between [`ToolCall`] and [`ToolResult`] so a consumer can show a command's output while it runs instead of only once it exits. Deltas, not the accumulated buffer, for the same reason as [`ToolCallArgsDelta`]: resending the prefix on every chunk is quadratic in the output size. Chunks are raw fragments and may split a line. Keeps arriving after a `bash` call has backgrounded itself and returned a `job_id`, so a long-running job reports progress under the id of the call that started it. */
 export interface ToolOutputDeltaEvent {
   "id": string
   "delta": string
@@ -280,6 +340,12 @@ export interface ToolResultEvent {
   "is_error": boolean
   "diff"?: string | null
   "type": "tool_result"
+}
+
+/** What the commands a run started used, sent once as it ends (AH-174). */
+export interface RunResourcesEvent {
+  "resources": RunResources
+  "type": "run_resources"
 }
 
 /** A backgrounded subagent run began. `run_id` identifies the run so a consumer can attribute concurrent children; brackets the child's wrapped events with `SubagentEnd`. */
@@ -304,15 +370,7 @@ export interface SubagentQueuedEvent {
 export interface SubagentEndEvent {
   "run_id": string
   "name": string
-  /** Why the child failed, when it did: the same reason the parent's `<SYSTEM>` completion ping carries. Carried on the event because a background child's answer never reaches a consumer -- only the model reads it -- so without this a failed run is indistinguishable from a clean one on screen. `None` for a clean finish, and for a child cut off at parent teardown, which is not its own failure. */
-  "error"?: string | null
   "type": "subagent_end"
-}
-
-/** The later phases of a phased dispatch, named up front so a consumer can show their subagents as WAITING on an earlier phase before they start. Each pending subagent is promoted by its own `SubagentStart` (or `SubagentQueued`), matched by `name`, which is unique across a plan. Display-only and never journaled; emitted only by the top-level run (children cannot dispatch), so it is never wrapped in `Subagent`. */
-export interface SubagentPlanEvent {
-  "pending": PendingSubagent[]
-  "type": "subagent_plan"
 }
 
 /** A backgrounded subagent's own internal event, tagged with its run so a consumer can attribute it to the right child even when several run concurrently. `event` is a non-terminal child event (Token/Step/ToolCall/ ToolResult/PermissionRequest); the child's terminal Done/Error is never wrapped (its result is delivered via `await_subagent`). Never a `ToolRequest`: a client answers a request by `request_id` on stdin, and it is told nothing about this wrapper, so a nested request would be unanswerable. A child's host tool call is routed to the root channel unwrapped instead, attributed by `ToolRequest.run_id`. */
@@ -323,24 +381,7 @@ export interface SubagentEvent {
   "type": "subagent"
 }
 
-/** The user-facing headline of a background ping the loop just delivered to the model as a `<SYSTEM>` reminder (today: a `monitor` condition matching). Emitted at delivery, not when the ping is queued, so the transcript reads in the order the model saw things. Display-only and transient, like notes: it is never journaled. */
-export interface NoticeEvent {
-  "text": string
-  "type": "notice"
-}
-
-/** The run's active file monitors, as a whole replacing the previous set. Emitted whenever the set changes (a `monitor` start or stop, a condition matching, a monitor finishing), so a consumer keeps a live view without bookkeeping of its own. Display-only and never journaled. Not forwarded from a child: a child's monitors are its own. */
-export interface MonitorsEvent {
-  "monitors": MonitorSnapshot[]
-  "type": "monitors"
-}
-
-/** The model has finished its turn and the loop is parked on background work it started (a subagent still running, a monitor still watching). Nothing is being generated until a ping resumes the run, which the next `Step` marks. Lets a consumer say "watching" rather than "working". */
-export interface ParkedEvent {
-  "type": "parked"
-}
-
-/** The client should replace its session history with `messages` before subsequent turns. Includes accepted prompt guidance in its original position, but not a pending block from an unsuccessful request. Also carries compacted history when the loop retries a context overflow. */
+/** The loop's compaction reduced the conversation while retrying a context overflow. The client should replace its session history with `messages` for subsequent turns. */
 export interface MessagesUpdatedEvent {
   "messages": unknown[]
   "type": "messages_updated"
@@ -369,7 +410,7 @@ export interface TodoUpdateEvent {
 /** Token usage for a single upstream request, emitted as soon as that request completes rather than waiting for the run to finish. `Done` carries only the *last* request's usage, which is too late and too little for a live display: a turn that calls tools makes many requests, and a subagent never emits `Done` into the parent stream at all. Consumers accumulate these to show context pressure, output volume, and throughput while the work is still happening -- for the parent run and, via the [`Subagent`] bracket, for each child. */
 export interface TurnUsageEvent {
   "usage": Usage
-  /** The provider's id for the execution that produced this usage, when it reported one. This is the handle a per-request billing lookup is keyed by, so a consumer can ask what this one request actually cost rather than only what it estimates. A sibling of `usage` rather than a field inside it, because it is a billing handle and not a token count. Absent on the default upstream path, which cannot see the response headers (see [`crate::core::agent::correlation`]); that is a limitation to report, not a reason to synthesize one. */
+  /** The provider's id for the execution that produced this usage, when it reported one. This is the handle a per-request billing lookup is keyed by. A sibling of `usage` rather than a field inside it, because it is a billing handle and not a token count. Absent on the default upstream path, which cannot see the response headers (see [`crate::core::agent::correlation`]). */
   "execution_id"?: string | null
   "type": "turn_usage"
 }
@@ -398,8 +439,12 @@ export interface PermissionRequestEvent {
   "command"?: string | null
   /** Focused diff preview for `write`/`edit` prompts so the user sees the change before approving; `None` for other tools. */
   "diff"?: string | null
+  /** The same change as reviewable hunks, with the base it was computed against. AH-146. The text diff above is for reading; this is for a client that wants to present, or decide on, one hunk at a time. */
+  "patch"?: PatchView | null
   "prompt_kind": string
   "offers_always": boolean
+  /** Why this call is being asked about when a grant or auto-approval would otherwise have let it run: a destructive shell command, or the check-in after a long streak of auto-approved calls. `None` for an ordinary prompt. */
+  "reason"?: string | null
   "type": "permission_request"
 }
 
@@ -430,6 +475,8 @@ export interface ToolDetailsEvent {
 
 /** Every event a session may report, discriminated on `type`. */
 export type StreamEvent =
+  | PromptSnapshotEvent
+  | RequestProvenanceEvent
   | TokenEvent
   | ReasoningEvent
   | StepEvent
@@ -438,14 +485,11 @@ export type StreamEvent =
   | ToolCallEvent
   | ToolOutputDeltaEvent
   | ToolResultEvent
+  | RunResourcesEvent
   | SubagentStartEvent
   | SubagentQueuedEvent
   | SubagentEndEvent
-  | SubagentPlanEvent
   | SubagentEvent
-  | NoticeEvent
-  | MonitorsEvent
-  | ParkedEvent
   | MessagesUpdatedEvent
   | AskRequestEvent
   | AskResolvedEvent
@@ -460,6 +504,8 @@ export type StreamEvent =
 
 /** The event a given tag carries. */
 export interface EventByTag {
+  "prompt_snapshot": PromptSnapshotEvent
+  "request_provenance": RequestProvenanceEvent
   "token": TokenEvent
   "reasoning": ReasoningEvent
   "step": StepEvent
@@ -468,14 +514,11 @@ export interface EventByTag {
   "tool_call": ToolCallEvent
   "tool_output_delta": ToolOutputDeltaEvent
   "tool_result": ToolResultEvent
+  "run_resources": RunResourcesEvent
   "subagent_start": SubagentStartEvent
   "subagent_queued": SubagentQueuedEvent
   "subagent_end": SubagentEndEvent
-  "subagent_plan": SubagentPlanEvent
   "subagent": SubagentEvent
-  "notice": NoticeEvent
-  "monitors": MonitorsEvent
-  "parked": ParkedEvent
   "messages_updated": MessagesUpdatedEvent
   "ask_request": AskRequestEvent
   "ask_resolved": AskResolvedEvent
