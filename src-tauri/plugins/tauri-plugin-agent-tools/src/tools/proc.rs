@@ -683,6 +683,42 @@ fn confine_limits(cmd: &mut Command) {
     }
 }
 
+/// `powershell`/`pwsh` as the model calls them, run in this shell.
+///
+/// Inside the AppContainer a child PowerShell does not start where its
+/// parent is: it lands on a drive root the container can see (`I:\` on the
+/// development machine), because it cannot walk the ancestors of the
+/// workspace to adopt it. `powershell -File .\check.ps1` then wrote its
+/// relative `progress.log` to that drive root and failed with "The device is
+/// not ready" while the call still exited 0. These functions take the usual
+/// `-File`/`-Command`/positional forms and run the script or command in the
+/// current shell, at the workspace location; `-ExecutionPolicy Bypass` is
+/// applied to the process scope. A bare call with nothing to run still
+/// starts the real executable.
+const NESTED_SHELL: &str = r#"function global:__JanNestedShell {
+  $file = $null; $cmd = $null; $rest = @(); $i = 0
+  while ($i -lt $args.Count) {
+    $a = [string]$args[$i]
+    if ($a -match '^-(NoProfile|nop|NoLogo|NonInteractive|noni|Sta|Mta)$') { }
+    elseif ($a -match '^-(ExecutionPolicy|ep|exec)$') { if ([string]$args[$i + 1] -match '^(Bypass|Unrestricted|RemoteSigned)$') { Set-ExecutionPolicy -Scope Process -ExecutionPolicy ([string]$args[$i + 1]) -Force }; $i++ }
+    elseif ($a -match '^-(WindowStyle|w|OutputFormat|of|InputFormat|if)$') { $i++ }
+    elseif ($a -match '^-(File|f)$') { $file = [string]$args[$i + 1]; if ($i + 2 -lt $args.Count) { $rest = $args[($i + 2)..($args.Count - 1)] }; break }
+    elseif ($a -match '^-(Command|c)$') { if ($i + 1 -lt $args.Count) { $cmd = ($args[($i + 1)..($args.Count - 1)] | ForEach-Object { [string]$_ }) -join ' ' }; break }
+    else { $cmd = ($args[$i..($args.Count - 1)] | ForEach-Object { [string]$_ }) -join ' '; break }
+    $i++
+  }
+  if ($file) {
+    $quoted = $rest | ForEach-Object { $s = [string]$_; if ($s -match '^-[A-Za-z]' -or $s -notmatch "[\s']") { $s } else { "'" + ($s -replace "'", "''") + "'" } }
+    $global:LASTEXITCODE = 0
+    Invoke-Expression ("& '" + ($file -replace "'", "''") + "' " + ($quoted -join ' '))
+    if ($global:LASTEXITCODE) { Write-Error "$file exited with code $global:LASTEXITCODE" }
+    return
+  }
+  if ($cmd) { $global:LASTEXITCODE = 0; Invoke-Expression $cmd; if ($global:LASTEXITCODE) { Write-Error "command exited with code $global:LASTEXITCODE" }; return }
+  & (Get-Command powershell.exe -CommandType Application | Select-Object -First 1).Source @args
+}
+foreach ($n in 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe') { Set-Item -Path "function:global:$n" -Value ${function:__JanNestedShell} }"#;
+
 /// The command as the shell should receive it, starting where it is meant to.
 ///
 /// Windows PowerShell inside an AppContainer does not take its location from
@@ -736,10 +772,12 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
         ShellFlavor::PowerShell => {
             let ws = ps_literal(&cwd.to_string_lossy());
             let body = ps_literal(&format!("{command}\n$global:__JanOk = $?"));
+            let nested = NESTED_SHELL;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
                  $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
+                 {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
                  Where-Object {{ $_ -is [System.Management.Automation.ErrorRecord] -and \
@@ -812,6 +850,37 @@ pub(crate) fn ps_literal(text: &str) -> String {
 #[cfg(test)]
 mod located_tests {
     use super::*;
+
+    /// A nested `powershell -File` runs at the workspace: its relative write
+    /// lands there, its parameters arrive, and its exit code is the call's.
+    #[cfg(windows)]
+    #[test]
+    fn nested_powershell_file_runs_at_the_workspace() {
+        let dir = std::env::temp_dir().join(format!("jan-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("s.ps1"),
+            "param([int]$Stages = 3, [string]$Name = 'x')\n\
+             Add-Content -Path progress.log -Value \"ok $Stages $Name\"\n\
+             exit 4\n",
+        )
+        .unwrap();
+        let script = located(
+            ShellFlavor::PowerShell,
+            "powershell -NoProfile -ExecutionPolicy Bypass -File .\\s.ps1 -Stages 2 -Name 'a b'",
+            &dir,
+        );
+        let status = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        let log = std::fs::read_to_string(dir.join("progress.log")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(log.trim(), "ok 2 a b");
+        assert_eq!(status.code(), Some(4));
+    }
 
     #[test]
     fn prologue_echoes_are_stripped_and_the_rest_kept() {
