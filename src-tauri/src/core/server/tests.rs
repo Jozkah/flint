@@ -1208,6 +1208,19 @@ mod server_tests {
         ));
     }
 
+    // #110: a client authenticating to the local server with X-Api-Key (the
+    // Anthropic SDK default) must not have that secret forwarded upstream.
+    #[test]
+    fn the_local_x_api_key_is_not_forwarded_upstream() {
+        use hyper::header::HeaderName;
+        assert!(!proxy::forwards_to_upstream(&HeaderName::from_static(
+            "x-api-key"
+        )));
+        assert!(!proxy::forwards_to_upstream(
+            &HeaderName::from_bytes(b"X-Api-Key").unwrap()
+        ));
+    }
+
     const PROMPT: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
     #[test]
