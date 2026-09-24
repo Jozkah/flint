@@ -49,6 +49,11 @@ name = "agent_rpc"
 path = "tests/agent_rpc.rs"
 required-features = ["cli"]
 
+[[test]]
+name = "sdk_examples"
+path = "tests/sdk_examples.rs"
+required-features = ["cli"]
+
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
 # not in `default`, so `required-features` keeps cargo from building this target
 # unless it is asked for explicitly.
