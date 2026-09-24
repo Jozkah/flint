@@ -525,6 +525,42 @@ pub fn discard(record: &WorktreeRecord, force: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// [`discard`], but only for a worktree that `record.source_root`'s own Git
+/// lists at `record.path` on `record.branch`, under `worktrees_root` and in
+/// Flint's branch namespace (Jozkah/jan#57).
+///
+/// The record arrives over IPC. Checking only that its path sits under the
+/// worktrees root let a decoy path (one that need not exist, which also
+/// silenced the uncommitted-changes guard) carry any repository and any branch
+/// into `git branch -D`. The repository itself is the authority on which
+/// worktree holds which branch, so the whole triple is matched against it.
+pub fn discard_owned(
+    record: &WorktreeRecord,
+    worktrees_root: &Path,
+    force: bool,
+) -> Result<(), String> {
+    let normal = |p: &str| {
+        resolve_lexically(Path::new(p))
+            .map(|resolved| {
+                crate::core::app::commands::strip_verbatim_prefix(resolved)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .unwrap_or_else(|_| p.to_string())
+    };
+    let wanted = normal(&record.path);
+    let known = list(Path::new(&record.source_root), worktrees_root)
+        .into_iter()
+        .any(|w| w.branch == record.branch && normal(&w.path) == wanted);
+    if !known {
+        return Err(format!(
+            "{} is not a worktree Flint manages on branch {} of {}, so Flint will not remove it",
+            record.path, record.branch, record.source_root
+        ));
+    }
+    discard(record, force)
+}
+
 /// Every Flint-owned worktree of this repository that is actually on disk.
 ///
 /// Read from Git rather than from anything Flint persisted, and that is the
@@ -1197,6 +1233,38 @@ mod tests {
         // Forced is the same operation, chosen: the caller had to have been
         // told what it holds to get here.
         discard(&record, true).expect("forced discard");
+        assert!(!PathBuf::from(&record.path).exists());
+    }
+
+    /// Jozkah/jan#57: a record whose path is a decoy under the worktrees root
+    /// cannot carry another repository's branch into `git branch -D`; a real
+    /// Flint worktree is still discarded.
+    #[test]
+    fn discard_owned_refuses_a_record_git_does_not_list() {
+        let f = fixture();
+        git_in(&f.repo, &["branch", "precious"]);
+        let decoy = WorktreeRecord {
+            path: f.worktrees.join("decoy").to_string_lossy().into_owned(),
+            branch: "precious".to_string(),
+            base_sha: String::new(),
+            source_root: f.repo.to_string_lossy().into_owned(),
+            identity: identity(&f.repo).expect("identity"),
+            uncommitted_at_creation: Vec::new(),
+        };
+        assert!(discard_owned(&decoy, &f.worktrees, false).is_err());
+        let still = std::process::Command::new("git")
+            .args(["-C", &decoy.source_root, "rev-parse", "--verify", "refs/heads/precious"])
+            .output()
+            .expect("git");
+        assert!(still.status.success(), "the unrelated branch was deleted");
+
+        // A real worktree's own record, but pointed at another branch.
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let mut swapped = record.clone();
+        swapped.branch = "precious".to_string();
+        assert!(discard_owned(&swapped, &f.worktrees, true).is_err());
+
+        discard_owned(&record, &f.worktrees, false).expect("a real worktree is discarded");
         assert!(!PathBuf::from(&record.path).exists());
     }
 

@@ -619,7 +619,7 @@ pub fn agent_worktree_discard(
             record.path
         ));
     }
-    worktree::discard(&record, force)
+    worktree::discard_owned(&record, &roots, force)
 }
 
 /// Why a shell command would be asked about before it runs, or `None`.
