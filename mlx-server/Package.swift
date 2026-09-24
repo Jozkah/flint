@@ -40,7 +40,10 @@ let package = Package(
         ),
         .testTarget(
             name: "MLXServerTests",
-            dependencies: ["MLXServer"],
+            dependencies: [
+                "MLXServer",
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+            ],
             path: "Tests/MLXServerTests"
         ),
     ]

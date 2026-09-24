@@ -16,8 +16,11 @@ struct MLXServerCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Port to listen on")
     var port: Int = 8080
 
-    @Option(name: .long, help: "Context window size")
-    var ctxSize: Int = 4096
+    /// Optional on purpose: MLX's `maxKVSize` is a rotating sliding window, not
+    /// a hard cap, so a default here would silently drop every session's
+    /// oldest tokens past it (#70). Only an explicit `--ctx-size` applies it.
+    @Option(name: .long, help: "Context window size (bounds the KV cache when given)")
+    var ctxSize: Int?
 
     @Option(name: .long, help: "API key for authentication (optional)")
     var apiKey: String = ""
@@ -37,7 +40,7 @@ struct MLXServerCommand: AsyncParsableCommand {
         log("[mlx] MLX-Swift Server starting...")
         log("[mlx] Model path: \(model)")
         log("[mlx] Port: \(port)")
-        log("[mlx] Context size: \(ctxSize)")
+        log("[mlx] Context size: \(ctxSize.map(String.init) ?? "model default")")
         log("[mlx] Memory cache limit: \(Memory.cacheLimit / (1024 * 1024))MB")
 
         // Resolve model ID: use --model-id if provided, otherwise derive from parent directory
@@ -48,7 +51,7 @@ struct MLXServerCommand: AsyncParsableCommand {
 
         // Load the model
         let modelRunner = ModelRunner()
-        // Apply --ctx-size to every chat session (bounds the KV cache).
+        // Apply --ctx-size, when given, to every chat session.
         await modelRunner.setContextLength(ctxSize)
 
         do {
