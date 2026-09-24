@@ -837,6 +837,14 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
             }
         }
 
+        // A mid-stream failure arrives as a top-level `error` object, and a
+        // prompt Gemini refuses as `promptFeedback.blockReason` with no
+        // candidates. Both must end the stream as an error, not as a short
+        // successful answer (#184).
+        if let Some(message) = gemini_stream_error(&data) {
+            return stream_error(state, &message);
+        }
+
         let mut out: Vec<String> = Vec::new();
         let candidate = data
             .get("candidates")
@@ -1391,9 +1399,54 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                 out.push("[DONE]".to_string());
                 state.finished = true;
             }
+            // `event: error` (overloaded_error, api_error, ...) mid-stream:
+            // surface it instead of ending as a truncated success (#184).
+            "error" => {
+                let message = data
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("upstream error");
+                return stream_error(state, message);
+            }
             _ => {}
         }
         out
+    }
+}
+
+/// The chat/completions-shaped error payload a converter emits when the
+/// provider fails mid-stream, followed by `[DONE]`, the same shape the
+/// Responses converter uses for `response.failed`.
+fn stream_error(state: &mut StreamState, message: &str) -> Vec<String> {
+    state.finished = true;
+    vec![
+        json!({"error": {"message": message}}).to_string(),
+        "[DONE]".to_string(),
+    ]
+}
+
+/// The error a Gemini stream chunk reports, if any: a top-level `error`
+/// object, or a prompt blocked before any candidate was produced.
+fn gemini_stream_error(data: &Value) -> Option<String> {
+    if let Some(error) = data.get("error") {
+        let message = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("upstream error");
+        return Some(message.to_string());
+    }
+    let no_candidates = data
+        .get("candidates")
+        .and_then(|c| c.as_array())
+        .is_none_or(|c| c.is_empty());
+    let block = data
+        .get("promptFeedback")
+        .and_then(|f| f.get("blockReason"))
+        .and_then(|r| r.as_str());
+    match block {
+        Some(reason) if no_candidates => Some(format!("the prompt was blocked: {reason}")),
+        _ => None,
     }
 }
 
@@ -2017,6 +2070,33 @@ mod google_generate_content_tests {
     }
 
     #[test]
+    fn a_mid_stream_error_or_blocked_prompt_is_an_error_not_a_success() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &ev(json!({"candidates": [{"content": {"parts": [{"text": "par"}]}}]})),
+            &mut state,
+        );
+        let out = c.convert_stream_event(
+            &ev(json!({"error": {"code": 503, "message": "The model is overloaded."}})),
+            &mut state,
+        );
+        assert_eq!(out.len(), 2);
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(err["error"]["message"], "The model is overloaded.");
+        assert_eq!(out[1], "[DONE]");
+        assert!(state.finished);
+
+        let mut state = StreamState::default();
+        let out = c.convert_stream_event(
+            &ev(json!({"promptFeedback": {"blockReason": "SAFETY"}})),
+            &mut state,
+        );
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert!(err["error"]["message"].as_str().unwrap().contains("SAFETY"));
+    }
+
+    #[test]
     fn stream_emits_role_reasoning_content_and_finish() {
         let c = conv();
         let mut state = StreamState::default();
@@ -2371,6 +2451,28 @@ mod anthropic_messages_tests {
             event: event.to_string(),
             data: data.to_string(),
         }
+    }
+
+    #[test]
+    fn a_mid_stream_error_event_is_surfaced() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &ev("message_start", json!({"message": {"id": "msg_1", "model": "claude-sonnet-4", "usage": {"input_tokens": 10}}})),
+            &mut state,
+        );
+        let out = c.convert_stream_event(
+            &ev(
+                "error",
+                json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}),
+            ),
+            &mut state,
+        );
+        assert_eq!(out.len(), 2);
+        let err: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(err["error"]["message"], "Overloaded");
+        assert_eq!(out[1], "[DONE]");
+        assert!(state.finished);
     }
 
     #[test]
