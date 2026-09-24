@@ -538,9 +538,15 @@ pub fn run_helper_if_requested() {}
 pub(crate) enum AclStep {
     /// Remove every ACE naming the container from this path.
     Revoke(PathBuf),
-    /// Deny the container all access to this path (a write root's `.jan`),
-    /// inherited by everything under it. Created first when missing.
-    DenyJan(PathBuf),
+    /// Cut this path (a write root's `.jan`) off from the container: its DACL
+    /// stops inheriting and keeps every ACE except the container's, so
+    /// nothing under it names the container. Created first when missing.
+    ///
+    /// Not a deny ACE: the AppContainer half of an access check only looks
+    /// for ACEs that *allow* the package SID, and a deny ACE naming it does
+    /// not stop an inherited grant (a confined shell read `.jan` through
+    /// one). The only way to withhold access is to have no grant at all.
+    IsolateJan(PathBuf),
     /// Grant the container a write root: full access minus deleting children
     /// by the parent's right, so the denied `.jan` cannot be renamed away and
     /// replaced (see [`win::sync_write_roots`]).
@@ -553,7 +559,9 @@ pub(crate) enum AclStep {
 ///
 /// Every root in `roots` is granted with its `.jan` denied (Jozkah/jan#124:
 /// the worktree carries the project's agent policy and hooks there). A
-/// previous root no longer granted loses both its ACE and its `.jan` deny
+/// previous root no longer granted loses its ACE (its `.jan` is already
+/// cut off and has nothing to revoke, but is revoked anyway to clear an
+/// ACE an earlier build left)
 /// (Jozkah/jan#217); one that is gone (`!is_dir`) needs nothing.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn write_root_acl_plan(
@@ -572,7 +580,7 @@ pub(crate) fn write_root_acl_plan(
         }
     }
     for root in roots {
-        steps.push(AclStep::DenyJan(jan(root)));
+        steps.push(AclStep::IsolateJan(jan(root)));
         steps.push(AclStep::GrantRoot(root.clone()));
     }
     steps
@@ -597,7 +605,7 @@ mod win {
     };
     use windows_sys::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, ACCESS_MODE,
-        DENY_ACCESS, EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+        EXPLICIT_ACCESS_W, GRANT_ACCESS, REVOKE_ACCESS, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
         TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
     };
     use windows_sys::Win32::Security::Isolation::{
@@ -796,6 +804,41 @@ mod win {
         out
     }
 
+    /// The rights the DACL of `path` gives `sid`, deny ACEs applied
+    /// (GetEffectiveRightsFromAclW). Test support.
+    #[cfg(test)]
+    pub(super) fn effective_rights(path: &Path, sid: PSID) -> u32 {
+        use windows_sys::Win32::Security::Authorization::GetEffectiveRightsFromAclW;
+        let object = wide(path.as_os_str());
+        let mut acl: *mut ACL = std::ptr::null_mut();
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                object.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut acl,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(status, ERROR_SUCCESS, "GetNamedSecurityInfoW");
+        let trustee = TRUSTEE_W {
+            pMultipleTrustee: std::ptr::null_mut(),
+            MultipleTrusteeOperation: 0,
+            TrusteeForm: TRUSTEE_IS_SID,
+            TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+            ptstrName: sid as PWSTR,
+        };
+        let mut mask: u32 = 0;
+        let status = unsafe { GetEffectiveRightsFromAclW(acl, &trustee, &mut mask) };
+        unsafe { LocalFree(descriptor) };
+        assert_eq!(status, ERROR_SUCCESS, "GetEffectiveRightsFromAclW");
+        mask
+    }
+
     /// Grant `path` the pre-#124 way (FILE_ALL_ACCESS, merged). Test support.
     #[cfg(test)]
     pub(super) fn legacy_grant(path: &Path, sid: PSID) {
@@ -874,19 +917,19 @@ mod win {
             match step {
                 AclStep::Revoke(path) => revoke_path(&path, sid)?,
                 // Jozkah/jan#124: the worktree's `.jan` holds the project's
-                // agent policy and hooks. Created when missing so the deny is
-                // in place before the shell could make one of its own. These
+                // agent policy and hooks. Created when missing so it is cut
+                // off before the shell could make one of its own. These
                 // are Jan-owned worktrees only (the caller refuses any other
                 // root on AppContainer), never a folder of the user's.
-                AclStep::DenyJan(jan) => {
+                AclStep::IsolateJan(jan) => {
                     if !jan.exists() {
                         std::fs::create_dir_all(&jan)
                             .map_err(|e| format!("{}: {e}", jan.display()))?;
                     }
-                    set_access(&jan, sid, DENY_ACCESS, FILE_ALL_ACCESS)?;
+                    isolate_path(&jan, sid)?;
                 }
                 // Without FILE_DELETE_CHILD the shell cannot rename the
-                // denied `.jan` away by the parent's right and put its own
+                // cut-off `.jan` away by the parent's right and put its own
                 // in its place. Deleting an ordinary file still works: every
                 // child inherits DELETE from this same grant. SET_ACCESS, not
                 // GRANT_ACCESS: a grant merges into an allow ACE already on
@@ -902,6 +945,107 @@ mod win {
         }
         let listed: Vec<String> = roots.iter().map(|r| r.to_string_lossy().into_owned()).collect();
         std::fs::write(record, listed.join("\n")).map_err(|e| format!("{}: {e}", record.display()))
+    }
+
+    /// Give `path` a protected DACL holding every ACE it has now, explicit or
+    /// inherited, except those naming `sid`. Inherited ACEs are kept as
+    /// explicit ones so the user's own access is unchanged; the protection
+    /// stops the container's grant on the parent from flowing back in, and
+    /// the new DACL propagates to everything under `path`. Idempotent.
+    fn isolate_path(path: &Path, sid: PSID) -> Result<(), String> {
+        use windows_sys::Win32::Security::{
+            AclSizeInformation, AddAce, EqualSid, GetAce, GetAclInformation, InitializeAcl,
+            ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_REVISION, ACL_SIZE_INFORMATION, INHERITED_ACE,
+            PROTECTED_DACL_SECURITY_INFORMATION,
+        };
+        let mut object = wide(path.as_os_str());
+        let mut existing: *mut ACL = std::ptr::null_mut();
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                object.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut existing,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return Err(format!(
+                "could not read the ACL ({}): {}",
+                path.display(),
+                std::io::Error::from_raw_os_error(status as i32)
+            ));
+        }
+        let result = (|| {
+            if existing.is_null() {
+                return Err(format!("{} has no DACL to protect", path.display()));
+            }
+            let mut info: ACL_SIZE_INFORMATION = unsafe { std::mem::zeroed() };
+            if unsafe {
+                GetAclInformation(
+                    existing,
+                    &mut info as *mut _ as *mut c_void,
+                    std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                    AclSizeInformation,
+                )
+            } == 0
+            {
+                return Err(format!("could not size the ACL: {}", last_error()));
+            }
+            // The kept ACEs never outgrow the ACL they came from.
+            let size = info.AclBytesInUse.max(std::mem::size_of::<ACL>() as u32);
+            let mut buffer = vec![0u64; (size as usize).div_ceil(8)];
+            let acl = buffer.as_mut_ptr() as *mut ACL;
+            if unsafe { InitializeAcl(acl, size, ACL_REVISION) } == 0 {
+                return Err(format!("could not build the ACL: {}", last_error()));
+            }
+            for i in 0..info.AceCount {
+                let mut ace: *mut c_void = std::ptr::null_mut();
+                if unsafe { GetAce(existing, i, &mut ace) } == 0 {
+                    continue;
+                }
+                let header = ace as *mut ACE_HEADER;
+                // Allowed and denied ACEs share this layout: header, mask, SID.
+                let entry = ace as *const ACCESS_ALLOWED_ACE;
+                let ace_sid = unsafe { std::ptr::addr_of!((*entry).SidStart) } as PSID;
+                if unsafe { EqualSid(ace_sid, sid) } != 0 {
+                    continue;
+                }
+                let (flags, len) = unsafe { ((*header).AceFlags, (*header).AceSize) };
+                // Inherited ACEs become explicit: the DACL is protected now.
+                unsafe { (*header).AceFlags = flags & !(INHERITED_ACE as u8) };
+                let added = unsafe { AddAce(acl, ACL_REVISION, u32::MAX, ace, len as u32) };
+                unsafe { (*header).AceFlags = flags };
+                if added == 0 {
+                    return Err(format!("could not copy an ACE: {}", last_error()));
+                }
+            }
+            let status = unsafe {
+                SetNamedSecurityInfoW(
+                    object.as_mut_ptr(),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    acl,
+                    std::ptr::null_mut(),
+                )
+            };
+            if status != ERROR_SUCCESS {
+                return Err(format!(
+                    "could not apply the ACL ({}): {}",
+                    path.display(),
+                    std::io::Error::from_raw_os_error(status as i32)
+                ));
+            }
+            Ok(())
+        })();
+        unsafe { LocalFree(descriptor) };
+        result
     }
 
     fn set_access(path: &Path, sid: PSID, mode: ACCESS_MODE, mask: u32) -> Result<(), String> {
@@ -1447,8 +1591,8 @@ mod tests {
         );
     }
 
-    /// Jozkah/jan#124: every granted worktree gets its `.jan` denied, and a
-    /// worktree no longer granted loses that deny with its grant.
+    /// Jozkah/jan#124: every granted worktree gets its `.jan` cut off, and a
+    /// worktree no longer granted is revoked, `.jan` included.
     #[test]
     fn the_acl_plan_denies_each_write_roots_jan_and_undoes_it_on_revoke() {
         let (a, b, gone) = (PathBuf::from("/w/a"), PathBuf::from("/w/b"), PathBuf::from("/w/gone"));
@@ -1457,15 +1601,15 @@ mod tests {
 
         assert_eq!(
             write_root_acl_plan(&[], &[a.clone()], is_dir),
-            vec![AclStep::DenyJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
+            vec![AclStep::IsolateJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
         );
-        // `a` dropped: its .jan deny and its grant are revoked, `b` granted.
+        // `a` dropped: its .jan and its grant are revoked, `b` granted.
         assert_eq!(
             write_root_acl_plan(&[a.clone(), gone.clone()], &[b.clone()], is_dir),
             vec![
                 AclStep::Revoke(a.join(".jan")),
                 AclStep::Revoke(a.clone()),
-                AclStep::DenyJan(b.join(".jan")),
+                AclStep::IsolateJan(b.join(".jan")),
                 AclStep::GrantRoot(b.clone()),
             ]
         );
@@ -1477,7 +1621,7 @@ mod tests {
         // Still granted: re-applied, nothing revoked.
         assert_eq!(
             write_root_acl_plan(&[a.clone()], &[a.clone()], is_dir),
-            vec![AclStep::DenyJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
+            vec![AclStep::IsolateJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
         );
     }
 
@@ -1523,6 +1667,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Jozkah/jan#124, checked on the real ACLs: after a fresh grant and after
+    /// each re-sync, no ACE on `.jan` or on a file already inside it names the
+    /// container (a deny ACE would not do: the AppContainer check only looks
+    /// for grants), so its effective rights there are none, while the rest of
+    /// the worktree keeps its grant.
+    #[cfg(windows)]
+    #[test]
+    fn a_worktrees_jan_is_denied_to_the_container_across_syncs() {
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_deny_{n}"));
+        let wt = base.join("worktree");
+        std::fs::create_dir_all(wt.join(".jan/agent")).unwrap();
+        std::fs::write(wt.join(".jan/agent/agent.toml"), b"x").unwrap();
+        std::fs::write(wt.join("main.rs"), b"x").unwrap();
+        let record = base.join("record");
+        let name = format!("jan.test.deny.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+        let jan = wt.join(".jan");
+        let policy = jan.join("agent/agent.toml");
+        for pass in 0..3 {
+            win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
+            let aces = win::aces_for(&jan, psid);
+            assert!(aces.is_empty(), "pass {pass}: .jan names the container: {aces:x?}");
+            let aces = win::aces_for(&policy, psid);
+            assert!(aces.is_empty(), "pass {pass}: agent.toml names the container: {aces:x?}");
+            assert_eq!(win::effective_rights(&jan, psid), 0, "pass {pass}: .jan");
+            assert_eq!(win::effective_rights(&policy, psid), 0, "pass {pass}: agent.toml");
+            // The rest of the worktree stays writable.
+            assert_ne!(win::effective_rights(&wt.join("main.rs"), psid), 0, "pass {pass}: main.rs");
+        }
+        win::sync_write_roots(&record, psid, &[]).unwrap();
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// Jozkah/jan#217: once a worktree is no longer an authorized write root,
     /// the next confined run must take the container's ACE off it; otherwise
     /// `bash` keeps writing there after `write`/`edit` were refused.
@@ -1547,14 +1734,10 @@ mod tests {
 
         win::sync_write_roots(&record, psid, &[wt.clone()]).unwrap();
         assert!(win::acl_names(&wt, psid), "the authorized worktree was not granted");
-        // Jozkah/jan#124: its `.jan` exists and carries the container's deny.
+        // Jozkah/jan#124: its `.jan` exists and names the container nowhere.
         assert!(wt.join(".jan").is_dir(), "the worktree's .jan was not created");
-        // An explicit (not inherited) deny ACE for the container, all access.
         let jan_aces = win::aces_for(&wt.join(".jan"), psid);
-        assert!(
-            jan_aces.iter().any(|&(ty, flags, _)| ty == 1 && flags & 0x10 == 0),
-            "the worktree's .jan has no explicit deny: {jan_aces:?}"
-        );
+        assert!(jan_aces.is_empty(), "the worktree's .jan names the container: {jan_aces:?}");
 
         win::sync_write_roots(&record, psid, &[other.clone()]).unwrap();
         assert!(!win::acl_names(&wt, psid), "the revoked worktree kept its ACE");
