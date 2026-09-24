@@ -6,12 +6,8 @@ import path from 'path'
 import unzipper from 'unzipper'
 import tar from 'tar'
 import { copySync } from 'cpx'
-<<<<<<< ours
 import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
-||||||| base
-=======
 import { execFileSync } from 'child_process'
->>>>>>> theirs
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
