@@ -65,7 +65,7 @@ impl Category {
     }
 
     /// Parse a category from its stable identifier.
-    pub fn from_str(s: &str) -> Option<Category> {
+    pub fn parse(s: &str) -> Option<Category> {
         Category::all()
             .iter()
             .copied()

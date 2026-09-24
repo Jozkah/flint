@@ -298,10 +298,7 @@ impl ModelPolicy {
     pub fn validate(&self) -> Vec<String> {
         let mut problems = Vec::new();
         for start in self.aliases.keys() {
-            match self.resolve(start) {
-                Err(err) => problems.push(err.to_string()),
-                Ok(_) => {}
-            }
+            if let Err(err) = self.resolve(start) { problems.push(err.to_string()) }
         }
         problems
     }

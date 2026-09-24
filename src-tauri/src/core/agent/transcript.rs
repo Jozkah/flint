@@ -122,9 +122,7 @@ fn text_of(message: &serde_json::Value) -> String {
 fn snippet_at(text: &str, at: usize) -> String {
     let start = text
         .char_indices()
-        .map(|(i, _)| i)
-        .filter(|i| *i <= at.saturating_sub(SNIPPET / 2))
-        .next_back()
+        .map(|(i, _)| i).rfind(|i| *i <= at.saturating_sub(SNIPPET / 2))
         .unwrap_or(0);
     let end = text
         .char_indices()

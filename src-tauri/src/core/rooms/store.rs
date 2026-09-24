@@ -449,7 +449,7 @@ pub enum RoomJournalRecord {
         at: u64,
     },
     Message {
-        message: RoomMessage,
+        message: Box<RoomMessage>,
     },
 }
 

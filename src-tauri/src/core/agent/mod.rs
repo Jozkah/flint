@@ -37,6 +37,9 @@ pub mod git;
 #[cfg(feature = "cli")]
 pub mod global_config;
 pub mod github_recovery;
+// `/goal` is a terminal-UI command; the desktop build compiles the module
+// but calls none of it.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub mod goal;
 pub mod health;
 pub mod impact;

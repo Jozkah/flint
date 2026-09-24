@@ -393,28 +393,6 @@ pub async fn get_server_summaries(
     Ok(summaries)
 }
 
-/// Calls a tool on an MCP server by name with optional arguments
-///
-/// # Arguments
-/// * `state` - Application state containing MCP server connections
-/// * `tool_name` - Name of the tool to call
-/// * `server_name` - Optional name of the server to call the tool from (for disambiguation)
-/// * `arguments` - Optional map of argument names to values
-/// * `cancellation_token` - Optional token to allow cancellation from JS side
-/// * `max_output_chars` - Optional caller-derived per-result character budget
-///   (the desktop chat derives one from the active model's context window);
-///   combined with the `maxToolOutputChars` setting, tighter wins
-///
-/// # Returns
-/// * `Result<CallToolResult, String>` - Result of the tool call if successful, or error message if failed
-///
-/// This function:
-/// 1. Locks the MCP servers mutex to access server connections
-/// 2. If server_name is provided, looks for the tool in that specific server
-/// 3. Otherwise, searches through all servers for one containing the named tool
-/// 4. When found, calls the tool on that server with the provided arguments
-/// 5. Supports cancellation via cancellation_token
-/// 6. Returns error if no server has the requested tool or if specified server not found
 /// The prompts a connected server offers (AH-138).
 ///
 /// A prompt is a message the *server* composes -- a template its author wrote,
@@ -672,6 +650,28 @@ pub async fn mcp_allow_once(
     )
 }
 
+/// Calls a tool on an MCP server by name with optional arguments
+///
+/// # Arguments
+/// * `state` - Application state containing MCP server connections
+/// * `tool_name` - Name of the tool to call
+/// * `server_name` - Optional name of the server to call the tool from (for disambiguation)
+/// * `arguments` - Optional map of argument names to values
+/// * `cancellation_token` - Optional token to allow cancellation from JS side
+/// * `max_output_chars` - Optional caller-derived per-result character budget
+///   (the desktop chat derives one from the active model's context window);
+///   combined with the `maxToolOutputChars` setting, tighter wins
+///
+/// # Returns
+/// * `Result<CallToolResult, String>` - Result of the tool call if successful, or error message if failed
+///
+/// This function:
+/// 1. Locks the MCP servers mutex to access server connections
+/// 2. If server_name is provided, looks for the tool in that specific server
+/// 3. Otherwise, searches through all servers for one containing the named tool
+/// 4. When found, calls the tool on that server with the provided arguments
+/// 5. Supports cancellation via cancellation_token
+/// 6. Returns error if no server has the requested tool or if specified server not found
 #[tauri::command]
 pub async fn call_tool(
     state: State<'_, AppState>,

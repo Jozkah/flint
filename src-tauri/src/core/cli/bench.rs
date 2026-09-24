@@ -235,6 +235,9 @@ pub enum RunnerOutcome {
 
 /// Run every task, in order, each in a fresh copy of its project under
 /// `scratch`. Stops early -- and says so -- when `cancelled` turns true.
+// Each argument is a separate concern of one run (what, where, how, when to
+// stop, who to tell); bundling them would only move the list elsewhere.
+#[allow(clippy::too_many_arguments)]
 pub fn run_tasks(
     set: &TaskSet,
     digest: &str,
@@ -602,8 +605,12 @@ checks = [{ kind = "result_contains", text = "42" }, { kind = "file_absent", pat
 
     /// A runner that plays the model's part: writes what it is told to and
     /// answers from a table, so the orchestration is tested without one.
+    /// The file a task writes (path, text), its final answer, and whether it
+    /// times out.
+    type Answer = (Option<(&'static str, &'static str)>, &'static str, bool);
+
     struct Scripted {
-        answers: BTreeMap<&'static str, (Option<(&'static str, &'static str)>, &'static str, bool)>,
+        answers: BTreeMap<&'static str, Answer>,
         seen: RefCell<Vec<PathBuf>>,
     }
 

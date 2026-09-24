@@ -111,7 +111,7 @@ pub fn resolve_placement(
         let needed = (MIN_VISIBLE_GRAB_WIDTH_LOGICAL * m.scale).round() as i64;
         if ix >= needed.min(frame_w) && iy >= band_h / 2 {
             let area = ix * iy;
-            if best.map_or(true, |(_, a)| area > a) {
+            if best.is_none_or(|(_, a)| area > a) {
                 best = Some((m, area));
             }
         }
