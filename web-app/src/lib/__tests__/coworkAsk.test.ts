@@ -64,7 +64,10 @@ describe('renderAskResult', () => {
   it('says plainly when the user did not answer', () => {
     const out = renderAskResult(null)
     expect(out.output).toMatch(/did not answer/)
-    expect(out.output).toMatch(/best judgement/)
+    // Unanswered is never consent: a model told to "use its best judgement"
+    // reported an unanswered "Execute plan" card as approval.
+    expect(out.output).toMatch(/not approval/)
+    expect(out.output).not.toMatch(/best judgement/)
     expect(out.isError).toBeUndefined()
   })
 })

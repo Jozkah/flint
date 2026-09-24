@@ -4,6 +4,8 @@ import {
   planReviewDecision,
   planReviewRequest,
   renderPlanReviewResult,
+  planExecuteNotice,
+  PLAN_EXECUTE_INSTRUCTION,
 } from '../coworkPlanReview'
 import { parseAskRequest } from '../coworkAsk'
 import {
@@ -53,18 +55,52 @@ describe('plan review (janhq/jan#8906)', () => {
   it('leaves every other question alone', () => {
     expect(
       planReviewDecision({ questions: [{ id: 'scope' }] }, [
-        { id: 'scope', selected: [EXECUTE_PLAN_LABEL] },
+        { id: 'scope', selected: ['Yes'] },
       ])
     ).toBe('none')
   })
 
-  it('tells the model this run stays read-only after approval', () => {
-    const out = renderPlanReviewResult('execute', answer(EXECUTE_PLAN_LABEL)).output
-    expect(out).toMatch(/next message/)
-    expect(out).toMatch(/do not call any tool that writes/)
+  // The model asks in its own words in plan mode; choosing "Execute plan" on
+  // its card must leave plan mode, not come back as a bare answer.
+  it('treats a model-written question offering Execute plan as a plan review', () => {
+    const own = {
+      questions: [
+        {
+          id: 'next',
+          options: [{ label: 'Execute plan' }, { label: 'Revise the plan' }],
+        },
+      ],
+    }
+    expect(planReviewDecision(own, [{ id: 'next', selected: ['execute plan'] }])).toBe(
+      'execute'
+    )
+    expect(planReviewDecision(own, [{ id: 'next', selected: ['Revise the plan'] }])).toBe(
+      'keep'
+    )
+    expect(planReviewDecision(own, null)).toBe('keep')
+  })
+
+  it('ends this read-only run so the plan continues in one that can write', () => {
+    const result = renderPlanReviewResult('execute', answer(EXECUTE_PLAN_LABEL))
+    expect(result.endsTurn).toBe(true)
+    expect(result.output).toMatch(/Plan mode is off/)
+    expect(result.output).toMatch(/Do not call any tool that writes/)
+    expect(PLAN_EXECUTE_INSTRUCTION).toMatch(/Carry it out/)
     expect(renderPlanReviewResult('exit', answer(EXIT_PLAN_LABEL)).output).toMatch(
       /no further tool calls/
     )
     expect(renderPlanReviewResult('keep', null).output).toMatch(/Stay read-only/)
+  })
+
+  it('never reports an unanswered review as approval', () => {
+    const out = renderPlanReviewResult('keep', null).output
+    expect(out).toMatch(/did not answer/)
+    expect(out).toMatch(/not approval/)
+  })
+
+  it('says why an approved plan cannot change the user files', () => {
+    expect(planExecuteNotice({ folder: null, access: 'review-only' })).toBe('noFolder')
+    expect(planExecuteNotice({ folder: '/repo', access: 'review-only' })).toBe('reviewOnly')
+    expect(planExecuteNotice({ folder: '/repo', access: 'edit-folder' })).toBeNull()
   })
 })

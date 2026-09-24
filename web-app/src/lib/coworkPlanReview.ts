@@ -1,5 +1,6 @@
 import type { AskAnswer } from '@/types/coworkSession'
 import type { ToolOutcome } from '@/lib/coworkRunner'
+import { ASK_UNANSWERED_RESULT } from '@/lib/coworkAsk'
 import {
   EXECUTE_PLAN_LABEL,
   EXIT_PLAN_LABEL,
@@ -57,18 +58,36 @@ export function planReviewRequest(path: string): unknown {
 
 export type PlanReviewDecision = 'execute' | 'keep' | 'exit' | 'none'
 
-/** What the user chose on a `plan_review` question, if one was asked. */
+type ReviewQuestion = { id: string; options?: { label: string }[] }
+
+const sameLabel = (a: string | undefined, b: string) =>
+  a !== undefined && a.trim().toLowerCase() === b.toLowerCase()
+
+/**
+ * Whether a question is a plan review: the one Flint asks (`plan_review`), or
+ * one the model wrote itself that offers "Execute plan". A model in plan mode
+ * asks in its own words; choosing "Execute plan" on its card used to be passed
+ * back as a bare answer and nothing happened.
+ */
+function isPlanReviewQuestion(q: ReviewQuestion): boolean {
+  return (
+    q.id === PLAN_REVIEW_QUESTION_ID ||
+    (q.options ?? []).some((o) => sameLabel(o.label, EXECUTE_PLAN_LABEL))
+  )
+}
+
+/** What the user chose on a plan review question, if one was asked. */
 export function planReviewDecision(
-  request: { questions: { id: string }[] },
+  request: { questions: ReviewQuestion[] },
   answers: AskAnswer[] | null
 ): PlanReviewDecision {
-  if (!request.questions.some((q) => q.id === PLAN_REVIEW_QUESTION_ID)) {
-    return 'none'
-  }
-  const chosen = answers?.find((a) => a.id === PLAN_REVIEW_QUESTION_ID)
-    ?.selected?.[0]
-  if (chosen === EXECUTE_PLAN_LABEL) return 'execute'
-  if (chosen === EXIT_PLAN_LABEL) return 'exit'
+  const reviews = request.questions.filter(isPlanReviewQuestion)
+  if (reviews.length === 0) return 'none'
+  const chosen = reviews.flatMap(
+    (q) => answers?.find((a) => a.id === q.id)?.selected ?? []
+  )
+  if (chosen.some((c) => sameLabel(c, EXECUTE_PLAN_LABEL))) return 'execute'
+  if (chosen.some((c) => sameLabel(c, EXIT_PLAN_LABEL))) return 'exit'
   // Keep planning, a custom answer, or a dismissed card: nothing changes, and
   // in particular nothing becomes writable.
   return 'keep'
@@ -77,9 +96,10 @@ export function planReviewDecision(
 /**
  * The tool result for an answered plan review.
  *
- * A mode applies from the next message -- the tool set is frozen for a run --
- * so after Execute or Exit the model is told to end the turn rather than try a
- * write that this run would still refuse.
+ * A mode applies from the next run -- the tool set is frozen for a run -- so
+ * after Execute this run ends and the plan continues in a new run that can
+ * make changes (`PLAN_EXECUTE_INSTRUCTION`); after Exit the model is told to
+ * end the turn rather than try a write that this run would still refuse.
  */
 export function renderPlanReviewResult(
   decision: PlanReviewDecision,
@@ -90,11 +110,12 @@ export function renderPlanReviewResult(
     case 'execute':
       return {
         output:
-          `The user approved the plan (${raw}). The session switches to Ask ` +
-          'mode from the next message, where changes run after the user ' +
-          'approves each one. This run is still read-only: do not call any ' +
-          'tool that writes. Summarise the plan in one or two lines and end ' +
-          'the turn.',
+          `The user approved the plan (${raw}). Plan mode is off. This ` +
+          'read-only run ends here and the plan continues at once in a new ' +
+          'run where changes go ahead after the user approves each one. Do ' +
+          'not call any tool that writes in this run and make no further ' +
+          'tool calls.',
+        endsTurn: true,
       }
     case 'exit':
       return {
@@ -103,6 +124,9 @@ export function renderPlanReviewResult(
           'one line saying what was found, and make no further tool calls.',
       }
     default:
+      if (answers === null) {
+        return { output: `${ASK_UNANSWERED_RESULT} Stay read-only.` }
+      }
       return {
         output:
           `The user wants to keep planning (${raw}). Stay read-only. Do not ` +
@@ -110,4 +134,22 @@ export function renderPlanReviewResult(
           'stage the plan and ask for review again.',
       }
   }
+}
+
+/** What the new run is asked to do after the user chose "Execute plan". */
+export const PLAN_EXECUTE_INSTRUCTION =
+  'The user approved the plan. Carry it out now, step by step.'
+
+/**
+ * Why an approved plan cannot change the user's files, if it cannot: no folder
+ * attached, or the session's changes go to its own sandbox (Review only). The
+ * plan still runs -- in the sandbox -- and the user is told what to change.
+ */
+export function planExecuteNotice(input: {
+  folder: string | null | undefined
+  access: string
+}): 'noFolder' | 'reviewOnly' | null {
+  if (!input.folder) return 'noFolder'
+  if (input.access === 'review-only') return 'reviewOnly'
+  return null
 }

@@ -338,6 +338,8 @@ import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
 import {
   planReviewDecision,
   renderPlanReviewResult,
+  planExecuteNotice,
+  PLAN_EXECUTE_INSTRUCTION,
 } from '@/lib/coworkPlanReview'
 import {
   getSandboxStatus,
@@ -3079,6 +3081,24 @@ function CoworkPage() {
                       const review = planReviewDecision(parsed, answers)
                       if (review === 'execute' || review === 'exit') {
                         useCoworkSessions.getState().setMode(sid, 'ask')
+                      }
+                      // "Execute plan" leaves plan mode and carries on: this
+                      // run's tools are frozen read-only, so it ends and the
+                      // plan continues in a new run that can make changes.
+                      // When those changes cannot reach the user's files, the
+                      // user is told what to change rather than left to find
+                      // "Attach a folder first" in the access menu.
+                      if (review === 'execute') {
+                        const notice = planExecuteNotice({
+                          folder: current?.folder,
+                          access: effective.access,
+                        })
+                        if (notice) {
+                          toast.info(t(`common:coworkPlanExecute.${notice}`), {
+                            duration: 12000,
+                          })
+                        }
+                        continueWith = PLAN_EXECUTE_INSTRUCTION
                       }
                       resolve(
                         review === 'none'

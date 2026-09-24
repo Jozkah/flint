@@ -841,6 +841,10 @@
     "fixWindows": "Windows uses AppContainer. Restart Flint to try again.",
     "recheck": "Check again"
   },
+  "coworkPlanExecute": {
+    "noFolder": "Plan mode is off and the plan is running. No folder is attached, so its changes are made in this session's sandbox only. To change your files, attach a folder, then choose where changes go.",
+    "reviewOnly": "Plan mode is off and the plan is running. Where changes go is set to Review only, so its changes are made in this session's sandbox only. To change your files, choose Managed worktree or Edit this folder."
+  },
   "planMode": {
     "label": "Plan",
     "tooltipOff": "Plan first — the agent reads and proposes, without writing.",
