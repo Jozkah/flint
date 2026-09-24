@@ -32,6 +32,23 @@ name = "flint"
 path = "src/bin/flint.rs"
 required-features = ["cli"]
 
+# Binary-level tests of the headless protocol: they spawn the `flint` binary,
+# so they exist only in the build that has one.
+[[test]]
+name = "stream_json_init"
+path = "tests/stream_json_init.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "stream_json_host_tools"
+path = "tests/stream_json_host_tools.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "agent_rpc"
+path = "tests/agent_rpc.rs"
+required-features = ["cli"]
+
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
 # not in `default`, so `required-features` keeps cargo from building this target
 # unless it is asked for explicitly.

@@ -67,7 +67,7 @@ fn scratch(name: &str) -> PathBuf {
 
 /// Point the CLI at the stub provider, so a session can resolve a model.
 fn configure(home: &Path, base_url: &str) {
-    let configured = Command::new(env!("CARGO_BIN_EXE_jan"))
+    let configured = Command::new(env!("CARGO_BIN_EXE_flint"))
         .args([
             "config",
             "set",
@@ -81,6 +81,9 @@ fn configure(home: &Path, base_url: &str) {
             "stub-model",
         ])
         .env("HOME", home)
+        .env("USERPROFILE", home)
+        .env("FLINT_HOME", home)
+        .env("JAN_HOME", home)
         .env("JAN_CLI_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap();
@@ -100,10 +103,13 @@ struct Rpc {
 
 impl Rpc {
     fn open(home: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_jan"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_flint"))
             .args(["cli", "agent", "rpc"])
             .env("JAN_CLI_NO_UPDATE_CHECK", "1")
             .env("HOME", home)
+            .env("USERPROFILE", home)
+            .env("FLINT_HOME", home)
+            .env("JAN_HOME", home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -412,7 +418,7 @@ fn every_documented_method_is_answered() {
     rpc.handshake();
 
     let document: serde_json::Value =
-        serde_json::from_str(include_str!("../../../protocol/rpc-schema.json"))
+        serde_json::from_str(include_str!("../../protocol/rpc-schema.json"))
             .expect("the committed artifact is JSON");
     let mut methods: Vec<&str> = document["requests"]
         .as_object()

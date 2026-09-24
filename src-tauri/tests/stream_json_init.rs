@@ -157,9 +157,12 @@ impl Scratch {
     fn command(&self, args: &[&str]) -> Command {
         std::fs::create_dir_all(self.home()).expect("home dir");
         std::fs::create_dir_all(self.project()).expect("project dir");
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_jan"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_flint"));
         cmd.args(args)
             .env("HOME", self.home())
+            .env("USERPROFILE", self.home())
+            .env("FLINT_HOME", self.home())
+            .env("JAN_HOME", self.home())
             .env("JAN_DATA_FOLDER", self.root.join("jan-data"))
             .env_remove("JAN_API_KEY")
             .env_remove("OPENAI_API_KEY")
@@ -297,11 +300,15 @@ fn a_failing_run_still_opens_with_the_handshake() {
         last["is_error"], true,
         "a refused request must fail the run: {last}"
     );
+    // This fork assigns a fresh run its session id up front and keeps the
+    // run's checkpoint under it when the run fails, so the failed run is
+    // still resumable: the envelope names the session the handshake announced
+    // rather than `null`, which is what upstream reports for an unsaved run.
+    let announced = records[0]["session_id"].as_str().expect("an announced session");
     assert_eq!(
-        last["session_id"],
-        serde_json::Value::Null,
-        "nothing was saved, so the envelope names no session -- which is how a \
-         client knows the id from `init` is not on disk"
+        last["session_id"].as_str().expect("a named session"),
+        &announced[..8],
+        "the envelope must name the session the handshake announced: {last}"
     );
 }
 

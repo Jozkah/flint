@@ -154,9 +154,12 @@ impl Scratch {
     fn command(&self, args: &[&str]) -> Command {
         std::fs::create_dir_all(self.home()).expect("home dir");
         std::fs::create_dir_all(self.project()).expect("project dir");
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_jan"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_flint"));
         cmd.args(args)
             .env("HOME", self.home())
+            .env("USERPROFILE", self.home())
+            .env("FLINT_HOME", self.home())
+            .env("JAN_HOME", self.home())
             .env("JAN_DATA_FOLDER", self.root.join("jan-data"))
             .env_remove("JAN_API_KEY")
             .env_remove("OPENAI_API_KEY")
@@ -183,8 +186,6 @@ impl Scratch {
             "stream-json",
             "--host-tools",
             host_tools,
-            "--max-turns",
-            "4",
             "move the arm",
         ])
         .stdin(Stdio::piped())
