@@ -253,6 +253,7 @@ macro_rules! invoke_commands_with_extras {
         core::downloads::commands::pause_download_task,
         // App lifecycle
         confirm_exit,
+        cancel_exit,
         // Theme
         core::setup::get_system_theme,
         core::setup::set_gtk_prefer_dark,
@@ -271,6 +272,37 @@ static GRACEFUL_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 #[cfg(not(feature = "cli"))]
 static BUSY_MODELS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Set by `cancel_exit` when the user declines to quit from the busy-on-exit
+/// dialog; the graceful-exit loop takes it and stops instead of quitting as
+/// soon as the model goes idle.
+#[cfg(not(feature = "cli"))]
+static EXIT_CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the pending exit was cancelled, clearing the request.
+#[cfg(not(feature = "cli"))]
+fn take_exit_cancelled() -> bool {
+    EXIT_CANCELLED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The user clicked Cancel on the busy-on-exit dialog: keep the app running.
+#[cfg(not(feature = "cli"))]
+#[tauri::command]
+fn cancel_exit() {
+    EXIT_CANCELLED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod exit_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn cancel_is_seen_once_by_the_exit_loop() {
+        assert!(!take_exit_cancelled());
+        cancel_exit();
+        assert!(take_exit_cancelled(), "the loop must see the cancel");
+        assert!(!take_exit_cancelled(), "and consume it");
+    }
+}
 
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
@@ -358,6 +390,13 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
     let mut emitted = false;
     loop {
         if SHUTTING_DOWN.load(Ordering::SeqCst) {
+            return;
+        }
+        if take_exit_cancelled() {
+            log::info!("{}: exit cancelled by the user", source);
+            if let Ok(mut g) = BUSY_MODELS.lock() {
+                g.clear();
+            }
             return;
         }
         match tauri_plugin_llamacpp::try_graceful_stop_engine(app_handle.clone(), 1).await {
@@ -720,6 +759,8 @@ pub fn run_app(app: tauri::App) {
             }
             let app_handle = app.clone();
             let exit_code = code.unwrap_or(0);
+            // A Cancel from an earlier attempt must not cancel this one.
+            EXIT_CANCELLED.store(false, Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 handle_graceful_exit(app_handle, "ExitRequested", exit_code).await;
                 GRACEFUL_IN_PROGRESS.store(false, Ordering::SeqCst);

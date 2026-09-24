@@ -78,6 +78,11 @@ export default function LlamacppBusyOnExitDialog() {
   const handleCancel = () => {
     setBusyModels(null)
     toast.dismiss('llamacpp-closing')
+    // Stop the backend's wait-then-quit loop; without this the app still
+    // quits the moment the model goes idle (#185).
+    invoke('cancel_exit').catch((e) => {
+      console.warn('cancel_exit failed:', e)
+    })
   }
 
   return (
