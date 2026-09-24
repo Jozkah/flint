@@ -405,11 +405,31 @@ pub fn update_app_configuration<R: Runtime>(
     let configuration_file = get_configuration_file_path(app_handle);
     log::info!("update_app_configuration, configuration_file: {configuration_file:?}");
 
-    fs::write(
-        configuration_file,
-        serde_json::to_string(&configuration).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    write_configuration_atomic(&configuration_file, &configuration)
+}
+
+/// Write the app configuration by staging a sibling temp file and renaming it
+/// over the real one. A plain `fs::write` truncated `settings.json` in place,
+/// so a crash mid-write left invalid JSON that `get_app_configurations` read as
+/// "defaults" -- losing the configured data folder right after a migration.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn write_configuration_atomic(
+    path: &Path,
+    configuration: &AppConfiguration,
+) -> Result<(), String> {
+    let body = serde_json::to_string(configuration).map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    if let Err(e) = fs::write(&tmp, body) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })
 }
 
 #[cfg(not(feature = "cli"))]
@@ -561,6 +581,28 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    /// #54: the configuration is replaced whole, never left half-written, and
+    /// no staging file is left beside it.
+    #[test]
+    fn the_configuration_is_written_atomically() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{\"data_folder\":\"old\"}").unwrap();
+        let mut cfg: AppConfiguration =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        cfg.data_folder = "new".into();
+        write_configuration_atomic(&path, &cfg).unwrap();
+        let back: AppConfiguration =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back.data_folder, "new");
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name() != "settings.json")
+            .collect();
+        assert!(leftovers.is_empty(), "staging file left behind");
+    }
 
     fn fresh_memo() -> std::sync::Mutex<Option<String>> {
         std::sync::Mutex::new(None)
