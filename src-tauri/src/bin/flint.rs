@@ -78,6 +78,11 @@ struct Cli {
     plan: bool,
     #[command(flatten)]
     sandbox: SandboxArgs,
+    /// Log more: `info` on stderr instead of `warn`. Accepted before or after
+    /// any subcommand. The logger reads it from the raw arguments before this
+    /// parser runs; declaring it here keeps clap from rejecting it.
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
 }
 
 /// Whether this invocation confines the shell, shared by every surface that
@@ -2966,6 +2971,21 @@ fn build_mcp_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verbose_flag_is_accepted_bare_and_after_a_subcommand() {
+        for args in [
+            vec!["jan", "--verbose"],
+            vec!["jan", "-v"],
+            vec!["jan", "plugin", "list", "--verbose"],
+            vec!["jan", "-v", "plugin", "list"],
+        ] {
+            let cli = Cli::try_parse_from(&args)
+                .unwrap_or_else(|e| panic!("{args:?} should parse: {e}"));
+            assert!(cli.verbose, "{args:?} should set verbose");
+        }
+        assert!(!Cli::try_parse_from(["jan", "plugin", "list"]).unwrap().verbose);
+    }
 
     #[test]
     fn bug_report_parses_its_flags_and_nothing_else() {
