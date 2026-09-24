@@ -332,6 +332,14 @@ const ChatInput = memo(function ChatInput({
   )
   const routeThreadId = useThreads((state) => state.currentThreadId)
   const currentThreadId = threadIdProp ?? routeThreadId
+  // The SDK reports "ready" before the previous turn's tool loop has run
+  // (onFinish fires after the status flips), so streaming status alone says
+  // nothing about tools still awaiting approval or executing. The thread is
+  // marked busy for exactly that window; a send then must queue, or a second
+  // tool loop starts over the same tool queue and re-runs its calls (#129).
+  const threadBusy = useAppState((state) =>
+    currentThreadId ? Boolean(state.busyThreads?.[currentThreadId]) : false
+  )
   // Subscribed to the map, not read through getState(), so the control
   // re-renders when this chat's overrides change.
   const overridesByThread = useModelOverrides((state) => state.byThread)
@@ -821,8 +829,9 @@ const ChatInput = memo(function ChatInput({
 
     // Use onSubmit prop if available (AI SDK), otherwise create thread and navigate
     if (onSubmit) {
-      // When the model is still streaming, queue the message for later
-      if (isStreaming && queueId) {
+      // When the model is still streaming, or the previous turn's tools are
+      // still pending or running, queue the message for later
+      if ((isStreaming || threadBusy) && queueId) {
         useMessageQueue.getState().enqueue(queueId, {
           id: generateId(),
           text: effectivePrompt,

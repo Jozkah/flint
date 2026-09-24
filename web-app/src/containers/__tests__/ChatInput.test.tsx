@@ -504,6 +504,23 @@ describe('ChatInput', () => {
     expect(setPromptMock).toHaveBeenCalledWith('')
   })
 
+  it('queues the message while the previous turn’s tools are still pending', async () => {
+    // The SDK already reports "ready": the stream ended, but the tool loop
+    // it hands to onFinish has not. Sending now would re-run those calls.
+    appStateOverrides = { busyThreads: { 'thread-1': true } }
+    promptState = 'follow-up'
+    const onSubmit = vi.fn()
+    renderInput({ onSubmit, chatStatus: 'ready' })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() =>
+      expect(enqueueMock).toHaveBeenCalledWith(
+        'thread-1',
+        expect.objectContaining({ text: 'follow-up' })
+      )
+    )
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('shows "please select a model" inline message when no model selected', () => {
     // With no selected model, Enter should set the inline error message
     selectedModelOverride = null
