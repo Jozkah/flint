@@ -9893,8 +9893,19 @@ async fn handle_key(
                 }
                 let name = item.value.clone();
                 let enable = !item.checkbox.unwrap_or(false);
-                item.checkbox = Some(enable);
-                if set_mcp_active(app, mcp_servers, &name, enable).await {
+                // The row flips only once mcp_config.json has been written: a
+                // failed write leaves it showing the state that is on disk.
+                let Some(connect) = set_mcp_active(app, mcp_servers, &name, enable).await else {
+                    return;
+                };
+                if let Some(item) = app
+                    .picker
+                    .as_mut()
+                    .and_then(|p| p.items.iter_mut().find(|i| i.value == name))
+                {
+                    item.checkbox = Some(enable);
+                }
+                if connect {
                     // Nothing on this screen is waiting on the answer, so it is
                     // detached rather than taking the single job slot.
                     reconnect_mcp_server(mcp_servers, name);
@@ -14356,7 +14367,9 @@ async fn run_mcp_action(
         }
         MCP_ACTION_TOGGLE => {
             let enable = !detail.server.active;
-            let connect = set_mcp_active(app, mcp_servers, &name, enable).await;
+            let connect = set_mcp_active(app, mcp_servers, &name, enable)
+                .await
+                .unwrap_or(false);
             open_mcp_detail(app, &name, mcp_servers).await;
             if connect {
                 // After `open_mcp_detail`, which requests the tool list and
@@ -14442,10 +14455,10 @@ async fn set_mcp_active(
     mcp_servers: &crate::core::state::SharedMcpServers,
     name: &str,
     enable: bool,
-) -> bool {
+) -> Option<bool> {
     if let Err(e) = super::mcp::set_active(name, enable) {
         app.note(&format!("failed to update mcp_config.json: {e}"));
-        return false;
+        return None;
     }
     if enable {
         app.note(&format!("enabling MCP server '{name}'..."));
@@ -14453,7 +14466,7 @@ async fn set_mcp_active(
         super::mcp::disconnect(name, mcp_servers).await;
         app.note(&format!("disabled MCP server '{name}'"));
     }
-    enable
+    Some(enable)
 }
 
 /// Resolve a thread by id (exact or unique prefix), load its messages into the
@@ -34756,6 +34769,43 @@ mod tests {
             assert!(!items
                 .iter()
                 .any(|i| i.value == super::MCP_ACTION_CLEAR_AUTH));
+        });
+    }
+
+    /// #148: Space used to flip the row before writing mcp_config.json, and a
+    /// failed write left the checkbox showing a state that was not on disk.
+    #[test]
+    fn space_leaves_the_row_unchanged_when_the_config_write_fails() {
+        crate::core::app::commands::with_temp_data_folder(|folder| {
+            write_mcp_config(
+                folder,
+                serde_json::json!({
+                    "files": { "command": "npx", "args": ["-y", "files"], "active": false },
+                }),
+            );
+            let registry: PermissionRegistry =
+                std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+            let mut current: Option<CurrentRun> = None;
+            let mut app = test_app();
+            let servers = no_mcp();
+            rt().block_on(async {
+                super::open_mcp_picker(&mut app, &servers).await;
+                assert_eq!(app.picker.as_ref().unwrap().items[0].checkbox, Some(false));
+                // The server vanishes from the config behind the picker's back,
+                // so the write in `set_active` fails.
+                write_mcp_config(folder, serde_json::json!({}));
+                handle_key(
+                    &mut app,
+                    KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+                    &registry,
+                    &mut current,
+                    &servers,
+                )
+                .await;
+            });
+            let item = &app.picker.as_ref().expect("still on the list").items[0];
+            assert_eq!(item.value, "files");
+            assert_eq!(item.checkbox, Some(false), "the row flipped on a failed write");
         });
     }
 
