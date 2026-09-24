@@ -192,22 +192,7 @@ pub fn propose(
 /// a second proposal, which would be checked again.
 pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<MemoryId, String> {
     let record = &proposal.record;
-    store::update(store_root, record.scope, |records| {
-        let live = records
-            .iter()
-            .filter(|r| !matches!(r.status, Status::Deleted) && r.id != record.id)
-            .count();
-        if live >= MAX_RECORDS_PER_SCOPE {
-            return Err(format!(
-                "ERROR: this scope already holds {MAX_RECORDS_PER_SCOPE} memories; forget some before saving more"
-            ));
-        }
-        match records.iter_mut().find(|r| r.id == record.id) {
-            Some(existing) => *existing = record.clone(),
-            None => records.push(record.clone()),
-        }
-        Ok((true, ()))
-    })?;
+    store::insert_capped(store_root, record, MAX_RECORDS_PER_SCOPE)?;
     Ok(record.id.clone())
 }
 
