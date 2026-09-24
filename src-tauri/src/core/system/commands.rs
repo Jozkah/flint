@@ -873,8 +873,11 @@ pub fn clear_claude_code_env() -> Result<(), String> {
             "ANTHROPIC_DEFAULT_HAIKU_MODEL",
         ];
         for key in &keys {
+            // No console window per deletion (Jozkah/jan#253), like `setx` above.
+            use jan_process::CommandConsole;
             let _ = std::process::Command::new("reg")
                 .args(["delete", "HKCU\\Environment", "/v", key, "/f"])
+                .background()
                 .output();
         }
         log::info!("CC env vars removed from Windows registry.");

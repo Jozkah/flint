@@ -1956,10 +1956,18 @@ pub async fn tool_activity_diff(
     app: tauri::AppHandle,
     session: String,
     call: String,
+    // The call's invocation, when the caller knows it: a provider can reuse a
+    // call id across requests, and only this picks the right one (Jozkah/jan#244).
+    invocation: Option<String>,
 ) -> Result<Option<String>, String> {
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
-        tauri_plugin_agent_tools::activity::read_diff(&data_folder, &session, &call)
+        tauri_plugin_agent_tools::activity::read_diff(
+            &data_folder,
+            &session,
+            invocation.as_deref(),
+            &call,
+        )
     })
     .await
     .map_err(|e| e.to_string())

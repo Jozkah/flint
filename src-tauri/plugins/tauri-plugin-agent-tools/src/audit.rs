@@ -294,6 +294,9 @@ pub fn append(data_folder: &Path, record: &PermissionRecord) {
 }
 
 fn try_append(data_folder: &Path, record: &PermissionRecord) -> Result<(), String> {
+    // The lock retention takes to rewrite this log (Jozkah/jan#234), so a
+    // decision recorded during a prune is not lost between read and rename.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

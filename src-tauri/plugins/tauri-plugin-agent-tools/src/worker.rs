@@ -552,8 +552,33 @@ pub fn output(data_folder: &Path, owner: &str, id: &str, max_bytes: usize) -> Re
     };
     let path = output_path(data_folder, id);
     let bytes = std::fs::read(&path).unwrap_or_default();
-    let start = bytes.len().saturating_sub(max_bytes);
-    Ok(String::from_utf8_lossy(&bytes[start..]).to_string())
+    Ok(utf8_tail(&bytes, max_bytes))
+}
+
+/// The last `max_bytes` of `bytes` as text, starting on a character boundary
+/// (Jozkah/jan#258): a cut inside a multi-byte character would otherwise open
+/// the output with U+FFFD. The cut moves forward past continuation bytes, so
+/// the result is never longer than asked for.
+fn utf8_tail(bytes: &[u8], max_bytes: usize) -> String {
+    let mut start = bytes.len().saturating_sub(max_bytes);
+    while start < bytes.len() && (bytes[start] & 0b1100_0000) == 0b1000_0000 {
+        start += 1;
+    }
+    String::from_utf8_lossy(&bytes[start..]).to_string()
+}
+
+#[cfg(test)]
+mod utf8_tail_tests {
+    #[test]
+    fn a_cut_inside_a_character_does_not_open_with_a_replacement_char() {
+        let text = "héllo wörld ✓ done".as_bytes();
+        for max in 1..=text.len() {
+            let tail = super::utf8_tail(text, max);
+            assert!(!tail.contains('\u{FFFD}'), "{max}: {tail:?}");
+            assert!(tail.len() <= max, "{max}: {tail:?}");
+            assert!("héllo wörld ✓ done".ends_with(&tail));
+        }
+    }
 }
 
 /// Stop one job, and only that job.

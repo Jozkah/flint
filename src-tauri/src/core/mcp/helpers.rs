@@ -1029,12 +1029,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
                         return Ok(true);
                     }
                 } else {
+                    // Name only: this is another application's process, and
+                    // its command line can carry its own secrets (Jozkah/jan#257).
                     log::warn!(
-                    "Lock file PID {} is alive but NOT an MCP process (name: {}, cmd: {:?}). Lock file is stale.",
-                    lock.pid,
-                    process_info.name,
-                    process_info.cmd
-                );
+                        "Lock file PID {} is alive but NOT an MCP process (name: {}). Lock file is stale.",
+                        lock.pid,
+                        process_info.name,
+                    );
                     // PID reused by another process, clean up stale lock file
                     check_and_cleanup_stale_lock(app, port).await?;
                 }
@@ -1054,12 +1055,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
         None => return Ok(false),
     };
 
+    // Not the command line: until the check below, this may be any other
+    // application, and its arguments can carry its secrets (Jozkah/jan#257).
     log::info!(
-        "Found process on port {}: PID={}, name={}, cmd={:?}",
+        "Found process on port {}: PID={}, name={}",
         port,
         process_info.pid,
         process_info.name,
-        process_info.cmd
     );
 
     if !jan_utils::network::is_orphaned_mcp_process(&process_info) {

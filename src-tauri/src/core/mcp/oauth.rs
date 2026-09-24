@@ -538,8 +538,10 @@ fn store_err(name: &str, detail: impl std::fmt::Display) -> HarnessError {
 /// read first and hand back the tokens this write replaced.
 fn store_record(data_folder: &Path, name: &str, creds: &StoredCredentials) -> Result<(), HarnessError> {
     let body = serde_json::to_string(creds).map_err(|e| store_err(name, e))?;
+    // Written over, never deleted first (Jozkah/jan#243): a store that fails
+    // after a delete has lost the refresh token for good, and the user must
+    // sign in again. `store_secret_record` replaces the record whole.
     let key = secret_key(data_folder, name);
-    provider_secrets::delete_secret_record(&key).map_err(|e| store_err(name, e))?;
     provider_secrets::store_secret_record(&key, &body).map_err(|e| store_err(name, e))
 }
 

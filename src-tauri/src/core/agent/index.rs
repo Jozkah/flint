@@ -227,12 +227,22 @@ fn save(data_folder: &Path, index: &Index) -> Result<(), IndexError> {
     let body = serde_json::to_string(index)
         .map_err(|e| IndexError::new(IndexErrorKind::Io, format!("index: {e}")))?;
     // Written whole and moved into place, so a reader never sees half an
-    // index -- the same reason a cancelled build writes nothing.
-    let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, body)
-        .map_err(|e| IndexError::new(IndexErrorKind::Io, format!("index: {e}")))?;
-    std::fs::rename(&temp, &path)
-        .map_err(|e| IndexError::new(IndexErrorKind::Io, format!("index: {e}")))
+    // index -- the same reason a cancelled build writes nothing. Each writer
+    // uses its own temp file (Jozkah/jan#245): two refreshes of one project
+    // sharing a name interleaved their writes and lost each other's rename.
+    // A rename that loses a race to another writer's rename on Windows is
+    // retried briefly; either complete index is a correct result.
+    let mut attempt = 0;
+    loop {
+        match tauri_plugin_agent_tools::workspace::write_atomic(&path, body.as_bytes()) {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < 5 && e.kind() == std::io::ErrorKind::PermissionDenied => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(20 * attempt));
+            }
+            Err(e) => return Err(IndexError::new(IndexErrorKind::Io, format!("index: {e}"))),
+        }
+    }
 }
 
 /// Build or update a project's index.
@@ -709,6 +719,42 @@ fn called_names(line: &str) -> Vec<String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod concurrent_save_tests {
+    use super::*;
+
+    /// Jozkah/jan#245: many refreshes of one project saving at once all
+    /// succeed, and what is left on disk is one whole index.
+    #[test]
+    fn concurrent_saves_of_one_project_all_succeed() {
+        let data = std::env::temp_dir().join(format!("jan_index_race_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let project = data.join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let index = Index {
+            version: 1,
+            project: project.to_string_lossy().into_owned(),
+            commit: None,
+            files: BTreeMap::new(),
+            truncated: false,
+            built_at: "now".into(),
+        };
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (data, index) = (data.clone(), index.clone());
+                std::thread::spawn(move || (0..25).map(|_| save(&data, &index)).collect::<Vec<_>>())
+            })
+            .collect();
+        for h in handles {
+            for r in h.join().unwrap() {
+                assert!(r.is_ok(), "{:?}", r.err().map(|e| e.message));
+            }
+        }
+        assert!(load(&data, &project).is_some());
+        let _ = std::fs::remove_dir_all(&data);
+    }
 }
 
 #[cfg(test)]
