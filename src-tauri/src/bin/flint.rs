@@ -1361,6 +1361,8 @@ fn handle_bench(cmd: BenchCommands) {
                 eprintln!("  removed scratch left by an earlier benchmark: {}", swept.display());
             }
             let scratch = bench::scratch_dir(&temp, std::process::id());
+            bench::claim_scratch(&scratch)
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the scratch folder is not usable: {e}")))?;
             // The first Ctrl-C stops the task in flight -- its whole process
             // tree -- and the report is written as incomplete.
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

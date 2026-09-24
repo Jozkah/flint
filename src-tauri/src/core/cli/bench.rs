@@ -406,6 +406,39 @@ pub fn scratch_dir(temp: &Path, pid: u32) -> PathBuf {
     temp.join(format!("jan-bench-{pid}"))
 }
 
+/// Records who owns a scratch directory. The pid in its name alone is not
+/// enough: once the benchmark is gone the OS may hand that pid to something
+/// else, so the sweep also needs the owner's creation time (#252).
+const OWNER_FILE: &str = ".owner";
+
+/// Create `scratch` for this process and record it as the owner.
+pub fn claim_scratch(scratch: &Path) -> std::io::Result<()> {
+    let created = tauri_plugin_agent_tools::job_record::creation_time_of(std::process::id()).unwrap_or(0);
+    claim_scratch_as(scratch, created)
+}
+
+fn claim_scratch_as(scratch: &Path, created: u64) -> std::io::Result<()> {
+    std::fs::create_dir_all(scratch)?;
+    std::fs::write(scratch.join(OWNER_FILE), created.to_string())
+}
+
+/// Whether the benchmark that made `dir` (named for `pid`) may still be running.
+fn owner_may_be_running(dir: &Path, pid: u32) -> bool {
+    use tauri_plugin_agent_tools::job_record::{still_running, ProcessIdentity, Verdict};
+    let recorded = std::fs::read_to_string(dir.join(OWNER_FILE)).ok().and_then(|s| s.trim().parse::<u64>().ok());
+    match recorded {
+        Some(created) => match still_running(&ProcessIdentity { pid, created }) {
+            Verdict::Alive => true,
+            Verdict::Gone | Verdict::Reused => false,
+            // No creation time was recorded or can be read: fall back to the
+            // pid alone rather than risk removing a live benchmark's scratch.
+            Verdict::Unknowable => tauri_plugin_agent_tools::tools::owned::process_exists(pid),
+        },
+        // Scratch from before owners were recorded, or one being created.
+        None => tauri_plugin_agent_tools::tools::owned::process_exists(pid),
+    }
+}
+
 /// Remove scratch left by benchmarks whose process is gone. A benchmark
 /// stopped with Ctrl-C removes its own; one killed outright cannot, and this is
 /// what keeps that from accumulating. A directory whose process is still
@@ -418,7 +451,7 @@ pub fn sweep_stale_scratch(temp: &Path) -> Vec<PathBuf> {
         let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("jan-bench-")).and_then(|p| p.parse::<u32>().ok()) else {
             continue;
         };
-        if pid == std::process::id() || tauri_plugin_agent_tools::tools::owned::process_exists(pid) {
+        if pid == std::process::id() || owner_may_be_running(&entry.path(), pid) {
             continue;
         }
         if entry.path().is_dir() && std::fs::remove_dir_all(entry.path()).is_ok() {
@@ -681,6 +714,44 @@ checks = [{ kind = "result_contains", text = "42" }, { kind = "file_absent", pat
         assert!(!stale.exists());
         assert!(mine.exists(), "a running benchmark's scratch was removed");
         assert!(unrelated.exists() && file.exists(), "something that is not benchmark scratch was removed");
+    }
+
+    /// #252: a scratch directory whose pid now belongs to an unrelated process
+    /// is still stale. Its owner record names the benchmark's creation time, so
+    /// a reused pid is not mistaken for the benchmark; the real owner, still
+    /// running, keeps its scratch.
+    #[test]
+    fn scratch_whose_pid_was_reused_is_swept_and_its_real_owners_is_kept() {
+        use tauri_plugin_agent_tools::job_record::creation_time_of;
+        let mut cmd = if cfg!(windows) {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/c", "ping -n 30 127.0.0.1 >nul"]);
+            c
+        } else {
+            let mut c = std::process::Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let mut child = cmd.stdout(std::process::Stdio::null()).spawn().unwrap();
+        let pid = child.id();
+        let created = creation_time_of(pid).expect("the host reports a creation time");
+
+        let reused = tempfile::tempdir().unwrap();
+        let stale = scratch_dir(reused.path(), pid);
+        claim_scratch_as(&stale, created + 1).unwrap();
+        std::fs::create_dir_all(stale.join("task-a")).unwrap();
+        let live = tempfile::tempdir().unwrap();
+        let running = scratch_dir(live.path(), pid);
+        claim_scratch_as(&running, created).unwrap();
+
+        let swept_reused = sweep_stale_scratch(reused.path());
+        let swept_live = sweep_stale_scratch(live.path());
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(swept_reused, vec![stale.clone()], "scratch whose pid was reused was kept");
+        assert!(!stale.exists());
+        assert!(swept_live.is_empty() && running.exists(), "a running benchmark's scratch was removed");
     }
 
     /// Cancellation: a benchmark stopped part-way says it is incomplete, runs
