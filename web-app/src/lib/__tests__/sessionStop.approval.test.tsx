@@ -23,8 +23,11 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 describe('stop_session is never answered by a standing grant', () => {
   beforeEach(() => {
     useToolApproval.setState({
-      approvedTools: { A: ['stop_session'] },
-      approvedToolsGlobal: ['stop_session'],
+      // `write` is granted alongside stop_session so the test can show the
+      // same grants still answer an ordinary tool. Allow-all MCP alone no
+      // longer covers built-in tools (517aecae8).
+      approvedTools: { A: ['stop_session', 'write'] },
+      approvedToolsGlobal: ['stop_session', 'write'],
       allowAllMCPPermissions: true,
       approvedMcpTools: {},
       approvedServers: [],
@@ -46,6 +49,9 @@ describe('stop_session is never answered by a standing grant', () => {
     expect(settled).toBe(false)
     expect(useToolApprovalRequests.getState().pending.c1?.toolName).toBe('stop_session')
     // A tool that is not always-ask is still answered by those grants.
+    // "Allow all MCP" covers MCP tools only, so the built-in `write` needs a
+    // grant of its own -- the same always-allow kind stop_session ignores.
+    useToolApproval.setState({ approvedToolsGlobal: ['stop_session', 'write'] })
     await expect(
       useToolApprovalRequests.getState().requestApproval('c2', 'write', 'A')
     ).resolves.toBe(true)

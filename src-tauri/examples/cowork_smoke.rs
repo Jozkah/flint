@@ -1131,6 +1131,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_execution_timeline,
     },
     Scenario {
+        name: "timeline-diff-by-invocation",
+        run: scenario_timeline_diff_by_invocation,
+    },
+    Scenario {
         name: "timeline-shows-what-a-command-used",
         run: scenario_timeline_resources,
     },
@@ -2394,7 +2398,7 @@ fn choose_access(ctx: &Ctx, label: &str) -> ScenarioResult {
 /// The run mode, chosen the same way: attaching a repository starts a session
 /// in Review first, which withholds every tool that could change anything.
 fn choose_mode(ctx: &Ctx, label: &str) -> ScenarioResult {
-    choose_from_menu(ctx, "What Jan may do", label)
+    choose_from_menu(ctx, "What Flint may do", label)
 }
 
 /// Open the dropdown whose trigger is labelled `trigger` and pick `label`.
@@ -2937,13 +2941,13 @@ fn apply_child(ctx: &Ctx, task: &str) -> Result<String, Failure> {
 /// 4. the review list names each child's task, branch, base, worktree, files
 ///    and ending -- one completed, one completed after it, one failed, one
 ///    cancelled by stopping the run;
-/// 5-7. one child's diff is opened and one hunk of two is applied: the folder
-///    holds that hunk and not the other;
+/// 5. (through 7) one child's diff is opened and one hunk of two is applied:
+///    the folder holds that hunk and not the other;
 /// 8. a second child's change is refused against an edit made in the folder
 ///    since, and nothing of it -- not even its new file -- is written;
 /// 11. the failed and cancelled children are shown as such and cannot be
-///    reviewed until the person acknowledges it, and a proposal made anyway
-///    says so;
+///     reviewed until the person acknowledges it, and a proposal made anyway
+///     says so;
 /// 10. a junction out of a child's worktree refuses its proposal.
 ///
 /// Phase two restarts the app and checks what is still waiting.
@@ -5289,6 +5293,137 @@ fn scenario_execution_timeline(ctx: &Ctx) -> ScenarioResult {
 
 /// A new process on the kept profile: the same rows, in the same order, with
 /// the same states, read from disk, with nothing sent.
+/// Jozkah/jan#244: a provider numbers its tool calls per request, so two turns
+/// that each edit a file reuse the same call id (`call_1` here). Each edit's
+/// row on the timeline still opens to its own diff: the diff is looked up by
+/// the call's invocation, not by the call id alone, which would give both rows
+/// the later turn's diff.
+fn scenario_timeline_diff_by_invocation(ctx: &Ctx) -> ScenarioResult {
+    let turn = |file: &str, before: &str, after: &str| {
+        [
+            format!("write:{}", serde_json::json!({ "path": file, "content": format!("{before}\nbody\n") })),
+            format!(
+                "edit:{}",
+                serde_json::json!({ "path": file, "edits": [{ "old_string": before, "new_string": after }] })
+            ),
+        ]
+    };
+    // The fixture routes on a session's first user message, so the second
+    // turn is scripted by re-scripting the same route before it is sent;
+    // `fresh_turns` makes it answer that turn afresh despite turn one's results.
+    let script = |file: &str, before: &str, after: &str, done: &str| {
+        script_routes(
+            ctx,
+            &serde_json::json!([{ "match": "DIFF-TURNS", "tools": turn(file, before, after), "summary": done }]),
+            true,
+        )
+    };
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    for (file, before, after, done) in [
+        ("alpha.txt", "alpha before", "alpha after", "alpha turn done"),
+        ("bravo.txt", "bravo before", "bravo after", "bravo turn done"),
+    ] {
+        script(file, before, after, done)?;
+        // A directive verb, so the turn is offered write and edit.
+        ctx.type_into("[data-testid=\"chat-input\"]", &format!("Update the file now. DIFF-TURNS {file}"))?;
+        send_armed(ctx)?;
+        let deadline = Instant::now() + Duration::from_secs(120);
+        loop {
+            ctx.eval(
+                "const b = [...document.querySelectorAll('button')].find(x =>
+                   /^allow once$/i.test((x.textContent || '').trim()));
+                 if (b) b.click();
+                 return true;",
+            )?;
+            let finished = ctx.eval_bool(&format!(
+                "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+                   && document.body.innerText.includes({done:?});"
+            ))?;
+            if finished {
+                break;
+            }
+            ensure!(Instant::now() < deadline, "the {file} turn did not finish: {}", run_state_page(ctx));
+            std::thread::sleep(Duration::from_millis(600));
+        }
+    }
+    show_timeline(ctx)?;
+    const EDIT_ROWS: &str = "[...document.querySelectorAll('[data-testid=\"timeline-row\"]')]
+        .filter(r => (r.dataset.categories || '').includes('edits') && r.dataset.status === 'completed')";
+    // Two turns, each a write and an edit.
+    ctx.wait_until(
+        "every change on the timeline",
+        &format!("return {EDIT_ROWS}.length >= 4;"),
+        Duration::from_secs(20),
+    )?;
+    let count = ctx.eval_string(&format!("return String({EDIT_ROWS}.length);"))?;
+    let count: usize = count.parse().map_err(|e| Failure(format!("{e}: {count}")))?;
+    let invocations = ctx.eval_string(&format!(
+        "return JSON.stringify({EDIT_ROWS}.map(r => r.dataset.invocation || ''));"
+    ))?;
+    println!("      change rows' invocations: {invocations}");
+    let mut shown: Vec<(String, String)> = Vec::new();
+    for index in 0..count {
+        // Close whatever diff is open, then open this row's.
+        ctx.eval(&format!(
+            "document.querySelectorAll('[data-testid=\"timeline-diff\"]').forEach(d => {{
+               const row = d.closest('[data-testid=\"timeline-row\"]');
+               const t = row && row.querySelector('[data-row-toggle]');
+               if (t) t.click();
+             }});
+             {EDIT_ROWS}[{index}].querySelector('[data-row-toggle]').click();
+             return true;"
+        ))?;
+        ctx.wait_until(
+            &format!("the diff of change {index}"),
+            "const d = document.querySelectorAll('[data-testid=\"timeline-diff\"]');
+             return d.length === 1 && Number(d[0].dataset.hunks) >= 1;",
+            Duration::from_secs(15),
+        )?;
+        let raw = ctx.eval_string(
+            "const d = document.querySelector('[data-testid=\"timeline-diff\"]');
+             return JSON.stringify({ path: d.dataset.path || '', text: d.innerText || '' });",
+        )?;
+        let v: Value = serde_json::from_str(&raw).map_err(|e| Failure(format!("{e}: {raw}")))?;
+        let path = v["path"].as_str().unwrap_or("").to_string();
+        let text = v["text"].as_str().unwrap_or("").to_string();
+        println!(
+            "      change {index}: path={path:?} alpha={} bravo={}",
+            text.contains("alpha"),
+            text.contains("bravo")
+        );
+        shown.push((path, text));
+    }
+    for (file, own, other) in [("alpha.txt", "alpha", "bravo"), ("bravo.txt", "bravo", "alpha")] {
+        let rows: Vec<&(String, String)> = shown.iter().filter(|(p, _)| p.ends_with(file)).collect();
+        ensure!(rows.len() >= 2, "expected {file}'s write and edit on the timeline: {shown:?}");
+        for (path, text) in rows {
+            ensure!(
+                text.contains(own) && !text.contains(other),
+                "a change to {path} opened another call's diff: {text:?}"
+            );
+        }
+    }
+    // And the edits proper show their own replacement.
+    ensure!(shown.iter().any(|(p, t)| p.ends_with("alpha.txt") && t.contains("alpha after")), "alpha's edit diff is missing");
+    ensure!(shown.iter().any(|(p, t)| p.ends_with("bravo.txt") && t.contains("bravo after")), "bravo's edit diff is missing");
+    Ok(())
+}
+
 fn scenario_execution_timeline_restart(ctx: &Ctx) -> ScenarioResult {
     let handoff = read_handoff(ctx, TIMELINE_HANDOFF, "execution-timeline")?;
     let session = handoff["session"].as_str().unwrap_or_default().to_string();
@@ -5820,22 +5955,28 @@ fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
     let session = current_cowork_session(ctx)?;
     ctx.type_into("[data-testid=\"chat-input\"]", "Read the README and summarise it. INTERRUPTED-RUN")?;
     send_armed(ctx)?;
-    // The session's persisted record, not the screen: what a fresh process
-    // will read back.
+    // The session's record as it is on disk, not in the settings store's
+    // memory or on the screen: what a fresh process will read back. Reading
+    // the store instead let this exit before the checkpoint was ever flushed.
+    let settings = data_folder()?.join("settings.json");
     let deadline = Instant::now() + Duration::from_secs(90);
     let checkpoint = loop {
-        let found = ctx.eval(&format!(
-            "const raw = await window.__TAURI_INTERNALS__.invoke('settings_get', {{ key: 'code-sessions' }}).catch(() => null);
-         let state; try {{ state = JSON.parse(raw); state = state.state ?? state; }} catch {{ return null; }}
-         const s = (state.sessions || []).find(x => x.id === {session:?});
-             const f = s && s.inFlight;
-             if (!f) return null;
-             const calls = f.turns.filter(t => t.role === 'tool' && (t.result || '').length > 0);
-             const last = f.turns[f.turns.length - 1];
-             const partial = last && last.role === 'assistant' ? last.content : '';
-             return calls.length > 0 && partial.includes('working') ? {{ runId: f.runId, turns: f.turns.length, partial: partial.length }} : null;"
-        ))?;
-        if found.is_object() {
+        let on_disk = || -> Option<Value> {
+            let file: Value = serde_json::from_str(&std::fs::read_to_string(&settings).ok()?).ok()?;
+            let sessions: Value = serde_json::from_str(file.get("code-sessions")?.as_str()?).ok()?;
+            let state = sessions.get("state").unwrap_or(&sessions);
+            let f = state["sessions"].as_array()?.iter().find(|x| x["id"] == session.as_str())?.get("inFlight")?;
+            let turns = f["turns"].as_array()?;
+            let calls = turns
+                .iter()
+                .filter(|t| t["role"] == "tool" && t["result"].as_str().is_some_and(|r| !r.is_empty()))
+                .count();
+            let last = turns.last()?;
+            let partial = if last["role"] == "assistant" { last["content"].as_str().unwrap_or("") } else { "" };
+            (calls > 0 && partial.contains("working"))
+                .then(|| serde_json::json!({ "runId": f["runId"], "turns": turns.len(), "partial": partial.len() }))
+        };
+        if let Some(found) = on_disk() {
             break found;
         }
         ensure!(
@@ -5854,7 +5995,7 @@ fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
 /// AH-026, second half: the fresh process shows the killed run's turn as
 /// interrupted -- its completed step and its unfinished reply -- and offers to
 /// continue it or to discard the unfinished reply. Nothing runs until one is
-/// chosen. Continue sends the model the recovered turns with a note from Jan,
+/// chosen. Continue sends the model the recovered turns with a note from Flint,
 /// the run finishes, and no checkpoint is left.
 fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
     let handoff = read_handoff(ctx, INTERRUPTED_HANDOFF, "cowork-run-killed-mid-turn")?;
@@ -5903,12 +6044,12 @@ fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
         std::thread::sleep(Duration::from_millis(600));
     }
     // What the model was sent: the recovered step, the unfinished reply, and
-    // the note from Jan -- the request itself, not the screen.
+    // the note from Flint -- the request itself, not the screen.
     let requests = mock_requests(ctx)?;
     let sent = requests
         .iter()
         .rev()
-        .find(|r| r.to_string().contains("Note from Jan"))
+        .find(|r| r.to_string().contains("Note from Flint"))
         .cloned()
         .unwrap_or_default();
     ensure!(!sent.is_null(), "no request carried the recovery note: {requests:?}");
@@ -7959,7 +8100,7 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
                     "return JSON.stringify({
                        cards: [...document.querySelectorAll('[data-testid=\"inline-approval-card\"]')].map(c => c.textContent),
                        allowOnce: [...document.querySelectorAll('button')].filter(b => /allow once/i.test(b.textContent || '')).length,
-                       mode: [...document.querySelectorAll('button')].filter(b => b.getAttribute('aria-label') === 'What Jan may do').map(b => b.textContent),
+                       mode: [...document.querySelectorAll('button')].filter(b => b.getAttribute('aria-label') === 'What Flint may do').map(b => b.textContent),
                        running: [...document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]')].map(e => e.getAttribute('data-testid')),
                        text: (document.body.innerText || '').slice(-1500) });",
                 )
@@ -8070,13 +8211,11 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
                 "return !!document.querySelector('[data-testid=\"session-stop-notice\"]');",
                 Duration::from_secs(30),
             )?;
-            let notice = ctx.eval_string(&format!(
-                "const n = document.querySelector('[data-testid=\"session-stop-notice\"]');
-                 return JSON.stringify({{ text: n.textContent, from: n.getAttribute('data-from-session'),
+            let notice = ctx.eval_string("const n = document.querySelector('[data-testid=\"session-stop-notice\"]');
+                 return JSON.stringify({ text: n.textContent, from: n.getAttribute('data-from-session'),
                    markup: n.querySelectorAll('strong,em,a,img,code').length,
                    stop: !!document.querySelector('[data-testid=\"cowork-stop\"]'),
-                   send: !!document.querySelector('[data-test-id=\"send-message-button\"]') }});"
-            ))?;
+                   send: !!document.querySelector('[data-test-id=\"send-message-button\"]') });")?;
             println!("B stop notice: {notice}");
             let n: Value = serde_json::from_str(&notice).map_err(|e| Failure(e.to_string()))?;
             let t = n["text"].as_str().unwrap_or_default();
@@ -10035,13 +10174,12 @@ fn recorded_dispatch(needle: &str) -> Option<Value> {
     text.lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .filter(|s| s["agent"] != "replay")
-        .filter(|s| {
+        .rfind(|s| {
             s["payload"]["messages"].as_array().is_some_and(|m| {
                 m.iter()
                     .any(|x| x["role"] == "user" && x["content"].to_string().contains(needle))
             })
         })
-        .last()
 }
 
 /// JS for the `i`th prompt snapshot panel, opened.
@@ -11458,8 +11596,7 @@ impl Ctx {
             let ours = records
                 .iter()
                 .skip(before)
-                .filter(|r| r.get("marker").and_then(Value::as_str) == Some(text))
-                .last();
+                .rfind(|r| r.get("marker").and_then(Value::as_str) == Some(text));
             if idle {
                 if let Some(record) = ours {
                     std::thread::sleep(Duration::from_millis(1500));
@@ -11616,8 +11753,8 @@ fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> Scenar
             shown.get("total")
         );
         ensure!(
-            shown.get("cached").map_or(true, Value::is_null)
-                && shown.get("uncached").map_or(true, Value::is_null),
+            shown.get("cached").is_none_or(Value::is_null)
+                && shown.get("uncached").is_none_or(Value::is_null),
             "{label}: a cached/uncached split was shown for a request whose cache was not reported"
         );
         // The row's text is its label and its value together.
@@ -11657,7 +11794,7 @@ fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> Scenar
         );
     }
     ensure!(
-        shown.get("unreported").map_or(true, Value::is_null),
+        shown.get("unreported").is_none_or(Value::is_null),
         "{label}: the popover says the cache was not reported, but the provider reported it"
     );
     let note = shown.get("note").and_then(Value::as_str).unwrap_or_default();
@@ -12552,7 +12689,7 @@ fn set_user_recall(ctx: &Ctx, on: bool) -> ScenarioResult {
     )
 }
 
-fn user_store_text(ctx: &Ctx) -> Result<String, Failure> {
+fn user_store_text(_ctx: &Ctx) -> Result<String, Failure> {
     let path = data_folder()?.join("agent-workspace/memory/records/user.jsonl");
     Ok(std::fs::read_to_string(path).unwrap_or_default())
 }
@@ -13497,7 +13634,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         .collect();
     if let Some(names) = &only {
         for name in names {
-            if !scenarios.iter().any(|s| &s.name == name) && !(self_test && name == SELF_TEST_FAIL.name) {
+            if !scenarios.iter().any(|s| s.name == name) && !(self_test && name == SELF_TEST_FAIL.name) {
                 eprintln!("FATAL: no scenario named {name:?}");
                 return 2;
             }
@@ -16040,7 +16177,7 @@ fn scenario_instructions_reach_open_chat(ctx: &Ctx) -> ScenarioResult {
     let name = thread
         .pointer("/assistants/0/name")
         .and_then(Value::as_str)
-        .unwrap_or("Jan")
+        .unwrap_or("Flint")
         .to_string();
 
     let nonce = format!("SMOKE-INSTRUCTION-{}", std::process::id());
@@ -16301,24 +16438,20 @@ fn scenario_picker_rows_keyboard(ctx: &Ctx) -> ScenarioResult {
         if selected.is_err() {
             println!(
                 "      picker after Enter: {}",
-                ctx.eval_string(&format!(
-                    "const rows = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
+                ctx.eval_string("const rows = [...document.querySelectorAll('[role=\"button\"][tabindex=\"0\"]')]
                        .filter(r => (r.textContent || '').includes('smoke'))
                        .map(r => (r.textContent || '').trim().slice(0, 40) + ' pressed=' + r.getAttribute('aria-pressed'));
                      const open = [...document.querySelectorAll('input')].some(i =>
                        /search|find|model/i.test(i.getAttribute('placeholder') || ''));
                      const triggers = [...document.querySelectorAll('button')]
                        .map(b => (b.textContent || '').trim()).filter(t => /smoke/i.test(t)).slice(0, 4);
-                     return JSON.stringify({{ open, rows, triggers, active: (document.activeElement && document.activeElement.textContent || '').slice(0, 40) }});"
-                ))
+                     return JSON.stringify({ open, rows, triggers, active: (document.activeElement && document.activeElement.textContent || '').slice(0, 40) });")
                 .unwrap_or_default()
             );
             // Put the default model back by pointer so later scenarios are not
             // judged against a selection this failure left behind.
-            let _ = ctx.eval(&format!(
-                "document.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Escape', bubbles: true }}));
-                 return true;"
-            ));
+            let _ = ctx.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                 return true;");
         }
         selected
     };
@@ -18371,7 +18504,7 @@ fn rooms_round_robin_batch(ctx: &Ctx, models: &[String]) -> ScenarioResult {
         } else {
             (name_of(author_pid(speeches[i - 1])), s(speeches[i - 1], &["text"]).to_string())
         };
-        let body_after_name = text.splitn(2, ':').nth(1).unwrap_or(text).to_lowercase();
+        let body_after_name = text.split_once(':').map(|x| x.1).unwrap_or(text).to_lowercase();
         if body_after_name.contains(&prev_name.to_lowercase()) {
             prev_ok += 1;
         } else {
@@ -18795,8 +18928,7 @@ fn rooms_single_room_batch(
         let prev = msgs
             .iter()
             .filter(|x| seq_of(x) < seq_of(m))
-            .filter(|x| kind_is(x, "user") || (kind_is(x, "speech") && s(x, &["status"]) != "failed" && !s(x, &["text"]).trim().is_empty()))
-            .last();
+            .rfind(|x| kind_is(x, "user") || (kind_is(x, "speech") && s(x, &["status"]) != "failed" && !s(x, &["text"]).trim().is_empty()));
         let (prev_name, prev_text) = match prev {
             Some(x) if kind_is(x, "user") => ("User".to_string(), s(x, &["text"]).to_string()),
             Some(x) => (s(x, &["author", "name"]).to_string(), s(x, &["text"]).to_string()),
@@ -18814,7 +18946,7 @@ fn rooms_single_room_batch(
         if starts_with_name(text, &me) {
             self_ok += 1;
         }
-        let body = text.splitn(2, ':').nth(1).unwrap_or(text).to_lowercase();
+        let body = text.split_once(':').map(|x| x.1).unwrap_or(text).to_lowercase();
         if !prev_name.is_empty() && body.contains(&prev_name.to_lowercase()) {
             prev_ok += 1;
             e.2 += 1;

@@ -415,6 +415,45 @@ fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
     assert!(!outside.exists(), "the confined shell wrote the user's checkout: {seen}");
 }
 
+/// Jozkah/jan#124: a Jan-owned worktree granted as a write root keeps its
+/// `.jan` (the project's agent policy and hooks) out of the confined shell,
+/// while the rest of the worktree stays readable. Driven through the real
+/// helper, so the ACLs are the ones a `bash` call gets.
+#[test]
+fn a_worktrees_jan_is_unreadable_from_the_sandbox() {
+    let sandbox = Sandbox::new("worktree-jan");
+    let worktree = sandbox.root.join("jan-worktree");
+    std::fs::create_dir_all(worktree.join(".jan").join("agent")).expect("worktree");
+    let policy = worktree.join(".jan").join("agent").join("agent.toml");
+    std::fs::write(&policy, "policy-marker-124").expect("policy");
+    let source = worktree.join("main.rs");
+    std::fs::write(&source, "source-marker-124").expect("source");
+    let script = format!(
+        "Get-Content -LiteralPath '{}'; try {{ Get-Content -LiteralPath '{}' -ErrorAction Stop }} catch {{ 'refused-jan' }}",
+        source.display(),
+        policy.display()
+    );
+    let argv = appcontainer::helper_args(
+        &sandbox.workspace,
+        Some(&sandbox.scratch),
+        &[worktree.clone()],
+        false,
+        &powershell(),
+        &[
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script,
+        ],
+    );
+    let out = Command::new(HELPER).args(&argv).output().expect("helper");
+    let seen = text(&out);
+    appcontainer::release(&worktree);
+    assert!(seen.contains("refused-jan"), "{seen}");
+    assert!(seen.contains("source-marker-124"), "the worktree itself was unreadable: {seen}");
+    assert!(!seen.contains("policy-marker-124"), "the confined shell read the worktree's .jan: {seen}");
+}
+
 /// Whether `pid` names a running process.
 fn alive(pid: u32) -> bool {
     Command::new("tasklist")

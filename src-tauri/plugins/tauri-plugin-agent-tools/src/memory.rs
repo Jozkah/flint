@@ -133,8 +133,11 @@ pub async fn write(store: &Path, name: &str, content: &str) -> Result<String, St
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("ERROR: {e}"))?;
-    tokio::fs::write(dir.join(&file), content)
+    let path = dir.join(&file);
+    let bytes = content.as_bytes().to_vec();
+    tokio::task::spawn_blocking(move || crate::workspace::write_atomic(&path, &bytes))
         .await
+        .map_err(|e| format!("ERROR: {e}"))?
         .map_err(|e| format!("ERROR: {e}"))?;
     Ok(file)
 }
@@ -187,10 +190,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Jozkah/jan#238: a rewrite replaces the note whole and leaves no temp
+    /// file behind in the store.
+    #[tokio::test]
+    async fn a_rewrite_replaces_the_note_atomically() {
+        let root = unique_root();
+        write(&root, "prefs", "first").await.unwrap();
+        write(&root, "prefs", "second").await.unwrap();
+        assert_eq!(read(&root, "prefs").await.unwrap(), "second");
+        let names: Vec<String> = std::fs::read_dir(memory_dir(&root))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["prefs.md".to_string()], "left behind: {names:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn traversal_names_are_rejected() {
         let root = unique_root();
-        for bad in ["../escape", "sub/x", "..", "", "."] {
+        for bad in ["../escape", "sub/x", "..", "", ".", "C:x", "c:probe"] {
             assert!(write(&root, bad, "x").await.is_err(), "write {bad:?}");
             assert!(read(&root, bad).await.is_err(), "read {bad:?}");
             assert!(delete(&root, bad).await.is_err(), "delete {bad:?}");

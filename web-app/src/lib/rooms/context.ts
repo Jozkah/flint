@@ -4,6 +4,7 @@
  * only the speaker's own speech is `assistant`; everything else is attributed
  * `user` content, fitted to the speaker's own context window.
  */
+import { todayLine } from '@/lib/promptSafety'
 import { estimateTokens } from '@/lib/context-manager'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
@@ -124,9 +125,12 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
   if (!room.folder) {
     // No folder means no file tools; whether any tools exist depends on web
     // search and connected MCP servers. Don't promise tools that aren't there.
+    // The tool list itself travels with the request, so the prompt names only
+    // what is certain and points at that list for the rest (MCP tools depend
+    // on which servers are connected and trusted when the turn starts).
     const webNote = web
-      ? ' You do have web tools (web_search / web_fetch), plus any connected MCP tools.'
-      : ' Unless connected MCP tools are available, you have no tools this turn; do not attempt file or command tools.'
+      ? ' You have web tools (web_search / web_fetch); any other tool you may use is in your tool list.'
+      : ' Use only the tools in your tool list this turn; if it is empty, answer without tools. Do not attempt file or command tools.'
     return `No working folder is attached, so file tools are unavailable.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')
@@ -138,6 +142,11 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
     `You can ${verbs}. The working folder is: ${room.folder}`,
     `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
     'Do not invent file contents: if a read fails, say so instead of guessing.',
+    ...(access === 'edit'
+      ? [
+          'Do not delete, overwrite or move files beyond what the objective requires; if a change is hard to undo, ask the room or the user first.',
+        ]
+      : []),
   ].join('\n')
 }
 
@@ -271,18 +280,50 @@ export type BuildPromptInput = {
   summaryCache?: Map<string, string>
 }
 
+/** The most of a room prompt the skill catalog may take, in characters. Same
+ * budget as the agent's catalog (`core::agent::context`): unbounded, a few
+ * plugin packs put hundreds of skills in front of every turn. */
+export const SKILL_CATALOG_BUDGET_CHARS = 8_000
+/** The longest description one catalog line carries; `skill_read` has the rest. */
+export const SKILL_SUMMARY_MAX_CHARS = 120
+
+/** A description cut to its first line and [`SKILL_SUMMARY_MAX_CHARS`]. */
+export function skillSummary(description: string | undefined): string {
+  const first = (description ?? '').trim().split('\n')[0].trim()
+  const chars = [...first]
+  if (chars.length <= SKILL_SUMMARY_MAX_CHARS) return first
+  return `${chars.slice(0, SKILL_SUMMARY_MAX_CHARS - 3).join('').trimEnd()}...`
+}
+
 /**
- * Render the resolved skills into a catalog block, matching the agent's own
- * skill catalog rendering exactly (`## Skill: <name>` per entry, description
- * on the next paragraph when present). Returns null when there is nothing to
- * advertise, so callers append nothing rather than an empty header.
+ * Render the resolved skills into a catalog block, in the agent's own format:
+ * one line per skill, name and a short summary, within
+ * [`SKILL_CATALOG_BUDGET_CHARS`]. Standalone skills come before plugin skills,
+ * so they are what stays listed when the budget runs out; the rest are
+ * counted. Returns null when there is nothing to advertise, so callers append
+ * nothing rather than an empty header.
  */
 export function renderSkillsCatalog(skills: SkillMeta[]): string | null {
   if (skills.length === 0) return null
-  const list = skills
-    .map((s) => (s.description ? `## Skill: ${s.name}\n\n${s.description}` : `## Skill: ${s.name}`))
-    .join('\n\n')
-  return `# Skills\n\n${list}`
+  const ordered = [...skills].sort((a, b) => Number(Boolean(a.plugin)) - Number(Boolean(b.plugin)))
+  const lines: string[] = []
+  let used = 0
+  let omitted = 0
+  for (const s of ordered) {
+    const summary = skillSummary(s.description)
+    const line = summary ? `- \`${s.name}\`: ${summary}` : `- \`${s.name}\``
+    if (used + line.length + 1 > SKILL_CATALOG_BUDGET_CHARS) {
+      omitted += 1
+      continue
+    }
+    used += line.length + 1
+    lines.push(line)
+  }
+  let block = `# Skills\n\n${lines.join('\n')}`
+  if (omitted > 0) {
+    block += `\n\n${omitted} more skill${omitted === 1 ? ' is' : 's are'} not listed here to keep the prompt small.`
+  }
+  return block
 }
 
 export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt> {
@@ -291,9 +332,18 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
       ? input.contextWindow
       : FALLBACK_CONTEXT_WINDOW
   let system = buildSystemPrompt(input.room, input.speaker)
-  const skills = await resolveExtensions('rooms')
-  const catalog = renderSkillsCatalog(skills)
-  if (catalog) system = `${system}\n\n${catalog}`
+  // Skills are loaded with `skill_read`, which only a participant with tools
+  // is given; listing them to anyone else describes something it cannot use.
+  const hasTools =
+    input.speaker.kind === 'participant' && input.speaker.participant.toolAccess !== 'none'
+  if (hasTools) {
+    const catalog = renderSkillsCatalog(await resolveExtensions('rooms'))
+    if (catalog) {
+      system = `${system}\n\n${catalog}\n\nCall \`skill_read\` with a skill's name to load its instructions before using it.`
+    }
+  }
+  // Last, so a new day does not invalidate the cached prefix before it.
+  system = `${system}\n\n${todayLine()}`
   const cue = turnCue(input.room, input.speaker, input.instruction)
   const fixed = estimateTokens(system) + estimateTokens(cue) + SAFETY_MARGIN_TOKENS
   let budget = Math.max(0, window - input.maxOutputTokens - fixed)

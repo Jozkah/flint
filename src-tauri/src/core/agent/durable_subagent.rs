@@ -276,7 +276,7 @@ pub fn list(data_folder: &Path, owner: &str) -> Vec<DurableChild> {
             ended_at_ms: r.ended_at_ms,
         })
         .collect();
-    out.sort_by(|a, b| b.started_at_ms.cmp(&a.started_at_ms));
+    out.sort_by_key(|r| std::cmp::Reverse(r.started_at_ms));
     out
 }
 

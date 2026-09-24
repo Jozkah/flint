@@ -820,11 +820,49 @@ pub fn refusal_result(refusal: &Refusal) -> String {
         serde_json::json!({
             "code": refusal.code.as_str(),
             "message": refusal.message,
-            "next": "Do not repeat this request. Ask the user for a narrower, specific folder, \
-                     or for them to paste or attach the content, or work from what you can \
-                     already read."
+            "next": refusal_next(refusal.code),
         }),
     )
+}
+
+/// What to do instead, chosen by why the request was refused. "Ask for a
+/// narrower folder" only helps when the folder was too broad; for a path
+/// already in the workspace, a system location or a malformed path it sent
+/// the model to ask the user for something that could never be granted.
+fn refusal_next(code: RefusalCode) -> &'static str {
+    match code {
+        RefusalCode::HomeDirectory
+        | RefusalCode::ContainsHome
+        | RefusalCode::DriveRoot
+        | RefusalCode::ContainsSensitive => {
+            "Do not repeat this request. Ask the user for a narrower, specific folder, \
+             or for them to paste or attach the content, or work from what you can \
+             already read."
+        }
+        RefusalCode::Workspace => {
+            "No grant is needed: the path is already inside your workspace. Use it \
+             directly with read, ls, write or bash."
+        }
+        RefusalCode::InvalidPath
+        | RefusalCode::InvalidMode
+        | RefusalCode::NotAbsolute
+        | RefusalCode::NotFound
+        | RefusalCode::Traversal => {
+            "Fix the request itself: give an existing absolute path and a mode of read or \
+             write. Do not repeat it unchanged."
+        }
+        RefusalCode::SystemWrite => {
+            "Do not repeat this request. System locations cannot be granted for writing; \
+             ask for read access instead, or ask the user to make the change themselves."
+        }
+        RefusalCode::DevicePath
+        | RefusalCode::UncPath
+        | RefusalCode::Sensitive
+        | RefusalCode::DataFolder => {
+            "Do not repeat this request; this location cannot be granted. Ask the user to \
+             paste or attach the content, or work from what you can already read."
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1140,6 +1178,24 @@ mod tests {
         assert_eq!(v["status"], "refused");
         assert_eq!(v["code"], "home_directory");
         assert!(v["next"].as_str().unwrap().contains("Do not repeat"));
+        assert!(v["next"].as_str().unwrap().contains("narrower"));
+    }
+
+    #[test]
+    fn refusal_next_does_not_suggest_a_narrower_folder_where_that_cannot_help() {
+        for code in [
+            RefusalCode::Workspace,
+            RefusalCode::SystemWrite,
+            RefusalCode::DataFolder,
+            RefusalCode::Sensitive,
+            RefusalCode::NotAbsolute,
+        ] {
+            let r = refusal_result(&Refusal::new(code, "x"));
+            let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+            assert!(!v["next"].as_str().unwrap().contains("narrower"), "{code:?}");
+        }
+        let r = refusal_result(&Refusal::new(RefusalCode::Workspace, "x"));
+        assert!(r.contains("already inside your workspace"), "{r}");
     }
 
     #[test]

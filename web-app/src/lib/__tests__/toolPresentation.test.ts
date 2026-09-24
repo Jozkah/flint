@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   describeNativeToolCall,
+  grepHighlightRegex,
+  parseGrepOutput,
+  splitGrepMatches,
   parseBashOutput,
   parseWebFetchOutput,
 } from '../toolPresentation'
@@ -160,7 +163,7 @@ describe('describeNativeToolCall for agent tools', () => {
   it('leads with the pattern for find and grep, path as detail', () => {
     expect(
       describeNativeToolCall(agent, 'grep', { pattern: 'TODO', path: 'src' })
-    ).toEqual({ variant: 'workspace', tool: 'grep', target: 'TODO', detail: 'src' })
+    ).toEqual({ variant: 'workspace', tool: 'grep', target: 'TODO', detail: 'src', grep: { literal: false, ignoreCase: false } })
     expect(describeNativeToolCall(agent, 'find', { pattern: '**/*.rs' })).toEqual({
       variant: 'workspace',
       tool: 'find',
@@ -274,5 +277,60 @@ describe('parseBashOutput', () => {
     expect(parseBashOutput({ content: 'hi\n[exit 0]' }).text).toBe('hi')
     expect(parseBashOutput(undefined).text).toBe('')
     expect(parseBashOutput(undefined).exit).toBeUndefined()
+  })
+})
+
+describe('grep output', () => {
+  const out = [
+    'src/a.ts',
+    '  1- ctx',
+    '  2: const foo = 1',
+    '  --',
+    '  9: foo()',
+    '',
+    'b.rs',
+    '  4: fn foo() {}',
+    '',
+    '[Showing first 3 of 3+ matches; narrow the pattern]',
+  ].join('\n')
+
+  it('parses groups, line numbers, gaps and notes', () => {
+    const parsed = parseGrepOutput(out)!
+    expect(parsed.groups.map((g) => g.file)).toEqual(['src/a.ts', 'b.rs'])
+    expect(parsed.groups[0].lines).toEqual([
+      { line: 1, match: false, text: 'ctx' },
+      { line: 2, match: true, text: 'const foo = 1' },
+      { line: 9, match: true, text: 'foo()' },
+    ])
+    expect(parsed.groups[0].gaps).toEqual([2])
+    expect(parsed.notes[0]).toMatch(/^Showing first 3 of 3\+/)
+  })
+
+  it('falls back on non-grouped text', () => {
+    expect(parseGrepOutput('No matches.')).toBeUndefined()
+    expect(parseGrepOutput('ERROR: invalid pattern: x')).toBeUndefined()
+    expect(parseGrepOutput('a.ts:1:foo')).toBeUndefined()
+  })
+
+  it('highlights matches, honouring literal and ignore-case', () => {
+    const re = grepHighlightRegex('fo+', { literal: false, ignoreCase: true })
+    expect(splitGrepMatches('x FOO y foo', re)).toEqual([
+      { text: 'x ', hit: false },
+      { text: 'FOO', hit: true },
+      { text: ' y ', hit: false },
+      { text: 'foo', hit: true },
+    ])
+    const lit = grepHighlightRegex('a.b', { literal: true, ignoreCase: false })
+    expect(splitGrepMatches('axb a.b', lit)).toEqual([
+      { text: 'axb ', hit: false },
+      { text: 'a.b', hit: true },
+    ])
+  })
+
+  it('returns no regex for invalid or empty-matching patterns', () => {
+    expect(grepHighlightRegex('(', { literal: false, ignoreCase: false })).toBeUndefined()
+    expect(grepHighlightRegex('(?i)foo', { literal: false, ignoreCase: false })).toBeUndefined()
+    expect(grepHighlightRegex('x*', { literal: false, ignoreCase: false })).toBeUndefined()
+    expect(splitGrepMatches('abc', undefined)).toEqual([{ text: 'abc', hit: false }])
   })
 })

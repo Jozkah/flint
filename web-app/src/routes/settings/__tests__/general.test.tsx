@@ -55,9 +55,30 @@ vi.mock('@/containers/LanguageSwitcher', () => ({
   default: () => <div data-testid="language-switcher">Language Switcher</div>,
 }))
 
+const dataFolderMocks = vi.hoisted(() => ({
+  open: vi.fn(),
+  stopAllModels: vi.fn(),
+  emit: vi.fn(),
+}))
+
 vi.mock('@/containers/dialogs/ChangeDataFolderLocation', () => ({
-  default: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="change-data-folder-dialog">{children}</div>
+  default: ({
+    children,
+    open,
+    onConfirm,
+  }: {
+    children: React.ReactNode
+    open?: boolean
+    onConfirm?: () => void
+  }) => (
+    <div data-testid="change-data-folder-dialog">
+      {children}
+      {open && (
+        <button data-testid="confirm-data-folder-change" onClick={onConfirm}>
+          confirm
+        </button>
+      )}
+    </div>
   ),
 }))
 
@@ -187,13 +208,13 @@ vi.mock('@/hooks/useServiceHub', () => ({
       relocateJanDataFolder: vi.fn(),
     }),
     models: () => ({
-      stopAllModels: vi.fn(),
+      stopAllModels: dataFolderMocks.stopAllModels,
     }),
     dialog: () => ({
-      open: vi.fn().mockResolvedValue('/test/path'),
+      open: dataFolderMocks.open,
     }),
     events: () => ({
-      emit: vi.fn(),
+      emit: dataFolderMocks.emit,
     }),
     window: () => ({
       openLogsWindow: vi.fn(),
@@ -311,8 +332,39 @@ describe('General Settings Route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetUnavailableJanDataFolder.mockResolvedValue(undefined)
+    dataFolderMocks.open.mockResolvedValue('/test/path')
     // Reset the mock to return a promise that resolves immediately by default
   })
+
+  // The suite runs with IS_WINDOWS = true, so drive roots are what isRootDir
+  // treats as root here.
+  it.each(['C:\\', 'D:'])(
+    'rejects root data folder %s before unloading models (#232)',
+    async (rootPath) => {
+      const { toast } = await import('sonner')
+      dataFolderMocks.open.mockResolvedValue(rootPath)
+      const Component = GeneralRoute.component as React.ComponentType
+      await act(async () => {
+        render(<Component />)
+      })
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle('settings:dataFolder.appData'))
+      })
+      const confirm = screen.queryByTestId('confirm-data-folder-change')
+      if (confirm) {
+        await act(async () => {
+          fireEvent.click(confirm)
+        })
+      }
+
+      expect(dataFolderMocks.stopAllModels).not.toHaveBeenCalled()
+      expect(dataFolderMocks.emit).not.toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalledWith(
+        'settings:general.couldNotRelocateToRoot'
+      )
+    }
+  )
 
   it('should render the general settings page', async () => {
     const Component = GeneralRoute.component as React.ComponentType

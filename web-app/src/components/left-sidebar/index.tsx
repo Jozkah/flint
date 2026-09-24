@@ -1,7 +1,6 @@
-import { NavChats } from './NavChats'
 import { NavCowork } from './NavCowork'
 import { NavMain } from './NavMain'
-import { NavProjects } from './NavProjects'
+import { NavHomeGroups } from './NavHomeGroups'
 import { NavRooms } from './NavRooms'
 import { NavTabs } from './NavTabs'
 import { NavSystem } from './NavSystem'
@@ -24,6 +23,7 @@ import { isCoworkRoute } from '@/constants/routes'
 import { areaForPath, isSettingsArea } from '@/lib/shellNavigation'
 import { AppRail } from '@/components/shell/AppRail'
 import SettingsMenu from '@/containers/SettingsMenu'
+import { GroupAnnouncer } from '@/components/groups/GroupAnnouncer'
 
 /**
  * The contextual sidebar (256px, resizable 220-300px). Its contents follow the
@@ -79,26 +79,27 @@ export function LeftSidebar() {
         <>
           <div className="flex flex-col gap-1 px-2 pb-2">
             <NavTabs />
-            <NavRooms />
           </div>
-          <SidebarContent className="px-2 pb-3" />
+          {/* The room list grows with groups and rooms, so it scrolls inside
+              the sidebar rather than running under the status bar. */}
+          <SidebarContent className="px-2 pb-3">
+            <NavRooms />
+          </SidebarContent>
         </>
       ) : (
         <>
           <div className="flex flex-col gap-1 px-2 pb-2">
             <NavTabs />
-            {isCowork ? <NavCowork /> : <NavMain />}
+            {!isCowork && <NavMain />}
           </div>
+          {/* Session and chat lists scroll inside the sidebar; left in the
+              fixed header they ran under the status bar on short windows. */}
           <SidebarContent className="px-2 pb-3">
-            {!isCowork && (
-              <>
-                <NavProjects />
-                <NavChats />
-              </>
-            )}
+            {isCowork ? <NavCowork /> : <NavHomeGroups />}
           </SidebarContent>
         </>
       )}
+      <GroupAnnouncer />
       <SidebarRail />
     </Sidebar>
   )

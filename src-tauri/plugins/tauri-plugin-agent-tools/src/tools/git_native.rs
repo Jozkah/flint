@@ -285,6 +285,39 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
     }
 }
 
+/// Mark every tracked file under `<worktree>/.jan` skip-worktree, from the
+/// host, before a confined shell runs there (Jozkah/jan#124).
+///
+/// The sandbox hides a write root's `.jan` (a tmpfs over it with bubblewrap,
+/// a deny with Seatbelt and AppContainer). In a repository that commits its
+/// agent policy, git inside the sandbox would then see the tracked files as
+/// deleted or unreadable, and `git add -A && git commit` would delete the
+/// project's policy on the worktree branch. Skip-worktree tells git to trust
+/// the index for those paths: status stays clean and nothing under `.jan` can
+/// be staged as deleted. Idempotent; a folder that is not a git checkout, or
+/// has nothing tracked under `.jan`, is left alone. Returns how many paths
+/// were marked.
+pub fn skip_worktree_jan(worktree: &Path) -> Result<usize, String> {
+    let git = discover_git().ok_or_else(|| "git not found".to_string())?;
+    let (ok, listed) = run_git(&git, worktree, &["ls-files", "--", crate::tools::sandbox::JAN_DIR]);
+    if !ok {
+        // Not a repository (or git refused it): nothing is tracked to protect.
+        return Ok(0);
+    }
+    let files: Vec<&str> = listed.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    if files.is_empty() {
+        return Ok(0);
+    }
+    let mut args = vec!["update-index", "--skip-worktree", "--"];
+    args.extend(files.iter().copied());
+    let (ok, out) = run_git(&git, worktree, &args);
+    if ok {
+        Ok(files.len())
+    } else {
+        Err(out)
+    }
+}
+
 fn git_remote_urls(git: &Path, repo_dir: &Path) -> Vec<String> {
     let (ok, text) = run_git(
         git,
@@ -858,6 +891,58 @@ mod tests {
         assert!(validate_clone_dest(&project, None, &[], &g).is_err());
         assert!(validate_clone_dest(&project, None, &[granted.clone()], &g).is_ok());
         assert!(validate_clone_dest(&project, None, &[], "  ").is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Jozkah/jan#124: a repository that commits `.jan/agent/agent.toml`,
+    /// checked out as a managed worktree. Once marked, the hidden file's
+    /// absence (what the sandboxed git sees) is neither a change in status
+    /// nor something `git add -A` stages as a deletion.
+    #[test]
+    fn tracked_jan_files_are_skip_worktree_so_hiding_them_is_not_a_deletion() {
+        let Some(git) = discover_git() else {
+            eprintln!("skipped: no git");
+            return;
+        };
+        let base = std::env::temp_dir().join(format!("jan_skipwt_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let repo = base.join("repo");
+        let wt = base.join("wt");
+        std::fs::create_dir_all(repo.join(".jan/agent")).unwrap();
+        std::fs::write(repo.join(".jan/agent/agent.toml"), b"[tools]\n").unwrap();
+        std::fs::write(repo.join("main.rs"), b"fn main() {}\n").unwrap();
+        let run = |dir: &Path, args: &[&str]| -> String {
+            let mut c = Command::new(&git);
+            c.arg("-C")
+                .arg(dir)
+                .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+                .args(args);
+            hide_console(&mut c);
+            let out = c.output().unwrap();
+            assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        run(&repo, &["init", "-q"]);
+        run(&repo, &["add", "-A"]);
+        run(&repo, &["commit", "-q", "-m", "init"]);
+        run(&repo, &["worktree", "add", "-q", "-b", "s1", &wt.to_string_lossy()]);
+
+        assert_eq!(skip_worktree_jan(&wt).unwrap(), 1);
+        // Idempotent.
+        assert_eq!(skip_worktree_jan(&wt).unwrap(), 1);
+        assert!(run(&wt, &["ls-files", "-v", "--", ".jan"]).starts_with("S "));
+
+        // What the sandbox shows git: the file is not there.
+        std::fs::remove_dir_all(wt.join(".jan")).unwrap();
+        assert_eq!(run(&wt, &["status", "--porcelain"]).trim(), "");
+        run(&wt, &["add", "-A"]);
+        assert_eq!(run(&wt, &["diff", "--cached", "--name-only"]).trim(), "");
+        // The branch still carries the policy.
+        assert!(run(&wt, &["ls-tree", "-r", "--name-only", "HEAD"]).contains(".jan/agent/agent.toml"));
+
+        // Nothing tracked under .jan, and not a repository at all: no-ops.
+        assert_eq!(skip_worktree_jan(&base).unwrap(), 0);
+        let _ = run(&repo, &["worktree", "remove", "--force", &wt.to_string_lossy()]);
         let _ = std::fs::remove_dir_all(&base);
     }
 

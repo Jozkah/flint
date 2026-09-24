@@ -626,7 +626,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
         // way to reach the process builder for a local server.
         let build_cmd = |use_override: bool| -> Command {
-            let mut cmd = Command::new(config_params.command.clone());
+            let mut cmd = Command::new(super::launch::launchable_program(&config_params.command));
             if use_override
                 && config_params.command == "npx"
                 && can_override_npx(bun_x_path.display().to_string())
@@ -880,7 +880,7 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
 /// the app log while the server's own log was clean.
 fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
-    let level_token = scrubbed.trim_start().split_whitespace().next().map(|t| {
+    let level_token = scrubbed.split_whitespace().next().map(|t| {
         t.trim_matches(|c: char| !c.is_ascii_alphabetic())
             .to_ascii_uppercase()
     });
@@ -892,20 +892,6 @@ fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
         _ => log::Level::Info,
     };
     (level, format!("[mcp-stderr:{server_name}] {scrubbed}"))
-}
-
-#[cfg(test)]
-mod stderr_log_tests {
-    #[test]
-    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
-        let (level, text) =
-            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
-        assert_eq!(level, log::Level::Error);
-        assert!(!text.contains("AAAABBBB"), "{text}");
-        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
-        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
-        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
-    }
 }
 
 /// Uses `reqwest13` because rmcp's streamable-http transport is implemented for
@@ -946,7 +932,10 @@ where
         client,
         StreamableHttpClientTransportConfig::with_uri(url.to_string()),
     );
-    handler.serve(transport).await.map_err(|e| e.to_string())
+    handler
+        .serve(transport)
+        .await
+        .map_err(|e| super::oauth::redact_url(&e.to_string(), url))
 }
 
 fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
@@ -1026,12 +1015,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
                         return Ok(true);
                     }
                 } else {
+                    // Name only: this is another application's process, and
+                    // its command line can carry its own secrets (Jozkah/jan#257).
                     log::warn!(
-                    "Lock file PID {} is alive but NOT an MCP process (name: {}, cmd: {:?}). Lock file is stale.",
-                    lock.pid,
-                    process_info.name,
-                    process_info.cmd
-                );
+                        "Lock file PID {} is alive but NOT an MCP process (name: {}). Lock file is stale.",
+                        lock.pid,
+                        process_info.name,
+                    );
                     // PID reused by another process, clean up stale lock file
                     check_and_cleanup_stale_lock(app, port).await?;
                 }
@@ -1051,12 +1041,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
         None => return Ok(false),
     };
 
+    // Not the command line: until the check below, this may be any other
+    // application, and its arguments can carry its secrets (Jozkah/jan#257).
     log::info!(
-        "Found process on port {}: PID={}, name={}, cmd={:?}",
+        "Found process on port {}: PID={}, name={}",
         port,
         process_info.pid,
         process_info.name,
-        process_info.cmd
     );
 
     if !jan_utils::network::is_orphaned_mcp_process(&process_info) {
@@ -1414,4 +1405,18 @@ pub fn add_server_config_with_path<R: Runtime>(
         .map_err(|e| format!("Failed to write config file: {e}"))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod stderr_log_tests {
+    #[test]
+    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
+        let (level, text) =
+            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
+        assert_eq!(level, log::Level::Error);
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
+        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
+        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
+    }
 }

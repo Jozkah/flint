@@ -197,59 +197,74 @@ pub(crate) fn repair_dangling_tool_calls(messages: &mut Vec<serde_json::Value>) 
     repaired
 }
 
-/// Re-escape lone backslashes inside JSON string literals: a backslash not
-/// followed by a legal JSON escape (`"`, `\`, `/`, `b`, `f`, `n`, `r`, `t`, or
-/// `u` plus four hex digits) is doubled. Fixes Windows paths streamed raw
-/// (`C:\Users\...`, where `\U` is not a legal escape). Text outside string
-/// literals is left untouched.
+/// Re-escape raw backslashes inside JSON string literals. A literal that
+/// contains at least one backslash not followed by a legal JSON escape (`"`,
+/// `\`, `/`, `b`, `f`, `n`, `r`, `t`, or `u` plus four hex digits) was
+/// evidently streamed with raw backslashes -- a Windows path such as
+/// `C:\Users\me\file.txt`, where `\U` is illegal. In such a literal every
+/// backslash is literal, including the ones that happen to spell a legal
+/// escape (`\f`ile, `\n`ew, `\r`epos), so each is doubled; only `\"` (which
+/// keeps the literal closed where the model meant it) and an existing `\\`
+/// pair are kept. A literal whose escapes are all legal is left untouched, as
+/// is all text outside string literals.
 fn sanitize_invalid_json_escapes(s: &str) -> String {
+    fn legal_escape(chars: &[char], i: usize) -> bool {
+        match chars.get(i + 1) {
+            Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') => true,
+            Some('u') => {
+                chars.len() > i + 5 && chars[i + 2..i + 6].iter().all(|h| h.is_ascii_hexdigit())
+            }
+            _ => false,
+        }
+    }
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len() + 8);
-    let mut in_str = false;
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        if !in_str {
-            if c == '"' {
-                in_str = true;
-            }
-            out.push(c);
-            i += 1;
+        out.push(c);
+        i += 1;
+        if c != '"' {
             continue;
         }
-        match c {
-            '"' => {
-                in_str = false;
-                out.push(c);
-                i += 1;
+        // Find the end of this string literal, JSON-style: a backslash
+        // consumes the next character, an unescaped quote closes it.
+        let start = i;
+        let mut end = i;
+        let mut raw = false;
+        while end < chars.len() && chars[end] != '"' {
+            if chars[end] == '\\' {
+                raw |= !legal_escape(&chars, end);
+                end += 2;
+            } else {
+                end += 1;
             }
-            '\\' => {
-                let next = chars.get(i + 1).copied();
-                let legal = match next {
-                    Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') => true,
-                    Some('u') => {
-                        chars.len() > i + 5
-                            && chars[i + 2..i + 6].iter().all(|h| h.is_ascii_hexdigit())
-                    }
-                    _ => false,
-                };
-                match (legal, next) {
-                    (true, Some(n)) => {
-                        out.push(c);
+        }
+        let end = end.min(chars.len());
+        let mut j = start;
+        while j < end {
+            let ch = chars[j];
+            if ch == '\\' && raw {
+                match chars.get(j + 1) {
+                    Some(&n @ ('"' | '\\')) => {
+                        out.push('\\');
                         out.push(n);
-                        i += 2;
+                        j += 2;
                     }
                     _ => {
                         out.push_str("\\\\");
-                        i += 1;
+                        j += 1;
                     }
                 }
-            }
-            _ => {
-                out.push(c);
-                i += 1;
+            } else {
+                out.push(ch);
+                j += 1;
             }
         }
+        if end < chars.len() {
+            out.push('"');
+        }
+        i = end + 1;
     }
     out
 }
@@ -300,6 +315,7 @@ fn first_json_object(s: &str) -> Option<&str> {
     for (i, c) in s[start..].char_indices() {
         if in_str {
             if esc {
+                // The character after a backslash is escaped, whatever it is.
                 esc = false;
             } else if c == '\\' {
                 esc = true;
@@ -335,9 +351,7 @@ fn first_json_object(s: &str) -> Option<&str> {
 ///   scalar, malformed inside the object) -> None: the caller must refuse the
 ///   call and tell the model, never run it with invented arguments.
 pub(crate) fn recover_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
-    let Some(function) = tc.get("function") else {
-        return None;
-    };
+    let function = tc.get("function")?;
     match function.get("arguments") {
         // Absent and null are the providers' "no arguments" spelling: valid as-is.
         None | Some(Value::Null) => Some(Value::Object(Default::default())),
@@ -371,9 +385,7 @@ pub(crate) fn parse_tool_args(tc: &serde_json::Value) -> Option<serde_json::Valu
 /// the recovered object, so the history resends well-formed JSON and every
 /// dispatch site that re-parses the string gets the same object.
 pub(crate) fn normalize_tool_call_args(tc: &serde_json::Value) -> Option<serde_json::Value> {
-    let Some(function) = tc.get("function") else {
-        return None;
-    };
+    let function = tc.get("function")?;
     match function.get("arguments") {
         None | Some(Value::Null) | Some(Value::Object(_)) => Some(tc.clone()),
         Some(Value::String(raw)) => {
@@ -414,6 +426,125 @@ pub(crate) fn normalize_tool_call_args(tc: &serde_json::Value) -> Option<serde_j
 /// normalises the string so the upstream sees clean JSON.
 pub(crate) fn arguments_are_executable(tc: &serde_json::Value) -> bool {
     recover_tool_call_args(tc).is_some()
+}
+
+/// Why a tool call's arguments are not executable, phrased for the model.
+/// `None` when [`arguments_are_executable`] accepts the call.
+pub(crate) fn malformed_arguments_reason(tc: &serde_json::Value) -> Option<String> {
+    if arguments_are_executable(tc) {
+        return None;
+    }
+    let Some(function) = tc.get("function") else {
+        return Some("the call has no `function` object".to_string());
+    };
+    let Some(args) = function.get("arguments") else {
+        // Absent arguments are the "no arguments" spelling and executable;
+        // reaching here means the function entry itself is not an object.
+        return Some("the `function` entry is not a JSON object".to_string());
+    };
+    let Some(raw) = args.as_str() else {
+        return Some(format!(
+            "the arguments were a JSON {} instead of a JSON object",
+            json_kind(args)
+        ));
+    };
+    Some(
+        match serde_json::from_str::<serde_json::Value>(raw.trim()) {
+            Ok(v) => format!(
+                "the arguments decoded to a JSON {} instead of a JSON object",
+                json_kind(&v)
+            ),
+            Err(e) => format!("the arguments are not valid JSON ({e})"),
+        },
+    )
+}
+
+fn json_kind(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// A tool call from the current turn whose arguments could not be executed
+/// or recovered. The loop answers it with a typed invalid-args refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MalformedCall {
+    /// The call id (synthesized when the model sent none).
+    pub id: String,
+    /// The tool name the model asked for (may be empty).
+    pub name: String,
+    /// The rejected argument text exactly as the model sent it.
+    pub raw: String,
+    /// Why the arguments were rejected, phrased for the model.
+    pub reason: String,
+    /// Stable fingerprint of what the model emitted: tool name plus the raw
+    /// argument text. Two turns with equal fingerprints repeated the same
+    /// broken call.
+    pub signature: String,
+}
+
+/// Makes the current turn's malformed tool calls safe to keep in the live
+/// context, instead of dropping them.
+///
+/// A dropped call leaves the model with no signal: the next request is the
+/// one it just answered, so it repeats the same broken call. Keeping the call
+/// and answering it with an error tool result (the Cline/Roo approach) lets
+/// the model see what was wrong and correct itself. The provider-visible
+/// `arguments` are replaced with `"{}"` so a strict upstream never rejects the
+/// request over them; the rejected text is quoted in the refusal instead. A call
+/// with no id gets a synthetic one so its error result can be paired with it.
+///
+/// Run after [`normalize_tool_call_args`] has healed the recoverable calls, so
+/// only calls that cannot be executed safely are rewritten here. Returns one
+/// [`MalformedCall`] per rewritten call, in order.
+pub(crate) fn neutralize_malformed_tool_calls(
+    calls: &mut [serde_json::Value],
+    turn: usize,
+) -> Vec<MalformedCall> {
+    let mut out = Vec::new();
+    for (index, call) in calls.iter_mut().enumerate() {
+        let Some(reason) = malformed_arguments_reason(call) else {
+            continue;
+        };
+        let name = call
+            .get("function")
+            .and_then(|f| f.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let raw = match call.get("function").and_then(|f| f.get("arguments")) {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(other) => other.to_string(),
+            None => String::new(),
+        };
+        let id = match call
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            Some(id) => id.to_string(),
+            None => format!("call_invalid_{turn}_{index}"),
+        };
+        if let Some(obj) = call.as_object_mut() {
+            obj.insert("id".to_string(), serde_json::json!(id));
+            if let Some(func) = obj.get_mut("function").and_then(|f| f.as_object_mut()) {
+                func.insert("arguments".to_string(), serde_json::json!("{}"));
+            }
+        }
+        out.push(MalformedCall {
+            signature: format!("{name}\u{0}{raw}"),
+            id,
+            name,
+            raw,
+            reason,
+        });
+    }
+    out
 }
 
 /// Drops "poisoned" tool calls: an assistant `tool_calls` entry whose
@@ -602,6 +733,8 @@ pub(crate) fn set_system_prompt(messages: &mut Vec<serde_json::Value>, system_pr
 /// configured prompt to the caller's own `system` message. There is no session
 /// to keep byte-stable across turns there, so appending a second prompt would
 /// only add bytes to every request; the head is rewritten in place instead.
+// Only the desktop's local server (`core::server::proxy`) calls it.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 pub(crate) fn replace_system_prompt(messages: &mut Vec<serde_json::Value>, system_prompt: &str) {
     messages.retain(|m| m.get("role").and_then(|r| r.as_str()) != Some("system"));
     messages.insert(
@@ -720,6 +853,26 @@ pub(crate) async fn resolve_upstream_for_model(
             // engine loaded from persisted settings has none -- fall through to
             // the MLX session / llama-server router resolution below.
             if let Some(api_url) = provider_cfg.base_url.clone().filter(|u| !u.is_empty()) {
+                // An endpoint the user never vouched for (a project override
+                // pointing the name elsewhere) gets only the key written next
+                // to it. If a credential is stored under the name, sending the
+                // request without it would fail obscurely, so say why instead.
+                #[cfg(feature = "cli")]
+                if !provider_cfg.may_use_stored_credentials() {
+                    let api_keys = provider_cfg.bearer_key_chain();
+                    if api_keys.is_empty()
+                        && crate::core::cli::providers::has_stored_credential(
+                            &provider_cfg.provider,
+                            &api_url,
+                        )
+                    {
+                        return Err(crate::core::cli::providers::withheld_credential_error(
+                            &provider_cfg.provider,
+                            &api_url,
+                        ));
+                    }
+                    return Ok((format!("{api_url}{destination_path}"), api_keys));
+                }
                 // A registered account takes its OAuth access token (refreshed if
                 // needed) ahead of any stored API key. Account auth is a `cli`
                 // concern; the desktop resolves credentials through its own
@@ -3025,6 +3178,7 @@ mod tests {
                 base_url: Some("https://api.openai.com/v1".into()),
                 api_key: Some("api-key".into()),
                 models: vec!["account-model".into()],
+                stored_credentials: crate::core::state::StoredCredentials::Allowed,
                 ..Default::default()
             },
         );
@@ -3845,4 +3999,81 @@ mod tests {
         assert!(recover_tool_call_args(&junk).is_none());
     }
 
+    /// Reconciled boundary: the recoverable shapes (trailing braces, bad
+    /// Windows escapes, clean calls) are never neutralised; only the
+    /// unrecoverable ones are, with their arguments made provider-safe.
+    #[test]
+    fn neutralize_only_touches_unrecoverable_calls() {
+        let mut calls = vec![
+            call_with_args_string("{\"path\":\"a.rs\"}"),
+            call_with_args_string("{\"path\":\"a.rs\"}}"),
+            call_with_args_string(r#"{"path":"C:\Users\me"}"#),
+            json!({ "id": "c4", "type": "function", "function": { "name": "now" } }),
+        ];
+        let before = calls.clone();
+        assert!(neutralize_malformed_tool_calls(&mut calls, 0).is_empty());
+        assert_eq!(calls, before, "nothing recoverable is rewritten");
+
+        let mut calls = vec![
+            call_with_args_string("{}{}"),
+            json!({ "type": "function", "function": { "name": "write", "arguments": "[1]" } }),
+            json!({ "id": "c3", "type": "function", "function": { "name": "w", "arguments": 7 } }),
+            call_with_args_string("{\"path\":\"a.rs\",\"co"),
+        ];
+        let out = neutralize_malformed_tool_calls(&mut calls, 3);
+        assert_eq!(out.len(), 4);
+        assert_eq!(out[1].id, "call_invalid_3_1", "missing id is synthesised");
+        assert_eq!(calls[1]["id"], "call_invalid_3_1");
+        assert_eq!(out[0].raw, "{}{}");
+        assert_eq!(out[2].raw, "7");
+        assert!(
+            out[0].reason.contains("not valid JSON"),
+            "{}",
+            out[0].reason
+        );
+        assert!(out[1].reason.contains("JSON array"), "{}", out[1].reason);
+        assert!(out[2].reason.contains("JSON number"), "{}", out[2].reason);
+        for call in &calls {
+            assert_eq!(call["function"]["arguments"], json!("{}"));
+            assert!(arguments_are_executable(call), "history is provider-safe");
+        }
+        // The fingerprint is stable for an identical repeat and differs
+        // when the model changes the arguments.
+        let mut again = vec![call_with_args_string("{}{}")];
+        assert_eq!(
+            neutralize_malformed_tool_calls(&mut again, 9)[0].signature,
+            out[0].signature
+        );
+        let mut changed = vec![call_with_args_string("{}{ }")];
+        assert_ne!(
+            neutralize_malformed_tool_calls(&mut changed, 9)[0].signature,
+            out[0].signature
+        );
+    }
+
+    /// A literal streamed with raw backslashes keeps every backslash literal,
+    /// even where one happens to spell a legal escape (`\n`ew, `\t`mp), and a
+    /// literal whose escapes are all legal is not reinterpreted.
+    #[test]
+    fn raw_backslash_literals_keep_legal_looking_escapes_literal() {
+        let tc = json!({"function": {"name": "read", "arguments": r#"{"path":"C:\Users\new\tmp\x.txt","note":"a\nb"}"#}});
+        let v = recover_tool_call_args(&tc).expect("recovered");
+        assert_eq!(v["path"], r"C:\Users\new\tmp\x.txt");
+        assert_eq!(v["note"], "a\nb", "a clean sibling literal is untouched");
+        // A quote escape inside a raw literal still closes where intended.
+        let tc = json!({"function": {"name": "w", "arguments": r#"{"a":"C:\dir \"q\" x"}"#}});
+        assert_eq!(recover_tool_call_args(&tc).unwrap()["a"], r#"C:\dir "q" x"#);
+    }
+
+    #[test]
+    fn a_call_without_a_function_object_is_malformed_with_a_reason() {
+        let tc = json!({ "id": "x", "type": "function" });
+        assert!(!arguments_are_executable(&tc));
+        assert_eq!(
+            malformed_arguments_reason(&tc).as_deref(),
+            Some("the call has no `function` object")
+        );
+        let tc = json!({ "id": "x", "function": { "name": "n" } });
+        assert_eq!(malformed_arguments_reason(&tc), None);
+    }
 }

@@ -1,18 +1,24 @@
-import type { ChangeActorInput, ToolResources } from '@janhq/tauri-plugin-agent-tools-api'
+import type {
+  ChangeActorInput,
+  ToolResources,
+} from '@janhq/tauri-plugin-agent-tools-api'
 import {
   advertisedToolSchemas,
   executeTool,
+  executeToolStreaming,
   previewChange,
   sandboxStatus,
+  sandboxToolchains,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
   type ComponentReport,
   type OmittedTool,
   type SandboxStatus,
+  type ToolchainReport,
   type ToolSchema,
   type WorkspaceScope,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
 
 type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
@@ -90,6 +96,23 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
 }
 
 let enforcesNow = false
+
+/**
+ * Which common toolchain programs the sandboxed shell can run, and which are
+ * installed but cannot run there, for the prompt's `# Environment` block.
+ * `null` when unknown (the backend only reports this for the Windows
+ * sandbox, and a failure is treated the same): the block then says nothing
+ * rather than guess. The backend caches the answer per app session and drops
+ * it on a readiness retry, so asking once per run is cheap.
+ */
+export async function getSandboxToolchains(): Promise<ToolchainReport | null> {
+  try {
+    return (await sandboxToolchains()) ?? null
+  } catch (e) {
+    console.warn('[agentTools] Failed to probe sandbox toolchains:', messageOf(e))
+    return null
+  }
+}
 
 /**
  * `advertised_tool_schemas` with its `scope` argument.
@@ -277,6 +300,11 @@ export type AgentToolOptions = {
   taskLabel?: string
   /** Shown in a `request_access` prompt when a subagent or child is asking. */
   origin?: string
+  /**
+   * Receives a `bash` command's output as it is produced, raw (ANSI colours
+   * intact). Given, the call streams; the returned result is unchanged.
+   */
+  onOutput?: (text: string) => void
 }
 
 export async function executeAgentTool(
@@ -309,29 +337,71 @@ export async function executeAgentTool(
       input && typeof input === 'object'
         ? (input as Record<string, unknown>)
         : {}
-    const result = await executeTool(
-      dataFolder,
-      threadId,
-      toolName,
-      args,
-      undefined,
-      undefined,
-      useAgentToolsConfig.getState().bashNetworkEnabled,
-      // The only place argument order is known. Keep these adjacent to the
-      // binding's parameter list so a change there is visible here.
-      options.readOnlyProject ?? undefined,
-      options.writeGrant ?? undefined,
-      options.scope ?? ('thread' as WorkspaceScope),
-      options.callId,
-      options.undoRun,
-      options.actor
-    )
+    const result =
+      options.onOutput && toolName === 'bash'
+        ? await runStreaming(dataFolder, threadId, toolName, args, options)
+        : await executeTool(
+            dataFolder,
+            threadId,
+            toolName,
+            args,
+            undefined,
+            undefined,
+            useAgentToolsConfig.getState().bashNetworkEnabled,
+            // The only place argument order is known. Keep these adjacent to the
+            // binding's parameter list so a change there is visible here.
+            options.readOnlyProject ?? undefined,
+            options.writeGrant ?? undefined,
+            options.scope ?? ('thread' as WorkspaceScope),
+            options.callId,
+            options.undoRun,
+            options.actor
+          )
     const resources = result.resources ?? undefined
     if (result.isError) return { error: result.content, resources }
-    return { content: result.content, diff: result.diff ?? undefined, resources }
+    return {
+      content: result.content,
+      diff: result.diff ?? undefined,
+      resources,
+    }
   } catch (e) {
     return { error: messageOf(e) }
   }
+}
+
+/**
+ * `executeTool` over the streaming command, forwarding each output chunk to
+ * `options.onOutput` in order. Same arguments, same result.
+ */
+async function runStreaming(
+  dataFolder: string,
+  threadId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+  options: AgentToolOptions
+) {
+  const onOutput = options.onOutput
+  const channel = new Channel<{ seq: number; text: string }>()
+  let next = 0
+  const early = new Map<number, string>()
+  // Chunks carry a monotonic `seq`; deliver strictly in order.
+  channel.onmessage = (chunk) => {
+    early.set(chunk.seq, chunk.text)
+    while (early.has(next)) {
+      onOutput?.(early.get(next) as string)
+      early.delete(next)
+      next += 1
+    }
+  }
+  return executeToolStreaming(dataFolder, threadId, toolName, args, channel, {
+    allowNetwork: useAgentToolsConfig.getState().bashNetworkEnabled,
+    readOnlyProject: options.readOnlyProject ?? undefined,
+    writeGrant: options.writeGrant ?? undefined,
+    scope: options.scope ?? ('thread' as WorkspaceScope),
+    callId: options.callId,
+    undoRun: options.undoRun,
+    actor: options.actor,
+  })
 }
 
 /**
@@ -394,7 +464,10 @@ export async function sweepThreadWorkspaces(
     if (!dataFolder) return 0
     return await threadWorkspaceSweep(dataFolder, liveThreadIds)
   } catch (e) {
-    console.warn('[agentTools] Failed to sweep thread workspaces:', messageOf(e))
+    console.warn(
+      '[agentTools] Failed to sweep thread workspaces:',
+      messageOf(e)
+    )
     return 0
   }
 }

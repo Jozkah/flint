@@ -170,7 +170,7 @@ impl ToolPermissions {
     ) -> Option<&ResourceRule> {
         self.ask
             .iter()
-            .find(|r| r.matches_allow(name, resources, subject))
+            .find(|r| r.matches_ask(name, resources, subject))
     }
 
     /// Filesystem directories the allow rules make readable, derived from their

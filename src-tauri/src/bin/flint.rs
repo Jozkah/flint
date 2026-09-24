@@ -1361,6 +1361,8 @@ fn handle_bench(cmd: BenchCommands) {
                 eprintln!("  removed scratch left by an earlier benchmark: {}", swept.display());
             }
             let scratch = bench::scratch_dir(&temp, std::process::id());
+            bench::claim_scratch(&scratch)
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the scratch folder is not usable: {e}")))?;
             // The first Ctrl-C stops the task in flight -- its whole process
             // tree -- and the report is written as incomplete.
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -2920,6 +2922,8 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
 /// Build the server config object for `mcp add` from the CLI flags. Funnels
 /// through the shared `core::cli::mcp::build_server_config` so the TUI form and
 /// the headless flags can never diverge on the config shape or validation.
+// One argument per `mcp add` flag, as clap hands them over.
+#[allow(clippy::too_many_arguments)]
 fn build_mcp_config(
     command: Option<String>,
     args: Vec<String>,

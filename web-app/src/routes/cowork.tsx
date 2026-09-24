@@ -232,11 +232,18 @@ import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
-import { TeamControl, awaitingDecision } from '@/lib/coworkTeamControl'
+import {
+  COWORK_DECISION_WINDOW_MS,
+  TeamControl,
+  awaitingDecision,
+} from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
-import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
+import {
+  orphans as orphanWorktrees,
+  sessionWorktreeBranch,
+} from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -251,7 +258,12 @@ import {
   emptyManifest as emptyCompatManifest,
 } from '@/lib/claudeCompat'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
-import { accessOf, effectiveAccess, runCarries } from '@/lib/coworkAccess'
+import {
+  accessOf,
+  effectiveAccess,
+  effectiveDowngradeKey,
+  runCarries,
+} from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
@@ -289,6 +301,7 @@ import {
   refuseGraph,
   refuseUnresolved,
   renderTeamReport,
+  renderNotRetried,
   runTeam,
   scopeConflicts,
   teamProgress,
@@ -321,7 +334,11 @@ import {
   planReviewDecision,
   renderPlanReviewResult,
 } from '@/lib/coworkPlanReview'
-import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
+import {
+  getSandboxStatus,
+  getSandboxToolchains,
+  sandboxEnforces,
+} from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
@@ -357,6 +374,8 @@ import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useMCPServers } from '@/hooks/useMCPServers'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -650,6 +669,10 @@ function CoworkPage() {
     approvedUserSkillRoots: skillRoots,
   })
 
+  // Counted only to say that they are not offered here (the run is given none).
+  const settingsMcpServers = useMCPServers(
+    (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
+  )
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
       available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -1245,6 +1268,10 @@ function CoworkPage() {
         runId: session?.id ?? null,
         finishedAt: runOrigins?.at ?? null,
         checkpoints: checkpointChain ?? [],
+        openTodos: (session?.todos?.phases ?? [])
+          .flatMap((phase) => phase.tasks)
+          .filter((task) => task.status === 'pending' || task.status === 'in_progress')
+          .length,
         handlers: {
           // Opening a file resolves against the attached folder or the
           // sandbox; a managed worktree's files are reviewed in Changes.
@@ -1263,6 +1290,7 @@ function CoworkPage() {
       displayedTurns,
       runOrigins,
       session?.id,
+      session?.todos,
       checkpointChain,
     ]
   )
@@ -1654,16 +1682,24 @@ function CoworkPage() {
   // A task the inline card asked the panel to reveal.
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
   const [focusWorkflowId, setFocusWorkflowId] = useState<string | null>(null)
-  const showTaskInPanel = useCallback((task: ActivityTask) => {
-    setRail({ kind: 'tasks' })
-    setFocusWorkflowId(task.workflowId)
-    setFocusTaskId(task.id)
-  }, [])
-  const showWorkflowInPanel = useCallback((workflowId: string) => {
-    setRail({ kind: 'tasks' })
-    setFocusTaskId(null)
-    setFocusWorkflowId(workflowId)
-  }, [])
+  // `setRail` is bound to the session in view; with empty deps these kept the
+  // one from the first render and opened the rail for no session at all.
+  const showTaskInPanel = useCallback(
+    (task: ActivityTask) => {
+      setRail({ kind: 'tasks' })
+      setFocusWorkflowId(task.workflowId)
+      setFocusTaskId(task.id)
+    },
+    [setRail]
+  )
+  const showWorkflowInPanel = useCallback(
+    (workflowId: string) => {
+      setRail({ kind: 'tasks' })
+      setFocusTaskId(null)
+      setFocusWorkflowId(workflowId)
+    },
+    [setRail]
+  )
 
   // Whether the run still holds a controller for an agent task. Consulted
   // rather than assumed, so a Stop control is only offered where pressing it
@@ -2187,6 +2223,10 @@ function CoworkPage() {
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     if ((await prepared(getSandboxStatus())) === STOPPED) return
+    // Which runtimes the shell can start, so the model does not spend calls
+    // finding out. Never throws; null (unknown) leaves the lines out.
+    const toolchains = await prepared(getSandboxToolchains())
+    if (toolchains === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -2292,6 +2332,7 @@ function CoworkPage() {
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
+      worktreeBranch: worktree?.branch ?? null,
       gitBranch,
       projectInstructions,
       // Only what the resolver made active: a file that is present but not
@@ -2300,6 +2341,15 @@ function CoworkPage() {
       compatInstructions: compatInstructionBlocks(runCompat),
       projectTooling: runTooling,
       openingInspection: inspecting,
+      // What the shell can and cannot do, stated up front. Without it the
+      // model learned by failing: probing the disk for runtimes, trying POSIX
+      // syntax, and hunting for MCP servers Cowork never offers.
+      platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+      shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+      runnable: toolchains?.runnable,
+      unavailable: toolchains?.unavailable,
+      networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+      mcpServers: [],
     })
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
@@ -2375,6 +2425,10 @@ function CoworkPage() {
         if (row) {
           row.args = call.input
           publish()
+          // #321: checkpointed now, not at the next step or text delta. A
+          // crash between here and the step's end otherwise left the saved
+          // call without its arguments, and resuming replayed it without them.
+          saveInFlight(true)
         }
         // A shell command is background work the moment it starts, and its
         // arguments are the only place the command line exists.
@@ -2549,8 +2603,15 @@ function CoworkPage() {
             // child never resolves its own access or its own
             // instructions.
             folderAccess: promptFolderAccess(origins),
+            worktreeBranch: worktree?.branch ?? null,
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
+            platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+            shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+            runnable: toolchains?.runnable,
+            unavailable: toolchains?.unavailable,
+            networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+            mcpServers: [],
           },
           signal: childAbort.signal,
           sessionTokens: 0,
@@ -2604,11 +2665,14 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, input, preview, signal) =>
+              onApprove: (callId, toolName, input, preview, signal, forced) =>
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(callId, toolName, sid, undefined, {
                     input,
+                    ...(forced
+                      ? { alwaysAsk: true, taskContext: forced.reason }
+                      : {}),
                     workspaceLabel:
                       (destination ? destination.path : current?.folder) ??
                       undefined,
@@ -2809,14 +2873,16 @@ function CoworkPage() {
         // seeding with it would pre-charge the whole replayed prompt.
         sessionTokens: 0,
         deps: {
-          sendStep: (msgs, signal) =>
-            transport.sendMessages({
+          sendStep: (msgs, signal, stepOpts) => {
+            transport.textOnlyNext = stepOpts?.textOnly === true
+            return transport.sendMessages({
               chatId: sid,
               messages: msgs,
               abortSignal: signal,
               trigger: 'submit-message',
               messageId: undefined,
-            } as any),
+            } as any)
+          },
           dispatch: (call, toolSignal) =>
             withToolTiming(call.toolCallId, () =>
               dispatchCoworkTool(call, {
@@ -2852,11 +2918,14 @@ function CoworkPage() {
                 // The prompt the chat surface already uses for tool approval,
                 // not a second one: it honours grants the user has already made
                 // and renders in the tool card the call is reported in.
-                onApprove: (callId, toolName, input, preview, signal) =>
+                onApprove: (callId, toolName, input, preview, signal, forced) =>
                   useToolApprovalRequests
                     .getState()
                     .requestApproval(callId, toolName, sid, undefined, {
                       input,
+                      ...(forced
+                        ? { alwaysAsk: true, taskContext: forced.reason }
+                        : {}),
                       workspaceLabel: current?.folder ?? undefined,
                       preview,
                       signal,
@@ -3095,6 +3164,7 @@ function CoworkPage() {
                       signal: controller.signal,
                       allowParallel,
                       control: teamControl,
+                      decisionWindowMs: COWORK_DECISION_WINDOW_MS,
                       onControl: (request, result) => {
                         if (!result.ok || request.kind === 'finish') {
                           if (!result.ok) toast.error(result.refusal.message)
@@ -3243,7 +3313,11 @@ function CoworkPage() {
                     }
                     const where = describeDestinations(plan.byTask)
                     const rendered = [
-                      renderTeamReport(outcome.report) + (outcome.decision === 'window-elapsed' ? '\n\nThe failed tasks were not restarted: nobody decided within the time a team waits for a decision.' : ''),
+                      renderTeamReport(outcome.report) +
+                        (outcome.decision === 'window-elapsed' ||
+                        outcome.decision === 'not-retried'
+                          ? `\n\n${renderNotRetried(outcome.report)}`
+                          : ''),
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                         : '',
@@ -3942,7 +4016,10 @@ function CoworkPage() {
   // conversation: behind a dialog on wide screens, a view of its own on phones.
   const detailsBody = (
     <>
-      <CoworkReadinessCard manifest={readiness} />
+      <CoworkReadinessCard
+        manifest={readiness}
+        settingsMcpServers={settingsMcpServers}
+      />
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport
         sessionId={session?.id}
@@ -4011,7 +4088,9 @@ function CoworkPage() {
           ) : null}
           {!phone && modelSelector}
           {!phone && (
-            <div className="flex min-w-0 items-center gap-1">
+            // Clips and lets the pills shrink, so on a narrow window they give
+            // way instead of sliding under "Review changes" on the right.
+            <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden [&>*]:min-w-0 [&>*]:shrink">
               {sessionControls}
             </div>
           )}
@@ -4374,10 +4453,22 @@ function CoworkPage() {
                   folders, context accounting -- moved behind the session
                   details control in the header, so the composer sits directly
                   beneath the conversation. */}
-              {folder && (session?.turns.length ?? 0) === 0 && (
+              {folder &&
+                ((session?.turns.length ?? 0) === 0 ||
+                  effective.downgradedFrom === 'managed-worktree') && (
                 <div className="px-1 pb-2">
                   <CoworkWorktreeRecovery
                     orphans={orphanWorktrees(foundWorktrees, worktree)}
+                    ownBranch={
+                      session?.id ? sessionWorktreeBranch(session.id) : undefined
+                    }
+                    downgradeNote={(() => {
+                      const key = effectiveDowngradeKey(effective)
+                      return key &&
+                        effective.downgradedFrom === 'managed-worktree'
+                        ? t(key)
+                        : undefined
+                    })()}
                     onAdopt={(record) => {
                       if (session?.id)
                         useCoworkWorktrees.getState().adopt(session.id, record)
@@ -4567,6 +4658,11 @@ function CoworkPage() {
                 }
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
+                }
+                onPreviewDiff={(sha) =>
+                  useCoworkCheckpoints
+                    .getState()
+                    .previewDiff(session?.id ?? '', sha)
                 }
                 // Newer edits Flint made itself are not someone else's work, so
                 // only the rest need an explicit acknowledgement.

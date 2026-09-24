@@ -19,6 +19,7 @@ import {
 } from '@/lib/coworkBudget'
 import {
   detectLoop,
+  loopFinalTurnNote,
   loopStopMessage,
   type ObservedCall,
 } from '@/lib/runLoopGuard'
@@ -131,6 +132,7 @@ export type HarnessRefusal = {
 }
 
 import { recoverToolArgs, firstJsonObject } from '@/lib/toolCallRepair'
+import { withToolInputs } from '@/lib/coworkTurns'
 
 // Re-exported so existing callers/tests of the old names keep working; the
 // recovery itself lives in the one shared module.
@@ -557,8 +559,22 @@ export async function consumeStep(
           // Salvage the first complete object and dispatch it as a normal call.
           // An object that already reached the SDK failed for another reason --
           // an unavailable tool, a schema violation -- and is refused below.
+          // A call to an offered tool that arrived with no arguments at all
+          // (`null`, nothing, or an empty string) is a call with an empty
+          // object: the model meant `ls {}` or `skill_list {}`. Refusing it
+          // cost a turn and taught the model nothing. A tool that needs
+          // arguments still says which one is missing when it runs.
+          const empty =
+            raw === null ||
+            raw === undefined ||
+            (typeof raw === 'string' && /^\s*(null)?\s*$/.test(raw))
           const salvaged =
-            typeof raw === 'string' ? recoverToolArgs(raw) : undefined
+            empty &&
+            refusalKindOf(String(chunk.errorText ?? '')) !== 'tool-not-offered'
+              ? {}
+              : typeof raw === 'string'
+                ? recoverToolArgs(raw)
+                : undefined
           if (salvaged) {
             const call: PendingToolCall = {
               toolCallId: chunk.toolCallId,
@@ -676,10 +692,18 @@ export function turnsFor(
 }
 
 export type RunDeps = {
-  /** One model turn. Returns the raw UI message stream. */
+  /**
+   * One model turn. Returns the raw UI message stream.
+   *
+   * `textOnly` asks for a turn in which the model may not call tools (the
+   * tools stay advertised, so the prompt prefix is unchanged, but the tool
+   * choice is `none`). Used for the one closing turn after the loop guard
+   * stops a run.
+   */
   sendStep: (
     messages: UIMessage[],
-    signal: AbortSignal
+    signal: AbortSignal,
+    opts?: { textOnly?: boolean }
   ) => Promise<ReadableStream<UIMessageChunk>>
   /** Run one tool call. Must resolve, never reject. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
@@ -831,7 +855,7 @@ export async function runTurn(opts: {
           // Not left to the transport to notice Stop: see `untilStopped`.
           const stream = await untilStopped(
 
-            deps.sendStep([...messages], operation.signal),
+            deps.sendStep(withToolInputs([...messages]), operation.signal),
 
             operation.signal,
 
@@ -998,12 +1022,27 @@ export async function runTurn(opts: {
      */
     const loop = detectLoop(observed)
     if (loop.tripped) {
+      // The guard's note rides on the last call's result, where the model
+      // reads it on its closing turn, rather than as a message the user did
+      // not write.
+      const last = result.toolCalls[result.toolCalls.length - 1]
+      const lastOutcome = last ? outcomes.get(last.toolCallId) : undefined
+      if (last && lastOutcome) {
+        outcomes.set(last.toolCallId, {
+          ...lastOutcome,
+          output: `${lastOutcome.output}\n\n${loopFinalTurnNote(loop)}`,
+        })
+      }
       if (result.text || result.toolCalls.length > 0) {
         messages.push(
           assistantMessageFor(deps.nextMessageId(), result, outcomes)
         )
       }
       deps.onStep({ step, result, turns: turnsFor(result, outcomes), outcomes })
+      step = await closingTurn(messages, deps, signal, step, (u) => {
+        usage = u
+        spend = recordSpend(spend, u)
+      })
       return {
         messages,
         steps: step,
@@ -1046,6 +1085,47 @@ export async function runTurn(opts: {
         stoppedBy: 'done',
       }
     }
+  }
+}
+
+/**
+ * One text-only turn after the loop guard stopped a run, so the model tells
+ * the user what it tried and what is in the way instead of the run ending
+ * with no message. Tool calls it makes anyway are dropped, never run. A
+ * failure here is swallowed: the run is already stopping, and the guard's
+ * own message still reaches the user.
+ */
+async function closingTurn(
+  messages: UIMessage[],
+  deps: RunDeps,
+  signal: AbortSignal,
+  step: number,
+  onUsage: (usage: Usage) => void
+): Promise<number> {
+  if (signal.aborted) return step
+  try {
+    const stream = await untilStopped(
+      deps.sendStep(withToolInputs([...messages]), signal, { textOnly: true }),
+      signal,
+      (late) => void late.cancel().catch(() => {})
+    )
+    const raw = await consumeStep(stream, deps.sink, signal)
+    const result: StepResult = { ...raw, toolCalls: [] }
+    const next = step + 1
+    deps.onResponse?.()
+    if (result.usage) onUsage(result.usage)
+    if (result.text.trim()) {
+      messages.push(assistantMessageFor(deps.nextMessageId(), result, new Map()))
+    }
+    deps.onStep({
+      step: next,
+      result,
+      turns: turnsFor(result, new Map()),
+      outcomes: new Map(),
+    })
+    return next
+  } catch {
+    return step
   }
 }
 

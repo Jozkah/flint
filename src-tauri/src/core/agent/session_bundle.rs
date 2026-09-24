@@ -48,7 +48,7 @@ pub fn check_header(bundle: &Value) -> Result<(), String> {
         }
         None => return Err("this export does not say which schema version it uses".into()),
     }
-    if bundle.get("exportId").and_then(Value::as_str).map_or(true, str::is_empty) {
+    if bundle.get("exportId").and_then(Value::as_str).is_none_or(str::is_empty) {
         return Err("this export has no id, so importing it twice could not be detected".into());
     }
     if !bundle
@@ -221,7 +221,7 @@ pub fn prepare_handoff(
     }
     // Longest first, so a folder inside the home folder is named as the
     // folder rather than as `~/...`.
-    places.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    places.sort_by_key(|p| std::cmp::Reverse(p.0.len()));
     scrub_paths(&mut out, &places);
     out["handoff"] = serde_json::json!({
         "folder": folder.map(folder_identity),

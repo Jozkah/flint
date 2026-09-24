@@ -16,7 +16,7 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
+    canonicalize_lenient, escapes_write_roots, in_scratch, is_hidden_jan_path_in, lexical_normalize, resolve_path,
     scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
@@ -35,7 +35,9 @@ const BASH_MAX_LINES: usize = 10_000;
 const GREP_MAX_LINE: usize = 500;
 const LS_DEFAULT_LIMIT: usize = 500;
 const FIND_DEFAULT_LIMIT: usize = 1000;
-const GREP_DEFAULT_LIMIT: usize = 100;
+const GREP_DEFAULT_LIMIT: usize = 300;
+/// Hard ceiling on grep matches returned to the model, whatever `limit` asks.
+const GREP_MAX_RESULTS: usize = 300;
 /// How long a `bash` call waits for the command before backgrounding it, when
 /// the caller doesn't specify `timeout`.
 const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
@@ -604,7 +606,7 @@ pub(crate) async fn execute_text(
         // deliberately do not, which is what keeps an attached folder
         // readable and unwritable.
         "read" => read(args, project_root, scratch, ctx.read_roots).await.0,
-        "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
+        "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         "write" => {
             write(
                 args,
@@ -626,8 +628,8 @@ pub(crate) async fn execute_text(
             .await
         }
         "bash" => bash(args, ctx).await,
-        "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
-        "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
+        "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
+        "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         // Memory and skills live in the store root, not the sandbox: they must
         // outlive the conversation the filesystem tools are scoped to.
         "memory_list" => memory_list(ctx.store_root).await,
@@ -638,7 +640,7 @@ pub(crate) async fn execute_text(
         "message_check" => message_check(ctx),
         // Skills go through the skills module so the tool honors the folder form
         // (`<name>/SKILL.md`) and frontmatter, matching what the UI writes.
-        "skill_list" => skill_list(ctx),
+        "skill_list" => skill_list(args, ctx),
         "skill_read" => skill_read(args, ctx),
         "skill_write" => skill_write(args, ctx),
         // Native web tools: compiled into the agent core, not an MCP server.
@@ -708,7 +710,25 @@ fn apply_edits(
         let replace_all = e.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
         let count = content.matches(old_string).count();
         if count == 0 {
-            return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            // No exact hit: fall back to tolerant matching (line endings,
+            // typographic characters, indentation, near-identical text).
+            // replace_all stays exact-only apart from line endings.
+            if replace_all {
+                let eol_old = super::fuzzy_edit::in_file_ending(&content, old_string);
+                if eol_old != old_string && content.contains(&eol_old) {
+                    let eol_new = super::fuzzy_edit::in_file_ending(&content, new_string);
+                    content = content.replace(&eol_old, &eol_new);
+                    continue;
+                }
+                return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+            }
+            match super::fuzzy_edit::resolve(&content, old_string, new_string) {
+                Ok(r) => {
+                    content.replace_range(r.range, &r.replacement);
+                    continue;
+                }
+                Err(e) => return Err(format!("ERROR: {shown}: edit {}: {e}", i + 1)),
+            }
         }
         if replace_all {
             // Rename-style replacement: every occurrence, no uniqueness guard.
@@ -1068,18 +1088,21 @@ fn render_hunk_diff(old: &str, new: &str, start: usize) -> String {
     out
 }
 
-/// Whole-file `+` preview for a write, headed by created/overwrote, each line
-/// numbered by its position in the new content. Display-only; the TUI
-/// collapses long output.
+/// Preview for a write, headed by created/overwrote. A new file is shown
+/// whole as `+` lines; an overwrite is diffed against what it replaced, so
+/// the change counts the summary derives from `+`/`-` lines are real rather
+/// than "every line added, none removed". Display-only; the TUI collapses
+/// long output.
 fn render_write_diff(prior: Option<&str>, content: &str) -> String {
-    let mut out = String::from(if prior.is_some() {
-        "@@ overwrote file @@\n"
-    } else {
-        "@@ created file @@\n"
-    });
-    for (i, line) in content.lines().enumerate() {
-        out.push_str(&format!("+ {:>4} | {line}\n", i + 1));
-    }
+    let Some(prior) = prior else {
+        let mut out = String::from("@@ created file @@\n");
+        for (i, line) in content.lines().enumerate() {
+            out.push_str(&format!("+ {:>4} | {line}\n", i + 1));
+        }
+        return out.trim_end().to_string();
+    };
+    let mut out = String::from("@@ overwrote file @@\n");
+    out.push_str(&render_hunk_diff(prior, content, 1));
     out.trim_end().to_string()
 }
 
@@ -1104,14 +1127,28 @@ fn skill_requirements_unmet(ctx: &ToolContext<'_>, name: &str, parsed: &skills::
 /// With an attached project (`ctx.skill_project`), that project's skills and
 /// its enabled plugins' skills come first, filtered by the project's own
 /// `[skills].enabled`; see [`skills::catalog_for_model`].
-fn skill_list(ctx: &ToolContext<'_>) -> String {
+/// A skill description cut to its first line and 120 characters, for a list.
+fn skill_summary(description: &str) -> String {
+    const MAX: usize = 120;
+    let first = description.trim().lines().next().unwrap_or("").trim();
+    if first.chars().count() <= MAX {
+        return first.to_string();
+    }
+    let cut: String = first.chars().take(MAX - 3).collect();
+    format!("{}...", cut.trim_end())
+}
+
+fn skill_list(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    // Case-insensitive, over the name and the summary shown: what the model
+    // searches is what it can see.
+    let query = arg_str(args, "query").map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
     let offered = skills::catalog_for_model_with_user(
         ctx.skill_project,
         ctx.store_root,
         ctx.user_skills_root,
         ctx.enabled_skills,
     );
-    offered
+    let lines = offered
         .into_iter()
         // A skill this run could not carry out is not offered: a catalogue
         // entry is an invitation, and one that always ends in a refusal is a
@@ -1149,14 +1186,19 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
                 Some(version) => format!("{} (v{version})", m.name),
                 None => m.name.clone(),
             };
-            if m.description.is_empty() {
+            let summary = skill_summary(&m.description);
+            if summary.is_empty() {
                 name
             } else {
-                format!("{name} — {}", m.description)
+                format!("{name} — {summary}")
             }
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .filter(|line| query.as_ref().is_none_or(|q| line.to_lowercase().contains(q.as_str())))
+        .collect::<Vec<_>>();
+    match (&query, lines.is_empty()) {
+        (Some(q), true) => format!("No skill matches `{q}`. Call `skill_list` without a query to see every skill."),
+        _ => lines.join("\n"),
+    }
 }
 
 /// `skill_read` tool: a skill's full instructions (frontmatter stripped). A
@@ -1289,15 +1331,52 @@ async fn read(
     // the path must not redirect the open out of the workspace.
     if symlink_escapes_any_root(root, scratch, read_roots, &target) {
         return (
-            format!("ERROR: refused to read through a symlink out of the workspace: {path}"),
+            format!(
+                "ERROR: refused to read through a symlink out of the workspace: {path}{}",
+                resolved_target(&target)
+            ),
             None,
         );
     }
+    // Windows reports a directory opened as a file as "Access is denied.
+    // (os error 5)", which reads as a permission problem.
+    if target.is_dir() {
+        return (format!("ERROR: {path} is a directory; use ls."), None);
+    }
 
+    // Looked at before it is read (Jozkah/jan#250): a multi-GB file would be
+    // allocated whole just to be cut to 64 KB, and a FIFO would block the read
+    // forever.
+    // A missing file is said plainly, with where relative paths resolve --
+    // the raw "os error 2" sent the model hunting through other directories.
+    if !target.exists() {
+        return (
+            format!(
+                "ERROR: File not found: {path}. Relative paths resolve against your \
+                 workspace ({}).",
+                root.display()
+            ),
+            None,
+        );
+    }
+    if let Err(e) = readable_file(&target).await {
+        return (format!("ERROR: {path}: {e}"), None);
+    }
     let bytes = match tokio::fs::read(&target).await {
         Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return (
+                format!(
+                    "ERROR: File not found: {path}. Relative paths resolve against your \
+                     workspace ({}).",
+                    root.display()
+                ),
+                None,
+            )
+        }
         Err(e) => return (format!("ERROR: {e}"), None),
     };
+    let total_bytes = bytes.len();
 
     // An image file is returned as an OpenAI `image_url` content part rather
     // than text: the model cannot see a raster through a base64 string. Only a
@@ -1323,7 +1402,12 @@ async fn read(
 
     let content = match String::from_utf8(bytes) {
         Ok(c) => c,
-        Err(_) => return ("ERROR: not a UTF-8 text file".to_string(), None),
+        Err(_) => {
+            return (
+                format!("ERROR: Binary file ({total_bytes} bytes); read only returns text."),
+                None,
+            )
+        }
     };
 
     let selected = if offset.is_some() || limit.is_some() {
@@ -1359,12 +1443,26 @@ async fn read(
     )
 }
 
+/// " (it resolves to X)" for a symlink refusal, so the model can see where the
+/// link leads instead of guessing. Empty when the target cannot be resolved.
+fn resolved_target(target: &Path) -> String {
+    match std::fs::canonicalize(target) {
+        Ok(real) => {
+            let shown = real.to_string_lossy();
+            let shown = shown.strip_prefix(r"\\?\").unwrap_or(&shown).to_string();
+            format!(" (it resolves to {shown})")
+        }
+        Err(_) => String::new(),
+    }
+}
+
 async fn ls(
     args: &serde_json::Value,
     root: &Path,
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let path = arg_str(args, "path").unwrap_or(".");
     let limit = arg_u64(args, "limit")
@@ -1373,7 +1471,22 @@ async fn ls(
     let target = resolve_path(root, scratch, path);
     // Names are content too: a symlinked directory would list a host directory.
     if symlink_escapes_any_root(root, scratch, read_roots, &target) {
-        return format!("ERROR: refused to list through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to list through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
+    }
+    // Windows says "The directory name is invalid. (os error 267)" for a file.
+    if target.is_file() {
+        let is_git = target.file_name().is_some_and(|n| n.eq_ignore_ascii_case(".git"));
+        return if is_git {
+            format!(
+                "ERROR: {path} is a file, not a directory (a git worktree's .git is a pointer \
+                 file; read it)."
+            )
+        } else {
+            format!("ERROR: {path} is a file, not a directory; use read.")
+        };
     }
     let mut entries = match tokio::fs::read_dir(&target).await {
         Ok(rd) => rd,
@@ -1386,7 +1499,9 @@ async fn ls(
                 // Hidden state is omitted, not reported-then-denied: an entry the
                 // agent can never open is only an invitation to try. Skipped when
                 // not hiding, so an unconfined CLI run sees its own `.jan`.
-                if hide_jan && is_hidden_jan_path(root, &entry.path().to_string_lossy()) {
+                if hide_jan
+                    && is_hidden_jan_path_in(root, write_roots, &entry.path().to_string_lossy())
+                {
                     continue;
                 }
                 let mut name = entry.file_name().to_string_lossy().into_owned();
@@ -1437,22 +1552,29 @@ async fn write(
     // decision and this call, and creating the parents first would already have
     // made directories through the swapped link. Fail closed.
     if symlink_escapes_root(root, scratch, &target) {
-        return format!("ERROR: refused to write through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to write through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
     }
-    if let Some(parent) = target.parent() {
+    let open_at = match resolved_for_open(&target) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: refused to write {path}: {e}"),
+    };
+    if let Some(parent) = open_at.parent() {
         if let Err(e) = tokio::fs::create_dir_all(parent).await {
             return format!("ERROR: {shown}: {e}");
         }
     }
     // Existence decides created/overwrote; a non-UTF8 file still exists, so it
     // must not be read_to_string's error path that answers that question.
-    let existed = tokio::fs::try_exists(&target).await.unwrap_or(false);
+    let existed = tokio::fs::try_exists(&open_at).await.unwrap_or(false);
     let unchanged = existed
-        && tokio::fs::read_to_string(&target)
+        && tokio::fs::read_to_string(&open_at)
             .await
             .is_ok_and(|prior| prior == content);
     let bytes = content.len();
-    match tokio::fs::write(&target, content).await {
+    match write_no_follow(&open_at, content).await {
         Ok(()) if unchanged => format!("No change: {shown} already had these {bytes} bytes"),
         Ok(()) if existed => format!("Overwrote {shown} ({bytes} bytes)"),
         Ok(()) => format!("Created {shown} ({bytes} bytes)"),
@@ -1484,9 +1606,16 @@ async fn edit(
     // Re-validate before the final read+write pair so a swapped symlink cannot
     // redirect either the read or the later write.
     if symlink_escapes_root(root, scratch, &target) {
-        return format!("ERROR: refused to edit through a symlink out of the workspace: {path}");
+        return format!(
+            "ERROR: refused to edit through a symlink out of the workspace: {path}{}",
+            resolved_target(&target)
+        );
     }
-    let content = match tokio::fs::read_to_string(&target).await {
+    let open_at = match resolved_for_open(&target) {
+        Ok(p) => p,
+        Err(e) => return format!("ERROR: refused to edit {path}: {e}"),
+    };
+    let content = match tokio::fs::read_to_string(&open_at).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: {shown}: {e}"),
     };
@@ -1495,10 +1624,35 @@ async fn edit(
         Err(message) => return message,
     };
 
-    match tokio::fs::write(&target, content).await {
+    match write_no_follow(&open_at, &content).await {
         Ok(()) => format!("Applied {} edit(s) to {shown}", edits.len()),
         Err(e) => format!("ERROR: {shown}: {e}"),
     }
+}
+
+/// The file a write to `target` really lands in, every symlink on the way
+/// followed -- the same resolution the containment checks just judged. The
+/// handlers open this rather than `target`, so the open does not resolve the
+/// path a second time on its own (Jozkah/jan#192).
+fn resolved_for_open(target: &Path) -> Result<PathBuf, String> {
+    canonicalize_lenient(target)
+}
+
+/// Create or truncate `path` and write `content`, refusing to follow a
+/// symlink at `path` itself where the platform can (`O_NOFOLLOW` on Unix).
+/// `path` is already resolved, so a link found there now was planted after the
+/// checks: the open fails rather than follows it. Windows has no equivalent
+/// open flag here; there the resolution above is the whole defence, and a
+/// link swapped in between the check and the open is not caught.
+async fn write_no_follow(path: &Path, content: &str) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits());
+    let mut file = options.open(path).await?;
+    file.write_all(content.as_bytes()).await?;
+    file.flush().await
 }
 
 /// `path` made absolute against this process's working directory, with `.`
@@ -1620,11 +1774,31 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // On AppContainer that means Jan-owned worktrees only: see
     // [`jail::can_confine_write_roots`].
     let owned = mask_abs.as_deref().map(crate::workspace::worktrees_dir);
+    let mut start = root.to_path_buf();
     if !write_abs.is_empty()
         && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
     {
         policy = policy.with_write_roots(write_abs.clone());
+        if ctx.sandbox {
+            policy = hide_write_root_jans(policy, &write_abs);
+            // From the host, before the shell sees the hidden `.jan`: a
+            // tracked file there must not look deleted to the sandboxed git.
+            for wr in &write_abs {
+                if let Err(e) = crate::tools::git_native::skip_worktree_jan(wr) {
+                    eprintln!("could not mark {}/.jan skip-worktree: {e}", wr.display());
+                }
+            }
+        }
+        // #322: a run whose destination is a managed worktree starts its shell
+        // there, so `npm test` or `.\check.ps1` mean the project. See
+        // [`managed_worktree_start`] for when, and why the file tools do not
+        // follow.
+        if let Some(wt) = managed_worktree_start(&write_abs, owned.as_deref()) {
+            policy = policy.with_start_dir(&wt);
+            start = policy.start_dir().to_path_buf();
+        }
     }
+    let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
     // a surface that opted in gets here (the CLI's `--sandbox`/`sandbox`
@@ -1662,7 +1836,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
         // something, just not what was asked for.
         if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
-            if let Some(construct) = proc::requires_posix_shell(command) {
+            if let Some(construct) = proc::requires_posix_shell_for(command, selected.report.cfg.flavor) {
                 return proc::posix_unavailable_error(
                     construct,
                     &selected.report.cfg,
@@ -1724,7 +1898,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     } else {
         None
     };
-    let child = match proc::spawn(&shell, command, root, sandbox_tmp.as_deref()).await {
+    let child = match proc::spawn(&shell, command, &start, sandbox_tmp.as_deref()).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
@@ -1773,6 +1947,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let shell_description = shell.description;
     let shell_flavor = shell.flavor;
     let command_text = command.to_string();
+    let cwd_display = start.display().to_string();
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
         // The tree has exited (or been stopped): what it used is final.
@@ -1789,8 +1964,19 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // and the hint would name limits that are not in force.
         // Classified first: a denial the shell caused (PowerShell given cmd's
         // `2>nul`) must not be reported as the sandbox's doing.
+        if shell_flavor == proc::ShellFlavor::PowerShell {
+            out = proc::strip_prologue(&out);
+        }
         if bash_result_failed(&out) {
             let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
+            // PowerShell runs from a drive mounted on where the shell started
+            // (the workspace, or the managed worktree), and a script it starts
+            // can land elsewhere. A path the command could not find is most
+            // often a relative path aimed at the wrong place; say where
+            // relative paths actually go.
+            if shell_flavor == proc::ShellFlavor::PowerShell && cwd_note_applies(&class, &out) {
+                out.insert_str(0, &cwd_note(&cwd_display, in_worktree));
+            }
             let hint = match class {
                 super::shell_diag::FailureClass::FileAccessDenied
                 | super::shell_diag::FailureClass::Network
@@ -1802,6 +1988,43 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             };
             if let Some(hint) = hint {
                 out.push_str(&hint);
+            }
+            // A program the sandbox cannot find may still be installed on the
+            // host, just not runnable from inside. Say where and why, so the
+            // model reports it rather than hunting for another copy to run.
+            // Not on the host either: say so just as firmly, or the model
+            // searches the profile, downloads an installer, or retries.
+            // The `py` launcher's own "no Python" exit codes are the same case.
+            let missing = if class == super::shell_diag::FailureClass::MissingCommand {
+                super::host_tools::missing_program(&out)
+            } else {
+                None
+            }
+            .or_else(|| super::host_tools::python_launcher_missing(&command_text, &out));
+            if sandboxed {
+                if let Some(name) = missing {
+                    let host = std::env::var_os("PATH").unwrap_or_default();
+                    let pathext =
+                        std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+                    match super::host_tools::locate_on_host(&name, &host, &pathext) {
+                        // The launcher itself exists when it reports 103/109;
+                        // what is missing is a Python behind it.
+                        Some(found) if name != "py" => {
+                            let profile =
+                                std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
+                            out.push_str(&super::host_tools::unavailable_hint(
+                                &name,
+                                &found,
+                                profile.as_deref(),
+                                super::host_tools::container_can_execute,
+                            ));
+                        }
+                        _ => out.push_str(&super::host_tools::not_installed_hint(&name)),
+                    }
+                }
+                if !policy.allow_network && super::host_tools::is_name_resolution_failure(&out) {
+                    out.push_str(super::host_tools::NO_NETWORK_HINT);
+                }
             }
             // Which shell ran it, on a failure only: that is when the model is
             // about to write the next command and most needs the syntax.
@@ -2346,6 +2569,66 @@ impl BashCapture {
 /// deliberately left unprefixed (a non-zero exit is not an "ERROR" string, since
 /// commands like `grep`/`diff`/`test` exit non-zero without failing); this feeds
 /// the display-only `is_error` flag so the TUI marks the call failed.
+/// Whether a failed PowerShell command's output is a path the shell could not
+/// reach from where it runs: not found / does not exist, or `Set-Location`
+/// refused ("Access is denied") on a directory outside the mounted workspace.
+fn cwd_note_applies(class: &super::shell_diag::FailureClass, out: &str) -> bool {
+    if *class == super::shell_diag::FailureClass::NotFound {
+        return true;
+    }
+    let lower = out.to_lowercase();
+    lower.contains("does not exist")
+        || (lower.contains("set-location") && lower.contains("access is denied"))
+}
+
+fn cwd_note(cwd: &str, in_worktree: bool) -> String {
+    if in_worktree {
+        format!(
+            "[cwd: {cwd} (the session worktree). Relative paths in commands resolve \
+             there; the file tools resolve relative paths against the workspace.]\n"
+        )
+    } else {
+        format!(
+            "[cwd: {cwd}. The project is not the working directory; use absolute paths.]\n"
+        )
+    }
+}
+
+/// Where `bash` starts when the run writes to a Jan-managed worktree (#322).
+///
+/// Only when the granted write roots are exactly one directory inside Jan's
+/// owned worktrees dir: that is the Managed worktree destination, and the one
+/// case where the shell is already confined to the worktree it would start in
+/// (the AppContainer ACE, the bwrap bind or the Seatbelt rule for that write
+/// root). Review-only runs have no write root and direct-edit runs a root that
+/// is not Jan's; both keep starting in the sandbox workspace.
+///
+/// Only the shell moves. The file tools keep resolving relative paths against
+/// the workspace: their gate, confinement checks, `.jan` hiding and display
+/// paths are all keyed on it, and moving them would change what every
+/// relative write in a worktree run means. The prompt and the `[cwd: ...]`
+/// note state both bases instead.
+/// Hide each write root's own `.jan` from the shell. The shell may write
+/// there, and a managed worktree or a repository edited in place carries the
+/// project's agent policy, hooks and skills under `.jan/agent`; it is hidden
+/// the same way the workspace's is (Jozkah/jan#124). Only for a sandboxed
+/// shell, like the workspace hide.
+fn hide_write_root_jans(mut policy: jail::Policy, write_roots: &[PathBuf]) -> jail::Policy {
+    for root in write_roots {
+        policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
+    }
+    policy
+}
+
+fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
+    let [only] = write_roots else {
+        return None;
+    };
+    let owned = owned?.canonicalize().ok()?;
+    let real = only.canonicalize().ok()?;
+    (real.is_dir() && real.starts_with(&owned) && real != owned).then(|| only.clone())
+}
+
 pub fn bash_result_failed(content: &str) -> bool {
     content.lines().any(|line| {
         let l = line.trim();
@@ -2376,15 +2659,65 @@ fn bytecount_newlines(bytes: &[u8]) -> usize {
 }
 
 /// Drop control characters that would corrupt the model's view of the output
-/// (NUL, bell, ANSI escapes, etc.), keeping only tab and newline. Carriage
-/// returns are already resolved by [`collapse_carriage_returns`] beforehand.
+/// (NUL, bell, etc.), keeping only tab and newline. ANSI escape sequences are
+/// removed whole, so colour codes leave no `[31m`-style residue behind.
+/// Carriage returns are already resolved by [`collapse_carriage_returns`]
+/// beforehand. The live output stream to the UI does not pass through here, so
+/// the UI can still render colours.
 fn sanitize_control(s: &str) -> String {
     if !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n') {
         return s.to_string();
     }
-    s.chars()
+    strip_ansi(s)
+        .chars()
         .filter(|&c| !c.is_control() || c == '\t' || c == '\n')
         .collect()
+}
+
+/// Remove ANSI escape sequences: CSI (`ESC [ ... final`), OSC (`ESC ] ...`
+/// ended by BEL or `ESC \`), and two-character `ESC x` escapes. A C1 CSI
+/// (`U+009B`) is treated like `ESC [`.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => match chars.next() {
+                Some('[') => skip_csi(&mut chars),
+                Some(']') => {
+                    // OSC: skip to BEL or ST.
+                    while let Some(o) = chars.next() {
+                        if o == '\u{7}' {
+                            break;
+                        }
+                        if o == '\u{1b}' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                // Character-set designation: ESC ( B and friends.
+                Some('(' | ')' | '*' | '+') => {
+                    chars.next();
+                }
+                _ => {}
+            },
+            '\u{9b}' => skip_csi(&mut chars),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Consume a CSI's parameter and intermediate bytes and its final byte.
+fn skip_csi(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    for p in chars.by_ref() {
+        if ('\u{40}'..='\u{7e}').contains(&p) {
+            break;
+        }
+    }
 }
 
 /// Keep the last `max_lines` lines and last `max_bytes` bytes of `s` (trimming
@@ -2690,17 +3023,22 @@ async fn find(
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let pattern = arg_str(args, "pattern").map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
+    // Clamped like the sibling tools' limits (Jozkah/jan#251): a model-chosen
+    // million would otherwise walk the whole tree into one result.
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
-        .unwrap_or(FIND_DEFAULT_LIMIT);
+        .unwrap_or(FIND_DEFAULT_LIMIT)
+        .clamp(1, FIND_DEFAULT_LIMIT * 10);
     let base = resolve_path(root, scratch, &path);
     if symlink_escapes_any_root(root, scratch, read_roots, &base) {
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
     }
     let root_owned = root.to_path_buf();
+    let write_owned = write_roots.to_vec();
 
     let Some(pattern) = pattern else {
         return "ERROR: missing required argument 'pattern'".to_string();
@@ -2725,7 +3063,9 @@ async fn find(
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
                 continue;
             }
-            if hide_jan && is_hidden_jan_path(&root_owned, &entry.path().to_string_lossy()) {
+            if hide_jan
+                && is_hidden_jan_path_in(&root_owned, &write_owned, &entry.path().to_string_lossy())
+            {
                 continue;
             }
             let rel = rel_to(&base, entry.path());
@@ -2739,11 +3079,56 @@ async fn find(
         if matches.is_empty() {
             "No matches.".to_string()
         } else {
-            matches.join("\n")
+            // The same byte cap `ls` and `grep` apply: long paths times the
+            // match limit can still be megabytes of tool result.
+            cap_output(&matches.join("\n"), usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+#[cfg(test)]
+mod find_cap_tests {
+    use super::*;
+
+    /// Jozkah/jan#250: a file too large to load whole is refused by `read`
+    /// and skipped (with a note) by `grep`, which still searches the rest.
+    #[tokio::test]
+    async fn huge_files_are_not_loaded_whole() {
+        let root = std::env::temp_dir().join(format!("jan_huge_read_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let huge = std::fs::File::create(root.join("model.gguf")).unwrap();
+        huge.set_len(READ_MAX_BYTES + 1).unwrap(); // sparse: no real 32 MiB write
+        drop(huge);
+        std::fs::write(root.join("notes.txt"), "needle\n").unwrap();
+
+        let (out, _) = read(&serde_json::json!({"path": "model.gguf"}), &root, None, &[]).await;
+        assert!(out.starts_with("ERROR") && out.contains("too large"), "{out}");
+
+        let out = grep(&serde_json::json!({"pattern": "needle", "path": "."}), &root, None, false, &[], &[]).await;
+        assert!(out.contains("notes.txt"), "{out}");
+        assert!(out.contains("Skipped 1 file(s) over"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#251: however many files match, the result stays within the
+    /// byte cap every sibling tool applies, and says it was cut.
+    #[tokio::test]
+    async fn find_output_is_capped() {
+        let root = std::env::temp_dir().join(format!("jan_find_cap_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let deep = root.join("a".repeat(60)).join("b".repeat(60));
+        std::fs::create_dir_all(&deep).unwrap();
+        for i in 0..1500 {
+            std::fs::write(deep.join(format!("{}_{i}.txt", "c".repeat(40))), b"").unwrap();
+        }
+        let out = find(&serde_json::json!({"pattern": "**/*.txt", "limit": 1_000_000}), &root, None, false, &[], &[]).await;
+        assert!(out.len() <= MAX_BYTES + 64, "{} bytes", out.len());
+        assert!(out.contains("[truncated: 64KB limit]"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 async fn grep(
@@ -2752,6 +3137,7 @@ async fn grep(
     scratch: Option<&Path>,
     hide_jan: bool,
     read_roots: &[PathBuf],
+    write_roots: &[PathBuf],
 ) -> String {
     let pattern = arg_str(args, "pattern").map(String::from);
     let path = arg_str(args, "path").unwrap_or(".").to_string();
@@ -2761,12 +3147,14 @@ async fn grep(
     let context = arg_u64(args, "context").map(|v| v as usize).unwrap_or(0);
     let limit = arg_u64(args, "limit")
         .map(|v| v as usize)
-        .unwrap_or(GREP_DEFAULT_LIMIT);
+        .unwrap_or(GREP_DEFAULT_LIMIT)
+        .clamp(1, GREP_MAX_RESULTS);
     let base = resolve_path(root, scratch, &path);
     if symlink_escapes_any_root(root, scratch, read_roots, &base) {
         return format!("ERROR: refused to search through a symlink out of the workspace: {path}");
     }
     let root_owned = root.to_path_buf();
+    let write_owned = write_roots.to_vec();
     let scratch_owned = scratch.map(Path::to_path_buf);
     // Owned for the blocking walk closure, which outlives this frame.
     let roots_owned = read_roots.to_vec();
@@ -2796,8 +3184,12 @@ async fn grep(
         };
 
         let is_file = base.is_file();
-        let mut matches: Vec<String> = Vec::new();
+        // Grouped per file, in walk order: (relative path, [(line no, is match, text)]).
+        let mut groups: Vec<(String, Vec<(usize, bool, String)>)> = Vec::new();
         let mut count = 0usize;
+        let mut truncated = false;
+        let mut skipped_secrets = 0usize;
+        let mut skipped_large = 0usize;
 
         let mut search_file = |file: &Path, rel_base: &Path| -> bool {
             if let Some(gp) = &glob_pat {
@@ -2813,35 +3205,50 @@ async fn grep(
                     return true;
                 }
             }
+            // Not loaded whole unless it is a regular file of a readable size
+            // (Jozkah/jan#250): skipped, not an error, so the rest is searched.
+            let fits = std::fs::metadata(file)
+                .is_ok_and(|m| m.is_file() && m.len() <= READ_MAX_BYTES);
+            if !fits {
+                skipped_large += 1;
+                return true;
+            }
             let content = match std::fs::read_to_string(file) {
                 Ok(c) => c,
                 Err(_) => return true,
             };
             let rel = rel_to(rel_base, file);
             let lines: Vec<&str> = content.lines().collect();
+            let mut entries: Vec<(usize, bool, String)> = Vec::new();
+            let mut keep_going = true;
             for (i, line) in lines.iter().enumerate() {
-                if re.is_match(line) {
-                    if context > 0 {
-                        let start = i.saturating_sub(context);
-                        let end = (i + context + 1).min(lines.len());
-                        for (j, item) in lines.iter().enumerate().take(end).skip(start) {
-                            let text = truncate_line(item);
-                            if j == i {
-                                matches.push(format!("{rel}:{}:{text}", j + 1));
-                            } else {
-                                matches.push(format!("{rel}-{}-{text}", j + 1));
-                            }
-                        }
-                    } else {
-                        matches.push(format!("{rel}:{}:{}", i + 1, truncate_line(line)));
-                    }
-                    count += 1;
-                    if count >= limit {
-                        return false;
-                    }
+                if !re.is_match(line) {
+                    continue;
                 }
+                if count >= limit {
+                    // One match past the cap is enough to report "N+".
+                    truncated = true;
+                    keep_going = false;
+                    break;
+                }
+                let start = i.saturating_sub(context);
+                let end = (i + context + 1).min(lines.len());
+                for (j, item) in lines.iter().enumerate().take(end).skip(start) {
+                    let line_no = j + 1;
+                    // Overlapping context windows: never repeat a line, but
+                    // promote an already-emitted context line that matches.
+                    if let Some(prev) = entries.iter_mut().find(|e| e.0 == line_no) {
+                        prev.1 |= j == i;
+                        continue;
+                    }
+                    entries.push((line_no, j == i, truncate_line(item)));
+                }
+                count += 1;
             }
-            true
+            if !entries.is_empty() {
+                groups.push((rel, entries));
+            }
+            keep_going
         };
 
         if is_file {
@@ -2874,7 +3281,20 @@ async fn grep(
                 {
                     continue;
                 }
-                if hide_jan && is_hidden_jan_path(&root_owned, &entry.path().to_string_lossy()) {
+                if hide_jan
+                    && is_hidden_jan_path_in(
+                        &root_owned,
+                        &write_owned,
+                        &entry.path().to_string_lossy(),
+                    )
+                {
+                    continue;
+                }
+                // AH-044 for the files a walk finds (Jozkah/jan#239): the gate
+                // only saw the directory, so a credential file is skipped here,
+                // judged by its own name and, through a link, by its target's.
+                if walked_secret(entry.path()) {
+                    skipped_secrets += 1;
                     continue;
                 }
                 if !search_file(entry.path(), &base) {
@@ -2883,19 +3303,90 @@ async fn grep(
             }
         }
 
-        if matches.is_empty() {
-            "No matches.".to_string()
-        } else {
-            cap_output(
-                &matches.join("\n"),
-                usize::MAX,
-                MAX_BYTES,
-                "\n[truncated: 64KB limit]",
+        let mut skipped_note = if skipped_secrets > 0 {
+            format!(
+                "\n\n[Skipped {skipped_secrets} credential file(s) (.env, keys, tokens); read one by name with a rule that allows it]"
             )
+        } else {
+            String::new()
+        };
+        if skipped_large > 0 {
+            skipped_note.push_str(&format!(
+                "\n\n[Skipped {skipped_large} file(s) over {} MiB or not regular files; search those with bash (rg)]",
+                READ_MAX_BYTES / (1024 * 1024)
+            ));
+        }
+        if groups.is_empty() {
+            format!("No matches.{skipped_note}")
+        } else {
+            let mut body = format_grep_groups(&groups);
+            if truncated {
+                body.push_str(&format!(
+                    "\n\n[Showing first {count} of {count}+ matches; narrow the pattern, path or glob to see the rest]"
+                ));
+            }
+            body.push_str(&skipped_note);
+            cap_output(&body, usize::MAX, MAX_BYTES, "\n[truncated: 64KB limit]")
         }
     })
     .await;
     res.unwrap_or_else(|e| format!("ERROR: {e}"))
+}
+
+/// The largest file `read` or `grep` loads. Above the 20 MiB image limit, far
+/// above what fits the 64 KB output; bigger files are for `bash` (`head`,
+/// `rg`), which stream.
+const READ_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Whether `path` is a regular file small enough to load whole
+/// (Jozkah/jan#250). A FIFO, device or other special file is refused: reading
+/// one blocks or never ends.
+async fn readable_file(path: &Path) -> Result<(), String> {
+    let meta = tokio::fs::metadata(path).await.map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("not a regular file".to_string());
+    }
+    if meta.len() > READ_MAX_BYTES {
+        return Err(format!(
+            "{} MiB is too large to read here (limit {} MiB); use bash with head, tail or rg",
+            meta.len() / (1024 * 1024),
+            READ_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a file a directory walk reached is a credential file by the AH-044
+/// name rules, by its own name or, if it is a link, by its target's name.
+fn walked_secret(path: &Path) -> bool {
+    let named = |p: &Path| {
+        p.file_name()
+            .is_some_and(|n| crate::project_browse::is_sensitive_name(&n.to_string_lossy()))
+    };
+    named(path) || path.canonicalize().is_ok_and(|real| named(&real))
+}
+
+/// Model-facing grep output: a header line per file (its relative path), then
+/// its lines as `  N: text` for matches and `  N- text` for context, with a
+/// blank line between files. Gaps inside one file are marked by `  --`.
+fn format_grep_groups(groups: &[(String, Vec<(usize, bool, String)>)]) -> String {
+    let mut out = String::new();
+    for (gi, (file, entries)) in groups.iter().enumerate() {
+        if gi > 0 {
+            out.push_str("\n\n");
+        }
+        out.push_str(file);
+        let mut prev: Option<usize> = None;
+        for (line_no, is_match, text) in entries {
+            if prev.is_some_and(|p| *line_no > p + 1) {
+                out.push_str("\n  --");
+            }
+            let sep = if *is_match { ':' } else { '-' };
+            out.push_str(&format!("\n  {line_no}{sep} {text}"));
+            prev = Some(*line_no);
+        }
+    }
+    out
 }
 
 fn truncate_line(line: &str) -> String {
@@ -4594,7 +5085,7 @@ on_failure = \"warn\"
         );
         assert_eq!(
             render_write_diff(Some("old"), "x"),
-            "@@ overwrote file @@\n+    1 | x"
+            "@@ overwrote file @@\n-    1 | old\n+    1 | x"
         );
     }
 
@@ -4748,6 +5239,82 @@ on_failure = \"warn\"
         assert!(!out.contains(".."), "must not echo the raw path: {out}");
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#192: a dangling symlink in the workspace naming a file
+    /// outside it. Writing "to" the link must be refused, and nothing may be
+    /// created at its target. An in-root dangling link still writes.
+    #[tokio::test]
+    async fn a_write_through_a_dangling_link_is_refused_and_creates_nothing() {
+        let root = unique_root();
+        let outside = unique_root();
+        let target = outside.join("created.txt");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&target, root.join("dangling"))
+            .and_then(|_| std::os::unix::fs::symlink(root.join("inside.txt"), root.join("inward")));
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&target, root.join("dangling")).and_then(
+            |_| std::os::windows::fs::symlink_file(root.join("inside.txt"), root.join("inward")),
+        );
+        if let Err(e) = made {
+            eprintln!("skipped: cannot create a symlink here: {e}");
+            return;
+        }
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_confined_writes(true);
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "dangling", "content": "planted"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.starts_with("ERROR: refused"), "got: {out}");
+        assert!(!target.exists(), "the write created a file outside the workspace");
+
+        let out = super::execute_builtin(
+            lookup("write").unwrap(),
+            &json!({"path": "inward", "content": "fine"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(!out.starts_with("ERROR"), "an in-root link must keep working: {out}");
+        assert_eq!(std::fs::read_to_string(root.join("inside.txt")).unwrap(), "fine");
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// Jozkah/jan#239: a directory grep must not read the credential files
+    /// that `read` refuses (AH-044). It searches the rest and says what it
+    /// left out.
+    #[tokio::test]
+    async fn a_directory_grep_skips_credential_files() {
+        let root = unique_root();
+        std::fs::write(root.join("README.md"), "hello readme\n").unwrap();
+        std::fs::write(
+            root.join("deploy.pem"),
+            "-----BEGIN PRIVATE KEY-----\nPEMBODYSECRET\n",
+        )
+        .unwrap();
+        std::fs::write(root.join(".npmrc"), "//registry/:_authToken=NPMTOKENSECRET\n").unwrap();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/.env"), "API_KEY=ENVSECRET\n").unwrap();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let out = super::execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": ".", "path": "."}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(out.contains("hello readme"), "got: {out}");
+        for secret in ["PEMBODYSECRET", "NPMTOKENSECRET", "ENVSECRET"] {
+            assert!(!out.contains(secret), "grep returned {secret}: {out}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -5381,7 +5948,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(re.contains("code.rs:1:fn main"), "regex: {re}");
+        assert!(re.contains("code.rs\n  1: fn main"), "regex: {re}");
 
         // Literal: "1.5" as regex would match "1x5" too; literal must match exactly.
         let lit = execute_builtin(
@@ -5390,7 +5957,7 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(lit.contains("code.rs:2:"), "literal: {lit}");
+        assert!(lit.contains("  2: Let x"), "literal: {lit}");
 
         let ci = execute_builtin(
             lookup("grep").unwrap(),
@@ -5398,7 +5965,55 @@ on_failure = \"warn\"
             &root,
         )
         .await;
-        assert!(ci.contains("code.rs:2:"), "ignore_case: {ci}");
+        assert!(ci.contains("  2: Let x"), "ignore_case: {ci}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_groups_by_file_with_line_numbers_and_context() {
+        let root = unique_root();
+        std::fs::write(
+            root.join("a.txt"),
+            b"one\nneedle two\nthree\nfour\nfive\nneedle six",
+        )
+        .unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "needle", "context": 1}),
+            &root,
+        )
+        .await;
+        assert_eq!(
+            out,
+            "a.txt\n  1- one\n  2: needle two\n  3- three\n  --\n  5- five\n  6: needle six",
+            "grouped: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn grep_caps_results_and_notes_the_overflow() {
+        let root = unique_root();
+        let body: String = (0..400).map(|i| format!("hit {i}\n")).collect();
+        std::fs::write(root.join("big.txt"), body).unwrap();
+        let out = execute_builtin(
+            lookup("grep").unwrap(),
+            &json!({"pattern": "hit", "limit": 5000}),
+            &root,
+        )
+        .await;
+        assert!(out.contains("  300: hit 299"), "{out}");
+        assert!(!out.contains("  301: hit 300"), "cap not applied");
+        assert!(out.contains("[Showing first 300 of 300+ matches"), "note missing");
+
+        let long = "x".repeat(800);
+        std::fs::write(root.join("big.txt"), format!("{long}\n")).unwrap();
+        let out = execute_builtin(lookup("grep").unwrap(), &json!({"pattern": "x"}), &root).await;
+        assert!(
+            out.contains(&format!("  1: {}...", "x".repeat(500))),
+            "line not truncated"
+        );
+        assert!(!out.contains(&"x".repeat(501)));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -5445,6 +6060,44 @@ on_failure = \"warn\"
         );
         // The return value still carries it, so the model's view is unchanged.
         assert!(out.contains("one") && out.contains("two"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The live stream keeps a command's colours for the terminal card; the
+    /// result the model (and the persisted tool result) gets has them removed
+    /// whole, and a non-zero exit is still reported in it.
+    #[tokio::test]
+    async fn streamed_output_keeps_ansi_but_the_result_is_clean_and_keeps_the_exit_code() {
+        let root = unique_root();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = {
+            let seen = seen.clone();
+            std::sync::Arc::new(move |chunk: String| {
+                seen.lock().unwrap().push_str(&chunk);
+            }) as crate::tools::OutputSink
+        };
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[])
+            .with_sandbox(false)
+            .with_output_sink(sink);
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "printf '\\033[31mred\\033[0m then plain\\n'; exit 3"}),
+            &ctx,
+        )
+        .await
+        .0;
+        let streamed = seen.lock().unwrap().clone();
+        if !streamed.contains("red") {
+            // No POSIX printf on this machine's unsandboxed shell.
+            eprintln!("skipped: shell did not run printf: {out}");
+            let _ = std::fs::remove_dir_all(&root);
+            return;
+        }
+        assert!(streamed.contains("\u{1b}[31m"), "the live view lost its colour: {streamed:?}");
+        assert!(out.contains("red then plain"), "{out}");
+        assert!(!out.contains('\u{1b}') && !out.contains("[31m") && !out.contains("[0m"), "{out:?}");
+        assert!(out.contains("[exit 3]"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -5817,6 +6470,145 @@ on_failure = \"warn\"
     }
 
     #[test]
+    fn cwd_note_names_the_workspace_on_path_failures_only() {
+        use super::super::shell_diag::FailureClass;
+        assert!(cwd_note_applies(&FailureClass::NotFound, ""));
+        assert!(cwd_note_applies(
+            &FailureClass::FileAccessDenied,
+            "Set-Location : Access is denied\n[exit 1]"
+        ));
+        assert!(cwd_note_applies(&FailureClass::Other, "x.ps1 does not exist"));
+        assert!(!cwd_note_applies(&FailureClass::Other, "test failed\n[exit 1]"));
+        assert!(!cwd_note_applies(
+            &FailureClass::FileAccessDenied,
+            "Get-Content : Access to the path 'C:\\x' is denied."
+        ));
+        let n = cwd_note(r"C:\ws", false);
+        assert!(n.starts_with("[cwd: C:\\ws. The project is not the working directory"), "{n}");
+        let n = cwd_note(r"C:\wt", true);
+        assert!(n.starts_with("[cwd: C:\\wt (the session worktree). Relative paths"), "{n}");
+        assert!(!n.contains("use absolute paths"), "{n}");
+    }
+
+    /// Jozkah/jan#124: the sandboxed shell's policy hides the `.jan` of every
+    /// write root as well as the workspace's.
+    #[test]
+    fn bash_policy_hides_each_write_roots_jan() {
+        let ws = PathBuf::from("/data/threads/t1");
+        let wt = PathBuf::from("/data/worktrees/repo/s1");
+        let repo = PathBuf::from("/home/dev/repo");
+        let policy = jail::Policy::new(&ws, false)
+            .with_hide_root(&ws.join(crate::tools::sandbox::JAN_DIR))
+            .with_write_roots(vec![wt.clone(), repo.clone()]);
+        let policy = hide_write_root_jans(policy, &[wt.clone(), repo.clone()]);
+        assert_eq!(
+            policy.hide_roots,
+            vec![ws.join(".jan"), wt.join(".jan"), repo.join(".jan")]
+        );
+    }
+
+    /// Listings omit a write root's `.jan` while hiding, as they do the
+    /// workspace's (Jozkah/jan#124).
+    #[tokio::test]
+    async fn listings_omit_a_write_roots_jan() {
+        let root = unique_root();
+        let wt = unique_root();
+        std::fs::create_dir_all(wt.join(".jan/agent")).unwrap();
+        std::fs::write(wt.join(".jan/agent/agent.toml"), b"needle").unwrap();
+        std::fs::write(wt.join("main.rs"), b"needle").unwrap();
+        let roots = vec![wt.clone()];
+        let path = wt.to_string_lossy().into_owned();
+
+        let listed = ls(&serde_json::json!({"path": path}), &root, None, true, &[], &roots).await;
+        assert!(listed.contains("main.rs") && !listed.contains(".jan"), "{listed}");
+        let found = find(
+            &serde_json::json!({"pattern": "**/*", "path": path}),
+            &root,
+            None,
+            true,
+            &[],
+            &roots,
+        )
+        .await;
+        assert!(found.contains("main.rs") && !found.contains("agent.toml"), "{found}");
+        let hits = grep(
+            &serde_json::json!({"pattern": "needle", "path": path}),
+            &root,
+            None,
+            true,
+            &[],
+            &roots,
+        )
+        .await;
+        assert!(hits.contains("main.rs") && !hits.contains("agent.toml"), "{hits}");
+        // Not hiding (an unconfined CLI run): listed like any directory.
+        let open = ls(&serde_json::json!({"path": path}), &root, None, false, &[], &roots).await;
+        assert!(open.contains(".jan"), "{open}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&wt);
+    }
+
+    /// #322: the shell starts in the managed worktree only when that is the
+    /// run's single write root under Jan's owned worktrees dir.
+    #[test]
+    fn bash_starts_in_the_managed_worktree_only_when_it_is_the_destination() {
+        let data = unique_root();
+        let owned = crate::workspace::worktrees_dir(&data);
+        let wt = owned.join("repo").join("s1");
+        std::fs::create_dir_all(&wt).unwrap();
+        let user_repo = data.join("user-repo");
+        std::fs::create_dir_all(&user_repo).unwrap();
+
+        assert_eq!(managed_worktree_start(&[wt.clone()], Some(&owned)), Some(wt.clone()));
+        // Review-only: no write roots.
+        assert_eq!(managed_worktree_start(&[], Some(&owned)), None);
+        // Direct edit: a root that is not Jan's.
+        assert_eq!(managed_worktree_start(&[user_repo.clone()], Some(&owned)), None);
+        // The owned dir itself, several roots, no mask root, a missing root.
+        assert_eq!(managed_worktree_start(&[owned.clone()], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(&[wt.clone(), user_repo], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(&[wt.clone()], None), None);
+        assert_eq!(managed_worktree_start(&[owned.join("gone")], Some(&owned)), None);
+
+        // The policy carries it through to where the shell starts.
+        let policy = jail::Policy::new(&data, false)
+            .with_write_roots(vec![wt.clone()])
+            .with_start_dir(&wt);
+        assert_eq!(policy.start_dir(), wt.as_path());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[tokio::test]
+    async fn read_and_ls_explain_the_common_mistakes() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("dir")).unwrap();
+        std::fs::write(root.join(".git"), "gitdir: C:/elsewhere\n").unwrap();
+        std::fs::write(root.join("plain.txt"), "x").unwrap();
+        std::fs::write(root.join("blob.bin"), [0xff_u8, 0xfe, 0x00, 0x80]).unwrap();
+
+        let (missing, _) = read(&serde_json::json!({"path": "nope.md"}), &root, None, &[]).await;
+        assert!(missing.starts_with("ERROR: File not found: nope.md."), "{missing}");
+        assert!(missing.contains(&root.display().to_string()), "{missing}");
+        assert!(!missing.contains("cannot create"), "{missing}");
+
+        let (dir, _) = read(&serde_json::json!({"path": "dir"}), &root, None, &[]).await;
+        assert_eq!(dir, "ERROR: dir is a directory; use ls.");
+
+        let (bin, _) = read(&serde_json::json!({"path": "blob.bin"}), &root, None, &[]).await;
+        assert_eq!(bin, "ERROR: Binary file (4 bytes); read only returns text.");
+
+        let git = ls(&serde_json::json!({"path": ".git"}), &root, None, false, &[], &[]).await;
+        assert!(git.contains("is a file, not a directory") && git.contains("read it"), "{git}");
+        let plain = ls(&serde_json::json!({"path": "plain.txt"}), &root, None, false, &[], &[]).await;
+        assert!(plain.ends_with("use read."), "{plain}");
+
+        // A call with no arguments at all lists the workspace.
+        let listed = ls(&serde_json::Value::Null, &root, None, false, &[], &[]).await;
+        assert!(listed.contains("plain.txt"), "{listed}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn bash_result_failed_detects_nonzero_and_signal_markers() {
         assert!(bash_result_failed("output\n[exit 1]"));
         assert!(bash_result_failed("output\n[exit 127]"));
@@ -6120,7 +6912,21 @@ on_failure = \"warn\"
         assert!(!out.contains('\u{0}'), "NUL must be stripped");
         assert!(!out.contains('\u{7}'), "bell must be stripped");
         assert!(!out.contains('\u{1b}'), "escape must be stripped");
+        assert!(!out.contains("[31m") && !out.contains("[0m"), "no SGR residue: {out:?}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_osc_and_short_escapes() {
+        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m plain"), "red plain");
+        assert_eq!(strip_ansi("a\u{1b}]0;title\u{7}b"), "ab");
+        assert_eq!(
+            strip_ansi("a\u{1b}]8;;http://x\u{1b}\\link\u{1b}]8;;\u{1b}\\b"),
+            "alinkb"
+        );
+        assert_eq!(strip_ansi("x\u{1b}(By"), "xy");
+        assert_eq!(strip_ansi("\u{9b}32mgreen"), "green");
+        assert_eq!(strip_ansi("no escapes"), "no escapes");
     }
 
     #[tokio::test]
@@ -6277,6 +7083,11 @@ on_failure = \"warn\"
         for absent in ["proj-shell", "user-shell", "proj-dep", "user-dep", "off"] {
             assert!(!list.contains(absent), "{absent} offered: {list}");
         }
+        // A query narrows the list, case-insensitively, over name and summary.
+        let found = run("skill_list", json!({"query": "PROJECT OK"})).await;
+        assert!(found.contains("proj-ok") && !found.contains("user-ok"), "{found}");
+        let none = run("skill_list", json!({"query": "no such thing"})).await;
+        assert!(none.starts_with("No skill matches"), "{none}");
 
         let off = run("skill_read", json!({"name": "off"})).await;
         assert!(off.starts_with("ERROR"), "{off}");
@@ -6524,7 +7335,7 @@ on_failure = \"warn\"
         let list = execute_builtin(lookup("skill_list").unwrap(), &json!({}), &root).await;
         assert!(
             list.lines()
-                .any(|line| line == "jan" || line.starts_with("jan — ")),
+                .any(|line| line == "flint" || line.starts_with("flint — ")),
             "unexpected list: {list}"
         );
 

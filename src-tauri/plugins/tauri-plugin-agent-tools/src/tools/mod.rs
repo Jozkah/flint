@@ -7,9 +7,11 @@ use std::path::{Path, PathBuf};
 /// the argv it builds stays unit-testable.
 pub mod appcontainer;
 pub mod cmdscan;
+pub mod fuzzy_edit;
 pub mod gate;
 pub mod git_native;
 pub mod handlers;
+pub mod host_tools;
 pub mod image;
 pub mod jail;
 pub mod mcp_confine;

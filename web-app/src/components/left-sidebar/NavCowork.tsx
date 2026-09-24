@@ -3,8 +3,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuAction,
-  SidebarGroup,
-  SidebarGroupLabel,
   useSidebar,
 } from '@/components/ui/sidebar'
 import {
@@ -38,7 +36,6 @@ import {
   MoreHorizontal,
   Puzzle,
   Trash2,
-  Loader2,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -76,6 +73,16 @@ import {
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
+import { GroupedNav, type GroupRowProps } from '@/components/groups/GroupedNav'
+import { MoveToGroupMenu } from '@/components/groups/MoveToGroupMenu'
+import { folderBindingFor } from '@/lib/groups/folders'
+import { ID_SEP, useActiveIdSet } from '@/lib/groups/useActiveIdSet'
+import { cn } from '@/lib/utils'
+
+const sessionId = (s: CoworkSession) => s.id
+const sessionLabel = (s: CoworkSession) => s.title
+// The attached folder, read-only: joining a group never changes it.
+const sessionFolders = (s: CoworkSession) => (s.folder ? [folderBindingFor(s.folder)] : [])
 
 type CoworkNavItem = {
   title: string
@@ -92,12 +99,15 @@ const SessionItem = memo(function SessionItem({
   isMobile,
   onSelect,
   onRequestDelete,
+  row,
 }: {
   session: CoworkSession
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
   onRequestDelete: (pending: { id: string; title: string }) => void
+  /** Drag/keyboard wiring from the grouped sidebar. */
+  row?: GroupRowProps
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -126,7 +136,15 @@ const SessionItem = memo(function SessionItem({
   }
 
   return (
-    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
+    <SidebarMenuItem
+      {...row}
+      className={cn('relative', row?.className)}
+      onContextMenu={openRowMenu}
+      onKeyDown={(e) => {
+        row?.onKeyDown(e)
+        if (!e.defaultPrevented) onRowKeyDown(e)
+      }}
+    >
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
@@ -137,18 +155,16 @@ const SessionItem = memo(function SessionItem({
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
-          // session in view being treated as busy (janhq/jan#8905). A neutral
-          // spinner, not the accent: the accent marks the selected row.
+          // session in view being treated as busy (janhq/jan#8905). The shared
+          // status dot, labelled so colour is never the only signal.
           <span
             role="status"
             aria-label={t('common:tasks.running', { count: 1 })}
+            title={t('common:tasks.running', { count: 1 })}
             data-testid={`cowork-session-running-${session.id}`}
-            className="ml-auto flex shrink-0 items-center text-ink-2"
+            className="ml-auto flex shrink-0 items-center"
           >
-            <Loader2
-              aria-hidden
-              className="size-3.5! motion-safe:animate-spin"
-            />
+            <span aria-hidden className="size-2 rounded-full bg-success motion-safe:animate-pulse" />
           </span>
         )}
       </SidebarMenuButton>
@@ -167,6 +183,7 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <MoveToGroupMenu itemId={session.id} />
           <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
             <FileClock />
             <span>{t('common:fileActivity.menuItem')}</span>
@@ -311,6 +328,8 @@ export function NavCowork() {
   const { isMobile } = useSidebar()
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
+  const runningKey = useCoworkRun((s) => Object.keys(s.runs).join(ID_SEP))
+  const activeIds = useActiveIdSet(runningKey)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
@@ -472,23 +491,27 @@ export function NavCowork() {
         })}
       </SidebarMenu>
 
-      {sessions.length > 0 && (
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>{t('common:sessions')}</SidebarGroupLabel>
-          <SidebarMenu>
-            {sessions.map((session) => (
-              <SessionItem
-                key={session.id}
-                session={session}
-                isCurrent={session.id === currentId}
-                isMobile={isMobile}
-                onSelect={selectSession}
-                onRequestDelete={setPendingDelete}
-              />
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      )}
+      <GroupedNav<CoworkSession>
+        surface="cowork"
+        items={sessions}
+        getId={sessionId}
+        getLabel={sessionLabel}
+        activeIds={activeIds}
+        selectedId={currentId}
+        ownFoldersOf={sessionFolders}
+        recentsLabel={t('common:recents')}
+        renderItem={(session, row) => (
+          <SessionItem
+            key={session.id}
+            session={session}
+            isCurrent={session.id === currentId}
+            isMobile={isMobile}
+            onSelect={selectSession}
+            onRequestDelete={setPendingDelete}
+            row={row}
+          />
+        )}
+      />
 
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
       <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />

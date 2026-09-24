@@ -29,8 +29,8 @@ export function isMissingPathError(text: string): boolean {
  * error stays first: a real filesystem error is never hidden. */
 export function missingReadGuidance(path: string): string {
   return (
-    `\n\nThis session is in review mode, which is read-only: \`read\` cannot ` +
-    `create \`${path}\`, and no tool you have here can. If the task needs new ` +
+    `\n\n\`${path}\` does not exist yet. This run is read-only (review mode), ` +
+    'so no tool you have here can create it. If the task needs new ' +
     'files, stage the plan with the `todo` tool, then call `ask` for plan ' +
     'review; the user decides whether it runs.'
   )

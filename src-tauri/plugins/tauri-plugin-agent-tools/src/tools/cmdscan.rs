@@ -381,9 +381,120 @@ fn strip_base(t: &str) -> String {
     t.rsplit(['/', '\\']).next().unwrap_or(t).to_string()
 }
 
+/// Every simple command a shell line runs, each starting at the program it
+/// really runs (Jozkah/jan#227): the line is split on control operators and
+/// substitutions are pulled out, then leading `NAME=value` assignments and
+/// wrappers (`env`, `timeout 60`, `nohup`, `sudo -u x`, ...) are skipped and
+/// `sh -c '<cmd>'` is recursed into. The permission gate judges each of these
+/// on its own, so a chained or wrapped command cannot hide behind the first.
+///
+/// Arguments are re-quoted where needed, so a quoted argument stays one word
+/// for whoever splits the result again. A segment it cannot take apart is
+/// returned as written rather than dropped.
+pub fn simple_commands(command: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_commands(command, &mut out, 0);
+    out
+}
+
+fn collect_commands(command: &str, out: &mut Vec<String>, depth: usize) {
+    if depth > 8 {
+        out.push(command.trim().to_string());
+        return;
+    }
+    let (outer, subs) = extract_substitutions(command);
+    for sub in subs {
+        collect_commands(&sub, out, depth + 1);
+    }
+    for seg in split_segments(&outer) {
+        command_of_segment(&seg, out, depth);
+    }
+}
+
+fn command_of_segment(seg: &str, out: &mut Vec<String>, depth: usize) {
+    let tokens = tokenize(seg);
+    let mut idx = 0;
+    for _ in 0..64 {
+        while idx < tokens.len() && is_assignment(&tokens[idx]) {
+            idx += 1;
+        }
+        let Some(first) = tokens.get(idx) else {
+            return; // assignments only, or empty: runs nothing
+        };
+        let base = strip_base(first);
+        if base == "env" || base == "sudo" || base == "doas" {
+            idx += 1;
+            while let Some(t) = tokens.get(idx) {
+                if is_assignment(t) {
+                    idx += 1;
+                } else if t.starts_with('-') {
+                    // Flags that take a value: `env -u NAME`, `sudo -u user`.
+                    let takes_value = matches!(
+                        t.as_str(),
+                        "-u" | "-C" | "-S" | "-g" | "-h" | "-p" | "-D" | "-R" | "-T" | "--unset"
+                            | "--chdir" | "--user" | "--group"
+                    );
+                    idx += if takes_value { 2 } else { 1 };
+                } else {
+                    break;
+                }
+            }
+            continue;
+        }
+        if SHELLS.contains(&base.as_str()) {
+            if let Some(p) = tokens[idx + 1..].iter().position(|t| t == "-c") {
+                if let Some(cmd) = tokens.get(idx + 1 + p + 1) {
+                    collect_commands(cmd, out, depth + 1);
+                    return;
+                }
+            }
+        }
+        if WRAPPERS.contains(&base.as_str()) {
+            idx += 1;
+            while let Some(t) = tokens.get(idx) {
+                let numeric = t.chars().next().is_some_and(|c| c.is_ascii_digit());
+                if t.starts_with('-') || numeric || is_assignment(t) {
+                    idx += 1;
+                } else {
+                    break;
+                }
+            }
+            continue;
+        }
+        let words: Vec<String> = tokens[idx..].iter().map(|t| requote(t)).collect();
+        out.push(words.join(" "));
+        return;
+    }
+    out.push(seg.trim().to_string());
+}
+
+/// A word as a shell would need it written to stay one word.
+fn requote(word: &str) -> String {
+    if !word.is_empty() && !word.chars().any(|c| c.is_whitespace() || "'\"\\".contains(c)) {
+        return word.to_string();
+    }
+    format!("'{}'", word.replace('\'', r"'\''"))
+}
+
 /// Collapse runs of whitespace so equivalent opaque commands share one key.
 pub fn normalize(command: &str) -> String {
     command.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod simple_command_tests {
+    use super::simple_commands;
+
+    #[test]
+    fn each_command_in_a_line_starts_at_its_program() {
+        assert_eq!(simple_commands("true; git push"), vec!["true", "git push"]);
+        assert_eq!(simple_commands("cd . && git reset --hard"), vec!["cd .", "git reset --hard"]);
+        assert_eq!(simple_commands("GIT_DIR=.git env -u X timeout 60 git push -f"), vec!["git push -f"]);
+        assert_eq!(simple_commands("sudo -u bob git status"), vec!["git status"]);
+        assert_eq!(simple_commands("bash -c 'git reset --hard'"), vec!["git reset --hard"]);
+        assert_eq!(simple_commands("echo $(git reset --hard)"), vec!["git reset --hard", "echo"]);
+        assert_eq!(simple_commands("git commit -m 'a b'"), vec!["git commit -m 'a b'"]);
+    }
 }
 
 #[cfg(test)]

@@ -393,3 +393,17 @@ export function effectiveAccess(input: {
 /** i18n key for why the stored preference is not in force. */
 export const downgradeMessageKey = (reason: AccessDowngrade): string =>
   `common:coworkAccess.downgrade.${reason}`
+
+/**
+ * i18n key for why this session is not operating under its stored access,
+ * or null when it is. A managed-worktree session with no grant is, in
+ * practice, one whose grant died with the previous app process, so it says
+ * that and how to get it back.
+ */
+export function effectiveDowngradeKey(effective: EffectiveAccess): string | null {
+  if (!effective.downgradedFrom || !effective.reason) return null
+  if (effective.downgradedFrom === 'managed-worktree' && effective.reason === 'no-grant') {
+    return 'common:coworkAccess.downgrade.worktree-restart'
+  }
+  return downgradeMessageKey(effective.reason)
+}

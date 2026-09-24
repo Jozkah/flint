@@ -25,6 +25,7 @@ pub mod consensus;
 pub mod context;
 pub mod context_pressure;
 pub mod desktop_bridge;
+pub mod destructive;
 pub mod diagnostics;
 pub mod durable_subagent;
 pub mod hooks;
@@ -36,6 +37,9 @@ pub mod git;
 #[cfg(feature = "cli")]
 pub mod global_config;
 pub mod github_recovery;
+// `/goal` is a terminal-UI command; the desktop build compiles the module
+// but calls none of it.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub mod goal;
 pub mod health;
 pub mod impact;
@@ -44,6 +48,7 @@ pub mod interaction;
 pub mod licenses;
 pub mod r#loop;
 pub mod lsp;
+pub mod mcp_catalog;
 #[cfg(not(feature = "cli"))]
 pub mod memory_consolidation;
 pub mod notify;

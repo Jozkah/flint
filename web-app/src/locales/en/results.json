@@ -18,6 +18,7 @@
     "completedWithChanges": "The run finished and Flint changed files.",
     "completedNoChanges": "The run finished without Flint changing any files.",
     "completedChecksFailed": "The run finished, but a check Flint ran did not pass.",
+    "finishedIncomplete": "The run finished, but part of the request was not done. See Unresolved.",
     "partial": "The run stopped before finishing. Some work was done first.",
     "failed": "The run stopped before finishing, and nothing was completed.",
     "cancelled": "The run was stopped before anything was completed."
@@ -122,6 +123,11 @@
     "unrelatedConfirm": "I understand these edits will be overwritten. They stay available in the saved point.",
     "safetyLabel": "Before restore {{time}}",
     "safetyFailed": "The current state could not be saved first, so nothing was restored: {{reason}}",
-    "restored": "Restored. The state before it was saved as \"{{label}}\"."
+    "restored": "Restored. The state before it was saved as \"{{label}}\".",
+    "previewDiff": "Preview diff",
+    "hideDiff": "Hide diff",
+    "previewEmpty": "No differences to show.",
+    "previewLoading": "Loading diff…",
+    "previewFailed": "Could not build the diff: {{reason}}"
   }
 }

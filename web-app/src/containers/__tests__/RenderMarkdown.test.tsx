@@ -505,7 +505,7 @@ describe('RenderMarkdown', () => {
       // would fetch a favicon from a third party and disclose to it which
       // sources the user is reading, so there must be no image at all.
       expect(link?.querySelector('img')).toBeNull()
-      expect(link?.textContent?.trim()).toBe('E')
+      expect(link?.textContent?.trim()).toBe('W')
       // The raw marker text must not leak into the rendered output.
       expect(container.textContent).not.toContain('[[cite:')
     })

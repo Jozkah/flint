@@ -521,7 +521,7 @@ pub fn list(
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| std::fs::read_to_string(e.path()).ok())
         .filter_map(|t| serde_json::from_str::<ChildRecord>(&t).ok())
-        .filter(|r| session.map_or(true, |s| r.parent_session == s))
+        .filter(|r| session.is_none_or(|s| r.parent_session == s))
         .filter(|r| same_dir(Path::new(&r.source_root), project))
         .collect();
     records.sort_by(|a, b| a.started_at.cmp(&b.started_at).then(a.task_id.cmp(&b.task_id)));

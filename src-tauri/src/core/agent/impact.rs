@@ -350,16 +350,29 @@ fn resolve(
     match language {
         Language::Rust => {
             let (kind, rest) = raw.split_once(':')?;
-            let first = rest.split("::").next()?.trim();
-            if first.is_empty() {
+            // Every module segment of the path, `r#` raw identifiers unwrapped;
+            // a `{...}` group or glob ends the module part.
+            let segments: Vec<&str> = rest
+                .split("::")
+                .map(|s| s.trim().trim_start_matches("r#"))
+                .take_while(|s| !s.is_empty() && !s.starts_with('{') && *s != "*")
+                .collect();
+            if segments.is_empty() {
                 return None;
             }
             let base = if kind == "mod" { dir.to_string() } else { crate_root(from) };
             let prefix = if base.is_empty() { String::new() } else { format!("{base}/") };
-            try_paths(vec![
-                format!("{prefix}{first}.rs"),
-                format!("{prefix}{first}/mod.rs"),
-            ])
+            // The deepest module that is a file here wins (Jozkah/jan#265):
+            // `crate::core::agent::r#loop::ModelInvoker` is `core/agent/loop.rs`,
+            // not `core.rs`. The trailing item names are simply not files.
+            let candidates = (1..=segments.len())
+                .rev()
+                .flat_map(|n| {
+                    let module = segments[..n].join("/");
+                    [format!("{prefix}{module}.rs"), format!("{prefix}{module}/mod.rs")]
+                })
+                .collect();
+            try_paths(candidates)
         }
         Language::TypeScript => {
             let bases: Vec<String> = if raw.starts_with('.') {
@@ -486,7 +499,7 @@ fn ts_aliases(project_root: &Path) -> Vec<(String, Vec<String>)> {
     let base = doc
         .pointer("/compilerOptions/baseUrl")
         .and_then(|v| v.as_str())
-        .map(|b| normalise_prefix(b))
+        .map(normalise_prefix)
         .unwrap_or_default();
     let Some(paths) = doc.pointer("/compilerOptions/paths").and_then(|v| v.as_object()) else {
         return Vec::new();
@@ -771,6 +784,25 @@ mod tests {
             std::fs::write(full, body).unwrap();
         }
         root
+    }
+
+    #[test]
+    fn a_nested_rust_use_resolves_to_the_deepest_module_file() {
+        let root = project(
+            "nested",
+            &[
+                ("src/main.rs", "mod core;\nuse crate::core::agent::r#loop::ModelInvoker;\nuse crate::core::agent::{a, b};\n"),
+                ("src/core/mod.rs", "pub mod agent;\n"),
+                ("src/core/agent/mod.rs", "pub mod r#loop;\n"),
+                ("src/core/agent/loop.rs", "pub struct ModelInvoker;\n"),
+            ],
+        );
+        let g = graph(&root).unwrap();
+        let edges = &g.edges["src/main.rs"];
+        assert!(edges.contains("src/core/agent/loop.rs"), "{edges:?}");
+        assert!(edges.contains("src/core/agent/mod.rs"), "{edges:?}");
+        assert_eq!(g.missed, 0);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -149,6 +149,13 @@ export function reopen(
  */
 export const DECISION_WINDOW_MS = 5 * 60 * 1000
 
+/**
+ * The hold Cowork itself uses: long enough for someone watching the Tasks
+ * panel to press Restart, short enough that an unattended run reports its
+ * failures within a minute instead of sitting silent for five.
+ */
+export const COWORK_DECISION_WINDOW_MS = 60 * 1000
+
 /** Whether a team with this state should hold for a decision rather than end. */
 export function awaitingDecision(state: TeamState): boolean {
   return Object.values(state).some((s) => s.status === 'failed')

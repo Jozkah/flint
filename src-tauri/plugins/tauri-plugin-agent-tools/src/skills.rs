@@ -1170,7 +1170,7 @@ pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
         std::fs::create_dir_all(&folder).map_err(|e| format!("ERROR: {e}"))?;
         folder_skill
     };
-    std::fs::write(&target, content).map_err(|e| format!("ERROR: {e}"))
+    crate::workspace::write_atomic(&target, content.as_bytes()).map_err(|e| format!("ERROR: {e}"))
 }
 
 /// Delete a skill (folder or flat form). Idempotent: a missing skill is Ok.
@@ -1539,7 +1539,7 @@ mod tests {
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
         assert_eq!(
             model,
-            vec!["both", "model_only", "jan"],
+            vec!["both", "model_only", "flint"],
             "model side: {model:?}"
         );
 
@@ -1714,7 +1714,7 @@ mod tests {
         agent_toml(&store, "[plugins]\ndisabled = [\"release\"]\n");
 
         assert!(list_meta(&store).is_empty());
-        assert_eq!(names(&catalog(&store, &[])), vec!["jan"]);
+        assert_eq!(names(&catalog(&store, &[])), vec!["flint"]);
         assert!(read_raw(&store, "release:prepare").is_err());
         assert!(read_raw(&store, "prepare").is_err());
         assert!(read_for_model(None, &store, &[], "release:prepare").is_err());
@@ -1837,7 +1837,7 @@ mod tests {
         write(&store, "deploy", "store deploy").unwrap();
 
         let listed = names(&catalog_for_model(Some(&project), &store, &[]));
-        assert_eq!(listed, vec!["deploy", "release:prepare", "jan", "personal"]);
+        assert_eq!(listed, vec!["deploy", "release:prepare", "flint", "personal"]);
 
         let read = |name: &str| read_for_model(Some(&project), &store, &[], name);
         assert_eq!(read("deploy").unwrap(), "project deploy");
@@ -1875,7 +1875,7 @@ mod tests {
         write(&user, "deploy", "user deploy").unwrap();
         write(&user, "style", "user style").unwrap();
         write(&user, "personal", "user personal").unwrap();
-        write(&user, "jan", "user jan").unwrap();
+        write(&user, "flint", "user flint").unwrap();
 
         let read =
             |name: &str| read_for_model_with_user(Some(&project), &store, Some(&user), &[], name);
@@ -1899,16 +1899,16 @@ mod tests {
         assert_eq!(listed, vec!["deploy", "style", "personal"]);
 
         // Without a project: the store shadows the user, and a name the store
-        // hides (the built-in Jan skill, off by the whitelist) is not answered
+        // hides (the built-in Flint skill, off by the whitelist) is not answered
         // by the user's same-named skill.
         let bare = |enabled: &[String], name: &str| {
             read_for_model_with_user(None, &store, Some(&user), enabled, name)
         };
         assert_eq!(bare(&[], "off").unwrap(), "store off");
         assert_eq!(bare(&[], "deploy").unwrap(), "user deploy");
-        assert_ne!(bare(&[], "jan").unwrap(), "user jan");
+        assert_ne!(bare(&[], "flint").unwrap(), "user flint");
         let only_personal = vec!["personal".to_string()];
-        assert!(bare(&only_personal, "jan").is_err());
+        assert!(bare(&only_personal, "flint").is_err());
         assert_eq!(bare(&only_personal, "personal").unwrap(), "user personal");
         // The whitelist governs the user layer too.
         assert!(bare(&only_personal, "deploy").is_err());
@@ -1920,7 +1920,7 @@ mod tests {
         ));
         assert_eq!(listed, vec!["personal"]);
         let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &[]));
-        assert_eq!(listed, vec!["off", "style", "jan", "deploy", "personal"]);
+        assert_eq!(listed, vec!["off", "style", "flint", "deploy", "personal"]);
 
         // A user store equal to the store (the desktop) adds nothing twice.
         let same = names(&catalog_for_model_with_user(

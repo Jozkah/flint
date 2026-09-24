@@ -702,11 +702,10 @@ pub fn import(
             return Err(ImportError::new(ImportErrorKind::HashMismatch, "changes.patch does not match its hash"));
         }
         for (path, f) in &files {
-            if f.whole && f.change != "deleted" {
-                if Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
+            if f.whole && f.change != "deleted"
+                && Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
                     return Err(ImportError::new(ImportErrorKind::HashMismatch, format!("files/{path} does not match its hash")));
                 }
-            }
         }
         let mut basis = String::new();
         for (rel, h) in &hashes {

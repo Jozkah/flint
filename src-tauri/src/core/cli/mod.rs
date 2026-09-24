@@ -256,6 +256,11 @@ pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
         fs::remove_dir_all(thread_dir).map_err(|e| e.to_string())?;
     }
     crate::core::agent::git::cleanup_snapshot_index(thread_id);
+    // What the thread's runs recorded goes with it, as on the desktop
+    // (Jozkah/jan#294): snapshots, usage, diffs, decisions, undo journal.
+    if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
+        eprintln!("could not remove the records of thread {thread_id}: {e}");
+    }
     Ok(())
 }
 
@@ -1355,7 +1360,7 @@ fn prepare_agent_session(
     // ignored would send the run to a model nobody chose while looking as
     // though the rule had been honoured.
     let routing = crate::core::agent::routing::rules(&cfg.routing)
-        .map_err(|e| format!("{}", e.message()))?;
+        .map_err(|e| e.message().to_string())?;
     let model = match crate::core::agent::routing::route(
         &routing,
         &crate::core::agent::routing::Request {
@@ -2826,8 +2831,13 @@ async fn print_event(
             path,
             command,
             diff,
+            reason,
             ..
         } => {
+            // Why a call auto-approval would have run is being asked about.
+            if let Some(reason) = &reason {
+                eprintln!("\x1b[33m[permission] {reason}\x1b[0m");
+            }
             let detail = command
                 .map(|c| format!(" ({c})"))
                 .or_else(|| path.map(|p| format!(" on {p}")))

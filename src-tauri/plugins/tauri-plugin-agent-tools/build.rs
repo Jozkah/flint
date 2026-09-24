@@ -58,6 +58,7 @@ const COMMANDS: &[&str] = &[
     "memory_record_uses",
     "tool_schemas",
     "sandbox_status",
+    "sandbox_toolchains",
     "environment_readiness",
     "environment_readiness_retry",
     "advertised_tool_schemas",

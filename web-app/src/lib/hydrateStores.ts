@@ -34,6 +34,7 @@ import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 import '@/lib/rooms/e2eHooks'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
+import { initConversationGroups } from '@/lib/groups/bootstrap'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -90,6 +91,9 @@ export async function hydrateBackendStores(): Promise<void> {
   // run left in flight, or the panel would show work still running that
   // nothing can ever finish.
   useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
+  // Conversation groups: own per-surface keys, synced across windows. A
+  // failure leaves every item visible under Recents.
+  await initConversationGroups()
   // Discussion rooms live in backend files, desktop only. Rooms the previous
   // run left running are saved paused; failures are logged, never thrown.
   void scheduleRoomRecovery(IS_TAURI)

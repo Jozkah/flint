@@ -173,7 +173,7 @@ fn same_origin(first: &url::Url, next: &url::Url) -> bool {
 /// custom header, a subscription key or a tenant token among them. A provider
 /// that answers with a redirect to somewhere else now gets an error naming
 /// where it tried to send the request, and nothing is sent there.
-fn same_origin_redirects() -> reqwest::redirect::Policy {
+pub(crate) fn same_origin_redirects() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > MAX_REDIRECTS {
             return attempt.error("too many redirects");
@@ -700,6 +700,9 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 }
 
 #[cfg(test)]
+// `pin` holds a process-wide lock for a whole test on purpose: the resolver it
+// installs is global, so tests that install one must not overlap.
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 

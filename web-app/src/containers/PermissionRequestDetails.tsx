@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronDownIcon } from 'lucide-react'
 import {
   Collapsible,
@@ -177,6 +177,9 @@ export function PermissionRequestDetails({
  * scope is labelled as such in text, not only by colour. Deny is an outlined
  * destructive button and is where focus starts; the narrowest grant is the
  * one filled action.
+ *
+ * With `preferredScope` (offered), that scope is the filled action instead
+ * and focus starts on it rather than on Deny. Nothing is chosen for the user.
  */
 export function PermissionScopeChoices({
   request,
@@ -184,6 +187,7 @@ export function PermissionScopeChoices({
   denyRef,
   autoFocusDeny = false,
   disabled = false,
+  preferredScope,
   className,
 }: {
   request: PermissionRequestDescription
@@ -192,6 +196,8 @@ export function PermissionScopeChoices({
   autoFocusDeny?: boolean
   /** Paused, e.g. just after the request shown here changed. */
   disabled?: boolean
+  /** The scope to fill and focus first, when it is offered. */
+  preferredScope?: ApprovalScope
   className?: string
 }) {
   const { t } = useTranslation()
@@ -199,6 +205,17 @@ export function PermissionScopeChoices({
   const offered = request.scopesOffered.filter(
     (scope) => request.scopeExplanations[scope]
   )
+  const preferred =
+    preferredScope && offered.includes(preferredScope)
+      ? preferredScope
+      : undefined
+  const filled = preferred ?? offered[0]
+  const preferredRef = useRef<HTMLButtonElement>(null)
+  // Focus the preferred answer once it can be pressed (the buttons may start
+  // paused), so Enter takes it without a hunt.
+  useEffect(() => {
+    if (preferred && !disabled) preferredRef.current?.focus()
+  }, [preferred, disabled])
 
   return (
     <div
@@ -214,7 +231,7 @@ export function PermissionScopeChoices({
           size="sm"
           variant="destructive"
           type="button"
-          autoFocus={autoFocusDeny}
+          autoFocus={autoFocusDeny && !preferred}
           disabled={disabled}
           className="pointer-coarse:h-11"
           onClick={() => onDecision('deny')}
@@ -223,7 +240,7 @@ export function PermissionScopeChoices({
         </Button>
       </div>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-        {offered.map((scope, index) => {
+        {offered.map((scope) => {
           const info = request.scopeExplanations[scope]!
           const explanationId = `${baseId}-${scope}`
           return (
@@ -233,7 +250,8 @@ export function PermissionScopeChoices({
             >
               <Button
                 size="sm"
-                variant={index === 0 ? 'default' : 'outline'}
+                ref={scope === preferred ? preferredRef : undefined}
+                variant={scope === filled ? 'default' : 'outline'}
                 type="button"
                 aria-describedby={explanationId}
                 data-scope={scope}

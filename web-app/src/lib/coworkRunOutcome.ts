@@ -156,6 +156,8 @@ export type HeadlineCode =
   | 'completed-with-changes'
   | 'completed-no-changes'
   | 'completed-checks-failed'
+  /** Finished normally, but part of the request was not done. */
+  | 'finished-incomplete'
   | 'partial'
   | 'failed'
   | 'cancelled'
@@ -222,6 +224,11 @@ export type RunOutcomeInput = {
   finishedAt?: number | null
   /** The session's recorded checkpoints. */
   checkpoints: readonly { root: string; destination: CheckpointDestination }[]
+  /**
+   * Plan items still open (pending or in progress) when the run ended. A run
+   * that finishes with its own plan unfinished is not "completed".
+   */
+  openTodos?: number
   /** Which next-step handlers the caller can actually carry out. */
   handlers: {
     openResult: boolean
@@ -387,6 +394,15 @@ const targetOf = (turn: CoworkTurn): string => {
   }
   return ''
 }
+
+/** Tools whose failure means a requested change was not made. */
+const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  'write',
+  'edit',
+  'multi_edit',
+  'apply_patch',
+  'notebook_edit',
+])
 
 type ToolPhase = NonNullable<CoworkTurn['toolState']> | 'done-ok' | 'done-error'
 
@@ -657,18 +673,50 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
       return check.visual && (verdict === 'passed' || verdict === 'failed')
     })
 
+  const failedChecks = checks.some((check) => check.outcome === 'failed')
+  /**
+   * A normal finish that still left part of the request undone: a write that
+   * was refused or failed, a check that failed or never ran, or the run's own
+   * plan with items open. Reported as partly done, never as completed.
+   */
+  const incomplete =
+    failedChecks ||
+    checks.some((check) => check.outcome === 'not-run') ||
+    unresolved.some((item) => item.kind === 'refused') ||
+    toolTurns.some((turn) => {
+      if (!WRITE_TOOLS.has(turn.name ?? '')) return false
+      const phase = phaseOf(turn)
+      return phase === 'failed' || phase === 'done-error'
+    }) ||
+    // A command the sandbox could not run at all -- a missing runtime, no
+    // network -- is work the user still has to do, whether or not the
+    // command reads as a test or build. "Completed" would hide that.
+    toolTurns.some(
+      (turn) =>
+        turn.name === 'bash' &&
+        turn.isError === true &&
+        /\[sandbox: /.test(String(turn.result ?? turn.content ?? ''))
+    ) ||
+    (input.openTodos ?? 0) > 0
+
   let status: RunStatus
   if (input.running) status = 'running'
-  else if (!stopReason) status = 'completed'
+  else if (!stopReason) status = incomplete ? 'partial' : 'completed'
   else if (progress) status = 'partial'
   else if (stopReason === 'aborted') status = 'cancelled'
   else status = 'failed'
 
-  const failedChecks = checks.some((check) => check.outcome === 'failed')
   let headline: HeadlineCode
   switch (status) {
     case 'running':
       headline = 'running'
+      break
+    case 'partial':
+      headline = stopReason
+        ? 'partial'
+        : failedChecks
+          ? 'completed-checks-failed'
+          : 'finished-incomplete'
       break
     case 'completed':
       headline = failedChecks

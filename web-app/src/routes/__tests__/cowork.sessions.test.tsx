@@ -79,6 +79,7 @@ vi.mock('@/lib/agentTools', () => ({
   // Main's approval prompt asks for the diff first (AH-146); the real one
   // never throws and resolves to nothing when there is no diff.
   previewAgentChange: vi.fn(async () => undefined),
+  getSandboxToolchains: vi.fn(async () => null),
   sandboxEnforces: () => true,
   getSandboxStatus: vi.fn(async () => ({ backend: 'bubblewrap', enforces: true })),
 }))

@@ -38,6 +38,9 @@
     "stopSession": "That session's current run stops at once, as if its Stop button were pressed. Its transcript records that this session stopped it and why. Flint asks every time.",
     "unknown": "Flint cannot tell what this tool does. Check the technical details before allowing it."
   },
+  "repeat": {
+    "allowedOnceBefore": "You allowed this command once already in this conversation."
+  },
   "scope": {
     "deny": "Deny",
     "allowOnce": "Allow once",
@@ -156,6 +159,10 @@
     "stateMissing": "Not configured",
     "stateUnknown": "Checking",
     "stateNeedsRenewal": "Needs renewing",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "autoApproveLimit": "Pause long unattended runs",
+    "autoApproveLimitLabel": "Check in after this many calls in a row",
+    "autoApproveLimitDesc": "When tool calls run without asking, Flint stops and asks you after {{count}} in a row. 0 turns the pause off (maximum {{max}}).",
+    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in."
   }
 }

@@ -22,7 +22,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to read, relative to the project root (or absolute). Must be inside the workspace or an attached read root." },
+                        "path": { "type": "string", "description": "File to read, relative to your workspace, or absolute. Must be inside the workspace or an attached read root." },
                         "offset": { "type": "integer", "description": "1-indexed line to start from. Default 1 (start of file)." },
                         "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." }
                     },
@@ -34,11 +34,11 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "ls",
-                "description": "List one directory's immediate contents, sorted alphabetically, with a '/' suffix on directories and dotfiles included. Use it to see what a directory holds; use `find` instead when you want to match a name pattern or recurse. Output is truncated to `limit` entries or 64KB. Do not shell out to `ls` via `bash` for this — this tool is sandbox-checked and cheaper.",
+                "description": "List one directory's immediate contents, sorted alphabetically, with a '/' suffix on directories and dotfiles included. Use it to see what a directory holds; use `find` instead when you want to match a name pattern or recurse. Output is truncated to `limit` entries or 64KB.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "Directory to list. Default '.' (the project root)." },
+                        "path": { "type": "string", "description": "Directory to list. Default '.' (your workspace)." },
                         "limit": { "type": "integer", "description": "Maximum entries to return. Default 500." }
                     },
                     "required": []
@@ -49,12 +49,12 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "find",
-                "description": "Find files by glob pattern, e.g. '*.ts', '**/*.json', or 'src/**/*.rs'. Use this to locate files by name or extension; use `grep` when you are searching file *contents*. Returns paths relative to the search directory, honoring .gitignore. Prefer this over `bash` with `find`/`ls`.",
+                "description": "Find files by glob pattern, e.g. '*.ts', '**/*.json', or 'src/**/*.rs'. Use this to locate files by name or extension; use `grep` when you are searching file *contents*. Returns paths relative to the search directory, honoring .gitignore.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "pattern": { "type": "string", "description": "Glob to match against file paths. Required." },
-                        "path": { "type": "string", "description": "Directory to search under. Default '.' (the project root)." },
+                        "path": { "type": "string", "description": "Directory to search under. Default '.' (your workspace)." },
                         "limit": { "type": "integer", "description": "Maximum results to return. Default 1000." }
                     },
                     "required": ["pattern"]
@@ -65,12 +65,12 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "grep",
-                "description": "Search file contents for a pattern and return matching lines with their file path and line number. Use this to find where something is defined or used across the tree; use `find` when you only care about file names. Honors .gitignore and is truncated to `limit` matches or 64KB. Prefer this over `bash` with `grep`/`rg`: it is sandbox-checked and its output is structured. The pattern is a regex by default — set `literal` when you want to match special characters verbatim.",
+                "description": "Search file contents for a pattern and return matching lines grouped by file (a path header, then `N: line` for matches and `N- line` for context). Use this to find where something is defined or used across the tree; use `find` when you only care about file names. Honors .gitignore and is truncated to `limit` matches (at most 300) or 64KB; lines are cut at 500 chars. The pattern is a regex by default — set `literal` when you want to match special characters verbatim.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "pattern": { "type": "string", "description": "Regex (or, with `literal`, a plain string) to search for. Required." },
-                        "path": { "type": "string", "description": "Directory or single file to search. Default '.' (the project root)." },
+                        "path": { "type": "string", "description": "Directory or single file to search. Default '.' (your workspace)." },
                         "glob": { "type": "string", "description": "Restrict the search to files matching this glob, e.g. '*.ts' or '**/*.rs'." },
                         "ignore_case": { "type": "boolean", "description": "Case-insensitive match. Default false." },
                         "literal": { "type": "boolean", "description": "Treat `pattern` as a literal string, not a regex. Default false." },
@@ -89,7 +89,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "The .html/.htm/.svg file to render, relative to the project root (or absolute)." },
+                        "path": { "type": "string", "description": "The .html/.htm/.svg file to render, relative to your workspace, or absolute." },
                         "width": { "type": "integer", "description": "Viewport width in pixels. Default 1280." },
                         "height": { "type": "integer", "description": "Viewport height in pixels. Default 960." }
                     },
@@ -105,7 +105,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to create or overwrite, relative to the project root." },
+                        "path": { "type": "string", "description": "File to create or overwrite, relative to your workspace, or absolute." },
                         "content": { "type": "string", "description": "The full contents to write. This becomes the entire file." }
                     },
                     "required": ["path", "content"]
@@ -120,7 +120,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to edit, relative to the project root." },
+                        "path": { "type": "string", "description": "File to edit, relative to your workspace, or absolute." },
                         "edits": {
                             "type": "array",
                             "description": "Replacements to apply in order. At least one is required.",
@@ -143,7 +143,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "bash",
-                "description": "Run a shell command in the project root. Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30), not milliseconds. Returns combined stdout and stderr, followed by a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by whether there is text on stderr: many commands (e.g. `git push`) write normal status to stderr on success, so `[exit 0]` means it worked. The output is COMPLETE and verbatim: trust it and do not re-run a command to double-check. It is truncated only when it exceeds 10000 lines or 256KB, and only then is an explicit `[output truncated ...]` notice appended with a temp-file path holding the full output; when truncated the LAST lines are kept (so the final result and errors stay visible). Absent that notice, you have the full output. If the command doesn't finish within `timeout` seconds (default 30) it is terminated, unless `background` is true: then it keeps running and this call returns a job_id while you do other work. With `background: true` and no timeout the command is backgrounded immediately. Manage background commands without a new command: {\"action\": \"list\"} lists them; {\"job_id\": ID} waits for one and collects its output (exactly once); {\"job_id\": ID, \"action\": \"status\"} shows its state and recent output without waiting or collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.",
+                "description": "Run one shell command (PowerShell on Windows). It starts in the sandbox workspace, or in the session worktree when the run works in a managed git worktree; there is no cwd parameter, so use absolute paths for anywhere else. Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30), not milliseconds. Returns combined stdout and stderr, then a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by text on stderr: many commands (e.g. `git push`) write normal status there. The output is COMPLETE and verbatim; do not re-run a command to double-check. Past 10000 lines or 256KB it ends with an explicit `[output truncated ...]` notice naming a temp file with the full output, and the LAST lines are kept. A command still running after `timeout` is terminated, unless `background` is true: then this call returns a job_id and the command keeps running (with no timeout it is backgrounded at once). Manage jobs without `command`: {\"action\": \"list\"}; {\"job_id\": ID} waits and collects its output (once); {\"job_id\": ID, \"action\": \"status\"} peeks without collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -241,8 +241,17 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_list",
-                "description": "List the project skills — reusable procedures for this project — with a one-line description of each. Takes no arguments. Check it when a task looks like one a skill might cover, then load the full procedure with `skill_read` before following it.",
-                "parameters": { "type": "object", "properties": {}, "required": [] }
+                "description": "List the skills — reusable procedures — with a one-line summary of each. Pass `query` to list only skills whose name or summary contains it; the system prompt lists only part of a large library, so search here for the rest. Check it when a task looks like one a skill might cover, then load the full procedure with `skill_read` before following it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Optional text to match, case-insensitively, against each skill's name and summary."
+                        }
+                    },
+                    "required": []
+                }
             }
         }),
         json!({
@@ -405,7 +414,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "request_access",
-                "description": "Ask the user to let you read (or, separately, write) one folder or file outside your workspace. Use it when a read/ls/grep/bash call was refused because the path is outside the workspace or the sandbox, and that exact content is needed for the task. Ask for the NARROWEST path that answers the question: one project folder or one file, never a home directory, drive root, `.ssh`, browser profile or credential store (those are refused without asking). Give a full absolute path; `..`, `~`, wildcards, UNC shares and device paths are refused. Default mode is read; ask for write only when you must change files there, as its own request. The user sees the resolved path, your reason and the mode, and answers. Returns JSON: `{\"status\":\"granted\"}` -- retry the call that failed, now; `{\"status\":\"denied\"}` -- do not ask again for the same path, offer another way (the user pastes or attaches the content, or a different source); `{\"status\":\"refused\"}` -- the path cannot be granted, the `code` says why; `{\"status\":\"unavailable\"}` -- nobody can answer here. Do not use this for Flint's own plugins, skills or memory: use list_plugins, skill_list and memory_list.",
+                "description": "Ask the user to let you read (or, separately, write) one folder or file outside your workspace. Use it when a read/ls/grep/bash call was refused because the path is outside the workspace or the sandbox, and that exact content is needed for the task. Ask for the NARROWEST path that answers the question: one project folder or one file, never a home directory, drive root, `.ssh`, browser profile or credential store (those are refused without asking). Give a full absolute path; `..`, `~`, wildcards, UNC shares and device paths are refused. Default mode is read; ask for write only when you must change files there, as its own request. It asks the user itself: call it directly, not after asking with `ask`. The user sees the resolved path, your reason and the mode, and answers. Returns JSON: `{\"status\":\"granted\"}` -- retry the call that failed, now; `{\"status\":\"denied\"}` -- do not ask again for the same path, offer another way (the user pastes or attaches the content, or a different source); `{\"status\":\"refused\"}` -- the path cannot be granted, the `code` says why; `{\"status\":\"unavailable\"}` -- nobody can answer here. Do not use this for Flint's own plugins, skills or memory: use list_plugins, skill_list and memory_list.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -447,7 +456,12 @@ mod tests {
             .iter()
             .map(|s| s["function"]["name"].as_str().unwrap())
             .collect();
-        let expected: Vec<&str> = BUILTIN_TOOLS.iter().map(|t| t.name).collect();
+        // The same set: the advertised order is the prompt's, kept stable for
+        // prefix caching, and need not follow the registry's.
+        let mut names = names;
+        let mut expected: Vec<&str> = BUILTIN_TOOLS.iter().map(|t| t.name).collect();
+        names.sort_unstable();
+        expected.sort_unstable();
         assert_eq!(names, expected);
     }
 
@@ -548,6 +562,19 @@ mod tests {
     /// Descriptions are model instructions: guard the load-bearing behavioral
     /// guidance so a well-meaning trim cannot quietly remove it. This is the
     /// snapshot of "the important guidance is present", keyed by substring.
+    /// The tools run against the session workspace, not the project (#322):
+    /// a description that says "project root" sends relative paths the
+    /// wrong way.
+    #[test]
+    fn no_description_promises_the_project_root() {
+        let text = serde_json::to_string(&builtin_tool_schemas()).unwrap();
+        assert!(!text.contains("project root"), "a description still says 'project root'");
+        for name in ["ls", "find", "grep"] {
+            let desc = serde_json::to_string(tool(&builtin_tool_schemas(), name)).unwrap();
+            assert!(!desc.contains("over `bash`"), "{name} repeats the prefer-over-bash line");
+        }
+    }
+
     #[test]
     fn descriptions_carry_behavioral_guidance() {
         let s = builtin_tool_schemas();
@@ -555,7 +582,8 @@ mod tests {
             ("read", &["before you `edit`"]),
             ("write", &["overwrite", "use `edit`"]),
             ("edit", &["EXACTLY ONCE", "refused"]),
-            ("bash", &["dedicated tool", "SECONDS", "job_id"]),
+            ("bash", &["dedicated tool", "SECONDS", "job_id", "sandbox workspace", "session worktree", "no cwd parameter"]),
+            ("request_access", &["call it directly"]),
             ("grep", &["contents", "regex"]),
             ("web_fetch", &["untrusted"]),
             ("memory_write", &["durable"]),

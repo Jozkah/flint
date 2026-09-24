@@ -55,3 +55,89 @@ fn every_bundled_windows_resource_is_installed_by_the_nsis_template() {
          Add a `File` line for each to the template's `; Copy resources` block."
     );
 }
+
+/// Returns the body of `!macro <name> ...` up to its `!macroend`.
+fn macro_body<'a>(template: &'a str, name: &str) -> &'a str {
+    let start = template
+        .find(&format!("!macro {name}"))
+        .unwrap_or_else(|| panic!("macro {name} not found in the NSIS template"));
+    let rest = &template[start..];
+    let end = rest.find("!macroend").expect("unterminated macro");
+    &rest[..end]
+}
+
+/// #289: a binary renamed to `<name>.old` because it was locked during one
+/// update must be removed by the next, unlocked update. The old macro only
+/// deleted `.old` after the primary `Delete` had already failed, so a normal
+/// update never reached it and the (often hundreds of MB) copy leaked forever.
+#[test]
+fn stale_old_copies_are_removed_even_when_the_primary_delete_succeeds() {
+    let template = repo_file("tauri.bundle.windows.nsis.template");
+
+    let unlock = macro_body(&template, "UnlockBundledBinary");
+    let old_delete = unlock
+        .find("Delete \"${path}.old\"")
+        .expect("UnlockBundledBinary must delete ${path}.old");
+    let retry_loop = unlock.find("${Do}").expect("UnlockBundledBinary retry loop");
+    assert!(
+        old_delete < retry_loop,
+        "UnlockBundledBinary must delete ${{path}}.old before its retry loop; \
+         inside the loop it only runs when the primary Delete fails"
+    );
+
+    let free = macro_body(&template, "FreeBundledFiles");
+    for sweep in [
+        "Delete \"$INSTDIR\\resources\\bin\\*.old\"",
+        "Delete \"$INSTDIR\\*.old\"",
+    ] {
+        assert!(
+            free.contains(sweep),
+            "FreeBundledFiles must sweep stray .old files on every install: {sweep}"
+        );
+    }
+}
+
+/// The body of the NSIS section `name`, up to its `SectionEnd`.
+fn section_body<'a>(template: &'a str, name: &str) -> &'a str {
+    let start = template
+        .find(&format!("Section {name}\n"))
+        .or_else(|| template.find(&format!("Section {name}\r\n")))
+        .unwrap_or_else(|| panic!("Section {name} not found in the NSIS template"));
+    let rest = &template[start..];
+    &rest[..rest.find("SectionEnd").expect("unterminated section")]
+}
+
+/// #293: the install directory can be one Jan does not own (`/D=`, or a path
+/// restored from the registry), and every upgrade runs the old uninstaller
+/// against it. Uninstall must remove what the installer wrote and then the
+/// directory only if that left it empty -- never the whole tree.
+#[test]
+fn uninstall_never_deletes_the_install_directory_recursively() {
+    let template = repo_file("tauri.bundle.windows.nsis.template");
+    let uninstall = section_body(&template, "Uninstall");
+    for line in uninstall.lines().map(str::trim) {
+        let recursive = line.starts_with("RMDir") && line.split_whitespace().any(|w| w == "/r");
+        assert!(
+            !(recursive && line.ends_with("\"$INSTDIR\"")),
+            "Section Uninstall deletes $INSTDIR recursively: {line}"
+        );
+    }
+    assert!(
+        uninstall.lines().any(|l| l.trim() == "RMDir /REBOOTOK \"$INSTDIR\""),
+        "Section Uninstall must still remove $INSTDIR once it is empty"
+    );
+    // Everything the installer writes at the top level is removed by name, or
+    // the non-recursive RMDir leaves Jan's own files behind.
+    for file in [
+        "${MAINBINARYNAME}.exe",
+        "LICENSE",
+        "bun.exe",
+        "uv.exe",
+        "uninstall.exe",
+    ] {
+        assert!(
+            uninstall.contains(&format!("Delete \"$INSTDIR\\{file}\"")),
+            "Section Uninstall does not delete $INSTDIR\\{file}"
+        );
+    }
+}

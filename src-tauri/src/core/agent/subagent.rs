@@ -431,13 +431,62 @@ fn scan_agent_dir(dir: &Path, out: &mut Vec<SubagentDefinition>) {
 }
 
 /// Frontmatter fields recognized in a Claude Code agent file; everything else
-/// is ignored.
+/// is ignored. `tools` is whatever YAML the author wrote: Claude Code accepts a
+/// list or a comma-separated string (`tools: Read, Grep, Bash`), and so must
+/// this, or the whole frontmatter fails to parse and the agent is dropped.
 #[derive(Debug, Default, Deserialize)]
 struct PluginAgentFrontmatter {
     name: Option<String>,
     description: Option<String>,
     #[serde(default)]
-    tools: Vec<String>,
+    tools: Option<serde_yaml::Value>,
+}
+
+/// Tool names from a `tools` value: a list, or one comma- or space-separated
+/// string.
+fn tool_names(value: Option<&serde_yaml::Value>) -> Vec<String> {
+    let split = |s: &str| -> Vec<String> {
+        s.split([',', ' '])
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    match value {
+        Some(serde_yaml::Value::String(s)) => split(s),
+        Some(serde_yaml::Value::Sequence(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str())
+            .flat_map(split)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The frontmatter read line by line, for a file that is not valid YAML.
+///
+/// Claude Code reads agent frontmatter leniently, and plugin authors rely on
+/// it: a one-line description such as `Use this agent when... Context: ...`
+/// has a `: ` inside a plain scalar, which strict YAML rejects. Each top-level
+/// `key: value` line is taken as written, with surrounding quotes removed.
+fn lenient_frontmatter(yaml: &str) -> PluginAgentFrontmatter {
+    let mut fm = PluginAgentFrontmatter::default();
+    for line in yaml.lines() {
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+        match key.trim() {
+            "name" => fm.name = Some(value),
+            "description" => fm.description = Some(value),
+            "tools" => fm.tools = Some(serde_yaml::Value::String(value)),
+            _ => {}
+        }
+    }
+    fm
 }
 
 /// Parse a Claude Code agent markdown file into `(name, description, tools,
@@ -446,13 +495,14 @@ struct PluginAgentFrontmatter {
 fn parse_plugin_agent(raw: &str) -> Option<(String, String, Option<Vec<String>>, String)> {
     let (yaml, body) = crate::core::agent::skills::split_frontmatter(raw);
     let yaml = yaml?;
-    let fm: PluginAgentFrontmatter = serde_yaml::from_str(&yaml).unwrap_or_default();
+    let fm: PluginAgentFrontmatter =
+        serde_yaml::from_str(&yaml).unwrap_or_else(|_| lenient_frontmatter(&yaml));
     let name = fm
         .name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())?;
     let description = fm.description.unwrap_or_default();
-    Some((name, description, map_claude_tools(&fm.tools), body))
+    Some((name, description, map_claude_tools(&tool_names(fm.tools.as_ref())), body))
 }
 
 /// Claude Code tool names with a Flint equivalent, 1:1 where one exists. Unknown
@@ -1299,6 +1349,14 @@ pub(crate) fn configure_child_args(
     // place the child can learn it -- and without it `message_send` has no
     // address to use.
     let mut child_prompt = resolved.definition.system_prompt.clone();
+    // A built-in role states what it hands back; a one-off prompt written by
+    // the parent model usually does not, so every child is told the contract.
+    child_prompt.push_str(
+        "\n\nYou are a subagent running one errand for another agent. You cannot see its conversation \
+         and cannot ask the user questions. Your final message is the entire result returned to it: \
+         make it self-contained -- what you found or changed (with file paths), what you could not \
+         do, and anything you did not verify.",
+    );
     if let Some(parent_run) = child_args.parent_run.as_deref() {
         child_prompt.push_str(&format!(
             "\n\nThe run that dispatched you is `{parent_run}`. While you work you can send it \
@@ -3920,6 +3978,37 @@ mod tests {
         );
         // No tools field: no allowlist at all.
         assert_eq!(reg.get("reader").unwrap().allowed_tools, None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Two shapes Claude Code accepts and plugin packs ship: `tools` as a
+    /// comma-separated string, and a description with `Context:` mid-line,
+    /// which strict YAML rejects. Both used to drop the agent as "missing
+    /// frontmatter name" although it had one.
+    #[test]
+    fn plugin_agents_in_claude_code_frontmatter_shapes_are_loaded() {
+        let root = unique_root("plugin-lenient");
+        std::fs::create_dir_all(plugin_agents_dir(&root)).unwrap();
+        std::fs::write(
+            plugin_agents_dir(&root).join("tdd.md"),
+            "---\nname: tdd-guide\ndescription: Tests first.\ntools: Read, Write, Bash\nmodel: sonnet\n---\nWrite tests.",
+        )
+        .unwrap();
+        std::fs::write(
+            plugin_agents_dir(&root).join("hunter.md"),
+            "---\nname: silent-failure-hunter\ndescription: Use this agent when reviewing. Examples:\\n\\n<example>\\nContext: Daisy wrote code.\\nDaisy: \"Review it\"\\n</example>\nmodel: inherit\ncolor: yellow\n---\nHunt.",
+        )
+        .unwrap();
+
+        let reg = SubagentRegistry::load(&root);
+        let tdd = reg.get("tdd-guide").expect("comma-separated tools");
+        assert_eq!(
+            tdd.allowed_tools.as_deref(),
+            Some(&["read".to_string(), "write".to_string(), "bash".to_string()][..])
+        );
+        let hunter = reg.get("silent-failure-hunter").expect("description with Context:");
+        assert!(hunter.description.starts_with("Use this agent when reviewing."), "{}", hunter.description);
+        assert_eq!(hunter.system_prompt.trim(), "Hunt.");
         let _ = std::fs::remove_dir_all(&root);
     }
 

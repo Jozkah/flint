@@ -538,8 +538,10 @@ fn store_err(name: &str, detail: impl std::fmt::Display) -> HarnessError {
 /// read first and hand back the tokens this write replaced.
 fn store_record(data_folder: &Path, name: &str, creds: &StoredCredentials) -> Result<(), HarnessError> {
     let body = serde_json::to_string(creds).map_err(|e| store_err(name, e))?;
+    // Written over, never deleted first (Jozkah/jan#243): a store that fails
+    // after a delete has lost the refresh token for good, and the user must
+    // sign in again. `store_secret_record` replaces the record whole.
     let key = secret_key(data_folder, name);
-    provider_secrets::delete_secret_record(&key).map_err(|e| store_err(name, e))?;
     provider_secrets::store_secret_record(&key, &body).map_err(|e| store_err(name, e))
 }
 
@@ -640,6 +642,9 @@ fn live_refreshers(data_folder: &Path, name: &str) -> usize {
 /// `REFRESH_POLL`). A refresh the provider refuses ends it too: the next
 /// request is then refused and the server reports that it needs
 /// authentication, which is where re-authorizing is offered.
+// Everything the background refresher owns for its lifetime, handed over
+// once at spawn; there is no caller to share a struct with.
+#[allow(clippy::too_many_arguments)]
 fn spawn_refresher(
     data_folder: PathBuf,
     name: String,
@@ -776,7 +781,12 @@ pub async fn begin(server: &str, url: &str, scopes: &[String]) -> Result<Pending
 
     let mut state = OAuthState::new(url.to_string(), None)
         .await
-        .map_err(|e| format!("could not reach '{url}' for OAuth discovery: {e}"))?;
+        .map_err(|e| {
+            redact_url(
+                &format!("could not reach '{url}' for OAuth discovery: {e}"),
+                url,
+            )
+        })?;
     // Flint declares the scopes it asks for (AH-135); an empty list would let
     // the SDK auto-select from server metadata, which is not the same policy.
     state
@@ -809,7 +819,19 @@ impl PendingAuth {
     /// single-use, so a failed exchange means starting over rather than
     /// retrying against spent state.
     pub async fn complete(mut self, data_folder: &Path) -> Result<StoredCredentials, String> {
-        let callback = tokio::time::timeout(CALLBACK_TIMEOUT, accept_callback(&self.listener))
+        // The state this flow issued, as the provider will echo it back.
+        let expected_state = url::Url::parse(&self.authorization_url)
+            .ok()
+            .and_then(|u| {
+                u.query_pairs()
+                    .find(|(k, _)| k == "state")
+                    .map(|(_, v)| v.into_owned())
+            })
+            .unwrap_or_default();
+        let callback = tokio::time::timeout(
+            CALLBACK_TIMEOUT,
+            accept_callback(&self.listener, &expected_state),
+        )
             .await
             .map_err(|_| "timed out waiting for the browser to come back".to_string())??;
 
@@ -849,7 +871,10 @@ struct Callback {
 /// connection, and favicon or `/` probes arrive on their own. So this loops
 /// until a request actually carries the parameters, answering anything else
 /// with a 404 rather than treating it as the redirect and failing the sign-in.
-async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback, String> {
+async fn accept_callback(
+    listener: &tokio::net::TcpListener,
+    expected_state: &str,
+) -> Result<Callback, String> {
     use http_body_util::Full;
     use hyper::body::Bytes;
     use hyper::server::conn::http1;
@@ -862,13 +887,15 @@ async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback,
             .await
             .map_err(|e| format!("callback connection failed: {e}"))?;
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let expected = expected_state.to_string();
 
         let serve = http1::Builder::new().serve_connection(
             TokioIo::new(stream),
             service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
                 let tx = tx.clone();
+                let expected = expected.clone();
                 async move {
-                    let outcome = parse_callback_query(req.uri().query().unwrap_or(""));
+                    let outcome = parse_callback_query(req.uri().query().unwrap_or(""), &expected);
                     let body = callback_page(&outcome);
                     let status = match &outcome {
                         Some(_) => 200,
@@ -912,7 +939,7 @@ async fn accept_callback(listener: &tokio::net::TcpListener) -> Result<Callback,
 /// Pull `code`/`state` (or the provider's `error`) out of a redirect query.
 /// `None` means this request was not the redirect at all, which is the caller's
 /// signal to keep waiting rather than to fail.
-fn parse_callback_query(query: &str) -> Option<Result<Callback, String>> {
+fn parse_callback_query(query: &str, expected_state: &str) -> Option<Result<Callback, String>> {
     let mut code = None;
     let mut state = None;
     let mut error = None;
@@ -926,10 +953,17 @@ fn parse_callback_query(query: &str) -> Option<Result<Callback, String>> {
             _ => {}
         }
     }
+    // Only the redirect for *this* flow carries the state it was issued
+    // (Jozkah/jan#218). Anything else -- a drive-by request to the open loopback
+    // port, whatever state it names -- is not the redirect, and must not abort a
+    // sign-in that is still in flight: keep waiting. An empty expected state
+    // (none could be read from the authorization URL) accepts any, as before.
+    if !expected_state.is_empty() && state.as_deref().is_some_and(|s| s != expected_state) {
+        return None;
+    }
     // An error is only believed when it carries the `state` it was issued
-    // against: a drive-by request to the open loopback port would otherwise abort
-    // a sign-in that is still in flight. Same reasoning that refuses a `code`
-    // with no `state` below -- unverifiable either way, so neither is acted on.
+    // against. Same reasoning that refuses a `code` with no `state` below --
+    // unverifiable either way, so neither is acted on.
     if let (Some(error), Some(_)) = (error, state.as_ref()) {
         let detail = description.map(|d| format!(": {d}")).unwrap_or_default();
         return Some(Err(format!(
@@ -1067,9 +1101,48 @@ pub async fn authorized_client(
     Ok(Some(client))
 }
 
+/// `message` with every spelling of `url` cut down to its origin (Jozkah/jan#261).
+///
+/// Connection errors repeat the request URL, and an HTTP MCP server's URL can
+/// carry its credential (`/api/mcp/s/<secret>/mcp`, `?api_key=`). These errors
+/// are logged and shown in the settings UI on every failed attempt, so the
+/// server is named by `scheme://host[:port]` only.
+pub(crate) fn redact_url(message: &str, url: &str) -> String {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return message.replace(url, "<mcp server url>");
+    };
+    let origin = parsed.origin().ascii_serialization();
+    let mut spellings = vec![
+        url.to_string(),
+        parsed.to_string(),
+        url.trim_end_matches('/').to_string(),
+    ];
+    spellings.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    spellings.dedup();
+    let mut out = message.to_string();
+    for spelling in spellings.iter().filter(|s| s.len() > origin.len()) {
+        out = out.replace(spelling.as_str(), &format!("{origin}/<redacted>"));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_url_in_an_error_is_cut_to_its_origin() {
+        let url = "https://mcp.example.invalid/api/mcp/s/SECRET123456/mcp?api_key=Q%20S";
+        let parsed = url::Url::parse(url).unwrap().to_string();
+        for message in [
+            format!("could not reach '{url}' for OAuth discovery: dns"),
+            format!("error sending request for url ({parsed})"),
+        ] {
+            let out = redact_url(&message, url);
+            assert!(!out.contains("SECRET123456") && !out.contains("api_key"), "{out}");
+            assert!(out.contains("https://mcp.example.invalid/<redacted>"), "{out}");
+        }
+    }
     use oauth2::{AccessToken, RefreshToken, TokenResponse};
     use rmcp::transport::auth::VendorExtraTokenFields;
     use serde_json::json;
@@ -1589,8 +1662,7 @@ mod tests {
         assert!(matches!(status(dir.path(), "srv", &broken), AuthStatus::InvalidScopes { .. }));
         let refused = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &broken, reqwest13::Client::new()))
-            .err()
-            .expect("an unreadable declaration authorizes nothing");
+            .expect_err("an unreadable declaration authorizes nothing");
         assert_eq!(refused.kind(), ErrorKind::InvalidInput);
     }
 
@@ -1606,8 +1678,7 @@ mod tests {
         let config = scoped(&fixture, &["mcp:read"]);
         let refused = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &config, reqwest13::Client::new()))
-            .err()
-            .expect("a widened refresh is refused");
+            .expect_err("a widened refresh is refused");
         assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
         assert!(refused.message().contains("mcp:admin"), "{}", refused.message());
         let after = load(dir.path(), "srv").unwrap();
@@ -1746,8 +1817,7 @@ mod tests {
         save(dir.path(), "srv", &fixture_creds(&fixture, "at-old", "rt-revoked", 10)).unwrap();
         let err = runtime()
             .block_on(authorized_client(dir.path(), "srv", &fixture.url(), &http(), reqwest13::Client::new()))
-            .err()
-            .expect("a refused refresh is an error");
+            .expect_err("a refused refresh is an error");
         assert_eq!(err.kind(), ErrorKind::Authentication);
         assert!(err.message().contains("re-authenticate"), "{err}");
         assert_eq!(fixture.entries("/token")[0]["outcome"], "refused");
@@ -1889,41 +1959,49 @@ mod tests {
 
     #[test]
     fn callback_query_parsing() {
-        let ok = parse_callback_query("code=abc&state=xyz").unwrap().unwrap();
+        let ok = parse_callback_query("code=abc&state=xyz", "").unwrap().unwrap();
         assert_eq!(ok.code, "abc");
         assert_eq!(ok.state, "xyz");
 
         // Percent-encoding is decoded, not passed through.
-        let enc = parse_callback_query("code=a%2Bb&state=s%2F1")
+        let enc = parse_callback_query("code=a%2Bb&state=s%2F1", "")
             .unwrap()
             .unwrap();
         assert_eq!(enc.code, "a+b");
         assert_eq!(enc.state, "s/1");
 
         // An unrelated request is not the redirect: keep waiting.
-        assert!(parse_callback_query("").is_none());
-        assert!(parse_callback_query("favicon=1").is_none());
+        assert!(parse_callback_query("", "").is_none());
+        assert!(parse_callback_query("favicon=1", "").is_none());
 
         // `Callback` deliberately has no `Debug` (it holds an authorization
         // code), so the error cases are matched rather than `unwrap_err`'d.
         let denied = err_of(parse_callback_query(
             "error=access_denied&error_description=nope&state=xyz",
+            "xyz",
         ));
         assert!(denied.contains("access_denied"), "{denied}");
         assert!(denied.contains("nope"), "{denied}");
 
-        let no_state = err_of(parse_callback_query("code=abc"));
+        let no_state = err_of(parse_callback_query("code=abc", ""));
         assert!(no_state.contains("state"), "{no_state}");
 
         // An unverifiable error must not kill a sign-in that is still in
         // flight: any request can reach the open loopback port.
-        assert!(parse_callback_query("error=access_denied").is_none());
+        assert!(parse_callback_query("error=access_denied", "").is_none());
+
+        // Jozkah/jan#218: a request naming some other state is not this
+        // flow's redirect, error or code alike -- keep waiting.
+        assert!(parse_callback_query("error=access_denied&state=forged", "issued").is_none());
+        assert!(parse_callback_query("code=abc&state=forged", "issued").is_none());
+        assert!(parse_callback_query("code=abc&state=issued", "issued").is_some());
     }
 
     #[test]
     fn the_callback_page_escapes_provider_text() {
         let outcome = parse_callback_query(
             "error=bad&error_description=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&state=s",
+            "s",
         );
         let page = callback_page(&outcome);
         assert!(!page.contains("<img"), "{page}");
@@ -1946,7 +2024,7 @@ mod tests {
                     .await
                     .unwrap();
             let port = listener.local_addr().unwrap().port();
-            let waiter = tokio::spawn(async move { accept_callback(&listener).await });
+            let waiter = tokio::spawn(async move { accept_callback(&listener, "s1").await });
 
             let client = reqwest::Client::new();
             // A probe that is not the redirect must not end the wait.
@@ -1956,6 +2034,17 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(probe.status(), 404);
+
+            // Jozkah/jan#218: a drive-by with a forged state, error or code,
+            // must not end the wait either.
+            for forged in ["error=access_denied&state=forged", "code=evil&state=forged"] {
+                let hit = client
+                    .get(format!("http://127.0.0.1:{port}/callback?{forged}"))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(hit.status(), 404, "{forged}");
+            }
 
             let hit = client
                 .get(format!("http://127.0.0.1:{port}/callback?code=c1&state=s1"))

@@ -7,7 +7,31 @@ const mockAddProject = vi.fn()
 const mockUpdateProject = vi.fn()
 const mockDeleteProject = vi.fn()
 const mockGetProjectById = vi.fn()
+const mockSetProjects = vi.fn()
 const mockDeleteThread = vi.fn()
+
+// Home groups are the source of truth for projects.
+const mockCreateGroup = vi.fn()
+const mockRenameGroup = vi.fn()
+const mockDeleteGroup = vi.fn()
+vi.mock('@/lib/groups/store', () => ({
+  useConversationGroups: {
+    getState: () => ({
+      createGroup: mockCreateGroup,
+      renameGroup: mockRenameGroup,
+      deleteGroup: mockDeleteGroup,
+      state: {
+        surfaces: {
+          home: {
+            groups: [{ id: 'p-new', name: 'New Folder', updatedAt: 7 }],
+            memberships: { t1: { groupId: 'p1', itemId: 't1', position: 0 } },
+            contexts: {},
+          },
+        },
+      },
+    }),
+  },
+}))
 
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({
@@ -17,6 +41,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
       updateProject: mockUpdateProject,
       deleteProject: mockDeleteProject,
       getProjectById: mockGetProjectById,
+      setProjects: mockSetProjects,
     }),
     threads: () => ({
       deleteThread: mockDeleteThread,
@@ -81,9 +106,9 @@ describe('useThreadManagement', () => {
     consoleSpy.mockRestore()
   })
 
-  it('should add a folder', async () => {
-    const newFolder = { id: 'p-new', name: 'New Folder' }
-    mockAddProject.mockResolvedValue(newFolder)
+  it('should add a folder as a Home group with the same id', async () => {
+    const newFolder = { id: 'p-new', name: 'New Folder', updated_at: 7, assistantId: 'assistant-1' }
+    mockCreateGroup.mockResolvedValue('p-new')
     mockGetProjects.mockResolvedValue([newFolder])
 
     const { result } = renderHook(() => useThreadManagement())
@@ -93,7 +118,8 @@ describe('useThreadManagement', () => {
       returned = await result.current.addFolder('New Folder', 'assistant-1')
     })
 
-    expect(mockAddProject).toHaveBeenCalledWith('New Folder', 'assistant-1')
+    expect(mockCreateGroup).toHaveBeenCalledWith('home', 'New Folder')
+    expect(mockSetProjects).toHaveBeenCalledWith([newFolder])
     expect(returned).toEqual(newFolder)
     expect(result.current.folders).toEqual([newFolder])
   })
@@ -109,11 +135,12 @@ describe('useThreadManagement', () => {
       await result.current.updateFolder('p1', 'Updated', 'assistant-2')
     })
 
+    expect(mockRenameGroup).toHaveBeenCalledWith('home', 'p1', 'Updated')
     expect(mockUpdateProject).toHaveBeenCalledWith('p1', 'Updated', 'assistant-2')
     expect(result.current.folders).toEqual(updated)
   })
 
-  it('should delete a folder and update threads', async () => {
+  it('should delete a folder by deleting its Home group, never its threads', async () => {
     mockDeleteProject.mockResolvedValue(undefined)
     mockGetProjects.mockResolvedValue([])
 
@@ -123,8 +150,10 @@ describe('useThreadManagement', () => {
       await result.current.deleteFolder('p1')
     })
 
-    // Should update threads belonging to project p1
-    expect(mockUpdateThread).toHaveBeenCalledTimes(2)
+    // Members move to Recents via the groups store; the mirror clears metadata.
+    expect(mockDeleteGroup).toHaveBeenCalledWith('home', 'p1')
+    expect(mockDeleteThread).not.toHaveBeenCalled()
+    expect(mockUpdateThread).not.toHaveBeenCalled()
     expect(mockDeleteProject).toHaveBeenCalledWith('p1')
   })
 

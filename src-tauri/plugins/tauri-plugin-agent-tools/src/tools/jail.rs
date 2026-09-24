@@ -14,7 +14,7 @@
 //! - writes: the thread workspace and a private temp dir, nothing else.
 //! - network: denied unless explicitly allowed.
 //! - the agent's own `<workspace>/.jan` state directory is hidden even though it
-//!   sits inside the workspace ([`Policy::hide_root`]); AppContainer is the one
+//!   sits inside the workspace ([`Policy::hide_roots`]); AppContainer is the one
 //!   backend that cannot express it.
 //!
 //! AppContainer is stricter than that on reads: it can only read what grants
@@ -76,11 +76,12 @@ pub struct Policy {
     /// masking it would hide the very files the agent works on.
     pub mask_root: Option<PathBuf>,
     pub allow_network: bool,
-    /// A path *inside* the workspace to hide from the shell: the agent's own
-    /// `<project>/.jan` state directory. The workspace bind/allow makes the whole
-    /// project reachable, so hiding it needs a rule layered on top -- see
-    /// [`Policy::with_hide_root`].
-    pub hide_root: Option<PathBuf>,
+    /// Paths to hide from the shell: the agent's own `<project>/.jan` state
+    /// directory, and the `.jan` of every write root (a managed worktree or a
+    /// repository edited in place keeps the project's agent policy and hooks
+    /// there). The workspace and write-root binds make those reachable, so
+    /// hiding them needs a rule layered on top -- see [`Policy::with_hide_root`].
+    pub hide_roots: Vec<PathBuf>,
     /// Expose `$HOME` to the sandboxed shell read-only instead of hiding it.
     /// The CLI turns this on so helpers that read the user's home (`git`/`ssh`
     /// credential helpers, `~/.ssh/config`, `~/.netrc`) work, while writes stay
@@ -112,6 +113,11 @@ pub struct Policy {
     /// make the access mode a statement about one of them rather than about
     /// the run.
     pub write_roots: Vec<PathBuf>,
+    /// Where the shell starts, when that is not `workspace`: the managed
+    /// worktree a run writes to. Always one of `write_roots`
+    /// ([`Policy::with_start_dir`] ignores anything else), so the shell never
+    /// starts somewhere it was not granted.
+    pub start_dir: Option<PathBuf>,
 }
 
 impl Policy {
@@ -120,12 +126,27 @@ impl Policy {
             workspace: workspace.to_path_buf(),
             mask_root: None,
             allow_network,
-            hide_root: None,
+            hide_roots: Vec::new(),
             home_readonly: false,
             scratch_root: None,
             read_roots: Vec::new(),
             write_roots: Vec::new(),
+            start_dir: None,
         }
+    }
+
+    /// Start the shell in `dir`, which must already be one of the write roots;
+    /// anything else leaves the start at the workspace.
+    pub fn with_start_dir(mut self, dir: &Path) -> Self {
+        if self.write_roots.iter().any(|r| r == dir) {
+            self.start_dir = Some(dir.to_path_buf());
+        }
+        self
+    }
+
+    /// The directory the shell starts in.
+    pub fn start_dir(&self) -> &Path {
+        self.start_dir.as_deref().unwrap_or(&self.workspace)
     }
 
     /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
@@ -157,8 +178,13 @@ impl Policy {
     /// writes and runs). Not enforced on AppContainer, where the workspace is
     /// granted by an ACE and carving a subpath back out would mean writing a deny
     /// ACE onto the user's directory; there the scan stands alone.
+    ///
+    /// May be called more than once; every path given is hidden, a repeat is
+    /// ignored.
     pub fn with_hide_root(mut self, hide_root: &Path) -> Self {
-        self.hide_root = Some(hide_root.to_path_buf());
+        if !self.hide_roots.iter().any(|h| h == hide_root) {
+            self.hide_roots.push(hide_root.to_path_buf());
+        }
         self
     }
 
@@ -341,8 +367,9 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
             program: helper_exe()?,
-            args: appcontainer::helper_args(
+            args: appcontainer::helper_args_at(
                 &policy.workspace,
+                policy.start_dir.as_deref(),
                 policy.scratch_root.as_deref(),
                 &policy.write_roots,
                 policy.allow_network,
@@ -503,10 +530,10 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // only when the directory exists, so a `.jan` created while the sandbox runs
     // cannot be read back by the next command in the same shell. Writes into it
     // are discarded with the sandbox (and hard-denied at the tool layer anyway).
-    if let Some(hide) = &policy.hide_root {
+    for hide in &policy.hide_roots {
         push(&mut args, &["--tmpfs", &hide.to_string_lossy()]);
     }
-    push(&mut args, &["--chdir", &ws]);
+    push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
     // user namespace; --share-net selectively restores networking.
@@ -616,11 +643,12 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
     }
     // Last, so it wins over the workspace allow above: the agent's own state
     // directory is neither readable nor writable, however the command spells it.
-    if policy.hide_root.is_some() {
-        p.push_str(
-            "(deny file-read* (subpath (param \"HIDE_ROOT\")))\n\
-             (deny file-write* (subpath (param \"HIDE_ROOT\")))\n",
-        );
+    for i in 0..policy.hide_roots.len() {
+        let name = hide_param(i);
+        p.push_str(&format!(
+            "(deny file-read* (subpath (param \"{name}\")))\n\
+             (deny file-write* (subpath (param \"{name}\")))\n"
+        ));
     }
     if policy.allow_network {
         p.push_str(
@@ -638,6 +666,16 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
         p.push_str("(deny network*)\n");
     }
     p
+}
+
+/// Seatbelt parameter naming the `i`th hide root. The first keeps the plain
+/// `HIDE_ROOT` name from when there was only ever one.
+fn hide_param(i: usize) -> String {
+    if i == 0 {
+        "HIDE_ROOT".to_string()
+    } else {
+        format!("HIDE_ROOT_{i}")
+    }
 }
 
 /// Build `sandbox-exec`'s argv. Paths travel as `-D` parameters rather than being
@@ -660,8 +698,8 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     for (i, root) in policy.write_roots.iter().enumerate() {
         args.push(format!("-DWRITE_ROOT_{i}={}", root.to_string_lossy()));
     }
-    if let Some(hide) = &policy.hide_root {
-        args.push(format!("-DHIDE_ROOT={}", hide.to_string_lossy()));
+    for (i, hide) in policy.hide_roots.iter().enumerate() {
+        args.push(format!("-D{}={}", hide_param(i), hide.to_string_lossy()));
     }
     args.push(format!(
         "-DTMPDIR={}",
@@ -1352,6 +1390,19 @@ mod tests {
         assert!(text.contains(&format!("--chdir {ws}")));
     }
 
+    /// A run writing to a managed worktree starts the shell there; a start
+    /// outside the write roots is ignored rather than trusted.
+    #[test]
+    fn bwrap_chdirs_into_the_start_dir_only_when_it_is_a_write_root() {
+        let wt = PathBuf::from("/data/agent-workspace/worktrees/repo/s1");
+        let started = policy().with_write_roots(vec![wt.clone()]).with_start_dir(&wt);
+        let text = joined(&bwrap_args(&started, &cfg()));
+        assert!(text.contains(&format!("--chdir {}", wt.display())), "{text}");
+
+        let ignored = policy().with_start_dir(&wt);
+        assert_eq!(ignored.start_dir(), ignored.workspace.as_path());
+    }
+
     #[test]
     fn bwrap_masks_home_by_default_and_reads_it_when_configured() {
         let Some(home) = home_dir() else {
@@ -1472,6 +1523,41 @@ mod tests {
         assert!(!seatbelt_args(&policy(), &cfg())
             .iter()
             .any(|a| a.contains("READ_ROOT")));
+    }
+
+    /// Jozkah/jan#124: every hide root is masked, each after the workspace
+    /// and write-root binds, and a repeat is kept once.
+    #[test]
+    fn several_hide_roots_are_all_hidden_last() {
+        let ws = "/data/agent-workspace/threads/t1";
+        let wt = "/data/worktrees/repo/s1";
+        let p = policy()
+            .with_write_roots(vec![PathBuf::from(wt)])
+            .with_hide_root(Path::new(&format!("{ws}/.jan")))
+            .with_hide_root(Path::new(&format!("{wt}/.jan")))
+            .with_hide_root(Path::new(&format!("{wt}/.jan")));
+        assert_eq!(p.hide_roots.len(), 2);
+
+        let text = joined(&bwrap_args(&p, &cfg()));
+        let wt_bind = text.find(&format!("--bind {wt} {wt}")).expect("write root bind");
+        let ws_bind = text.find(&format!("--bind {ws} {ws}")).expect("workspace bind");
+        let ws_hide = text.find(&format!("--tmpfs {ws}/.jan")).expect("workspace hide");
+        let wt_hide = text.find(&format!("--tmpfs {wt}/.jan")).expect("write root hide");
+        assert!(wt_bind < wt_hide && ws_bind < wt_hide && ws_bind < ws_hide, "{text}");
+
+        let profile = seatbelt_policy(&p);
+        let allow = profile
+            .find("(allow file-write* (subpath (param \"WRITE_ROOT_0\")))")
+            .expect("write allow");
+        let deny = profile
+            .find("(deny file-write* (subpath (param \"HIDE_ROOT_1\")))")
+            .expect("second hide deny");
+        assert!(allow < deny, "{profile}");
+        assert!(profile.contains("(deny file-read* (subpath (param \"HIDE_ROOT_1\")))"));
+        let args = joined(&seatbelt_args(&p, &cfg()));
+        assert!(args.contains(&format!("-DHIDE_ROOT={ws}/.jan")), "{args}");
+        assert!(args.contains(&format!("-DHIDE_ROOT_1={wt}/.jan")), "{args}");
+        assert!(!profile.contains("HIDE_ROOT_2"));
     }
 
     #[test]

@@ -622,6 +622,20 @@ pub fn agent_worktree_discard(
     worktree::discard(&record, force)
 }
 
+/// Why a shell command would be asked about before it runs, or `None`.
+///
+/// The renderer's own port (`destructiveCommand.ts`) compares paths as text;
+/// this resolves every root and target through the filesystem first, so an
+/// absolute path inside an approved root is inside even when spelled through
+/// a symlink, a junction, mixed separators or `..`, and a link inside a root
+/// that leads out of it is outside. Roots that are not absolute are ignored;
+/// with none left the scope is unknown and every absolute path is outside.
+#[tauri::command]
+pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
+    let scope = crate::core::agent::destructive::Scope::new(roots.iter());
+    crate::core::agent::destructive::destructive_reason_in(&command, &scope)
+}
+
 /// What a worktree holds that removing it would destroy.
 ///
 /// Asked before offering to remove one, so the confirmation names the work
@@ -1052,6 +1066,13 @@ pub fn agent_checkpoint_plan(
     checkpoint::plan(&checkpoint, &latest)
 }
 
+/// The diff a restore to `checkpoint` would apply to the tree as it stands.
+/// Changes nothing; refuses a checkpoint in the user's own checkout.
+#[tauri::command]
+pub fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Result<String, String> {
+    checkpoint::preview_restore_diff(&checkpoint)
+}
+
 /// Roll a Flint-owned tree back to a checkpoint.
 ///
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller
@@ -1154,7 +1175,7 @@ mod worktree_command_tests {
             let err =
                 agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
                     .expect_err("must refuse");
-            assert!(err.contains("not a worktree Jan manages"), "{err}");
+            assert!(err.contains("not a worktree Flint manages"), "{err}");
         }
     }
 
@@ -1247,7 +1268,15 @@ pub async fn agent_prompt_snapshots_delete(
     session: String,
 ) -> Result<usize, String> {
     let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
-    tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
+    if session.trim().is_empty() {
+        // Refused, as before, rather than read as "all".
+        return tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session);
+    }
+    // Everything recorded for the session, not only its snapshots: its usage,
+    // stored diffs, permission decisions and undo journal (Jozkah/jan#294).
+    // A Cowork session is deleted through here alone.
+    tauri_plugin_agent_tools::retention::delete_session(&data_folder, &session)
+        .map(|removed| removed.snapshots)
 }
 
 /// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.
@@ -1935,10 +1964,18 @@ pub async fn tool_activity_diff(
     app: tauri::AppHandle,
     session: String,
     call: String,
+    // The call's invocation, when the caller knows it: a provider can reuse a
+    // call id across requests, and only this picks the right one (Jozkah/jan#244).
+    invocation: Option<String>,
 ) -> Result<Option<String>, String> {
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
-        tauri_plugin_agent_tools::activity::read_diff(&data_folder, &session, &call)
+        tauri_plugin_agent_tools::activity::read_diff(
+            &data_folder,
+            &session,
+            invocation.as_deref(),
+            &call,
+        )
     })
     .await
     .map_err(|e| e.to_string())

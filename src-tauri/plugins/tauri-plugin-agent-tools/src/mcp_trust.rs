@@ -237,6 +237,21 @@ impl State {
         let parsed = std::fs::read_to_string(&path)
             .ok()
             .and_then(|text| parse(&text));
+        // A file that is there and cannot be read still holds the user's
+        // grants. Starting from nothing is the safe answer, but the next
+        // decision would save over it (Jozkah/jan#267), so it is moved aside,
+        // whole, for the user or a later version to recover.
+        if parsed.is_none() && path.exists() {
+            let aside = path.with_extension(format!("json.corrupt-{}", audit::now().replace(':', "-")));
+            match std::fs::rename(&path, &aside) {
+                Ok(()) => eprintln!(
+                    "mcp trust: {} could not be read; kept as {} and starting with nothing trusted",
+                    path.display(),
+                    aside.display()
+                ),
+                Err(e) => eprintln!("mcp trust: {} could not be read or kept aside: {e}", path.display()),
+            }
+        }
         self.loaded_from = Some(path);
         let Some((stored, legacy)) = parsed else {
             self.stored = Stored {
@@ -853,6 +868,28 @@ mod tests {
                 server: "files".to_string()
             })
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Jozkah/jan#267: a trust file that cannot be parsed is not treated as
+    /// empty and then overwritten: it is kept aside, whole, before the next
+    /// decision writes a fresh one.
+    #[test]
+    fn an_unreadable_trust_file_is_kept_not_overwritten() {
+        let _g = lock();
+        let dir = root("corrupt");
+        std::fs::create_dir_all(path_for(&dir).parent().unwrap()).unwrap();
+        let original = "{ this is not json but held real grants";
+        std::fs::write(path_for(&dir), original).unwrap();
+        trust(&dir, "files", &files_v1()).expect("trust");
+        let kept: Vec<_> = std::fs::read_dir(path_for(&dir).parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".corrupt-"))
+            .collect();
+        assert_eq!(kept.len(), 1, "the unreadable file was not kept aside");
+        assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), original);
+        assert!(is_trusted(&dir, "files", &files_v1()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

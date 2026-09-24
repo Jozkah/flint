@@ -1176,10 +1176,19 @@ mod mcp_confinement_tests {
             return;
         };
 
+        // On Windows the AppContainer helper also gets the two names it needs
+        // to start (Jozkah/jan#284); nothing else from the host.
+        let helper_needs = |k: &str| {
+            cfg!(windows)
+                && tauri_plugin_agent_tools::tools::win_env::REQUIRED
+                    .iter()
+                    .any(|r| r.eq_ignore_ascii_case(k))
+        };
         let passed: Vec<String> = cmd
             .as_std()
             .get_envs()
             .map(|(k, _)| k.to_string_lossy().into_owned())
+            .filter(|k| !helper_needs(k))
             .collect();
 
         assert_eq!(passed, vec!["API_TOKEN".to_string()]);
@@ -1842,6 +1851,30 @@ mod mcp_http_integration_tests {
             Ok(Ok(_)) => panic!("connecting to a closed port must not succeed"),
             Err(_) => panic!("a refused connection must fail rather than hang"),
         }
+    }
+
+    /// Jozkah/jan#261: a URL can carry the server's credential (a Zapier-style
+    /// `/s/<secret>/mcp` path, `?api_key=`). A failed connection's error is
+    /// logged and shown, so it names the server's origin and nothing more.
+    #[tokio::test]
+    async fn a_failed_connection_does_not_repeat_the_url_secret() {
+        let port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            socket.local_addr().expect("addr").port()
+        };
+        let client = reqwest13::Client::builder().build().expect("client");
+        let url = format!("http://127.0.0.1:{port}/api/mcp/s/SECRET123456/mcp?api_key=QUERYSECRET789");
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            serve_http(client, &url, handler("leaky")),
+        )
+        .await
+        .expect("fails rather than hangs")
+        .err()
+        .expect("a closed port does not connect");
+        assert!(!err.contains("SECRET123456"), "{err}");
+        assert!(!err.contains("QUERYSECRET789"), "{err}");
+        assert!(err.contains(&format!("127.0.0.1:{port}")), "still names the server: {err}");
     }
 
     /// An `initialize` reply that is not a valid result is a failed handshake,

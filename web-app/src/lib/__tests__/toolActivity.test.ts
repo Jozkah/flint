@@ -14,6 +14,7 @@ import {
   capabilityOf,
   isHideablePhase,
   kindOf,
+  loadToolDiff,
   recordToolActivity,
   resourceOf,
   withToolActivity,
@@ -194,5 +195,21 @@ describe('recordToolActivity', () => {
       phase: 'refused',
     })
     expect(typeof events()[0].at).toBe('string')
+  })
+})
+
+// #244: the invocation reaches tool_activity_diff, and an unknown one is sent
+// as null so the backend falls back to the flat layout.
+describe('loadToolDiff', () => {
+  it('passes the invocation through, or null when there is none', async () => {
+    invoke.mockClear()
+    invoke.mockImplementation((async () => 'diff') as never)
+    expect(await loadToolDiff('s', 'c', 'inv-7')).toBe('diff')
+    expect(invoke).toHaveBeenLastCalledWith('tool_activity_diff', { session: 's', call: 'c', invocation: 'inv-7' })
+    await loadToolDiff('s', 'c', '')
+    expect(invoke).toHaveBeenLastCalledWith('tool_activity_diff', { session: 's', call: 'c', invocation: null })
+    await loadToolDiff('s', 'c')
+    expect(invoke).toHaveBeenLastCalledWith('tool_activity_diff', { session: 's', call: 'c', invocation: null })
+    invoke.mockImplementation(async () => undefined)
   })
 })

@@ -276,23 +276,102 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     } else {
         root.join(raw)
     };
-    let Ok(resolved) = canonicalize_lenient(&abs) else {
-        return false;
-    };
+    // A path that cannot be resolved (a link cycle planted under `.jan`) is
+    // judged by where it is written, so it stays hidden rather than listed.
+    let resolved = canonicalize_lenient(&abs).unwrap_or_else(|_| lexical_normalize(&abs));
     resolved.starts_with(root.join(JAN_DIR))
 }
 
-/// True iff a shell command references a hidden path (best-effort token scan).
-/// Splits on whitespace and shell metacharacters and checks each token so
-/// `cat .jan/agent/agent.toml` and its quoted/redirected variants are caught.
-/// Best-effort is enough only because the OS sandbox masks the directory too
-/// (see [`super::jail::Policy::hide_root`]); this check exists to turn an
-/// evasion-free attempt into a clear error instead of an empty directory.
+/// [`is_hidden_jan_path`] for the project and every granted write root.
+///
+/// A managed worktree or a repository the user lets the agent edit in place
+/// carries the project's own `.jan/agent` (tool policy, hooks, skills). Hiding
+/// only the session workspace's `.jan` left that one open to the file tools
+/// and the shell alike (Jozkah/jan#124). A relative `raw` is resolved against
+/// the project root, the way the file tools resolve it.
+pub fn is_hidden_jan_path_in(project_root: &Path, write_roots: &[PathBuf], raw: &str) -> bool {
+    if is_hidden_jan_path(project_root, raw) {
+        return true;
+    }
+    if write_roots.is_empty() {
+        return false;
+    }
+    let abs = if Path::new(raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        project_root
+            .canonicalize()
+            .unwrap_or_else(|_| project_root.to_path_buf())
+            .join(raw)
+    };
+    let abs = abs.to_string_lossy();
+    write_roots.iter().any(|r| is_hidden_jan_path(r, &abs))
+}
+
+/// [`command_touches_hidden_jan_path`] for the project and every granted write
+/// root. A relative token is judged against each of them: the shell may start
+/// in a managed worktree, where `.jan/agent/agent.toml` means that worktree's.
+pub fn command_touches_hidden_jan_path_in(
+    project_root: &Path,
+    write_roots: &[PathBuf],
+    command: &str,
+) -> bool {
+    command_touches_hidden_jan_path(project_root, command)
+        || write_roots
+            .iter()
+            .any(|r| command_touches_hidden_jan_path(r, command))
+}
+
+/// True iff a shell command references a hidden path.
+///
+/// Splits on whitespace and shell metacharacters and checks each token, so
+/// `cat .jan/agent/agent.toml` and its redirected variants are caught. On the
+/// unsandboxed CLI nothing masks `.jan`, so this scan is the only barrier
+/// (Jozkah/jan#220) and must see what the shell will: it also checks the text
+/// with quotes and backslashes removed (`.j''an`, `.j\an`), treats a glob that
+/// would match `.jan` in the project root as naming it (`.ja?`, `.j*`,
+/// `.[j]an`), and refuses a command that builds a name by substitution (`$`,
+/// backticks) out of the pieces of one (`${d}an/agent`). It errs towards
+/// refusing: a false positive costs a rephrased command, a miss costs hooks.
 pub fn command_touches_hidden_jan_path(project_root: &Path, command: &str) -> bool {
-    command
-        .split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
-        .filter(|t| !t.is_empty())
-        .any(|t| is_hidden_jan_path(project_root, t))
+    let names_jan = |text: &str| {
+        text.split(|c: char| c.is_whitespace() || ";|&><()\"'`".contains(c))
+            .filter(|t| !t.is_empty())
+            .any(|t| is_hidden_jan_path(project_root, t) || glob_names_jan(project_root, t))
+    };
+    if names_jan(command) {
+        return true;
+    }
+    let dequoted: String = command
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '"' | '\\'))
+        .collect();
+    if names_jan(&dequoted) {
+        return true;
+    }
+    let substitutes = command.contains('$') || command.contains('`');
+    substitutes && (dequoted.contains(".j") || dequoted.contains("an/agent"))
+}
+
+/// Whether a token is a glob whose first component, relative to the project
+/// root, the shell would expand to `.jan`. A leading dot must be written, as
+/// in the shell's default, so `*` alone does not count.
+fn glob_names_jan(project_root: &Path, token: &str) -> bool {
+    let root = project_root.to_string_lossy().replace('\\', "/");
+    let token = token.replace('\\', "/");
+    let relative = token
+        .strip_prefix(&format!("{}/", root.trim_end_matches('/')))
+        .unwrap_or(&token);
+    let relative = relative.trim_start_matches("./");
+    let first = relative.split('/').next().unwrap_or("");
+    if !first.contains(['*', '?', '[']) {
+        return false;
+    }
+    let options = glob::MatchOptions {
+        require_literal_leading_dot: true,
+        ..glob::MatchOptions::new()
+    };
+    glob::Pattern::new(first).is_ok_and(|p| p.matches_with(JAN_DIR, options))
 }
 
 /// True when `target` *claims* to be inside a trusted root but resolves outside
@@ -352,42 +431,104 @@ pub fn symlink_escapes_any_root(
         .any(|r| resolved.starts_with(r))
 }
 
-/// Canonicalize a path that may not fully exist: canonicalize the deepest
-/// existing ancestor, then re-append the non-existing tail (resolving `.`/`..`
-/// lexically). Errors only if no ancestor up to root exists.
-fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
-    if let Ok(p) = path.canonicalize() {
-        return Ok(p);
-    }
-    let mut existing = path;
-    let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
-    loop {
-        match existing.parent() {
-            Some(parent) => {
-                if let Some(name) = existing.file_name() {
-                    tail.push(name);
-                }
-                existing = parent;
-                if let Ok(base) = existing.canonicalize() {
-                    let mut result = base;
-                    for comp in tail.iter().rev() {
-                        if *comp == std::ffi::OsStr::new(".") {
-                            continue;
-                        }
-                        if *comp == std::ffi::OsStr::new("..") {
-                            result.pop();
-                        } else {
-                            result.push(comp);
-                        }
-                    }
-                    return Ok(result);
-                }
-            }
-            None => {
-                return Err(format!("no existing ancestor for {:?}", path));
-            }
+/// How many symlinks one resolution may follow before it is taken to be a
+/// cycle. Linux's own limit (`MAXSYMLINKS`) is 40.
+const MAX_LINK_HOPS: usize = 40;
+
+/// Where `path` leads, for a path that may not fully exist yet: the path a
+/// create-or-open of it would really reach.
+///
+/// The deepest existing ancestor is canonicalized, and the rest is walked one
+/// component at a time. A component that exists as a symlink -- including a
+/// dangling one, whose target does not exist yet and which `canonicalize`
+/// therefore cannot tell from a missing file (Jozkah/jan#192) -- is replaced by
+/// its target, relative targets taken from the link's own directory, and
+/// resolution starts over. Only components that do not exist at all are
+/// appended lexically.
+///
+/// Fails closed: an error for no existing ancestor, a component that cannot be
+/// inspected or read, or more than [`MAX_LINK_HOPS`] links (a cycle). Callers
+/// treat an error as an escape.
+///
+/// This decides where a path points at the moment it is called; it cannot stop
+/// a link from being planted or swapped afterwards. See the write handler's
+/// `O_NOFOLLOW` open for the part of that window it closes.
+pub(crate) fn canonicalize_lenient(path: &Path) -> Result<PathBuf, String> {
+    let mut path = path.to_path_buf();
+    for _ in 0..=MAX_LINK_HOPS {
+        if let Ok(p) = path.canonicalize() {
+            return Ok(p);
+        }
+        match resolve_once(&path)? {
+            Resolution::Reached(p) => return Ok(p),
+            Resolution::FollowLink(next) => path = next,
         }
     }
+    Err(format!("too many levels of symbolic links in {:?}", path))
+}
+
+enum Resolution {
+    /// Every component was checked and none is a symlink.
+    Reached(PathBuf),
+    /// The path with its first symlink replaced by the link's target.
+    FollowLink(PathBuf),
+}
+
+fn resolve_once(path: &Path) -> Result<Resolution, String> {
+    use std::path::Component;
+    let components: Vec<Component> = path.components().collect();
+    for split in (1..components.len()).rev() {
+        let prefix: PathBuf = components[..split].iter().collect();
+        let Ok(base) = prefix.canonicalize() else {
+            continue;
+        };
+        let rest = &components[split..];
+        let mut current = base;
+        for (i, component) in rest.iter().enumerate() {
+            match component {
+                Component::CurDir => {}
+                // `current` is canonical up to here, or names something that
+                // does not exist, so stepping up lexically is exact.
+                Component::ParentDir => {
+                    current.pop();
+                }
+                Component::Normal(name) => {
+                    let next = current.join(name);
+                    match std::fs::symlink_metadata(&next) {
+                        Ok(meta) if meta.file_type().is_symlink() => {
+                            let target = std::fs::read_link(&next)
+                                .map_err(|e| format!("cannot read link {:?}: {e}", next))?;
+                            // `join` keeps an absolute target as it is and puts
+                            // a relative one under the link's directory.
+                            let mut followed = current.join(target);
+                            for later in &rest[i + 1..] {
+                                followed.push(later.as_os_str());
+                            }
+                            return Ok(Resolution::FollowLink(followed));
+                        }
+                        Ok(_) => current = next,
+                        // Nothing there -- including under a file used as a
+                        // directory, which Unix reports as `NotADirectory`. The
+                        // open will fail with the real error; it is not an escape.
+                        Err(e)
+                            if matches!(
+                                e.kind(),
+                                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                            ) =>
+                        {
+                            current = next
+                        }
+                        Err(e) => return Err(format!("cannot inspect {:?}: {e}", next)),
+                    }
+                }
+                Component::RootDir | Component::Prefix(_) => {
+                    return Err(format!("unexpected root inside {:?}", path));
+                }
+            }
+        }
+        return Ok(Resolution::Reached(current));
+    }
+    Err(format!("no existing ancestor for {:?}", path))
 }
 
 #[cfg(test)]
@@ -532,6 +673,39 @@ mod tests {
     }
 
     #[test]
+    fn a_write_roots_jan_is_hidden_too() {
+        let base = std::env::temp_dir().join(format!("jan-hide-wr-{}", std::process::id()));
+        let project = base.join("ws");
+        let wt = base.join("wt");
+        std::fs::create_dir_all(project.join(".jan")).unwrap();
+        std::fs::create_dir_all(wt.join(".jan/agent")).unwrap();
+        std::fs::create_dir_all(wt.join("src")).unwrap();
+        let roots = vec![wt.clone()];
+        let wt_policy = wt.join(".jan/agent/agent.toml");
+        let wt_policy = wt_policy.to_string_lossy();
+
+        // Only the project's own .jan without the write roots.
+        assert!(!is_hidden_jan_path_in(&project, &[], &wt_policy));
+        assert!(is_hidden_jan_path_in(&project, &roots, &wt_policy));
+        assert!(is_hidden_jan_path_in(&project, &roots, &wt.join(".jan").to_string_lossy()));
+        assert!(is_hidden_jan_path_in(&project, &roots, ".jan/agent"));
+        assert!(!is_hidden_jan_path_in(&project, &roots, &wt.join("src").to_string_lossy()));
+        assert!(!is_hidden_jan_path_in(&project, &roots, "src/main.rs"));
+
+        // The shell starts in the worktree, so a relative spelling counts too.
+        assert!(command_touches_hidden_jan_path_in(&project, &roots, &format!("cat {wt_policy}")));
+        assert!(command_touches_hidden_jan_path_in(&project, &roots, "cat .jan/agent/hooks.toml"));
+        assert!(command_touches_hidden_jan_path_in(
+            &project,
+            &roots,
+            "echo x > .jan/agent/agent.toml"
+        ));
+        assert!(!command_touches_hidden_jan_path_in(&project, &roots, "cargo test"));
+        assert!(!command_touches_hidden_jan_path(&project, &format!("cat {wt_policy}")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn command_scan_flags_hidden_paths() {
         let root = unique_root();
         std::fs::create_dir_all(root.join(".jan/agent")).unwrap();
@@ -551,6 +725,41 @@ mod tests {
         assert!(command_touches_hidden_jan_path(&root, "ls -la .jan"));
         assert!(!command_touches_hidden_jan_path(&root, "cat JAN.md"));
         assert!(!command_touches_hidden_jan_path(&root, "ls -la src"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#220: the shell unquotes, unescapes, expands globs and
+    /// substitutes variables before it opens anything, so the scan must see
+    /// through the same spellings -- on the unsandboxed CLI it is the only
+    /// thing between the model and `.jan/agent/hooks.toml`.
+    #[test]
+    fn command_scan_sees_through_shell_spellings_of_jan() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(".jan/agent")).unwrap();
+        for command in [
+            "mkdir -p .j''an/agent && printf x > .j''an/agent/hooks.toml",
+            r#"echo x > ".j"an/agent/hooks.toml"#,
+            r"echo x > .j\an/agent/hooks.toml",
+            "cp evil.toml .ja?/agent/agent.toml",
+            "cp evil.toml .j*/agent/agent.toml",
+            "cp evil.toml .[j]an/agent/agent.toml",
+            "cp evil.toml ./.ja?/agent/agent.toml",
+            "d=.j; echo x > ${d}an/agent/hooks.toml",
+            "echo x > $(printf .j)an/agent/hooks.toml",
+            "echo x > `echo .ja`n/agent/hooks.toml",
+        ] {
+            assert!(command_touches_hidden_jan_path(&root, command), "{command}");
+        }
+        // Ordinary commands with the same characters stay usable.
+        for command in [
+            "ls src/*.rs",
+            "echo $HOME",
+            "grep -r 'jan' src",
+            "cat JAN.md",
+            "cp a.txt 'my file.txt'",
+        ] {
+            assert!(!command_touches_hidden_jan_path(&root, command), "{command}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1063,5 +1272,168 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&ws);
         let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // -- dangling symlinks (Jozkah/jan#192) -----------------------------------
+    //
+    // A symlink whose target does not exist yet makes `canonicalize` fail just
+    // as a missing file does, but opening it for writing creates the target.
+    // Containment must follow the link, wherever it points.
+
+    /// A symlink at `at` naming `target`, which need not exist. `None` where
+    /// the platform refuses to make one (Windows without Developer Mode), so
+    /// the test has nothing to check there rather than failing.
+    fn link(target: &Path, at: &Path, dir: bool) -> Option<()> {
+        #[cfg(unix)]
+        let made = {
+            let _ = dir;
+            std::os::unix::fs::symlink(target, at)
+        };
+        #[cfg(windows)]
+        let made = if dir {
+            std::os::windows::fs::symlink_dir(target, at)
+        } else {
+            std::os::windows::fs::symlink_file(target, at)
+        };
+        match made {
+            Ok(()) => Some(()),
+            Err(e) => {
+                eprintln!("skipped: cannot create a symlink here: {e}");
+                None
+            }
+        }
+    }
+
+    fn all_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(true), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(true),
+            "escapes_write_roots {raw}"
+        );
+        assert!(symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    fn none_escape(root: &Path, raw: &str) {
+        assert_eq!(escapes_project(root, None, raw), Ok(false), "escapes_project {raw}");
+        assert_eq!(
+            escapes_write_roots(root, None, &[], raw),
+            Ok(false),
+            "escapes_write_roots {raw}"
+        );
+        assert!(!symlink_escapes_root(root, None, &root.join(raw)), "symlink_escapes_root {raw}");
+    }
+
+    #[test]
+    fn a_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("created.txt"), &root.join("dangling"), false).is_none() {
+            return;
+        }
+        all_escape(&root, "dangling");
+        assert!(!outside.join("created.txt").exists());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_relative_dangling_link_out_of_the_root_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        let name = outside.file_name().unwrap().to_string_lossy().into_owned();
+        let target = PathBuf::from("..").join(name).join("created.txt");
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        // Relative to the link's own directory: `notes/../..` is the temp dir.
+        if link(&PathBuf::from("..").join(&target), &root.join("notes").join("todo.md"), false)
+            .is_none()
+        {
+            return;
+        }
+        all_escape(&root, "notes/todo.md");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_dangling_directory_link_in_the_middle_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&outside.join("missing"), &root.join("d"), true).is_none() {
+            return;
+        }
+        all_escape(&root, "d/new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_chain_of_links_ending_outside_is_an_escape() {
+        let root = unique_root();
+        let outside = unique_root();
+        if link(&root.join("b"), &root.join("a"), false).is_none()
+            || link(&outside.join("x.txt"), &root.join("b"), false).is_none()
+        {
+            return;
+        }
+        all_escape(&root, "a");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// A cycle has no destination to judge, so it cannot be shown to stay in.
+    #[test]
+    fn a_link_cycle_fails_closed() {
+        let root = unique_root();
+        if link(&root.join("c2"), &root.join("c1"), false).is_none()
+            || link(&root.join("c1"), &root.join("c2"), false).is_none()
+        {
+            return;
+        }
+        assert_ne!(escapes_project(&root, None, "c1"), Ok(false));
+        assert_ne!(escapes_write_roots(&root, None, &[], "c1"), Ok(false));
+        assert!(symlink_escapes_root(&root, None, &root.join("c1")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Following links must not cost legitimate in-root cases: a dangling link
+    /// whose target stays inside, absolute or relative, and a plain new file.
+    #[test]
+    fn dangling_links_that_stay_inside_are_not_escapes() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        if link(&root.join("sub").join("new.txt"), &root.join("abs"), false).is_none()
+            || link(Path::new("sub/other.txt"), &root.join("rel"), false).is_none()
+        {
+            return;
+        }
+        none_escape(&root, "abs");
+        none_escape(&root, "rel");
+        none_escape(&root, "sub/plain-new.txt");
+        none_escape(&root, "sub/deeper/still-new.txt");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file used as a directory has nothing beneath it: not an escape, so
+    /// the write fails with the real error instead of a containment refusal.
+    #[test]
+    fn a_path_under_a_file_is_not_an_escape() {
+        let root = unique_root();
+        std::fs::write(root.join("main.rs"), b"x").unwrap();
+        none_escape(&root, "main.rs/x");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Unresolvable names under `.jan` stay hidden.
+    #[test]
+    fn a_link_cycle_under_jan_stays_hidden() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join(JAN_DIR)).unwrap();
+        let (a, b) = (root.join(JAN_DIR).join("c1"), root.join(JAN_DIR).join("c2"));
+        if link(&b, &a, false).is_none() || link(&a, &b, false).is_none() {
+            return;
+        }
+        assert!(is_hidden_jan_path(&root, &format!("{JAN_DIR}/c1")));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -385,3 +385,17 @@ describe('what the card states about context', () => {
     expect(card()).toHaveTextContent('common:readiness.tokensEstimatedPartial')
   })
 })
+
+describe('MCP servers from Settings', () => {
+  it('says they are not offered when some are enabled', () => {
+    render(<CoworkReadinessCard manifest={manifest()} settingsMcpServers={2} />)
+    expect(screen.getByTestId('readiness-mcp-not-offered')).toHaveTextContent(
+      'common:readiness.mcpNotOffered'
+    )
+  })
+
+  it('says nothing extra when none are enabled', () => {
+    render(<CoworkReadinessCard manifest={manifest()} />)
+    expect(screen.queryByTestId('readiness-mcp-not-offered')).toBeNull()
+  })
+})

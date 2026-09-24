@@ -611,6 +611,7 @@ fn search_linear(
         stmt.query(&*param_refs)?
     };
     let mut results: Vec<SearchResult> = Vec::new();
+    let mut skipped = 0usize;
 
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
@@ -620,6 +621,13 @@ fn search_linear(
         let chunk_file_order: i64 = row.get(4)?;
 
         let emb = from_le_bytes_vec(&embedding_bytes);
+        // A chunk stored at another dimension (the embedding model changed
+        // under an existing collection) cannot be compared; skip it rather
+        // than failing the search for every chunk that can (Jozkah/jan#246).
+        if emb.len() != query_embedding.len() {
+            skipped += 1;
+            continue;
+        }
         let score = cosine_similarity(query_embedding, &emb)?;
 
         if score >= threshold {
@@ -642,6 +650,11 @@ fn search_linear(
         }
     });
     let take: Vec<SearchResult> = results.into_iter().take(limit).collect();
+    if skipped > 0 {
+        println!(
+            "[VectorDB] Linear search skipped {skipped} chunk(s) stored at another dimension; re-index to include them"
+        );
+    }
     println!("[VectorDB] Linear search returned {} results", take.len());
     Ok(take)
 }
@@ -784,7 +797,9 @@ mod tests {
             .expect("a bundled candidate should exist");
         let system = paths
             .iter()
-            .position(|p| !p.contains("resources") && p.starts_with('/'))
+            // By the platform's own system directories: on Windows they are
+            // `C:\...`, so an absolute-Unix-path check finds none there.
+            .position(|p| SQLITE_VEC_SYSTEM_DIRS.iter().any(|dir| p.starts_with(dir)))
             .expect("a system candidate should exist");
         assert!(bundled < system, "{paths:?}");
     }
@@ -868,6 +883,33 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, VectorDBError::InvalidInput(_)), "{err}");
+    }
+
+    /// Jozkah/jan#246: one chunk stored at another dimension (an embedding
+    /// model changed mid-collection) must not fail the whole search; the
+    /// matching chunks are still found.
+    #[test]
+    fn linear_search_skips_a_chunk_of_another_dimension() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema(&conn, 3).unwrap();
+        conn.execute("INSERT INTO files (id, path) VALUES ('f1', '/f1')", []).unwrap();
+        insert_chunks(
+            &conn,
+            "f1",
+            vec![MinimalChunkInput { text: "good".to_string(), embedding: vec![0.1, 0.2, 0.3] }],
+            false,
+        )
+        .unwrap();
+        let odd: Vec<u8> = [0.5f32, 0.5].iter().flat_map(|f| f.to_le_bytes()).collect();
+        conn.execute(
+            "INSERT INTO chunks (id, text, embedding, file_id, chunk_file_order) VALUES ('odd', 'odd', ?1, 'f1', 99)",
+            [odd],
+        )
+        .unwrap();
+        let found = search_collection(&conn, &[0.1, 0.2, 0.3], 5, 0.0, Some("linear".to_string()), false, None)
+            .expect("one bad chunk must not fail the search");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "good");
     }
 
     #[test]

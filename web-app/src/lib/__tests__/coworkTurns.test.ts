@@ -360,8 +360,9 @@ describe('streamed tool arguments stay out of the rendered message', () => {
       .flatMap((m) => m.parts)
       .find((p: any) => p.type === 'tool-write')
     expect(part).toBeTruthy()
-    // The parsed args are absent while streaming, so the input is empty.
-    expect(part.input).toBeNull()
+    // The parsed args are absent while streaming, so the input is empty (#321:
+    // an object, never null, so a replay of it is a valid call).
+    expect(part.input).toEqual({})
     // The huge buffer is nowhere in what the renderer receives.
     expect(JSON.stringify(messages)).not.toContain('XXXX')
   })

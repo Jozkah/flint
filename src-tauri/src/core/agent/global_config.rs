@@ -231,6 +231,7 @@ pub(crate) fn load_global_config() -> Result<HashMap<String, ProviderConfig>, St
                     custom_headers: Vec::new(),
                     models: entry.models,
                     api_type: entry.api_type,
+                    stored_credentials: crate::core::state::StoredCredentials::Allowed,
                 },
             )
         })

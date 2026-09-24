@@ -34,8 +34,10 @@ describe('formatCompactDuration', () => {
     expect(format(4800)).toBe('1h 20m')
   })
 
-  it('drops seconds at hour scale to keep the label short', () => {
-    expect(format(3661)).toBe('1h 1m')
+  it('keeps hours, minutes and seconds, omitting zero parts', () => {
+    expect(format(3661)).toBe('1h 1m 1s')
+    expect(format(3605)).toBe('1h 5s')
+    expect(format(3010)).toBe('50m 10s')
   })
 
   it('floors fractional input and clamps negatives', () => {
