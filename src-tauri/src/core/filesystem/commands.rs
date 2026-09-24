@@ -107,7 +107,14 @@ pub fn file_stat<R: Runtime>(
     let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
     let is_directory = metadata.is_dir();
     let size = if is_directory { 0 } else { metadata.len() };
-    let file_stat = FileStat { is_directory, size };
+    let is_symlink = fs::symlink_metadata(&path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+    let file_stat = FileStat {
+        is_directory,
+        size,
+        is_symlink,
+    };
     Ok(file_stat)
 }
 
