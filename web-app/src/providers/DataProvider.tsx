@@ -11,6 +11,7 @@ import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
+import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
 import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
@@ -36,6 +37,10 @@ type RegisterProviderRequest = {
   base_url?: string
   custom_headers: RegisteredCustomHeader[]
   models: string[]
+  /** The wire format the provider speaks. The Local API proxy and the agent
+   * loop pick their request converter by it; without it every provider was
+   * forwarded as OpenAI chat/completions (#139). */
+  api_type: ProviderApiType
 }
 
 async function registerRemoteProvider(provider: ModelProvider) {
@@ -58,7 +63,8 @@ async function registerRemoteProvider(provider: ModelProvider) {
       value: h.value,
       secret: !!h.secret,
     })),
-    models: provider.models.map(e => e.id)
+    models: provider.models.map(e => e.id),
+    api_type: getProviderApiType(provider),
   }
 
   try {
