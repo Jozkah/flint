@@ -97,6 +97,22 @@ impl CredentialStore {
     pub fn delete(provider: &str) -> Result<(), String> {
         provider_secrets::delete_secret_record(&secret_key(provider))
     }
+
+    /// The stored record for `provider` exactly as it is now, so a sign-in
+    /// that overwrites it can put it back with [`CredentialStore::restore`]
+    /// if a later step fails.
+    pub fn snapshot(provider: &str) -> Option<String> {
+        provider_secrets::load_secret_record(&secret_key(provider))
+    }
+
+    /// Put back what [`CredentialStore::snapshot`] returned: the previous
+    /// record, or no record when there was none.
+    pub fn restore(provider: &str, snapshot: Option<String>) -> Result<(), String> {
+        match snapshot {
+            Some(raw) => provider_secrets::store_secret_record(&secret_key(provider), &raw),
+            None => Self::delete(provider),
+        }
+    }
 }
 
 fn secret_key(provider: &str) -> String {
@@ -137,6 +153,25 @@ mod tests {
                 None => std::env::remove_var("JAN_DATA_FOLDER"),
             }
         }
+    }
+
+    #[test]
+    fn restore_puts_back_the_previous_credential_or_nothing() {
+        let _tmp = TempSecrets::new();
+        CredentialStore::store("openai", &Credential::ApiKey("old".into())).unwrap();
+        let before = CredentialStore::snapshot("openai");
+        CredentialStore::store("openai", &Credential::ApiKey("new".into())).unwrap();
+        CredentialStore::restore("openai", before).unwrap();
+        assert!(matches!(
+            CredentialStore::load("openai").unwrap(),
+            Some(Credential::ApiKey(key)) if key == "old"
+        ));
+
+        let none = CredentialStore::snapshot("deepseek");
+        assert!(none.is_none());
+        CredentialStore::store("deepseek", &Credential::ApiKey("new".into())).unwrap();
+        CredentialStore::restore("deepseek", none).unwrap();
+        assert!(CredentialStore::load("deepseek").unwrap().is_none());
     }
 
     fn oauth_credential() -> Credential {

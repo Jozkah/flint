@@ -291,6 +291,9 @@ fn persist(
     key: &str,
     models: &[String],
 ) -> Result<LoginResult, LoginError> {
+    // What was stored before, so a failed config write puts it back instead
+    // of signing the user out of a provider they were already signed in to.
+    let previous = CredentialStore::snapshot(definition.id);
     CredentialStore::store(definition.id, &Credential::ApiKey(key.to_string()))
         .map_err(|e| LoginError::Persist(format!("could not save the credential securely: {e}")))?;
 
@@ -313,7 +316,7 @@ fn persist(
     ) {
         Ok(path) => path,
         Err(e) => {
-            let _ = CredentialStore::delete(definition.id);
+            let _ = CredentialStore::restore(definition.id, previous);
             return Err(LoginError::Persist(format!(
                 "could not save the provider configuration: {e}"
             )));
