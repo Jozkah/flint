@@ -9381,9 +9381,11 @@ fn apply_repaint<B: Backend>(terminal: &mut Terminal<B>) {
 }
 
 /// Route a bracketed paste event to the active input owner. The order mirrors
-/// `handle_key`: each docked prompt owns the keyboard while open, so a paste
-/// must land in its fields rather than the chat composer (where a pasted API
-/// key would echo).
+/// the key path (`handle_ask_key`, then `handle_key`): each docked prompt owns
+/// the keyboard while open, so a paste must land in its fields rather than the
+/// chat composer (where a pasted API key would echo). An overlay that owns the
+/// keyboard but has no text field drops the paste; it must never fall through
+/// to the composer hidden behind it.
 fn route_paste_event(app: &mut App, event: Event) {
     let Event::Paste(text) = event else {
         return;
@@ -9391,25 +9393,57 @@ fn route_paste_event(app: &mut App, event: Event) {
     if let Some(prompt) = app.account_login.as_mut() {
         // A pasted redirect/code belongs to the OAuth prompt, not chat.
         prompt.paste(&text);
-    } else if let Some(prompt) = app.login.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.login.as_mut() {
         // A pasted API key belongs to the login field, not the chat composer
         // (where it would echo).
         prompt.paste(&text);
-    } else if let Some(prompt) = app.settings_prompt.as_mut() {
+        return;
+    }
+    // A yes/no question has no text field: the paste is dropped.
+    if app.browser_confirm.is_some() {
+        return;
+    }
+    if let Some(prompt) = app.settings_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.mcp_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.mcp_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.provider_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.provider_prompt.as_mut() {
         prompt.paste(&text);
-    } else if !app.ask_queue.is_empty() {
+        return;
+    }
+    if !app.ask_queue.is_empty() {
         handle_ask_paste(app, &text);
-    } else {
-        // Bracketed paste of a split SGR report is the same leak as typing it
-        // a character at a time; strip before the composer sees it.
-        let text = strip_sgr_mouse_reports(&text);
-        for c in text.chars() {
-            app.input_insert(c);
+        return;
+    }
+    // The context view and a waiting permission prompt take keys, not text.
+    if app.context_view.is_some() || !app.pending_queue.is_empty() {
+        return;
+    }
+    if let Some(picker) = app.model_picker.as_mut() {
+        // The model picker's only text field is its filter.
+        if picker.focus == ModelPickerFocus::Models {
+            picker
+                .query
+                .extend(text.chars().filter(|c| !c.is_control()));
+            picker.refresh_items();
         }
+        return;
+    }
+    // List pickers navigate by key and have no text field.
+    if app.picker.is_some() {
+        return;
+    }
+    // Bracketed paste of a split SGR report is the same leak as typing it
+    // a character at a time; strip before the composer sees it.
+    let text = strip_sgr_mouse_reports(&text);
+    for c in text.chars() {
+        app.input_insert(c);
     }
 }
 
@@ -34358,6 +34392,30 @@ mod tests {
         picker.select_scope(1);
         assert_eq!(picker.scopes[picker.active_scope].label, "anthropic");
         assert!(picker.items.iter().all(|item| item.provider == "anthropic"));
+    }
+
+    /// #69: a paste while a picker owns the keyboard must not reach the chat
+    /// composer hidden behind it. The model picker takes it as its filter.
+    #[test]
+    fn paste_does_not_leak_past_open_pickers() {
+        let mut app = test_app();
+        app.model_picker = super::ModelPicker::from_pairs(
+            vec![("openai".into(), "gpt-5-codex".into())],
+            "missing-current",
+        );
+        route_paste_event(&mut app, Event::Paste("codex".into()));
+        assert!(app.input.is_empty(), "paste leaked past the model picker");
+        assert_eq!(app.model_picker.as_ref().unwrap().query, "codex");
+
+        let mut app = test_app();
+        app.picker = Some(super::Picker {
+            kind: PickerKind::AgentSettings,
+            items: Vec::new(),
+            selected: 0,
+            armed_delete: None,
+        });
+        route_paste_event(&mut app, Event::Paste("must not become chat".into()));
+        assert!(app.input.is_empty(), "paste leaked past the list picker");
     }
 
     #[tokio::test]
