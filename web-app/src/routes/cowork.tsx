@@ -1064,9 +1064,19 @@ function CoworkPage() {
       setGitBranch(null)
       return
     }
+    // Like the tooling effect below: a slow answer for a folder no longer
+    // attached must not name the branch of the one that is.
+    let alive = true
     invoke<string | null>('agent_git_branch', { project: folder })
-      .then(setGitBranch)
-      .catch(() => setGitBranch(null))
+      .then((branch) => {
+        if (alive) setGitBranch(branch)
+      })
+      .catch(() => {
+        if (alive) setGitBranch(null)
+      })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Read once per attached folder. A failure is a typed state, never a throw,
