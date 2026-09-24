@@ -5989,7 +5989,7 @@ fn scenario_cowork_killed_mid_turn(ctx: &Ctx) -> ScenarioResult {
 /// AH-026, second half: the fresh process shows the killed run's turn as
 /// interrupted -- its completed step and its unfinished reply -- and offers to
 /// continue it or to discard the unfinished reply. Nothing runs until one is
-/// chosen. Continue sends the model the recovered turns with a note from Jan,
+/// chosen. Continue sends the model the recovered turns with a note from Flint,
 /// the run finishes, and no checkpoint is left.
 fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
     let handoff = read_handoff(ctx, INTERRUPTED_HANDOFF, "cowork-run-killed-mid-turn")?;
@@ -6038,12 +6038,12 @@ fn scenario_cowork_interrupted_turn_continues(ctx: &Ctx) -> ScenarioResult {
         std::thread::sleep(Duration::from_millis(600));
     }
     // What the model was sent: the recovered step, the unfinished reply, and
-    // the note from Jan -- the request itself, not the screen.
+    // the note from Flint -- the request itself, not the screen.
     let requests = mock_requests(ctx)?;
     let sent = requests
         .iter()
         .rev()
-        .find(|r| r.to_string().contains("Note from Jan"))
+        .find(|r| r.to_string().contains("Note from Flint"))
         .cloned()
         .unwrap_or_default();
     ensure!(!sent.is_null(), "no request carried the recovery note: {requests:?}");
@@ -8094,7 +8094,7 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
                     "return JSON.stringify({
                        cards: [...document.querySelectorAll('[data-testid=\"inline-approval-card\"]')].map(c => c.textContent),
                        allowOnce: [...document.querySelectorAll('button')].filter(b => /allow once/i.test(b.textContent || '')).length,
-                       mode: [...document.querySelectorAll('button')].filter(b => b.getAttribute('aria-label') === 'What Jan may do').map(b => b.textContent),
+                       mode: [...document.querySelectorAll('button')].filter(b => b.getAttribute('aria-label') === 'What Flint may do').map(b => b.textContent),
                        running: [...document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]')].map(e => e.getAttribute('data-testid')),
                        text: (document.body.innerText || '').slice(-1500) });",
                 )
@@ -16171,7 +16171,7 @@ fn scenario_instructions_reach_open_chat(ctx: &Ctx) -> ScenarioResult {
     let name = thread
         .pointer("/assistants/0/name")
         .and_then(Value::as_str)
-        .unwrap_or("Jan")
+        .unwrap_or("Flint")
         .to_string();
 
     let nonce = format!("SMOKE-INSTRUCTION-{}", std::process::id());
