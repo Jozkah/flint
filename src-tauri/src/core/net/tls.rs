@@ -242,7 +242,14 @@ pub fn load_with_policy(
     }
     let pem = std::fs::read(path).map_err(|e| refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} cannot be read: {e}")))?;
     let text = String::from_utf8_lossy(&pem);
-    let blocks = pem_blocks(&text);
+    let (blocks, unterminated) = pem_blocks(&text);
+    if unterminated {
+        return Err(refuse(
+            CaErrorKind::Malformed,
+            path,
+            format!("the CA bundle {shown} ends inside a certificate that has no -----END CERTIFICATE----- line"),
+        ));
+    }
     if blocks.is_empty() {
         return Err(refuse(
             CaErrorKind::NoCertificates,
@@ -251,6 +258,10 @@ pub fn load_with_policy(
         ));
     }
     let mut fingerprints = Vec::with_capacity(blocks.len());
+    // What the HTTP clients are given is rebuilt from the blocks checked here,
+    // so a PEM layout their stricter parser reads differently (indented
+    // markers, say) cannot turn into a bundle that trusts nothing.
+    let mut normalized = String::new();
     for (index, block) in blocks.iter().enumerate() {
         use base64::Engine as _;
         let der = base64::engine::general_purpose::STANDARD.decode(block).map_err(|e| {
@@ -273,12 +284,14 @@ pub fn load_with_policy(
             ));
         }
         fingerprints.push(hex::encode(Sha256::digest(&der)));
+        normalized.push_str(&one);
     }
-    Ok(Bundle { path: path.to_path_buf(), source, fingerprints, pem })
+    Ok(Bundle { path: path.to_path_buf(), source, fingerprints, pem: normalized.into_bytes() })
 }
 
-/// The base64 bodies of the `CERTIFICATE` blocks in `text`.
-fn pem_blocks(text: &str) -> Vec<String> {
+/// The base64 bodies of the `CERTIFICATE` blocks in `text`, and whether the
+/// text ends inside a block.
+fn pem_blocks(text: &str) -> (Vec<String>, bool) {
     let mut out = Vec::new();
     let mut current: Option<String> = None;
     for line in text.lines().map(str::trim) {
@@ -292,7 +305,7 @@ fn pem_blocks(text: &str) -> Vec<String> {
             (None, _) => {}
         }
     }
-    out
+    (out, current.is_some())
 }
 
 /// A DER X.509 certificate is a SEQUENCE of three things: tbsCertificate (a
@@ -654,6 +667,24 @@ pub(crate) mod tests {
         let _ = with_bundle12(reqwest::Client::builder(), Some(&Err(refused)));
         let allowing = tauri_plugin_agent_tools::org_policy::OrgPolicy { allow_ca_bundle: Some(true), ..Default::default() };
         assert!(load_with_policy(&real, Source::CliConfig, Some(&allowing)).is_ok());
+    }
+
+    #[test]
+    fn what_is_applied_is_what_was_validated() {
+        let ca = make_ca();
+        let good = std::fs::read_to_string(ca.path().join("ca.pem")).unwrap();
+        // Indented markers pass the lenient scan; the clients' parser must
+        // still see every certificate.
+        let indented = ca.path().join("indented.pem");
+        let shifted: String = good.lines().map(|l| format!("  {l}\n")).collect();
+        std::fs::write(&indented, shifted).unwrap();
+        let bundle = load(&indented, Source::Environment).unwrap();
+        assert_eq!(reqwest::Certificate::from_pem_bundle(&bundle.pem).unwrap().len(), 1);
+        assert_eq!(reqwest13::Certificate::from_pem_bundle(&bundle.pem).unwrap().len(), 1);
+        // A trailing block with no END line is refused, not dropped.
+        let truncated = ca.path().join("truncated.pem");
+        std::fs::write(&truncated, format!("{good}-----BEGIN CERTIFICATE-----\nMIIB\n")).unwrap();
+        assert_eq!(load(&truncated, Source::Environment).unwrap_err().kind, CaErrorKind::Malformed);
     }
 
     #[test]
