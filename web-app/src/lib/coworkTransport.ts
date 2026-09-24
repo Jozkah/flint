@@ -68,6 +68,8 @@ export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
 export class CoworkChatTransport extends CustomChatTransport {
   /** The route records uses where the turn meets its snapshot (AH-083). */
   protected override recordsMemoryUsesOnFinish = false
+  /** The Cowork run records every step; a chat run would duplicate it. */
+  protected override recordsChatRun = false
 
   /**
    * JAN.md and the approved compatibility files: the instruction text above

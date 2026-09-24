@@ -844,6 +844,15 @@ function prependContinuationToUIStream(
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
+  /**
+   * Record each request as part of a Chat turn (`run.started`/`run.ended`
+   * with `source: chat`). Cowork records its own run around every step it
+   * sends through this transport, so a second, chat-shaped run for the same
+   * requests only duplicated the record -- and ended `error` whenever a step
+   * was retried, timed out or superseded while the Cowork run went on to
+   * succeed.
+   */
+  protected recordsChatRun = true
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1599,7 +1608,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // record rather than missing from it, and continued -- not reopened --
     // when this request is the one carrying tool results back.
     // Only this request's turn may be ended by its callbacks (#137).
-    const myRun = continueOrBeginChatRun(threadId, { model: modelId }).run
+    const recordsChatRun = this.recordsChatRun
+    const myRun = recordsChatRun
+      ? continueOrBeginChatRun(threadId, { model: modelId }).run
+      : undefined
 
     try {
       const updatedProvider = useModelProvider
@@ -2006,10 +2018,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // One invocation per model request, minted when the step starts, so
         // everything the step does -- its tools, its usage, its message -- is
         // recorded against the request that asked for it.
-        if (part.type === 'start-step') {
+        if (recordsChatRun && part.type === 'start-step') {
           nextChatInvocation(threadId)
         }
-        if (part.type === 'finish-step') {
+        if (recordsChatRun && part.type === 'finish-step') {
           const step = part as { type: 'finish-step'; usage?: LanguageModelUsage }
           const invocation = chatRunOf(threadId)?.invocation ?? ''
           const reported = readTokenUsage(usageCollector.total(step.usage))
@@ -2122,6 +2134,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 }
               : {}),
             ...(() => {
+              if (!recordsChatRun) return {}
               // What the reply was made of: sizes and counts, never the words.
               recordChatMessage(threadId, chatRunOf(threadId)?.invocation ?? '', {
                 finishReason: finishPart.finishReason,
@@ -2165,7 +2178,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
         }
-        endChatRun(threadId, 'error', undefined, myRun)
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
           ? 'Unknown error'
@@ -2175,6 +2187,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               ? unwrapped.message
               : JSON.stringify(unwrapped)
         const baseMessage = stripRetryErrorWrapper(rawMessage)
+        // Say why the turn failed, not only that it did.
+        if (myRun) endChatRun(threadId, 'error', baseMessage, myRun)
 
         const contextInfo = extractContextInfoFromError(unwrapped)
         if (contextInfo) {
@@ -2183,7 +2197,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return baseMessage
       },
       onFinish: ({ responseMessage }) => {
-        if (options.abortSignal?.aborted)
+        if (!myRun) {
+          // Not recording a chat turn: the caller records its own run.
+        } else if (options.abortSignal?.aborted)
           endChatRun(threadId, 'cancelled', undefined, myRun)
         // Left open when tools are still to run: the turn ends with the reply
         // that needs none.
