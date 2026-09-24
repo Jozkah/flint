@@ -1313,7 +1313,29 @@ async fn run_subagent(
     use crate::core::agent::r#loop::run_orchestration_streamed;
 
     let name = resolved.definition.name.clone();
-    let child_args = configure_child_args(parent_args, &resolved, &run_id);
+    // Host tools are the client's to execute, and a client answers only a
+    // `tool_request` it can see at the top level. A child's own events reach
+    // stdout wrapped in `Subagent { .. }`, a shape no client may answer, so the
+    // child keeps the parent's tool set, gate and -- crucially -- the *same*
+    // request registry, but emits its requests on the parent's sender instead,
+    // unwrapped and attributed by `run_id`. `events` is the root channel here
+    // (children cannot nest), so the printer's strand guard and the stdin
+    // reader see a child's request exactly as they see the main run's.
+    // `configure_child_args` clears the set for every other kind of child (a
+    // durable one has no route back to the client), so it is restored here.
+    #[cfg(feature = "cli")]
+    let parent_host_tools = (
+        parent_args.host_tools.clone(),
+        parent_args.host_tool_requests.clone(),
+    );
+    #[allow(unused_mut)]
+    let mut child_args = configure_child_args(parent_args, &resolved, &run_id);
+    #[cfg(feature = "cli")]
+    {
+        child_args.host_tools = parent_host_tools.0;
+        child_args.host_tool_requests = parent_host_tools.1;
+        child_args.host_tool_route = Some((events.clone(), run_id.clone()));
+    }
 
     let body = child_body(
         &resolved,
@@ -1406,6 +1428,18 @@ pub(crate) fn configure_child_args(
     // Subagents cannot read or mutate the parent's todo list (isolated child
     // context, matching ask_requests above).
     child_args.todo_registry = None;
+    // Host tools are the client's to execute, and a client answers a
+    // `tool_request` it can see. A child's events reach stdout wrapped in
+    // `Subagent { .. }`, a shape no client is told it may answer, so a child
+    // that inherited the set would raise a request nobody could resolve: the
+    // strand guard matches only a top-level request, and the turn would park.
+    // A child therefore advertises no host tools at all, for the same reason
+    // `ask_requests` is cleared above -- no client is attached to a child run.
+    #[cfg(feature = "cli")]
+    {
+        child_args.host_tools = crate::core::agent::host_tools::HostToolSet::new();
+        child_args.host_tool_requests = crate::core::agent::host_tools::new_registry();
+    }
     child_args
 }
 
@@ -3372,6 +3406,10 @@ mod tests {
             permissions: ToolPermissions::allow_all(),
             project_root: Some(root.to_path_buf()),
             permission_requests: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            host_tools: crate::core::agent::host_tools::HostToolSet::new(),
+            host_tool_requests: crate::core::agent::host_tools::new_registry(),
+            host_owns_gate: false,
+            host_tool_route: None,
             ask_requests: None,
             todo_registry: None,
             system_prompt_override: None,
@@ -4121,6 +4159,28 @@ mod tests {
         assert_eq!(def.scope, SubagentScope::Project);
         assert_eq!(def.system_prompt, "You are code-explorer.");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A child's events reach stdout wrapped in `Subagent { .. }`, and the
+    /// forwarder is a *negative* match: anything not explicitly held back is
+    /// forwarded, so a nested `ToolRequest` would be handed to a client that is
+    /// told nothing about the wrapper and could not answer it. Nothing here
+    /// filters that shape, which is exactly why a child's host calls never
+    /// enter its own channel: `run_subagent` routes them to the root sender
+    /// (`host_tool_route`), unwrapped.
+    #[test]
+    fn a_nested_tool_request_would_reach_the_parent_unfiltered() {
+        use crate::core::agent::events::StreamEvent;
+        assert!(
+            forward_to_parent(&StreamEvent::ToolRequest {
+                request_id: "host-1".to_string(),
+                tool_name: "robot_arm_move".to_string(),
+                args: serde_json::json!({}),
+                run_id: None,
+            }),
+            "the forwarder does not hold back a nested tool_request, so a child's \
+             request must be routed around it"
+        );
     }
 
     #[test]

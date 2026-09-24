@@ -163,6 +163,21 @@ test-rust: stub-resources
 	cargo test --manifest-path src-tauri/plugins/tauri-plugin-vector-db/Cargo.toml
 	cargo test --manifest-path src-tauri/plugins/tauri-plugin-websearch/Cargo.toml
 
+# protocol/schema.json is committed, and core::cli::protocol_schema fails when it
+# no longer matches the types that define the channel. This is the fix for that
+# failure, not an optional extra: change a protocol type, run this, commit both.
+# The feature set matches build-cli, so this does not compile a second
+# configuration.
+protocol-schema:
+	cd src-tauri && cargo run --quiet --locked --no-default-features --features cli --bin flint -- cli agent schema --out ../protocol/schema.json
+
+# The same guard for the RPC surface: protocol/rpc-schema.json is committed, and
+# core::cli::rpc_schema fails when it no longer matches the types that define the
+# envelope. It covers this surface only - stream-json records are in
+# protocol/schema.json, and ACP has no document yet.
+protocol-rpc-schema:
+	cd src-tauri && cargo run --quiet --locked --no-default-features --features cli --bin flint -- cli agent rpc-schema --out ../protocol/rpc-schema.json
+
 test: test-prepare install-rust-targets
 	yarn build:mlx-server
 	$(MAKE) build-cli

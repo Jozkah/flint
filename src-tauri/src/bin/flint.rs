@@ -538,12 +538,26 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
-        /// `stream-json` reads newline-delimited `user` and `permission`
-        /// messages from stdin while the run is in flight; it requires
-        /// `--output-format stream-json`. `text` (the default) does not read
-        /// stdin.
+        /// `stream-json` reads newline-delimited `user`, `permission`,
+        /// `abort` and `tool_result` messages on stdin while the run is in
+        /// flight, and requires `--output-format stream-json`; `text` (the
+        /// default) does not read stdin at all
         #[arg(long, value_enum, default_value_t = InputFormat::Text)]
         input_format: InputFormat,
+        /// JSON file declaring tools this host executes: a list of
+        /// `{"name", "description", "parameters", "capability"}`. The model
+        /// calls them as `host__<name>` (a name outside `[A-Za-z0-9_-]` is
+        /// mapped to a safe one); each call arrives as a `tool_request` on stdout and
+        /// must be answered with a `tool_result` on stdin, so this requires
+        /// `--input-format stream-json`
+        #[arg(long, value_name = "FILE")]
+        host_tools: Option<String>,
+        /// The host approves its own tool calls: no `permission_request` is
+        /// raised for any host tool (built-ins are unaffected). For a host
+        /// whose `tool_request` handler is itself the approval step; requires
+        /// `--host-tools`
+        #[arg(long, requires = "host_tools")]
+        host_gate: bool,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -866,6 +880,22 @@ enum AgentCommands {
         /// Print one request in full: a snapshot id, or `last`
         #[arg(long)]
         show: Option<String>,
+    },
+    /// Print the protocol's JSON Schema, generated from the types that define
+    /// the channel (see `protocol/schema.json`)
+    Schema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Serve addressable sessions over JSON-RPC on stdin/stdout
+    Rpc,
+    /// Print the RPC request and event schemas, generated from the types that
+    /// define the envelope (see `protocol/rpc-schema.json`)
+    RpcSchema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
     },
 }
 
@@ -1752,6 +1782,8 @@ async fn handle_agent(cmd: AgentCommands) {
             resume,
             output_format,
             input_format,
+            host_tools,
+            host_gate,
             events,
             profile,
             output_density,
@@ -1802,6 +1834,8 @@ async fn handle_agent(cmd: AgentCommands) {
                 resume.into_request(),
                 output_format,
                 input_format,
+                host_tools.as_deref(),
+                host_gate,
             )
             .await
         }
@@ -2512,6 +2546,18 @@ async fn handle_agent(cmd: AgentCommands) {
                 }
                 Err(e) => Err(HarnessError::legacy(e)),
             }
+        }
+        // No project and no provider: the schema comes from the types alone, so
+        // it is the same document on any machine and in any directory.
+        AgentCommands::Schema { out } => {
+            app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
+        }
+        AgentCommands::Rpc => app_lib::core::cli::rpc::serve().await.map_err(HarnessError::legacy),
+        // Like `schema`: no project root and no provider are involved, so the
+        // artifact is the same one on any machine. `--out` is what CI and
+        // `make protocol-rpc-schema` use.
+        AgentCommands::RpcSchema { out } => {
+            app_lib::core::cli::rpc_schema::run(out.as_deref()).map_err(HarnessError::legacy)
         }
     };
     if let Err(e) = result {

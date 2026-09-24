@@ -45,6 +45,14 @@ pub mod goal;
 pub mod health;
 pub mod impact;
 pub mod index;
+// Host tools are executed by a client over the headless stdio channel, so the
+// capability exists only where that channel does. The desktop build has no peer
+// that could answer a `tool_request`.
+#[cfg(feature = "cli")]
+pub mod host_tools;
+// Only host tools consume these helpers, so they share host_tools' gate.
+#[cfg(feature = "cli")]
+pub mod host_schema;
 pub mod interaction;
 pub mod licenses;
 pub mod r#loop;

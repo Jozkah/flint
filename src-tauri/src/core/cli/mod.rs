@@ -7,6 +7,8 @@ pub mod auth;
 pub mod brand;
 pub mod color;
 pub mod browser;
+#[cfg(test)]
+mod contract_conformance;
 pub mod device_auth;
 pub mod doctor;
 pub mod file_log;
@@ -20,6 +22,12 @@ pub mod mcp;
 pub mod mcp_serve;
 mod model_capabilities;
 mod path_refs;
+/// `jan cli agent schema`: the protocol's JSON Schema, generated from the types.
+pub mod protocol_schema;
+/// `jan cli agent rpc`: persistent, session-scoped JSON-RPC transport.
+pub mod rpc;
+/// `jan cli agent rpc-schema`: the RPC request and event schemas.
+pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
 pub mod secrets;
@@ -31,6 +39,8 @@ mod tui;
 /// Renders reported usage from the Tokamak usage API (upstream #9034).
 pub mod usage_view;
 pub mod version;
+/// The user-message wire shape, shared by the TUI and the headless channel.
+mod user_message;
 pub mod worktree;
 
 use std::path::PathBuf;
@@ -772,9 +782,12 @@ use crate::core::agent::r#loop::{
     SteeringRequest,
 };
 use crate::core::cli::providers::{load_provider_configs, ProviderOverrides};
-use crate::core::cli::run_report::{ndjson_line, OutputFormat, PermissionDecisionRecord, RunReport};
+use crate::core::cli::run_report::{
+    ndjson_line, Init, InputContentParts, OutputFormat, PermissionDecisionRecord, RunReport,
+};
 use crate::core::cli::stream_input::{
-    parse_input_line, InputErrorRecord, InputFormat, InputMessage, StreamInput,
+    parse_input_line, InputErrorRecord, InputFormat, InputMessage, StreamInput, INPUT_KINDS,
+    MAX_ECHO_BYTES, MAX_LINE_BYTES,
 };
 use crate::core::mcp::models::McpSettings;
 use std::collections::HashMap;
@@ -1034,9 +1047,13 @@ pub async fn cli_agent_run(
     resume: Option<ResumeRequest>,
     format: OutputFormat,
     input_format: InputFormat,
+    host_tools: Option<&str>,
+    host_gate: bool,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project, task, model, false, overrides, flags, resume, format, input_format,
+        host_tools,
+        host_gate,
     )
     .await
 }
@@ -1060,6 +1077,10 @@ pub async fn cli_agent_step(
         None,
         OutputFormat::Text,
         InputFormat::Text,
+        // `step` is a debugging path with no client on stdin, so there is
+        // nothing that could execute a host tool.
+        None,
+        false,
     )
     .await
 }
@@ -1072,6 +1093,8 @@ fn build_cli_orchestration_args(
     mcp_servers: crate::core::state::SharedMcpServers,
     mcp_settings: McpSettings,
     permission_requests: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolSet,
+    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
     auto_approve: bool,
     plan: bool,
     max_parallel_subagents: u32,
@@ -1096,6 +1119,10 @@ fn build_cli_orchestration_args(
         permissions,
         project_root: Some(project_root),
         permission_requests,
+        host_tools,
+        host_tool_requests,
+        host_owns_gate: false,
+        host_tool_route: None,
         ask_requests: None,
         todo_registry: None,
         system_prompt_override: None,
@@ -1608,6 +1635,13 @@ fn prepare_agent_session(
         mcp_servers.clone(),
         mcp_settings,
         permission_requests.clone(),
+        // Host tools are declared per *run*, by a client on stdin, so the
+        // session is built without them and the duplex headless path installs
+        // the declared set before orchestration starts. The TUI leaves this
+        // empty, and `run_subagent` clears it for a child, so neither emits a
+        // `tool_request` -- only a run with a client that can answer one does.
+        crate::core::agent::host_tools::HostToolSet::new(),
+        crate::core::agent::host_tools::new_registry(),
         flags.auto_approve,
         flags.plan,
         max_parallel_subagents,
@@ -1876,6 +1910,20 @@ fn short_id(id: &str) -> String {
     id.chars().take(8).collect()
 }
 
+/// Read a host's tool declarations from the file `--host-tools` names.
+///
+/// Every failure is the host's to fix and is reported with the path, since a
+/// host that mistyped one is otherwise left guessing which of its tools the run
+/// disagreed with.
+fn load_host_tools(path: &str) -> Result<crate::core::agent::host_tools::HostToolSet, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read --host-tools file '{path}': {e}"))?;
+    let decls: Vec<crate::core::agent::host_tools::HostToolDecl> = serde_json::from_str(&raw)
+        .map_err(|e| format!("--host-tools file '{path}' is not a list of tool declarations: {e}"))?;
+    crate::core::agent::host_tools::HostToolSet::declare(decls)
+        .map_err(|e| format!("--host-tools file '{path}': {e}"))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_agent_loop(
     project: &str,
@@ -1887,6 +1935,8 @@ async fn run_agent_loop(
     resume: Option<ResumeRequest>,
     format: OutputFormat,
     input_format: InputFormat,
+    host_tools: Option<&str>,
+    host_gate: bool,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     // A duplex run switches off both of the CLI's own answer paths, so the
     // client is the only thing that can resolve a permission request -- and it
@@ -1895,17 +1945,67 @@ async fn run_agent_loop(
     // pairing leaves a gated call unanswerable. Rejected rather than silently
     // upgraded: a caller parsing plain text should not have the format changed
     // under it.
-    if input_format.is_stream_json() && !format.is_stream_json() {
-        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
-            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-            "--input-format stream-json requires --output-format stream-json (the client answers \
-             permission requests, so it must be reading them)",
-        ));
-    }
     let started = std::time::Instant::now();
     // Read before the flags are handed on: this is the run's own answer about
     // how much to say, and it is wanted after the run as well as during it.
     let asked_density = flags.density;
+    // Every refusal below is a setup failure like any other, so it is reported
+    // the way `prepare_agent_run`'s is: one `result` record with
+    // `error.code: "setup_error"`. Returning early instead would leave a
+    // machine consumer an empty stdout and a human string on stderr, which is
+    // the one thing this channel promises never to do -- and a mistyped
+    // `--host-tools` path is the first failure a host is likely to hit.
+    let setup = (|| {
+        if input_format.is_stream_json() && !format.is_stream_json() {
+            return Err(
+                "--input-format stream-json requires --output-format stream-json (the client \
+                 answers permission requests, so it must be reading them)"
+                    .to_string(),
+            );
+        }
+        // Declared before anything is spent: a malformed or unacceptable tool
+        // set is the host's own mistake, and finding out at the first call --
+        // mid-task, after paid requests -- is worse than refusing to start.
+        // Handing the gate to a host that declared no tools would be a no-op
+        // the caller probably did not mean; say so rather than ignore it.
+        if host_gate && host_tools.is_none() {
+            return Err("--host-gate requires --host-tools".to_string());
+        }
+        match host_tools {
+            Some(path) => {
+                if !input_format.is_stream_json() {
+                    return Err(
+                        "--host-tools requires --input-format stream-json (a host tool call is \
+                         answered with a tool_result message on stdin)"
+                            .to_string(),
+                    );
+                }
+                load_host_tools(path)
+            }
+            None => Ok(crate::core::agent::host_tools::HostToolSet::new()),
+        }
+    })();
+    let host_tools = match setup {
+        Ok(host_tools) => host_tools,
+        Err(e) => {
+            if format.is_machine() {
+                print_report(
+                    format,
+                    RunReport::setup_failure(&e).finish(
+                        None,
+                        "",
+                        started.elapsed().as_millis(),
+                        None,
+                    ),
+                );
+            }
+            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                e,
+            )
+            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
+        }
+    };
     let prepared = prepare_agent_run(
         project,
         task,
@@ -1918,7 +2018,7 @@ async fn run_agent_loop(
     // A setup failure never reaches the event stream, so a JSON consumer would
     // otherwise get an empty stdout and have to parse the human error off stderr.
     let PreparedRun {
-        args,
+        mut args,
         body,
         limits,
         permission_requests,
@@ -1947,6 +2047,13 @@ async fn run_agent_loop(
             .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
         }
     };
+    // Installed after the session is built, since host tools are declared per
+    // run rather than per project: the same session config serves a run with
+    // them and one without.
+    args.host_tools = host_tools;
+    // `--host-gate`: the host's own callback is the approval step, so Jan
+    // raises no `permission_request` for a host tool of any class.
+    args.host_owns_gate = host_gate;
 
     // Block until active MCP servers connect, so tools (collected once per run)
     // are present on the first turn.
@@ -1986,17 +2093,45 @@ async fn run_agent_loop(
     let notify = crate::core::agent::notify::check(&notify)?;
     let notify_root = std::path::PathBuf::from(project);
     let notify_session = args.session_id.clone().unwrap_or_default();
+    // The session this run saves under, decided here rather than at save time
+    // so the `init` record can name it: a client learns the id it can `--resume`
+    // from the first line of the stream, and a run killed mid-flight still told
+    // it which id to look for.
+    let session_id = persist
+        .thread_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    // The handshake, before anything else can reach stdout. Printed here rather
+    // than from the printer task for exactly that reason: nothing has been
+    // spawned yet, so "first line" is a property of the code's order rather than
+    // a race against the run's own events.
+    if format.is_stream_json() {
+        print_json_line(&init_record(&args, &session_id, &persist.model, input_format).await);
+    }
+
     // The client on stdin, when there is one: it owns every permission decision
     // and can steer or stop the run while it is in flight.
     let input = input_format
         .is_stream_json()
         .then(|| Arc::new(StreamInput::default()));
+    // Created before the reader so it can report the host requests it releases
+    // on the same channel as the run's events: the printer then orders those
+    // records before the final result, which it prints only once every sender
+    // (the reader's included) has dropped.
+    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     let reader = input.as_ref().map(|input| {
-        spawn_input_reader(Arc::clone(input), Arc::clone(&permission_requests), format)
+        spawn_input_reader(
+            Arc::clone(input),
+            Arc::clone(&permission_requests),
+            Arc::clone(&args.host_tool_requests),
+            tx.clone(),
+            format,
+        )
     });
     let client = input.clone();
+    let host_tool_requests = Arc::clone(&args.host_tool_requests);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
     // AH-181: how much this run says about itself. The flag outranks the
@@ -2123,6 +2258,26 @@ async fn run_agent_loop(
             // only while it is still reading. Once stdin has closed, the CLI
             // takes its own path back, which on a pipe is an auto-deny.
             let duplex = client.as_ref().is_some_and(|c| !c.client_gone());
+            // Only the client can answer a host tool call. If it has already
+            // left, the call is failed here: `strand_all` fired when stdin
+            // closed, so nothing else will ever release this one and the turn
+            // would park forever.
+            if let StreamEvent::ToolRequest { request_id, .. } = &ev {
+                if !duplex {
+                    // The request is already on stdout, so its withdrawal is
+                    // too; printed here because this task is the stream's order.
+                    if crate::core::agent::host_tools::strand(&host_tool_requests, request_id)
+                        .await
+                    {
+                        let cancelled = request_cancelled(request_id, CANCEL_CLIENT_GONE);
+                        report.observe(&cancelled);
+                        if format.is_stream_json() {
+                            print_json_line(&cancelled);
+                        }
+                    }
+                    continue;
+                }
+            }
             match format {
                 OutputFormat::Text => {
                     print_event(ev, &permission_requests, density, duplex).await
@@ -2152,6 +2307,12 @@ async fn run_agent_loop(
     };
     if let Some(reader) = reader {
         reader.abort();
+    }
+    // A request still registered now belongs to a call the run dropped (it
+    // failed or stopped mid-batch); nothing will await its answer, so the host
+    // is told to stop working on it before the result record closes the stream.
+    for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
+        let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
     }
     let aborted = outcome.is_none();
     let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
@@ -2190,7 +2351,7 @@ async fn run_agent_loop(
 
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
-    let persisted = persist_headless_run(persist, &result, conversation);
+    let persisted = persist_headless_run(persist, &result, conversation, Some(&session_id));
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
     // Saved, so nothing is in flight any more. A run that failed before its
     // thread could be written keeps its checkpoint: its completed steps are
@@ -2256,6 +2417,7 @@ fn persist_headless_run(
     persist: PersistTarget,
     result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
     conversation: Option<Vec<serde_json::Value>>,
+    save_as: Option<&str>,
 ) -> PersistedRun {
     let PersistTarget {
         agent_dir,
@@ -2296,7 +2458,13 @@ fn persist_headless_run(
                 }
             }
         }
-        match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
+        match cli_save_thread(
+            &agent_dir,
+            thread_id.as_deref().or(save_as),
+            &model,
+            &history,
+            None,
+        ) {
             Ok(id) => {
                 session_id = Some(id);
                 saved = true;
@@ -2412,6 +2580,86 @@ pub fn stream_events_to(
     Ok(())
 }
 
+/// The `init` handshake of a `--output-format stream-json` run, assembled from
+/// the same parts the run itself uses: the session it saves under, the model it
+/// dispatches to, and the tools its first turn will advertise, so the record
+/// cannot describe a run other than this one.
+async fn init_record(
+    args: &OrchestrationArgs,
+    session_id: &str,
+    model: &str,
+    input_format: InputFormat,
+) -> Init {
+    let tools: Vec<String> = crate::core::agent::r#loop::context_advertised_tools(
+        &args.mcp_servers,
+        &args.mcp_settings,
+        &args.permissions,
+        args.project_root.as_deref(),
+        args.run_mode,
+        args.subagents_enabled,
+        args.max_parallel_subagents,
+        args.ask_requests.is_some(),
+        args.todo_registry.is_some(),
+        &args.host_tools,
+    )
+    .await
+    .iter()
+    .filter_map(tool_name)
+    .collect();
+    // Only the host tools' schemas are echoed, not every advertised tool's: the
+    // host is comparing these against what it sent, and a built-in's schema is
+    // this process's own business.
+    //
+    // Filtered to what `tools` actually advertises rather than to everything
+    // declared. A deny list, an allowlist or Plan mode can withhold a host tool,
+    // and a host that saw its schema echoed anyway would conclude the tool was
+    // live and wait for a call that is never coming. Echoing the advertised set
+    // lets it detect the suppression instead.
+    let tool_specs = args
+        .host_tools
+        .schemas()
+        .into_iter()
+        .filter(|spec| {
+            tool_name(spec).is_some_and(|name| tools.iter().any(|t| t == &name))
+        })
+        .collect();
+    // The project root the run's tools are confined to, as the run itself sees
+    // it. A caller that built these args without one gets `null`: any path
+    // substituted here would claim a confinement the run does not have.
+    let cwd = args
+        .project_root
+        .as_deref()
+        .map(|root| root.to_string_lossy().into_owned());
+    // A run that does not read stdin accepts nothing, and says so: an empty
+    // list is a client's answer that there is no reply path, which is more use
+    // than an absent field or a list of kinds the run will ignore.
+    let input_kinds = if input_format.is_stream_json() {
+        INPUT_KINDS.to_vec()
+    } else {
+        Vec::new()
+    };
+    // The caps go with the kinds: a client that can send an image should learn
+    // the limits from the handshake rather than by having a message rejected.
+    let input_content_parts = input_format
+        .is_stream_json()
+        .then(InputContentParts::current);
+    Init::new(
+        session_id,
+        model,
+        cwd,
+        tools,
+        tool_specs,
+        input_kinds,
+        input_content_parts,
+    )
+}
+
+/// A rendered tool schema's name, out of the OpenAI `{"type":"function",
+/// "function":{"name":…}}` shape the advertised array carries.
+fn tool_name(tool: &serde_json::Value) -> Option<String> {
+    Some(tool.get("function")?.get("name")?.as_str()?.to_string())
+}
+
 /// Stop reason reported for a run the client ended with an `abort` message, and
 /// the error the run itself returns -- never printed, since an abort exits 0.
 const ABORTED_BY_CLIENT: &str = "aborted by client";
@@ -2441,6 +2689,14 @@ async fn run_steered(
     let outcome = tokio::select! {
         result = run_orchestration_steered(tx, body, args, Some(&steering_tx)) => Some(result),
         _ = input.aborted() => {
+            // A host still holding a request must be told to drop it: the run
+            // it would answer is gone. Released here, not by the reader, so
+            // the records land before `done` and cannot race the reader's
+            // shutdown; `cancel_all` rather than `strand_all` so a child still
+            // awaiting one is told it was cancelled, not that the host left.
+            for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
+                let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
+            }
             // The loop emits its own terminal event; an abort pre-empts it, so
             // the report is given one here or it would read as a clean stop.
             let _ = tx.send(StreamEvent::Done {
@@ -2553,6 +2809,18 @@ pub async fn run_durable_subagent(
         Err(e) => Err(HarnessError::new(ErrorKind::ChildFailed, e.message().to_string()).at(Stage::Child)),
     }
 }
+/// `tool_request_cancelled` reasons this surface raises: the client stopped the
+/// run, or it can no longer answer (stdin closed).
+const CANCEL_ABORTED: &str = "aborted";
+const CANCEL_CLIENT_GONE: &str = "client_gone";
+
+fn request_cancelled(request_id: &str, reason: &str) -> StreamEvent {
+    StreamEvent::ToolRequestCancelled {
+        request_id: request_id.to_string(),
+        reason: reason.to_string(),
+    }
+}
+
 /// What a client line asks the reader to do next.
 #[derive(Debug, PartialEq, Eq)]
 enum InputFlow {
@@ -2564,17 +2832,28 @@ enum InputFlow {
     Stop,
 }
 
+/// The registries a client line can resolve against.
+struct InputTargets<'a> {
+    permissions: &'a PermissionRegistry,
+    host_tools: &'a crate::core::agent::host_tools::HostToolRegistry,
+}
+
 /// Apply one client line. `Err` is the message reported back to the client; it
 /// is never fatal, since this is a peer process's output and one malformed line
 /// must not cost the work already done.
 async fn apply_input_line(
     line: &str,
     input: &StreamInput,
-    registry: &PermissionRegistry,
+    targets: &InputTargets<'_>,
 ) -> Result<InputFlow, String> {
+    let registry = targets.permissions;
     match parse_input_line(line)? {
         InputMessage::User(text) => {
             input.queue_user(text);
+            Ok(InputFlow::Continue)
+        }
+        InputMessage::UserParts(parts) => {
+            input.queue_user_parts(parts);
             Ok(InputFlow::Continue)
         }
         InputMessage::Abort => {
@@ -2595,7 +2874,25 @@ async fn apply_input_line(
             let _ = sender.send(decision);
             Ok(InputFlow::Decided(request_id, decision))
         }
+        InputMessage::ToolResult { request_id, result } => {
+            // Same single-use rule as a permission decision, and the same
+            // reason: the run has already fed this answer to the model, so a
+            // second one cannot be applied and must be reported rather than
+            // silently dropped.
+            crate::core::agent::host_tools::respond(targets.host_tools, &request_id, Ok(result))
+                .await?;
+            Ok(InputFlow::Continue)
+        }
     }
+}
+
+/// One line from the client, bounded.
+struct ClientLine {
+    text: String,
+    /// True when the line went past [`MAX_LINE_BYTES`] and was cut: `text` is
+    /// then the echo-sized prefix, and the line is rejected without being
+    /// parsed.
+    oversized: bool,
 }
 
 /// Client lines, read on a detached OS thread.
@@ -2604,11 +2901,15 @@ async fn apply_input_line(
 /// which shutdown waits for, so a client that keeps stdin open -- which is what
 /// a duplex client does for the whole run -- leaves the process alive after its
 /// terminal record has been printed. A plain thread dies with the process.
-fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
+///
+/// The read is bounded rather than line-at-a-time: a line is only as long as
+/// the client says it is, and `BufRead::lines` would hold whatever arrives in
+/// memory before the cap could be applied to it.
+fn stdin_lines() -> mpsc::UnboundedReceiver<ClientLine> {
     let (tx, rx) = mpsc::unbounded_channel();
     std::thread::spawn(move || {
-        use std::io::BufRead as _;
-        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+        let mut reader = std::io::stdin().lock();
+        while let Ok(Some(line)) = read_bounded_line(&mut reader) {
             if tx.send(line).is_err() {
                 return;
             }
@@ -2617,31 +2918,103 @@ fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
     rx
 }
 
+/// Read one line, keeping at most [`MAX_LINE_BYTES`] of it and discarding the
+/// rest rather than growing to hold it.
+///
+/// A line over the cap keeps only its first [`MAX_ECHO_BYTES`]: it can never be
+/// parsed, so the only use its bytes have left is the echo in `input_error`.
+/// Cutting there can split a character, which is why the kept bytes go through
+/// `from_utf8_lossy` -- the echo is for a human, and a line that is over the cap
+/// is already being refused.
+fn read_bounded_line<R: std::io::BufRead>(
+    reader: &mut R,
+) -> std::io::Result<Option<ClientLine>> {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut oversized = false;
+    let mut saw_any = false;
+    loop {
+        let available = match reader.fill_buf()? {
+            [] => break,
+            buf => buf,
+        };
+        saw_any = true;
+        let newline = available.iter().position(|b| *b == b'\n');
+        let take = newline.map_or(available.len(), |i| i + 1);
+        if !oversized {
+            let room = MAX_LINE_BYTES.saturating_sub(bytes.len());
+            if take <= room {
+                bytes.extend_from_slice(&available[..take]);
+            } else {
+                bytes.truncate(MAX_ECHO_BYTES.min(bytes.len()));
+                oversized = true;
+            }
+        }
+        reader.consume(take);
+        if newline.is_some() {
+            break;
+        }
+    }
+    if !saw_any {
+        return Ok(None);
+    }
+    while matches!(bytes.last(), Some(b'\n') | Some(b'\r')) {
+        bytes.pop();
+    }
+    Ok(Some(ClientLine {
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+        oversized,
+    }))
+}
+
 /// Consume client messages until `abort` or end of input.
 ///
 /// End of input is not an abort: a client that has said everything it means to
 /// say may close the pipe and still want its answer. It *is* the end of the
-/// only thing that can answer a permission request, though, so the exit is
-/// latched and anything already waiting is released -- see
-/// [`strand_pending_permissions`].
+/// only thing that can answer a permission request or run a host tool, though,
+/// so the exit is latched and anything already waiting is released -- see
+/// [`strand_pending_permissions`] and
+/// [`crate::core::agent::host_tools::strand_all`]. Each released host request
+/// is reported on `events` as `tool_request_cancelled`.
+///
+/// An `abort` leaves the host requests alone: the run's abort path withdraws
+/// them itself, as `aborted` rather than `client_gone`.
 async fn read_input_lines(
-    mut lines: mpsc::UnboundedReceiver<String>,
+    mut lines: mpsc::UnboundedReceiver<ClientLine>,
     input: Arc<StreamInput>,
     registry: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolRegistry,
+    events: mpsc::UnboundedSender<StreamEvent>,
     format: OutputFormat,
 ) {
+    let targets = InputTargets {
+        permissions: &registry,
+        host_tools: &host_tools,
+    };
+    let mut aborted = false;
     while let Some(line) = lines.recv().await {
+        if line.oversized {
+            report_input_error(
+                format,
+                &format!("line is over the {MAX_LINE_BYTES} byte cap"),
+                &line.text,
+            );
+            continue;
+        }
+        let line = line.text;
         if line.trim().is_empty() {
             continue;
         }
-        match apply_input_line(&line, &input, &registry).await {
+        match apply_input_line(&line, &input, &targets).await {
             Ok(InputFlow::Continue) => {}
             Ok(InputFlow::Decided(request_id, decision)) => {
                 if format.is_stream_json() {
                     print_json_line(&PermissionDecisionRecord::new(&request_id, decision));
                 }
             }
-            Ok(InputFlow::Stop) => break,
+            Ok(InputFlow::Stop) => {
+                aborted = true;
+                break;
+            }
             Err(message) => report_input_error(format, &message, &line),
         }
     }
@@ -2649,6 +3022,14 @@ async fn read_input_lines(
     // otherwise be recorded as the client's to answer and find no reader.
     input.mark_client_gone();
     strand_pending_permissions(&registry, format).await;
+    if aborted {
+        return;
+    }
+    // A host tool call cannot be answered by anyone else, so a parked turn is
+    // released with a typed failure rather than waiting on a dead pipe.
+    for id in crate::core::agent::host_tools::strand_all(&host_tools).await {
+        let _ = events.send(request_cancelled(&id, CANCEL_CLIENT_GONE));
+    }
 }
 
 /// Name the follow-ups the run ended before reaching. Queued turns are joined
@@ -2657,7 +3038,10 @@ async fn read_input_lines(
 /// the text is what the client needs to decide whether to send it again.
 fn report_dropped_follow_ups(input: &StreamInput, format: OutputFormat) {
     for turn in input.take_queued() {
-        let text = turn["content"].as_str().unwrap_or_default().to_string();
+        // The text, whether it arrived as a string or as content parts: an
+        // image-only follow-up reads as empty here, which is all this report
+        // needs to say about it.
+        let text = crate::core::cli::user_message::text_of_content(&turn["content"]);
         report_input_error(format, "run ended before this follow-up was read", &text);
     }
 }
@@ -2692,9 +3076,18 @@ async fn strand_pending_permissions(registry: &PermissionRegistry, format: Outpu
 fn spawn_input_reader(
     input: Arc<StreamInput>,
     registry: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolRegistry,
+    events: mpsc::UnboundedSender<StreamEvent>,
     format: OutputFormat,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(read_input_lines(stdin_lines(), input, registry, format))
+    tokio::spawn(read_input_lines(
+        stdin_lines(),
+        input,
+        registry,
+        host_tools,
+        events,
+        format,
+    ))
 }
 
 /// Tell the client its line was rejected, on whichever stream it is reading.
@@ -3087,6 +3480,30 @@ async fn print_event(
                 let _ = sender.send(decision);
             }
         }
+        // Only a host process can answer this, and only over the duplex
+        // channel; a text-format run cannot declare host tools at all (the
+        // flag requires stream-json both ways), so this is diagnostics only.
+        StreamEvent::ToolRequest {
+            request_id,
+            tool_name,
+            ..
+        } => {
+            eprintln!(
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!("[host tool] '{tool_name}' - awaiting '{request_id}' on stdin"),
+                ),
+            );
+        }
+        StreamEvent::ToolRequestCancelled { request_id, reason } => {
+            eprintln!(
+                "{}",
+                color::paint("2", format_args!("[host tool] '{request_id}' cancelled ({reason})")),
+            );
+        }
+        // Structured data for a host's own display; text output has none.
+        StreamEvent::ToolDetails { .. } => {}
     }
 }
 
@@ -3299,13 +3716,20 @@ mod tests {
         ];
         let (lines_tx, lines) = mpsc::unbounded_channel();
         for line in script {
-            lines_tx.send(line.to_string()).expect("reader is alive");
+            lines_tx
+                .send(ClientLine {
+                    text: line.to_string(),
+                    oversized: false,
+                })
+                .expect("reader is alive");
         }
         drop(lines_tx);
         read_input_lines(
             lines,
             Arc::clone(&input),
             Arc::clone(&registry),
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
             OutputFormat::Json,
         )
         .await;
@@ -3334,17 +3758,58 @@ mod tests {
         registry.lock().await.insert("perm-1".to_string(), tx);
         let line = r#"{"type":"permission","request_id":"perm-1","decision":"deny"}"#;
 
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let targets = InputTargets {
+            permissions: &registry,
+            host_tools: &host_tools,
+        };
         assert_eq!(
-            apply_input_line(line, &input, &registry).await,
+            apply_input_line(line, &input, &targets).await,
             Ok(InputFlow::Decided(
                 "perm-1".to_string(),
                 PermissionDecision::Deny
             ))
         );
-        let err = apply_input_line(line, &input, &registry)
+        let err = apply_input_line(line, &input, &targets)
             .await
             .expect_err("nothing is pending any more");
         assert!(err.contains("no permission request 'perm-1'"), "{err}");
+    }
+
+    /// The same single-use rule for a host tool answer, and the same reason:
+    /// the first result has already been fed to the model.
+    #[tokio::test]
+    async fn a_second_tool_result_for_one_request_is_rejected() {
+        let input = StreamInput::default();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        // The id comes from the registry: the counter is process-wide, so a
+        // literal would depend on which tests ran first.
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let targets = InputTargets {
+            permissions: &registry,
+            host_tools: &host_tools,
+        };
+        let line = format!(r#"{{"type":"tool_result","request_id":"{id}","content":"moved"}}"#);
+        let line = line.as_str();
+
+        assert_eq!(
+            apply_input_line(line, &input, &targets).await,
+            Ok(InputFlow::Continue)
+        );
+        assert_eq!(
+            answer.await.expect("the run's tool wait is answered"),
+            Ok(crate::core::agent::host_tools::HostToolResult {
+                content: "moved".to_string(),
+                parts: None,
+                details: None,
+                is_error: false,
+            })
+        );
+        let err = apply_input_line(line, &input, &targets)
+            .await
+            .expect_err("nothing is pending any more");
+        assert!(err.contains(&format!("no host tool request '{id}'")), "{err}");
     }
 
     /// The wedge this guards: with a client on stdin the CLI answers nothing
@@ -3361,12 +3826,14 @@ mod tests {
             .insert("perm-1".to_string(), answer_tx);
 
         // No lines at all: the client opened the pipe and closed it again.
-        let (lines_tx, lines) = mpsc::unbounded_channel::<String>();
+        let (lines_tx, lines) = mpsc::unbounded_channel::<ClientLine>();
         drop(lines_tx);
         read_input_lines(
             lines,
             Arc::clone(&input),
             Arc::clone(&registry),
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
             OutputFormat::StreamJson,
         )
         .await;
@@ -3382,14 +3849,154 @@ mod tests {
         );
     }
 
-    /// The other half of the same wedge: a request raised *after* the pipe
-    /// closed. The latch is what sends the printer back to its own answer path.
+    /// The same wedge for a host tool, where it is sharper: only the client can
+    /// answer a `tool_request`, so a pipe that closes mid-call would park the
+    /// turn forever rather than merely losing a decision default.
     #[tokio::test]
-    async fn a_request_raised_after_the_client_left_is_not_left_to_the_client() {
+    async fn a_pending_host_tool_call_is_released_when_the_client_leaves() {
+        let input = Arc::new(StreamInput::default());
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+
+        let (lines_tx, lines) = mpsc::unbounded_channel::<ClientLine>();
+        drop(lines_tx);
+        let (events_tx, mut events) = mpsc::unbounded_channel();
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            Arc::clone(&registry),
+            Arc::clone(&host_tools),
+            events_tx,
+            OutputFormat::StreamJson,
+        )
+        .await;
+
+        assert_eq!(
+            answer.await.expect("the wait is settled, not dropped"),
+            Err(crate::core::agent::host_tools::HostToolError::ClientGone)
+        );
+        assert!(host_tools.lock().await.is_empty());
+        // The host is told, on the run's own stream, which request it lost.
+        assert_eq!(
+            serde_json::to_value(events.recv().await.expect("a record")).unwrap(),
+            serde_json::json!({
+                "type": "tool_request_cancelled",
+                "request_id": id,
+                "reason": "client_gone"
+            })
+        );
+        assert!(events.recv().await.is_none(), "one record per released request");
+    }
+
+    /// An `abort` stops the reader but leaves host requests to the run's abort
+    /// path, which withdraws them as `aborted`; releasing them here as well
+    /// would report the same request twice under two reasons.
+    #[tokio::test]
+    async fn an_abort_leaves_host_requests_to_the_run() {
+        let input = Arc::new(StreamInput::default());
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, _answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let (lines_tx, lines) = mpsc::unbounded_channel();
+        lines_tx
+            .send(ClientLine {
+                text: r#"{"type":"abort"}"#.to_string(),
+                oversized: false,
+            })
+            .expect("reader is alive");
+        drop(lines_tx);
+        let (events_tx, mut events) = mpsc::unbounded_channel();
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            Arc::new(Mutex::new(HashMap::new())),
+            Arc::clone(&host_tools),
+            events_tx,
+            OutputFormat::StreamJson,
+        )
+        .await;
+        assert!(events.recv().await.is_none());
+        assert!(host_tools.lock().await.contains_key(&id));
+        // What the abort path then does: the host is told, and a reply the
+        // host was already writing is refused as no longer pending.
+        let released = crate::core::agent::host_tools::cancel_all(&host_tools).await;
+        assert_eq!(released, vec![id.clone()]);
+        let late = format!(r#"{{"type":"tool_result","request_id":"{id}","content":"late"}}"#);
+        let targets = InputTargets {
+            permissions: &Arc::new(Mutex::new(HashMap::new())),
+            host_tools: &host_tools,
+        };
+        let err = apply_input_line(&late, &input, &targets)
+            .await
+            .expect_err("nothing pending");
+        assert!(err.contains("is pending (answered, cancelled, or never issued)"), "{err}");
+    }
+
+    /// An over-cap tool result is refused as a line, and the request is still
+    /// pending: the host can shrink the image and answer again.
+    #[tokio::test]
+    async fn an_over_cap_tool_result_leaves_the_request_pending() {
         let input = StreamInput::default();
-        assert!(!input.client_gone());
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let targets = InputTargets {
+            permissions: &permissions,
+            host_tools: &host_tools,
+        };
+        let big = "A".repeat((stream_input::MAX_IMAGE_BYTES + 3) / 3 * 4);
+        let line = serde_json::json!({
+            "type": "tool_result",
+            "request_id": id,
+            "content": [{ "type": "image_url",
+                          "image_url": { "url": format!("data:image/png;base64,{big}") } }]
+        })
+        .to_string();
+        let err = apply_input_line(&line, &input, &targets)
+            .await
+            .expect_err("over the cap");
+        assert!(err.contains("byte cap"), "{err}");
+        assert!(host_tools.lock().await.contains_key(&id), "still pending");
+        let retry = serde_json::json!({
+            "type": "tool_result",
+            "request_id": id,
+            "content": [{ "type": "text", "text": "smaller" }],
+            "details": { "retry": 1 }
+        })
+        .to_string();
+        assert_eq!(
+            apply_input_line(&retry, &input, &targets).await,
+            Ok(InputFlow::Continue)
+        );
+        let result = answer.await.expect("delivered").expect("answered");
+        assert_eq!(result.content, "smaller");
+        assert_eq!(result.details, Some(serde_json::json!({ "retry": 1 })));
+    }
+
+    /// The other half of the same wedge, and the sharper half: a request raised
+    /// *after* the pipe closed. `strand_all` has already run by then, so unless
+    /// the printer fails this call itself the turn parks on a reply no one is
+    /// left to send. Asserts the release, not merely that the latch flipped.
+    #[tokio::test]
+    async fn a_request_raised_after_the_client_left_is_failed_not_parked() {
+        let input = StreamInput::default();
+        let host_tools = crate::core::agent::host_tools::new_registry();
+
+        // The client leaves, and the reader drains what was pending.
         input.mark_client_gone();
+        crate::core::agent::host_tools::strand_all(&host_tools).await;
+
+        // Only now does the model call a host tool.
+        let (request_id, answer) =
+            crate::core::agent::host_tools::register(&host_tools).await;
         assert!(input.client_gone());
+        crate::core::agent::host_tools::strand(&host_tools, &request_id).await;
+
+        assert_eq!(
+            answer.await.expect("the wait is settled, not dropped"),
+            Err(crate::core::agent::host_tools::HostToolError::ClientGone)
+        );
+        assert!(host_tools.lock().await.is_empty());
     }
 
     /// `--input-format stream-json` with any other output format leaves the
@@ -3407,6 +4014,8 @@ mod tests {
                 None,
                 format,
                 InputFormat::StreamJson,
+                None,
+                false,
             )
             .await
             .expect_err("the pairing is required");
@@ -3415,6 +4024,78 @@ mod tests {
                 "{err}"
             );
         }
+    }
+
+    /// A content-part follow-up reaches the queue as the client wrote it: the
+    /// same parts `upstream.rs` hands the provider, not a re-encoding of them.
+    #[tokio::test]
+    async fn a_content_part_follow_up_is_queued_verbatim() {
+        let input = Arc::new(StreamInput::default());
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let parts = serde_json::json!([
+            { "type": "text", "text": "what is in this shot?" },
+            { "type": "image_url",
+              "image_url": { "url": "data:image/png;base64,QUJD", "detail": "high" } }
+        ]);
+        let line = serde_json::json!({ "type": "user", "content": parts }).to_string();
+        let (lines_tx, lines) = mpsc::unbounded_channel();
+        lines_tx
+            .send(ClientLine {
+                text: line,
+                oversized: false,
+            })
+            .expect("reader is alive");
+        drop(lines_tx);
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            registry,
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
+            OutputFormat::Json,
+        )
+        .await;
+
+        let queued = input.take_queued();
+        assert_eq!(queued.len(), 1, "the follow-up is queued as one turn");
+        assert_eq!(queued[0]["role"], "user");
+        assert_eq!(queued[0]["content"], parts);
+    }
+
+    /// A line over the cap is refused without being parsed, and what the reader
+    /// keeps of it is bounded: the cap exists so the bytes are not carried on.
+    #[test]
+    fn a_line_over_the_cap_is_refused_and_its_echo_bounded() {
+        let mut bytes = vec![b'x'; MAX_LINE_BYTES + 1024];
+        bytes.push(b'\n');
+        bytes.extend_from_slice(br#"{"type":"user","text":"after"}"#);
+        let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
+
+        let first = read_bounded_line(&mut reader).unwrap().expect("a line");
+        assert!(first.oversized);
+        assert_eq!(first.text.len(), MAX_ECHO_BYTES, "the echo, not the line");
+        // Resynchronised on the next line rather than treating the overflow as
+        // the end of input.
+        let second = read_bounded_line(&mut reader)
+            .unwrap()
+            .expect("the line after the overflow");
+        assert!(!second.oversized);
+        assert_eq!(second.text, r#"{"type":"user","text":"after"}"#);
+        assert!(read_bounded_line(&mut reader).unwrap().is_none());
+    }
+
+    /// The rejected echo the client sees is the bounded one, so a client that
+    /// matches on `input_error.line` still can.
+    #[test]
+    fn an_over_cap_line_is_reported_with_a_truncated_echo() {
+        let line = "x".repeat(MAX_ECHO_BYTES * 3);
+        let record = serde_json::to_value(InputErrorRecord::new("line is over the cap", &line))
+            .expect("a JSON record");
+        assert_eq!(
+            record["line"].as_str().expect("a string").len(),
+            MAX_ECHO_BYTES
+        );
+        assert_eq!(record["line_truncated"], serde_json::json!(true));
     }
 
     /// A queued follow-up the run never reached is reported rather than
