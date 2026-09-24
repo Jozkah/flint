@@ -4199,6 +4199,7 @@ fn build_run_system_prompt(
     session_id: Option<&str>,
     subagents_enabled: bool,
     sandbox: bool,
+    offered: Option<&crate::core::agent::context::OfferedTools>,
 ) -> Option<String> {
     let base = override_prompt.or(assistant_instructions);
     match project_root {
@@ -4218,18 +4219,19 @@ fn build_run_system_prompt(
                 subagents_enabled,
                 session_id,
                 false,
+                offered,
             )
             .0
         }
         None => {
-            let base = base.map(str::to_string);
-            match crate::core::agent::context::load_global_skills() {
-                Some(block) => Some(match base {
-                    Some(b) => format!("{b}\n\n{block}"),
-                    None => block,
-                }),
-                None => base,
+            // No project, so no guide or catalog of project tools -- but the
+            // rules on tool content and destructive actions hold everywhere.
+            let mut blocks: Vec<String> = base.map(str::to_string).into_iter().collect();
+            blocks.push(format!("# Guidelines\n\n{}", crate::core::agent::context::safety_guidelines()));
+            if let Some(block) = crate::core::agent::context::load_global_skills() {
+                blocks.push(block);
             }
+            Some(blocks.join("\n\n"))
         }
     }
 }
@@ -4259,6 +4261,7 @@ pub(crate) fn context_system_prompt_preview(
         session_id,
         subagents_enabled,
         settings.sandbox,
+        None,
     )
 }
 
@@ -4513,6 +4516,34 @@ async fn orchestrate_inner(
     }
     let json_body = &annotated_body;
 
+    // The local tools this run will be offered, worked out the same way the
+    // tool list below is, so the prompt describes only tools the model can
+    // call: a subagent has no `todo` or `ask`, plan mode has no write tools,
+    // and a denied or allowlisted-away web tool is not promised.
+    let offered: crate::core::agent::context::OfferedTools = {
+        let allowed: Option<std::collections::HashSet<String>> = json_body
+            .get("allowed_tools")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        let mut local = Vec::new();
+        advertise_local_tools(
+            &mut local,
+            allowed.as_ref(),
+            permissions,
+            subject,
+            project_root.as_deref(),
+            run_mode,
+            *subagents_enabled,
+            *max_parallel_subagents,
+            ask_requests.is_some(),
+            todo_registry.is_some(),
+            false,
+        );
+        local
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str().map(String::from))
+            .collect()
+    };
     let system_prompt = build_run_system_prompt(
         assistant_instructions.as_deref(),
         system_prompt_override.as_deref(),
@@ -4520,20 +4551,26 @@ async fn orchestrate_inner(
         session_id.as_deref(),
         *subagents_enabled,
         settings.as_ref().is_some_and(|s| s.sandbox),
+        Some(&offered),
     );
     // Memory reaches the prompt only through `build_run_system_prompt`, which
     // selects canonical records by session, project identity and user scope.
     // The BM25 "# Project Memory" block that used to be appended here recalled
     // raw past answers keyed by the project's path text: transcript, not
     // memory, with no provenance, no session scope and no way to forget it.
-    // Always tell the model today's date, including isolated child runs.
-    let date_line = format!(
-        "Today's date is {}.",
-        chrono::Local::now().format("%Y-%m-%d")
-    );
-    let system_prompt = match system_prompt {
-        Some(sys) => format!("{date_line}\n\n{sys}"),
-        None => date_line,
+    // Always tell the model today's date, including isolated child runs. A
+    // project run carries it in the runtime environment block; any other run
+    // gets it at the end, where a daily change does not invalidate a cached
+    // prefix.
+    let system_prompt = match (system_prompt, project_root.is_some()) {
+        (Some(sys), true) => sys,
+        (system_prompt, _) => {
+            let date_line = format!("Today's date is {}.", chrono::Local::now().format("%Y-%m-%d"));
+            match system_prompt {
+                Some(sys) => format!("{sys}\n\n{date_line}"),
+                None => date_line,
+            }
+        }
     };
     let system_prompt = Some(system_prompt);
     // Child (subagent) runs are excluded via `system_prompt_override`, the
@@ -6645,6 +6682,7 @@ mod tests {
             Some("test-session"),
             false,
             true,
+            None,
         )
         .expect("prompt");
 
@@ -10258,6 +10296,7 @@ mod tests {
             Some("s1"),
             false,
             true,
+            None,
         )
         .expect("prompt");
         assert!(confined.contains("Scratch:"), "{confined}");
@@ -10268,6 +10307,7 @@ mod tests {
             Some("s1"),
             false,
             false,
+            None,
         )
         .expect("prompt");
         assert!(!bare.contains("Scratch:"), "{bare}");

@@ -4,6 +4,7 @@
  * only the speaker's own speech is `assistant`; everything else is attributed
  * `user` content, fitted to the speaker's own context window.
  */
+import { todayLine } from '@/lib/promptSafety'
 import { estimateTokens } from '@/lib/context-manager'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
@@ -138,6 +139,11 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
     `You can ${verbs}. The working folder is: ${room.folder}`,
     `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
     'Do not invent file contents: if a read fails, say so instead of guessing.',
+    ...(access === 'edit'
+      ? [
+          'Do not delete, overwrite or move files beyond what the objective requires; if a change is hard to undo, ask the room or the user first.',
+        ]
+      : []),
   ].join('\n')
 }
 
@@ -291,9 +297,18 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
       ? input.contextWindow
       : FALLBACK_CONTEXT_WINDOW
   let system = buildSystemPrompt(input.room, input.speaker)
-  const skills = await resolveExtensions('rooms')
-  const catalog = renderSkillsCatalog(skills)
-  if (catalog) system = `${system}\n\n${catalog}`
+  // Skills are loaded with `skill_read`, which only a participant with tools
+  // is given; listing them to anyone else describes something it cannot use.
+  const hasTools =
+    input.speaker.kind === 'participant' && input.speaker.participant.toolAccess !== 'none'
+  if (hasTools) {
+    const catalog = renderSkillsCatalog(await resolveExtensions('rooms'))
+    if (catalog) {
+      system = `${system}\n\n${catalog}\n\nCall \`skill_read\` with a skill's name to load its instructions before using it.`
+    }
+  }
+  // Last, so a new day does not invalidate the cached prefix before it.
+  system = `${system}\n\n${todayLine()}`
   const cue = turnCue(input.room, input.speaker, input.instruction)
   const fixed = estimateTokens(system) + estimateTokens(cue) + SAFETY_MARGIN_TOKENS
   let budget = Math.max(0, window - input.maxOutputTokens - fixed)
