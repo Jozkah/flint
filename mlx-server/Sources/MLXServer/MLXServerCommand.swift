@@ -48,6 +48,8 @@ struct MLXServerCommand: AsyncParsableCommand {
 
         // Load the model
         let modelRunner = ModelRunner()
+        // Apply --ctx-size to every chat session (bounds the KV cache).
+        await modelRunner.setContextLength(ctxSize)
 
         do {
             try await modelRunner.load(modelPath: model)

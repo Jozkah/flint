@@ -15,6 +15,21 @@ actor ModelRunner {
 
     func currentInjectsThinkingOpener() -> Bool { injectsThinkingOpener }
 
+    /// Context window requested with `--ctx-size`; bounds the KV cache of every
+    /// chat session. nil (or <= 0) leaves the library default in place.
+    private(set) var contextLength: Int?
+
+    func setContextLength(_ value: Int?) {
+        contextLength = Self.kvCacheLimit(ctxSize: value)
+    }
+
+    /// Map a configured context size to the KV-cache size passed to MLX.
+    /// Non-positive values mean "not configured".
+    nonisolated static func kvCacheLimit(ctxSize: Int?) -> Int? {
+        guard let ctxSize, ctxSize > 0 else { return nil }
+        return ctxSize
+    }
+
     /// Load a model from the given path
     /// Supports both local directories and HuggingFace model IDs
     func load(modelPath: String) async throws {
@@ -168,14 +183,16 @@ actor ModelRunner {
     }
 
     /// Build GenerateParameters from individual parameters
-    private nonisolated func buildGenerateParameters(
+    nonisolated func buildGenerateParameters(
         temperature: Float,
         topP: Float,
         maxTokens: Int? = nil,
-        repetitionPenalty: Float
+        repetitionPenalty: Float,
+        contextLength: Int? = nil
     ) -> GenerateParameters {
         GenerateParameters(
             maxTokens: maxTokens,
+            maxKVSize: contextLength,
             temperature: temperature,
             topP: topP,
             repetitionPenalty: repetitionPenalty,
@@ -204,7 +221,8 @@ actor ModelRunner {
 
         let generateParameters = buildGenerateParameters(
             temperature: temperature, topP: topP,
-            maxTokens: maxTokens, repetitionPenalty: repetitionPenalty
+            maxTokens: maxTokens, repetitionPenalty: repetitionPenalty,
+            contextLength: contextLength
         )
 
         let toolSpecs = self.buildToolSpecs(from: tools)
@@ -297,7 +315,8 @@ actor ModelRunner {
 
                 let generateParameters = self.buildGenerateParameters(
                     temperature: temperature, topP: topP,
-                    maxTokens: maxTokens, repetitionPenalty: repetitionPenalty
+                    maxTokens: maxTokens, repetitionPenalty: repetitionPenalty,
+                    contextLength: self.contextLength
                 )
 
                 let toolSpecs = self.buildToolSpecs(from: tools)
