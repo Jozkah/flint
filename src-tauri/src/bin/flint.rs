@@ -1497,8 +1497,14 @@ fn handle_job(cmd: JobCommands) {
             worker::start(&data, &me, &owner, &command, ("", "", "")).map(|record| {
                 println!("{}", record.id);
                 eprintln!(
-                    "\x1b[2m[job {} started; it keeps running if this process exits]\x1b[0m",
-                    record.id
+                    "{}",
+                    app_lib::core::cli::color::paint(
+                        "2",
+                        format_args!(
+                            "[job {} started; it keeps running if this process exits]",
+                            record.id,
+                        ),
+                    ),
                 );
             })
         }

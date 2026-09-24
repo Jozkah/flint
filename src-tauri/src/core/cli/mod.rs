@@ -5,6 +5,7 @@
 mod agent_status;
 pub mod auth;
 pub mod brand;
+pub mod color;
 pub mod browser;
 pub mod device_auth;
 pub mod doctor;
@@ -1911,8 +1912,14 @@ async fn run_agent_loop(
                     Some(found) if !warned_about_context => {
                         warned_about_context = true;
                         eprintln!(
-                            "\n\x1b[33m[context] {}\x1b[0m",
-                            crate::core::agent::context_pressure::line(&found)
+                            "\n{}",
+                            color::paint(
+                                "33",
+                                format_args!(
+                                    "[context] {}",
+                                    crate::core::agent::context_pressure::line(&found),
+                                ),
+                            ),
                         );
                     }
                     Some(_) => {}
@@ -2047,9 +2054,15 @@ async fn run_agent_loop(
     if persisted.saved && !format.is_machine() {
         if let Some(id) = session_id.as_deref() {
             eprintln!(
-                "\x1b[2m[session {} - resume with `flint --resume={}`]\x1b[0m",
-                short_id(id),
-                short_id(id)
+                "{}",
+                color::paint(
+                    "2",
+                    format_args!(
+                        "[session {} - resume with `flint --resume={}`]",
+                        short_id(id),
+                        short_id(id),
+                    ),
+                ),
             );
         }
     }
@@ -2515,7 +2528,13 @@ async fn strand_pending_permissions(registry: &PermissionRegistry, format: Outpu
             ));
         } else {
             eprintln!(
-                "\x1b[33m[permission] auto-denied '{request_id}' (client closed stdin)\x1b[0m"
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!(
+                        "[permission] auto-denied '{request_id}' (client closed stdin)",
+                    ),
+                ),
             );
         }
     }
@@ -2534,7 +2553,7 @@ fn report_input_error(format: OutputFormat, message: &str, line: &str) {
     if format.is_stream_json() {
         print_json_line(&InputErrorRecord::new(message, line));
     } else {
-        eprintln!("\x1b[33m[input] {message}\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[input] {message}")));
     }
 }
 
@@ -2701,8 +2720,14 @@ async fn print_event(
 ) {
     if crate::core::cli::auth::account::take_claude_alias_engaged() {
         eprintln!(
-            "\x1b[33m[warning] {}\x1b[0m",
-            crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE
+            "{}",
+            color::paint(
+                "33",
+                format_args!(
+                    "[warning] {}",
+                    crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE,
+                ),
+            ),
         );
     }
     match ev {
@@ -2725,7 +2750,7 @@ async fn print_event(
             // Live command output is the noisiest thing a run produces, and
             // the whole of it arrives again with the tool result.
             if density != Density::Compact {
-                eprint!("\x1b[2m{delta}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{delta}")));
                 let _ = std::io::stderr().flush();
             }
         }
@@ -2733,15 +2758,15 @@ async fn print_event(
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
             if density != Density::Compact {
-                eprint!("\x1b[2m{text}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{text}")));
                 let _ = std::io::stderr().flush();
             }
         }
         StreamEvent::Step { index, max } => {
             if density != Density::Compact {
                 match max {
-                    0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
-                    m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
+                    0 => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}]"))),
+                    m => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}/{m}]"))),
                 }
             }
         }
@@ -2761,13 +2786,25 @@ async fn print_event(
                     usage.total_tokens.unwrap_or(0),
                 );
                 eprintln!(
-                    "\x1b[2m[turn-usage] in={input} out={output} total={total}\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[turn-usage] in={input} out={output} total={total}",
+                        ),
+                    ),
                 );
             }
         }
         StreamEvent::ToolCall { name, args, .. } => eprintln!(
-            "\x1b[2m[tool] {}\x1b[0m",
-            crate::core::agent::events::describe_tool_call(&name, &args)
+            "{}",
+            color::paint(
+                "2",
+                format_args!(
+                    "[tool] {}",
+                    crate::core::agent::events::describe_tool_call(&name, &args),
+                ),
+            ),
         ),
         StreamEvent::ToolResult {
             content, is_error, ..
@@ -2780,17 +2817,17 @@ async fn print_event(
             // A failure is never quiet: a compact run drops results, not the
             // news that something did not work.
             if density != Density::Compact || is_error {
-                eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("[{tag}] {content}")));
             }
         }
         StreamEvent::SubagentStart { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] started (background)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] started (background)")))
         }
         StreamEvent::SubagentQueued { name, waiting, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] queued ({waiting} waiting)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] queued ({waiting} waiting)")))
         }
         StreamEvent::SubagentEnd { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] finished\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
         }
         StreamEvent::Subagent { name, event, .. } => {
             if let StreamEvent::ToolCall {
@@ -2798,8 +2835,14 @@ async fn print_event(
             } = *event
             {
                 eprintln!(
-                    "\x1b[2m[subagent:{name}] {}\x1b[0m",
-                    crate::core::agent::events::describe_tool_call(&tool, &args)
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[subagent:{name}] {}",
+                            crate::core::agent::events::describe_tool_call(&tool, &args),
+                        ),
+                    ),
                 );
             }
         }
@@ -2825,7 +2868,7 @@ async fn print_event(
         }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
-            eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
+            eprintln!("\n{}", color::paint("2", format_args!("[done] stop_reason={stop_reason} tokens={tokens}")));
         }
         StreamEvent::Error { code, message } => {
             // AH-009: the event already carries the classification, so the
@@ -2840,7 +2883,7 @@ async fn print_event(
             }
         }
         StreamEvent::AskRequest { .. } => {
-            eprintln!("\n\x1b[31m[error] interactive ask requires `flint agent ui`\x1b[0m")
+            eprintln!("\n{}", color::paint("31", format_args!("[error] interactive ask requires `flint agent ui`")))
         }
         // Headless never renders an ask prompt, so there is nothing to dismiss.
         StreamEvent::AskResolved { .. } => {}
@@ -2862,18 +2905,24 @@ async fn print_event(
         } => {
             // Why a call auto-approval would have run is being asked about.
             if let Some(reason) = &reason {
-                eprintln!("\x1b[33m[permission] {reason}\x1b[0m");
+                eprintln!("{}", color::paint("33", format_args!("[permission] {reason}")));
             }
             let detail = command
                 .map(|c| format!(" ({c})"))
                 .or_else(|| path.map(|p| format!(" on {p}")))
                 .unwrap_or_default();
             if let Some(diff) = diff {
-                eprintln!("\x1b[2m{diff}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("{diff}")));
             }
             if duplex {
                 eprintln!(
-                    "\x1b[33m[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "33",
+                        format_args!(
+                            "[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin",
+                        ),
+                    ),
                 );
                 return;
             }
@@ -2895,11 +2944,11 @@ async fn prompt_permission(
 ) -> PermissionDecision {
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
-        eprintln!("\x1b[33m[permission] auto-denied {capability} via '{tool_name}' (non-interactive)\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {
-        eprint!("\x1b[33m[permission] allow {capability} via '{tool_name}'{detail}? [y/N] \x1b[0m");
+        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N] ")));
         let _ = std::io::stderr().flush();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).is_err() {
