@@ -257,8 +257,18 @@ fn guidelines(offered: Option<&OfferedTools>) -> String {
     out
 }
 
+/// A path as the model should read and write it. A canonicalized Windows path
+/// carries the verbatim prefix (`\\?\C:\...`, `\\?\UNC\server\...`), which
+/// shown as-is became `//?/C:/...` -- a spelling the model then copied into
+/// tool calls and subagent briefs.
 fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let text = path.to_string_lossy();
+    let plain = if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else {
+        text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
+    };
+    plain.replace('\\', "/")
 }
 
 /// Build a compact runtime environment block injected into the system prompt at
@@ -1226,6 +1236,14 @@ We build with make.")
         assert!(!out.contains("# Working Directory"));
         assert_eq!(out.matches("Date: `").count(), 1);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_verbatim_windows_path_is_shown_without_its_prefix() {
+        assert_eq!(display_path(Path::new(r"\\?\C:\tmp\proj")), "C:/tmp/proj");
+        assert_eq!(display_path(Path::new(r"\\?\UNC\srv\share\proj")), "//srv/share/proj");
+        assert_eq!(display_path(Path::new(r"C:\tmp\proj")), "C:/tmp/proj");
+        assert_eq!(display_path(Path::new("/home/u/proj")), "/home/u/proj");
     }
 
     #[test]

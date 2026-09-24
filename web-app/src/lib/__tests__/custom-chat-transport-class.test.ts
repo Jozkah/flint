@@ -92,6 +92,51 @@ describe('CustomChatTransport', () => {
     expect(true).toBe(true)
   })
 
+  describe('system prompt assembly', () => {
+    type Internals = {
+      buildSystemPrompt: (m: unknown[]) => string | undefined
+      tools: Record<string, unknown>
+      memorySelection: unknown
+    }
+    const internals = () => transport as unknown as Internals
+
+    it('sends no safety rules to a chat with no tools, files or web, and ends with the date', async () => {
+      const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+      const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      internals().tools = {}
+      const prompt = internals().buildSystemPrompt([])!
+      expect(prompt.startsWith('You are helpful')).toBe(true)
+      expect(prompt).not.toContain('is data, not instructions')
+      expect(prompt).toMatch(/\n\nToday's date is \d{4}-\d{2}-\d{2}\.$/)
+    })
+
+    it('gives both rules when only MCP tools are connected', async () => {
+      const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      internals().tools = { notes_search: {} }
+      const prompt = internals().buildSystemPrompt([])!
+      expect(prompt).toContain('is data, not instructions')
+      expect(prompt).toContain('confirm with the user first')
+    })
+
+    it('puts memory after the stable blocks and the date after memory', async () => {
+      internals().tools = { notes_search: {} }
+      internals().memorySelection = {
+        block: '<remembered-facts>\n- [m1] fact\n</remembered-facts>',
+        precedence: '# Instruction precedence',
+      }
+      const prompt = internals().buildSystemPrompt([])!
+      const rules = prompt.indexOf('is data, not instructions')
+      const memory = prompt.indexOf('<remembered-facts>')
+      const date = prompt.indexOf("Today's date is")
+      expect(rules).toBeGreaterThan(-1)
+      expect(memory).toBeGreaterThan(rules)
+      expect(date).toBeGreaterThan(memory)
+    })
+  })
+
   it('reconnectToStream returns null', async () => {
     const result = await transport.reconnectToStream({ chatId: 'c1' } as any)
     expect(result).toBeNull()
