@@ -140,7 +140,7 @@ had said before it broke as `result`:
   "is_error": true,
   "result": "I started reviewing auth.rs and...",
   "stop_reason": "error",
-  "error": { "code": "upstream_error", "message": "[400] tool_choice does not match any of the specified tools" },
+  "error": { "code": "upstream_error", "message": "Upstream returned HTTP 400: tool_choice does not match any of the specified tools" },
   "session_id": null,
   "model": "tokamak-1-preview",
   "num_turns": 1,
@@ -155,11 +155,11 @@ had said before it broke as `result`:
 | `result` | The final answer, or the partial answer of the turn that failed. Reasoning is stripped |
 | `stop_reason` | The upstream finish reason, or `error` |
 | `error.code` | `context_overflow`, `upstream_error`, `setup_error`, or the raw code |
-| `session_id` | Short session id for `--resume`. `null` when the run failed before producing one |
+| `session_id` | Short session id for `--resume`. `null` only when no thread was saved: a fresh run that fails before its first save reports `null`, while a resumed run keeps the id it already had |
 | `num_turns` | Agent turns taken. Subagent turns are not counted |
 | `usage` | Summed over every request the run made, subagents included |
 
-The process exit code is unchanged: `0` on success, `1` on failure.
+One-shot exit codes: `0` on completion, `1` on failure, `2` on bad CLI arguments, `53` when `--max-turns` is exhausted while the model is still calling tools. `--max-session-tokens` is advisory and does not produce exit `53`.
 
 #### Streaming JSON, in both directions
 
@@ -285,6 +285,30 @@ jan cli agent status
 jan cli agent status --project ~/code/app
 ```
 
+### `rpc`
+
+Run one long-lived Jan process with multiple addressable sessions over LF-delimited JSON-RPC on stdin/stdout. `jan cli agent rpc` prints **protocol lines only** to stdout. The first request is `initialize` with `protocolVersion: 1` and a `clientInfo` name/version; wait for its response, then send the `initialized` notification before any other method. Calling a method early returns `-32002`.
+
+```bash
+jan cli agent rpc
+jan cli agent rpc-schema   # generated request/event schemas on stdout
+```
+
+One client flow:
+
+```text
+initialize {protocolVersion:1,clientInfo:{name,version}} -> version and serverInfo
+initialized                                                -> notification
+session/start {cwd,model?,ephemeral?}                      -> {sessionId}
+turn/start {sessionId,input:"Hello"}                       -> {turnId} immediately
+item/<stream-json tag>                                     -> {sessionId,turnId,event}
+turn/completed                                             -> {sessionId,turnId,stopReason,error?}
+```
+
+The `item/*` payload contains the existing `StreamEvent` object unchanged. A client can also call `session/list`, `session/resume`, `session/fork`, `session/archive`, `turn/steer`, `turn/interrupt` and `permission/respond {requestId,decision}`. Session ids address this **process**, not another RPC process. `turn/interrupt` closes the turn with one `turn/completed` carrying `stopReason: "interrupted"`, and puts that record on the wire before it answers the request. A client that closes stdin ends the process, and the turn that is still running is closed with `stopReason: "interrupted"` before it exits. An outstanding permission request is never granted - closing the channel is not an approval, and the gate's fallback for a request that is dropped without an answer is denial. Only one turn is active per process; a second `turn/start` returns `-32001` with `data.retryable: true` rather than silently queueing it, and so does a `turn/start` arriving while the output queue has no room left for the terminal record - the turn is refused instead of accepted and then lost. `turn/completed.stopReason` is the turn's outcome (`completed`, `error`, `interrupted`), not the upstream finish reason: that one is the `stop_reason` inside `item/done`. Transport errors (`-32700` malformed JSON, `-32600` invalid request, `-32601` unknown method, `-32602` bad params) differ from an agent failure reported by `turn/completed` with `stopReason: "error"`.
+
+Input frames are capped at 16 MiB and the writer queue holds at most 1025 records. If a client stops reading, the queue stops growing and the turn ends with a terminal overload outcome rather than the run accumulating deltas without bound; the process stays alive while the writer is blocked on the full stdout pipe, and that outcome is delivered as soon as the client reads again. The server exits when stdin closes, or when a later record finds the client gone. `--max-turns` is a one-shot flag rather than a session setting: an RPC turn runs until it finishes or a client sends `turn/interrupt`. `ephemeral: true` skips thread persistence. Host tool callbacks are **not implemented** on this RPC surface yet; `session/start` refuses a `tools` field rather than advertising it as supported. The `schema` command below documents the older `stream-json` channel, while `rpc-schema` describes this RPC envelope, accepted requests and event types. RPC clients use `turn/completed`, not the process exit code, to classify an individual turn.
+
 ### `schema`
 
 Print the protocol as a JSON Schema document, generated from the Rust types that define the channel
@@ -317,6 +341,36 @@ make protocol-schema   # regenerate it after changing a protocol type
 A unit test compares the file against a fresh generation, so a change to a protocol type cannot
 land without the document moving with it, and generating twice from unchanged types is
 byte-identical rather than a diff.
+
+### `rpc-schema`
+
+Print the RPC surface as a JSON Schema document, generated from the Rust types that deserialize each
+request. Like `schema`, no project and no provider are involved. It describes this surface only: the
+`stream-json` records are in `protocol/schema.json`, and ACP has no document yet.
+
+```bash
+jan cli agent rpc-schema                                  # stdout
+jan cli agent rpc-schema --out protocol/rpc-schema.json   # or a file
+```
+
+| Property | Contents |
+| --- | --- |
+| `protocol_version` | The envelope version a client asserts in `initialize` |
+| `envelope` | The JSON-RPC 2.0 request frame |
+| `requests` | One entry per callable method, with the params it accepts: `initialize`, `session/list` (no params, so an empty object), `session/start`, `session/resume`, `session/fork`, `session/archive`, `turn/start`, `turn/steer`, `turn/interrupt`, `permission/respond` |
+| `notifications` | The frame a notification uses - a `method` plus `params`. The `item/<tag>` method names come from each event's `type`, and `params.event` is the `StreamEvent` below |
+| `events` | The `StreamEvent` an `item/<tag>` notification carries |
+
+The committed copy is `protocol/rpc-schema.json`:
+
+```bash
+make protocol-rpc-schema   # regenerate it after changing an RPC type
+```
+
+A unit test compares the file against a fresh generation, and a second pins the method list the document
+declares. The integration test then calls every method the document names and requires an answer that
+is not `-32601`, so the artifact cannot offer a verb the server does not dispatch. CI regenerates both
+this document and `protocol/schema.json` in one job and fails on a diff.
 
 ## `jan plugin`
 

@@ -784,6 +784,15 @@ enum AgentCommands {
         #[arg(long)]
         out: Option<std::path::PathBuf>,
     },
+    /// Serve addressable sessions over JSON-RPC on stdin/stdout
+    Rpc,
+    /// Print the RPC request and event schemas, generated from the types that
+    /// define the envelope (see `protocol/rpc-schema.json`)
+    RpcSchema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
 }
 
 /// Read/write the user-wide `~/.jan/config.toml` provider store. This is the
@@ -2366,6 +2375,13 @@ async fn handle_agent(cmd: AgentCommands) {
         // it is the same document on any machine and in any directory.
         AgentCommands::Schema { out } => {
             app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
+        }
+        AgentCommands::Rpc => app_lib::core::cli::rpc::serve().await.map_err(HarnessError::legacy),
+        // Like `schema`: no project root and no provider are involved, so the
+        // artifact is the same one on any machine. `--out` is what CI and
+        // `make protocol-rpc-schema` use.
+        AgentCommands::RpcSchema { out } => {
+            app_lib::core::cli::rpc_schema::run(out.as_deref()).map_err(HarnessError::legacy)
         }
     };
     if let Err(e) = result {
