@@ -194,11 +194,23 @@ const ERASE_SLOT_STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_
 const RELOAD_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// An HTTP client for talking to the worker, with a request timeout.
-fn worker_client(timeout: std::time::Duration) -> reqwest::Client {
+///
+/// Never falls back to `reqwest::Client::new()`: that client has no timeout,
+/// which is the hang this exists to prevent. If the builder fails (system
+/// proxy discovery is the usual cause), one retry skips proxies -- the worker
+/// is on loopback anyway -- and a second failure is an error.
+fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(timeout)
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .or_else(|e| {
+            log::warn!("could not build the engine worker client ({e}); retrying without proxies");
+            reqwest::Client::builder().timeout(timeout).no_proxy().build()
+        })
+        .map_err(|e| {
+            log::error!("could not build the engine worker client: {e}");
+            format!("could not build an HTTP client for the engine worker: {e}")
+        })
 }
 
 /// Models with a request in flight, from the worker's own `/models` listing.
@@ -212,7 +224,10 @@ async fn busy_models_within(
     api_key: &str,
     timeout: std::time::Duration,
 ) -> Vec<String> {
-    let Ok(resp) = worker_client(timeout)
+    let Ok(client) = worker_client(timeout) else {
+        return Vec::new();
+    };
+    let Ok(resp) = client
         .get(format!("http://127.0.0.1:{port}/models"))
         .bearer_auth(api_key)
         .send()
@@ -332,7 +347,7 @@ pub async fn reload_engine_models(
         body["slot_cache_mib"] = serde_json::json!(m);
     }
 
-    let resp = worker_client(RELOAD_MODELS_TIMEOUT)
+    let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
         .post(format!("http://127.0.0.1:{port}/models/reload"))
         .bearer_auth(&api_key)
         .json(&body)
@@ -383,7 +398,14 @@ pub async fn engine_slots_idle(
             None => return Ok(true),
         }
     };
-    let busy = busy_models(port, &api_key).await;
+    // busy_models has its own request timeout; this outer bound also covers a
+    // client that could not honor it, so the command can never hang.
+    let busy = tokio::time::timeout(
+        BUSY_MODELS_TIMEOUT + std::time::Duration::from_secs(1),
+        busy_models(port, &api_key),
+    )
+    .await
+    .unwrap_or_default();
     Ok(match model_id {
         Some(id) => !busy.contains(&id),
         None => busy.is_empty(),
@@ -451,7 +473,7 @@ pub async fn erase_thread_slot_state(
         body.insert("model".into(), serde_json::Value::String(m));
     }
     let body = serde_json::Value::Object(body);
-    let client = worker_client(ERASE_SLOT_STATE_TIMEOUT);
+    let client = worker_client(ERASE_SLOT_STATE_TIMEOUT)?;
     let resp = client
         .post(format!("http://127.0.0.1:{port}/slots/state/erase"))
         .bearer_auth(&api_key)
