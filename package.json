@@ -12,7 +12,7 @@
   "scripts": {
     "lint": "yarn workspace @janhq/web-app lint",
     "guard:local-only": "node scripts/local-only-guard.mjs",
-    "test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/agent-harness/*.test.mjs\"",
+    "test:scripts": "node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs",
     "dev": "yarn dev:tauri",
     "ios": "yarn tauri ios dev",
     "android": "yarn tauri android dev",
