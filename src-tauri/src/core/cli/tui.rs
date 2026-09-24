@@ -4471,6 +4471,13 @@ impl App {
         }
         if let Some(base) = self.base_snapshot.as_ref() {
             meta.insert("base_snapshot".to_string(), serde_json::json!(base));
+            // So `flint threads delete` can drop the snapshot ref (#143).
+            if let Some(repo) = self.repo_root.as_ref() {
+                meta.insert(
+                    super::SNAPSHOT_REPO_KEY.to_string(),
+                    serde_json::json!(repo.to_string_lossy()),
+                );
+            }
             meta.insert(
                 "checkpoints".to_string(),
                 serde_json::json!(self.checkpoints),
