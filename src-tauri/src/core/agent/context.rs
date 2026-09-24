@@ -98,7 +98,7 @@ pub(crate) fn has_context_file(project_root: &Path) -> bool {
 /// prior knowledge. Embedded in the binary at compile time.
 const DEFAULT_SKILL_GUIDE: &str = include_str!("default_skill.md");
 
-/// Build the skills catalog for the system prompt: one `## Skill: <name>` entry
+/// Build the skills catalog for the system prompt: one `- `name`: summary` line
 /// per skill with its one-line description only — NOT the full body. Progressive
 /// disclosure: the model calls `skill_read` to pull a skill's full instructions
 /// on demand, so a large skill library costs ~a description each, not full text.
@@ -120,33 +120,73 @@ fn load_skills_for(project_root: &Path, can_read: bool) -> Option<String> {
     render_skills_block(&entries, can_read)
 }
 
+/// The most of the prompt the skill catalog may take, in characters. The
+/// catalog was unbounded: every installed skill added its full description
+/// to every request, and a few plugin packs put ~400 skills and 128,000
+/// characters in front of each turn. Past the budget the rest are counted,
+/// not listed, and `skill_list` shows them all.
+pub(crate) const SKILL_CATALOG_BUDGET_CHARS: usize = 8_000;
+
+/// The longest description one catalog line carries. The catalog says what a
+/// skill is for; `skill_read` has the rest.
+pub(crate) const SKILL_SUMMARY_MAX_CHARS: usize = 120;
+
+/// A description cut to its first line and [`SKILL_SUMMARY_MAX_CHARS`],
+/// on a character boundary.
+pub(crate) fn skill_summary(description: &str) -> String {
+    let first = description.trim().lines().next().unwrap_or("").trim();
+    if first.chars().count() <= SKILL_SUMMARY_MAX_CHARS {
+        return first.to_string();
+    }
+    let cut: String = first.chars().take(SKILL_SUMMARY_MAX_CHARS - 3).collect();
+    format!("{}...", cut.trim_end())
+}
+
 fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta], can_read: bool) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
-    let list = entries
-        .iter()
-        .map(|m| {
-            // AH-123: a skill that declares a version is named with it, so a
-            // request for "deploy 2.x" can be matched against what is here.
-            let name = match &m.version {
-                Some(version) => format!("{} (v{version})", m.name),
-                None => m.name.clone(),
-            };
-            if m.description.is_empty() {
-                format!("## Skill: {name}")
-            } else {
-                format!("## Skill: {name}\n\n{}", m.description)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    // The project's own skills before plugin skills: when the budget runs
+    // out, what the user wrote for this project is what stays listed.
+    let mut ordered: Vec<&crate::core::agent::skills::SkillMeta> = entries.iter().collect();
+    ordered.sort_by_key(|m| m.plugin.is_some());
+    let mut lines: Vec<String> = Vec::new();
+    let mut used = 0usize;
+    let mut omitted = 0usize;
+    for m in ordered {
+        // AH-123: a skill that declares a version is named with it, so a
+        // request for "deploy 2.x" can be matched against what is here.
+        let name = match &m.version {
+            Some(version) => format!("{} (v{version})", m.name),
+            None => m.name.clone(),
+        };
+        let summary = skill_summary(&m.description);
+        let line = if summary.is_empty() {
+            format!("- `{name}`")
+        } else {
+            format!("- `{name}`: {summary}")
+        };
+        if used + line.len() + 1 > SKILL_CATALOG_BUDGET_CHARS {
+            omitted += 1;
+            continue;
+        }
+        used += line.len() + 1;
+        lines.push(line);
+    }
     let lead = if can_read {
-        "Each skill below lists its name and purpose. Before applying a skill, call `skill_read` with its name to load its full instructions."
+        "Each skill below is listed by name and purpose. Before applying a skill, call `skill_read` with its name to load its full instructions."
     } else {
         "Skills configured for this workspace, by name and purpose."
     };
-    Some(format!("# Available Skills\n\n{lead}\n\n{list}"))
+    let mut block = format!("# Available Skills\n\n{lead}\n\n{}", lines.join("\n"));
+    if omitted > 0 {
+        block.push_str(&format!(
+            "\n\n{omitted} more skill{} not listed here to keep the prompt small{}.",
+            if omitted == 1 { " is" } else { "s are" },
+            if can_read { "; call `skill_list` to see every skill" } else { "" }
+        ));
+    }
+    Some(block)
 }
 
 /// Always-on guidance teaching the model that web access is a native built-in
@@ -625,7 +665,7 @@ mod tests {
     fn built_in_flint_skill_is_advertised_without_project_skills() {
         let root = scratch_project("nodir");
         let block = load_skills(&root).expect("built-in skills block");
-        assert!(block.contains("## Skill: flint"));
+        assert!(block.contains("- `flint`"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -639,10 +679,10 @@ mod tests {
 
         let block = load_skills(&root).expect("skills block");
         assert!(block.starts_with("# Available Skills"));
-        assert!(block.contains("## Skill: a_first"));
-        assert!(block.contains("## Skill: b_second"));
+        assert!(block.contains("- `a_first`"));
+        assert!(block.contains("- `b_second`"));
         assert!(!block.contains("not markdown"));
-        assert!(!block.contains("## Skill: empty"));
+        assert!(!block.contains("- `empty`"));
         // Alphabetical: a_first precedes b_second.
         assert!(block.find("a_first").unwrap() < block.find("b_second").unwrap());
         let _ = std::fs::remove_dir_all(&root);
@@ -678,7 +718,7 @@ mod tests {
 
         // Matrix empty -> today's unrestricted catalog output.
         let block = load_skills(project.path()).expect("skills block with empty matrix");
-        assert!(block.contains("## Skill: caveman"));
+        assert!(block.contains("- `caveman`"));
 
         // Restrict "caveman" to Rooms only -- excluded from this Cowork project.
         let mut matrix = crate::core::agent::extensions::Matrix::load();
@@ -692,7 +732,7 @@ mod tests {
         let block = load_skills(project.path());
         let absent = match &block {
             None => true,
-            Some(b) => !b.contains("## Skill: caveman"),
+            Some(b) => !b.contains("- `caveman`"),
         };
         assert!(
             absent,
@@ -714,7 +754,7 @@ mod tests {
             "---\ndescription: How to deploy\n---\n\nSECRET_BODY_MARKER run ./deploy.sh",
         );
         let block = load_skills(&root).expect("skills block");
-        assert!(block.contains("## Skill: deploy"));
+        assert!(block.contains("- `deploy`"));
         assert!(block.contains("How to deploy"));
         // Progressive disclosure: the body stays out of the prompt until read.
         assert!(!block.contains("SECRET_BODY_MARKER"));
@@ -768,9 +808,9 @@ mod tests {
             "---\ndescription: Human fires this\ndisable-model-invocation: true\n---\nuser body",
         );
         let block = load_skills(&root).expect("skills block");
-        assert!(block.contains("## Skill: agent-only"), "block: {block}");
+        assert!(block.contains("- `agent-only`"), "block: {block}");
         assert!(
-            !block.contains("## Skill: user-only"),
+            !block.contains("- `user-only`"),
             "user-only leaked: {block}"
         );
         assert!(!block.contains("user body"), "body leaked: {block}");
@@ -1032,6 +1072,33 @@ We build with make.")
         assert!(out.find("You are Jan.").unwrap() < guide);
         assert!(guide < out.find("Do the thing.").unwrap());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_large_skill_library_stays_within_the_catalog_budget() {
+        let skill = |name: String, plugin: Option<&str>| crate::core::agent::skills::SkillMeta {
+            name,
+            description: format!("{} Second line is never shown.", "Does a thing. ".repeat(40)),
+            plugin: plugin.map(str::to_string),
+            user_invocable: true,
+            model_invocable: true,
+            version: None,
+        };
+        // 400 plugin skills with long descriptions, then one project skill.
+        let mut entries: Vec<_> = (0..400).map(|i| skill(format!("pack:skill-{i}"), Some("pack"))).collect();
+        entries.push(skill("deploy".into(), None));
+        let block = render_skills_block(&entries, true).unwrap();
+        assert!(block.len() < SKILL_CATALOG_BUDGET_CHARS + 600, "{} chars", block.len());
+        // The project's own skill is listed first, whatever the input order.
+        let first = block.lines().find(|l| l.starts_with("- `")).unwrap();
+        assert!(first.starts_with("- `deploy`"), "{first}");
+        // Every line is one short summary, and the rest are counted, not lost.
+        assert!(block.lines().all(|l| l.chars().count() < SKILL_SUMMARY_MAX_CHARS + 40));
+        assert!(block.contains("more skills are not listed"), "{block}");
+        assert!(block.contains("skill_list"));
+        // A small library is listed whole, with no omission note.
+        let small = render_skills_block(&entries[..3], true).unwrap();
+        assert!(!small.contains("not listed"));
     }
 
     #[test]

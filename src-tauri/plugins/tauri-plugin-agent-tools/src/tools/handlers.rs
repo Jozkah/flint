@@ -640,7 +640,7 @@ pub(crate) async fn execute_text(
         "message_check" => message_check(ctx),
         // Skills go through the skills module so the tool honors the folder form
         // (`<name>/SKILL.md`) and frontmatter, matching what the UI writes.
-        "skill_list" => skill_list(ctx),
+        "skill_list" => skill_list(args, ctx),
         "skill_read" => skill_read(args, ctx),
         "skill_write" => skill_write(args, ctx),
         // Native web tools: compiled into the agent core, not an MCP server.
@@ -1126,14 +1126,28 @@ fn skill_requirements_unmet(ctx: &ToolContext<'_>, name: &str, parsed: &skills::
 /// With an attached project (`ctx.skill_project`), that project's skills and
 /// its enabled plugins' skills come first, filtered by the project's own
 /// `[skills].enabled`; see [`skills::catalog_for_model`].
-fn skill_list(ctx: &ToolContext<'_>) -> String {
+/// A skill description cut to its first line and 120 characters, for a list.
+fn skill_summary(description: &str) -> String {
+    const MAX: usize = 120;
+    let first = description.trim().lines().next().unwrap_or("").trim();
+    if first.chars().count() <= MAX {
+        return first.to_string();
+    }
+    let cut: String = first.chars().take(MAX - 3).collect();
+    format!("{}...", cut.trim_end())
+}
+
+fn skill_list(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    // Case-insensitive, over the name and the summary shown: what the model
+    // searches is what it can see.
+    let query = arg_str(args, "query").map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
     let offered = skills::catalog_for_model_with_user(
         ctx.skill_project,
         ctx.store_root,
         ctx.user_skills_root,
         ctx.enabled_skills,
     );
-    offered
+    let lines = offered
         .into_iter()
         // A skill this run could not carry out is not offered: a catalogue
         // entry is an invitation, and one that always ends in a refusal is a
@@ -1171,14 +1185,19 @@ fn skill_list(ctx: &ToolContext<'_>) -> String {
                 Some(version) => format!("{} (v{version})", m.name),
                 None => m.name.clone(),
             };
-            if m.description.is_empty() {
+            let summary = skill_summary(&m.description);
+            if summary.is_empty() {
                 name
             } else {
-                format!("{name} — {}", m.description)
+                format!("{name} — {summary}")
             }
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .filter(|line| query.as_ref().is_none_or(|q| line.to_lowercase().contains(q.as_str())))
+        .collect::<Vec<_>>();
+    match (&query, lines.is_empty()) {
+        (Some(q), true) => format!("No skill matches `{q}`. Call `skill_list` without a query to see every skill."),
+        _ => lines.join("\n"),
+    }
 }
 
 /// `skill_read` tool: a skill's full instructions (frontmatter stripped). A
@@ -7063,6 +7082,11 @@ on_failure = \"warn\"
         for absent in ["proj-shell", "user-shell", "proj-dep", "user-dep", "off"] {
             assert!(!list.contains(absent), "{absent} offered: {list}");
         }
+        // A query narrows the list, case-insensitively, over name and summary.
+        let found = run("skill_list", json!({"query": "PROJECT OK"})).await;
+        assert!(found.contains("proj-ok") && !found.contains("user-ok"), "{found}");
+        let none = run("skill_list", json!({"query": "no such thing"})).await;
+        assert!(none.starts_with("No skill matches"), "{none}");
 
         let off = run("skill_read", json!({"name": "off"})).await;
         assert!(off.starts_with("ERROR"), "{off}");

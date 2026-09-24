@@ -278,6 +278,20 @@ pub fn classify_programs(
             report.unavailable.push(name.to_string());
         }
     }
+    // `py` is only a launcher: it lives in the Windows folder, so it always
+    // starts, but it runs a Python it finds elsewhere -- usually under the
+    // user profile, which the sandbox cannot execute. On its own it exits 103
+    // or 109. It counts as runnable only when a Python itself is.
+    let python_runs = report
+        .runnable
+        .iter()
+        .any(|n| n == "python" || n == "python3");
+    if !python_runs {
+        if let Some(at) = report.runnable.iter().position(|n| n == "py") {
+            report.runnable.remove(at);
+            report.unavailable.push("py".to_string());
+        }
+    }
     report
 }
 
@@ -668,6 +682,30 @@ mod tests {
         let unknown = classify_programs(&["node"], &sandbox, &host, ".EXE", |_| None);
         assert!(unknown.runnable.is_empty());
         assert_eq!(unknown.unavailable, vec!["node"]);
+    }
+
+    #[test]
+    fn py_counts_only_when_a_python_runs() {
+        let root = TempDir::new("pylauncher");
+        let open = root.path().join("open");
+        let locked = root.path().join("locked");
+        for d in [&open, &locked] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        std::fs::write(open.join(format!("py{ext}")), "x").unwrap();
+        std::fs::write(locked.join(format!("python{ext}")), "x").unwrap();
+        let sandbox = std::env::join_paths([open.clone()]).unwrap();
+        let host = std::env::join_paths([open.clone(), locked.clone()]).unwrap();
+        let can = |d: &Path| Some(!d.ends_with("locked"));
+        let got = classify_programs(&["python", "py"], &sandbox, &host, ".EXE", can);
+        assert!(got.runnable.is_empty(), "{:?}", got.runnable);
+        assert_eq!(got.unavailable, vec!["python", "py"]);
+
+        // With a Python the sandbox can run, the launcher counts too.
+        std::fs::write(open.join(format!("python{ext}")), "x").unwrap();
+        let got = classify_programs(&["python", "py"], &sandbox, &host, ".EXE", can);
+        assert_eq!(got.runnable, vec!["python", "py"]);
     }
 
     #[test]

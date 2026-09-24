@@ -13,6 +13,7 @@ import {
   projectHistory,
   quoteText,
   renderSkillsCatalog,
+  SKILL_CATALOG_BUDGET_CHARS,
   transcriptText,
   UNTRUSTED_NOTICE,
 } from '../context'
@@ -62,7 +63,7 @@ describe('context projection', () => {
       maxOutputTokens: 512,
     })
     expect(resolveExtensions).toHaveBeenCalledWith('rooms')
-    expect(built.system).toContain('## Skill: caveman')
+    expect(built.system).toContain('- `caveman`')
     expect(built.system).toContain('Talk terse.')
     expect(built.system).toContain('skill_read')
   })
@@ -110,10 +111,23 @@ describe('context projection', () => {
     expect(buildSystemPrompt(withFolder, editor)).toContain('Do not delete, overwrite or move files')
   })
 
+  it('renderSkillsCatalog keeps a large library within the budget, standalone skills first', () => {
+    const long = `${'Does a thing. '.repeat(40)}\nSecond line.`
+    const skills = [
+      ...Array.from({ length: 400 }, (_, i) => ({ name: `pack:s${i}`, description: long, plugin: 'pack' })),
+      { name: 'deploy', description: long },
+    ] as never[]
+    const block = renderSkillsCatalog(skills)!
+    expect(block.length).toBeLessThan(SKILL_CATALOG_BUDGET_CHARS + 200)
+    expect(block.split('\n').find((l) => l.startsWith('- '))).toMatch(/^- `deploy`/)
+    expect(block).toContain('more skills are not listed')
+    expect(block).not.toContain('Second line')
+  })
+
   it('renderSkillsCatalog renders name + description, and null for an empty list', () => {
     expect(renderSkillsCatalog([])).toBeNull()
     const block = renderSkillsCatalog([{ name: 'caveman', description: 'Talk terse.' } as never])
-    expect(block).toContain('## Skill: caveman')
+    expect(block).toContain('- `caveman`')
     expect(block).toContain('Talk terse.')
   })
 
