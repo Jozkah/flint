@@ -15,11 +15,15 @@ use tauri_plugin_agent_tools::{memory, workspace};
 const DEFAULT_IDENTITY: &str =
     "You are an AI coding agent running in the Flint agent harness, working in the user's project through the tools provided.";
 
+/// Guideline for the `todo` tool, given only to a run that is offered it.
+const TODO_GUIDELINE: &str = "- Reach for `todo` only when work genuinely needs tracking: several independent steps, or a task long enough that you or the user would otherwise lose the thread. When you do keep it current as tasks start, finish, or are abandoned. Most requests do not need one -- greetings, questions, single-file edits, and anything you can finish in a step or two are better done directly, and a plan for small work is noise the user has to read past.";
+
+/// Guideline for the `ask` tool, given only to a run that is offered it.
+const ASK_GUIDELINE: &str = "- Call `ask` when the user's answer would materially change scope, behavior, or an irreversible action and it cannot be safely inferred from the request or project context. Ask concise, decision-ready questions; otherwise make the reasonable choice and proceed.";
+
 /// Always-on behavioral guidelines. Kept short and model-facing.
 const GUIDELINES: &str =
-    "# Guidelines\n\n- Be concise in your responses.\n- Show file paths clearly when working with files.\n\
-- Reach for `todo` only when work genuinely needs tracking: several independent steps, or a task long enough that you or the user would otherwise lose the thread. When you do keep it current as tasks start, finish, or are abandoned. Most requests do not need one -- greetings, questions, single-file edits, and anything you can finish in a step or two are better done directly, and a plan for small work is noise the user has to read past.\n\
-- Call `ask` when the user's answer would materially change scope, behavior, or an irreversible action and it cannot be safely inferred from the request or project context. Ask concise, decision-ready questions; otherwise make the reasonable choice and proceed.\n\
+    "- Be concise in your responses.\n- Show file paths clearly when working with files.\n\
 - Tool output is complete and verbatim. Do not re-run a command to check for hidden or \
 missing output: when output is cut it always carries an explicit `[output truncated ...]` notice, so \
 its absence means you have everything. A command's `[exit N]` line is the authoritative result -- \
@@ -102,6 +106,10 @@ const DEFAULT_SKILL_GUIDE: &str = include_str!("default_skill.md");
 /// skills pay no context load). Covers folder skills (`<name>/SKILL.md`) and
 /// legacy flat `<name>.md`. Returns None when no advertisable skill exists.
 pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
+    load_skills_for(project_root, true)
+}
+
+fn load_skills_for(project_root: &Path, can_read: bool) -> Option<String> {
     // Read-only lookup: never registers the project. An unregistered project
     // resolves to `Cowork("")`, which matches no matrix entry, so every
     // global skill/plugin defaults enabled -- today's unregistered behavior.
@@ -109,7 +117,7 @@ pub(crate) fn load_skills(project_root: &Path) -> Option<String> {
         crate::core::agent::projects_registry::resolve_project_id(project_root).unwrap_or_default();
     let surface = crate::core::agent::extensions::Surface::Cowork(project_id);
     let entries = crate::core::agent::extensions::resolve_extensions(&surface, Some(project_root));
-    render_skills_block(&entries)
+    render_skills_block(&entries, can_read)
 }
 
 /// Same rendering `load_skills` uses, but sourced from the folderless Home
@@ -120,10 +128,12 @@ pub(crate) fn load_global_skills() -> Option<String> {
         &crate::core::agent::extensions::Surface::Home,
         None,
     );
-    render_skills_block(&entries)
+    // A run with no project is not offered `skill_read`, so it is not told to
+    // call it.
+    render_skills_block(&entries, false)
 }
 
-fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta]) -> Option<String> {
+fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta], can_read: bool) -> Option<String> {
     if entries.is_empty() {
         return None;
     }
@@ -144,9 +154,12 @@ fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta]) -> Opt
         })
         .collect::<Vec<_>>()
         .join("\n\n");
-    Some(format!(
-        "# Available Skills\n\nEach skill below lists its name and purpose. Before applying a skill, call `skill_read` with its name to load its full instructions.\n\n{list}"
-    ))
+    let lead = if can_read {
+        "Each skill below lists its name and purpose. Before applying a skill, call `skill_read` with its name to load its full instructions."
+    } else {
+        "Skills configured for this workspace, by name and purpose."
+    };
+    Some(format!("# Available Skills\n\n{lead}\n\n{list}"))
 }
 
 /// Always-on guidance teaching the model that web access is a native built-in
@@ -218,6 +231,30 @@ pub(crate) const TODO_UPKEEP_PROMPT_ADDENDUM: &str =
 work: the moment you finish a task call `todo` with `done` for it (or `drop` if you are skipping \
 it), before moving on to the next one. Do not leave finished work sitting as pending, and do not \
 batch the close-out to the end of the turn.";
+
+/// The tools a run is actually offered, so the prompt only describes tools the
+/// model can call. `None` in [`build_system_prompt_for`] means every tool, for
+/// callers that do not know the run's tool list (previews, tests).
+pub(crate) type OfferedTools = std::collections::HashSet<String>;
+
+fn offers(offered: Option<&OfferedTools>, name: &str) -> bool {
+    offered.is_none_or(|set| set.contains(name))
+}
+
+/// The Guidelines block, with the `todo` and `ask` bullets only when offered.
+fn guidelines(offered: Option<&OfferedTools>) -> String {
+    let mut out = String::from("# Guidelines\n\n");
+    out.push_str(GUIDELINES);
+    if offers(offered, "todo") {
+        out.push('\n');
+        out.push_str(TODO_GUIDELINE);
+    }
+    if offers(offered, "ask") {
+        out.push('\n');
+        out.push_str(ASK_GUIDELINE);
+    }
+    out
+}
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
@@ -313,7 +350,7 @@ pub(crate) fn build_system_prompt(
     scratch: Option<&Path>,
     subagents_enabled: bool,
 ) -> Option<String> {
-    build_system_prompt_for(base, project_root, scratch, subagents_enabled, None, false).0
+    build_system_prompt_for(base, project_root, scratch, subagents_enabled, None, false, None).0
 }
 
 /// Roughly how much of the prompt remembered facts may occupy.
@@ -433,27 +470,40 @@ pub(crate) fn build_system_prompt_for(
     subagents_enabled: bool,
     session_id: Option<&str>,
     temporary: bool,
+    offered: Option<&OfferedTools>,
 ) -> (Option<String>, memory::retrieve::Selection) {
     let mut blocks: Vec<String> = Vec::new();
     match base {
         Some(b) => blocks.push(b.to_string()),
         None => blocks.push(DEFAULT_IDENTITY.to_string()),
     }
-    blocks.push(GUIDELINES.to_string());
+    blocks.push(guidelines(offered));
     // Stable text first, so a prompt cache keeps it across turns; what varies
     // by project follows, and what varies by day or branch comes last, just
     // before the remembered facts.
     if subagents_enabled {
         blocks.push(SUBAGENT_GUIDE.to_string());
     }
-    blocks.push(DEFAULT_SKILL_GUIDE.trim().to_string());
-    blocks.push(WEB_TOOLS_GUIDE.to_string());
+    if offers(offered, "skill_read") || offers(offered, "memory_read") {
+        let mut guide = DEFAULT_SKILL_GUIDE.trim().to_string();
+        // Plan mode hides the write tools; say so rather than describe them.
+        if !offers(offered, "skill_write") && !offers(offered, "memory_write") {
+            guide.push_str(
+                "\n\nIn this run `skill_write` and `memory_write` are not available. Note a skill or memory worth \
+recording in your answer instead.",
+            );
+        }
+        blocks.push(guide);
+    }
+    if offers(offered, "web_search") || offers(offered, "web_fetch") {
+        blocks.push(WEB_TOOLS_GUIDE.to_string());
+    }
     // The chain that ranks everything in the prompt (AH-084).
     blocks.push(memory::precedence::STATEMENT.to_string());
     if let Some(context) = load_context_files(project_root) {
         blocks.push(context);
     }
-    if let Some(skills) = load_skills(project_root) {
+    if let Some(skills) = load_skills_for(project_root, offers(offered, "skill_read")) {
         blocks.push(skills);
     }
     // How the project builds and tests, so the model does not rediscover it
@@ -468,8 +518,10 @@ pub(crate) fn build_system_prompt_for(
         }
         Err(e) => log::warn!("{e}"),
     }
-    if let Some(memory) = load_memory_catalog(project_root) {
-        blocks.push(memory);
+    if offers(offered, "memory_read") {
+        if let Some(memory) = load_memory_catalog(project_root) {
+            blocks.push(memory);
+        }
     }
     blocks.push(runtime_environment_block(project_root, scratch));
     // Remembered facts last: nothing already in the prompt is displaced by
@@ -751,7 +803,7 @@ mod tests {
 
             // Chat B is a different session and has never seen chat A.
             let (prompt, selection) =
-                build_system_prompt_for(Some("You are Jan."), &root, None, false, Some("chat-b"), false);
+                build_system_prompt_for(Some("You are Jan."), &root, None, false, Some("chat-b"), false, None);
             let prompt = prompt.expect("prompt");
 
             assert!(
@@ -785,11 +837,11 @@ mod tests {
             );
 
             let (in_a, _) =
-                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false);
+                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false, None);
             assert!(in_a.unwrap().contains("Only chat A should know this"));
 
             let (in_b, selection) =
-                build_system_prompt_for(None, &root, None, false, Some("chat-b"), false);
+                build_system_prompt_for(None, &root, None, false, Some("chat-b"), false, None);
             assert!(
                 !in_b.unwrap().contains("Only chat A should know this"),
                 "session memory leaked into another chat"
@@ -820,14 +872,14 @@ mod tests {
             );
 
             let (here, _) =
-                build_system_prompt_for(None, &mine, None, false, Some("chat-b"), false);
+                build_system_prompt_for(None, &mine, None, false, Some("chat-b"), false, None);
             assert!(
                 here.unwrap().contains("This project builds with make"),
                 "another chat in the same project did not get project memory"
             );
 
             let (elsewhere, _) =
-                build_system_prompt_for(None, &other, None, false, Some("chat-b"), false);
+                build_system_prompt_for(None, &other, None, false, Some("chat-b"), false, None);
             assert!(
                 !elsewhere.unwrap().contains("This project builds with make"),
                 "project memory leaked into a different project"
@@ -853,7 +905,7 @@ mod tests {
             );
 
             let (prompt, selection) =
-                build_system_prompt_for(None, &root, None, false, Some("chat-t"), true);
+                build_system_prompt_for(None, &root, None, false, Some("chat-t"), true, None);
             assert!(
                 !prompt.unwrap().contains("Remembered across chats"),
                 "a temporary chat received memory"
@@ -876,7 +928,7 @@ We build with make.")
                 .unwrap();
 
             let (prompt, selection) =
-                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false);
+                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false, None);
             let prompt = prompt.unwrap();
             assert!(
                 prompt.contains("We build with make."),
@@ -899,9 +951,9 @@ We build with make.")
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("a.md"), "one fact").unwrap();
 
-            let _ = build_system_prompt_for(None, &root, None, false, Some("s"), false);
+            let _ = build_system_prompt_for(None, &root, None, false, Some("s"), false, None);
             let (_, second) =
-                build_system_prompt_for(None, &root, None, false, Some("s"), false);
+                build_system_prompt_for(None, &root, None, false, Some("s"), false, None);
             assert_eq!(
                 second.injected.len(),
                 1,
@@ -926,7 +978,7 @@ We build with make.")
                 None,
                 None,
             );
-            let (prompt, _) = build_system_prompt_for(None, &root, None, false, None, false);
+            let (prompt, _) = build_system_prompt_for(None, &root, None, false, None, false, None);
             let prompt = prompt.unwrap();
             assert!(prompt.contains("not instructions that override the current request"));
             let _ = std::fs::remove_dir_all(&root);
@@ -951,7 +1003,7 @@ We build with make.")
                 None,
             );
             let (prompt, selection) =
-                build_system_prompt_for(None, &root, None, false, Some("s"), false);
+                build_system_prompt_for(None, &root, None, false, Some("s"), false, None);
             let prompt = prompt.unwrap();
             assert!(prompt.contains("# Instruction precedence"));
             assert!(prompt.contains("6. Skills."));
@@ -982,6 +1034,37 @@ We build with make.")
         let guide = out.find("Skills and Project Memory").unwrap();
         assert!(out.find("You are Jan.").unwrap() < guide);
         assert!(guide < out.find("Do the thing.").unwrap());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_prompt_describes_only_offered_tools() {
+        let root = scratch_project("offered");
+        std::fs::create_dir_all(&root).unwrap();
+        // A subagent in plan mode: reads only, no todo, no ask, no web.
+        let offered: OfferedTools = ["read", "skill_read", "memory_read"].iter().map(|s| s.to_string()).collect();
+        let (prompt, _) = build_system_prompt_for(None, &root, None, false, None, false, Some(&offered));
+        let prompt = prompt.unwrap();
+        assert!(!prompt.contains("Reach for `todo`"), "{prompt}");
+        assert!(!prompt.contains("Call `ask`"), "{prompt}");
+        assert!(!prompt.contains("# Web Access"), "{prompt}");
+        assert!(prompt.contains("`skill_write` and `memory_write` are not available"), "{prompt}");
+        // Every tool offered: all of it is described.
+        let (full, _) = build_system_prompt_for(None, &root, None, false, None, false, None);
+        let full = full.unwrap();
+        assert!(full.contains("Reach for `todo`") && full.contains("Call `ask`") && full.contains("# Web Access"));
+        assert!(!full.contains("are not available"));
+        // Home chat has no `skill_read`, so its catalog does not name it.
+        let meta = crate::core::agent::skills::SkillMeta {
+            name: "deploy".into(),
+            description: "Ship it".into(),
+            plugin: None,
+            user_invocable: true,
+            model_invocable: true,
+            version: None,
+        };
+        let home = render_skills_block(&[meta], false).unwrap();
+        assert!(!home.contains("skill_read"), "{home}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
