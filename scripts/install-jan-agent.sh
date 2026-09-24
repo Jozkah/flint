@@ -3,8 +3,7 @@
 # from delta.jan.ai (default) or one compiled from this checkout (--source).
 # Windows has install-jan-agent.ps1; this script also works from Git Bash,
 # but only if `unzip` is available there.
-# Downloaded builds self-update via `jan update`; --source builds do not,
-# because the update channel is embedded only by the nightly CI.
+# The CLI has no self-update command: re-run this script to update.
 set -euo pipefail
 
 CHANNEL="agent-nightly"
@@ -48,8 +47,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Platform keys and archive names match the nightly workflow's manifest and the
-# self-updater in src-tauri/src/core/cli/updater.rs.
+# Platform keys and archive names match the nightly workflow's manifest.
 detect_platform() {
   local os arch
   os="$(uname -s)"
@@ -145,7 +143,7 @@ build_from_source() {
   local built="$REPO_ROOT/src-tauri/target/release/$BINARY_NAME"
   [ -f "$built" ] || die "expected a binary at $built"
   install_binary "$built"
-  echo "note: builds from source have no update channel embedded, so \`jan update\` is a no-op"
+  echo "note: to update a source build, pull and re-run this script with --source"
 }
 
 install_published() {
