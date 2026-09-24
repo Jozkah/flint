@@ -154,6 +154,25 @@ describe('room editor', () => {
     })
   })
 
+  it('back-to-back edits from the same rendered room all land (no stale_revision)', async () => {
+    const { ctl, persistence } = setup(scriptedStream(() => ({ text: 'x' })).fn)
+    const room = await createDefault(ctl)
+    // Both calls use the same snapshot, as two quick clicks in the editor do.
+    const [, , renamed] = await Promise.all([
+      ctl.addParticipant(room, { name: 'Cara', model: models.a }),
+      ctl.removeParticipant(room, room.participants[1].id),
+      ctl.updateRoomSettings(room, { title: 'Renamed' }),
+    ])
+    expect(renamed.title).toBe('Renamed')
+    const stored = persistence.rooms.get(room.id)!
+    expect(stored.title).toBe('Renamed')
+    expect(stored.participants.map((p) => [p.name, !!p.removed])).toEqual([
+      ['Alice', false],
+      ['Bob', true],
+      ['Cara', false],
+    ])
+  })
+
   it('removeParticipant marks removed; deleteRoom removes everywhere', async () => {
     const { ctl, persistence } = setup(scriptedStream(() => ({ text: 'x' })).fn)
     const room = await createDefault(ctl)

@@ -566,9 +566,15 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       return saveRoom(room)
     },
 
-    updateRoomSettings: async (room, patch) => {
-      refuseWhileRunning(room)
-      return enqueue(room.id, async () => {
+    // The editor passes the Room it rendered. Each edit re-reads the stored
+    // room inside the queue, like selectNext and extendLimit do, so a second
+    // edit queued behind the first builds on its result instead of saving
+    // against the old rev and failing with stale_revision (#219).
+    updateRoomSettings: async (shown, patch) => {
+      refuseWhileRunning(shown)
+      return enqueue(shown.id, async () => {
+        const { room } = await persistence().getRoom(shown.id)
+        refuseWhileRunning(room)
         let participants = room.participants
         for (const edit of patch.participants ?? []) {
           const idx = edit.id ? participants.findIndex((p) => p.id === edit.id) : -1
@@ -623,9 +629,11 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       })
     },
 
-    addParticipant: async (room, input) => {
-      refuseWhileRunning(room)
-      return enqueue(room.id, async () => {
+    addParticipant: async (shown, input) => {
+      refuseWhileRunning(shown)
+      return enqueue(shown.id, async () => {
+        const { room } = await persistence().getRoom(shown.id)
+        refuseWhileRunning(room)
         const order = room.participants.reduce((m, p) => Math.max(m, p.order + 1), 0)
         const participants = [...room.participants, normaliseParticipant({ ...input, order })]
         validateParticipants(participants)
@@ -633,9 +641,11 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       })
     },
 
-    removeParticipant: async (room, participantId) => {
-      refuseWhileRunning(room)
-      return enqueue(room.id, async () => {
+    removeParticipant: async (shown, participantId) => {
+      refuseWhileRunning(shown)
+      return enqueue(shown.id, async () => {
+        const { room } = await persistence().getRoom(shown.id)
+        refuseWhileRunning(room)
         if (!room.participants.some((p) => p.id === participantId)) {
           throw roomError('invalid_room', 'Unknown participant.')
         }
