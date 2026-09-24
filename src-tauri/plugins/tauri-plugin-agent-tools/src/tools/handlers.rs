@@ -3947,7 +3947,10 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
         &existing,
         &inferred::Context {
             scope,
-            project_id: crate::memory::identity::project_id(ctx.project_root).as_deref(),
+            // Read-only here; `create::commit` writes the id down only if the
+            // memory is actually saved (#312).
+            project_id: Some(crate::memory::identity::project_id_read_only(ctx.project_root))
+                .as_deref(),
             session_id: ctx.session_id,
             temporary: ctx.temporary,
             now,

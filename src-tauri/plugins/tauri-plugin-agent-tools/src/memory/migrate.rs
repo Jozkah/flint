@@ -133,6 +133,8 @@ pub fn migrate_project_notes(
         // The canonical write is committed before anything else is claimed.
         // The legacy files are left exactly where they are either way.
         store::save(store_root, Scope::Project, &existing)?;
+        // Records now carry this id; write it down so they survive a move.
+        super::identity::persist_for_store(store_root, project_id);
     }
     Ok(report)
 }

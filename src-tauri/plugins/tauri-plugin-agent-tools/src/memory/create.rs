@@ -208,6 +208,14 @@ pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<Memor
         }
         Ok((true, ()))
     })?;
+    // The project identity is written into the folder only now, when a
+    // project memory really is saved there -- never when a folder is merely
+    // attached or read (#312).
+    if record.scope == Scope::Project {
+        if let Some(id) = record.project_id.as_deref() {
+            super::identity::persist_for_store(store_root, id);
+        }
+    }
     Ok(record.id.clone())
 }
 
@@ -346,6 +354,35 @@ mod tests {
             1_000,
             existing,
         )
+    }
+
+    /// #312: saving a project memory is what writes the folder's identity,
+    /// and it is the id a read-only lookup already resolved.
+    #[test]
+    fn committing_a_project_memory_writes_the_project_id() {
+        let project = unique_root();
+        std::fs::create_dir_all(&project).unwrap();
+        let id = super::super::identity::project_id_read_only(&project);
+        let store = crate::workspace::project_store(&project);
+        assert!(!project.join(".jan").exists());
+
+        let proposal = propose(
+            MemoryId::new("m-proj"),
+            "This project builds with make",
+            Scope::Project,
+            Some(&id),
+            None,
+            Creator::User,
+            Origin::Explicit,
+            1_000,
+            &[],
+        )
+        .unwrap();
+        commit(&store, &proposal).unwrap();
+
+        let path = super::super::identity::identity_path(&project);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), id);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]
