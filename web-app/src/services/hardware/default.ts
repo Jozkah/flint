@@ -2,7 +2,13 @@
  * Default Hardware Service - Generic implementation with minimal returns
  */
 
-import type { HardwareData, SystemUsage, DeviceList, HardwareService } from './types'
+import type {
+  HardwareData,
+  SystemUsage,
+  SystemSnapshot,
+  DeviceList,
+  HardwareService,
+} from './types'
 
 export class DefaultHardwareService implements HardwareService {
   async getHardwareInfo(): Promise<HardwareData | null> {
@@ -10,6 +16,10 @@ export class DefaultHardwareService implements HardwareService {
   }
 
   async getSystemUsage(): Promise<SystemUsage | null> {
+    return null
+  }
+
+  async getSystemSnapshot(): Promise<SystemSnapshot | null> {
     return null
   }
 
