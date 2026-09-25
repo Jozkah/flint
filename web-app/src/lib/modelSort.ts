@@ -74,9 +74,33 @@ function compareNames(a: SortableModel, b: SortableModel): number {
 export function sortModels<T extends SortableModel>(
   items: readonly T[],
   sort: ModelSortOption,
+  lastUsed?: Readonly<Record<string, number>>,
+  /**
+   * Models whose provider did not answer its last request. They keep the
+   * chosen order among themselves but sit after every working model.
+   */
+  isOffline?: (item: T) => boolean
+): T[] {
+  const sorted = sortBy([...items], sort, lastUsed)
+  return isOffline ? offlineLast(sorted, isOffline) : sorted
+}
+
+/**
+ * Move offline items after the rest, keeping each part's order. A picker
+ * should lead with models that will answer.
+ */
+export function offlineLast<T>(items: readonly T[], isOffline: (item: T) => boolean): T[] {
+  const up: T[] = []
+  const down: T[] = []
+  for (const item of items) (isOffline(item) ? down : up).push(item)
+  return down.length === 0 ? [...items] : [...up, ...down]
+}
+
+function sortBy<T extends SortableModel>(
+  sorted: T[],
+  sort: ModelSortOption,
   lastUsed?: Readonly<Record<string, number>>
 ): T[] {
-  const sorted = [...items]
 
   switch (sort) {
     case 'name-desc':

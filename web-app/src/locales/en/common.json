@@ -1036,9 +1036,9 @@
     "overridden": "Set for this chat"
   },
   "modelOffline": {
-    "badge": "Offline",
+    "badge": "Unreachable",
     "tooltip": "This provider did not answer the last request. Selecting it is still allowed — it may just be temporary.",
-    "a11y": "offline: the provider did not answer the last request"
+    "a11y": "unreachable: the provider did not answer the last request"
   },
   "copyConversationId": "Copy ID",
   "copiedConversationId": "ID copied",
