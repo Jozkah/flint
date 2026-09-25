@@ -42,9 +42,7 @@ export function CoworkRunNotice(props: Props) {
           {t(`common:run.${props.kind}`)}
         </span>
         {props.message?.trim() ? (
-          <span className="min-w-0 break-words text-ink-2">
-            {props.message}
-          </span>
+          <span className="min-w-0 break-words text-fg-2">{props.message}</span>
         ) : null}
         <Button
           variant="outline"

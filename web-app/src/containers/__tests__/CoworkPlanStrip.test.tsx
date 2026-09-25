@@ -37,7 +37,7 @@ describe('the plan strip', () => {
     )
     const current = screen.getByText('Add the form').closest('li')
     expect(current).toHaveAttribute('aria-current', 'step')
-    expect(current?.className).toMatch(/border-brand/)
+    expect(current?.className).toContain('shadow-[inset_2px_0_0')
     // Selection, not activity: nothing in the strip spins.
     expect(
       screen.getByTestId('cowork-plan-strip').querySelector('.animate-spin, [class*="animate-"]')

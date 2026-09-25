@@ -62,10 +62,10 @@ export function CoworkCompatSection({
     <section
       aria-label={t('common:claudeCompat.title')}
       data-testid="cowork-compat"
-      className="text-xs"
+      className="rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-xs"
     >
       <details className="flex flex-col gap-2">
-      <summary className="cursor-pointer list-none font-medium text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
+      <summary className="cursor-pointer list-none rounded-sm text-[13px] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
         {t('common:claudeCompat.title')}
       </summary>
       <header className="mt-2 flex items-start justify-between gap-3">
@@ -94,13 +94,13 @@ export function CoworkCompatSection({
       </p>
 
       {byType.length === 0 ? (
-        <p className="text-ink-2">
+        <p className="text-fg-2">
           {t('common:claudeCompat.nothingFound')}
         </p>
       ) : (
         <div className="flex flex-col gap-2">
           {instructionNames.length > 0 ? (
-            <p className="text-ink-2">
+            <p className="text-fg-2">
               {t('common:claudeCompat.precedence')}:{' '}
               {instructionOrder(instructionNames).join(' › ')}
             </p>
@@ -108,7 +108,7 @@ export function CoworkCompatSection({
 
           {byType.map((group) => (
             <div key={group.type} className="flex flex-col gap-1">
-              <span className="text-ink-2">
+              <span className="text-fg-2">
                 {t(`common:claudeCompat.type.${group.type}`)}
               </span>
               <ul className="flex flex-col gap-1">

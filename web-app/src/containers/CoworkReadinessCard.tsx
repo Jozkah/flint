@@ -26,7 +26,7 @@ const instructionSummaryKey = (file: InstructionFile): string =>
 
 const skillToneClass = (skill: ResolvedSkill): string =>
   skill.state === 'active'
-    ? 'text-ink-2'
+    ? 'text-fg-2'
     : // Everything else means the user asked for something they did not get.
       'text-destructive'
 
@@ -82,9 +82,9 @@ export function CoworkReadinessCard({
   return (
     <section
       aria-label={t('common:readiness.title')}
-      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
+      className="rounded-[10px] border-[0.8px] border-border bg-card p-3 text-[12.5px]"
     >
-      <dl className="grid gap-1 sm:grid-cols-2">
+      <dl className="grid gap-x-3.5 gap-y-1.5 sm:grid-cols-2">
         <Row label={t('common:readiness.repository')}>
           {/* The canonical path, not what was typed: this is the row someone
               checks when they suspect the wrong repository is attached. */}
@@ -149,7 +149,7 @@ export function CoworkReadinessCard({
                   key={file.name}
                   className={
                     file.active
-                      ? 'text-ink-2'
+                      ? 'text-fg-2'
                       : 'text-muted-foreground'
                   }
                 >
@@ -229,7 +229,7 @@ export function CoworkReadinessCard({
                       })}
                       className={
                         fact.confidence === 'high'
-                          ? 'text-ink-2'
+                          ? 'text-fg-2'
                           : 'text-muted-foreground'
                       }
                     >

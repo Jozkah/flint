@@ -18,14 +18,14 @@ export function CoworkHiddenTools({
   const { t } = useTranslation()
   if (count <= 0) return null
   return (
-    <div className="px-1 pb-1" data-testid="hidden-tools">
+    <div className="py-0.5" data-testid="hidden-tools">
       <button
         type="button"
         onClick={onReveal}
         data-testid="hidden-tools-reveal"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="flex items-center gap-2 rounded-md text-xs text-muted-foreground underline-offset-2 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
       >
-        <Eye size={12} className="shrink-0" />
+        <Eye size={13} className="shrink-0" />
         {t('common:coworkDisplay.hiddenCount', { count })}
       </button>
     </div>

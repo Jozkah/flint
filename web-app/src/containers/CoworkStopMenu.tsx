@@ -161,7 +161,7 @@ export function CoworkStopMenu({
           data-testid="cowork-stop"
           // Fixed size so it cannot grow or shift the token and context
           // indicators beside it while a response streams.
-          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-destructive text-destructive-foreground outline-none hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:size-11"
+          className="grid size-7 shrink-0 place-items-center rounded-lg border-[0.8px] border-destructive/40 text-destructive outline-none transition-[background-color,transform] duration-150 ease-expo hover:bg-destructive/10 focus-visible:ring-[3px] focus-visible:ring-destructive/30 active:scale-95 data-[state=open]:bg-destructive/10 pointer-coarse:size-11"
         >
           <Square className="size-3 fill-current" aria-hidden />
         </button>
@@ -173,7 +173,7 @@ export function CoworkStopMenu({
         side="top"
         sideOffset={6}
         collisionPadding={8}
-        className="w-64 p-1"
+        className="w-64 p-1.5"
         role="menu"
         aria-label={t('common:stopMenu.trigger')}
         data-testid="cowork-stop-menu"
@@ -193,12 +193,12 @@ export function CoworkStopMenu({
           data-testid="stop-current"
           onKeyDown={(e) => onItemKeyDown(e, 0)}
           onClick={() => void run('current')}
-          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-sunken outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+          className="flex w-full flex-col items-start gap-[3px] rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50 motion-safe:animate-mi-in"
         >
-          <span className="text-[13px] leading-5">
+          <span className="text-[13px] leading-5 font-medium">
             {t('common:stopMenu.current')}
           </span>
-          <span className="text-[11px] leading-4 text-muted-foreground">
+          <span className="text-xs leading-[1.4] text-muted-foreground">
             {t('common:stopMenu.currentDescription')}
           </span>
         </button>
@@ -214,12 +214,12 @@ export function CoworkStopMenu({
             data-testid="stop-all"
             onKeyDown={(e) => onItemKeyDown(e, 1)}
             onClick={() => setConfirming(true)}
-            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+            className="flex w-full flex-col items-start gap-[3px] rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:opacity-50 motion-safe:animate-mi-in"
           >
-            <span className="text-[13px] leading-5">
+            <span className="text-[13px] leading-5 font-medium text-destructive">
               {t('common:stopMenu.all')}
             </span>
-            <span className="text-[11px] leading-4 text-destructive/70">
+            <span className="text-xs leading-[1.4] text-muted-foreground">
               {t('common:stopMenu.allDescription')}
             </span>
           </button>
@@ -229,17 +229,17 @@ export function CoworkStopMenu({
           // dismiss.
           <div
             className={cn(
-              'flex flex-col gap-1.5 rounded-md px-2 py-1.5',
-              'bg-destructive/10'
+              'flex flex-col gap-2 px-2.5 py-2',
+              'motion-safe:animate-fade-in'
             )}
             data-testid="stop-all-confirm"
           >
-            <span className="text-[13px] leading-5 text-destructive">
+            <span className="text-[13px] leading-5 font-semibold">
               {t('common:stopMenu.confirm')}
             </span>
-            <div className="flex items-center justify-end gap-1.5">
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="ghost"
+                variant="surface"
                 size="sm"
                 className="h-7"
                 data-testid="stop-all-cancel"

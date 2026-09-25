@@ -35,19 +35,19 @@ export function CoworkArtifactCard({
   const abs = root ? resolveInRoot(root, artifact.path) : null
 
   return (
-    <Card className="my-3 flex items-center gap-3 p-3">
+    <Card className="my-2 flex flex-row items-center gap-3 rounded-xl border-[0.8px] p-2.5 shadow-none transition-shadow duration-200 hover:shadow-lift motion-safe:animate-rise-in">
       <button
         type="button"
         onClick={() => onPreview(artifact.path)}
         title={t('common:artifactOpenPreview')}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
       >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-md border">
-          <Icon size={18} className="text-muted-foreground" />
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)]">
+          <Icon size={18} className="text-secondary-foreground" />
         </span>
         <span className="min-w-0">
           <span
-            className="block truncate text-sm font-medium"
+            className="block truncate text-[13px] font-semibold"
             title={artifact.title}
           >
             {artifact.title}
@@ -59,11 +59,11 @@ export function CoworkArtifactCard({
       </button>
 
       {abs && (
-        <div className="flex shrink-0 items-center rounded-md border">
+        <div className="flex shrink-0 items-center rounded-lg border-[0.8px] border-border bg-card">
           <button
             type="button"
             onClick={() => void serviceHub.opener().openPath(abs)}
-            className="flex items-center gap-1.5 rounded-l-md px-2.5 py-1.5 text-xs hover:bg-accent"
+            className="flex h-7 items-center gap-1.5 rounded-l-lg px-2.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-hover-btn hover:text-foreground"
           >
             <SquareArrowOutUpRight size={13} className="text-muted-foreground" />
             {t('common:artifactOpenExternal')}
@@ -73,7 +73,7 @@ export function CoworkArtifactCard({
               <button
                 type="button"
                 aria-label={t('common:artifactMoreActions')}
-                className="rounded-r-md border-l px-1.5 py-1.5 hover:bg-accent"
+                className="grid h-7 w-[26px] place-items-center rounded-r-lg border-l-[0.8px] border-border transition-colors hover:bg-hover-btn"
               >
                 <ChevronDown size={13} className="text-muted-foreground" />
               </button>

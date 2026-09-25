@@ -6,12 +6,12 @@ import { cleanTaskLabel } from '@/lib/todoLabels'
 import type { TodoList, TodoStatus } from '@/types/coworkSession'
 
 /**
- * The session's plan, as a compact strip over the conversation.
+ * The session's plan, as a compact card heading the conversation.
  *
  * A projection of the model's `todo` list, read-only. Done steps carry a check
  * in the success colour, open ones a ring, and the current step is marked by a
- * 2px accent edge: the accent says "this is the one in focus", not "busy", so
- * nothing in the strip spins or pulses.
+ * 2px warm edge: it says "this is the one in focus", not "busy", so nothing in
+ * the strip spins or pulses.
  */
 export function CoworkPlanStrip({ todos }: { todos: TodoList | undefined }) {
   const { t } = useTranslation()
@@ -28,55 +28,54 @@ export function CoworkPlanStrip({ todos }: { todos: TodoList | undefined }) {
     <section
       aria-label={t('common:todoPanelTitle')}
       data-testid="cowork-plan-strip"
-      className="shrink-0 border-b border-border bg-sunken"
+      className="shrink-0 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
     >
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-9 w-full items-center gap-2 px-4 text-left outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11"
+        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[12.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:h-11"
       >
-        <span className="text-[13px] font-semibold text-foreground">
+        <span className="font-semibold text-foreground">
           {t('common:todoPanelTitle')}
         </span>
         <span
-          className="text-xs text-muted-foreground tabular-nums"
+          className="text-muted-foreground tabular-nums"
           data-testid="cowork-plan-count"
         >
           {t('results:plan.progress', { done, total: tasks.length })}
         </span>
         <span
           aria-hidden
-          className="ml-auto h-1 w-24 overflow-hidden rounded-full bg-line-strong"
+          className="h-1.5 w-[120px] shrink-0 overflow-hidden rounded-full bg-track"
         >
           <span
-            className="block h-full bg-ink-2 motion-safe:transition-[width] motion-safe:duration-300"
+            className="block h-full rounded-full bg-grad motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo"
             style={{ width: `${pct}%` }}
           />
         </span>
         <ChevronDown
           aria-hidden
           className={cn(
-            'size-3.5 shrink-0 text-muted-foreground motion-safe:transition-transform',
-            !open && '-rotate-90'
+            'ml-auto size-3.5 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo',
+            open && 'rotate-180'
           )}
         />
       </button>
       {open ? (
-        <ol className="max-h-40 overflow-y-auto pb-1.5">
+        <ol className="max-h-40 overflow-y-auto px-3 pb-2">
           {tasks.map((task, index) => (
             <li
               key={`${index}-${task.content}`}
               data-status={task.status}
               aria-current={task.status === 'in_progress' ? 'step' : undefined}
               className={cn(
-                'flex min-h-7 items-center gap-2 border-l-2 px-4 text-[13px]',
-                task.status === 'in_progress'
-                  ? 'border-brand font-medium text-foreground'
-                  : 'border-transparent',
-                task.status === 'pending' && 'text-ink-2',
+                'flex min-h-7 items-center gap-2.5 text-[12.5px]',
+                task.status === 'in_progress' &&
+                  '-ml-3 pl-3 font-semibold text-foreground shadow-[inset_2px_0_0_#fb923c]',
+                task.status === 'pending' && 'text-fg-2',
                 (task.status === 'completed' || task.status === 'abandoned') &&
-                  'text-muted-foreground'
+                  'text-subtle-foreground'
               )}
             >
               <StepMark status={task.status} />
@@ -111,7 +110,9 @@ function StepMark({ status }: { status: TodoStatus }) {
         aria-hidden
         className={cn(
           'size-3 rounded-full border-[1.5px]',
-          status === 'in_progress' ? 'border-foreground' : 'border-line-strong'
+          status === 'in_progress'
+            ? 'size-3.5 border-2 border-foreground'
+            : 'border-border-strong'
         )}
       />
     </span>
