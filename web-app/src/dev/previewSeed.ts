@@ -17,6 +17,7 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
+import { seedEngine } from './previewSeedEngine'
 
 const MIN = 60_000
 const now = Date.now()
@@ -278,6 +279,7 @@ export function seedPreview() {
   useAppState.setState({ activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'] } as never)
   seedUsage()
   seedCowork()
+  seedEngine()
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {
