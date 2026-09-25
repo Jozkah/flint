@@ -1,6 +1,6 @@
 import type { Room } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { formatDuration, formatNumber, formatUsd, stopReasonText } from './roomUi'
+import { formatCompact, formatDuration, formatNumber, formatUsd, stopReasonText } from './roomUi'
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -30,7 +30,9 @@ export function RoomUsageBar({ room }: { room: Room }) {
           {of(formatNumber(usage.rounds), formatNumber(limits.maxRounds))}
         </Stat>
         <Stat label={t('rooms:usage.tokens')}>
-          {of(formatNumber(tokens), formatNumber(limits.maxTotalTokens))}
+          <span title={of(formatNumber(tokens), formatNumber(limits.maxTotalTokens))}>
+            {of(formatCompact(tokens), formatCompact(limits.maxTotalTokens))}
+          </span>
           {usage.estimated && (
             <span className="ml-1 font-normal text-muted-foreground">
               ({t('rooms:usage.estimated')})

@@ -105,7 +105,39 @@ export const messagesOf = (journal: RoomJournalRecord[]): RoomMessage[] =>
     .flatMap((r) => (r.type === 'message' ? [r.message] : []))
     .sort((a, b) => a.seq - b.seq)
 
-export type VoteTally = Record<VoteChoice, number>
+/** A room with its journal, read without opening it (the rooms list). */
+export type RoomDetail = { room: Room; journal: RoomJournalRecord[] }
+
+/** The newest message someone actually said (system lines are skipped). */
+export function lastSaid(journal: RoomJournalRecord[]): RoomMessage | null {
+  const said = messagesOf(journal).filter((m) => m.kind !== 'system' && m.text.trim())
+  return said.length ? said[said.length - 1] : null
+}
+
+/** Markdown noise out of a one-line preview. */
+export const plainPreview = (text: string) =>
+  text.replace(/[`*_#>]/g, '').replace(/\s+/g, ' ').trim()
+
+/** "2 minutes ago", "yesterday": how long since a moment, in the reader's language. */
+export function timeAgo(at: number, lang = 'en', now = Date.now()): string {
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
+  const steps: Array<[number, Intl.RelativeTimeFormatUnit]> = [
+    [60, 'second'],
+    [60, 'minute'],
+    [24, 'hour'],
+    [7, 'day'],
+    [4.35, 'week'],
+    [12, 'month'],
+  ]
+  let v = (at - now) / 1000
+  for (const [size, unit] of steps) {
+    if (Math.abs(v) < size) return rtf.format(Math.round(v), unit)
+    v /= size
+  }
+  return rtf.format(Math.round(v), 'year')
+}
+
+export type VoteTally =Record<VoteChoice, number>
 
 export function voteTallies(messages: RoomMessage[]): Map<string, VoteTally> {
   const tallies = new Map<string, VoteTally>()
@@ -241,6 +273,15 @@ export function formatDuration(ms: number): string {
 }
 
 export const formatNumber = (n: number) => n.toLocaleString('en-US')
+
+/** A count at a glance: 950, 48.2k, 2M (one decimal, dropped when .0). */
+export function formatCompact(n: number): string {
+  const abs = Math.abs(n)
+  const [div, unit] = abs >= 1e6 ? [1e6, 'M'] : abs >= 1e3 ? [1e3, 'k'] : [1, '']
+  if (!unit) return formatNumber(n)
+  const v = n / div
+  return `${Math.abs(v) >= 100 ? Math.round(v) : Number(v.toFixed(1))}${unit}`
+}
 
 export const formatUsd = (n: number) =>
   `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`

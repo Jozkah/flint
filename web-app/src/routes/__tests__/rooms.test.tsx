@@ -83,7 +83,8 @@ describe('rooms list route', () => {
     const user = userEvent.setup()
     const { api } = createFakeApi()
     renderWithApi(<List />, api)
-    await user.click(within(screen.getByTestId('header-page')).getByRole('button', { name: 'New room' }))
+    // The page's own title row carries New room (the empty state repeats it).
+    await user.click(screen.getAllByRole('button', { name: 'New room' })[0])
     const dialog = screen.getByRole('dialog', { name: 'New room' })
     await user.click(within(dialog).getByRole('button', { name: 'Create room' }))
     expect(within(dialog).getByText('Enter a title.')).toBeInTheDocument()
@@ -102,12 +103,69 @@ describe('rooms list route', () => {
     const user = userEvent.setup()
     const { api } = createFakeApi({ summaries: [summary()] as any })
     renderWithApi(<List />, api)
-    await user.click(screen.getByRole('button', { name: 'Delete Alpha' }))
+    await user.click(screen.getByRole('button', { name: 'More actions for Alpha' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
     const dialog = screen.getByRole('dialog', { name: 'Delete room?' })
     expect(api.deleteRoom).not.toHaveBeenCalled()
     await user.click(within(dialog).getByRole('button', { name: 'Delete room' }))
     await waitFor(() => expect(api.deleteRoom).toHaveBeenCalledWith('r1'))
     await waitFor(() => expect(api.loadSummaries).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('rooms list overview', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('prefills the create dialog from a template', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<List />, api)
+    await user.click(screen.getAllByTestId('room-template')[1])
+    const dialog = screen.getByRole('dialog', { name: 'New room' })
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Naming')
+    expect((within(dialog).getByLabelText('Objective') as HTMLTextAreaElement).value).toMatch(/shortlist/)
+  })
+
+  it('shows counts, the waiting section and filters rooms by state', async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi({
+      summaries: [
+        summary(),
+        summary({ id: 'r2', title: 'Beta', status: 'awaiting-user' }),
+        summary({ id: 'r3', title: 'Gamma', status: 'completed' }),
+      ] as any,
+    })
+    renderWithApi(<List />, api)
+    expect(screen.getByTestId('rooms-kpi-running')).toHaveTextContent('1')
+    expect(screen.getByTestId('rooms-kpi-waiting')).toHaveTextContent('1')
+    expect(within(screen.getByTestId('rooms-waiting')).getByText('Beta')).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Finished' }))
+    const items = screen.getAllByTestId('room-summary')
+    expect(items).toHaveLength(1)
+    expect(within(items[0]).getByText('Gamma')).toBeInTheDocument()
+  })
+
+  it('reads each room for its participants and last message when the API can', async () => {
+    const { api } = createFakeApi({ summaries: [summary()] as any })
+    const room = makeRoom({ status: 'running' })
+    ;(api as any).peekRoom = vi.fn(async () => ({
+      room,
+      journal: [
+        {
+          type: 'message',
+          message: {
+            v: 1, id: 'm1', roomId: 'r1', seq: 1, turnId: 't1',
+            author: { kind: 'participant', participantId: 'p1', name: 'Alice' },
+            to: { kind: 'room' }, kind: 'speech', text: 'Ship it on Friday.',
+            round: 1, createdAt: Date.now(), status: 'complete',
+          },
+        },
+      ],
+    }))
+    renderWithApi(<List />, api)
+    expect(await screen.findByText('Ship it on Friday.')).toBeInTheDocument()
+    expect(screen.getByText('Alice, Bob')).toBeInTheDocument()
+    expect((api as any).peekRoom).toHaveBeenCalledWith('r1')
   })
 })
 

@@ -15,7 +15,13 @@
     "participants": "{{count}} participants",
     "turns": "{{count}} turns",
     "updated": "Updated {{time}}",
-    "untitled": "Untitled room"
+    "untitled": "Untitled room",
+    "moreLabel": "More actions for {{title}}",
+    "openRoom": "Open room",
+    "noParticipants": "No participants yet",
+    "noPreview": "Open the room to see the discussion.",
+    "tokens": "{{count}} tokens",
+    "yours": "Your rooms"
   },
   "create": {
     "title": "New room",
@@ -232,7 +238,10 @@
     "completed": "Discussion finished",
     "completedHint": "Start again to reopen it.",
     "failed": "Discussion failed",
-    "failedHint": "Start again to retry."
+    "failedHint": "Start again to retry.",
+    "round": "Round",
+    "turn": "Turn",
+    "of": "of"
   },
   "usage": {
     "label": "Usage",
@@ -274,5 +283,56 @@
     "toShort": "To",
     "placeholderTo": "Write to {{name}}…",
     "mention": "Mention a participant"
+  },
+  "kpi": {
+    "running": "Running",
+    "paused": "{{count}} paused",
+    "waiting": "Waiting for you",
+    "waitingHint": "Needs your pick or reply",
+    "waitingNone": "Nothing needs you",
+    "turns": "Turns this week",
+    "turnsHint": "Across {{count}} rooms",
+    "models": "Models taking part",
+    "modelsNone": "No participants yet"
+  },
+  "waiting": {
+    "title": "Waiting for you",
+    "action": "Choose next"
+  },
+  "filter": {
+    "label": "Show rooms",
+    "all": "All",
+    "active": "Active",
+    "finished": "Finished",
+    "draft": "Drafts",
+    "none": "No rooms here."
+  },
+  "templates": {
+    "title": "Start from a template",
+    "review": {
+      "name": "Architecture review",
+      "hint": "Weigh a design decision from several angles before you commit.",
+      "objective": "Review the proposed design, surface the risks, and agree on the safest approach."
+    },
+    "naming": {
+      "name": "Naming",
+      "hint": "Short, memorable names, argued over and shortlisted.",
+      "objective": "Propose short, memorable names, then agree on a shortlist of three."
+    },
+    "crosscheck": {
+      "name": "Cross-check",
+      "hint": "Several models verify the same facts independently.",
+      "objective": "Check the same facts independently and report where the answers disagree."
+    },
+    "debate": {
+      "name": "Debate",
+      "hint": "Two sides argue it out, then you call the vote.",
+      "objective": "Argue for and against the proposal, then state final positions."
+    }
+  },
+  "page": {
+    "panes": "Room view",
+    "talk": "Discussion",
+    "controls": "Controls"
   }
 }
