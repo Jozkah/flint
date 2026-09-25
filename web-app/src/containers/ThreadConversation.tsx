@@ -118,7 +118,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import { chatForcedPrompt } from '@/lib/chatToolGuard'
-import { chatLoopStop, noteChatToolCall } from '@/lib/chatLoopGuard'
+import { chatLoopStop, chatTurnId, noteChatToolCall } from '@/lib/chatLoopGuard'
 import {
   recordToolActivity,
   resourceOf,
@@ -475,7 +475,7 @@ export function ThreadConversation({
     systemMessage,
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
     experimental_throttle: 50,
-    onFinish: ({ message, isAbort }) => {
+    onFinish: ({ message, messages: finishedMessages, isAbort }) => {
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
       // Consume once per generation so a skipped persist (error/empty) can't
@@ -685,6 +685,10 @@ export function ThreadConversation({
       toolCallAbortController.current = new AbortController()
       const signal = toolCallAbortController.current.signal
 
+      // The loop guard's history spans the whole reply to the user's
+      // message, however many assistant message ids its steps are given.
+      const loopTurn = chatTurnId(finishedMessages ?? [], message.id)
+
       const ragToolNames = useAppState.getState().ragToolNames
       const mcpToolNames = useAppState.getState().mcpToolNames
 
@@ -739,7 +743,7 @@ export function ThreadConversation({
             // call after call -- is stopped here, whatever the arguments, the
             // same check Cowork makes (runLoopGuard.ts). The refusal tells the
             // model to stop and explain; it is shown in the tool card too.
-            const loopStop = chatLoopStop(threadId, message.id)
+            const loopStop = chatLoopStop(threadId, loopTurn)
             if (loopStop) {
               await recordToolActivity({
                 ...permissionEvent,
@@ -957,7 +961,7 @@ export function ThreadConversation({
                 }
               }
             )
-            noteChatToolCall(threadId, message.id, {
+            noteChatToolCall(threadId, loopTurn, {
               tool: toolName,
               input: toolCall.input,
               failed: result.isError,
