@@ -15,7 +15,13 @@ export function contextLengthOf(model: Model): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined
 }
 
-export const formatTps = (v: number) => `${v.toFixed(1)} tok/s`
+/** The quantization named in a GGUF model id, e.g. `Q4_K_M`, when there is one. */
+export function quantOf(id: string): string | undefined {
+  const m = /(?:^|[-_.])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|BF16|F16|F32)(?:$|[-_.])/i.exec(id)
+  return m ? m[1].toUpperCase() : undefined
+}
+
+export const formatTps =(v: number) => `${v.toFixed(1)} tok/s`
 
 /** Mean speed per model over the recorded replies. */
 export function averageSpeeds(

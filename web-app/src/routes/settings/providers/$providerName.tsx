@@ -30,21 +30,14 @@ import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
-  Activity,
-  Box,
   CircleCheck,
   Circle,
-  Cpu,
   FolderPlus,
-  HardDrive,
   Info,
-  KeyRound,
   LoaderCircle,
   RefreshCw,
-  SlidersHorizontal,
-  Trash2,
-  Zap,
 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -867,25 +860,6 @@ function ProviderDetail() {
     )
   }
 
-  /** Column labels for the models table. */
-  const tableHead = isEngineProvider
-    ? [
-        '',
-        t('providers:table.name'),
-        t('engine:table.capabilities'),
-        t('providers:table.size'),
-        t('providers:table.context'),
-        t('providers:table.status'),
-        '',
-      ]
-    : [
-        '',
-        t('providers:table.name'),
-        t('engine:table.capabilities'),
-        t('providers:table.status'),
-        '',
-      ]
-
   const sectionDivider = (label: string, className?: string) => (
     <div
       role="separator"
@@ -937,13 +911,13 @@ function ProviderDetail() {
         {
           id: 'engine',
           title: t('engine:provider.engineSettings'),
-          icon: <SlidersHorizontal />,
+          icon: <Icon name="x-sliders" />,
           rows: settingRows.filter(({ setting }) => !isMemorySetting(setting.key)),
         },
         {
           id: 'memory',
           title: t('engine:provider.memorySettings'),
-          icon: <HardDrive />,
+          icon: <Icon name="x-disk" />,
           rows: settingRows.filter(({ setting }) => isMemorySetting(setting.key)),
         },
       ].filter((g) => g.rows.length > 0)
@@ -951,7 +925,7 @@ function ProviderDetail() {
         {
           id: 'settings',
           title: t('engine:provider.connection'),
-          icon: <SlidersHorizontal />,
+          icon: <Icon name="x-sliders" />,
           rows: settingRows,
         },
       ]
@@ -1057,7 +1031,7 @@ function ProviderDetail() {
   const modelsFrame = (
     <Frame className="motion-safe:animate-rise-in [animation-delay:160ms]">
       <FrameHeader
-        icon={<Box />}
+        icon={<Icon name="x-cube" />}
         title={t('providers:models')}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -1125,7 +1099,6 @@ function ProviderDetail() {
           <TBox
             className={isEngineProvider ? 'min-w-[660px]' : 'min-w-[480px]'}
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
-            head={tableHead}
           >
             {isLlamacpp &&
               embeddingModels.length > 0 &&
@@ -1261,7 +1234,7 @@ function ProviderDetail() {
           </TBox>
         ) : (
           <EmptyState
-            icon={<Box />}
+            icon={<Icon name="x-cube" />}
             title={t('providers:noModelFound')}
             description={
               provider && !isLocalProvider(provider.provider)
@@ -1289,11 +1262,11 @@ function ProviderDetail() {
 
   const speedFrame = (
     <Frame className="motion-safe:animate-rise-in [animation-delay:220ms]">
-      <FrameHeader icon={<Activity />} title={t('engine:speed.title')} />
+      <FrameHeader icon={<Icon name="x-activity" />} title={t('engine:speed.title')} />
       <FrameBody className="p-3">
         {providerSamples.length === 0 ? (
           <EmptyState
-            icon={<Activity />}
+            icon={<Icon name="x-activity" />}
             title={t('engine:speed.empty')}
             description={t('engine:speed.emptyHint')}
           />
@@ -1317,7 +1290,7 @@ function ProviderDetail() {
 
   const apiFrame = provider && !isEngineProvider && (
     <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
-      <FrameHeader icon={<KeyRound />} title={t('engine:provider.api')} />
+      <FrameHeader icon={<Icon name="x-key" />} title={t('engine:provider.api')} />
       <FrameBody className="gap-4 p-3">
         {provider.provider === 'azure' && (
           <div className="space-y-2">
@@ -1519,7 +1492,7 @@ function ProviderDetail() {
 
   const note = provider && (
     <>
-      {!isLocalProvider(provider.provider) && (
+      {!isEngineProvider && !isLocalProvider(provider.provider) && (
         <div className="flex items-start gap-3 rounded-xl bg-muted px-3.5 py-3 text-xs leading-normal text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
@@ -1560,7 +1533,7 @@ function ProviderDetail() {
 
   const dangerFrame = showSettings && !isEngineProvider && (
     <Frame className="motion-safe:animate-rise-in [animation-delay:340ms]">
-      <FrameHeader icon={<Trash2 />} title={t('engine:provider.danger')} />
+      <FrameHeader icon={<Icon name="x-trash" />} title={t('engine:provider.danger')} />
       <FrameBody className="px-3">
         <DeleteProvider provider={provider} />
       </FrameBody>
@@ -1633,7 +1606,7 @@ function ProviderDetail() {
             <>
               <KpiTile
                 title={t('engine:kpi.installed')}
-                icon={<Box />}
+                icon={<Icon name="x-cube" />}
                 value={chatModels.length}
                 sub={t('engine:kpi.embeddingSub', {
                   count: embeddingModels.length,
@@ -1642,7 +1615,7 @@ function ProviderDetail() {
               />
               <KpiTile
                 title={t('engine:kpi.loaded')}
-                icon={<Cpu />}
+                icon={<Icon name="x-cpu" />}
                 value={loadedHere.length}
                 sub={t('engine:kpi.loadedSub', {
                   count: provider?.models.length ?? 0,
@@ -1651,7 +1624,7 @@ function ProviderDetail() {
               />
               <KpiTile
                 title={t('engine:kpi.disk')}
-                icon={<HardDrive />}
+                icon={<Icon name="x-disk" />}
                 value={diskBytes > 0 ? formatBytes(diskBytes) : '—'}
                 sub={t('engine:kpi.diskSub', {
                   count: Object.keys(localFiles).length,
@@ -1663,14 +1636,14 @@ function ProviderDetail() {
             <>
               <KpiTile
                 title={t('providers:models')}
-                icon={<Box />}
+                icon={<Icon name="x-cube" />}
                 value={allModels.length}
                 sub={t('engine:kpi.addedSub')}
                 delay={40}
               />
               <KpiTile
                 title={t('engine:kpi.repliesToday')}
-                icon={<Activity />}
+                icon={<Icon name="x-activity" />}
                 value={repliesToday}
                 sub={t('engine:kpi.repliesSub', {
                   count: providerSamples.length,
@@ -1679,7 +1652,7 @@ function ProviderDetail() {
               />
               <KpiTile
                 title={t('engine:kpi.apiKeys')}
-                icon={<KeyRound />}
+                icon={<Icon name="x-key" />}
                 value={keyCount}
                 sub={
                   keyCount > 1
@@ -1692,7 +1665,7 @@ function ProviderDetail() {
           )}
           <KpiTile
             title={t('engine:kpi.avgSpeed')}
-            icon={<Zap />}
+            icon={<Icon name="zap" />}
             value={averageSpeed !== undefined ? formatTps(averageSpeed) : '—'}
             sub={
               averageSpeed !== undefined

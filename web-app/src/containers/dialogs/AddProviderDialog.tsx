@@ -80,7 +80,7 @@ export function AddProviderDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="sm:max-w-[460px]"
+        className="sm:max-w-[460px] lg:max-w-[460px] xl:max-w-[460px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           nameInputRef.current?.focus()
@@ -91,13 +91,22 @@ export function AddProviderDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+          <label
+            htmlFor="add-provider-name"
+            className="text-xs font-medium text-fg-2"
+          >
+            {t('provider:nameLabel')}
+          </label>
           <Input
+            id="add-provider-name"
             ref={nameInputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t('provider:enterNameForProvider')}
             onKeyDown={(e) => e.stopPropagation()}
           />
+          </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-fg-2">
               {t('provider:apiTypeLabel')}
@@ -105,13 +114,13 @@ export function AddProviderDialog({
             <RadioGroup
               value={apiType}
               onValueChange={(v) => setApiType(v as ProviderApiType)}
-              className="flex flex-row gap-4"
+              className="flex flex-col gap-1"
             >
-              <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer sm:min-h-0">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[13px] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
                 <RadioGroupItem value="openai" />
                 {t('provider:apiTypeOpenAI')}
               </label>
-              <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer sm:min-h-0">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-border px-2.5 py-2 text-[13px] font-medium text-foreground transition-colors hover:bg-hover-row has-[[data-state=checked]]:border-border-strong has-[[data-state=checked]]:bg-hover-btn sm:min-h-9">
                 <RadioGroupItem value="anthropic" />
                 {t('provider:apiTypeAnthropic')}
               </label>
