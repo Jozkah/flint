@@ -290,6 +290,8 @@ vi.mock('@/lib/utils', () => ({
   getModelDisplayName: (m: any) => m.name ?? m.id,
   basenameNoExt: (p: string) => p.split('/').pop() ?? p,
   isLocalProvider: (p: string) => p === 'llamacpp' || p === 'mlx',
+  formatBytes: (n: number) => `${n} B`,
+  getProviderLogo: () => undefined,
 }))
 
 vi.mock('@/constants/providers', () => ({

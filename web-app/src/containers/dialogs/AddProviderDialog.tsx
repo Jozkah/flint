@@ -99,7 +99,7 @@ export function AddProviderDialog({
             onKeyDown={(e) => e.stopPropagation()}
           />
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-ink-2">
+            <label className="text-xs font-medium text-fg-2">
               {t('provider:apiTypeLabel')}
             </label>
             <RadioGroup
@@ -118,7 +118,7 @@ export function AddProviderDialog({
             </RadioGroup>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-ink-2">
+            <label className="text-xs font-medium text-fg-2">
               {t('provider:baseUrlLabel')}
             </label>
             <Input
@@ -133,7 +133,7 @@ export function AddProviderDialog({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-ink-2">
+            <label className="text-xs font-medium text-fg-2">
               {t('provider:apiKeyLabel')}
             </label>
             <Input

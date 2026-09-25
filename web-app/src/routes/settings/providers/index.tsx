@@ -1,18 +1,32 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
-import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronRight, Plus } from 'lucide-react'
-import { getProviderTitle } from '@/lib/utils'
-import { classifyModelLocation } from '@/lib/modelLocation'
-import ProvidersAvatar from '@/containers/ProvidersAvatar'
+import {
+  Box,
+  Copy,
+  Cpu,
+  ExternalLink,
+  FolderDown,
+  HardDrive,
+  KeyRound,
+  Play,
+  Plus,
+  Square,
+  Zap,
+} from 'lucide-react'
+import { formatBytes, getProviderTitle } from '@/lib/utils'
 import { AddProviderDialog } from '@/containers/dialogs'
+import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
-import { useCallback } from 'react'
+import { Chip } from '@/components/ui/chip'
+import { Segmented } from '@/components/ui/segmented'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   openAIProviderSettings,
   anthropicProviderSettings,
@@ -20,22 +34,52 @@ import {
 import cloneDeep from 'lodash/cloneDeep'
 import { toast } from 'sonner'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { useAppState } from '@/hooks/useAppState'
 import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
-import { WidePageBody } from '@/containers/WidePageBody'
+import {
+  CapabilityChips,
+  EnginePage,
+  KpiRow,
+  KpiTile,
+  PageHead,
+  SearchField,
+  TBOX_ROW,
+  TBox,
+} from '@/containers/engine/EngineKit'
+import { BrandMark } from '@/containers/engine/BrandMark'
+import { LiveChart } from '@/containers/engine/LiveChart'
+import { RowMenu } from '@/containers/engine/RowMenu'
+import { modelLogo, providerLogo } from '@/lib/brandLogos'
+import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import {
+  averageSpeeds,
+  contextLengthOf,
+  formatTps,
+  isEngineProviderName,
+  recentSpeeds,
+} from '@/lib/engineModels'
+import { useEngineActivity } from '@/stores/engine-activity-store'
+import { cn } from '@/lib/utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.model_providers as any)({
   component: ModelProviders,
 })
 
-/** Columns of the provider list once its container is wide enough. */
-const PROVIDER_GRID =
-  '@2xl:grid-cols-[minmax(0,1.4fr)_7rem_minmax(0,1.2fr)_auto]'
+type Filter = 'all' | 'local' | 'remote'
+
+/** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu. */
+const MODEL_COLS =
+  '30px minmax(160px,1.4fr) 104px minmax(140px,1.2fr) 72px 76px 120px 104px 28px'
+
+/** How many recent replies the speed charts show. */
+const SPEED_WINDOW = 24
 
 function ModelProviders() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
-  const { providers, addProvider, updateProvider } = useModelProvider()
+  const { providers, addProvider, updateProvider, setProviders } =
+    useModelProvider()
   const stripReasoningFromContext = useGeneralSetting(
     (s) => s.stripReasoningFromContext
   )
@@ -43,6 +87,55 @@ function ModelProviders() {
     (s) => s.setStripReasoningFromContext
   )
   const navigate = useNavigate()
+  const activeModels = useAppState((s) => s.activeModels) ?? []
+  const setActiveModels = useAppState((s) => s.setActiveModels)
+  const generations = useEngineActivity((s) => s.generations)
+  const [fileSizes, setFileSizes] = useState<Record<string, number>>({})
+  const [filter, setFilter] = useState<Filter>('all')
+  const [query, setQuery] = useState('')
+
+  const visibleProviders = useMemo(
+    () =>
+      (providers ?? []).filter((p) => IS_MACOS || p.provider !== 'mlx'),
+    [providers]
+  )
+
+  const refreshActive = useCallback(() => {
+    const models = serviceHub.models?.()
+    if (!models?.getActiveModels) return
+    void Promise.resolve(models.getActiveModels())
+      .then((list) => setActiveModels?.(list || []))
+      .catch(() => {})
+  }, [serviceHub, setActiveModels])
+
+  useEffect(() => {
+    refreshActive()
+  }, [refreshActive])
+
+  // Model file sizes for the disk figure and the size column. Read-only; the
+  // page renders without them.
+  const modelCount = visibleProviders.reduce((n, p) => n + p.models.length, 0)
+  useEffect(() => {
+    const models = serviceHub.models?.() as
+      | { fetchModels?: () => Promise<{ id: string; sizeBytes?: number }[]> }
+      | undefined
+    if (typeof models?.fetchModels !== 'function') return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => models.fetchModels!())
+      .then((infos) => {
+        if (cancelled) return
+        const next: Record<string, number> = {}
+        for (const info of infos ?? []) {
+          if (info.sizeBytes) next[info.id] = info.sizeBytes
+        }
+        setFileSizes(next)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [serviceHub, modelCount])
 
   const createProvider = useCallback(
     (
@@ -97,105 +190,283 @@ function ModelProviders() {
       params: { providerName },
     })
 
+  const startModel = async (provider: ProviderObject, modelId: string) => {
+    try {
+      await serviceHub.models().startModel(provider, modelId)
+      refreshActive()
+    } catch (error) {
+      toast.error(t('engine:models.startFailed', { model: modelId }), {
+        description: String(error),
+      })
+    }
+  }
+
+  const stopModel = (modelId: string, provider?: string) => {
+    void Promise.resolve(serviceHub.models().stopModel(modelId, provider))
+      .catch((error) => console.error('Error stopping model:', error))
+      .finally(refreshActive)
+  }
+
+  // Every model of an enabled provider, with where it runs.
+  const rows = useMemo(
+    () =>
+      visibleProviders
+        .filter((p) => p.active)
+        .flatMap((provider) =>
+          provider.models.map((model) => ({
+            provider,
+            model,
+            local: isEngineProviderName(provider.provider),
+          }))
+        ),
+    [visibleProviders]
+  )
+  const localCount = rows.filter((r) => r.local).length
+  const remoteCount = rows.length - localCount
+  const loadedRows = rows.filter(
+    (r) => r.local && activeModels.includes(r.model.id)
+  )
+  const diskBytes = rows.reduce(
+    (sum, r) => (r.local ? sum + (fileSizes[r.model.id] ?? 0) : sum),
+    0
+  )
+  const speeds = useMemo(() => averageSpeeds(generations), [generations])
+  const fastest = useMemo(() => {
+    let best: { model: string; avg: number } | null = null
+    for (const [model, { avg }] of speeds) {
+      if (!best || avg > best.avg) best = { model, avg }
+    }
+    return best
+  }, [speeds])
+  const maxSpeed = fastest?.avg ?? 0
+
+  const shownRows = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter(
+      (r) =>
+        (filter === 'all' || (filter === 'local') === r.local) &&
+        (!q ||
+          r.model.id.toLowerCase().includes(q) ||
+          (r.model.name ?? '').toLowerCase().includes(q) ||
+          getProviderTitle(r.provider.provider).toLowerCase().includes(q))
+    )
+  }, [rows, filter, query])
+
+  const llamacpp = visibleProviders.find((p) => p.provider === 'llamacpp')
+  const refreshProviders = () =>
+    serviceHub
+      .providers()
+      .getProviders()
+      .then(setProviders)
+      .catch(() => {})
+
+  const addProviderButton = (
+    <AddProviderDialog onCreateProvider={createProvider}>
+      <Button variant="outline" size="sm" className="pointer-coarse:h-11">
+        <Plus aria-hidden />
+        <span>{t('provider:addProvider')}</span>
+      </Button>
+    </AddProviderDialog>
+  )
+
   return (
-    <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader>
-        <AddProviderDialog onCreateProvider={createProvider}>
-          <Button variant="outline" size="sm" className="pointer-coarse:h-11">
-            <Plus aria-hidden />
-            <span>{t('provider:addProvider')}</span>
-          </Button>
-        </AddProviderDialog>
-      </SettingsPageHeader>
-      <WidePageBody>
-        {/* Model Providers: a table that grows with the pane. */}
-        <Card
-          header={
-            <h2 className="mb-3 text-[13px] font-semibold text-foreground">
-              {t('common:modelProviders')}
-            </h2>
+    <div className="flex h-full w-full flex-col">
+      <SettingsPageHeader title={t('engine:models.title')} />
+      <EnginePage testId="models-page">
+        <PageHead
+          title={t('engine:models.title')}
+          description={t('engine:models.description')}
+          actions={
+            llamacpp && (
+              <ImportLlamacppModelDialog
+                provider={llamacpp}
+                onSuccess={() => void refreshProviders()}
+                trigger={
+                  <Button size="sm" className="pointer-coarse:h-11">
+                    <FolderDown aria-hidden />
+                    {t('engine:models.importGguf')}
+                  </Button>
+                }
+              />
+            )
           }
-        >
-          <ul className="@container flex min-w-0 flex-col border-t border-border">
-            {providers
-              .filter((provider) => IS_MACOS || provider.provider !== 'mlx')
-              .map((provider) => {
-                const title = getProviderTitle(provider.provider)
-                const engine =
-                  provider.provider === 'llamacpp' ||
-                  provider.provider === 'mlx'
-                const location = classifyModelLocation({
-                  baseUrl: provider.base_url,
-                  builtInEngine: engine,
+        />
+
+        <KpiRow>
+          <KpiTile
+            title={t('engine:kpi.installed')}
+            icon={<Box />}
+            value={rows.length}
+            sub={t('engine:kpi.installedSub', {
+              local: localCount,
+              remote: remoteCount,
+            })}
+            delay={40}
+          />
+          <KpiTile
+            title={t('engine:kpi.loaded')}
+            icon={<Cpu />}
+            value={loadedRows.length}
+            sub={t('engine:kpi.loadedSub', { count: localCount })}
+            delay={90}
+          />
+          <KpiTile
+            title={t('engine:kpi.disk')}
+            icon={<HardDrive />}
+            value={diskBytes > 0 ? formatBytes(diskBytes) : '—'}
+            sub={t('engine:kpi.diskSub', { count: localCount })}
+            delay={140}
+          />
+          <KpiTile
+            title={t('engine:kpi.fastest')}
+            icon={<Zap />}
+            value={fastest ? formatTps(fastest.avg) : '—'}
+            sub={fastest ? fastest.model : t('engine:kpi.fastestNone')}
+            delay={190}
+          />
+        </KpiRow>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <Frame className="motion-safe:animate-rise-in [animation-delay:220ms]">
+            <FrameHeader
+              icon={<Cpu />}
+              title={t('engine:loaded.title')}
+              actions={
+                loadedRows.length > 0 ? (
+                  <Chip tone="ok" live>
+                    {t('engine:live')}
+                  </Chip>
+                ) : undefined
+              }
+            />
+            <FrameBody className="px-3 py-1">
+              {loadedRows.length === 0 ? (
+                <EmptyState
+                  icon={<Cpu />}
+                  title={t('engine:loaded.empty')}
+                  description={t('engine:loaded.emptyHint')}
+                />
+              ) : (
+                loadedRows.map(({ provider, model }) => {
+                  const speed = speeds.get(model.id)
+                  const series = recentSpeeds(generations, SPEED_WINDOW, model.id)
+                  return (
+                    <div
+                      key={`${provider.provider}:${model.id}`}
+                      className="flex items-center gap-3 border-b border-dashed border-border py-3 last:border-b-0"
+                    >
+                      <BrandMark
+                        logo={modelLogo(model.id, provider.provider)}
+                        name={model.name || model.id}
+                        size={34}
+                      />
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <b className="truncate text-[13px] font-medium text-foreground">
+                          {model.name || model.id}
+                        </b>
+                        <small className="truncate text-xs text-muted-foreground">
+                          {getProviderTitle(provider.provider)}
+                          {fileSizes[model.id]
+                            ? ` · ${formatBytes(fileSizes[model.id])}`
+                            : ''}
+                        </small>
+                        {maxSpeed > 0 && speed && (
+                          <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                            <i
+                              className="block h-full rounded-full bg-grad motion-safe:animate-draw-x"
+                              style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
+                            />
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex w-[110px] flex-col items-end gap-0.5">
+                        {series.length > 1 && (
+                          <LiveChart series={series} compact format={formatTps} />
+                        )}
+                        <small className="text-[11.5px] text-muted-foreground tabular-nums">
+                          {speed ? formatTps(speed.avg) : t('engine:speed.noneYet')}
+                        </small>
+                      </div>
+                      <Button
+                        variant="surface"
+                        size="sm"
+                        onClick={() => stopModel(model.id, provider.provider)}
+                      >
+                        {t('engine:loaded.unload')}
+                      </Button>
+                    </div>
+                  )
                 })
-                const where =
-                  location === 'local' || location === 'remote'
-                    ? t(`model-fit:location.${location}`)
-                    : ''
-                const count = `${provider.models.length} Models`
+              )}
+            </FrameBody>
+          </Frame>
+
+          <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
+            <FrameHeader icon={<Zap />} title={t('engine:speed.title')} />
+            <FrameBody className="justify-center p-3">
+              {generations.length === 0 ? (
+                <EmptyState
+                  icon={<Zap />}
+                  title={t('engine:speed.empty')}
+                  description={t('engine:speed.emptyHint')}
+                />
+              ) : (
+                <LiveChart
+                  series={recentSpeeds(generations, SPEED_WINDOW)}
+                  label={t('engine:speed.label')}
+                  format={formatTps}
+                  windowLabel={t('engine:speed.window', {
+                    count: Math.min(SPEED_WINDOW, generations.length),
+                  })}
+                  peakLabel={t('engine:chart.peak')}
+                  avgLabel={t('engine:chart.avg')}
+                  plotClassName="h-[110px]"
+                />
+              )}
+            </FrameBody>
+          </Frame>
+        </div>
+
+        <Frame className="motion-safe:animate-rise-in [animation-delay:300ms]">
+          <FrameHeader
+            icon={<KeyRound />}
+            title={t('common:modelProviders')}
+            actions={addProviderButton}
+          />
+          <FrameBody className="p-3">
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2.5">
+              {visibleProviders.map((provider, i) => {
+                const title = getProviderTitle(provider.provider)
+                const local = isEngineProviderName(provider.provider)
+                const setUp =
+                  local || provider.models.length > 0 || providerHasRemoteApiKeys(provider)
                 return (
                   <li
                     key={provider.provider}
                     data-testid={`provider-row-${provider.provider}`}
-                    className={`grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-border py-2 last:border-b-0 ${PROVIDER_GRID}`}
+                    style={{ animationDelay: `${320 + i * 35}ms` }}
+                    className={cn(
+                      'group relative flex flex-col items-start gap-1.5 rounded-xl border-[0.8px] border-border p-3 text-left transition-[transform,box-shadow] duration-300 ease-expo motion-safe:animate-rise-in',
+                      provider.active
+                        ? 'bg-card hover:-translate-y-0.5 hover:shadow-lift'
+                        : 'bg-muted'
+                    )}
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border bg-sunken">
-                        <ProvidersAvatar provider={provider} />
-                      </span>
-                      <div className="min-w-0">
-                        {provider.active ? (
-                          <button
-                            type="button"
-                            onClick={() => openProvider(provider.provider)}
-                            className="block max-w-full truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
-                          >
-                            {title}
-                          </button>
-                        ) : (
-                          <h3 className="truncate text-sm font-medium text-foreground">
-                            {title}
-                          </h3>
-                        )}
-                        {/* On a narrow pane the columns fold under the name. */}
-                        <p className="truncate text-xs tabular-nums text-muted-foreground @2xl:hidden">
-                          {where ? `${count} · ${where}` : count}
-                        </p>
-                      </div>
-                    </div>
-                    <span className="hidden text-sm tabular-nums text-ink-2 @2xl:block">
-                      {count}
-                    </span>
-                    <span
-                      className="hidden truncate text-xs text-muted-foreground @2xl:block"
-                      title={where}
-                    >
-                      {where}
-                    </span>
-                    <div className="flex items-center justify-end gap-2">
-                      {provider.active && (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="pointer-coarse:size-11"
-                          aria-label={t('providers:openProvider', {
-                            provider: title,
-                          })}
-                          onClick={() => openProvider(provider.provider)}
-                        >
-                          <ChevronRight className="text-muted-foreground" />
-                        </Button>
-                      )}
+                    <div className="mb-1 flex w-full items-start justify-between">
+                      <BrandMark
+                        logo={providerLogo(provider.provider)}
+                        name={title}
+                        size={40}
+                        className={cn(!provider.active && 'opacity-60')}
+                      />
                       <Switch
+                        className="relative z-10"
                         checked={provider.active}
                         aria-label={t('providers:useProvider', {
                           provider: title,
                         })}
                         onCheckedChange={async (e) => {
-                          if (
-                            !e &&
-                            provider.provider.toLowerCase() === 'llamacpp'
-                          ) {
+                          if (!e && provider.provider.toLowerCase() === 'llamacpp') {
                             await serviceHub.models().stopAllModels()
                           }
                           updateProvider(provider.provider, {
@@ -205,32 +476,249 @@ function ModelProviders() {
                         }}
                       />
                     </div>
+                    {provider.active ? (
+                      <button
+                        type="button"
+                        onClick={() => openProvider(provider.provider)}
+                        aria-label={t('providers:openProvider', { provider: title })}
+                        className="text-[13.5px] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
+                      >
+                        {title}
+                      </button>
+                    ) : (
+                      <b className="text-[13.5px] font-semibold text-foreground opacity-60">
+                        {title}
+                      </b>
+                    )}
+                    <small className="text-xs text-muted-foreground">
+                      {local ? t('engine:providers.onDevice') : t('engine:providers.remote')}
+                      {' · '}
+                      {setUp
+                        ? t('engine:providers.modelsCount', { count: provider.models.length })
+                        : t('engine:providers.notSetUp')}
+                    </small>
+                    {provider.active ? (
+                      <Chip tone="ok" dot>
+                        {local ? t('engine:status.running') : t('engine:status.connected')}
+                      </Chip>
+                    ) : (
+                      <Chip dot>{t('engine:status.off')}</Chip>
+                    )}
                   </li>
                 )
               })}
-          </ul>
-        </Card>
-        {/* Global settings */}
-        <Card
-          header={
-            <h2 className="mb-3 text-[13px] font-semibold text-foreground">
-              {t('provider:globalSettings')}
-            </h2>
-          }
-        >
-          <CardItem
-            title={t('provider:stripReasoning')}
-            description={t('provider:stripReasoningDesc')}
+              <li>
+                <AddProviderDialog onCreateProvider={createProvider}>
+                  <button
+                    type="button"
+                    className="flex size-full min-h-[132px] flex-col items-center justify-center gap-1 rounded-xl border-[0.8px] border-dashed border-border-strong p-3 text-center text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground"
+                  >
+                    <Plus className="size-4" aria-hidden />
+                    <b className="text-[13px] font-medium">{t('engine:providers.custom')}</b>
+                    <small className="text-xs">{t('engine:providers.customHint')}</small>
+                  </button>
+                </AddProviderDialog>
+              </li>
+            </ul>
+          </FrameBody>
+        </Frame>
+
+        <Frame className="motion-safe:animate-rise-in [animation-delay:360ms]">
+          <FrameHeader
+            icon={<Box />}
+            title={t('engine:installed.title')}
             actions={
+              <div className="flex items-center gap-2">
+                <Segmented<Filter>
+                  className="w-[220px]"
+                  size="sm"
+                  aria-label={t('engine:installed.filter')}
+                  value={filter}
+                  onValueChange={setFilter}
+                  options={[
+                    { value: 'all', label: t('engine:filter.all') },
+                    { value: 'local', label: t('engine:filter.local') },
+                    { value: 'remote', label: t('engine:filter.remote') },
+                  ]}
+                />
+                <SearchField
+                  className="hidden w-[180px] sm:flex"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={t('engine:installed.search')}
+                />
+              </div>
+            }
+          />
+          <FrameBody className="overflow-x-auto p-3">
+            {shownRows.length === 0 ? (
+              <EmptyState
+                icon={<Box />}
+                title={
+                  rows.length === 0
+                    ? t('engine:installed.none')
+                    : t('engine:installed.noMatch')
+                }
+                description={
+                  rows.length === 0 ? t('engine:installed.noneHint') : undefined
+                }
+              />
+            ) : (
+              <TBox
+                className="min-w-[860px]"
+                columns={MODEL_COLS}
+                head={[
+                  '',
+                  t('engine:table.name'),
+                  t('engine:table.provider'),
+                  t('engine:table.capabilities'),
+                  t('engine:table.size'),
+                  t('engine:table.context'),
+                  t('engine:table.speed'),
+                  t('engine:table.status'),
+                  '',
+                ]}
+              >
+                {shownRows.map(({ provider, model, local }) => {
+                  const loaded = local && activeModels.includes(model.id)
+                  const speed = speeds.get(model.id)
+                  const ctx = contextLengthOf(model)
+                  const hasKey = local || providerHasRemoteApiKeys(provider)
+                  return (
+                    <div
+                      key={`${provider.provider}:${model.id}`}
+                      data-testid={`models-row-${model.id}`}
+                      className={cn(TBOX_ROW, 'motion-safe:animate-rise-in')}
+                    >
+                      <BrandMark
+                        logo={modelLogo(model.id, provider.provider)}
+                        name={model.name || model.id}
+                        size={30}
+                      />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <b className="truncate text-[13px] font-medium text-foreground" title={model.id}>
+                          {model.name || model.id}
+                        </b>
+                        <small className="truncate font-mono text-[11px] text-subtle-foreground">
+                          {model.id}
+                        </small>
+                      </div>
+                      <span className="min-w-0">
+                        <Chip className="max-w-full">
+                          <span className="truncate">{getProviderTitle(provider.provider)}</span>
+                        </Chip>
+                      </span>
+                      <CapabilityChips capabilities={model.capabilities ?? []} />
+                      <span className={cn('tabular-nums', !local && 'text-muted-foreground')}>
+                        {local
+                          ? fileSizes[model.id]
+                            ? formatBytes(fileSizes[model.id])
+                            : '—'
+                          : t('engine:table.remote')}
+                      </span>
+                      <span className="tabular-nums">
+                        {ctx ? ctx.toLocaleString() : '—'}
+                      </span>
+                      <span className="flex flex-col gap-1">
+                        {speed && maxSpeed > 0 ? (
+                          <>
+                            <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                              <i
+                                className="block h-full rounded-full bg-grad motion-safe:animate-draw-x"
+                                style={{ width: `${(speed.avg / maxSpeed) * 100}%` }}
+                              />
+                            </span>
+                            <small className="text-[11px] text-muted-foreground tabular-nums">
+                              {formatTps(speed.avg)}
+                            </small>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </span>
+                      <span>
+                        {local ? (
+                          loaded ? (
+                            <Chip tone="ok" live>
+                              {t('engine:status.loaded')}
+                            </Chip>
+                          ) : (
+                            <Chip dot>{t('engine:status.ready')}</Chip>
+                          )
+                        ) : hasKey ? (
+                          <Chip tone="ok" dot>
+                            {t('engine:status.connected')}
+                          </Chip>
+                        ) : (
+                          <Chip tone="warn" dot>
+                            {t('engine:status.noKey')}
+                          </Chip>
+                        )}
+                      </span>
+                      <RowMenu
+                        label={t('engine:menu.modelActions', { model: model.name || model.id })}
+                        items={[
+                          ...(local
+                            ? [
+                                loaded
+                                  ? {
+                                      label: t('engine:menu.stop'),
+                                      icon: <Square />,
+                                      onSelect: () => stopModel(model.id, provider.provider),
+                                    }
+                                  : {
+                                      label: t('engine:menu.start'),
+                                      icon: <Play />,
+                                      onSelect: () => void startModel(provider, model.id),
+                                    },
+                              ]
+                            : []),
+                          {
+                            label: t('engine:menu.openProvider'),
+                            icon: <ExternalLink />,
+                            onSelect: () => openProvider(provider.provider),
+                          },
+                          {
+                            label: t('engine:menu.copyId'),
+                            icon: <Copy />,
+                            onSelect: () => {
+                              void navigator.clipboard
+                                ?.writeText(model.id)
+                                .then(() => toast.success(t('engine:menu.copied')))
+                                .catch(() => {})
+                            },
+                          },
+                        ]}
+                      />
+                    </div>
+                  )
+                })}
+              </TBox>
+            )}
+          </FrameBody>
+        </Frame>
+
+        <Frame className="motion-safe:animate-rise-in [animation-delay:400ms]">
+          <FrameHeader title={t('provider:globalSettings')} />
+          <FrameBody className="px-3">
+            <div className="flex items-center justify-between gap-6 py-3.5">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <b className="text-[13px] font-medium text-foreground">
+                  {t('provider:stripReasoning')}
+                </b>
+                <small className="max-w-[60ch] text-xs leading-snug text-muted-foreground">
+                  {t('provider:stripReasoningDesc')}
+                </small>
+              </div>
               <Switch
                 aria-label={t('provider:stripReasoning')}
                 checked={stripReasoningFromContext}
                 onCheckedChange={setStripReasoningFromContext}
               />
-            }
-          />
-        </Card>
-      </WidePageBody>
+            </div>
+          </FrameBody>
+        </Frame>
+      </EnginePage>
     </div>
   )
 }
