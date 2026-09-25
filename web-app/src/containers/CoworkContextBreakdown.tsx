@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   CONTEXT_CATEGORIES,
@@ -67,8 +68,12 @@ export function CoworkContextBreakdown({
       className="group rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
     >
-      <summary className="cursor-pointer list-none rounded-sm text-[13px] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-[13px] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
         {t('common:readiness.contextBreakdown')}
+        <ChevronDown
+          aria-hidden
+          className="ml-auto size-3.5 shrink-0 text-muted-foreground group-open:rotate-180 motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo"
+        />
       </summary>
       <div className="mt-2">
       <dl className="grid gap-1">

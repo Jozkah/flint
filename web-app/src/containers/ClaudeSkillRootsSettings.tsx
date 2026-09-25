@@ -3,6 +3,8 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { addRoot, removeRoot, type RootRejection } from '@/lib/claudeSkillRoots'
+import { cn } from '@/lib/utils'
+import { CoworkCollapseHeader } from '@/containers/CoworkCollapseHeader'
 
 /**
  * Choosing which of your own folders Flint may read Claude skills from.
@@ -26,7 +28,10 @@ export function ClaudeSkillRootsSettings({
   janData,
   discovered,
   onRescan,
+  collapsible = false,
 }: {
+  /** A closed card behind its heading, as Cowork's session details shows it. */
+  collapsible?: boolean
   roots: readonly string[]
   onChange: (roots: string[]) => void
   pickFolder: () => Promise<string | null>
@@ -40,6 +45,7 @@ export function ClaudeSkillRootsSettings({
   const { t } = useTranslation()
   const [rejected, setRejected] = useState<RootRejection | null>(null)
   const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(!collapsible)
 
   const add = async () => {
     setRejected(null)
@@ -61,16 +67,32 @@ export function ClaudeSkillRootsSettings({
     <section
       aria-label={t('common:claudeCompat.roots.title')}
       data-testid="claude-skill-roots"
-      className="flex flex-col gap-2 text-xs"
+      className={cn(
+        'flex flex-col gap-2 text-xs',
+        collapsible &&
+          'rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5'
+      )}
     >
       <header className="flex flex-col gap-0.5">
-        <h3 className="font-medium text-foreground">
-          {t('common:claudeCompat.roots.title')}
-        </h3>
-        <p className="text-muted-foreground">
-          {t('common:claudeCompat.roots.description')}
-        </p>
+        {collapsible ? (
+          <CoworkCollapseHeader
+            title={t('common:claudeCompat.roots.title')}
+            open={open}
+            onToggle={() => setOpen((v) => !v)}
+          />
+        ) : (
+          <h3 className="font-medium text-foreground">
+            {t('common:claudeCompat.roots.title')}
+          </h3>
+        )}
+        {open ? (
+          <p className="text-muted-foreground">
+            {t('common:claudeCompat.roots.description')}
+          </p>
+        ) : null}
       </header>
+      {open ? (
+      <>
 
       {roots.length === 0 ? (
         <p className="text-fg-2">
@@ -135,6 +157,8 @@ export function ClaudeSkillRootsSettings({
           </Button>
         ) : null}
       </div>
+      </>
+      ) : null}
     </section>
   )
 }

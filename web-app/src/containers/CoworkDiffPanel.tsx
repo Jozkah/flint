@@ -187,7 +187,7 @@ function FileRow({
           ) : null}
         </span>
         {note ? (
-          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground">
+          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground max-[479px]:hidden">
             {note}
           </span>
         ) : null}

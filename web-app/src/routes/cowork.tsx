@@ -3958,7 +3958,10 @@ function CoworkPage() {
       />
       {/* Collapsed, and inside session details rather than above the
           composer: someone whose session works should never read it. */}
-      <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
+      <CoworkEnvironmentReadiness
+        projectRoot={folder ?? undefined}
+        collapsible
+      />
       {runContext && <CoworkContextBreakdown context={runContext} />}
       <CoworkCompatSection
         manifest={compat}
@@ -3975,6 +3978,7 @@ function CoworkPage() {
         }}
       />
       <ClaudeSkillRootsSettings
+        collapsible
         roots={skillRoots}
         onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
         janData={janDataFolder}
@@ -4014,10 +4018,25 @@ function CoworkPage() {
               {sessionControls}
             </div>
           )}
-          {phone && (
-            // One view at a time on a phone, chosen here rather than by
-            // swiping, so every view is reachable from the keyboard too.
-            <div
+          {!phone && (
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Closed until asked for. */}
+              <CoworkSessionDetails summary={sessionDetailsSummary}>
+                {detailsBody}
+              </CoworkSessionDetails>
+            </div>
+          )}
+        </PageHeaderRow>
+      </HeaderPage>
+
+      {phone && (
+        // On a phone the header has no room beside the breadcrumb, so the
+        // view switch -- and Stop, while the composer is out of sight -- get a
+        // row of their own over the page.
+        <div className="flex shrink-0 items-center gap-2 pt-2 pb-2">
+          {/* One view at a time on a phone, chosen here rather than by
+              swiping, so every view is reachable from the keyboard too. */}
+          <div
               role="group"
               aria-label={t('common:coworkLayout.views')}
               className="flex h-9 min-w-0 flex-1 items-stretch gap-1 overflow-hidden rounded-[10px] bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
@@ -4041,11 +4060,10 @@ function CoworkPage() {
                   </span>
                 </button>
               ))}
-            </div>
-          )}
+          </div>
           {/* The composer's stop control is out of sight in the other phone
               views, so a running session can still be stopped from here. */}
-          {phone && running && view !== 'content' ? (
+          {running && view !== 'content' ? (
             <Button
               variant="destructive"
               size="sm"
@@ -4056,17 +4074,8 @@ function CoworkPage() {
               {t('common:stop')}
             </Button>
           ) : null}
-          {!phone && (
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              {/* Closed until asked for. */}
-              <CoworkSessionDetails summary={sessionDetailsSummary}>
-                {detailsBody}
-              </CoworkSessionDetails>
-            </div>
-          )}
-        </PageHeaderRow>
-      </HeaderPage>
-
+        </div>
+      )}
       <CoworkInspectorProvider layout={inspectorLayout}>
       {/* Two framed cards side by side, as the design lays out Cowork: the
           conversation, and the output panel once one is open. */}
@@ -4101,7 +4110,10 @@ function CoworkPage() {
                       className="size-3.5 motion-safe:animate-spin"
                       aria-hidden
                     />
-                    {t('common:coworkLayout.running')}
+                    {/* Icon only on a phone, where the title needs the room. */}
+                    <span className="max-md:sr-only">
+                      {t('common:coworkLayout.running')}
+                    </span>
                   </Chip>
                 ) : null}
                 {/* The one primary action on the conversation, once there is
@@ -4111,9 +4123,12 @@ function CoworkPage() {
                     size="sm"
                     onClick={() => openRail({ kind: 'diff' })}
                     data-testid="cowork-header-review"
+                    className="pointer-coarse:h-11 max-md:px-2.5"
                   >
                     <FileDiff aria-hidden />
-                    {t('common:coworkReview.open')}
+                    <span className="max-md:sr-only">
+                      {t('common:coworkReview.open')}
+                    </span>
                   </Button>
                 ) : null}
               </>
@@ -4687,6 +4702,7 @@ function CoworkPage() {
             // agent works in a worktree would show two different repositories
             // under one name.
             folder={treeRoot}
+            projectName={folder ? basenameOf(folder) : undefined}
             workspacePath={workspacePath}
             sessionKey={session.id}
             state={session.codePanel}

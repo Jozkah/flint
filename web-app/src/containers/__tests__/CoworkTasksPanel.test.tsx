@@ -135,9 +135,14 @@ const workflowHeader = (title = 'refactor the parser') =>
     .getAllByRole('button', { name: new RegExp(title) })
     .find((button) => button.hasAttribute('aria-expanded'))!
 
-/** Open a workflow section so its tasks render. */
-const openWorkflow = async (title = 'refactor the parser') =>
-  userEvent.click(workflowHeader(title))
+/** Open a workflow section so its tasks render. Running work already opens
+ * with its tasks showing, so it is only clicked when closed. */
+const openWorkflow = async (title = 'refactor the parser') => {
+  const header = workflowHeader(title)
+  if (header.getAttribute('aria-expanded') !== 'true') {
+    await userEvent.click(header)
+  }
+}
 
 describe('CoworkTasksPanel', () => {
   it('says so when the session has run nothing', () => {
@@ -157,8 +162,9 @@ describe('CoworkTasksPanel', () => {
     expect(
       screen.getByText(/common:tasks.progress finished=1 total=2/)
     ).toBeInTheDocument()
-    // Not finished: a child is still running.
-    expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+    // Not finished: a child is still running. The running section opens
+    // with its tasks showing, so the child's own row says so too.
+    expect(screen.getAllByTestId('task-status-running')[0]).toBeInTheDocument()
   })
 
   it('says a status in words, with running never in the accent', () => {
@@ -167,7 +173,7 @@ describe('CoworkTasksPanel', () => {
         state={stateWith([task({ id: 'b', status: 'running', endedAt: undefined })])}
       />
     )
-    const status = screen.getByTestId('task-status-running')
+    const status = screen.getAllByTestId('task-status-running')[0]
     expect(status).toHaveTextContent('common:tasks.statusRunning')
     expect(status).toHaveAttribute('data-state', 'running')
     expect(status.className).not.toMatch(/brand/)
@@ -903,23 +909,15 @@ describe('Running and Finished sections', () => {
 })
 
 describe('revealing the workflow the card pointed at', () => {
+  // Finished, so both start closed: running work already opens with its
+  // tasks showing, and would say nothing about which one the reveal chose.
   const twoLive = () => {
-    let state = stateWith([
-      task({ id: 'a', status: 'running', endedAt: undefined, output: 'from one' }),
-    ])
+    let state = stateWith([task({ id: 'a', output: 'from one' })])
     state = startWorkflow(
       state,
       workflow({ id: 'run-2', title: 'the other run', startedAt: T0 + 5 })
     )
-    return startTask(
-      state,
-      task({
-        id: 'b',
-        workflowId: 'run-2',
-        status: 'running',
-        endedAt: undefined,
-      })
-    )
+    return startTask(state, task({ id: 'b', workflowId: 'run-2' }))
   }
 
   it('expands the workflow asked for, and not the other', async () => {
@@ -936,15 +934,12 @@ describe('revealing the workflow the card pointed at', () => {
 
   it('chooses by id, never by the title on screen', async () => {
     // Two runs of the same question carry the same title.
-    let state = stateWith([task({ id: 'a', status: 'running', endedAt: undefined })])
+    let state = stateWith([task({ id: 'a' })])
     state = startWorkflow(
       state,
       workflow({ id: 'run-2', startedAt: T0 + 5 })
     )
-    state = startTask(
-      state,
-      task({ id: 'b', workflowId: 'run-2', status: 'running', endedAt: undefined })
-    )
+    state = startTask(state, task({ id: 'b', workflowId: 'run-2' }))
     render(<Panel state={state} focusWorkflowId="run-2" />)
 
     const headers = screen
