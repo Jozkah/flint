@@ -226,6 +226,19 @@
     "endpointSearchDesc": "The base URL of your self-hosted search instance."
   },
   "agentTools": {
+    "toolchains": {
+      "title": "Sandbox toolchains",
+      "description": "These are installed but the sandbox cannot run them: their folder does not allow sandboxed apps to read and run what is inside. You can allow it for one toolchain at a time.",
+      "allRunnable": "Every installed toolchain the sandbox looks for can run in it.",
+      "unrunnable": "Installed, but the sandbox cannot run it.",
+      "grant": "Let the sandbox use this",
+      "revoke": "Revoke",
+      "grantedAt": "The sandbox may run what is in {{folder}}.",
+      "granted": "The sandbox can now use {{program}}.",
+      "confirmTitle": "Let the sandbox use {{program}}?",
+      "confirmBody": "This changes the permissions of the folder {{program}} is installed in, and only that folder: it adds an entry that lets every sandboxed Windows app (ALL APPLICATION PACKAGES) read and run the files inside it. Nothing else in your user profile is opened. You can revoke it here at any time, which removes exactly that entry.",
+      "confirm": "Allow"
+    },
     "title": "Agent Tools",
     "description": "Give models a private scratch workspace for each conversation, plus memories and skills kept permanently in your Flint data folder.",
     "enable": "Enable Agent Tools",

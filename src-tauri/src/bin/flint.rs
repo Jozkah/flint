@@ -1238,6 +1238,14 @@ async fn run() {
     // copy per shell command.
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
+    // The same toolchain grants the desktop app records, so a CLI run's
+    // sandbox can use what the user allowed there.
+    tauri_plugin_agent_tools::tools::toolchain_grants::set_store(
+        tauri_plugin_agent_tools::tools::toolchain_grants::store_path(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+        ),
+    );
+
     // Pre-scan raw args for --verbose / -v before full parse so we can set
     // the log level before any logging happens. stderr keeps its `warn`
     // default (`info` under -v); every info+ record also goes to a rotating

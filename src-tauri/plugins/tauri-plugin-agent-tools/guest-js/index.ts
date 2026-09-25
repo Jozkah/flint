@@ -968,6 +968,16 @@ export type ToolchainReport = {
   unavailable: string[]
 }
 
+/** A toolchain folder the user let the Windows sandbox use. */
+export type ToolchainGrant = {
+  /** The probed program it was granted for (`python`, `node`, ...). */
+  program: string
+  /** The install folder that received the access entry. */
+  folder: string
+  /** Seconds since the Unix epoch. */
+  grantedAt: number
+}
+
 /** One independently-probed part of a session's environment. */
 export type ReadinessComponent =
   | 'model'
@@ -1118,6 +1128,27 @@ export async function sandboxStatus(): Promise<SandboxStatus> {
  */
 export async function sandboxToolchains(): Promise<ToolchainReport | null> {
   return await invoke('plugin:agent-tools|sandbox_toolchains')
+}
+
+/** Toolchain folders the user let the Windows sandbox use. */
+export async function sandboxToolchainGrants(): Promise<ToolchainGrant[]> {
+  return await invoke('plugin:agent-tools|sandbox_toolchain_grants')
+}
+
+/**
+ * Let the sandbox run `program`, a toolchain reported as installed but
+ * unrunnable: grants ALL APPLICATION PACKAGES read and execute on its install
+ * folder only. Changes that folder's permissions on disk.
+ */
+export async function sandboxToolchainGrant(
+  program: string
+): Promise<ToolchainGrant> {
+  return await invoke('plugin:agent-tools|sandbox_toolchain_grant', { program })
+}
+
+/** Take back a grant: removes exactly the entry it added. */
+export async function sandboxToolchainRevoke(folder: string): Promise<void> {
+  await invoke('plugin:agent-tools|sandbox_toolchain_revoke', { folder })
 }
 
 /**
