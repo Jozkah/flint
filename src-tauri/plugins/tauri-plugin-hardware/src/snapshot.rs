@@ -61,6 +61,9 @@ pub struct SensorDetails {
     pub label: String,
     /// "cpu", "gpu", "disk" or "other".
     pub kind: String,
+    /// Where the reading came from, e.g. "sysinfo", "NVML" or a Windows
+    /// WMI class; shown so users can tell zones from real CPU sensors.
+    pub source: String,
     pub temperature: Option<f32>,
     pub max: Option<f32>,
     pub critical: Option<f32>,
@@ -129,7 +132,13 @@ pub fn get_system_snapshot() -> SystemSnapshot {
                 .with_memory(MemoryRefreshKind::everything()),
         ),
         networks: Networks::new_with_refreshed_list(),
-        components: Components::new_with_refreshed_list(),
+        // On Windows sysinfo reads only the ACPI zones, which the cached
+        // query in `windows_sensors` covers along with more sources.
+        components: if cfg!(windows) {
+            Components::new()
+        } else {
+            Components::new_with_refreshed_list()
+        },
     });
 
     let cpu_kind = CpuRefreshKind::nothing().with_cpu_usage().with_frequency();
@@ -140,9 +149,12 @@ pub fn get_system_snapshot() -> SystemSnapshot {
     } else {
         c.system.refresh_cpu_specifics(cpu_kind);
         c.networks.refresh(true);
-        c.components.refresh(true);
+        if !cfg!(windows) {
+            c.components.refresh(true);
+        }
     }
-    c.system.refresh_memory_specifics(MemoryRefreshKind::everything());
+    c.system
+        .refresh_memory_specifics(MemoryRefreshKind::everything());
 
     let cpus = c.system.cpus();
     let per_core: Vec<f32> = cpus.iter().map(|cpu| cpu.cpu_usage()).collect();
@@ -194,16 +206,19 @@ pub fn get_system_snapshot() -> SystemSnapshot {
         .map(|comp| SensorDetails {
             label: comp.label().to_string(),
             kind: sensor_kind(comp.label()).into(),
+            source: "sysinfo".into(),
             temperature: comp.temperature().filter(|t| t.is_finite()),
             max: comp.max().filter(|t| t.is_finite()),
             critical: comp.critical().filter(|t| t.is_finite()),
         })
         .collect();
+    sensors.extend(crate::windows_sensors::sensors());
     for gpu in crate::get_system_info().gpus {
         if let Some((temp, critical)) = gpu.nvidia_temperature() {
             sensors.push(SensorDetails {
                 label: gpu.name.clone(),
                 kind: "gpu".into(),
+                source: "NVML".into(),
                 temperature: Some(temp),
                 max: None,
                 critical,

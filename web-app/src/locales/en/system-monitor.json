@@ -42,10 +42,6 @@
   "drives": "Drives",
   "noDrives": "No drives reported",
   "removable": "Removable",
-  "total": "Total",
-  "used": "Used",
-  "free": "Free",
-  "diskUsage": "Used space",
   "network": "Network",
   "noNetworks": "No network interfaces",
   "showVirtual_one": "Show {{count}} loopback or virtual adapter",
@@ -62,5 +58,11 @@
   "max": "Max",
   "critical": "Critical",
   "noSensors": "No temperature sensors available on this device.",
-  "noSensorsWindows": "No temperature sensors available. Windows usually exposes them only to apps running as administrator."
+  "noSensorsWindows": "No CPU or drive temperatures readable. Windows exposes them only to apps running as administrator, or while LibreHardwareMonitor or OpenHardwareMonitor is running.",
+  "freeOf": "{{free}} free",
+  "peakScale": "Bars are scaled to the highest rate seen this session.",
+  "current": "Current",
+  "ofCritical": "of {{value}} critical",
+  "ofMax": "of {{value}} max",
+  "noCpuSensorsWindows": "No CPU temperature readable. Windows exposes it only to apps running as administrator, or while LibreHardwareMonitor or OpenHardwareMonitor is running."
 }

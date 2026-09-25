@@ -41,6 +41,8 @@ export interface NetworkDetails {
 export interface SensorDetails {
   label: string
   kind: 'cpu' | 'gpu' | 'disk' | 'other'
+  /** Where the reading came from ("sysinfo", "NVML", a WMI class). */
+  source: string
   temperature: number | null
   max: number | null
   critical: number | null

@@ -1,11 +1,12 @@
 #[cfg(feature = "tauri")]
 mod commands;
 mod constants;
-pub mod snapshot;
 pub mod cpu;
 pub mod gpu;
+pub mod snapshot;
 mod types;
 pub mod vendor;
+mod windows_sensors;
 
 pub use constants::*;
 pub use types::*;
