@@ -1,7 +1,7 @@
 import type { LanguageModel, LanguageModelUsage } from 'ai'
 import type { MCPTool } from '@/types/completion'
 import type { ServerSummary } from '@/services/mcp/types'
-import { classifyIntent, ROUTING_THRESHOLD } from './intent-classifier'
+import { classifyIntent, mentionedServers, ROUTING_THRESHOLD } from './intent-classifier'
 import { selectServersWithLlm, type LlmRouterResult } from './mcp-router-llm'
 
 function asLlmRouterResult(value: unknown): LlmRouterResult | null {
@@ -154,6 +154,10 @@ export class MCPOrchestrator {
         llmFailure = 'llm_error'
       }
     }
+
+    // The model router can drop a server the user asked for by name.
+    const named = mentionedServers(userMessage, summaries)
+    selectedNames = [...named, ...selectedNames.filter((n) => !named.includes(n))]
 
     const { tools: routedTools, requestFailed } =
       await this.fetchToolsForServersWithStatus(selectedNames, service)

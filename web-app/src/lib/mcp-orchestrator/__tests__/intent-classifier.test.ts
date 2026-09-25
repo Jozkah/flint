@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   tokenize,
   classifyIntent,
+  mentionedServers,
   ROUTING_THRESHOLD,
   MAX_ROUTED_SERVERS,
 } from '../intent-classifier'
@@ -155,5 +156,40 @@ describe('classifyIntent — scoring weights', () => {
     if (descIdx !== -1) {
       expect(exactIdx).toBeLessThanOrEqual(descIdx)
     }
+  })
+})
+
+// A server asked for by name is routed even when nothing in its description
+// matches -- the IDA server was dropped for "using the ida-multi-mcp tools".
+describe('classifyIntent — servers named in the message', () => {
+  const servers: ServerSummary[] = [
+    ...Array.from({ length: 6 }, (_, i) => ({
+      name: `generic-${i}`,
+      description: 'read and write files on disk',
+      capabilities: ['read_file', 'write_file'],
+    })),
+    { name: 'ida-multi-mcp', description: 'Reverse engineering', capabilities: ['decompile'] },
+  ]
+
+  it('always includes a server named in the message, first', () => {
+    const result = classifyIntent('Using the ida-multi-mcp tools, open whoami.exe and read the file', servers)
+    expect(result[0]).toBe('ida-multi-mcp')
+  })
+
+  it('matches the name regardless of case and separators', () => {
+    expect(mentionedServers('try IDA Multi MCP please', servers)).toEqual(['ida-multi-mcp'])
+    expect(mentionedServers('no server named here', servers)).toEqual([])
+  })
+})
+
+describe('mentionedServers — one-word names', () => {
+  const servers: ServerSummary[] = [
+    { name: 'code', description: 'repositories', capabilities: ['git'] },
+    { name: 'email', description: 'mail', capabilities: ['mail'] },
+  ]
+  it('needs "server", "mcp" or "tools" after an ordinary word', () => {
+    expect(mentionedServers('review this code please', servers)).toEqual([])
+    expect(mentionedServers('use the email server to send it', servers)).toEqual(['email'])
+    expect(mentionedServers('with the code tools, list commits', servers)).toEqual(['code'])
   })
 })

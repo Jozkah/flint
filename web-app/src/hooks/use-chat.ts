@@ -59,7 +59,18 @@ export function useChat(
     ? useChatSessions.getState().sessions[sessionId]?.transport
     : undefined
 
-  // Create transport immediately with modelId and provider
+  // Create transport immediately with modelId and provider. A transport
+  // belongs to one session: when this view moves to a different chat that
+  // has none stored yet, reusing the old one carried its thread id and its
+  // frozen MCP tool routing into the new chat.
+  const transportSessionRef = useRef<string | undefined>(undefined)
+  if (
+    transportRef.current &&
+    !existingSessionTransport &&
+    transportSessionRef.current !== sessionId
+  ) {
+    transportRef.current = undefined
+  }
   if (!transportRef.current) {
     transportRef.current =
       existingSessionTransport ?? new CustomChatTransport(systemMessage, sessionId)
@@ -68,11 +79,13 @@ export function useChat(
     transportRef.current.setMemoryBinding({
       temporary: sessionId === TEMPORARY_CHAT_ID,
     })
+    transportSessionRef.current = sessionId
   } else if (
     existingSessionTransport &&
     transportRef.current !== existingSessionTransport
   ) {
     transportRef.current = existingSessionTransport
+    transportSessionRef.current = sessionId
   }
 
   useEffect(() => {
