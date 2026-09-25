@@ -200,6 +200,10 @@ export function LogsDashboard({
         </div>
         <div
           role="log"
+          // Focusable so the lines scroll from the keyboard (axe
+          // scrollable-region-focusable).
+          tabIndex={0}
+          aria-label={title}
           data-testid="log-viewer"
           className="max-h-[60vh] min-h-[240px] overflow-auto px-3 py-2 font-mono text-xs leading-[1.7] select-text [scrollbar-width:thin]"
         >

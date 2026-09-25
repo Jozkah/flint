@@ -861,7 +861,8 @@ describe('ChatInput', () => {
       await typeAt('@rev')
       await screen.findAllByRole('option')
       const ta = getTextarea()
-      expect(ta).toHaveAttribute('aria-expanded', 'true')
+      // The textarea points at the open list (aria-expanded is not allowed on it).
+      expect(ta.getAttribute('aria-controls')).toBeTruthy()
       const first = ta.getAttribute('aria-activedescendant')
       fireEvent.keyDown(ta, { key: 'ArrowDown' })
       const second = ta.getAttribute('aria-activedescendant')

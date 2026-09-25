@@ -228,7 +228,6 @@ export function RoomComposer({ room }: { room: Room }) {
           ref={textRef}
           value={text}
           aria-autocomplete="list"
-          aria-expanded={slash.open}
           aria-controls={slash.open ? `${id}-slash` : undefined}
           aria-activedescendant={
             slash.open && slash.visible.length > 0

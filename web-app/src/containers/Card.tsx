@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { ReactNode } from 'react'
+import { cloneElement, Fragment, isValidElement, useId, type ReactNode } from 'react'
 import {
   settingTargetClasses,
   useSettingTarget,
@@ -62,6 +62,24 @@ export function CardItem({
   anchor,
 }: CardItemProps) {
   const targetRef = useSettingTarget(anchor ?? '')
+  const titleId = useId()
+  const descriptionId = useId()
+  // A lone control (a switch, a select) is named by the row's title and
+  // described by its description, unless it already carries its own label:
+  // unnamed switches failed axe's button-name check on the settings pages.
+  const control =
+    isValidElement<Record<string, unknown>>(actions) &&
+    actions.type !== Fragment &&
+    title &&
+    !actions.props['aria-label'] &&
+    !actions.props['aria-labelledby']
+      ? cloneElement(actions, {
+          'aria-labelledby': titleId,
+          ...(description && !actions.props['aria-describedby']
+            ? { 'aria-describedby': descriptionId }
+            : {}),
+        })
+      : actions
   return (
     <>
       <div
@@ -91,12 +109,12 @@ export function CardItem({
             )}
           >
             {title && (
-              <div className="text-[13px] leading-tight font-medium text-foreground">
+              <div id={titleId} className="text-[13px] leading-tight font-medium text-foreground">
                 {title}
               </div>
             )}
             {description && (
-              <div className="text-xs leading-[1.4] text-muted-foreground">
+              <div id={descriptionId} className="text-xs leading-[1.4] text-muted-foreground">
                 {description}
               </div>
             )}
@@ -111,7 +129,7 @@ export function CardItem({
               column && 'w-full sm:max-w-none sm:justify-start'
             )}
           >
-            {actions}
+            {control}
           </div>
         )}
       </div>

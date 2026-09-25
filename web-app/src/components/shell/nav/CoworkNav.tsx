@@ -506,7 +506,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
           </button>
         </span>
       </NavItem>
-      <NavCollapse open={expanded}>
+      <NavCollapse as="li" open={expanded}>
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
           <NavItem>
             <NavButton size="sub" onClick={newSession}>

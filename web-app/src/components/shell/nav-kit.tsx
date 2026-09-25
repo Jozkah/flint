@@ -197,13 +197,16 @@ export function NavCollapse({
   open,
   className,
   children,
+  as: Tag = 'div',
 }: {
   open: boolean
   className?: string
   children: React.ReactNode
+  /** `li` when the collapse sits directly in a NavList (a ul may hold only li). */
+  as?: 'div' | 'li'
 }) {
   return (
-    <div
+    <Tag
       data-slot="nav-collapse"
       data-state={open ? 'open' : 'closed'}
       inert={!open}
@@ -214,6 +217,6 @@ export function NavCollapse({
       )}
     >
       <div className="min-h-0 overflow-hidden">{children}</div>
-    </div>
+    </Tag>
   )
 }

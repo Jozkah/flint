@@ -2586,13 +2586,8 @@ const ChatInput = memo(function ChatInput({
               data-testid={'chat-input'}
               // The `@` menu is a listbox the composer drives; these tell
               // assistive technology which row is active without moving focus.
+              // No aria-expanded: a textarea may not carry it (axe aria-allowed-attr).
               aria-autocomplete="list"
-              aria-expanded={
-                slashCommands.open ||
-                (workingDir
-                  ? filePickerOpen && filePickerEntries.length > 0
-                  : false)
-              }
               aria-controls={
                 slashCommands.open
                   ? slashListId
@@ -2887,6 +2882,7 @@ const ChatInput = memo(function ChatInput({
                       <Button
                           variant="ghost"
                           size="icon-xs"
+                          aria-label={t('embeddings')}
                           className="size-7 rounded-[7px] pointer-coarse:size-11"
                         >
                         <CodeXml className="size-4 text-muted-foreground" />
@@ -2999,6 +2995,7 @@ const ChatInput = memo(function ChatInput({
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        aria-label={t('common:web_search')}
                         aria-pressed={webSearchEnabled}
                         className={cn(
                           'size-7 rounded-[7px] pointer-coarse:size-11',

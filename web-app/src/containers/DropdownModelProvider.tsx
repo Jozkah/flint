@@ -4,6 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  PopoverAnchor,
 } from '@/components/ui/popover'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
@@ -782,8 +783,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-        <PopoverTrigger asChild>
+        {/* The pill anchors the popover; its model button opens it. The pill
+            also holds the settings and support controls, which are not part
+            of the trigger (a div carrying aria-expanded failed axe). */}
+        <PopoverAnchor asChild>
           <div data-slot="model-pill" className="relative z-20 flex h-[30px] min-w-0 max-w-full items-center gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift pointer-coarse:h-11">
+            <PopoverTrigger asChild>
             <button
               type="button"
               className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -814,6 +819,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               </Tooltip>
               <ChevronsUpDown className="size-[13px] shrink-0 text-muted-foreground" />
             </button>
+            </PopoverTrigger>
           {currentModel?.settings &&
             provider &&
             provider.provider === 'llamacpp' && (
@@ -838,7 +844,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
             }
           />
         </div>
-        </PopoverTrigger>
+        </PopoverAnchor>
+        
 
       <PopoverContent
         className={cn(
