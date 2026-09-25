@@ -369,3 +369,32 @@ describe('the outcome of a run', () => {
     expect(within(region()).queryAllByRole('button')).toEqual([])
   })
 })
+
+describe('a change the read-only turn never offered', () => {
+  it('says the turn was read-only rather than "Not allowed"', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(
+          base({
+            turns: [
+              user,
+              {
+                role: 'tool',
+                content: '',
+                name: 'write',
+                callId: 'w1',
+                args: { path: 'inventory.py' },
+                status: 'done',
+                isError: true,
+                result: "Model tried to call unavailable tool 'write'.",
+              },
+            ],
+          })
+        )}
+        {...handlers()}
+      />
+    )
+    expect(region()).toHaveTextContent('results:unresolved.refusedReadOnly')
+    expect(region()).not.toHaveTextContent('results:unresolved.refused ')
+  })
+})

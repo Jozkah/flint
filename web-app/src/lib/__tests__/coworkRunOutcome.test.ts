@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   checkVerdict,
   classifyCommand,
+  continueRequest,
   claimsFromText,
   deriveRunOutcome,
   isVisualCheck,
@@ -722,5 +723,63 @@ describe('a normal finish that left the request undone', () => {
       input({ turns: [user(), assistant('Done.')], openTodos: 0 })
     )
     expect(outcome.status).toBe('completed')
+  })
+})
+
+/**
+ * Session f49a386a: a turn ran read-only, so `write` and `edit` were never
+ * offered. The card said "Not allowed", which read like a denied approval when
+ * the remedy was a mode change.
+ */
+describe('a change tool withheld by a read-only turn', () => {
+  const withheld = (name: string): CoworkTurn => ({
+    role: 'tool',
+    content: '',
+    name,
+    callId: `${name}-1`,
+    args: { path: 'inventory.py' },
+    status: 'done',
+    isError: true,
+    result: `The call to \`${name}\` was not run: Model tried to call unavailable tool '${name}'. Available tools: read, ls.`,
+  })
+
+  it('is reported as refused because the turn was read-only', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), withheld('write'), withheld('edit'), assistant('Blocked.')] })
+    )
+    expect(outcome.unresolved).toEqual([
+      { kind: 'refused', tool: 'write', target: 'inventory.py', readOnly: true },
+      { kind: 'refused', tool: 'edit', target: 'inventory.py', readOnly: true },
+    ])
+    expect(outcome.status).toBe('partial')
+  })
+
+  it('leaves a gate refusal as a plain refusal', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [user(), write('a.txt', { permission: 'denied', toolState: 'refused' })],
+      })
+    )
+    expect(outcome.unresolved).toEqual([
+      { kind: 'refused', tool: 'write', target: 'a.txt' },
+    ])
+  })
+})
+
+describe('the request Continue sends', () => {
+  it('names each unresolved step so the next run retries it', () => {
+    const text = continueRequest([
+      { kind: 'refused', tool: 'write', target: 'inventory.py', readOnly: true },
+      { kind: 'failed', tool: 'bash', target: 'pytest' },
+      { kind: 'check-failed', command: 'npm test', exitCode: 1 },
+    ])
+    expect(text).toMatch(/^Continue with the previous request\./)
+    expect(text).toContain('- write inventory.py (not offered: the last turn was read-only)')
+    expect(text).toContain('- bash pytest (failed)')
+    expect(text).toContain('- check did not pass: npm test')
+  })
+
+  it('just continues when nothing was left open', () => {
+    expect(continueRequest([])).toBe('Continue.')
   })
 })

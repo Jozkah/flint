@@ -220,6 +220,11 @@ function unresolvedText(t: TFn, item: UnresolvedItem): string {
           return t('results:unresolved.stop.tokens')
       }
     case 'refused':
+      if (item.readOnly)
+        return t('results:unresolved.refusedReadOnly', {
+          tool: item.tool,
+          target: item.target,
+        })
       return t('results:unresolved.refused', {
         tool: item.tool,
         target: item.target,

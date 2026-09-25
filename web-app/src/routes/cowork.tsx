@@ -231,6 +231,7 @@ import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
+  continueRequest,
   deriveRunOutcome,
   shouldShowRunOutcome,
 } from '@/lib/coworkRunOutcome'
@@ -4531,12 +4532,11 @@ function CoworkPage() {
                         onReviewChanges={() => openRail({ kind: 'diff' })}
                         onRestore={() => openRail({ kind: 'diff' })}
                         onRetry={() => void runRequest(null)}
+                        // A follow-up run under the session's current mode,
+                        // asked to retry what this one left unresolved.
+                        // Focusing the composer did nothing visible.
                         onContinue={() =>
-                          document
-                            .querySelector<HTMLTextAreaElement>(
-                              '[data-testid="chat-input"]'
-                            )
-                            ?.focus()
+                          handleSubmit(continueRequest(runOutcome.unresolved))
                         }
                       />
                     )}

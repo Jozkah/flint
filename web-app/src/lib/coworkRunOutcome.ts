@@ -26,6 +26,7 @@ import {
   type CompletionSummary,
 } from '@/lib/coworkOrigins'
 import { parseBashOutput } from '@/lib/toolPresentation'
+import { PLAN_DENIED_TOOLS } from '@/lib/coworkTools'
 
 export type RunStatus =
   | 'completed'
@@ -125,8 +126,12 @@ export type CheckClaim = {
 export type UnresolvedItem =
   /** The run stopped for a reason other than finishing. */
   | { kind: 'stop'; reason: Exclude<StopReason, 'done'>; message?: string }
-  /** A tool call the permission gate or the user refused. */
-  | { kind: 'refused'; tool: string; target: string }
+  /**
+   * A tool call the permission gate or the user refused. `readOnly` when the
+   * turn ran read-only and the tool was never offered: the remedy is a mode
+   * change, not an approval, and the card has to say so.
+   */
+  | { kind: 'refused'; tool: string; target: string; readOnly?: boolean }
   /** A tool call cancelled before it finished. */
   | { kind: 'cancelled'; tool: string; target: string }
   /** A tool call that failed or timed out. Checks are reported separately. */
@@ -404,6 +409,19 @@ const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'notebook_edit',
 ])
 
+/**
+ * A change tool the run was never given.
+ *
+ * Only a read-only turn withholds these (review mode, or an opening turn that
+ * only looks at the project), so a call to one ends as "unavailable tool" /
+ * `tool-not-offered` before any permission gate sees it.
+ */
+function withheldAsReadOnly(turn: CoworkTurn): boolean {
+  if (!PLAN_DENIED_TOOLS.has(turn.name ?? '')) return false
+  const text = `${turn.result ?? ''} ${turn.content ?? ''}`
+  return /unavailable tool|tool-not-offered/.test(text)
+}
+
 type ToolPhase = NonNullable<CoworkTurn['toolState']> | 'done-ok' | 'done-error'
 
 /** What became of a tool row, reading the newer state before the older one. */
@@ -634,7 +652,9 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     const phase = phaseOf(turn)
     const tool = turn.name ?? ''
     const target = targetOf(turn)
-    if (phase === 'refused') unresolved.push({ kind: 'refused', tool, target })
+    if (withheldAsReadOnly(turn) && (phase === 'refused' || phase === 'failed' || phase === 'done-error'))
+      unresolved.push({ kind: 'refused', tool, target, readOnly: true })
+    else if (phase === 'refused') unresolved.push({ kind: 'refused', tool, target })
     else if (phase === 'cancelled' && !checkCalls.has(turn))
       unresolved.push({ kind: 'cancelled', tool, target })
     else if (
@@ -928,4 +948,43 @@ export function summarizeVerification(outcome: RunOutcome): VerificationSummary 
       (command) => command.verification === null
     ).length,
   }
+}
+
+/**
+ * The request the result card's "Continue" sends.
+ *
+ * A new run, under whatever mode the session is in now, asked to finish what
+ * the last one left open. The unresolved items are named so the model retries
+ * them rather than re-deciding the task; a run with nothing listed is simply
+ * asked to carry on.
+ */
+export function continueRequest(unresolved: readonly UnresolvedItem[]): string {
+  const lines: string[] = []
+  for (const item of unresolved) {
+    switch (item.kind) {
+      case 'refused':
+      case 'cancelled':
+      case 'failed':
+      case 'interrupted':
+        lines.push(
+          `- ${item.tool}${item.target ? ` ${item.target}` : ''} (${
+            item.kind === 'refused' && item.readOnly
+              ? 'not offered: the last turn was read-only'
+              : item.kind
+          })`
+        )
+        break
+      case 'check-failed':
+        lines.push(`- check did not pass: ${item.command}`)
+        break
+      case 'stop':
+        lines.push(`- the run stopped early (${item.reason})`)
+        break
+    }
+  }
+  if (lines.length === 0) return 'Continue.'
+  return [
+    'Continue with the previous request. These steps did not complete last time; retry them with the tools this turn has:',
+    ...lines,
+  ].join('\n')
 }
