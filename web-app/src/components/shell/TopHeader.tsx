@@ -1,12 +1,19 @@
 import { useMemo } from 'react'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Loader2,
   Menu,
   ShieldAlert,
 } from 'lucide-react'
-import { Icon } from '@/components/ui/icon'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Icon, type IconName } from '@/components/ui/icon'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { crumbForPath } from '@/lib/breadcrumb'
@@ -58,6 +65,78 @@ function useCurrentName(crumb: ReturnType<typeof crumbForPath>) {
   return undefined
 }
 
+const NOTIF_ICON: Partial<Record<ActivityKind, IconName>> = {
+  'tool-approved': 'feed-ticket',
+  'tool-denied': 'feed-alert',
+  'tool-failed': 'feed-alert',
+  'model-loaded': 'feed-star',
+  'model-swapped': 'feed-repeat',
+  compaction: 'feed-book',
+  'run-finished': 'feed-ticket',
+  knowledge: 'feed-book',
+  warning: 'feed-alert',
+}
+
+/** One notification: the design's feed icon, a title and a detail line. */
+function NotifRow({
+  icon,
+  title,
+  detail,
+  onSelect,
+}: {
+  icon: IconName
+  title: string
+  detail?: string
+  onSelect?: () => void
+}) {
+  return (
+    <DropdownMenuItem onSelect={onSelect} className="items-start gap-2.5 p-2">
+      <Icon name={icon} />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <b className="text-[0.8125rem] font-medium text-foreground">{title}</b>
+        {detail && <small className="truncate text-xs text-muted-foreground">{detail}</small>}
+      </span>
+    </DropdownMenuItem>
+  )
+}
+
+/**
+ * Switch theme with the design's reveal: the new theme opens as a circle from
+ * the toggle (View Transitions), or switches at once without motion.
+ */
+function switchTheme(
+  from: HTMLElement,
+  next: 'light' | 'dark',
+  setTheme: (t: 'light' | 'dark') => unknown
+) {
+  const doc = document as Document & {
+    startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
+  }
+  const reduce = document.documentElement.classList.contains('reduce-motion')
+  if (reduce || !doc.startViewTransition) {
+    void setTheme(next)
+    return
+  }
+  const r = from.getBoundingClientRect()
+  const x = r.left + r.width / 2
+  const y = r.top + r.height / 2
+  const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+  document.documentElement.classList.add('vt-theme')
+  const t = doc.startViewTransition(() => {
+    void setTheme(next)
+    document.documentElement.classList.toggle('dark', next === 'dark')
+  })
+  t.ready
+    .then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] },
+        { duration: 520, easing: 'cubic-bezier(.16,1,.3,1)', pseudoElement: '::view-transition-new(root)' }
+      )
+    )
+    .catch(() => {})
+  t.finished.finally(() => document.documentElement.classList.remove('vt-theme'))
+}
+
 /**
  * The 52px header above every page: sidebar toggle, "Section / Page", the
  * page's own controls (portalled in by HeaderPage), live-work chips and the
@@ -87,6 +166,9 @@ export function TopHeader() {
   const setTheme = useTheme((s) => s.setTheme)
   const runs = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const approvals = useToolApprovalRequests((s) => Object.keys(s.pending ?? {}).length)
+  const navigate = useNavigate()
+  const activity = useUsageStats((s) => s.activity)
+  const recent = activity.slice(0, 4)
 
   const layoutLeft = useTitlebarLayout((s) => s.layout.left.length)
   const layoutRight = useTitlebarLayout((s) => s.layout.right.length)
@@ -161,7 +243,7 @@ export function TopHeader() {
         ref={headerSlot?.setSlot}
         {...dragRegion}
         data-testid="header-slot"
-        className="flex h-full min-w-0 flex-1 items-center gap-2"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 overflow-hidden"
       />
 
       <div className="flex shrink-0 items-center gap-1.5">
@@ -188,21 +270,21 @@ export function TopHeader() {
         )}
         <button
           type="button"
-          className={iconBtn}
-          onClick={() => void setTheme(isDark ? 'light' : 'dark')}
+          className={cn(iconBtn, 'max-sm:hidden')}
+          onClick={(e) => switchTheme(e.currentTarget, isDark ? 'light' : 'dark', setTheme)}
           aria-label={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
           title={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
           data-testid="header-theme"
         >
           <Icon name={isDark ? 'x-sun' : 'x-moon'} />
         </button>
-        <Popover>
-          <PopoverTrigger asChild>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
               type="button"
               className={cn(iconBtn, 'group/bell relative')}
-              aria-label={t('common:shell.activity')}
-              title={t('common:shell.activity')}
+              aria-label={t('common:shell.notifications')}
+              title={t('common:shell.notifications')}
               data-testid="header-activity"
             >
               <span className="inline-flex origin-top group-hover/bell:[animation:ring_.6s_ease]">
@@ -218,39 +300,31 @@ export function TopHeader() {
                 />
               )}
             </button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 p-1.5">
-            <p className="px-2 pt-1.5 pb-1 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
-              {t('common:shell.activity')}
-            </p>
-            {approvals === 0 && runs === 0 ? (
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuLabel>{t('common:shell.notifications')}</DropdownMenuLabel>
+            {approvals === 0 && runs === 0 && recent.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">
                 {t('common:shell.nothingNeedsYou')}
               </p>
             ) : (
-              <div className="flex flex-col">
+              <>
                 {approvals > 0 && (
-                  <div className="flex items-center gap-2 rounded-lg px-2 py-2 text-[0.8125rem] text-foreground">
-                    <ShieldAlert className="size-4 text-warning" aria-hidden />
-                    {t('common:shell.approvals', { count: approvals })}
-                  </div>
+                  <NotifRow icon="feed-alert" title={t('common:shell.approvalWaiting')} detail={t('common:shell.approvals', { count: approvals })} />
                 )}
                 {runs > 0 && (
-                  <Link
-                    to={route.cowork}
-                    className="flex items-center gap-2 rounded-lg px-2 py-2 text-[0.8125rem] text-foreground hover:bg-accent"
-                  >
-                    <Loader2 className="size-4 text-info motion-safe:animate-spin" aria-hidden />
-                    {t('common:shell.runs', { count: runs })}
-                  </Link>
+                  <NotifRow icon="feed-ticket" title={t('common:shell.runsTitle')} detail={t('common:shell.runs', { count: runs })} onSelect={() => navigate({ to: route.cowork })} />
                 )}
-              </div>
+                {recent.map((a) => (
+                  <NotifRow key={a.id} icon={NOTIF_ICON[a.kind] ?? 'feed-star'} title={a.title} detail={a.detail} onSelect={() => navigate({ to: route.overview })} />
+                ))}
+              </>
             )}
-          </PopoverContent>
-        </Popover>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Link
           to={route.settings.general}
-          className={cn(iconBtn, 'group/set')}
+          className={cn(iconBtn, 'group/set max-sm:hidden')}
           aria-label={t('common:settings')}
           title={t('common:settings')}
         >
@@ -258,6 +332,29 @@ export function TopHeader() {
             <Icon name="hd-settings" />
           </span>
         </Link>
+        {/* Phones: theme and settings share one overflow menu. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(iconBtn, 'sm:hidden pointer-coarse:size-10')}
+              aria-label={t('common:more')}
+              data-testid="header-more"
+            >
+              <Icon name="more" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onSelect={() => void setTheme(isDark ? 'light' : 'dark')}>
+              <Icon name={isDark ? 'x-sun' : 'x-moon'} />
+              <span>{isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate({ to: route.settings.general })}>
+              <Icon name="hd-settings" />
+              <span>{t('common:settings')}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

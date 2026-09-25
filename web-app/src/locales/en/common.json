@@ -1615,7 +1615,9 @@
     },
     "overview": "Overview",
     "usageOverview": "Usage overview",
-    "movedTo": "Moved to {{name}}"
+    "movedTo": "Moved to {{name}}",
+    "notifications": "Notifications",
+    "approvalWaiting": "Approval waiting"
   },
   "systemNav": {
     "label": "Diagnostics",

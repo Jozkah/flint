@@ -106,11 +106,12 @@ export function ThreadStatusMark({
           <path fill="currentColor" d={path} />
         </svg>
       ) : status === 'none' ? null : (
-        <span className="relative size-2 rounded-full bg-current">
-          {status === 'active' && (
-            <span className="absolute inset-0 rounded-full bg-current motion-safe:animate-ping" />
+        <span
+          className={cn(
+            'size-2 rounded-full bg-current',
+            status === 'active' && 'motion-safe:animate-[blink_1.2s_ease-in-out_infinite]'
           )}
-        </span>
+        />
       )}
     </span>
   )

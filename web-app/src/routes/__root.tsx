@@ -3,6 +3,8 @@ import { createRootRoute, Outlet } from '@tanstack/react-router'
 
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
+import { useRef } from 'react'
+import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
 import { UsageActivityRecorder } from '@/providers/UsageActivityRecorder'
@@ -58,12 +60,15 @@ const AppLayout = () => {
   useWindowTitle()
   useAppViewport()
   const appDrawsChrome = detectWindowChrome() === 'custom'
+  const pageRef = useRef<HTMLDivElement>(null)
+  const { booting } = useShellMotion(pageRef)
 
   return (
     <ShellNavProvider>
       <HeaderSlotProvider>
         <div
           data-testid="app-shell"
+          data-boot={booting ? '' : undefined}
           className="app-zoom relative flex h-(--app-vvh,100dvh) w-full overflow-hidden bg-background"
         >
           <KeyboardShortcutsProvider />
@@ -80,7 +85,7 @@ const AppLayout = () => {
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
           >
             <TopHeader />
-            <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div ref={pageRef} className="relative min-h-0 flex-1 overflow-hidden">
               <Outlet />
             </div>
           </main>

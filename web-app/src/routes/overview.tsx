@@ -1,30 +1,20 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   Gauge,
-  Layers,
-  Loader2,
   MoreVertical,
-  Newspaper,
   Search,
-  ShieldCheck,
-  ShieldX,
-  Sparkles,
   Target,
-  Wrench,
-  Zap,
-  type LucideIcon,
 } from 'lucide-react'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Button } from '@/components/ui/button'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Icon, type IconName } from '@/components/ui/icon'
+import { BrandMark } from '@/containers/engine/BrandMark'
+import { modelLogo } from '@/lib/brandLogos'
 import { CountUp } from '@/components/ui/count-up'
 import {
   DropdownMenu,
@@ -106,7 +96,7 @@ function Sparkline({ values, tone }: { values: number[]; tone: 'up' | 'down' }) 
 
 function Kpi({
   title,
-  icon: Icon,
+  icon,
   value,
   delta,
   series,
@@ -114,7 +104,7 @@ function Kpi({
   delay,
 }: {
   title: string
-  icon: LucideIcon
+  icon: IconName
   value: string
   delta: number | null
   series: number[]
@@ -129,7 +119,7 @@ function Kpi({
       <FrameHeader
         title={title}
         actions={
-          <Icon className="size-4 text-muted-foreground transition-transform duration-300 ease-expo group-hover/kpi:-rotate-12 group-hover/kpi:scale-110" aria-hidden />
+          <Icon name={icon} className="transition-transform duration-300 ease-expo group-hover/kpi:-rotate-12 group-hover/kpi:scale-110" />
         }
       />
       <FrameBody className="flex-row items-end justify-between rounded-[10px] border-border px-3 pb-3 transition-[box-shadow,transform] duration-300 ease-expo group-hover/kpi:-translate-y-px group-hover/kpi:shadow-lift">
@@ -161,10 +151,12 @@ function Throughput({
   summary,
   previous,
   cmpLabel,
+  rangePicker,
 }: {
   summary: RangeSummary
   previous: RangeSummary
   cmpLabel: string
+  rangePicker?: React.ReactNode
 }) {
   const { t, i18n } = useTranslation()
   const values = summary.series.map((d) => d.stats.tokens)
@@ -187,7 +179,7 @@ function Throughput({
 
   return (
     <Frame className="min-w-0 motion-safe:animate-rise-in" style={{ animationDelay: '260ms' }}>
-      <FrameHeader icon={<BarChart3 />} title={t('overview:throughput')} />
+      <FrameHeader icon={<Icon name="analytics" />} title={t('overview:throughput')} actions={rangePicker} />
       <FrameBody className="gap-6 px-3.5 pt-4 pb-3.5">
         <div className="flex items-end gap-3 leading-none whitespace-nowrap">
           <p className="text-[32px] font-medium tabular-nums">
@@ -230,7 +222,7 @@ function Throughput({
                   >
                     <div
                       className={cn(
-                        'relative w-full origin-bottom rounded-t-lg rounded-b-sm transition-[height] duration-700 ease-expo motion-safe:animate-grow-y',
+                        'relative mx-auto w-[72%] origin-bottom rounded-t-lg rounded-b-sm transition-[height] duration-700 ease-expo motion-safe:animate-grow-y',
                         i === active
                           ? 'bg-grad shadow-[inset_0_0_0_.44px_var(--primary),0_2px_10px_rgba(31,41,55,.08)]'
                           : 'bg-[linear-gradient(to_bottom,var(--bar),var(--bar-2))] shadow-[inset_0_0_0_.444px_var(--bar-border),inset_0_0_0_1px_var(--bar-inner)]'
@@ -282,16 +274,16 @@ function Throughput({
   )
 }
 
-const ACTIVITY_ICON: Record<ActivityKind, { icon: LucideIcon; tone: string }> = {
-  'tool-approved': { icon: ShieldCheck, tone: 'text-info' },
-  'tool-denied': { icon: ShieldX, tone: 'text-warning' },
-  'tool-failed': { icon: AlertTriangle, tone: 'text-destructive' },
-  'model-loaded': { icon: Zap, tone: 'text-success' },
-  'model-swapped': { icon: Sparkles, tone: 'text-merged' },
-  compaction: { icon: Layers, tone: 'text-warning' },
-  'run-finished': { icon: CheckCircle2, tone: 'text-success' },
-  knowledge: { icon: Newspaper, tone: 'text-info' },
-  warning: { icon: AlertTriangle, tone: 'text-destructive' },
+const ACTIVITY_ICON: Record<ActivityKind, IconName> = {
+  'tool-approved': 'feed-ticket',
+  'tool-denied': 'feed-alert',
+  'tool-failed': 'feed-alert',
+  'model-loaded': 'feed-user',
+  'model-swapped': 'feed-repeat',
+  compaction: 'feed-star',
+  'run-finished': 'feed-ticket',
+  knowledge: 'feed-book',
+  warning: 'feed-alert',
 }
 
 type FeedRange = 'today' | 'yesterday' | 'week'
@@ -315,7 +307,7 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
   )
   return (
     <Frame className="h-full min-h-[420px] w-full motion-safe:animate-rise-in lg:w-[300px] lg:shrink-0" style={{ animationDelay: '200ms' }}>
-      <FrameHeader title={t('overview:activity')} actions={<Newspaper className="size-4 text-muted-foreground" aria-hidden />} />
+      <FrameHeader title={t('overview:activity')} actions={<Icon name="news" />} />
       <FrameBody className="min-h-0 gap-4 overflow-hidden px-3.5 pt-4 pb-3.5">
         <Segmented
           aria-label={t('overview:activityRange')}
@@ -344,11 +336,11 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
         </p>
         <div aria-hidden className="h-px w-full bg-[linear-gradient(90deg,transparent,var(--border)_15%,var(--border)_85%,transparent)]" />
         {list.length === 0 ? (
-          <EmptyState icon={<Activity />} title={t('overview:noActivity')} description={t('overview:noActivityHint')} />
+          <EmptyState icon={<Icon name="news" />} title={t('overview:noActivity')} description={t('overview:noActivityHint')} />
         ) : (
           <ul className="m-0 flex min-h-0 w-full flex-1 list-none flex-col gap-5 overflow-y-auto p-0 pb-1 [scrollbar-width:none]">
             {list.map((it, i) => {
-              const { icon: Icon, tone } = ACTIVITY_ICON[it.kind] ?? ACTIVITY_ICON.warning
+              const icon = ACTIVITY_ICON[it.kind] ?? 'feed-alert'
               return (
                 <li
                   key={it.id}
@@ -356,7 +348,7 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
                   style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
                 >
                   <span className="relative z-10 flex items-center rounded-lg border-[0.8px] border-input bg-card p-2 transition-[transform,box-shadow] duration-200 ease-expo group-hover/item:-translate-y-px group-hover/item:shadow-lift">
-                    <Icon className={cn('size-4 transition-transform duration-300 group-hover/item:scale-110', tone)} aria-hidden />
+                    <Icon name={icon} className="transition-transform duration-300 group-hover/item:scale-110" />
                   </span>
                   {i < list.length - 1 && (
                     <span aria-hidden className="absolute top-8 -bottom-5 left-[15.5px] w-px bg-[repeating-linear-gradient(to_bottom,var(--border)_0_4px,transparent_4px_8px)]" />
@@ -407,11 +399,11 @@ function runsFrom(sessions: CoworkSession[], running: Record<string, unknown>): 
   })
 }
 
-const STATUS: Record<RunRow['status'], { icon: LucideIcon; cls: string; key: string }> = {
-  running: { icon: Loader2, cls: 'text-warning [&>svg]:motion-safe:animate-spin', key: 'overview:status.running' },
-  approval: { icon: ShieldCheck, cls: 'text-info', key: 'overview:status.approval' },
-  done: { icon: CheckCircle2, cls: 'text-success', key: 'overview:status.done' },
-  idle: { icon: Target, cls: 'text-muted-foreground', key: 'overview:status.idle' },
+const STATUS: Record<RunRow['status'], { icon: IconName; key: string }> = {
+  running: { icon: 'status-progress', key: 'overview:status.running' },
+  approval: { icon: 'status-review', key: 'overview:status.approval' },
+  done: { icon: 'status-delivered', key: 'overview:status.done' },
+  idle: { icon: 'clock-01', key: 'overview:status.idle' },
 }
 
 function AgentRuns() {
@@ -434,12 +426,12 @@ function AgentRuns() {
   return (
     <Frame className="motion-safe:animate-rise-in" style={{ animationDelay: '340ms' }}>
       <FrameHeader
-        icon={<Target />}
+        icon={<Icon name="target" />}
         title={t('overview:runs')}
         actions={
           <>
             <label className="hidden h-8 w-56 cursor-text items-center gap-2 rounded-lg border-[0.8px] border-input bg-card px-2.5 shadow-[0_4px_14px_rgba(0,0,0,.04)] focus-within:border-ring sm:flex">
-              <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <Icon name="tb-search" />
               <input
                 type="search"
                 value={q}
@@ -452,7 +444,7 @@ function AgentRuns() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="surface">
-                  <Wrench />
+                  <Icon name="filter" />
                   {t('overview:filter')}
                   {filter !== 'all' && (
                     <span className="-mr-1 ml-0.5 grid size-4 place-items-center rounded-full bg-primary text-[10px] text-on-grad">1</span>
@@ -493,7 +485,10 @@ function AgentRuns() {
                       i === a.length - 1 && 'rounded-r-lg text-right'
                     )}
                   >
-                    {t(`overview:col.${c}`)}
+                    <span className="inline-flex items-center gap-1.5">
+                      {t(`overview:col.${c}`)}
+                      <Icon name="sort" size={12} className="opacity-60" />
+                    </span>
                   </th>
                 ))}
                 <th className="h-9 w-10 rounded-r-lg bg-secondary" />
@@ -510,10 +505,15 @@ function AgentRuns() {
                   >
                     <td className="border-b border-border/60 px-3 font-medium text-cell tabular-nums">#{1000 + r.index + 1}</td>
                     <td className="max-w-0 truncate border-b border-border/60 px-3 font-medium text-cell group-hover/row:text-foreground">{r.title}</td>
-                    <td className="truncate border-b border-border/60 px-3 text-cell">{r.model}</td>
+                    <td className="truncate border-b border-border/60 px-3 text-cell">
+                      <span className="inline-flex items-center gap-1.5">
+                        <BrandMark logo={modelLogo(r.model)} name={r.model} size={16} tone="bare" />
+                        {r.model}
+                      </span>
+                    </td>
                     <td className="border-b border-border/60 px-3">
-                      <span className={cn('inline-flex items-center gap-1.5 font-medium whitespace-nowrap [&>svg]:size-3.5', S.cls)}>
-                        <S.icon aria-hidden />
+                      <span className="inline-flex items-center gap-1.5 font-medium whitespace-nowrap">
+                        <Icon name={S.icon} />
                         <span className="text-cell">{t(S.key)}</span>
                       </span>
                     </td>
@@ -560,6 +560,25 @@ function Overview() {
   const previous = useMemo(() => summarize(days, range, now - range * 86_400_000), [days, range, now])
   const cmpLabel = range === 7 ? t('overview:vsLastWeek') : t('overview:vsLastMonth')
   const rangeLabel = range === 7 ? t('overview:lastWeek') : t('overview:last30')
+  const rangeMenu = (variant: 'outline' | 'surface') => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant={variant} className="group/range w-[128px] justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar aria-hidden />
+                    {rangeLabel}
+                  </span>
+                  <ChevronDown className="size-3 transition-transform duration-200 group-data-[state=open]/range:rotate-180" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuRadioGroup value={String(range)} onValueChange={(v) => setRange(Number(v) as Range)}>
+                  <DropdownMenuRadioItem value="7">{t('overview:lastWeek')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="30">{t('overview:last30')}</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+  )
 
   return (
     <div className="h-full overflow-x-hidden overflow-y-auto px-1 pt-2 pb-6 [scrollbar-width:thin]" data-testid="overview-page">
@@ -575,23 +594,7 @@ function Overview() {
             </p>
           </div>
           <div className="flex items-center gap-2 motion-safe:animate-rise-in" style={{ animationDelay: '60ms' }}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="group/range w-[128px] justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Calendar aria-hidden />
-                    {rangeLabel}
-                  </span>
-                  <ChevronDown className="size-3 transition-transform duration-200 group-data-[state=open]/range:rotate-180" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuRadioGroup value={String(range)} onValueChange={(v) => setRange(Number(v) as Range)}>
-                  <DropdownMenuRadioItem value="7">{t('overview:lastWeek')}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="30">{t('overview:last30')}</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {rangeMenu('outline')}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" aria-label={t('overview:options')}>
@@ -613,7 +616,7 @@ function Overview() {
             <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
               <Kpi
                 title={t('overview:tokens')}
-                icon={BarChart3}
+                icon="analytics"
                 value={compact(current.tokens)}
                 delta={change(current.tokens, previous.tokens)}
                 series={current.series.map((d) => d.stats.tokens)}
@@ -622,7 +625,7 @@ function Overview() {
               />
               <Kpi
                 title={t('overview:speed')}
-                icon={Zap}
+                icon="zap"
                 value={current.speed === null ? '—' : `${current.speed.toFixed(1)} tok/s`}
                 delta={change(current.speed, previous.speed)}
                 series={current.series.map((d) =>
@@ -633,7 +636,7 @@ function Overview() {
               />
               <Kpi
                 title={t('overview:toolSuccess')}
-                icon={Gauge}
+                icon="timer"
                 value={current.toolSuccess === null ? '—' : `${(current.toolSuccess * 100).toFixed(1)}%`}
                 delta={change(current.toolSuccess, previous.toolSuccess)}
                 series={current.series.map((d) => {
@@ -644,7 +647,12 @@ function Overview() {
                 delay={200}
               />
             </div>
-            <Throughput summary={current} previous={previous} cmpLabel={cmpLabel} />
+            <Throughput
+              summary={current}
+              previous={previous}
+              cmpLabel={cmpLabel}
+              rangePicker={rangeMenu('surface')}
+            />
           </div>
           <LatestActivity items={activity} />
         </div>

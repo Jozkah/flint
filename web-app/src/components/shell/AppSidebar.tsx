@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
@@ -111,6 +112,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation()
   const { toggle, isMobile } = useShellNav()
   const area = areaForPath(pathname)
+  const navRef = useRef<HTMLElement>(null)
+  useSidebarGlide(navRef)
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
   const macOverlay = useMemo(() => detectMacOverlay(), [])
   const { reserveLeft } = resolveSidebarTitlebar(macOverlay, leftButtons)
@@ -230,10 +233,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </button>
 
         <nav
+          ref={navRef}
           aria-label={t('common:appRail.label')}
           data-testid="app-sidebar"
           onKeyDown={moveFocusWithArrows}
-          className="-mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
+          className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
         >
           <NavGroup>
             <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>

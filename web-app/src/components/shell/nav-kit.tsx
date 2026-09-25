@@ -165,6 +165,7 @@ export const NavButton = React.forwardRef<
       ref={ref}
       data-slot="nav-button"
       data-active={isActive}
+      data-size={size ?? 'default'}
       className={cn(navButtonVariants({ size }), className)}
       {...props}
     />

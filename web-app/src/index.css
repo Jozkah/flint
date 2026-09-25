@@ -374,6 +374,104 @@ html {
   background: var(--background);
 }
 
+/* ---- Shell motion, as in the design (anim.css) ---- */
+
+/* The sidebar selection: one card that glides between rows. */
+[data-slot='nav-glide'] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 8px;
+  background: var(--card);
+  border: 0.8px solid var(--border);
+  box-shadow: 0 4px 7px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 0.5s var(--expo), width 0.5s var(--expo), height 0.5s var(--expo), opacity 0.2s;
+}
+[data-glide] [data-slot='nav-button'][data-active='true'] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-glide] [data-slot='nav-item'],
+[data-glide] [data-slot='nav-group'] > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Row icons tip in on hover; sub-row titles nudge right. */
+[data-slot='nav-button'] > .ic:first-child {
+  transition: transform 0.3s var(--expo);
+}
+[data-slot='nav-button']:hover > .ic:first-child {
+  transform: scale(1.12) rotate(-6deg);
+}
+[data-slot='nav-button'][data-size='sub'] > span:last-child,
+[data-slot='nav-button'][data-size='sm'] > span:last-child {
+  transition: transform 0.25s var(--expo), color 0.15s;
+}
+[data-slot='nav-button'][data-size='sub']:hover > span:last-child,
+[data-slot='nav-button'][data-size='sm']:hover > span:last-child {
+  transform: translateX(2px);
+}
+
+/* First paint: the sidebar slides in, the header fades, groups rise. */
+[data-boot] [data-testid='app-sidebar-panel'] {
+  animation: sb-in 0.6s var(--expo) both;
+}
+[data-boot] [data-testid='context-bar'] {
+  animation: fade-in 0.5s ease 0.1s both;
+}
+[data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group'] {
+  animation: rise-in 0.5s var(--expo) both;
+}
+[data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(3) { animation-delay: 60ms; }
+[data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(4) { animation-delay: 120ms; }
+[data-boot] [data-testid='app-sidebar'] > [data-slot='nav-group']:nth-child(5) { animation-delay: 180ms; }
+
+/* Each navigation fades the page in once. */
+.view-in {
+  animation: view-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Primary actions answer a press with a ripple from the pointer. */
+.ripple {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+  pointer-events: none;
+  animation: ripple 0.6s ease-out forwards;
+}
+@keyframes ripple {
+  to { transform: scale(28); opacity: 0; }
+}
+
+/* Theme switch: the new theme opens as a circle from the toggle. */
+.vt-theme::view-transition-old(root),
+.vt-theme::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent); }
+  50% { opacity: 0.35; box-shadow: 0 0 0 4px transparent; }
+}
+
+html.reduce-motion .view-in,
+html.reduce-motion [data-boot] * {
+  animation: none !important;
+}
+
 /* The design's duotone icons flip for the dark theme (components/ui/icon). */
 .dark .ic {
   filter: invert(1) hue-rotate(180deg);
