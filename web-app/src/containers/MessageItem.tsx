@@ -49,6 +49,7 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useConversationModel } from '@/hooks/useConversationPane'
@@ -574,6 +575,22 @@ export const MessageItem = memo(
         }
       }
       flushCot(false)
+      // A run that ended after tool calls with no reply: say so, and name
+      // the last tool failure, rather than leaving only the tool trace.
+      if (message.role === 'assistant' && !isStreaming && !awaitingApproval) {
+        const fallback = emptyRunFallback(parts)
+        if (fallback) {
+          elements.push(
+            <p
+              key={`${message.id}-empty-run`}
+              data-testid="empty-run-fallback"
+              className="mt-1 text-sm text-muted-foreground break-words"
+            >
+              {fallback}
+            </p>
+          )
+        }
+      }
       return elements
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [

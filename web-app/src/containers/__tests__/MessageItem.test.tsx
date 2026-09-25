@@ -151,6 +151,50 @@ describe('MessageItem', () => {
     expect(screen.getByTestId('render-markdown')).toHaveTextContent('Hello assistant')
   })
 
+  it('shows a fallback reply when the run ended after a tool error with no text', () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            parts: [
+              {
+                type: 'tool-bash',
+                toolCallId: 'c1',
+                state: 'output-error',
+                input: {},
+                errorText: 'sandbox failed',
+              },
+            ],
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('empty-run-fallback')).toHaveTextContent(
+      'The run ended without a reply. Last tool error (bash): sandbox failed'
+    )
+  })
+
+  it('shows no fallback while the run is still streaming', () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            parts: [
+              { type: 'tool-bash', toolCallId: 'c1', state: 'output-error', input: {}, errorText: 'x' },
+            ],
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'streaming' as any}
+      />
+    )
+    expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
+  })
+
   it('renders user message in a bubble (no markdown renderer)', () => {
     render(
       <MessageItem

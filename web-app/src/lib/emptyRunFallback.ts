@@ -1,0 +1,96 @@
+/**
+ * A reply for a run that ended without one.
+ *
+ * When the model's last step after tool calls produces no text (a tool
+ * failed, the sandbox could not start, the model gave up), the chat used to
+ * show only the tool trace and no answer. This builds a short fallback line
+ * naming the last tool failure so the user is not left with nothing.
+ */
+import type { MessagePartLike } from '@/containers/message/types'
+
+const MAX_ERROR_CHARS = 300
+
+function textOf(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((v) =>
+        typeof v === 'string'
+          ? v
+          : v && typeof v === 'object' && typeof (v as { text?: unknown }).text === 'string'
+            ? (v as { text: string }).text
+            : ''
+      )
+      .join(' ')
+      .trim()
+    return joined || undefined
+  }
+  if (value && typeof value === 'object') {
+    const o = value as Record<string, unknown>
+    return textOf(o.message) ?? textOf(o.error) ?? textOf(o.content)
+  }
+  return undefined
+}
+
+/** The error a finished tool part reports, if it failed. */
+export function toolPartError(part: MessagePartLike): string | undefined {
+  if (!part.type.startsWith('tool-')) return undefined
+  if (part.state === 'output-error') {
+    return textOf(part.errorText) ?? textOf(part.error) ?? 'unknown error'
+  }
+  if (part.state === 'output-available') {
+    const out = part.output as Record<string, unknown> | undefined
+    if (!out || typeof out !== 'object') return undefined
+    if (out.isError === true) return textOf(out.content) ?? 'unknown error'
+    if (out.error !== undefined && out.error !== null && out.error !== false) {
+      return textOf(out.error) ?? 'unknown error'
+    }
+  }
+  return undefined
+}
+
+function clip(s: string): string {
+  const one = s.replace(/\s+/g, ' ').trim()
+  return one.length > MAX_ERROR_CHARS ? `${one.slice(0, MAX_ERROR_CHARS)}…` : one
+}
+
+/**
+ * The fallback reply for a finished assistant message whose tool calls were
+ * not followed by any text, or null when it has an answer (or is still
+ * running, or used no tools).
+ */
+export function emptyRunFallback(parts: readonly MessagePartLike[]): string | null {
+  let lastTool = -1
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].type.startsWith('tool-')) {
+      lastTool = i
+      break
+    }
+  }
+  if (lastTool === -1) return null
+  const answered = parts
+    .slice(lastTool + 1)
+    .some((p) => (p.type === 'text' && !!p.text?.trim()) || p.type === 'file')
+  if (answered) return null
+  // A tool still waiting or running: the run has not ended.
+  const unsettled = parts.some(
+    (p) =>
+      p.type.startsWith('tool-') &&
+      p.state !== undefined &&
+      p.state !== 'output-available' &&
+      p.state !== 'output-error'
+  )
+  if (unsettled) return null
+  let lastError: string | undefined
+  let toolName = ''
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const err = toolPartError(parts[i])
+    if (err) {
+      lastError = err
+      toolName = parts[i].type.slice('tool-'.length)
+      break
+    }
+  }
+  if (!lastError) return 'The run ended without a reply.'
+  return `The run ended without a reply. Last tool error (${toolName}): ${clip(lastError)}`
+}
