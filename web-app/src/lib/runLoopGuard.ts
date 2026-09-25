@@ -121,6 +121,11 @@ export type ObservedCall = {
  * Key order and whitespace are not meaning: `{"path":"a","text":"x"}` and
  * `{ "text":"x", "path":"a" }` are the same call, and a model that alternates
  * between the two spellings is looping just as surely as one that does not.
+ * Neither is a freshly minted id (see `VOLATILE_KEY`).
+ *
+ * This key is also the "no progress" rule: the same call reaching
+ * `REPEAT_LIMIT` trips whether or not it succeeded, since a call that keeps
+ * succeeding with the same arguments is not moving the turn forward either.
  */
 export function canonicalKey(call: {
   tool: string
@@ -129,9 +134,26 @@ export function canonicalKey(call: {
   return `${call.tool}::${canonicalJson(call.input)}`
 }
 
+/**
+ * Values that are minted fresh for every call and carry no meaning of their
+ * own: a UUID, or the value of a field whose name says it is a one-off handle
+ * (`commandId`, `requestId`, a nonce). A model that approves command after
+ * command, each with a new id, and runs the same command in between, is
+ * repeating one call, not making a new one each time; so these are compared
+ * as a placeholder. Ordinary ids (`issueId`, `path`) are left alone: stepping
+ * through different issues is progress.
+ */
+const UUID_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const VOLATILE_KEY =
+  /^(command_?id|request_?id|call_?id|tool_?call_?id|approval_?id|nonce|idempotency_?key|correlation_?id|trace_?id|token|uuid)$/i
+const VOLATILE = '<id>'
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') {
-    return typeof value === 'string' ? value.trim() : JSON.stringify(value) ?? ''
+    return typeof value === 'string'
+      ? value.trim().replace(UUID_PATTERN, VOLATILE)
+      : JSON.stringify(value) ?? ''
   }
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(',')}]`
@@ -139,7 +161,11 @@ function canonicalJson(value: unknown): string {
   const record = value as Record<string, unknown>
   const keys = Object.keys(record).sort()
   return `{${keys
-    .map((key) => `${key}:${canonicalJson(record[key])}`)
+    .map((key) =>
+      VOLATILE_KEY.test(key) && record[key] != null && typeof record[key] !== 'object'
+        ? `${key}:${VOLATILE}`
+        : `${key}:${canonicalJson(record[key])}`
+    )
     .join(',')}}`
 }
 
