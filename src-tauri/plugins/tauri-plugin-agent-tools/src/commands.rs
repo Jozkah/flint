@@ -981,6 +981,13 @@ async fn execute_tool_inner(
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
+    // Transcript audit #5: `"C:	mp"` in JSON arrives as `C:<TAB>mp`. Put the
+    // backslash back when that names something real, before the gate judges
+    // the path; otherwise say what happened instead of "does not exist".
+    let mut args = args;
+    crate::tools::path_repair::repair_args_on_disk(&name, tool.path_args, &mut args, &root, Some(&scratch))
+        .map_err(|e| AgentToolsError::from(format!("tool '{name}' was refused: {e}")))?;
+
     // The project's own policy, read from its `agent.toml` rather than assumed.
     // AH-007/AH-036/AH-037/AH-042: this call site used to build
     // `ToolPermissions::default()` -- allow everything -- so a repository that

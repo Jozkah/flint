@@ -22,7 +22,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to read, relative to your workspace, or absolute. Must be inside the workspace or an attached read root." },
+                        "path": { "type": "string", "description": "File to read, relative to your workspace, or absolute. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB). Must be inside the workspace or an attached read root." },
                         "offset": { "type": "integer", "description": "1-indexed line to start from. Default 1 (start of file)." },
                         "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." }
                     },
@@ -38,7 +38,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "Directory to list. Default '.' (your workspace)." },
+                        "path": { "type": "string", "description": "Directory to list. Default '.' (your workspace). On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "limit": { "type": "integer", "description": "Maximum entries to return. Default 500." }
                     },
                     "required": []
@@ -54,7 +54,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "pattern": { "type": "string", "description": "Glob to match against file paths. Required." },
-                        "path": { "type": "string", "description": "Directory to search under. Default '.' (your workspace)." },
+                        "path": { "type": "string", "description": "Directory to search under. Default '.' (your workspace). On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "limit": { "type": "integer", "description": "Maximum results to return. Default 1000." }
                     },
                     "required": ["pattern"]
@@ -70,7 +70,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "pattern": { "type": "string", "description": "Regex (or, with `literal`, a plain string) to search for. Required." },
-                        "path": { "type": "string", "description": "Directory or single file to search. Default '.' (your workspace)." },
+                        "path": { "type": "string", "description": "Directory or single file to search. Default '.' (your workspace). On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "glob": { "type": "string", "description": "Restrict the search to files matching this glob, e.g. '*.ts' or '**/*.rs'." },
                         "ignore_case": { "type": "boolean", "description": "Case-insensitive match. Default false." },
                         "literal": { "type": "boolean", "description": "Treat `pattern` as a literal string, not a regex. Default false." },
@@ -105,7 +105,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to create or overwrite, relative to your workspace, or absolute." },
+                        "path": { "type": "string", "description": "File to create or overwrite, relative to your workspace, or absolute. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "content": { "type": "string", "description": "The full contents to write. This becomes the entire file." }
                     },
                     "required": ["path", "content"]
@@ -120,7 +120,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to edit, relative to your workspace, or absolute." },
+                        "path": { "type": "string", "description": "File to edit, relative to your workspace, or absolute. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "edits": {
                             "type": "array",
                             "description": "Replacements to apply in order. At least one is required.",
@@ -434,7 +434,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "Absolute path of the folder or file you need, as narrow as possible." },
+                        "path": { "type": "string", "description": "Absolute path of the folder or file you need, as narrow as possible. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB)." },
                         "reason": { "type": "string", "description": "One sentence the user reads: what you need from it and why." },
                         "access_mode": { "type": "string", "enum": ["read", "write"], "description": "Default read. Write is a separate, explicit request." }
                     },

@@ -3591,11 +3591,22 @@ impl CompositeToolInvoker {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let Some(args) = parse_tool_args(tc) else {
+            let Some(mut args) = parse_tool_args(tc) else {
                 out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
                 continue;
             };
             let tool = lookup(name).expect("is_builtin implies lookup");
+            // Transcript audit #5: a backslash JSON turned into a TAB.
+            if let Err(e) = tauri_plugin_agent_tools::tools::path_repair::repair_args_on_disk(
+                name,
+                tool.path_args,
+                &mut args,
+                &self.project_root,
+                Some(self.scratch_root.as_path()),
+            ) {
+                out.push(ToolOutcome::plain(id, format!("ERROR: {e}")));
+                continue;
+            }
             // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
             // BEFORE the normal gate, without a permission prompt, and auto-approval
             // cannot override this (unlike the normal prompt suppression below).

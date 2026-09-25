@@ -324,6 +324,18 @@ fn is_unc_or_device_text(raw: &str) -> Option<RefusalCode> {
 /// why and offered something else instead of retrying the same request.
 pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refusal> {
     let requested = raw.trim();
+    // Transcript audit #5: `"C:\tmp"` in JSON arrives as `C:<TAB>mp`.
+    let repaired;
+    let requested = match crate::tools::path_repair::repair("path", requested, &|p| {
+        Path::new(p).exists()
+    }) {
+        Ok(Some(fixed)) => {
+            repaired = fixed;
+            repaired.as_str()
+        }
+        Ok(None) => requested,
+        Err(e) => return Err(Refusal::new(RefusalCode::InvalidPath, e)),
+    };
     if requested.is_empty() || requested.contains('\0') {
         return Err(Refusal::new(RefusalCode::InvalidPath, "path is empty"));
     }

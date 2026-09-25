@@ -17,6 +17,8 @@ pub mod image;
 pub mod jail;
 pub mod mcp_confine;
 pub mod owned;
+/// Paths whose backslashes JSON turned into control characters.
+pub mod path_repair;
 pub mod proc;
 /// Path containment for the filesystem tools. Distinct from [`jail`], which is
 /// kernel-level confinement for spawned commands.
