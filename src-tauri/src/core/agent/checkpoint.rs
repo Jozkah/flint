@@ -138,10 +138,11 @@ pub fn capture(
     changed: &[PathBuf],
     destination: Destination,
 ) -> Result<Checkpoint, String> {
+    let message = commit_message(label);
     let sha = if destination.may_hard_restore() {
-        git::snapshot_worktree(root, parent, label)?
+        git::snapshot_worktree(root, parent, &message)?
     } else {
-        git::snapshot(root, parent, label, thread_id, changed)?
+        git::snapshot(root, parent, &message, thread_id, changed)?
     };
     // Keeping the chain reachable is what stops garbage collection from
     // quietly making recovery impossible between one session and the next.
@@ -152,6 +153,46 @@ pub fn capture(
         destination,
         root: root.to_string_lossy().to_string(),
     })
+}
+
+/// Longest subject line a checkpoint commit gets, git's customary limit.
+const SUBJECT_LIMIT: usize = 72;
+
+/// The commit message for a checkpoint labelled `label`.
+///
+/// The label is often the user's whole prompt, and a managed worktree's branch
+/// can grow from these commits, so the prompt used to show up verbatim as a
+/// commit message ("Access is now a managed worktree. Fix calc.py so ...").
+/// The message is a `Cowork checkpoint` subject instead, carrying the label's
+/// first line cut at a word boundary so the subject stays within 72
+/// characters. The full label is kept on the [`Checkpoint`] itself.
+pub(crate) fn commit_message(label: &str) -> String {
+    const PREFIX: &str = "Cowork checkpoint";
+    let first = label
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or_default();
+    // Only the first sentence: the rest of a prompt is detail.
+    let first = match first.find(". ") {
+        Some(at) => &first[..at],
+        None => first.trim_end_matches('.'),
+    };
+    if first.is_empty() {
+        return PREFIX.to_string();
+    }
+    let room = SUBJECT_LIMIT - PREFIX.len() - 2;
+    let summary = if first.chars().count() <= room {
+        first.to_string()
+    } else {
+        let cut: String = first.chars().take(room - 3).collect();
+        let cut = match cut.rfind(' ') {
+            Some(at) if at > room / 2 => &cut[..at],
+            _ => cut.as_str(),
+        };
+        format!("{}...", cut.trim_end())
+    };
+    format!("{PREFIX}: {summary}")
 }
 
 /// What a rewind would do, without doing it.
@@ -518,6 +559,40 @@ mod tests {
         let mut out = BTreeMap::new();
         walk(root, root, &mut out);
         out
+    }
+
+    /// A checkpoint's commit gets a short `Cowork checkpoint` subject, never
+    /// the prompt it was labelled with.
+    #[test]
+    fn checkpoint_commits_do_not_use_the_prompt_as_message() {
+        let prompt = "Access is now a managed worktree. Fix calc.py so test_calc.py passes, \
+                      run python -m pytest and report back what changed in detail";
+        let message = commit_message(prompt);
+        assert_eq!(message, "Cowork checkpoint: Access is now a managed worktree");
+        let long = commit_message(&"word ".repeat(40));
+        assert!(long.starts_with("Cowork checkpoint: word"), "{long}");
+        assert!(long.chars().count() <= 72, "{long}");
+        assert!(long.ends_with("..."), "{long}");
+        assert_eq!(commit_message(""), "Cowork checkpoint");
+        assert_eq!(commit_message("\n  before edit\nmore"), "Cowork checkpoint: before edit");
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let git_in = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git_in(&["init", "-q"]);
+        std::fs::write(root.join("calc.py"), "x = 1\n").unwrap();
+        let point = capture(&root, "cp-message", None, prompt, &[], Destination::Managed).unwrap();
+        assert_eq!(point.label, prompt);
+        let subject = git_in(&["log", "-1", "--format=%B", &point.sha]);
+        assert_eq!(subject, "Cowork checkpoint: Access is now a managed worktree");
     }
 
     fn managed(root: &Path, id: &str, parent: Option<&str>, label: &str) -> Checkpoint {
