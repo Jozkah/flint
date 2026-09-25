@@ -2362,10 +2362,11 @@ const ChatInput = memo(function ChatInput({
             // reserve now follows the row's measured height.
             style={{ paddingBottom: `${footerHeight}px` }}
             className={cn(
-              'relative z-20 px-0 border rounded-lg border-line-strong bg-card motion-safe:transition-[border-color,box-shadow]',
-              // A clear focus: a stronger edge and a soft ring.
-              isFocused && 'border-ring ring-3 ring-ring/20',
-              isDragOver && 'border-brand ring-3 ring-ring/30 bg-brand-tint'
+              'relative z-20 rounded-xl border-[0.8px] border-border bg-card px-0 shadow-[0_4px_14px_rgba(0,0,0,.04)] motion-safe:transition-[border-color,box-shadow,transform] motion-safe:duration-300 motion-safe:ease-expo',
+              // A clear focus: a stronger edge, a soft ring, and the box lifts.
+              isFocused &&
+                'border-border-strong shadow-[0_0_0_3px_color-mix(in_oklab,var(--ring)_18%,transparent),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:-translate-y-0.5',
+              isDragOver && 'border-acc ring-3 ring-ring/30 bg-acc-tint'
             )}
             data-drop-zone="true"
             onDragEnter={handleDragEnter}
@@ -2395,7 +2396,7 @@ const ChatInput = memo(function ChatInput({
                         <div
                           key={`${att.type}-${idx}-${att.name}`}
                           data-testid="composer-attachment-chip"
-                          className="relative flex h-9 min-w-0 max-w-56 items-center gap-1.5 rounded-md border border-border bg-sunken pl-1 pr-1 text-xs text-foreground pointer-coarse:h-11"
+                          className="relative flex h-9 min-w-0 max-w-56 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-muted pl-1 pr-1 text-xs text-foreground pointer-coarse:h-11"
                         >
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -2634,7 +2635,7 @@ const ChatInput = memo(function ChatInput({
               data-gramm_grammarly={spellCheckChatInput}
               className={cn(
                 // 16px below md so a phone does not zoom into the field.
-                'bg-transparent pt-3.5 w-full shrink-0 border-none resize-none outline-0 px-4 text-base leading-relaxed text-foreground placeholder:text-muted-foreground md:text-[15px]',
+                'w-full shrink-0 resize-none border-none bg-transparent px-3 pt-3 pb-1 text-base leading-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13.5px]',
                 rows < maxRows && 'scrollbar-hide',
                 className
               )}
@@ -2673,12 +2674,12 @@ const ChatInput = memo(function ChatInput({
           </div>
         </div>
 
-        <div ref={footerRef} className="absolute z-20 bg-transparent bottom-0 w-full p-2 ">
+        <div ref={footerRef} className="absolute z-20 bg-transparent bottom-0 w-full p-2">
           <div className="flex justify-between items-center w-full">
-            <div className="px-1 flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
               <div
                 className={cn(
-                  'px-1 flex items-center gap-1',
+                  'flex items-center gap-1',
                   isStreaming && 'opacity-50 pointer-events-none'
                 )}
               >
@@ -2689,9 +2690,10 @@ const ChatInput = memo(function ChatInput({
                     <Button
                       variant="outline"
                       size="icon-sm"
-                      className="mr-1.5 text-ink-2 pointer-coarse:size-11"
+                      aria-label={t('common:attachments')}
+                      className="mr-0.5 size-7 rounded-[7px] text-secondary-foreground pointer-coarse:size-11"
                     >
-                      <PlusIcon className="size-4.5" />
+                      <PlusIcon className="size-[15px]" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
@@ -2792,7 +2794,7 @@ const ChatInput = memo(function ChatInput({
                       <Button
                           variant="ghost"
                           size="icon-xs"
-                          className="size-8 pointer-coarse:size-11"
+                          className="size-7 rounded-[7px] pointer-coarse:size-11"
                         >
                         <CodeXml className="size-4 text-muted-foreground" />
                       </Button>
@@ -2828,7 +2830,7 @@ const ChatInput = memo(function ChatInput({
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          className="size-8 pointer-coarse:size-11"
+                          className="size-7 rounded-[7px] pointer-coarse:size-11"
                           onClick={(e) => {
                             setDropdownToolsAvailable(false)
                             e.stopPropagation()
@@ -2875,14 +2877,14 @@ const ChatInput = memo(function ChatInput({
                         size="icon-xs"
                         onClick={currentThreadId ? handleAgentToggle : undefined}
                         className={cn(
-                          isAgentMode && 'text-brand-text bg-brand-tint hover:bg-brand-tint items-center',
+                          isAgentMode && 'items-center bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]',
                           !currentThreadId && 'cursor-default pointer-events-none'
                         )}
                       >
                         <BotIcon
                           className={cn(
                             'text-muted-foreground -mt-0.5',
-                            isAgentMode && 'text-brand-text'
+                            isAgentMode && 'text-foreground'
                           )}
                         />
                       </Button>
@@ -2905,15 +2907,15 @@ const ChatInput = memo(function ChatInput({
                         size="icon-xs"
                         aria-pressed={webSearchEnabled}
                         className={cn(
-                          'size-8 pointer-coarse:size-11',
-                          webSearchEnabled && 'bg-brand-tint text-brand-text hover:bg-brand-tint'
+                          'size-7 rounded-[7px] pointer-coarse:size-11',
+                          webSearchEnabled && 'bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]'
                         )}
                         onClick={() => setWebSearchEnabled(!webSearchEnabled)}
                       >
                         <Globe
                           className={cn(
                             'size-4 text-muted-foreground',
-                            webSearchEnabled && 'text-brand-text'
+                            webSearchEnabled && 'text-foreground'
                           )}
                         />
                       </Button>
@@ -3102,13 +3104,13 @@ const ChatInput = memo(function ChatInput({
                               <Button
                                 variant="ghost"
                                 size="icon-xs"
-                                className="size-8 pointer-coarse:size-11"
+                                className="size-7 rounded-[7px] pointer-coarse:size-11"
                                 aria-label={`Reasoning: ${label}`}
                               >
                                 <Brain
                                   className={cn(
                                     'size-4 text-muted-foreground',
-                                    reasoningValue === 'on' && 'text-brand-text',
+                                    reasoningValue === 'on' && 'text-foreground',
                                     reasoningValue === 'off' && 'opacity-50'
                                   )}
                                 />
@@ -3256,12 +3258,12 @@ const ChatInput = memo(function ChatInput({
               ) : isStreaming ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* Stopping is not destructive -- the partial reply is
-                        kept -- so it is a secondary button, not a red one. */}
+                    {/* A quiet red outline: stopping keeps the partial
+                        reply, so it is not a filled destructive action. */}
                     <Button
                       variant="outline"
                       size="icon-sm"
-                      className="mr-1 mb-1 pointer-coarse:size-11"
+                      className="size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
                       data-test-id="stop-button"
                       aria-label={
                         queueLength > 0
@@ -3285,7 +3287,7 @@ const ChatInput = memo(function ChatInput({
                         stopStreaming(currentThreadId ?? '')
                       }}
                     >
-                      <Square className="size-3.5 fill-current" />
+                      <Square className="size-3 fill-current" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -3300,9 +3302,15 @@ const ChatInput = memo(function ChatInput({
                   data-test-id="send-message-button"
                   aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
-                  className="mr-1 mb-1 pointer-coarse:size-11"
+                  className={cn(
+                    'size-7 pointer-coarse:size-11',
+                    // Wakes up with a small pop once there is something to send.
+                    (prompt.trim() || hasSendableMedia) &&
+                      !ingestingAny &&
+                      'shadow-[0_4px_14px_-4px_rgba(0,0,0,.35)] motion-safe:animate-send-ready'
+                  )}
                 >
-                  <ArrowUp className="size-4.5" />
+                  <ArrowUp className="size-4" />
                 </Button>
               )}
             </div>
@@ -3313,7 +3321,7 @@ const ChatInput = memo(function ChatInput({
       {message && (
         <div
           role="alert"
-          className="mt-1.5 mx-1 rounded-md border border-destructive/30 bg-destructive-tint px-3 py-1.5 text-xs text-destructive"
+          className="mt-1.5 mx-1 rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint px-3 py-1.5 text-xs text-destructive"
         >
           <div className="flex items-center gap-2 justify-between">
             <span className="min-w-0 wrap-break-word">{message}</span>

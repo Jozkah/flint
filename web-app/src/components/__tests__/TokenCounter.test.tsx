@@ -98,14 +98,14 @@ describe('TokenCounter', () => {
     expect(span.className).toContain('text-destructive')
   })
 
-  it('applies primary styling when under limit', () => {
+  it('stays quiet when under limit', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000 })
     render(<TokenCounter />)
     const percentElements = screen.getAllByText('50.0%')
     const span = percentElements[0]
-    expect(span.className).toContain('text-foreground')
+    // No tone of its own: it inherits the composer's muted text.
     expect(span.className).not.toContain('text-destructive')
-    expect(span.className).not.toContain('text-amber-500')
+    expect(span.className).not.toContain('text-warning')
   })
 
   it('calls calculateTokens when clicked', async () => {
