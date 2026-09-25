@@ -45,6 +45,7 @@ import { SystemEvent } from '@/types/events'
 import { Button } from '@/components/ui/button'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
+import { McpDescriptionGenerator } from '@/containers/dialogs/McpDescriptionGenerator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { normalizeAppError } from '@/utils/appError'
 import { McpServerAuth } from '@/containers/McpServerAuth'
@@ -194,6 +195,8 @@ function MCPServersDesktop() {
   } = useToolApproval()
 
   const [open, setOpen] = useState(false)
+  /** Describe dialog: `null` closed, `''` batch, a name for one server. */
+  const [describeTarget, setDescribeTarget] = useState<string | null>(null)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [currentConfig, setCurrentConfig] = useState<
     MCPServerConfig | undefined
@@ -911,6 +914,21 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        anchor="settings-mcp-servers-generate-descriptions"
+        title={t('mcp-servers:describe.settingTitle')}
+        description={t('mcp-servers:describe.settingDesc')}
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={Object.keys(mcpServers).length === 0}
+            onClick={() => setDescribeTarget('')}
+          >
+            {t('mcp-servers:describe.open')}
+          </Button>
+        }
+      />
+      <CardItem
         anchor="settings-mcp-servers-router-model"
         title={t('mcp-servers:runtimeSettings.routerModel')}
         description={t('mcp-servers:runtimeSettings.routerModelDesc')}
@@ -1132,6 +1150,8 @@ function MCPServersDesktop() {
           )}
           <McpServerDetails
             profile={profile}
+            serverName={key}
+            onGenerateDescription={() => setDescribeTarget(key)}
             toolNames={toolNames}
             authStateLabel={
               authStatus
@@ -1469,6 +1489,22 @@ function MCPServersDesktop() {
         existingNames={Object.keys(mcpServers)}
       />
 
+      <McpDescriptionGenerator
+        open={describeTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setDescribeTarget(null)
+        }}
+        servers={mcpServers}
+        connectedServers={connectedServers}
+        onlyServer={describeTarget || undefined}
+        onSave={(descriptions) => {
+          for (const [name, description] of Object.entries(descriptions)) {
+            const config = mcpServers[name]
+            if (config) editServer(name, { ...config, description })
+          }
+          void syncServers()
+        }}
+      />
       <McpServerLogDialog
         open={logServer !== null}
         onOpenChange={(o) => !o && setLogServer(null)}

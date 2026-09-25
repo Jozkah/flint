@@ -120,7 +120,9 @@
     "effects": "Turn off, clear sign-in, or delete",
     "effectDisable": "Turn off: stays configured but is not started, so its tools are unavailable in every chat. Approvals are kept.",
     "effectClearAuth": "Clear authentication: forgets the stored sign-in and disconnects. The server stays on, keeps its approvals, and reconnects after you sign in again.",
-    "effectRemove": "Delete: stops the server, removes its configuration, and removes every approval and stored sign-in it had. Renaming it also resets approvals, and changing its command, arguments, URL, environment or header names means approving it again."
+    "effectRemove": "Delete: stops the server, removes its configuration, and removes every approval and stored sign-in it had. Renaming it also resets approvals, and changing its command, arguments, URL, environment or header names means approving it again.",
+    "generate": "Generate",
+    "generateLabel": "Generate a description for {{serverName}} with AI"
   },
   "editJson": {
     "title": "Edit JSON for MCP Server: {{serverName}}",
@@ -206,5 +208,40 @@
     "description": "What this server printed to its error stream, newest last. Secrets are removed before anything is written.",
     "empty": "This server has not printed anything.",
     "refresh": "Refresh"
+  },
+  "describe": {
+    "title": "Generate descriptions with AI",
+    "titleOne": "Describe {{serverName}} with AI",
+    "settingTitle": "Generate descriptions with AI",
+    "settingDesc": "Ask a model to write the \"About this server\" text from each server's tool list. You review every text before it is saved.",
+    "open": "Generate...",
+    "intro": "The chosen model receives each server's name and tool list (names, descriptions, arguments). Nothing is saved until you accept it.",
+    "model": "Model",
+    "scope": "Servers",
+    "scopeEmpty": "Only without a description",
+    "scopeAll": "All servers",
+    "targetCount_one": "{{count}} server will be described.",
+    "targetCount_other": "{{count}} servers will be described.",
+    "review": "Review",
+    "current": "Current: {{text}}",
+    "editLabel": "Generated description for {{serverName}}",
+    "accept": "Accept",
+    "reject": "Reject",
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "pending": "Needs your decision: replaces your description",
+    "generate": "Generate",
+    "cancel": "Cancel generation",
+    "cancelled": "cancelled",
+    "save_one": "Save {{count}}",
+    "save_other": "Save {{count}}",
+    "skippedNoTools": "tools unknown; turn the server on once so Flint can read them",
+    "status": {
+      "queued": "Waiting",
+      "running": "Generating...",
+      "done": "Ready for review",
+      "skipped": "Skipped: {{reason}}",
+      "failed": "Failed: {{reason}}"
+    }
   }
 }

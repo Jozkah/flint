@@ -21,6 +21,8 @@ pub enum UtilityKind {
     Title,
     Summary,
     Classify,
+    /// An "About this server" text for an MCP server, from its tool list.
+    Describe,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

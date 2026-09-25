@@ -17,7 +17,7 @@
 import { generateText, type LanguageModel, type ModelMessage } from 'ai'
 import { invoke } from '@tauri-apps/api/core'
 
-export type UtilityKind = 'title' | 'summary' | 'classify'
+export type UtilityKind = 'title' | 'summary' | 'classify' | 'describe'
 
 export type UtilityRequest = {
   kind: UtilityKind

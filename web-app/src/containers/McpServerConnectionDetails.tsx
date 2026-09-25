@@ -243,11 +243,16 @@ export function McpServerDetails({
   profile,
   toolNames,
   authStateLabel,
+  serverName,
+  onGenerateDescription,
 }: {
   profile: McpServerProfile
   toolNames: string[] | null | undefined
   /** Translated auth state, for the sign-in requirement line. */
   authStateLabel?: string
+  serverName?: string
+  /** Opens the AI description generator for this server. */
+  onGenerateDescription?: () => void
 }) {
   const { t } = useTranslation()
   const host = profile.host ?? ''
@@ -273,7 +278,22 @@ export function McpServerDetails({
       </summary>
       <div className="mt-2 flex flex-col gap-3 rounded-lg bg-muted p-3 text-xs text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
         <section>
-          <h3 className={heading}>{t('mcp-servers:details.whatItDoes')}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className={heading}>{t('mcp-servers:details.whatItDoes')}</h3>
+            {onGenerateDescription && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs pointer-coarse:h-11"
+                aria-label={t('mcp-servers:details.generateLabel', {
+                  serverName: serverName ?? '',
+                })}
+                onClick={onGenerateDescription}
+              >
+                {t('mcp-servers:details.generate')}
+              </Button>
+            )}
+          </div>
           <p>{profile.description ?? t('mcp-servers:details.noDescription')}</p>
         </section>
 
