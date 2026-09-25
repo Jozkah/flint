@@ -40,6 +40,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import {
   convertThreadMessagesToUIMessages,
   extractContentPartsFromUIMessage,
+  mergeSettledToolParts,
   uiMessageHasMeaningfulContent,
   threadMessageIsEmpty,
 } from '@/lib/messages'
@@ -1151,6 +1152,21 @@ export function ThreadConversation({
     },
     sendAutomaticallyWhen: followUpMessage,
   })
+
+  // Tool results land after onFinish saved the reply, so write them (and the
+  // error of a failed or denied call) back to the stored message once they
+  // exist; otherwise a reopened chat shows those calls as still running.
+  useEffect(() => {
+    const live = chatMessages[chatMessages.length - 1]
+    if (!live || live.role !== 'assistant') return
+    const stored = useMessages
+      .getState()
+      .getMessages(threadId)
+      .find((m) => m.id === live.id)
+    if (!stored) return
+    const merged = mergeSettledToolParts(stored, live)
+    if (merged) updateMessage(merged)
+  }, [chatMessages, threadId, updateMessage])
 
   // Our error banners (oom/backend/context) can arrive out-of-band for the
   // router path, leaving the SDK stream stuck at 'submitted' so the
