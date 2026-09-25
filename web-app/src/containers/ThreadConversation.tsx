@@ -89,7 +89,7 @@ import { Button } from '@/components/ui/button'
 import { CircleAlert, Loader2, MessageSquare, RefreshCw } from 'lucide-react'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
-import { formatDate } from '@/utils/formatDate'
+import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
@@ -2221,7 +2221,7 @@ export function ThreadConversation({
               firstCreatedAt && (
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                   {t('chat:startedAt', {
-                    time: formatDate(firstCreatedAt),
+                    time: formatMessageTime(firstCreatedAt),
                   })}
                 </span>
               )
@@ -2237,7 +2237,8 @@ export function ThreadConversation({
             } as CSSProperties
           }
         >
-          <Conversation className="absolute inset-0 text-start text-base">
+          {/* 13.5px at the default size; the message zoom scales it. */}
+          <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
             <ConversationContent
               className={cn(
                 'mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
@@ -2305,6 +2306,7 @@ export function ThreadConversation({
                   onOpenSettings={() =>
                     navigate({ to: route.settings.memory })
                   }
+                  projectName={thread?.metadata?.project?.name}
                 />
               )}
               {processingEmbeddings && (

@@ -71,6 +71,11 @@ export type ChainOfThoughtProps = ComponentProps<typeof Collapsible> & {
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  /**
+   * Seconds to report when the trace was not timed live (loaded from history),
+   * e.g. the span of its tool calls' recorded timings.
+   */
+  fallbackDuration?: number
 }
 
 export const ChainOfThought = memo(
@@ -82,6 +87,7 @@ export const ChainOfThought = memo(
     open,
     defaultOpen = true,
     onOpenChange,
+    fallbackDuration,
     children,
     ...props
   }: ChainOfThoughtProps) => {
@@ -128,7 +134,7 @@ export const ChainOfThought = memo(
     // tick still ran, and a zero would read as "still going" below.
     const duration =
       elapsedMs === undefined
-        ? undefined
+        ? fallbackDuration
         : Math.max(1, Math.ceil(elapsedMs / MS_IN_S))
 
     const contextValue = useMemo(
@@ -285,10 +291,8 @@ export const ChainOfThoughtContent = memo(
       )}
       {...props}
     >
-      {/* The steps draw their own dotted rail (StepRow). */}
-      <div className="ml-1.5 min-w-0 space-y-2.5">
-        {children}
-      </div>
+      {/* The steps hang off one rail drawn by their list (TIMELINE_RAIL). */}
+      <div className="min-w-0 space-y-2.5">{children}</div>
     </CollapsibleContent>
   )
 )
@@ -311,7 +315,7 @@ export const ChainOfThoughtText = memo(
       )}
       {...props}
     >
-      <div className="ml-1.5 min-w-0 border-l-[1.5px] border-dotted border-border-strong pl-[18px]">
+      <div className="ml-1.5 min-w-0 border-l-[1.5px] border-solid border-border-strong pl-[18px]">
         <Streamdown animate={true} animationDuration={500}>
           {children}
         </Streamdown>

@@ -38,13 +38,19 @@ export const ToolElapsed = memo(
     const seconds = useElapsedSeconds(startedAt, endedAt)
 
     if (seconds === undefined) return null
-    // A settled call under a second has no duration worth reporting; a running
-    // one still shows 0s, so the timer is visibly live from the start.
-    if (endedAt !== undefined && seconds < 1) return null
+    // A settled call under a minute keeps a tenth of a second ("0.3s",
+    // "38.2s"): most calls are that quick, and a bare "0s" says nothing. A
+    // running one ticks in whole seconds.
+    const label =
+      endedAt !== undefined && seconds < 60
+        ? t('common:duration.seconds', {
+            count: Math.round(seconds * 10) / 10,
+          })
+        : formatCompactDuration(seconds, t)
 
     return (
       <span className={cn('shrink-0 tabular-nums text-xs', className)}>
-        {formatCompactDuration(seconds, t)}
+        {label}
       </span>
     )
   }

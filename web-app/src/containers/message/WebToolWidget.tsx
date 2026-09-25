@@ -12,11 +12,22 @@ import {
 import { hostOf, siteInitial } from '@/lib/webUrl'
 import { ToolBar } from './ToolBar'
 
+/** Dark tiles for the site letters, one per host so results tell apart. */
+const FAVICON_TONES = ['#1f2937', '#24292f', '#334155', '#3f3f46', '#1e3a5f', '#3b2f4a']
+
+const toneOf = (url: string) => {
+  const host = hostOf(url)
+  let h = 0
+  for (let i = 0; i < host.length; i++) h = (h * 31 + host.charCodeAt(i)) | 0
+  return FAVICON_TONES[Math.abs(h) % FAVICON_TONES.length]
+}
+
 /** The site's initial. Drawn here rather than fetched from a third party. */
 const Favicon = ({ url }: { url: string }) => (
   <span
     aria-hidden
-    className="size-4 shrink-0 inline-flex items-center justify-center rounded-[5px] border border-border bg-accent text-[0.5rem] font-medium uppercase text-muted-foreground"
+    style={{ background: toneOf(url) }}
+    className="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[10px] font-semibold uppercase text-white"
   >
     {siteInitial(url)}
   </span>
@@ -33,14 +44,14 @@ const ResultRow = ({
     href={url}
     target="_blank"
     rel="noreferrer noopener"
-    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
+    className="-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 py-1.5 text-xs no-underline transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
     title={url}
   >
     <Favicon url={url} />
-    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
       {title || hostOf(url)}
     </span>
-    <span className="shrink-0 text-xs text-muted-foreground">
+    <span className="shrink-0 text-subtle-foreground">
       {hostOf(url)}
     </span>
   </a>
@@ -51,6 +62,11 @@ export type WebToolWidgetProps = {
   state: ToolUIPart['state']
   output?: ToolUIPart['output']
   errorText?: string
+  /**
+   * Inside a tool card, whose header already shows the query or address: the
+   * bar is left out and only the results render.
+   */
+  embedded?: boolean
 }
 
 /**
@@ -59,7 +75,7 @@ export type WebToolWidgetProps = {
  * results. Replaces the raw argument/response JSON for these two tools.
  */
 export const WebToolWidget = memo(
-  ({ bar, state, output, errorText }: WebToolWidgetProps) => {
+  ({ bar, state, output, errorText, embedded = false }: WebToolWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
 
@@ -75,8 +91,8 @@ export const WebToolWidget = memo(
     )
 
     return (
-      <div className="space-y-2 px-2.5 py-2">
-        {bar.variant === 'search' ? (
+      <div className={embedded ? 'space-y-2' : 'space-y-2 px-2.5 py-2'}>
+        {embedded ? null : bar.variant === 'search' ? (
           <ToolBar
             icon={<SearchIcon className="size-4" />}
             value={bar.query}

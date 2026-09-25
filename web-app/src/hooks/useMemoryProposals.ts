@@ -79,6 +79,18 @@ export function useMemoryProposals({
   )
 
   const reload = useCallback(async () => {
+    // Development preview (dev/previewSeed.ts): the browser has no backend.
+    if (import.meta.env.DEV && enabled) {
+      const preview = (
+        window as unknown as { __flintPreview?: { memoryProposals?: PendingProposal[] } }
+      ).__flintPreview?.memoryProposals
+      if (preview) {
+        setProposals(
+          sessionId ? preview.filter((p) => p.sourceSessionId === sessionId) : preview
+        )
+        return
+      }
+    }
     if (!location || !enabled) {
       setProposals([])
       return

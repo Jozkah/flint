@@ -17,6 +17,8 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
+import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 const MIN = 60_000
 const now = Date.now()
@@ -160,29 +162,102 @@ function releaseMessages(): ThreadMessage[] {
       metadata: {
         tokenSpeed: { tokenSpeed: 42.3, tokenCount: 1284, durationMs: 30350 },
         model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+        attribution: {
+          v: 1,
+          requestId: 'req-preview',
+          snapshotId: null,
+          snapshotHash: null,
+          invocationId: null,
+          snapshotStatus: 'not-captured',
+          assembledAt: new Date(t(3)).toISOString(),
+          memory: {
+            injectedIds: ['mem-1', 'mem-2'],
+            injectedHashes: [],
+            conflictIds: [],
+            droppedIds: [],
+            candidateIds: ['mem-1', 'mem-2'],
+            projectId: 'jan-project:flint',
+            projectName: 'Jan / Flint',
+            disabled: false,
+            temporary: false,
+            unavailable: false,
+          },
+          tools: ['bash', 'read_file', 'grep', 'web_search', 'edit_file'],
+          attachments: { inline: [], availableViaSearch: [] },
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          sendState: 'response-started',
+          usageReported: true,
+        },
       },
       content: [
         { type: 'reasoning', text: { value: "The tests spawn a helper binary. If nothing builds it first, every bash test fails before it starts. I'll check where it is built.", annotations: [] } },
-        tool('read_file', 'c1', { path: 'src-tauri/Cargo.toml' }, '48 lines · [workspace] members = ["sandbox-helper", …]'),
-        tool('grep', 'c2', { pattern: 'jan-sandbox-helper', path: 'src-tauri' }, '12 matches'),
+        tool('read', 'c1', { path: 'src-tauri/Cargo.toml' }, '48 lines · [workspace] members = ["sandbox-helper", …]'),
+        tool('grep', 'c2', { pattern: 'jan-sandbox-helper', path: 'src-tauri' }, 'src-tauri/Cargo.toml:4:    "sandbox-helper",\nsrc-tauri/sandbox-helper/Cargo.toml:2:name = "jan-sandbox-helper"\nsrc-tauri/src/agent_tools/bash.rs:31:const HELPER: &str = "jan-sandbox-helper";\nsrc-tauri/src/agent_tools/bash.rs:212:        .expect("helper not found: jan-sandbox-helper");\nsrc-tauri/src/agent_tools/sandbox.rs:18:/// Spawns jan-sandbox-helper with the job token.\nsrc-tauri/src/agent_tools/sandbox.rs:44:    let exe = helper_path("jan-sandbox-helper")?;\nsrc-tauri/src/agent_tools/sandbox.rs:97:// jan-sandbox-helper exits 3 when the token is stale\nsrc-tauri/tauri.conf.json:58:      "jan-sandbox-helper"\nsrc-tauri/build.rs:12:    // helper is built separately\nsrc-tauri/Makefile:21:\tcargo build -p jan-sandbox-helper\nsrc-tauri/README.md:40:`jan-sandbox-helper` must sit next to the app binary.\nsrc-tauri/sandbox-helper/src/main.rs:1://! jan-sandbox-helper: runs one command in the job object.'),
         tool('web_search', 'c3', { query: 'cargo test exit code 101 windows', top: 4 }, JSON.stringify([
           { title: "cargo test: process didn't exit successfully (exit code: 101)", url: 'https://doc.rust-lang.org' },
           { title: "Integration tests can't find binary built by another crate", url: 'https://github.com' },
         ])),
         tool('bash', 'c4', { command: 'cargo test --lib agent_tools::bash', cwd: 'src-tauri' },
-          `${g('   Compiling')} app_lib v0.9.0 (C:\\Coding\\jan\\src-tauri)\n${g('    Finished')} \`test\` profile [unoptimized + debuginfo] target(s) in 38.21s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${r('FAILED')}\ntest agent_tools::bash::respects_cwd ... ${r('FAILED')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${r('FAILED')}\ntest agent_tools::bash::kills_tree ... ${r('FAILED')}\n\n${y('helper not found: target\\debug\\jan-sandbox-helper.exe')}\n\ntest result: ${r('FAILED')}. 1 passed; 4 failed; 0 ignored; finished in 0.84s\nexit code: 101`),
-        text("Confirmed. I'll make `build.rs` build the helper."),
-        tool('edit_file', 'c5', {
+          `${g('   Compiling')} app_lib v0.9.0 (C:\\Coding\\jan\\src-tauri)\n${g('    Finished')} \`test\` profile [unoptimized + debuginfo] target(s) in 38.21s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${r('FAILED')}\ntest agent_tools::bash::respects_cwd ... ${r('FAILED')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${r('FAILED')}\ntest agent_tools::bash::kills_tree ... ${r('FAILED')}\n\n${y('helper not found: target\\debug\\jan-sandbox-helper.exe')}\n\ntest result: ${r('FAILED')}. 1 passed; 4 failed; 0 ignored; finished in 0.84s\n[exit 101]`),
+        { type: 'reasoning', text: { value: "Confirmed. I'll make build.rs build the helper.", annotations: [] } },
+        tool('edit', 'c5', {
           path: 'src-tauri/build.rs',
           old_string: '    // helper is built separately',
           new_string: '    // Build the sandbox helper so tests can spawn it.\n    let status = std::process::Command::new("cargo")\n        .args(["build", "-p", "jan-sandbox-helper"])\n        .status().expect("failed to build jan-sandbox-helper");\n    assert!(status.success());',
         }, 'Edited src-tauri/build.rs (+6 −1)'),
         tool('bash', 'c6', { command: 'cargo test --lib agent_tools::bash', cwd: 'src-tauri' },
-          `${g('   Compiling')} jan-sandbox-helper v0.9.0\n${g('    Finished')} \`test\` profile in 44.87s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${g('ok')}\ntest agent_tools::bash::respects_cwd ... ${g('ok')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${g('ok')}\ntest agent_tools::bash::kills_tree ... ${g('ok')}\n\ntest result: ${g('ok')}. 5 passed; 0 failed; 0 ignored; finished in 1.12s`),
+          `${g('   Compiling')} jan-sandbox-helper v0.9.0\n${g('    Finished')} \`test\` profile in 44.87s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${g('ok')}\ntest agent_tools::bash::respects_cwd ... ${g('ok')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${g('ok')}\ntest agent_tools::bash::kills_tree ... ${g('ok')}\n\ntest result: ${g('ok')}. 5 passed; 0 failed; 0 ignored; finished in 1.12s\n[exit 0]`),
+        tool('bash', 'c7', { command: 'git status --short && git diff --stat' },
+          `${r(' M')} src-tauri/build.rs\n${r('??')} src-tauri/tests/helper_smoke.rs\n src-tauri/build.rs | 7 ${g('++++++')}${r('-')}\n 1 file changed, ${g('6 insertions(+)')}, ${r('1 deletion(-)')}\n[exit 0]`),
+        { type: 'tool_call', tool_name: 'bash', tool_call_id: 'c8', input: { command: 'git commit -am "fix(build): build sandbox helper before tests"' } },
         text('Fixed. `build.rs` now builds `jan-sandbox-helper` before the tests run, and all 5 bash tests pass. I also added a smoke test so a missing helper fails with a clear message instead of exit 101.'),
       ],
     },
   ] as unknown as ThreadMessage[]
+}
+
+/** How long each example call took, and the one still waiting for an answer. */
+function seedToolRuntime() {
+  const secs: Record<string, number> = { c1: 0.1, c2: 0.3, c3: 1.8, c4: 38.2, c5: 0.2, c6: 44.9, c7: 0.4 }
+  let at = now - 3 * MIN
+  const timings: Record<string, { startedAt: number; endedAt: number }> = {}
+  for (const [id, s] of Object.entries(secs)) {
+    timings[id] = { startedAt: at, endedAt: at + s * 1000 }
+    at += s * 1000 + 2000
+  }
+  useToolCallRuntime.setState({
+    timings,
+    diffs: {
+      c5: [
+        '    10 |     tauri_build::build();',
+        '-   11 |     // helper is built separately',
+        '+   11 |     // Build the sandbox helper so tests can spawn it.',
+        '+   12 |     let status = std::process::Command::new("cargo")',
+        '+   13 |         .args(["build", "-p", "jan-sandbox-helper"])',
+        '+   14 |         .status().expect("failed to build jan-sandbox-helper");',
+        '+   15 |     assert!(status.success());',
+        '    16 | }',
+      ].join('\n'),
+    },
+  } as never)
+  if (!useToolApprovalRequests.getState().pending.c8) {
+    useToolApprovalRequests.setState((s) => ({
+      pending: {
+        ...s.pending,
+        c8: {
+          requestId: 'preview-c8',
+          toolCallId: 'c8',
+          toolName: 'bash',
+          threadId: 'release',
+          input: { command: 'git commit -am "fix(build): build sandbox helper before tests"' },
+          taskContext: 'Commit the build fix and the new smoke test.',
+          workspaceLabel: 'C:\\Coding\\jan',
+          resolve: () => {},
+        },
+      },
+    }))
+  }
 }
 
 function seedUsage() {
@@ -265,7 +340,27 @@ function patchServices() {
   set('threadsService', 'fetchThreads', async () => threads())
 }
 
+/** Read by hooks that would otherwise ask the backend (dev builds only). */
+function seedBackendAnswers() {
+  ;(window as unknown as { __flintPreview?: object }).__flintPreview = {
+    memoryProposals: [
+      {
+        id: 'prop-1',
+        content: 'This project builds jan-sandbox-helper before running agent tool tests.',
+        scope: 'project',
+        reason: 'automatic-saving-disabled',
+        explanation: 'Automatic saving is off, so Flint asks before remembering anything.',
+        approvable: true,
+        sourceSessionId: 'release',
+        sourceMessageId: 'm2',
+        createdAt: now - 2 * MIN,
+      },
+    ],
+  }
+}
+
 export function seedPreview() {
+  seedBackendAnswers()
   patchServices()
   useModelProvider.setState({
     providers: providers(),
@@ -276,6 +371,7 @@ export function seedPreview() {
   useThreads.setState({ isLoadingThreads: false } as never)
   useMessages.getState().setMessages('release', releaseMessages())
   useAppState.setState({ activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'] } as never)
+  seedToolRuntime()
   seedUsage()
   seedCowork()
   // Folders live in a store the hook reads through the projects service; the

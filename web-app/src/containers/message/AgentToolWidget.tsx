@@ -50,6 +50,11 @@ export type TerminalWidgetProps = {
   state: ToolUIPart['state']
   output?: ToolUIPart['output']
   errorText?: string
+  /**
+   * Inside a tool card, whose header already carries the exit status: the
+   * terminal shows just the prompt line and the scrollback.
+   */
+  embedded?: boolean
 }
 
 /**
@@ -62,7 +67,7 @@ export type TerminalWidgetProps = {
  * Rust side to emit events per chunk.
  */
 export const TerminalWidget = memo(
-  ({ bar, state, output, errorText }: TerminalWidgetProps) => {
+  ({ bar, state, output, errorText, embedded = false }: TerminalWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
     const result = useMemo(
@@ -83,10 +88,12 @@ export const TerminalWidget = memo(
         data-tool-state={state}
       >
         <div className="flex items-start gap-2 px-3 pt-2.5">
-          <SquareTerminal
-            aria-label={t('tools:toolCall.terminal')}
-            className="mt-0.5 size-3.5 shrink-0 text-term-fg/60"
-          />
+          {!embedded && (
+            <SquareTerminal
+              aria-label={t('tools:toolCall.terminal')}
+              className="mt-0.5 size-3.5 shrink-0 text-term-fg/60"
+            />
+          )}
           <span className="term-pr shrink-0 select-none">$</span>
           <span className="term-w min-w-0 flex-1 whitespace-pre-wrap wrap-break-word">
             {bar.jobId && !bar.command
@@ -94,7 +101,7 @@ export const TerminalWidget = memo(
               : bar.command}
             {running && <Caret />}
           </span>
-          {result?.exit !== undefined && (
+          {!embedded && result?.exit !== undefined && (
             <span
               className={cn(
                 'shrink-0 rounded-[5px] px-1.5 py-px text-[11px] tabular-nums',
@@ -121,7 +128,7 @@ export const TerminalWidget = memo(
             </div>
           )}
           {!running && body && (
-            <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word">
+            <pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word">
               <TermOutput text={body} />
             </pre>
           )}
@@ -171,6 +178,11 @@ export type AgentToolWidgetProps = {
   errorText?: string
   /** Needed to look up this call's display-only diff. */
   toolCallId?: string
+  /**
+   * Inside a tool card whose header names the path: the bar is left out,
+   * unless it is the way to open the file in the code panel.
+   */
+  embedded?: boolean
 }
 
 /**
@@ -179,7 +191,14 @@ export type AgentToolWidgetProps = {
  * query or a URL.
  */
 export const AgentToolWidget = memo(
-  ({ bar, state, output, errorText, toolCallId }: AgentToolWidgetProps) => {
+  ({
+    bar,
+    state,
+    output,
+    errorText,
+    toolCallId,
+    embedded = false,
+  }: AgentToolWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
     const diff = useToolCallRuntime((s) =>
@@ -202,10 +221,11 @@ export const AgentToolWidget = memo(
 
     return (
       <div
-        className="space-y-2 px-2.5 py-2"
+        className={embedded ? 'space-y-2' : 'space-y-2 px-2.5 py-2'}
         data-testid="tool-activity-item"
         data-tool-state={state}
       >
+        {(!embedded || openable) && (
         <ToolBar
           icon={<Icon size={16} />}
           value={value}
@@ -222,6 +242,7 @@ export const AgentToolWidget = memo(
             ) : undefined
           }
         />
+        )}
 
         {errorText && (
           <div className="rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint px-2.5 py-2 font-mono text-xs text-destructive">

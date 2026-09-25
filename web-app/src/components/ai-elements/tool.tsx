@@ -110,6 +110,16 @@ export type ToolProps = ComponentProps<typeof Collapsible> & {
   name?: string
   /** Where the tool came from, for the card's kind colour. */
   origin?: string
+  /**
+   * The call failed in-band (e.g. a command's non-zero exit) even though the
+   * part itself completed; the card then reads and colours as a failure.
+   */
+  failed?: boolean
+  /**
+   * Opens the card while true and closes it when it turns false, e.g. open
+   * while the call runs and for a failure or a diff worth reading.
+   */
+  autoOpen?: boolean
 }
 
 export const Tool = memo(
@@ -120,6 +130,8 @@ export const Tool = memo(
     messageId,
     name,
     origin,
+    failed = false,
+    autoOpen,
     open,
     defaultOpen = false,
     onOpenChange,
@@ -131,9 +143,17 @@ export const Tool = memo(
     )
     const [isOpen, setIsOpen] = useControllableState({
       prop: open,
-      defaultProp: defaultOpen || isPending,
+      defaultProp: defaultOpen || isPending || Boolean(autoOpen),
       onChange: onOpenChange,
     })
+
+    // Follows `autoOpen` on change only, so a manual toggle in between holds.
+    const autoOpenRef = useRef(autoOpen)
+    useEffect(() => {
+      if (autoOpen === undefined || autoOpen === autoOpenRef.current) return
+      autoOpenRef.current = autoOpen
+      setIsOpen(autoOpen)
+    }, [autoOpen, setIsOpen])
 
     const wasPendingRef = useRef(isPending)
     useEffect(() => {
@@ -151,7 +171,7 @@ export const Tool = memo(
 
     const kind = toolKind({
       name: name ?? '',
-      state,
+      state: failed ? 'output-error' : state,
       origin,
       awaitingApproval: isPending,
     })
@@ -189,6 +209,15 @@ export type ToolHeaderProps = {
   origin?: string
   /** Arguments, previewed inline so a collapsed call still says what it did. */
   input?: ToolUIPart['input']
+  /**
+   * The one argument that says what the call acted on (a command, a path, a
+   * query), shown instead of the generic `key: value` preview.
+   */
+  arg?: string
+  /** A short outcome beside the argument: an exit code, a match count, +/-. */
+  badge?: ReactNode
+  /** The call failed in-band (see `Tool`). */
+  failed?: boolean
 }
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string
@@ -202,7 +231,8 @@ const getStatusText = (
 ) => {
   const isRunning = status === 'input-streaming' || status === 'input-available'
   const hasError = status === 'output-error' || status === 'output-denied'
-  const tool = toolName.replaceAll('_', ' ')
+  // The tool's own name, as the model called it (`web_search`, `edit`).
+  const tool = toolName
 
   if (awaitingApproval) {
     return t('tools:toolCall.awaitingApproval', { tool })
@@ -222,14 +252,27 @@ const getStatusText = (
 }
 
 export const ToolHeader = memo(
-  ({ className, title, state, type, origin, input }: ToolHeaderProps) => {
+  ({
+    className,
+    title,
+    state,
+    type,
+    origin,
+    input,
+    arg,
+    badge,
+    failed = false,
+  }: ToolHeaderProps) => {
     const { t } = useTranslation()
     const { isOpen, toolCallId } = useTool()
     const awaitingApproval = useToolApprovalRequests((s) =>
       toolCallId ? Boolean(s.pending[toolCallId]) : false
     )
     const toolName = title ?? type.split('-').slice(1).join('-')
-    const summary = useMemo(() => summarizeToolInput(input), [input])
+    const summary = useMemo(
+      () => (arg !== undefined ? arg : summarizeToolInput(input)),
+      [arg, input]
+    )
     // Position in the pending queue, or -1 once the executor has reached it.
     const queuePosition = useToolCallRuntime((s) =>
       toolCallId ? s.queue.indexOf(toolCallId) : -1
@@ -250,7 +293,7 @@ export const ToolHeader = memo(
         ? 'queued'
         : state === 'input-streaming' || state === 'input-available'
           ? 'running'
-          : state === 'output-error' || state === 'output-denied'
+          : failed || state === 'output-error' || state === 'output-denied'
             ? 'failed'
             : 'done'
 
@@ -259,6 +302,7 @@ export const ToolHeader = memo(
       // accent for running), origin, a preview of the arguments, then how
       // long it took and the disclosure chevron.
       <CollapsibleTrigger
+        data-slot="tool-header"
         className={cn(
           'group/tool-row flex min-h-[38px] w-full min-w-0 cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-xs text-fg-2 transition-colors outline-hidden hover:bg-[color-mix(in_oklab,var(--tk)_4%,transparent)] focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
           className
@@ -277,9 +321,15 @@ export const ToolHeader = memo(
         </span>
         <span
           data-state={workState}
-          className="min-w-0 shrink-0 truncate font-medium text-(--tk) first-letter:uppercase"
+          className="min-w-0 shrink-0 truncate font-medium text-(--tk)"
         >
-          {getStatusText(t, state, toolName, awaitingApproval, isQueued)}
+          {getStatusText(
+            t,
+            failed && state === 'output-available' ? 'output-error' : state,
+            toolName,
+            awaitingApproval,
+            isQueued
+          )}
         </span>
         {origin && (
           <span className="hidden shrink-0 rounded-[5px] bg-[color-mix(in_oklab,var(--tk)_10%,transparent)] px-1.5 py-px text-[10.5px] text-[color-mix(in_oklab,var(--tk)_80%,var(--foreground))] sm:inline">
@@ -293,6 +343,11 @@ export const ToolHeader = memo(
         ) : (
           <span className="flex-1" />
         )}
+        {badge && (
+          <span className="hidden shrink-0 items-center gap-2 sm:inline-flex">
+            {badge}
+          </span>
+        )}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px] text-muted-foreground">
           {queuePosition > 0 && (
             <span>
@@ -302,7 +357,7 @@ export const ToolHeader = memo(
           <ToolElapsed
             startedAt={startedAt}
             endedAt={endedAt}
-            className="text-muted-foreground"
+            className="font-mono text-[11px] font-medium text-muted-foreground"
           />
           <ChevronDownIcon
             aria-hidden
@@ -389,7 +444,7 @@ export const ToolInput = memo(
     return (
       <div className={cn(TOOL_SECTION, 'space-y-2', className)} {...props}>
         <div className="flex min-h-6 items-center gap-2">
-          <h4 className="flex-1 text-xs font-medium text-foreground">
+          <h4 className="flex-1 text-xs font-medium text-fg-2">
             {t('tools:toolCall.parameters')}
           </h4>
           {rows.length > 0 && (
@@ -421,8 +476,10 @@ export const ToolInput = memo(
                 <dt className="max-w-32 truncate text-muted-foreground">
                   {key}
                 </dt>
-                <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-fg-2">
-                  {formatParamValue(value)}
+                <dd className="min-w-0 max-h-24 overflow-auto">
+                  <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap break-all text-foreground">
+                    {formatParamValue(value)}
+                  </code>
                 </dd>
               </Fragment>
             ))}
@@ -491,9 +548,11 @@ export const ToolApprovalActions = memo(() => {
         <b className="min-w-0 font-medium text-foreground wrap-break-word">
           {formatPermissionMessage(t, request.action)}
         </b>
-        {isFirstInThread && threadPendingCount > 1 && (
-          <Chip tone="warn" className="tabular-nums">
-            {t('permissions:pending.many', { count: threadPendingCount })}
+        {isFirstInThread && threadPendingCount > 0 && (
+          <Chip tone="warn" className="tabular-nums" aria-hidden>
+            {threadPendingCount === 1
+              ? t('permissions:pending.one')
+              : t('permissions:pending.many', { count: threadPendingCount })}
           </Chip>
         )}
       </div>
@@ -517,6 +576,7 @@ export const ToolApprovalActions = memo(() => {
         request={request}
         showAction={false}
         showTechnicalDetails={false}
+        layout="rows"
       />
       {/* Answers name this request, so a click cannot land on the next one. */}
       <PermissionScopeChoices

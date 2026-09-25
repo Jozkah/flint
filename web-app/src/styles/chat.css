@@ -26,17 +26,31 @@
 .dark [data-tool-kind='fail'] { --tk: #f87171; }
 .dark [data-tool-kind='other'] { --tk: #94a3b8; }
 
+/* The kind bar is its own layer above everything the card holds, so an open
+   diff or terminal cannot paint over it. Every card, whatever its state,
+   answers a hover the same way: it lifts and its header takes a faint tint. */
 .tool-card {
+  position: relative;
   border-color: color-mix(in oklab, var(--tk) 22%, var(--border));
-  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--tk) 70%, transparent);
+}
+.tool-card::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: color-mix(in oklab, var(--tk) 70%, transparent);
+  z-index: 3;
+  pointer-events: none;
+}
+.tool-card[data-tool-kind='appr']::before {
+  background: var(--tk);
 }
 .tool-card:hover {
-  box-shadow:
-    inset 3px 0 0 color-mix(in oklab, var(--tk) 70%, transparent),
-    var(--lift);
+  box-shadow: var(--lift);
 }
-.tool-card[data-tool-kind='appr'] {
-  box-shadow: inset 3px 0 0 var(--tk);
+.tool-card:hover > [data-slot='tool-header'] {
+  background: color-mix(in oklab, var(--tk) 4%, transparent);
 }
 
 /* A timeline step holding a tool call takes its kind's colour. */
@@ -48,7 +62,7 @@
 [data-slot='step-row']:has([data-tool-kind='todo']) { --cotc: #ea580c; }
 [data-slot='step-row']:has([data-tool-kind='fail']) { --cotc: #ef4444; }
 [data-slot='step-row']:has([data-tool-kind='appr']) { --cotc: #f59e0b; }
-[data-slot='step-row']:has([data-tool-kind]) > span > [data-slot='step-dot'] {
+[data-slot='step-row']:has([data-tool-kind]) > [data-slot='step-dot'] {
   background: var(--cotc, var(--card));
   box-shadow: 0 0 0 1.5px var(--cotc, var(--border-strong));
 }
@@ -67,8 +81,17 @@
 .term .term-w, .term-w { color: #f0f6fc; font-weight: 600; }
 .term .term-pr, .term-pr { color: #7ee787; }
 
+/* ---- Diff highlight (components/ChangeDiff.tsx) ---- */
+.dl-kw { color: #8250df; }
+.dl-str { color: #0a7f4f; }
+.dl-fn { color: #0969da; }
+.dl-cm { color: var(--subtle-foreground); font-style: italic; }
+.dark .dl-kw { color: #d2a8ff; }
+.dark .dl-str { color: #7ee787; }
+.dark .dl-fn { color: #79c0ff; }
+
 /* ---- Small motion used by the transcript ---- */
 @keyframes twinkle {
-  0%, 100% { transform: scale(1) rotate(0); opacity: 1; }
-  50% { transform: scale(0.85) rotate(12deg); opacity: 0.7; }
+  0%, 100% { transform: rotate(0) scale(1); }
+  50% { transform: rotate(18deg) scale(1.15); }
 }

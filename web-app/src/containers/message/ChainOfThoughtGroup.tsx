@@ -1,6 +1,6 @@
-import { cloneElement, memo, useState } from 'react'
+import { memo, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import { ArrowDown, CircleCheck } from 'lucide-react'
+import { ArrowDown, Check } from 'lucide-react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -9,6 +9,7 @@ import {
 import {
   ReasoningActiveStep,
   StepRow,
+  TIMELINE_RAIL,
 } from '@/components/ai-elements/reasoning-timeline'
 import { Button } from '@/components/ui/button'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
@@ -74,6 +75,20 @@ export const ChainOfThoughtGroup = memo(
     const { t } = useTranslation()
     const pendingApprovals = useToolApprovalRequests((s) => s.pending)
     const runningToolCallId = useToolCallRuntime((s) => findRunningToolCallId(s.timings))
+    // How long the trace's tools took end to end, from their recorded timings:
+    // a trace loaded from history was never timed live, and this is the one
+    // measure of it that is real rather than "a few seconds".
+    const toolSpanSeconds = useToolCallRuntime((s) => {
+      let first = Infinity
+      let last = -Infinity
+      for (const { part } of entries) {
+        const timing = part.toolCallId ? s.timings[part.toolCallId] : undefined
+        if (timing?.startedAt === undefined || timing.endedAt === undefined) continue
+        first = Math.min(first, timing.startedAt)
+        last = Math.max(last, timing.endedAt)
+      }
+      return last > first ? Math.max(1, Math.round((last - first) / 1000)) : undefined
+    })
     const [view, setView] = useState<'condensed' | 'extended'>('condensed')
 
     if (entries.length === 0) return null
@@ -154,7 +169,7 @@ export const ChainOfThoughtGroup = memo(
         : hasFollowingContent || !(hasDisplayableContent || isExtended)
 
     // Done/historical: flatten every entry (reasoning paragraphs, tool calls)
-    // into steps on a single continuous dotted rail, so a tool call between two
+    // into steps on a single continuous solid rail, so a tool call between two
     // reasoning paragraphs stays threaded instead of restarting the rail.
     // `live` keeps the in-progress step as the trailing row and drops the Done
     // marker, so the same rail serves the extended streaming view.
@@ -168,12 +183,16 @@ export const ChainOfThoughtGroup = memo(
           const settled = isLivePart ? segments.slice(0, -1) : segments
           for (const [pi, para] of settled.entries()) {
             steps.push(
-              <StepRow key={`${messageId}-r-${partIndex}-${pi}`} text={para} />
+              <StepRow
+                key={`${messageId}-r-${partIndex}-${pi}`}
+                index={steps.length}
+                text={para}
+              />
             )
           }
           if (isLivePart && segments.length > 0) {
             steps.push(
-              <StepRow key={`${messageId}-rl-${partIndex}`}>
+              <StepRow key={`${messageId}-rl-${partIndex}`} index={steps.length}>
                 <ReasoningActiveStep text={text} mode="live" />
               </StepRow>
             )
@@ -182,12 +201,11 @@ export const ChainOfThoughtGroup = memo(
         }
         if (isToolPart(part)) {
           steps.push(
-            <StepRow key={`${messageId}-t-${partIndex}`}>
+            <StepRow key={`${messageId}-t-${partIndex}`} index={steps.length}>
               <ToolCallCard
                 part={part}
                 messageId={messageId}
                 citationOffset={citationOffsets.get(partIndex) ?? 0}
-                className="mb-1"
               />
             </StepRow>
           )
@@ -198,24 +216,12 @@ export const ChainOfThoughtGroup = memo(
         steps.push(
           <StepRow
             key={`${messageId}-done`}
-            marker={
-              <CircleCheck className="size-4 text-success" />
-            }
+            marker={<Check aria-hidden />}
             text={t('chat:done')}
           />
         )
       }
-      return (
-        <ol className="relative flex flex-col gap-2.5">
-          {steps.map((step, i) =>
-            step && typeof step === 'object' && 'props' in step
-              ? cloneElement(step as React.ReactElement<{ connector?: boolean }>, {
-                  connector: i < steps.length - 1,
-                })
-              : step
-          )}
-        </ol>
-      )
+      return <ol className={TIMELINE_RAIL}>{steps}</ol>
     }
 
     // Auto-followed viewport: the parent's scroll hook keeps it pinned to the
@@ -276,11 +282,12 @@ export const ChainOfThoughtGroup = memo(
 
     return (
       <ChainOfThought
-        className="w-full text-muted-foreground"
+        className="mb-2.5 w-full text-muted-foreground"
         isStreaming={groupIsStreaming}
         shouldCollapse={shouldCollapse}
         forceOpen={awaitingApproval}
         defaultOpen={hasDisplayableContent && !hasFollowingContent}
+        fallbackDuration={toolSpanSeconds}
       >
         <ChainOfThoughtHeader
           streamingLabel={
