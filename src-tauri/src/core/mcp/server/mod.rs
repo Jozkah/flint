@@ -260,7 +260,8 @@ impl JanToolServer {
                 | DenyReason::DestructiveGit(_)
                 | DenyReason::NetworkOff
                 | DenyReason::Domain(_)
-                | DenyReason::SecretFile(_)),
+                | DenyReason::SecretFile(_)
+                | DenyReason::GitInternals),
             ) => {
                 return (
                     crate::core::agent::r#loop::hard_deny_msg(

@@ -282,6 +282,35 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     resolved.starts_with(root.join(JAN_DIR))
 }
 
+/// Whether a path names a repository's `.git` or anything under it: a
+/// component spelled `.git` (any case, since Windows and macOS folders are
+/// case-insensitive). Lexical and deliberately broad -- `x/.git/hooks/pre-commit`,
+/// `.git\\config`, a worktree's `.git` file -- because the cost of a false
+/// positive is a refused write, and the cost of a miss is a program git runs.
+pub fn names_git_internals(raw: &str) -> bool {
+    raw.split(['/', '\\'])
+        .any(|c| c.trim_end_matches(['.', ' ']).eq_ignore_ascii_case(".git"))
+}
+
+/// [`names_git_internals`] for each token of a shell command, including the
+/// text with quotes and backslash escapes removed (`.g''it`, `.g\it`). A bare
+/// `git` word or a `repo.git` URL is not a `.git` path.
+pub fn command_names_git_internals(command: &str) -> bool {
+    let hits = |text: &str| {
+        text.split(|c: char| c.is_whitespace() || ";|&><()\"'`=".contains(c))
+            .filter(|t| !t.is_empty())
+            .any(names_git_internals)
+    };
+    if hits(command) {
+        return true;
+    }
+    let dequoted: String = command
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '"'))
+        .collect();
+    hits(&dequoted) || hits(&dequoted.replace('\\', ""))
+}
+
 /// [`is_hidden_jan_path`] for the project and every granted write root.
 ///
 /// A managed worktree or a repository the user lets the agent edit in place

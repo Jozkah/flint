@@ -840,6 +840,151 @@ fn cap(text: String) -> String {
     )
 }
 
+/// Configuration forced on every call, whatever the repository says.
+pub const CONFIG_OVERRIDES: &[(&str, &str)] = &[
+    ("protocol.ext.allow", "never"),
+    ("protocol.file.allow", "never"),
+    ("diff.external", ""),
+    ("core.hooksPath", "/dev/null"),
+    ("core.fsmonitor", "false"),
+    ("core.pager", "cat"),
+];
+
+/// The argv actually run: the plan's, plus `--no-ext-diff --no-textconv`
+/// right after a diff-producing subcommand, so no diff driver runs.
+pub fn argv_for(plan: &GitPlan) -> Vec<String> {
+    let mut argv = plan.args.clone();
+    if plan.program == Program::Git
+        && matches!(
+            argv.first().map(String::as_str),
+            Some("diff" | "log" | "show")
+        )
+    {
+        argv.splice(
+            1..1,
+            ["--no-ext-diff".to_string(), "--no-textconv".to_string()],
+        );
+    }
+    argv
+}
+
+/// Why a repository-local configuration entry must stop the call, if it must.
+///
+/// Each of these makes git (or gh, which runs git) start a program or load a
+/// file the repository names, outside the sandbox: a planted
+/// `core.sshCommand` or `filter.*.smudge` is code execution on the next push
+/// or checkout.
+pub fn risky_config(key: &str, value: &str) -> Option<String> {
+    let k = key.to_ascii_lowercase();
+    let v = value.trim();
+    let parts: Vec<&str> = k.split('.').collect();
+    let section = parts[0];
+    let last = *parts.last().unwrap_or(&"");
+    let sub = parts.len() >= 3;
+    let why = |what: &str| Some(format!("`{key}` {what}"));
+    match k.as_str() {
+        "core.sshcommand" | "core.gitproxy" | "core.pager" | "core.editor" | "core.askpass"
+        | "diff.external" | "sequence.editor" | "gpg.program" | "include.path" => {
+            return why("names a program or file git would run or load");
+        }
+        "core.fsmonitor" => {
+            let builtin = matches!(
+                v.to_ascii_lowercase().as_str(),
+                "" | "false" | "true" | "0" | "1"
+            );
+            return (!builtin).then(|| format!("`{key}` names a program git would run"));
+        }
+        "core.hookspath" => {
+            return (!v.is_empty()).then(|| format!("`{key}` points git at hook scripts"));
+        }
+        "protocol.ext.allow" => return why("enables the ext:: transport, which runs commands"),
+        _ => {}
+    }
+    let runs = matches!(
+        (section, last),
+        ("diff", "command" | "textconv")
+            | ("merge", "driver")
+            | ("filter", "clean" | "smudge" | "process")
+            | ("gpg", "program")
+            | ("includeif", "path")
+    );
+    if runs && sub {
+        return why("names a program or file git would run or load");
+    }
+    if section == "url" && sub && matches!(last, "insteadof" | "pushinsteadof") {
+        // The rewritten prefix is the subsection: url.<base>.insteadOf.
+        let base = k[4..k.len() - last.len() - 1].to_string();
+        if ["ext::", "file:", "fd::"]
+            .iter()
+            .any(|p| base.starts_with(p))
+        {
+            return why("rewrites remotes to a transport that runs commands or reads local files");
+        }
+    }
+    if section == "credential" && last == "helper" {
+        let program = v.starts_with('!') || v.contains('/') || v.contains('\\');
+        if program {
+            return why("runs a credential program the repository chose");
+        }
+    }
+    None
+}
+
+/// Parse `git config --list --show-scope -z` output into (scope, key, value).
+pub fn parse_scoped_config(raw: &[u8]) -> Vec<(String, String, String)> {
+    // With `-z`, each entry is `<scope>\0<key>\n<value>\0`.
+    let text = String::from_utf8_lossy(raw);
+    let fields: Vec<&str> = text.split('\0').collect();
+    fields
+        .chunks(2)
+        .filter(|pair| pair.len() == 2 && !pair[0].is_empty())
+        .map(|pair| {
+            let (key, value) = pair[1].split_once('\n').unwrap_or((pair[1], ""));
+            (pair[0].to_string(), key.to_string(), value.to_string())
+        })
+        .collect()
+}
+
+/// Refuse a call in a repository whose own configuration (local or worktree
+/// scope) would make git run a program. Read with the same host git, before
+/// the call, with includes off so an include cannot hide a key (an include is
+/// itself refused).
+pub async fn check_repo_config(cwd: &Path) -> Result<(), String> {
+    let Some(git) = crate::tools::git_native::discover_git() else {
+        return Ok(());
+    };
+    let mut cmd = tokio::process::Command::new(&git);
+    cmd.args(["config", "--list", "--show-scope", "--no-includes", "-z"])
+        .current_dir(cwd)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_CONFIG_PARAMETERS")
+        .env_remove("GIT_CONFIG_COUNT")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    let out = match tokio::time::timeout(Duration::from_secs(30), cmd.output()).await {
+        Ok(Ok(out)) => out,
+        _ => return Err("could not read this repository's Git configuration".into()),
+    };
+    let found: Vec<String> = parse_scoped_config(&out.stdout)
+        .into_iter()
+        .filter(|(scope, _, _)| scope == "local" || scope == "worktree")
+        .filter_map(|(_, k, v)| risky_config(&k, &v))
+        .collect();
+    if found.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "this repository's own Git configuration would make git run programs outside the sandbox, so nothing was run: {}. Ask the user to review and remove it (in .git/config) before continuing.",
+            found.join("; ")
+        ))
+    }
+}
+
 /// Run a planned call in `cwd`. Returns the tool result text; a failure starts
 /// with `ERROR:`.
 pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
@@ -867,8 +1012,8 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             "core.pager=cat",
         ]);
     }
-    cmd.args(&plan.args)
-        .current_dir(cwd)
+    cmd.args(argv_for(plan));
+    cmd.current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
         .env("GIT_PAGER", "cat")
@@ -887,6 +1032,15 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
         .env_remove("GIT_EXEC_PATH")
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
+    // Per-call overrides at "command" scope, above anything a repository sets
+    // (gh passes them on to the git it runs). `core.sshCommand` is left alone
+    // so ssh remotes keep working; a repository that sets it is refused by
+    // `check_repo_config` instead.
+    cmd.env("GIT_CONFIG_COUNT", CONFIG_OVERRIDES.len().to_string());
+    for (i, (k, v)) in CONFIG_OVERRIDES.iter().enumerate() {
+        cmd.env(format!("GIT_CONFIG_KEY_{i}"), k)
+            .env(format!("GIT_CONFIG_VALUE_{i}"), v);
+    }
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
     let secs = if plan.reaches_remote {
@@ -933,6 +1087,9 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
         Err(e) => return format!("ERROR: git: {e}"),
     };
     if let Err(e) = check_created_dir(&plan, &cwd, &roots) {
+        return format!("ERROR: git: {e}");
+    }
+    if let Err(e) = check_repo_config(&cwd).await {
         return format!("ERROR: git: {e}");
     }
     execute(&plan, &cwd).await
@@ -1170,6 +1327,109 @@ mod tests {
         assert!(log.starts_with("$ git log --oneline"), "{log}");
         let bad = go(&["checkout", "no-such-branch"]).await;
         assert!(bad.starts_with("ERROR:"), "{bad}");
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn risky_repo_config_is_named() {
+        for (k, v) in [
+            ("core.sshCommand", "calc.exe"),
+            ("core.gitProxy", "x"),
+            ("core.fsmonitor", "./evil.sh"),
+            ("core.hooksPath", ".githooks"),
+            ("core.pager", "less"),
+            ("core.editor", "vim"),
+            ("diff.external", "x"),
+            ("diff.pdf.command", "x"),
+            ("diff.pdf.textconv", "x"),
+            ("merge.ours.driver", "x"),
+            ("filter.lfs.smudge", "x"),
+            ("filter.lfs.clean", "x"),
+            ("filter.a.b.process", "x"),
+            ("credential.helper", "!evil"),
+            ("credential.https://github.com.helper", "C:/tools/steal.exe"),
+            ("sequence.editor", "x"),
+            ("gpg.program", "x"),
+            ("gpg.ssh.program", "x"),
+            ("url.ext::sh -c x.insteadOf", "https://github.com/"),
+            ("url.file:///tmp/r.insteadOf", "https://github.com/"),
+            ("protocol.ext.allow", "always"),
+            ("include.path", "../x"),
+            ("includeIf.gitdir:~/.path", "x"),
+        ] {
+            assert!(risky_config(k, v).is_some(), "{k}={v}");
+        }
+        for (k, v) in [
+            ("core.hooksPath", ""),
+            ("core.fsmonitor", "false"),
+            ("core.autocrlf", "true"),
+            ("credential.helper", "manager"),
+            ("remote.origin.url", "https://github.com/o/r"),
+            ("url.https://github.com/.insteadOf", "gh:"),
+            ("user.name", "x"),
+            ("diff.renames", "true"),
+            ("branch.main.merge", "refs/heads/main"),
+        ] {
+            assert!(risky_config(k, v).is_none(), "{k}={v}");
+        }
+    }
+
+    #[test]
+    fn scoped_config_parses() {
+        let raw = b"local\0core.sshcommand\ncalc\0global\0user.name\nMe\0local\0core.bare\nfalse\0";
+        let got = parse_scoped_config(raw);
+        assert_eq!(got.len(), 3);
+        assert_eq!(
+            got[0],
+            ("local".into(), "core.sshcommand".into(), "calc".into())
+        );
+    }
+
+    #[test]
+    fn diff_commands_get_no_external_drivers() {
+        let plan = p("git", &["log", "-p"]).unwrap();
+        assert_eq!(
+            argv_for(&plan),
+            ["log", "--no-ext-diff", "--no-textconv", "-p"]
+        );
+        let plan = p("git", &["status"]).unwrap();
+        assert_eq!(argv_for(&plan), ["status"]);
+    }
+
+    #[tokio::test]
+    async fn a_repo_that_sets_a_program_is_refused_before_anything_runs() {
+        if crate::tools::git_native::discover_git().is_none() {
+            return;
+        }
+        let ws = temp("cfg");
+        let init = p("git", &["init", "-q"]).unwrap();
+        assert!(!execute(&init, &ws).await.starts_with("ERROR"));
+        assert!(
+            check_repo_config(&ws).await.is_ok(),
+            "a fresh repository is fine"
+        );
+        // Our own per-call overrides are command scope, never refused.
+        let log = execute(&p("git", &["log"]).unwrap(), &ws).await;
+        assert!(!log.contains("configuration would make"), "{log}");
+        let cfg = ws.join(".git").join("config");
+        let mut text = std::fs::read_to_string(&cfg).unwrap();
+        text.push_str("[core]\n\tsshCommand = calc.exe\n[filter \"x\"]\n\tsmudge = evil\n");
+        std::fs::write(&cfg, text).unwrap();
+        let err = check_repo_config(&ws).await.unwrap_err();
+        assert!(
+            err.contains("core.sshcommand") && err.contains("filter.x.smudge"),
+            "{err}"
+        );
+        let store = ws.join("store");
+        let out = run(
+            &json!({"args": ["status"]}),
+            &crate::tools::ToolContext::new(&ws, &store, &[]),
+        )
+        .await;
+        assert!(
+            out.starts_with("ERROR: git: this repository's own Git configuration"),
+            "{out}"
+        );
         let _ = std::fs::remove_dir_all(&ws);
     }
 

@@ -169,6 +169,10 @@ pub enum DenyReason {
     /// A file whose name says it holds credentials, with no rule naming it.
     /// AH-044. Carries the file name, never its contents.
     SecretFile(String),
+    /// A change inside a repository's `.git` (a directory, or a `.git` file
+    /// of a linked worktree). Hooks and config there are programs git runs
+    /// outside the sandbox, so no tool may plant them.
+    GitInternals,
 }
 
 /// What this run may reach on the network. AH-042/AH-043.
@@ -500,6 +504,25 @@ pub fn resolve_decision(
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
     }
+    // Nothing that changes files may reach a repository's `.git`: a hook or a
+    // config key written there is a program the `git` tool (which runs
+    // outside the sandbox) would run. Checked on every surface and for every
+    // path, since any folder a run can write to may be a repository.
+    if mutating {
+        let path_hits = tool.path_args.iter().any(|key| {
+            args.get(key)
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::names_git_internals)
+        });
+        let command_hits = tool.capability == Capability::Exec
+            && args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .is_some_and(crate::tools::sandbox::command_names_git_internals);
+        if path_hits || command_hits {
+            return Decision::HardDeny(DenyReason::GitInternals);
+        }
+    }
     // Ask sits between deny and allow: a matching ask rule overrides an allow
     // and forces a prompt every time (deny above still wins). Inert unless the
     // project wrote an `ask` list.
@@ -686,6 +709,49 @@ mod tests {
 
     fn s(items: &[&str]) -> Vec<String> {
         items.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn nothing_writes_into_a_repositorys_git_folder() {
+        let root = unique_root();
+        let perms = ToolPermissions::allow_all();
+        let grants = SessionGrants::default();
+        let decide = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                false,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let git = Decision::HardDeny(DenyReason::GitInternals);
+        for (tool, args) in [
+            ("write", json!({"path": ".git/hooks/pre-commit", "content": "x"})),
+            ("write", json!({"path": "repo\\.GIT\\config", "content": "x"})),
+            ("write", json!({"path": "C:/w/sub/.git", "content": "gitdir: x"})),
+            ("edit", json!({"path": "a/.git/config", "edits": []})),
+            ("bash", json!({"command": "echo x > .git/hooks/pre-commit"})),
+            ("bash", json!({"command": "cp evil '.git/config'"})),
+            ("bash", json!({"command": "printf x >> .g''it/config"})),
+        ] {
+            assert_eq!(decide(tool, args.clone()), git, "{tool} {args}");
+        }
+        // Not a `.git` path: the word git, a repo URL, a .gitignore.
+        for (tool, args) in [
+            ("write", json!({"path": ".gitignore", "content": "x"})),
+            ("write", json!({"path": "docs/git.md", "content": "x"})),
+            ("bash", json!({"command": "git status && echo https://github.com/o/r.git"})),
+        ] {
+            assert_ne!(decide(tool, args.clone()), git, "{tool} {args}");
+        }
+        // Reading is not a change.
+        assert_ne!(decide("read", json!({"path": ".git/config"})), git);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

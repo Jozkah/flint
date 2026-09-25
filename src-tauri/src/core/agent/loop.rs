@@ -3132,6 +3132,9 @@ pub(crate) fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::
         ),
         DenyReason::Policy => denied_by_policy_msg(name, project_root),
         DenyReason::Hidden => hidden_path_msg(name),
+        DenyReason::GitInternals => format!(
+            "ERROR: tool '{name}' refused: it would change a repository's .git folder (hooks, config), which Git runs outside the sandbox. Use the `git` tool for repository changes."
+        ),
         // Say which argument could not be read. Told only "refused", a model
         // reissues the same malformed call until the step budget runs out.
         DenyReason::Resource => format!(

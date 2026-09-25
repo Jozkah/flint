@@ -1031,6 +1031,12 @@ async fn execute_tool_inner(
 
     match decision {
         Decision::Allow => {}
+        Decision::HardDeny(gate::DenyReason::GitInternals) => {
+            return Err(format!(
+                "tool '{name}' was refused: it would change a repository's .git folder (hooks, config), which Git runs outside the sandbox. Use the `git` tool for repository changes."
+            )
+            .into());
+        }
         Decision::HardDeny(gate::DenyReason::Hidden) => {
             return Err(format!(
                 "tool '{name}' is denied: {} is the agent's own state directory and is hidden",
@@ -1670,6 +1676,9 @@ fn record_permission_decision(
         Decision::HardDeny(gate::DenyReason::Policy) => (Outcome::Deny, "policy".to_string()),
         Decision::HardDeny(gate::DenyReason::Hidden) => {
             (Outcome::Deny, "hidden-agent-state".to_string())
+        }
+        Decision::HardDeny(gate::DenyReason::GitInternals) => {
+            (Outcome::Deny, "git-internals".to_string())
         }
         Decision::HardDeny(gate::DenyReason::Resource) => {
             (Outcome::Deny, "unresolvable-resource".to_string())
