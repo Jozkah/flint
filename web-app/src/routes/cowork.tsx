@@ -48,7 +48,7 @@ import {
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
-  lastUserQuestion,
+  runTitle,
   recordAgentDispatch,
   recordJobCollected,
   recordShellDispatch,
@@ -2447,11 +2447,9 @@ function CoworkPage() {
     const run: RunContext = {
       sessionId: sid,
       runId,
-      // The turn's own question, or the one being taken again.
-      title:
-        text ||
-        lastUserQuestion(current?.messages) ||
-        t('common:tasks.untitledRun'),
+      // The turn's own question, or the one being taken again -- never an
+      // instruction the app sent to continue an approved plan.
+      title: runTitle(text, current?.messages) || t('common:tasks.untitledRun'),
       model: selectedModel.id,
     }
 

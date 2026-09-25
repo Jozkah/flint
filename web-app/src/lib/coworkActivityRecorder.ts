@@ -19,6 +19,8 @@ import {
   type ActivityTask,
 } from '@/lib/coworkActivity'
 import { backgroundJobId } from '@/lib/coworkTasks'
+import { PLAN_EXECUTE_INSTRUCTION } from '@/lib/coworkPlanReview'
+import { CONTINUATION_PREFIX } from '@/lib/coworkContinuity'
 import {
   bashExitCode,
   bashSignalled,
@@ -43,9 +45,35 @@ export function lastUserQuestion(
       ?.map((part) => (part.type === 'text' ? part.text : ''))
       .join('')
       .trim()
-    if (text) return text
+    if (text && !isAppInstruction(text)) return text
   }
   return undefined
+}
+
+/**
+ * Whether a turn's text is an instruction the app sent on the user's behalf
+ * (carry out the approved plan, go ahead with the accepted proposal) rather
+ * than something the user wrote. Never a title: "The user approved the plan.
+ * Carry it out now, st..." names nothing.
+ */
+export function isAppInstruction(text: string): boolean {
+  const trimmed = text.trim()
+  return (
+    trimmed === PLAN_EXECUTE_INSTRUCTION || trimmed.startsWith(CONTINUATION_PREFIX)
+  )
+}
+
+/**
+ * The title of a run's workflow: the turn's own text when the user wrote it,
+ * else the question the user last asked -- which, for a run the app started to
+ * carry out an approved plan, is the request the plan answers.
+ */
+export function runTitle(
+  text: string | null | undefined,
+  messages: UIMessage[] | undefined
+): string | undefined {
+  if (text && !isAppInstruction(text)) return text
+  return lastUserQuestion(messages)
 }
 
 /** Identifies the run a dispatch belongs to. */

@@ -1001,6 +1001,7 @@
     "statusRunning": "Running",
     "statusDone": "Finished",
     "statusError": "Failed",
+    "statusPartial": "Finished with errors",
     "statusCancelled": "Cancelled",
     "statusInterrupted": "Interrupted",
     "kindAgent": "Agent",

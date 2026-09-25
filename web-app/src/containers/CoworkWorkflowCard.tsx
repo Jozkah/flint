@@ -7,6 +7,7 @@ import {
   Clock,
   Loader2,
   Terminal,
+  TriangleAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -14,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { formatCompactDuration } from '@/lib/duration'
 import {
   taskElapsedMs,
-  type ActivityStatus,
+  type WorkflowStatus,
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
@@ -178,7 +179,7 @@ function StatusIcon({
   status,
   size = 'size-3.5',
 }: {
-  status: ActivityStatus
+  status: WorkflowStatus
   size?: string
 }) {
   const { t } = useTranslation()
@@ -210,6 +211,13 @@ function StatusIcon({
         <CircleSlash
           aria-label={t('common:tasks.statusCancelled')}
           className={cn(common, 'text-muted-foreground')}
+        />
+      )
+    case 'partial':
+      return (
+        <TriangleAlert
+          aria-label={t('common:tasks.statusPartial')}
+          className={cn(common, 'text-warning')}
         />
       )
     case 'interrupted':

@@ -293,6 +293,9 @@ export function acceptsProposal(
  * was asked to do and the model reads it as a plain instruction under the
  * session's own mode rather than as an answer to a read-only turn.
  */
+/** How every `continuationInstruction` starts; it is the app's, not the user's. */
+export const CONTINUATION_PREFIX = 'Go ahead with the step you proposed'
+
 export function continuationInstruction(
   proposal: string,
   answers: { id: string; selected?: string[]; custom_input?: string }[]
@@ -300,7 +303,7 @@ export function continuationInstruction(
   const answer = answers.find((one) => one.id === CONTINUE_QUESTION_ID)
   const said = answer?.selected?.[0] ?? answer?.custom_input?.trim() ?? ''
   return [
-    `Go ahead with the step you proposed${said ? ` ("${said}")` : ''}.`,
+    `${CONTINUATION_PREFIX}${said ? ` ("${said}")` : ''}.`,
     `Your question was: ${proposal}`,
   ].join('\n')
 }

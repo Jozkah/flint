@@ -6,6 +6,7 @@ import {
   Loader2,
   OctagonAlert,
   ShieldAlert,
+  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -88,6 +89,7 @@ export type WorkState =
   | 'needs-you'
   | 'done'
   | 'failed'
+  | 'partial'
   | 'cancelled'
 
 const WORK_STATES: Record<
@@ -104,6 +106,8 @@ const WORK_STATES: Record<
     icon: OctagonAlert,
     className: 'bg-destructive-tint text-destructive',
   },
+  // Finished, with something in it that failed: amber, not red.
+  partial: { icon: TriangleAlert, className: 'bg-warning-tint text-warning' },
   cancelled: { icon: Ban, className: 'bg-muted text-muted-foreground' },
 }
 

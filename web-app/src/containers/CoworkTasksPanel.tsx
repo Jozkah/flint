@@ -24,7 +24,7 @@ import {
   taskElapsedMs,
   type Cancellability,
   type ActivityProgress,
-  type ActivityStatus,
+  type WorkflowStatus,
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
@@ -549,10 +549,11 @@ function ProgressBar({ progress }: { progress: ActivityProgress }) {
 }
 
 /** How each activity status is shown: the shared work state and its word. */
-const STATUS: Record<ActivityStatus, { state: WorkState; label: string }> = {
+const STATUS: Record<WorkflowStatus, { state: WorkState; label: string }> = {
   running: { state: 'running', label: 'statusRunning' },
   queued: { state: 'queued', label: 'statusQueued' },
   error: { state: 'failed', label: 'statusError' },
+  partial: { state: 'partial', label: 'statusPartial' },
   cancelled: { state: 'cancelled', label: 'statusCancelled' },
   // Stopped by something other than the work or the user: worth a look.
   interrupted: { state: 'blocked', label: 'statusInterrupted' },
@@ -567,7 +568,7 @@ const STATUS: Record<ActivityStatus, { state: WorkState; label: string }> = {
  * title does not, so a screen reader has to be able to read it. The test ids
  * stay for the tests that assert on shape rather than wording.
  */
-function StatusIcon({ status }: { status: ActivityStatus }) {
+function StatusIcon({ status }: { status: WorkflowStatus }) {
   const { t } = useTranslation()
   const known = STATUS[status] ? status : 'done'
   const { state, label } = STATUS[known]

@@ -47,6 +47,14 @@ export type ActivityStatus =
    */
   | 'interrupted'
 
+/**
+ * A workflow's status: a task's, plus `partial` -- the run completed, but
+ * some of the commands it ran exited non-zero. Not `error`: a failing
+ * `grep` or test inside a run that finished is part of the work, and a red
+ * "Failed" over "7 of 7 finished" says the run itself went wrong.
+ */
+export type WorkflowStatus = ActivityStatus | 'partial'
+
 export type ActivityKind = 'agent' | 'shell'
 
 /** A stage of the parent's todo list, as it stood when work was dispatched. */
@@ -163,17 +171,18 @@ export const emptyActivityState = (): ActivityState => ({
   tasks: {},
 })
 
-const FINISHED: ReadonlySet<ActivityStatus> = new Set<ActivityStatus>([
+const FINISHED: ReadonlySet<WorkflowStatus> = new Set<WorkflowStatus>([
   'done',
   'error',
   'cancelled',
   'interrupted',
+  'partial',
 ])
 
-export const isFinished = (status: ActivityStatus): boolean =>
+export const isFinished = (status: WorkflowStatus): boolean =>
   FINISHED.has(status)
 
-export const isLive = (status: ActivityStatus): boolean => !FINISHED.has(status)
+export const isLive = (status: WorkflowStatus): boolean => !FINISHED.has(status)
 
 /** A phase id that is stable for the life of its workflow. */
 export const phaseIdFor = (workflowId: string, ordinal: number): string =>
@@ -626,7 +635,10 @@ export function progressOf(tasks: ActivityTask[]): ActivityProgress {
  *    backgrounded shell command keeps its workflow running after the model
  *    turn ends, because the process really is still running.
  * 2. **queued** — nothing running, but a child is waiting for a slot.
- * 3. **error** — a failure is the most serious finished outcome.
+ * 3. **error** — a failure is the most serious finished outcome. When the
+ *    run has ended and every failure is a shell command, it is **partial**
+ *    instead ("Finished with errors"): the run completed, and a command that
+ *    exited non-zero is something it ran, not something that stopped it.
  * 4. **cancelled** — *any* cancelled child. Part of this workflow was stopped,
  *    so it did not complete, and reporting "done" would hide that. This is the
  *    documented rule; an earlier implementation required every child to be
@@ -636,14 +648,18 @@ export function progressOf(tasks: ActivityTask[]): ActivityProgress {
 export function workflowStatus(
   workflow: ActivityWorkflow,
   tasks: ActivityTask[]
-): ActivityStatus {
+): WorkflowStatus {
   if (tasks.some((task) => task.status === 'running')) return 'running'
   if (tasks.some((task) => task.status === 'queued')) {
     // A run that is over cannot still have work waiting for a slot; that is a
     // torn-down queue, not a live one.
     return workflow.endedAt == null ? 'queued' : 'cancelled'
   }
-  if (tasks.some((task) => task.status === 'error')) return 'error'
+  const failed = tasks.filter((task) => task.status === 'error')
+  if (failed.length > 0) {
+    const onlyCommands = failed.every((task) => task.kind === 'shell')
+    return workflow.endedAt != null && onlyCommands ? 'partial' : 'error'
+  }
   // Interrupted outranks cancelled: the user stopping part of a run is less
   // surprising than the app having cut all of it off.
   if (tasks.some((task) => task.status === 'interrupted')) return 'interrupted'
@@ -658,7 +674,7 @@ export function workflowStatus(
 export type WorkflowView = {
   workflow: ActivityWorkflow
   tasks: ActivityTask[]
-  status: ActivityStatus
+  status: WorkflowStatus
   progress: ActivityProgress
   phases: { phase: ActivityPhase; tasks: ActivityTask[] }[]
   /** Work dispatched outside any phase. */

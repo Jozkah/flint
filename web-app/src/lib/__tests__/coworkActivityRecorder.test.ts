@@ -12,6 +12,7 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import {
   lastUserQuestion,
+  runTitle,
   recordAgentDispatch,
   recordJobCollected,
   recordShellDispatch,
@@ -24,6 +25,8 @@ import {
   taskIdFor,
 } from '@/lib/coworkActivity'
 import type { TodoList, TodoStatus } from '@/types/coworkSession'
+import { PLAN_EXECUTE_INSTRUCTION } from '@/lib/coworkPlanReview'
+import { CONTINUE_QUESTION_ID, continuationInstruction } from '@/lib/coworkContinuity'
 
 const SESSION = 's-1'
 const run: RunContext = {
@@ -220,6 +223,21 @@ describe('naming the run', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ] as any)
     ).toBe('second')
+  })
+
+  it('never names a run after the instruction that continues a plan', () => {
+    const history = [
+      { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'build tic-tac-toe' }] },
+      { id: 'm2', role: 'assistant', parts: [{ type: 'text', text: 'plan' }] },
+      { id: 'm3', role: 'user', parts: [{ type: 'text', text: PLAN_EXECUTE_INSTRUCTION }] },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any
+    expect(runTitle(PLAN_EXECUTE_INSTRUCTION, history)).toBe('build tic-tac-toe')
+    expect(lastUserQuestion(history)).toBe('build tic-tac-toe')
+    expect(
+      runTitle(continuationInstruction('Run the tests?', [{ id: CONTINUE_QUESTION_ID, selected: ['Yes'] }]), history)
+    ).toBe('build tic-tac-toe')
+    expect(runTitle('add a score board', history)).toBe('add a score board')
   })
 
   it('finds nothing in a conversation with no question in it', () => {

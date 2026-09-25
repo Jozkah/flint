@@ -27,11 +27,12 @@ import {
   updateTask,
   workflowAnchoredAt,
   workflowStatus,
+  isLive,
   workflowView,
   type ActivityState,
-  type ActivityStatus,
   type ActivityTask,
   type ActivityWorkflow,
+  type WorkflowStatus,
 } from '@/lib/coworkActivity'
 
 const SESSION = 's-1'
@@ -229,7 +230,7 @@ describe('updating a task', () => {
 })
 
 describe('workflow status, derived from its children', () => {
-  const statusOf = (...tasks: ActivityTask[]): ActivityStatus =>
+  const statusOf = (...tasks: ActivityTask[]): WorkflowStatus =>
     workflowStatus(workflow(), tasks)
 
   it('is running while any child is running', () => {
@@ -300,6 +301,24 @@ describe('workflow status, derived from its children', () => {
 
   it('is running while a live run has dispatched nothing yet', () => {
     expect(statusOf()).toBe('running')
+  })
+
+  it('finishes with errors when only commands failed in a completed run', () => {
+    // "7 of 7 finished" with a red "Failed" over it read as the run failing;
+    // a command that exited non-zero is part of the work the run did.
+    const ended = workflow({ endedAt: T0 + 9 })
+    const shell = (id: string, status: ActivityTask['status']) =>
+      task({ id, kind: 'shell', status })
+    expect(
+      workflowStatus(ended, [shell('a', 'done'), shell('b', 'error'), shell('c', 'done')])
+    ).toBe('partial')
+    expect(isLive('partial')).toBe(false)
+    // Still going: nothing is settled yet.
+    expect(workflowStatus(workflow(), [shell('a', 'error')])).toBe('error')
+    // A failed agent is a failure of the work, not a command's exit code.
+    expect(
+      workflowStatus(ended, [shell('a', 'error'), task({ id: 'b', status: 'error' })])
+    ).toBe('error')
   })
 
   it('is done once a finished run has no live children left', () => {
