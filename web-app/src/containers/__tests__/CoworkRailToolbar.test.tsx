@@ -84,7 +84,7 @@ describe('CoworkRailToolbar', () => {
       />
     )
     expect(screen.getByText('+5')).toBeInTheDocument()
-    expect(screen.getByText('-3')).toBeInTheDocument()
+    expect(screen.getByText('−3')).toBeInTheDocument()
   })
 
   it('shows the in-flight activity count while work runs', () => {

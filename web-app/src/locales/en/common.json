@@ -228,7 +228,8 @@
     "content": "Content",
     "output": "Output",
     "details": "Details",
-    "back": "Back to conversation"
+    "back": "Back to conversation",
+    "running": "Running"
   },
   "coworkReview": {
     "ready_one": "{{count}} file ready for review",

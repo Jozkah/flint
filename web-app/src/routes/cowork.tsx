@@ -24,7 +24,9 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileDiff, Handshake, Loader2 } from 'lucide-react'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import {
@@ -3995,23 +3997,17 @@ function CoworkPage() {
   )
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-card">
       <HeaderPage>
         {/* The same row component the chat page uses, so the selector and the
-            control beside it match in size, spacing and order. */}
+            control beside it match in size, spacing and order. The session's
+            title is not repeated here: it heads the conversation frame. */}
         <PageHeaderRow>
-          {!phone && session?.title ? (
-            <h1
-              className="hidden min-w-0 max-w-[18rem] shrink truncate text-sm font-semibold leading-tight text-foreground lg:block"
-              title={session.title}
-              data-testid="cowork-session-title"
-            >
-              {session.title}
-            </h1>
-          ) : null}
-          {!phone && modelSelector}
           {!phone && (
-            <div className="flex min-w-0 items-center gap-1">
+            // Set off from the breadcrumb by a dashed rule, as the design's
+            // context controls are.
+            <div className="flex min-w-0 items-center gap-2 border-l border-dashed border-border pl-3.5">
+              {modelSelector}
               {sessionControls}
             </div>
           )}
@@ -4021,9 +4017,9 @@ function CoworkPage() {
             <div
               role="group"
               aria-label={t('common:coworkLayout.views')}
-              className="flex h-9 min-w-0 flex-1 items-stretch overflow-hidden rounded-md border border-line-strong bg-card pointer-coarse:h-11"
+              className="flex h-9 min-w-0 flex-1 items-stretch gap-1 overflow-hidden rounded-[10px] bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
             >
-              {PHONE_VIEWS.map((option, index) => (
+              {PHONE_VIEWS.map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -4031,11 +4027,10 @@ function CoworkPage() {
                   data-testid={`cowork-view-${option}`}
                   onClick={() => showView(option)}
                   className={cn(
-                    'flex min-w-0 flex-1 items-center justify-center px-2 text-sm font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
-                    index > 0 && 'border-l border-line-strong',
+                    'flex min-w-0 flex-1 items-center justify-center rounded-md px-2 text-[12.5px] font-medium outline-none transition-[background-color,color,box-shadow] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40',
                     view === option
-                      ? 'bg-accent text-foreground shadow-[inset_0_-2px_0_var(--brand-fill)]'
-                      : 'text-muted-foreground hover:bg-sunken hover:text-foreground'
+                      ? 'bg-card text-foreground shadow-lift'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <span className="truncate">
@@ -4060,17 +4055,6 @@ function CoworkPage() {
           ) : null}
           {!phone && (
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {/* The one primary action in the context bar, once there is
-                  something to review. */}
-              {changeCounts.fileCount > 0 ? (
-                <Button
-                  size="sm"
-                  onClick={() => openRail({ kind: 'diff' })}
-                  data-testid="cowork-header-review"
-                >
-                  {t('common:coworkReview.open')}
-                </Button>
-              ) : null}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
                 {detailsBody}
@@ -4081,16 +4065,59 @@ function CoworkPage() {
       </HeaderPage>
 
       <CoworkInspectorProvider layout={inspectorLayout}>
-      <div className="relative flex min-h-0 flex-1 h-full overflow-hidden">
-        <div
+      {/* Two framed cards side by side, as the design lays out Cowork: the
+          conversation, and the output panel once one is open. */}
+      <div
+        className={cn(
+          'relative flex h-full min-h-0 flex-1 overflow-hidden',
+          phone ? 'gap-0 pb-2' : 'gap-4 px-1 pt-3.5 pb-4'
+        )}
+      >
+        <Frame
           className={cn(
-            'flex min-w-0 flex-1 flex-col h-full overflow-hidden',
+            'h-full min-h-0 flex-1 motion-safe:animate-rise-in',
             view !== 'content' && 'hidden'
           )}
           data-testid="cowork-content-view"
         >
-          <CoworkPlanStrip todos={session?.todos} />
-          <div className="flex-1 relative">
+          <FrameHeader
+            icon={<Handshake aria-hidden />}
+            title={
+              <span
+                title={session?.title || undefined}
+                data-testid="cowork-session-title"
+              >
+                {session?.title || t('common:newSession')}
+              </span>
+            }
+            actions={
+              <>
+                {running ? (
+                  <Chip className="border-transparent bg-transparent text-secondary-foreground">
+                    <Loader2
+                      className="size-3.5 motion-safe:animate-spin"
+                      aria-hidden
+                    />
+                    {t('common:coworkLayout.running')}
+                  </Chip>
+                ) : null}
+                {/* The one primary action on the conversation, once there is
+                    something to review. */}
+                {changeCounts.fileCount > 0 ? (
+                  <Button
+                    size="sm"
+                    onClick={() => openRail({ kind: 'diff' })}
+                    data-testid="cowork-header-review"
+                  >
+                    <FileDiff aria-hidden />
+                    {t('common:coworkReview.open')}
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+          <FrameBody className="min-h-0 overflow-hidden">
+          <div className="relative flex-1">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
                 folder={folder}
@@ -4098,9 +4125,9 @@ function CoworkPage() {
               />
             ) : (
               <Conversation className="absolute inset-0 text-start">
-                <ConversationContent
-                  className={cn('mx-auto w-full md:w-4/5 xl:w-4/6')}
-                >
+                <ConversationContent className="mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
+                  {/* The plan heads the transcript, in its reading column. */}
+                  <CoworkPlanStrip todos={session?.todos} />
                   <CodeOpenProvider open={openToolPath}>
                     {uiMessages.map((message, i) => (
                       <Fragment key={message.id}>
@@ -4365,8 +4392,8 @@ function CoworkPage() {
             )}
           </div>
 
-          <div className="pb-4 shrink-0">
-            <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
+          <div className="shrink-0 px-3.5 pt-2 pb-3.5">
+            <div className="mx-auto w-full max-w-[780px]">
               {/* Work a crashed or closed run left behind. Shown where the
                   session is about to start, because that is the moment someone
                   would otherwise start a second one beside it. Everything else
@@ -4474,11 +4501,12 @@ function CoworkPage() {
               />
             </div>
           </div>
-        </div>
+          </FrameBody>
+        </Frame>
 
         {view === 'details' && (
           <div
-            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3"
+            className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-3"
             data-testid="cowork-details-view"
           >
             <Button

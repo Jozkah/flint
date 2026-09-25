@@ -100,14 +100,14 @@ export function CoworkRailToolbar({
             onSelect(mode)
           }}
           className={cn(
-            'shrink-0 gap-1',
+            'shrink-0 gap-1.5',
             tabs
-              ? 'h-auto rounded-none border-b-2 px-2.5 text-xs hover:bg-transparent pointer-coarse:min-h-11'
+              ? 'h-8 min-w-0 justify-center rounded-lg px-2 text-[12.5px] font-normal pointer-coarse:min-h-11'
               : 'pointer-coarse:h-11 pointer-coarse:px-3',
             tabs && active === mode
-              ? 'border-brand text-foreground'
+              ? 'bg-card font-medium text-foreground shadow-lift hover:bg-card'
               : tabs
-                ? 'border-transparent text-muted-foreground hover:text-foreground'
+                ? 'text-muted-foreground hover:bg-hover-btn hover:text-foreground'
                 : active === mode && 'bg-accent text-foreground'
           )}
         >
@@ -127,7 +127,9 @@ export function CoworkRailToolbar({
       // Kept `shrink-0` so the icons never squash; the composer's control row
       // wraps instead (see ChatInput), which is what stops this group from
       // overflowing to the right and sliding under the send button.
-      className={cn('flex shrink-0', tabs ? 'items-stretch' : 'items-center')}
+      className={cn(
+        tabs ? 'grid grid-cols-3 gap-1' : 'flex shrink-0 items-center'
+      )}
     >
       {item(
         'preview',
@@ -150,9 +152,9 @@ export function CoworkRailToolbar({
           : t('common:rail.changes'),
         <FileDiff className="size-3.5 shrink-0" aria-hidden />,
         changeCount > 0 ? (
-          <span className="flex items-center gap-1 font-mono text-[11px] tabular-nums">
-            <span className="text-success">+{additions}</span>
-            <span className="text-destructive">-{deletions}</span>
+          <span className="flex items-center gap-1 font-mono text-[10.5px] tabular-nums">
+            <span className="text-diff-add">+{additions}</span>
+            <span className="text-diff-del">−{deletions}</span>
           </span>
         ) : undefined,
         t('common:rail.changes')
@@ -169,7 +171,7 @@ export function CoworkRailToolbar({
           <Activity className="size-3.5 shrink-0" aria-hidden />
         ),
         hasActivity ? (
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          <span className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10.5px] tabular-nums text-muted-foreground">
             {inFlight > 0 ? inFlight : activity.finished}
           </span>
         ) : undefined,
