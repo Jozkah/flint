@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, FileText, Loader2, Folder } from 'lucide-react'
+import {
+  FileText,
+  Folder,
+  Loader2,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,6 +27,7 @@ import {
 } from '@/lib/skillStore'
 import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 
 /**
  * A skills group is either the global store or one registered project.
@@ -161,117 +170,159 @@ export default function SkillsTab() {
       : { kind: 'skill' as const, id: selectedGlobalMeta.name }
     : null
 
-  const renderSkillRow = (
+  const renderSkillCard = (
     group: GroupKey,
     s: SkillMeta,
-    { editable }: { editable: boolean }
-  ) => (
-    <div
-      key={`${group}:${s.name}`}
-      role="button"
-      tabIndex={0}
-      aria-current={openGroup === group && selected === s.name ? 'true' : undefined}
-      className={cn(
-        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
-        openGroup === group &&
-          selected === s.name &&
-          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
-      )}
-      onClick={() => openSkill(group, s.name)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          openSkill(group, s.name)
-        }
-      }}
-    >
-      <FileText size={14} className="shrink-0 text-muted-foreground" aria-hidden />
-      <div className="flex-1 min-w-0">
-        <div className="truncate font-medium text-foreground">{s.name}</div>
-        {s.description && (
-          <div className="line-clamp-2 break-words text-xs text-muted-foreground">
-            {s.description}
-          </div>
+    { editable }: { editable: boolean },
+    index: number
+  ) => {
+    const current = openGroup === group && selected === s.name
+    return (
+      <Frame
+        key={`${group}:${s.name}`}
+        style={{ animationDelay: `${40 + index * 45}ms` }}
+        className={cn(
+          'group motion-safe:animate-rise-in',
+          current &&
+            'shadow-[inset_0_0_0_0.8px_var(--border),0_0_0_1.5px_var(--primary)]'
         )}
+      >
+        <FrameHeader
+          icon={
+            <span className="grid size-6 place-items-center rounded-[7px] bg-[rgba(139,92,246,.14)] text-[#7c3aed] dark:text-[#a78bfa]">
+              <Sparkles className="size-3.5" aria-hidden />
+            </span>
+          }
+          title={<span className="font-mono text-[13px]">{s.name}</span>}
+          actions={
+            editable && !isPluginSkill(s) ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-coarse:size-11"
+                onClick={() => void handleDelete(group, s.name)}
+                title={t('common:skillDelete')}
+                aria-label={`${t('common:skillDelete')}: ${s.name}`}
+              >
+                <Trash2 aria-hidden />
+              </Button>
+            ) : undefined
+          }
+        />
+        <FrameBody className="gap-2.5 p-3">
+          <p className="m-0 line-clamp-2 min-h-[2lh] text-[12.5px] leading-normal text-muted-foreground">
+            {s.description || '—'}
+          </p>
+          <div className="flex items-center justify-between gap-2 text-xs text-subtle-foreground">
+            <span className="min-w-0 truncate">
+              {isPluginSkill(s)
+                ? t('engine:extensions.fromPlugin', { name: s.plugin })
+                : group === 'global'
+                  ? t('engine:extensions.standaloneSkill')
+                  : t('engine:extensions.projectSkill')}
+            </span>
+            <Button
+              variant="surface"
+              size="xs"
+              aria-current={current ? 'true' : undefined}
+              onClick={() => void openSkill(group, s.name)}
+            >
+              {editable
+                ? t('engine:extensions.edit')
+                : t('engine:extensions.view')}
+            </Button>
+          </div>
+        </FrameBody>
+      </Frame>
+    )
+  }
+
+  const groupHeading = (label: ReactNode, action?: ReactNode) => (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium text-subtle-foreground uppercase">
+        {label}
       </div>
-      {editable && !isPluginSkill(s) && (
-        <button
-          type="button"
-          className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive-tint hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:group-focus-within:opacity-100 pointer-coarse:size-11"
-          onClick={(e) => {
-            e.stopPropagation()
-            void handleDelete(group, s.name)
-          }}
-          title={t('common:skillDelete')}
-        >
-          <Trash2 size={14} aria-hidden />
-        </button>
-      )}
+      {action}
     </div>
   )
 
+  const cardGrid = 'grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4'
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 sm:h-full sm:flex-row sm:gap-4 sm:overflow-hidden">
-      <div className="flex max-h-[60vh] min-h-0 flex-col gap-4 overflow-y-auto border-b border-border pb-3 sm:max-h-none sm:w-1/3 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0">
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase text-muted-foreground">
-              {t('common:extensionsManager.global')}
-            </div>
-            <Button
-              variant="outline"
-              size="xs"
-              className="gap-1 pointer-coarse:h-11"
-              onClick={startNew}
-            >
-              <Plus size={12} aria-hidden />
+    <div
+      className={cn(
+        'grid items-start gap-4',
+        editing && 'lg:grid-cols-[minmax(0,1fr)_420px]'
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-5">
+        <section className="flex flex-col gap-3">
+          {groupHeading(
+            t('common:extensionsManager.global'),
+            <Button size="sm" className="pointer-coarse:h-11" onClick={startNew}>
+              <Plus aria-hidden />
               {t('common:skillNew')}
             </Button>
-          </div>
-          <div className="flex flex-col gap-1">
-            {globalSkills.length === 0 ? (
-              <p className="text-xs text-muted-foreground px-1 py-2">
+          )}
+          {globalSkills.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              {t('common:skillsEmpty')}
+            </p>
+          ) : (
+            <div className={cardGrid}>
+              {globalSkills.map((s, i) =>
+                renderSkillCard('global', s, { editable: true }, i)
+              )}
+            </div>
+          )}
+        </section>
+
+        {projects.map((p) => (
+          <section key={p.id} className="flex flex-col gap-3">
+            {groupHeading(
+              <>
+                <Folder size={12} aria-hidden />
+                {p.name || p.folder}
+              </>
+            )}
+            {(projectSkills[p.id] ?? []).length === 0 ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground">
                 {t('common:skillsEmpty')}
               </p>
             ) : (
-              globalSkills.map((s) =>
-                renderSkillRow('global', s, { editable: true })
-              )
+              <div className={cardGrid}>
+                {(projectSkills[p.id] ?? []).map((s, i) =>
+                  renderSkillCard(p.id, s, { editable: false }, i)
+                )}
+              </div>
             )}
-          </div>
-        </div>
-
-        {projects.map((p) => (
-          <div key={p.id}>
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground">
-              <Folder size={12} aria-hidden />
-              {p.name || p.folder}
-            </div>
-            <div className="flex flex-col gap-1">
-              {(projectSkills[p.id] ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground px-1 py-2">
-                  {t('common:skillsEmpty')}
-                </p>
-              ) : (
-                (projectSkills[p.id] ?? []).map((s) =>
-                  renderSkillRow(p.id, s, { editable: false })
-                )
-              )}
-            </div>
-          </div>
+          </section>
         ))}
 
         {loading && projects.length === 0 && globalSkills.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-ink-2">
+          <div className="flex items-center justify-center py-6 text-muted-foreground">
             <Loader2 className="motion-safe:animate-spin" size={18} aria-hidden />
           </div>
         )}
       </div>
 
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
-        {editing ? (
-          <>
+      {editing && (
+        <Frame className="motion-safe:animate-rise-in">
+          <FrameHeader
+            icon={<FileText />}
+            title={isNew ? t('common:skillNew') : name}
+            actions={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('engine:extensions.closePanel')}
+                onClick={closeEditor}
+              >
+                <X aria-hidden />
+              </Button>
+            }
+          />
+          <FrameBody className="gap-3 p-3.5">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -280,22 +331,26 @@ export default function SkillsTab() {
             />
             {enablementTarget && (
               <div>
-                <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                  {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
+                <div className="mb-1.5 text-[11px] font-medium text-subtle-foreground uppercase">
+                  {t('common:extensionsManager.enablement.title', undefined) ??
+                    'Enabled on'}
                 </div>
-                <EnablementGrid kind={enablementTarget.kind} id={enablementTarget.id} />
+                <EnablementGrid
+                  kind={enablementTarget.kind}
+                  id={enablementTarget.id}
+                />
               </div>
             )}
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={t('common:skillContentPlaceholder')}
-              className="min-h-48 flex-1 font-mono text-base md:text-xs resize-none"
+              className="min-h-64 resize-y font-mono text-base md:text-xs"
               readOnly={openGroup !== 'global'}
               aria-readonly={openGroup !== 'global' ? true : undefined}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={closeEditor}>
+              <Button variant="surface" size="sm" onClick={closeEditor}>
                 {t('common:cancel')}
               </Button>
               {openGroup === 'global' && (
@@ -304,13 +359,9 @@ export default function SkillsTab() {
                 </Button>
               )}
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-            {t('common:skillsPickOrNew')}
-          </div>
-        )}
-      </div>
+          </FrameBody>
+        </Frame>
+      )}
     </div>
   )
 }

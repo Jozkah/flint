@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { FolderOpen, Loader2, OctagonAlert, Plus, Puzzle, Search, Trash2 } from 'lucide-react'
+import {
+  FolderOpen,
+  Info,
+  Loader2,
+  OctagonAlert,
+  Plus,
+  Power,
+  Puzzle,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +42,11 @@ import {
   type PluginSources,
 } from '@/lib/pluginStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
+import { ExtensionIcon, extensionIcon } from '@/containers/extensions/ExtensionIcon'
+import { Chip } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { RowMenu } from '@/containers/engine/RowMenu'
 
 const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
 
@@ -295,93 +312,192 @@ export default function PluginsTab() {
     }
   }
 
-  const renderList = () => (
-    <div className="flex max-h-[40vh] min-h-0 flex-col gap-2 border-b border-border pb-3 sm:max-h-none sm:w-1/3 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0">
-      <div className="flex gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="plugins-install-button"
-          aria-pressed={mode === 'install'}
-          className={cn(
-            'flex-1 gap-1.5 justify-start',
-            mode === 'install' && 'bg-accent text-foreground'
-          )}
-          onClick={openInstall}
-        >
-          <Plus size={14} aria-hidden />
-          {t('plugins:installButton')}
-        </Button>
-      </div>
+  const renderToolbar = () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        data-testid="plugins-install-button"
+        aria-pressed={mode === 'install'}
+        onClick={openInstall}
+      >
+        <Plus aria-hidden />
+        {t('plugins:installButton')}
+      </Button>
       <Button
         variant="outline"
         size="sm"
         data-testid="plugins-browse-button"
         aria-pressed={mode === 'browse'}
-        className={cn('gap-1.5 justify-start', mode === 'browse' && 'bg-accent text-foreground')}
+        className={cn(mode === 'browse' && 'border-border-strong bg-hover-btn')}
         onClick={openBrowse}
       >
-        <Search size={14} aria-hidden />
+        <Search aria-hidden />
         {t('plugins:browseButton', undefined)}
       </Button>
       {loadError && (
-        <div role="alert" className="text-xs text-destructive break-words">
-          <p className="flex items-start gap-1.5">
-            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-            <span className="min-w-0">{loadError}</span>
-          </p>
-          <Button variant="link" size="sm" className="px-0" onClick={() => void refresh()}>
+        <div
+          role="alert"
+          className="flex w-full items-center gap-2 text-xs break-words text-destructive"
+        >
+          <OctagonAlert className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{loadError}</span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0"
+            onClick={() => void refresh()}
+          >
             {t('plugins:retry')}
           </Button>
         </div>
       )}
-      <div
-        className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1"
-        role="list"
-        aria-label={t('plugins:listLabel')}
-        aria-busy={loading}
-      >
-        {loading && plugins.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-1 py-2">{t('plugins:loading')}</p>
-        ) : plugins.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-1 py-2">{t('plugins:empty.title')}</p>
-        ) : (
-          plugins.map((p) => (
-            <div role="listitem" key={p.id}>
-              <button
-                type="button"
-                aria-current={selectedId === p.id ? 'true' : undefined}
-                className={cn(
-                  'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-ink-2 hover:bg-sunken hover:text-foreground outline-none',
-                  selectedId === p.id &&
-                    mode === 'list' &&
-                    'bg-accent text-foreground'
-                )}
-                onClick={() => select(p.id)}
+    </div>
+  )
+
+  /** One installed plugin as a card: cover, icon tile, what it adds, where it came from. */
+  const renderCard = (p: InstalledPlugin, i: number) => {
+    const { from } = extensionIcon(p.name)
+    const selected = selectedId === p.id && mode === 'list'
+    const counts = [
+      p.skills ? t('engine:extensions.skillsCount', { count: p.skills }) : null,
+      p.commands
+        ? t('engine:extensions.commandsCount', { count: p.commands })
+        : null,
+      p.agents ? t('engine:extensions.agentsCount', { count: p.agents }) : null,
+    ].filter(Boolean)
+    return (
+      <div role="listitem" key={p.id} className="min-w-0">
+        <Frame
+          style={{
+            animationDelay: `${60 + i * 60}ms`,
+            ['--g1' as string]: from,
+          }}
+          className={cn(
+            'group h-full motion-safe:animate-rise-in',
+            selected &&
+              'shadow-[inset_0_0_0_0.8px_var(--border),0_0_0_1.5px_var(--primary)]'
+          )}
+        >
+          <div
+            className={cn(
+              'relative flex h-[74px] items-start justify-end rounded-t-[9px] border-b-[0.8px] border-border p-2.5',
+              'bg-[radial-gradient(circle_at_18%_130%,color-mix(in_oklab,var(--g1)_70%,transparent),transparent_62%),linear-gradient(120deg,color-mix(in_oklab,var(--g1)_38%,transparent),transparent),repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.08)_10px_10.8px)]'
+            )}
+          >
+            <Switch
+              className="relative z-20"
+              checked={p.enabled}
+              disabled={toggling === p.id}
+              aria-label={t('plugins:toggle.label', { name: p.name })}
+              onCheckedChange={(checked) => void toggle(p, checked)}
+            />
+            <ExtensionIcon
+              name={p.name}
+              size={40}
+              className={cn(
+                'absolute bottom-[-16px] left-3.5 z-10 shadow-[0_0_0_2.5px_var(--card),0_8px_18px_-8px_color-mix(in_oklab,var(--g1)_70%,transparent)] transition-transform duration-300 ease-expo group-hover:-translate-y-0.5 group-hover:-rotate-4',
+                !p.enabled && 'grayscale-[.9]'
+              )}
+            />
+          </div>
+          <div className="relative flex flex-1 flex-col gap-2.5 rounded-b-[9px] bg-card p-3.5 pt-6">
+            <button
+              type="button"
+              aria-current={selected ? 'true' : undefined}
+              className="flex min-w-0 items-center gap-2 text-left outline-none after:absolute after:inset-0 after:rounded-b-[9px] after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
+              onClick={() => select(p.id)}
+            >
+              <b className="truncate text-sm font-semibold text-foreground">
+                {p.name}
+              </b>
+              <Chip mono className="h-5">
+                {t('plugins:version', { version: p.version })}
+              </Chip>
+            </button>
+            <p className="m-0 line-clamp-2 text-[12.5px] leading-normal text-muted-foreground">
+              {p.description || t('plugins:details.noDescription')}
+            </p>
+            {counts.length > 0 && (
+              <span>
+                <Chip>
+                  <Sparkles aria-hidden />
+                  {counts.join(' · ')}
+                </Chip>
+              </span>
+            )}
+            <div className="relative z-10 mt-auto flex items-center justify-between gap-2 text-xs text-subtle-foreground">
+              <span
+                className="min-w-0 truncate font-mono"
+                title={p.source ?? undefined}
               >
-                <Puzzle size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-baseline gap-1.5">
-                    <span className="truncate font-medium text-foreground">{p.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {t('plugins:version', { version: p.version })}
-                    </span>
-                  </span>
-                  {p.description && (
-                    <span className="block line-clamp-2 break-words text-xs text-muted-foreground">
-                      {p.description}
-                    </span>
-                  )}
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {sourceLabel(p)}
-                    {p.source ? `: ${p.source}` : ''}
-                  </span>
-                </span>
-              </button>
+                {p.source ? p.source : sourceLabel(p)}
+              </span>
+              <RowMenu
+                label={t('engine:extensions.pluginActions', { name: p.name })}
+                items={[
+                  {
+                    label: t('engine:extensions.details'),
+                    icon: <Info />,
+                    onSelect: () => select(p.id),
+                  },
+                  {
+                    label: p.enabled
+                      ? t('engine:extensions.disable')
+                      : t('engine:extensions.enable'),
+                    icon: <Power />,
+                    disabled: toggling === p.id,
+                    onSelect: () => void toggle(p, !p.enabled),
+                  },
+                  'separator',
+                  {
+                    label: t('plugins:remove.button'),
+                    icon: <Trash2 />,
+                    destructive: true,
+                    onSelect: () => {
+                      setRemoveError(null)
+                      void getPluginDetails('', p.id, 'global')
+                        .then(setConfirmRemove)
+                        .catch((e) =>
+                          setRemoveError(
+                            t('plugins:remove.failed', {
+                              name: p.name,
+                              error: pluginErrorText(t, e),
+                            })
+                          )
+                        )
+                    },
+                  },
+                ]}
+              />
             </div>
-          ))
-        )}
+          </div>
+        </Frame>
       </div>
+    )
+  }
+
+  const renderGrid = () => (
+    <div
+      className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
+      role="list"
+      aria-label={t('plugins:listLabel')}
+      aria-busy={loading}
+    >
+      {loading && plugins.length === 0 ? (
+        <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
+          {t('plugins:loading')}
+        </p>
+      ) : plugins.length === 0 ? (
+        <div className="col-span-full">
+          <EmptyState
+            icon={<Puzzle />}
+            title={t('plugins:empty.title')}
+            description={t('plugins:empty.body')}
+          />
+        </div>
+      ) : (
+        plugins.map(renderCard)
+      )}
     </div>
   )
 
@@ -396,7 +512,7 @@ export default function PluginsTab() {
     }
     const switchId = `plugin-enabled-${plugin.id}`
     return (
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-foreground break-words">
@@ -446,7 +562,7 @@ export default function PluginsTab() {
           </p>
         ) : (
           <>
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-1.5 text-xs [&_dd]:font-mono [&_dd]:text-fg-2">
               <dt className="text-muted-foreground">{t('plugins:source.label')}</dt>
               <dd className="break-all">
                 {sourceLabel(details)}
@@ -456,7 +572,7 @@ export default function PluginsTab() {
               <dd className="break-all">{details.installedPath}</dd>
             </dl>
             <div>
-              <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+              <div className="mb-1.5 text-[11px] font-medium uppercase text-subtle-foreground">
                 {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
               </div>
               <EnablementGrid kind="plugin" id={plugin.id} />
@@ -486,12 +602,11 @@ export default function PluginsTab() {
   }
 
   const renderBrowse = () => (
-    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1">
-      <div className="text-sm font-medium">{t('plugins:browseButton')}</div>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {!sources?.marketplace ? (
         <div
           data-testid="plugins-browse-unconfigured"
-          className="flex flex-col gap-1 rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground"
+          className="flex flex-col gap-1 rounded-xl border border-dashed border-border-strong px-3 py-4 text-xs text-muted-foreground"
         >
           <p>{t('plugins:browse.notConfigured')}</p>
           <p>{t('plugins:browse.notConfiguredHint')}</p>
@@ -530,7 +645,7 @@ export default function PluginsTab() {
               <div
                 key={entry.name}
                 role="listitem"
-                className="flex items-start justify-between gap-2 rounded-md border border-border px-2 py-1.5"
+                className="flex items-start justify-between gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 py-2 transition-colors hover:bg-hover-row"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-foreground">{entry.name}</div>
@@ -564,13 +679,12 @@ export default function PluginsTab() {
 
   const renderInstall = () => (
     <form
-      className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1"
+      className="flex min-h-0 flex-1 flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault()
         void submitInstall()
       }}
     >
-      <div className="text-sm font-medium">{t('plugins:install.title')}</div>
       <fieldset className="flex flex-col gap-2" disabled={installBusy}>
         <legend className="text-xs text-muted-foreground mb-1">
           {t('plugins:install.sourceLabel')}
@@ -705,18 +819,84 @@ export default function PluginsTab() {
     </form>
   )
 
+  const selectedPlugin = plugins.find((p) => p.id === selectedId)
+  const panelOpen = mode !== 'list' || !!selectedPlugin
+  const panelTitle =
+    mode === 'install'
+      ? t('plugins:install.title')
+      : mode === 'browse'
+        ? t('plugins:browseButton')
+        : (selectedPlugin?.name ?? '')
+
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 sm:h-full sm:flex-row sm:gap-4 sm:overflow-hidden">
-        {renderList()}
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
-          {mode === 'install' ? renderInstall() : mode === 'browse' ? renderBrowse() : renderDetails()}
+      <div className="flex min-h-0 flex-col gap-4">
+        {renderToolbar()}
+        {removeError && !selectedPlugin && (
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{removeError}</span>
+          </p>
+        )}
+        <div
+          className={cn(
+            'grid items-start gap-4',
+            panelOpen && 'lg:grid-cols-[minmax(0,1fr)_380px]'
+          )}
+        >
+          {renderGrid()}
+          {panelOpen && (
+            <Frame className="motion-safe:animate-rise-in">
+              <FrameHeader
+                icon={
+                  mode === 'list' && selectedPlugin ? (
+                    <ExtensionIcon
+                      name={selectedPlugin.name}
+                      size={18}
+                      className="rounded-md"
+                    />
+                  ) : mode === 'browse' ? (
+                    <Search />
+                  ) : (
+                    <Plus />
+                  )
+                }
+                title={panelTitle}
+                actions={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('engine:extensions.closePanel')}
+                    onClick={() => {
+                      setMode('list')
+                      setSelectedId(null)
+                      setDetails(null)
+                    }}
+                  >
+                    <X aria-hidden />
+                  </Button>
+                }
+              />
+              <FrameBody className="gap-3 p-3.5">
+                {mode === 'install'
+                  ? renderInstall()
+                  : mode === 'browse'
+                    ? renderBrowse()
+                    : renderDetails()}
+              </FrameBody>
+            </Frame>
+          )}
         </div>
       </div>
 
       {confirmRemove && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 motion-safe:animate-fade-in">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('plugins:remove.title', { name: confirmRemove.name })}
+            className="w-full max-w-sm rounded-xl border-[0.8px] border-border bg-card p-4 shadow-pop motion-safe:animate-dlg-in"
+          >
             <div className="text-sm font-semibold">
               {t('plugins:remove.title', { name: confirmRemove.name })}
             </div>
@@ -738,7 +918,13 @@ export default function PluginsTab() {
                 disabled={removing}
                 onClick={() => void confirmRemoval()}
               >
-                {removing && <Loader2 className="motion-safe:animate-spin" size={14} aria-hidden />}
+                {removing && (
+                  <Loader2
+                    className="motion-safe:animate-spin"
+                    size={14}
+                    aria-hidden
+                  />
+                )}
                 {t('plugins:remove.confirm')}
               </Button>
             </div>

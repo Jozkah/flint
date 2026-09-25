@@ -180,7 +180,7 @@ export default function ImportFromClaudeCodeDialog({
                             {item.name}
                           </Label>
                           {item.alreadyExists && (
-                            <span className="shrink-0 rounded bg-sunken px-1.5 py-0.5 text-xs text-muted-foreground">
+                            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                               {t('common:extensionsManager.import.installed')}
                             </span>
                           )}
