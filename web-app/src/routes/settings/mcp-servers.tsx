@@ -1,19 +1,21 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import { CardItem } from '@/containers/Card'
 import {
-  SettingsPageBody,
-  SettingsPageHeader,
-} from '@/containers/SettingsPageHeader'
-import { Card, CardItem } from '@/containers/Card'
-import {
+  Activity,
   Braces,
   ChevronDown,
   ChevronUp,
   FileText,
   Pencil,
   Plus,
-  Search,
+  Power,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
   Trash2,
+  Workflow,
 } from 'lucide-react'
 import {
   useMCPServers,
@@ -66,6 +68,48 @@ import {
   McpServerStatus,
   mcpServerErrorId,
 } from '@/containers/McpServerConnectionDetails'
+import { Chip } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Segmented } from '@/components/ui/segmented'
+import {
+  EnginePage,
+  KpiRow,
+  KpiTile,
+  PageHead,
+  SearchField,
+} from '@/containers/engine/EngineKit'
+import { LiveChart } from '@/containers/engine/LiveChart'
+import { RowMenu } from '@/containers/engine/RowMenu'
+import {
+  bucketCounts,
+  startOfToday,
+  useEngineActivity,
+} from '@/stores/engine-activity-store'
+import { cn } from '@/lib/utils'
+
+type ToolsTab = 'servers' | 'routing'
+
+/** One bucket a minute over the last 20 minutes, like the design's charts. */
+const CHART_BUCKETS = 20
+
+const SERVER_COLORS = [
+  '#3b82f6',
+  '#8b5cf6',
+  '#22c55e',
+  '#0891b2',
+  '#f59e0b',
+  '#ec4899',
+  '#10b981',
+  '#64748b',
+]
+
+/** A stable colour per server name, so a server keeps its colour across visits. */
+function serverColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  return SERVER_COLORS[Math.abs(h) % SERVER_COLORS.length]
+}
 
 
 // Function to mask sensitive URL parameters
@@ -169,6 +213,8 @@ function MCPServersDesktop() {
 
   // Search query to filter the server list by name.
   const [searchQuery, setSearchQuery] = useState('')
+  const [tab, setTab] = useState<ToolsTab>('servers')
+  const toolCalls = useEngineActivity((s) => s.toolCalls)
   // Servers the user has expanded; collapsed (compact) is the default so the
   // page stays scannable with many servers installed.
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set())
@@ -728,516 +774,617 @@ function MCPServersDesktop() {
     }
   }, [refreshConnectedServers])
 
-  return (
-    <Fragment>
-      <div className="flex flex-col h-full w-full">
-        <SettingsPageHeader title={t('common:mcp-servers')}>
-          <Button
-            size="sm"
-            className="pointer-coarse:h-11"
-            onClick={() => handleOpenDialog()}
-          >
-            <Plus aria-hidden />
-            {t('mcp-servers:addServer')}
-          </Button>
-        </SettingsPageHeader>
-        <SettingsPageBody
-          title={t('common:mcp-servers')}
-          description={t('settings:pageDesc.mcpServers')}
-        >
-          <Card
-            title={
-              <span className="flex min-w-0 flex-wrap items-center gap-2">
-                {t('mcp-servers:title')}
-                <span className="rounded-md bg-warning-tint px-1.5 py-0.5 text-xs font-medium text-warning">
-                  {t('mcp-servers:experimental')}
-                </span>
-              </span>
-            }
-            aside={
-              <Button
-                onClick={() => handleOpenJsonEditor()}
-                title={t('mcp-servers:editAllJson')}
-                aria-label={t('mcp-servers:editAllJson')}
-                size="icon-sm"
-                variant="outline"
-                className="pointer-coarse:size-11"
-              >
-                <Braces className="text-muted-foreground" aria-hidden />
-              </Button>
-            }
-            description={
-              <>
-                {t('mcp-servers:findMore')}{' '}
-                <a
-                  href="https://mcp.so/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-text underline-offset-4 hover:underline"
-                >
-                  mcp.so
-                </a>
-              </>
-            }
-          >
-            <CardItem
-              anchor="settings-mcp-servers-allow-permissions"
-              title={t('mcp-servers:allowPermissions')}
-              description={t('mcp-servers:allowPermissionsDesc')}
-              actions={
-                <div className="shrink-0">
-                  <Switch
-                    checked={allowAllMCPPermissions}
-                    onCheckedChange={setAllowAllMCPPermissions}
-                  />
-                </div>
-              }
+  const serverEntries = Object.entries(mcpServers)
+  const snapshotFor = (key: string, config: MCPServerConfig) => {
+    const authStatus = authStatuses[key]
+    const profile = deriveMcpServerProfile(config, authStatus)
+    return {
+      authStatus,
+      profile,
+      snapshot: deriveConnectionState({
+        installed: true,
+        enabled: !!config.active,
+        connected: connectedServers.includes(key),
+        runtime: runtime[key],
+        authStatus,
+        transport: profile.transport,
+      }),
+    }
+  }
+  const states = serverEntries.map(([key, config]) => snapshotFor(key, config).snapshot.state)
+  const connectedCount = states.filter((s) => s === 'connected').length
+  const connectingCount = states.filter((s) => s === 'connecting').length
+  const toolCount = Object.values(serverTools).reduce(
+    (n, list) => n + (list?.length ?? 0),
+    0
+  )
+  const todayStart = startOfToday()
+  const callsToday = toolCalls.filter((c) => c.at >= todayStart)
+  const failedToday = callsToday.filter((c) => !c.ok).length
+  const approvedCount = serverEntries.filter(([key]) =>
+    isServerApproved(key, fingerprints[key])
+  ).length
+  const query = searchQuery.trim().toLowerCase()
+  const filtered = serverEntries.filter(([key]) =>
+    key.toLowerCase().includes(query)
+  )
+
+  const settingsRows = (
+    <>
+      <CardItem
+        anchor="settings-mcp-servers-allow-permissions"
+        title={t('mcp-servers:allowPermissions')}
+        description={t('mcp-servers:allowPermissionsDesc')}
+        actions={
+          <div className="shrink-0">
+            <Switch
+              checked={allowAllMCPPermissions}
+              onCheckedChange={setAllowAllMCPPermissions}
             />
-            <CardItem
-              anchor="settings-mcp-servers-tool-call-timeout"
-              title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
-              description={t(
-                'mcp-servers:runtimeSettings.toolCallTimeoutDesc'
-              )}
-              actions={
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={settings.toolCallTimeoutSeconds}
-                  onChange={(event) =>
-                    updateToolCallTimeout(event.target.value)
-                  }
-                  onBlur={() => {
-                    void syncServers()
-                  }}
-                  className="w-28"
-                />
-              }
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-tool-call-timeout"
+        title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
+        description={t('mcp-servers:runtimeSettings.toolCallTimeoutDesc')}
+        actions={
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={settings.toolCallTimeoutSeconds}
+            onChange={(event) => updateToolCallTimeout(event.target.value)}
+            onBlur={() => {
+              void syncServers()
+            }}
+            className="w-28"
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-max-tool-output"
+        title={t('mcp-servers:runtimeSettings.maxToolOutputChars')}
+        description={t('mcp-servers:runtimeSettings.maxToolOutputCharsDesc')}
+        actions={
+          <Input
+            type="number"
+            min={0}
+            step={1000}
+            value={settings.maxToolOutputChars}
+            onChange={(event) => updateMaxToolOutputChars(event.target.value)}
+            onBlur={() => {
+              void syncServers()
+            }}
+            className="w-28"
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-smart-tool-routing"
+        title={t('mcp-servers:runtimeSettings.smartToolRouting')}
+        description={t('mcp-servers:runtimeSettings.smartToolRoutingDesc')}
+        actions={
+          <div className="shrink-0">
+            <Switch
+              checked={settings.enableSmartToolRouting}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  updateSettings({ enableSmartToolRouting: true })
+                } else {
+                  updateSettings({
+                    enableSmartToolRouting: false,
+                    useLightweightRouterModel: false,
+                    routerModelProvider: '',
+                    routerModelId: '',
+                  })
+                }
+                void syncServers()
+              }}
             />
-            <CardItem
-              anchor="settings-mcp-servers-max-tool-output"
-              title={t('mcp-servers:runtimeSettings.maxToolOutputChars')}
-              description={t(
-                'mcp-servers:runtimeSettings.maxToolOutputCharsDesc'
-              )}
-              actions={
-                <Input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={settings.maxToolOutputChars}
-                  onChange={(event) =>
-                    updateMaxToolOutputChars(event.target.value)
-                  }
-                  onBlur={() => {
-                    void syncServers()
-                  }}
-                  className="w-28"
-                />
-              }
-            />
-            <CardItem
-              anchor="settings-mcp-servers-smart-tool-routing"
-              title={t('mcp-servers:runtimeSettings.smartToolRouting')}
-              description={t(
-                'mcp-servers:runtimeSettings.smartToolRoutingDesc'
-              )}
-              actions={
-                <div className="shrink-0">
-                  <Switch
-                    checked={settings.enableSmartToolRouting}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        updateSettings({ enableSmartToolRouting: true })
-                      } else {
-                        updateSettings({
-                          enableSmartToolRouting: false,
-                          useLightweightRouterModel: false,
-                          routerModelProvider: '',
-                          routerModelId: '',
-                        })
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-lightweight-router"
+        title={t('mcp-servers:runtimeSettings.useLightweightRouterModel')}
+        description={t(
+          'mcp-servers:runtimeSettings.useLightweightRouterModelDesc'
+        )}
+        actions={
+          <div className="shrink-0">
+            <Switch
+              checked={settings.useLightweightRouterModel}
+              disabled={!settings.enableSmartToolRouting}
+              onCheckedChange={(checked) => {
+                updateSettings(
+                  checked
+                    ? { useLightweightRouterModel: true }
+                    : {
+                        useLightweightRouterModel: false,
+                        routerModelProvider: '',
+                        routerModelId: '',
                       }
-                      void syncServers()
-                    }}
-                  />
-                </div>
-              }
+                )
+                void syncServers()
+              }}
             />
-            <CardItem
-              anchor="settings-mcp-servers-lightweight-router"
-              title={t('mcp-servers:runtimeSettings.useLightweightRouterModel')}
-              description={t(
-                'mcp-servers:runtimeSettings.useLightweightRouterModelDesc'
-              )}
-              actions={
-                <div className="shrink-0">
-                  <Switch
-                    checked={settings.useLightweightRouterModel}
-                    disabled={!settings.enableSmartToolRouting}
-                    onCheckedChange={(checked) => {
-                      updateSettings(
-                        checked
-                          ? { useLightweightRouterModel: true }
-                          : {
-                              useLightweightRouterModel: false,
-                              routerModelProvider: '',
-                              routerModelId: '',
-                            }
-                      )
-                      void syncServers()
-                    }}
-                  />
-                </div>
-              }
-            />
-            <CardItem
-              anchor="settings-mcp-servers-router-model"
-              title={t('mcp-servers:runtimeSettings.routerModel')}
-              description={t('mcp-servers:runtimeSettings.routerModelDesc')}
-              actions={
-                <McpRouterModelPicker
-                  ariaLabel={t('mcp-servers:runtimeSettings.routerModel')}
-                  providers={modelProviders}
-                  selectedProvider={settings.routerModelProvider}
-                  selectedModelId={settings.routerModelId}
-                  disabled={routerPickerDisabled}
-                  onSelect={(providerName, modelId) => {
-                    updateSettings({
-                      routerModelProvider: providerName,
-                      routerModelId: modelId,
-                    })
-                    void syncServers()
-                  }}
-                  placeholder={t(
-                    'mcp-servers:runtimeSettings.selectRouterModelPlaceholder'
-                  )}
-                  searchPlaceholder={t(
-                    'mcp-servers:runtimeSettings.routerModelSearchPlaceholder'
-                  )}
-                  emptyListMessage={t(
-                    'mcp-servers:runtimeSettings.routerModelEmptyList'
-                  )}
-                  formatEmptySearch={(q) =>
-                    t('mcp-servers:runtimeSettings.routerModelEmptySearch', {
-                      query: q,
-                    })
-                  }
-                />
-              }
-            />
-          </Card>
-
-          {Object.keys(mcpServers).length === 0 ? (
-            <div className="rounded-lg border border-dashed border-line-strong bg-card px-4 py-8 text-center font-medium text-muted-foreground">
-              {t('mcp-servers:noServers')}
-            </div>
-          ) : (
-            (() => {
-              const query = searchQuery.trim().toLowerCase()
-              const filtered = Object.entries(mcpServers).filter(([key]) =>
-                key.toLowerCase().includes(query)
-              )
-              return (
-                <>
-                  <div className="relative">
-                    <Search
-                      className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Input
-                      type="search"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder={t('mcp-servers:searchPlaceholder')}
-                      aria-label={t('mcp-servers:searchPlaceholder')}
-                      className="pl-9"
-                    />
-                  </div>
-                  {filtered.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-line-strong bg-card px-4 py-8 text-center font-medium text-muted-foreground">
-                      {t('mcp-servers:noSearchResults', { query: searchQuery })}
-                    </div>
-                  ) : (
-                    filtered.map(([key, config], index) => {
-              const authStatus = authStatuses[key]
-              const profile = deriveMcpServerProfile(config, authStatus)
-              const snapshot = deriveConnectionState({
-                installed: true,
-                enabled: !!config.active,
-                connected: connectedServers.includes(key),
-                runtime: runtime[key],
-                authStatus,
-                transport: profile.transport,
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-mcp-servers-router-model"
+        title={t('mcp-servers:runtimeSettings.routerModel')}
+        description={t('mcp-servers:runtimeSettings.routerModelDesc')}
+        actions={
+          <McpRouterModelPicker
+            ariaLabel={t('mcp-servers:runtimeSettings.routerModel')}
+            providers={modelProviders}
+            selectedProvider={settings.routerModelProvider}
+            selectedModelId={settings.routerModelId}
+            disabled={routerPickerDisabled}
+            onSelect={(providerName, modelId) => {
+              updateSettings({
+                routerModelProvider: providerName,
+                routerModelId: modelId,
               })
-              const toolNames = snapshot.connected
-                ? serverTools[key]
-                : undefined
-              const expanded = expandedServers.has(key)
-              return (
-              <div
-                key={`${key}-${index}`}
-                onContextMenu={(e: React.MouseEvent) => {
-                  e.preventDefault()
-                  setCtxMenu({ key, x: e.clientX, y: e.clientY })
-                }}
-              >
-              <Card>
-                <CardItem
-                  align="start"
-                  title={
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                      {/* The connection state is the chip under the
-                          title; a coloured dot here only repeated it. */}
-                      <h3 className="min-w-0 break-words text-sm font-semibold text-foreground">
-                        {key}
-                      </h3>
-                      {config.official && (
-                        <div className="flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-0.5 text-xs text-ink-2">
-                          <img
-                            src="/images/flint-logo.png"
-                            alt="Flint"
-                            className="w-3 h-3 object-contain"
-                          />
-                          <span>Official</span>
-                        </div>
-                      )}
-                    </div>
-                  }
-                  descriptionOutside={
-                    !expanded ? undefined : (
-                    <div className="min-w-0 pt-2 text-sm text-muted-foreground">
-                      <div className="mb-1">
-                        Transport:{' '}
-                        <span className="font-mono text-xs uppercase text-ink-2">
-                          {config.type || 'stdio'}
-                        </span>
-                      </div>
+              void syncServers()
+            }}
+            placeholder={t(
+              'mcp-servers:runtimeSettings.selectRouterModelPlaceholder'
+            )}
+            searchPlaceholder={t(
+              'mcp-servers:runtimeSettings.routerModelSearchPlaceholder'
+            )}
+            emptyListMessage={t(
+              'mcp-servers:runtimeSettings.routerModelEmptyList'
+            )}
+            formatEmptySearch={(q) =>
+              t('mcp-servers:runtimeSettings.routerModelEmptySearch', {
+                query: q,
+              })
+            }
+          />
+        }
+      />
+    </>
+  )
 
-                      {config.type === 'stdio' || !config.type ? (
-                        <>
-                          <div className="break-all">
-                            {t('mcp-servers:command')}:{' '}
-                            <span className="font-mono text-xs text-ink-2">
-                              {config.command}
-                            </span>
-                          </div>
-                          <div className="my-1 break-all">
-                            {t('mcp-servers:args')}:{' '}
-                            <span className="font-mono text-xs text-ink-2">
-                              {config?.args?.join(', ')}
-                            </span>
-                          </div>
-                          {config.env &&
-                            Object.keys(config.env).length > 0 && (
-                              <div className="break-all">
-                                {t('mcp-servers:env')}:{' '}
-                                {Object.entries(config.env)
-                                  .map(([key]) => `${key}=******`)
-                                  .join(', ')}
-                              </div>
-                            )}
-                          {config.official && (
-                            <div className="mt-2 text-xs text-muted-foreground pt-2">
-                              <p className="mb-1">
-                                Requires Jan Browser Extension to be installed
-                                in your Chrome-based browser.
-                              </p>
-                              <a
-                                href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-brand-text underline-offset-4 hover:underline"
-                              >
-                                Install Extension →
-                              </a>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="break-all">
-                            URL:{' '}
-                            <span className="font-mono text-xs text-ink-2">
-                              {maskSensitiveUrl(config.url || '')}
-                            </span>
-                          </div>
-                          {config.headers &&
-                            Object.keys(config.headers).length > 0 && (
-                              <div className="my-1 break-all">
-                                Headers:{' '}
-                                {Object.entries(config.headers)
-                                  .map(([key]) => `${key}=******`)
-                                  .join(', ')}
-                              </div>
-                            )}
-                          {config.timeout && (
-                            <div>Timeout: {config.timeout}s</div>
-                          )}
-                          <McpServerAuth
-                            status={authStatuses[key]}
-                            authorizing={!!authorizing[key]}
-                            consentUrl={consentUrls[key]}
-                            onAuthorize={() => void handleAuthorize(key)}
-                            onClearAuth={() => void handleClearAuth(key)}
-                          />
-                        </>
-                      )}
-                      <McpServerStatus
-                        serverName={key}
-                        snapshot={snapshot}
-                        toolNames={toolNames}
-                        canAuthorize={!!authStatus?.canAuthenticate}
-                        onRetry={() => toggleServer(key, true)}
-                        onAuthorize={() => void handleAuthorize(key)}
-                      />
-                      <McpServerDetails
-                        profile={profile}
-                        toolNames={toolNames}
-                        authStateLabel={
-                          authStatus
-                            ? t(`mcp-servers:auth.state.${authStatus.state}`)
-                            : undefined
-                        }
-                      />
-                      <div className="mt-3 flex min-h-11 items-center gap-2 border-t border-border pt-3 sm:min-h-0">
-                        <Switch
-                          checked={isServerApproved(key, fingerprints[key])}
-                          aria-label={t('mcp-servers:autoApproveServer')}
-                          aria-describedby={
-                            approvalChanged(key)
-                              ? `mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
-                              : undefined
-                          }
-                          onCheckedChange={(checked) =>
-                            void handleAutoApprove(key, checked)
-                          }
-                        />
-                        <span className="text-foreground">
-                          {t('mcp-servers:autoApproveServer')}
-                        </span>
-                      </div>
-                      {approvalChanged(key) && (
-                        <p
-                          id={`mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
-                          className="mt-1 text-xs text-warning"
-                        >
-                          {t('mcp-servers:approval.changedSinceApproval')}
-                        </p>
-                      )}
-                    </div>
-                    )
-                  }
-                  actions={
-                    <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="pointer-coarse:size-11"
-                        onClick={() => toggleExpanded(key)}
-                        aria-expanded={expanded}
-                        title={t(
-                          expanded
-                            ? 'mcp-servers:collapseServer'
-                            : 'mcp-servers:expandServer'
-                        )}
-                        aria-label={t(
-                          expanded
-                            ? 'mcp-servers:collapseServer'
-                            : 'mcp-servers:expandServer'
-                        )}
-                      >
-                        {expanded ? (
-                          <ChevronUp
-                            className="text-muted-foreground"
-                            aria-hidden
-                          />
-                        ) : (
-                          <ChevronDown
-                            className="text-muted-foreground"
-                            aria-hidden
-                          />
-                        )}
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="pointer-coarse:size-11"
-                        onClick={() => handleOpenJsonEditor(key)}
-                        title={t('mcp-servers:editJson.title', {
-                          serverName: key,
-                        })}
-                        aria-label={t('mcp-servers:editJson.title', {
-                          serverName: key,
-                        })}
-                      >
-                        <Braces className="text-muted-foreground" aria-hidden />
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="pointer-coarse:size-11"
-                        onClick={() => setLogServer(key)}
-                        title={t('mcp-servers:serverLog.title', {
-                          serverName: key,
-                        })}
-                        aria-label={t('mcp-servers:serverLog.title', {
-                          serverName: key,
-                        })}
-                      >
-                        <FileText className="text-muted-foreground" aria-hidden />
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="pointer-coarse:size-11"
-                        onClick={() => handleEdit(key)}
-                        title={t('mcp-servers:editServer')}
-                        aria-label={`${t('mcp-servers:editServer')}: ${key}`}
-                      >
-                        <Pencil className="text-muted-foreground" aria-hidden />
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
-                        onClick={() => handleDeleteClick(key)}
-                        title={t('mcp-servers:deleteServer.title')}
-                        aria-label={`${t('mcp-servers:deleteServer.title')}: ${key}`}
-                      >
-                        <Trash2 aria-hidden />
-                      </Button>
-                      <div className="ml-1 flex min-h-11 items-center sm:min-h-0">
-                        <Switch
-                          checked={snapshot.switchOn}
-                          loading={
-                            !!loadingServers[key] ||
-                            snapshot.state === 'connecting'
-                          }
-                          aria-label={t('mcp-servers:connection.toggleLabel', {
-                            serverName: key,
-                          })}
-                          aria-describedby={
-                            snapshot.failure
-                              ? mcpServerErrorId(key)
-                              : undefined
-                          }
-                          onCheckedChange={(checked) =>
-                            toggleServer(key, checked)
-                          }
-                        />
-                      </div>
-                    </div>
-                  }
-                />
-              </Card>
+  const renderServer = ([key, config]: [string, MCPServerConfig], index: number) => {
+    const { authStatus, profile, snapshot } = snapshotFor(key, config)
+    const toolNames = snapshot.connected ? serverTools[key] : undefined
+    const expanded = expandedServers.has(key)
+    const off = snapshot.state === 'disabled' || snapshot.state === 'not-installed'
+    const color = serverColor(key)
+    const series = bucketCounts(
+      toolCalls.filter((c) => c.server === key),
+      CHART_BUCKETS,
+      60_000
+    )
+    const idSafe = key.replace(/[^a-zA-Z0-9_-]/g, '_')
+    return (
+      <Frame
+        key={`${key}-${index}`}
+        data-testid={`mcp-server-${idSafe}`}
+        className="motion-safe:animate-rise-in"
+        style={{ animationDelay: `${60 + index * 50}ms` }}
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault()
+          setCtxMenu({ key, x: e.clientX, y: e.clientY })
+        }}
+      >
+        <FrameHeader
+          title={
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-[13px] text-foreground">
+                {key}
+              </span>
+              <Chip mono className="h-5 uppercase">
+                {config.type || 'stdio'}
+              </Chip>
+              {config.official && (
+                <Chip className="h-5">
+                  <img
+                    src="/images/flint-logo.png"
+                    alt="Flint"
+                    className="size-3 object-contain"
+                  />
+                  <span>Official</span>
+                </Chip>
+              )}
+            </span>
+          }
+          icon={
+            <span
+              aria-hidden
+              style={{ ['--c' as string]: color }}
+              className="grid size-[26px] place-items-center rounded-lg bg-[color-mix(in_oklab,var(--c)_16%,transparent)] text-xs font-bold text-[var(--c)] shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--c)_30%,transparent)]"
+            >
+              {key.trim().charAt(0).toUpperCase()}
+            </span>
+          }
+          actions={
+            <Switch
+              checked={snapshot.switchOn}
+              loading={!!loadingServers[key] || snapshot.state === 'connecting'}
+              aria-label={t('mcp-servers:connection.toggleLabel', {
+                serverName: key,
+              })}
+              aria-describedby={
+                snapshot.failure ? mcpServerErrorId(key) : undefined
+              }
+              onCheckedChange={(checked) => toggleServer(key, checked)}
+            />
+          }
+        />
+        <FrameBody className={cn('gap-2.5 p-3', off && '[&>*:not(footer)]:opacity-70')}>
+          <div className="flex items-start justify-between gap-2 text-xs">
+            <McpServerStatus
+              compact
+              serverName={key}
+              snapshot={snapshot}
+              toolNames={toolNames}
+              canAuthorize={!!authStatus?.canAuthenticate}
+              onRetry={() => toggleServer(key, true)}
+              onAuthorize={() => void handleAuthorize(key)}
+            />
+            <span className="shrink-0 pt-0.5 text-muted-foreground tabular-nums">
+              {toolNames
+                ? t('engine:mcp.toolsCount', { count: toolNames.length })
+                : '—'}
+            </span>
+          </div>
+          <LiveChart
+            series={series}
+            color={color}
+            off={!snapshot.connected}
+            label={t('engine:mcp.callsPerMin')}
+            windowLabel={t('engine:mcp.window', { count: CHART_BUCKETS })}
+            peakLabel={t('engine:chart.peak')}
+            avgLabel={t('engine:chart.avg')}
+            format={(v) => (Number.isInteger(v) ? String(v) : v.toFixed(1))}
+          />
+          <p className="m-0 line-clamp-2 min-h-[34px] font-mono text-[11.5px] leading-normal text-muted-foreground">
+            {toolNames && toolNames.length > 0
+              ? t('mcp-servers:connection.toolsAvailable', {
+                  count: toolNames.length,
+                  names: toolNames.join(' · '),
+                })
+              : config.official
+                ? t('engine:mcp.needsExtension')
+                : t('mcp-servers:connection.toolsWhenConnected')}
+          </p>
+          {expanded && (
+            <div className="min-w-0 border-t border-dashed border-border pt-2 text-xs text-muted-foreground">
+              <div className="mb-1">
+                Transport:{' '}
+                <span className="font-mono text-xs uppercase text-fg-2">
+                  {config.type || 'stdio'}
+                </span>
               </div>
-              )
-                    })
+
+              {config.type === 'stdio' || !config.type ? (
+                <>
+                  <div className="break-all">
+                    {t('mcp-servers:command')}:{' '}
+                    <span className="font-mono text-xs text-fg-2">
+                      {config.command}
+                    </span>
+                  </div>
+                  <div className="my-1 break-all">
+                    {t('mcp-servers:args')}:{' '}
+                    <span className="font-mono text-xs text-fg-2">
+                      {config?.args?.join(', ')}
+                    </span>
+                  </div>
+                  {config.env && Object.keys(config.env).length > 0 && (
+                    <div className="break-all">
+                      {t('mcp-servers:env')}:{' '}
+                      {Object.entries(config.env)
+                        .map(([key]) => `${key}=******`)
+                        .join(', ')}
+                    </div>
+                  )}
+                  {config.official && (
+                    <div className="mt-2 pt-2 text-xs text-muted-foreground">
+                      <p className="mb-1">
+                        Requires Jan Browser Extension to be installed in your
+                        Chrome-based browser.
+                      </p>
+                      <a
+                        href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-acc-text underline-offset-4 hover:underline"
+                      >
+                        Install Extension →
+                      </a>
+                    </div>
                   )}
                 </>
-              )
-            })()
+              ) : (
+                <>
+                  <div className="break-all">
+                    URL:{' '}
+                    <span className="font-mono text-xs text-fg-2">
+                      {maskSensitiveUrl(config.url || '')}
+                    </span>
+                  </div>
+                  {config.headers && Object.keys(config.headers).length > 0 && (
+                    <div className="my-1 break-all">
+                      Headers:{' '}
+                      {Object.entries(config.headers)
+                        .map(([key]) => `${key}=******`)
+                        .join(', ')}
+                    </div>
+                  )}
+                  {config.timeout && <div>Timeout: {config.timeout}s</div>}
+                  <McpServerAuth
+                    status={authStatuses[key]}
+                    authorizing={!!authorizing[key]}
+                    consentUrl={consentUrls[key]}
+                    onAuthorize={() => void handleAuthorize(key)}
+                    onClearAuth={() => void handleClearAuth(key)}
+                  />
+                </>
+              )}
+            </div>
+          )}
+          <McpServerDetails
+            profile={profile}
+            toolNames={toolNames}
+            authStateLabel={
+              authStatus
+                ? t(`mcp-servers:auth.state.${authStatus.state}`)
+                : undefined
+            }
+          />
+          {approvalChanged(key) && (
+            <p
+              id={`mcp-approval-changed-${idSafe}`}
+              className="m-0 text-xs text-warning"
+            >
+              {t('mcp-servers:approval.changedSinceApproval')}
+            </p>
+          )}
+          <footer className="flex items-center gap-1 border-t border-dashed border-border pt-2">
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium text-secondary-foreground sm:min-h-0">
+              <Switch
+                checked={isServerApproved(key, fingerprints[key])}
+                aria-label={t('mcp-servers:autoApproveServer')}
+                aria-describedby={
+                  approvalChanged(key)
+                    ? `mcp-approval-changed-${idSafe}`
+                    : undefined
+                }
+                onCheckedChange={(checked) =>
+                  void handleAutoApprove(key, checked)
+                }
+              />
+              {t('mcp-servers:autoApproveServer')}
+            </label>
+            <span className="flex-1" />
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="text-muted-foreground pointer-coarse:size-11"
+              onClick={() => setLogServer(key)}
+              title={t('mcp-servers:serverLog.title', { serverName: key })}
+              aria-label={t('mcp-servers:serverLog.title', { serverName: key })}
+            >
+              <FileText aria-hidden />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="text-muted-foreground pointer-coarse:size-11"
+              onClick={() => handleEdit(key)}
+              title={t('mcp-servers:editServer')}
+              aria-label={`${t('mcp-servers:editServer')}: ${key}`}
+            >
+              <Pencil aria-hidden />
+            </Button>
+            <RowMenu
+              label={t('engine:mcp.moreActions', { serverName: key })}
+              items={[
+                {
+                  label: t(
+                    expanded
+                      ? 'mcp-servers:collapseServer'
+                      : 'mcp-servers:expandServer'
+                  ),
+                  icon: expanded ? <ChevronUp /> : <ChevronDown />,
+                  onSelect: () => toggleExpanded(key),
+                },
+                {
+                  label: t('mcp-servers:editJson.title', { serverName: key }),
+                  icon: <Braces />,
+                  onSelect: () => void handleOpenJsonEditor(key),
+                },
+                {
+                  label: snapshot.switchOn
+                    ? t('mcp-servers:connection.disable')
+                    : t('mcp-servers:connection.enable'),
+                  icon: <Power />,
+                  onSelect: () => toggleServer(key, !snapshot.switchOn),
+                },
+                'separator',
+                {
+                  label: t('mcp-servers:deleteServer.title'),
+                  icon: <Trash2 />,
+                  destructive: true,
+                  onSelect: () => handleDeleteClick(key),
+                },
+              ]}
+            />
+          </footer>
+        </FrameBody>
+      </Frame>
+    )
+  }
+
+  return (
+    <Fragment>
+      <div className="flex h-full w-full flex-col">
+        <SettingsPageHeader title={t('common:mcp-servers')} />
+        <EnginePage testId="tools-page">
+          <PageHead
+            title={t('common:mcp-servers')}
+            description={t('settings:pageDesc.mcpServers')}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  onClick={() => handleOpenJsonEditor()}
+                  title={t('mcp-servers:editAllJson')}
+                  aria-label={t('mcp-servers:editAllJson')}
+                >
+                  <Braces aria-hidden />
+                  {t('engine:mcp.editJson')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  onClick={() => handleOpenDialog()}
+                >
+                  <Plus aria-hidden />
+                  {t('mcp-servers:addServer')}
+                </Button>
+              </>
+            }
+          />
+
+          <KpiRow>
+            <KpiTile
+              title={t('engine:mcp.kpiServers')}
+              icon={<Workflow />}
+              value={serverEntries.length}
+              sub={t('engine:mcp.kpiServersSub', {
+                connected: connectedCount,
+                connecting: connectingCount,
+              })}
+              delay={40}
+            />
+            <KpiTile
+              title={t('engine:mcp.kpiTools')}
+              icon={<Sparkles />}
+              value={toolCount}
+              sub={t('engine:mcp.kpiToolsSub', { count: connectedCount })}
+              delay={90}
+            />
+            <KpiTile
+              title={t('engine:mcp.kpiCalls')}
+              icon={<Activity />}
+              value={callsToday.length}
+              sub={
+                callsToday.length > 0
+                  ? t('engine:mcp.kpiCallsSub', {
+                      pct: ((failedToday / callsToday.length) * 100).toFixed(1),
+                    })
+                  : t('engine:mcp.kpiCallsNone')
+              }
+              delay={140}
+            />
+            <KpiTile
+              title={t('engine:mcp.kpiApproved')}
+              icon={<ShieldCheck />}
+              value={approvedCount}
+              sub={
+                allowAllMCPPermissions
+                  ? t('engine:mcp.kpiApprovedAll')
+                  : t('engine:mcp.kpiApprovedSub', {
+                      count: serverEntries.length - approvedCount,
+                    })
+              }
+              delay={190}
+            />
+          </KpiRow>
+
+          <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:220ms]">
+            <Segmented<ToolsTab>
+              className="w-[320px] max-w-full"
+              aria-label={t('common:mcp-servers')}
+              value={tab}
+              onValueChange={setTab}
+              options={[
+                { value: 'servers', label: t('engine:mcp.tabServers') },
+                { value: 'routing', label: t('engine:mcp.tabRouting') },
+              ]}
+            />
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Chip tone="warn" className="h-5">
+                {t('mcp-servers:experimental')}
+              </Chip>
+              {t('mcp-servers:findMore')}{' '}
+              <a
+                href="https://mcp.so/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-acc-text underline-offset-4 hover:underline"
+              >
+                mcp.so
+              </a>
+            </span>
+            {tab === 'servers' && serverEntries.length > 0 && (
+              <SearchField
+                className="ml-auto w-[220px]"
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder={t('mcp-servers:searchPlaceholder')}
+              />
+            )}
+          </div>
+
+          {tab === 'routing' ? (
+            <Frame className="motion-safe:animate-rise-in">
+              <FrameHeader
+                icon={<SlidersHorizontal />}
+                title={t('mcp-servers:title')}
+              />
+              <FrameBody className="px-3">{settingsRows}</FrameBody>
+            </Frame>
+          ) : serverEntries.length === 0 ? (
+            <Frame>
+              <FrameBody>
+                <EmptyState
+                  icon={<Workflow />}
+                  title={t('mcp-servers:noServers')}
+                  action={
+                    <Button size="sm" onClick={() => handleOpenDialog()}>
+                      <Plus aria-hidden />
+                      {t('mcp-servers:addServer')}
+                    </Button>
+                  }
+                />
+              </FrameBody>
+            </Frame>
+          ) : filtered.length === 0 ? (
+            <Frame>
+              <FrameBody>
+                <EmptyState
+                  icon={<Workflow />}
+                  title={t('mcp-servers:noSearchResults', { query: searchQuery })}
+                />
+              </FrameBody>
+            </Frame>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
+              {filtered.map(renderServer)}
+              <button
+                type="button"
+                onClick={() => handleOpenDialog()}
+                style={{ animationDelay: `${60 + filtered.length * 50}ms` }}
+                className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[13px] text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in"
+              >
+                <Plus className="size-4" aria-hidden />
+                {t('engine:mcp.addTile')}
+                <small className="text-[11.5px] text-muted-foreground">
+                  {t('engine:mcp.addTileHint')}
+                </small>
+              </button>
+            </div>
           )}
 
           {ctxMenu && (
@@ -1264,7 +1411,7 @@ function MCPServersDesktop() {
                     setCtxMenu(null)
                   }}
                 >
-                  <FileText className="mr-2 h-4 w-4" />
+                  <FileText />
                   {t('mcp-servers:serverLog.title', { serverName: ctxMenu.key })}
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -1273,58 +1420,43 @@ function MCPServersDesktop() {
                     setCtxMenu(null)
                   }}
                 >
-                  <Pencil className="mr-2 h-4 w-4" />
+                  <Pencil />
                   {t('mcp-servers:editServer')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
-                    const snap = deriveConnectionState({
-                      installed: true,
-                      enabled: !!mcpServers[ctxMenu.key]?.active,
-                      connected: connectedServers.includes(ctxMenu.key),
-                      runtime: runtime[ctxMenu.key],
-                      authStatus: authStatuses[ctxMenu.key],
-                      transport: deriveMcpServerProfile(
-                        mcpServers[ctxMenu.key],
-                        authStatuses[ctxMenu.key]
-                      ).transport,
-                    })
-                    toggleServer(ctxMenu.key, !snap.switchOn)
+                    const config = mcpServers[ctxMenu.key]
+                    if (config) {
+                      toggleServer(
+                        ctxMenu.key,
+                        !snapshotFor(ctxMenu.key, config).snapshot.switchOn
+                      )
+                    }
                     setCtxMenu(null)
                   }}
                 >
-                  {(() => {
-                    const snap = deriveConnectionState({
-                      installed: true,
-                      enabled: !!mcpServers[ctxMenu.key]?.active,
-                      connected: connectedServers.includes(ctxMenu.key),
-                      runtime: runtime[ctxMenu.key],
-                      authStatus: authStatuses[ctxMenu.key],
-                      transport: deriveMcpServerProfile(
-                        mcpServers[ctxMenu.key],
-                        authStatuses[ctxMenu.key]
-                      ).transport,
-                    })
-                    return snap.switchOn
-                      ? t('mcp-servers:connection.disable')
-                      : t('mcp-servers:connection.enable')
-                  })()}
+                  <Power />
+                  {mcpServers[ctxMenu.key] &&
+                  snapshotFor(ctxMenu.key, mcpServers[ctxMenu.key]).snapshot
+                    .switchOn
+                    ? t('mcp-servers:connection.disable')
+                    : t('mcp-servers:connection.enable')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
+                  variant="destructive"
                   onSelect={() => {
                     handleDeleteClick(ctxMenu.key)
                     setCtxMenu(null)
                   }}
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 />
                   {t('mcp-servers:deleteServer.title')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-        </SettingsPageBody>
+        </EnginePage>
       </div>
 
       {/* Use the AddEditMCPServer component */}

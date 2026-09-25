@@ -385,7 +385,12 @@ describe('max tool output characters control', () => {
     getConnectedServers.mockResolvedValue([])
   })
 
+  // Runtime limits live on the page's "Routing & limits" tab.
+  const openRouting = () =>
+    fireEvent.click(screen.getByRole('radio', { name: 'engine:mcp.tabRouting' }))
+
   const capInput = (): HTMLInputElement => {
+    openRouting()
     const inputs = screen.getAllByRole<HTMLInputElement>('spinbutton')
     const found = inputs.find((i) => i.value === '40000')
     if (!found) throw new Error('cap input not rendered')

@@ -80,6 +80,7 @@ export function McpServerStatus({
   canAuthorize,
   onRetry,
   onAuthorize,
+  compact = false,
 }: {
   serverName: string
   snapshot: McpConnectionSnapshot
@@ -92,6 +93,11 @@ export function McpServerStatus({
   canAuthorize: boolean
   onRetry: () => void
   onAuthorize: () => void
+  /**
+   * Tile layout: the chip without its label and no tools sentence, since the
+   * tile shows the tool count and names itself.
+   */
+  compact?: boolean
 }) {
   const { t } = useTranslation()
   const stateLabel = useStateLabel()
@@ -99,9 +105,9 @@ export function McpServerStatus({
   const { state, failure, nextStep } = snapshot
 
   return (
-    <div className="mt-2 flex flex-col gap-1">
+    <div className={compact ? 'flex flex-col gap-2' : 'mt-2 flex flex-col gap-1'}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-ink-2">
+        <span className={compact ? 'sr-only' : 'text-fg-2'}>
           {t('mcp-servers:connection.statusLabel')}
         </span>
         <StatusChip
@@ -119,14 +125,14 @@ export function McpServerStatus({
         <div
           role="alert"
           id={mcpServerErrorId(serverName)}
-          className="rounded-md bg-destructive-tint p-3 text-sm"
+          className="rounded-lg bg-destructive-tint px-3 py-2 text-xs"
         >
           <p className="flex items-start gap-2 break-words text-destructive">
-            <OctagonAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0">{failure.message}</span>
           </p>
           {nextStep && (
-            <p className="mt-1 text-ink-2">
+            <p className="mt-1 text-fg-2">
               {nextStepLabel(nextStep)}
             </p>
           )}
@@ -154,8 +160,8 @@ export function McpServerStatus({
         </div>
       )}
 
-      {!(state === 'connected' && toolNames === null) && (
-        <p className="text-xs text-ink-2">
+      {!compact && !(state === 'connected' && toolNames === null) && (
+        <p className="text-xs text-fg-2">
           {state === 'connected'
             ? toolNames === undefined
               ? t('mcp-servers:connection.toolsLoading')
@@ -261,10 +267,10 @@ export function McpServerDetails({
     // announces expanded state without extra wiring. Nothing here is
     // reachable only by hovering.
     <details className="mt-2 group">
-      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm text-sm font-medium text-brand-text focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:min-h-0">
+      <summary className="flex min-h-11 w-fit cursor-pointer items-center rounded-sm text-xs font-medium text-acc-text focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-fine:min-h-0">
         {t('mcp-servers:details.toggle')}
       </summary>
-      <div className="mt-2 flex flex-col gap-3 rounded-md bg-sunken p-3 text-[13px] text-ink-2">
+      <div className="mt-2 flex flex-col gap-3 rounded-lg bg-muted p-3 text-xs text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
         <section>
           <h3 className={heading}>{t('mcp-servers:details.whatItDoes')}</h3>
           <p>{profile.description ?? t('mcp-servers:details.noDescription')}</p>

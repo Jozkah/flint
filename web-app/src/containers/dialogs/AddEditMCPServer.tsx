@@ -96,7 +96,7 @@ function RowIconButton({
       title={label}
       onClick={onClick}
       className={cn(
-        'grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11 [&_svg]:size-4',
+        'grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-hover-btn focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11 [&_svg]:size-4',
         destructive
           ? 'text-muted-foreground hover:text-destructive'
           : 'text-muted-foreground hover:text-foreground'
@@ -156,7 +156,7 @@ function SortableArgItem({
       <div
         {...attributes}
         {...listeners}
-        className="flex size-8 shrink-0 cursor-move items-center justify-center rounded-md transition-colors hover:bg-sunken pointer-coarse:size-11"
+        className="flex size-8 shrink-0 cursor-move items-center justify-center rounded-md transition-colors hover:bg-hover-btn pointer-coarse:size-11"
       >
         <GripVertical className="size-4 text-muted-foreground" aria-hidden />
       </div>
@@ -515,7 +515,7 @@ export default function AddEditMCPServer({
             <button
               type="button"
               className={cn(
-                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
+                'grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11',
                 isToggled && 'bg-accent text-foreground ring-1 ring-border'
               )}
               title="Add server by JSON"
@@ -533,7 +533,7 @@ export default function AddEditMCPServer({
               <label className="text-sm mb-2 inline-block">
                 {t('mcp-servers:editJson.placeholder')}
               </label>
-              <div className="overflow-hidden rounded-md border border-border bg-sunken">
+              <div className="overflow-hidden rounded-lg border border-border bg-muted">
                 <CodeEditor
                   value={jsonContent}
                   language="json"

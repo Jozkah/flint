@@ -84,7 +84,7 @@ export default function EditJsonMCPserver({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
-          <div className="overflow-hidden! rounded-md border border-border bg-sunken">
+          <div className="overflow-hidden! rounded-lg border border-border bg-muted">
             <style>{`
               .w-tc-editor textarea {
                 word-break: break-all !important;
