@@ -970,7 +970,15 @@ export type ToolchainReport = {
    * The unavailable programs a toolchain grant would fix, with the folder it
    * would change. MSYS2 tools and the `py` launcher are never here.
    */
-  grantable?: { program: string; folder: string }[]
+  grantable?: {
+    program: string
+    folder: string
+    /**
+     * Set when the user cannot change the folder's permissions (it is under
+     * Program Files, say): the command to run in an elevated terminal instead.
+     */
+    adminCommand?: string
+  }[]
 }
 
 /** A toolchain folder the user let the Windows sandbox use. */

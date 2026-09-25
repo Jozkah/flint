@@ -76,6 +76,71 @@ pub fn locate_on_host(name: &str, host_path: &OsString, pathext: &str) -> Option
     None
 }
 
+/// True for a folder that holds only a stand-in for a program, never its
+/// install: a yarn script shim folder (`xfs-*`), a package manager's
+/// `node_modules\.bin`, or one under `avoid` (the temp folder, the app's own
+/// folder with its bundled sidecars).
+pub fn is_transient_dir(dir: &Path, avoid: &[PathBuf]) -> bool {
+    let shim_component = dir.components().any(|c| {
+        let part = c.as_os_str().to_string_lossy().to_ascii_lowercase();
+        part.starts_with("xfs-") || part == ".bin"
+    });
+    shim_component || avoid.iter().any(|a| under_profile(dir, Some(a)))
+}
+
+/// The folders a toolchain grant is never offered for on this machine: the
+/// temp folder and the folder of the running app.
+pub fn transient_dirs() -> Vec<PathBuf> {
+    let mut out = vec![std::env::temp_dir()];
+    if let Some(own) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    {
+        out.push(own);
+    }
+    out
+}
+
+/// Where the real executable of `name` is on the host `PATH`: an `.exe` or
+/// `.com` (not a `.cmd`/`.bat`/`.ps1` shim, which only starts a runtime found
+/// elsewhere), in a folder that is not [`is_transient_dir`].
+pub fn locate_real_on_host(name: &str, host_path: &OsString, avoid: &[PathBuf]) -> Option<PathBuf> {
+    let exts: &[&str] = if cfg!(windows) { &[".exe", ".com"] } else { &[""] };
+    for dir in std::env::split_paths(host_path) {
+        if !dir.is_absolute() || is_transient_dir(&dir, avoid) {
+            continue;
+        }
+        for ext in exts {
+            let candidate = dir.join(format!("{name}{ext}"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// The command that grants `folder` to the sandbox from an elevated terminal,
+/// for a folder the user cannot change the permissions of.
+pub fn admin_grant_command(folder: &Path) -> String {
+    format!(
+        "icacls \"{}\" /grant *S-1-15-2-1:(OI)(CI)(RX)",
+        folder.display()
+    )
+}
+
+/// Whether the current user may change the permissions of `dir` (open it for
+/// `WRITE_DAC`). `None` where this cannot be told.
+#[cfg(windows)]
+pub fn can_change_acl(dir: &Path) -> Option<bool> {
+    win::can_write_dac(dir)
+}
+
+#[cfg(not(windows))]
+pub fn can_change_acl(_dir: &Path) -> Option<bool> {
+    None
+}
+
 /// True when `path` is inside the user's profile, which the sandbox cannot
 /// read. Compared case-insensitively on Windows.
 pub fn under_profile(path: &Path, profile: Option<&Path>) -> bool {
@@ -282,21 +347,32 @@ pub struct GrantCandidate {
     pub program: String,
     /// The install folder whose permissions the grant would change.
     pub folder: PathBuf,
+    /// Set when the user cannot change that folder's permissions (under
+    /// Program Files, say): the app cannot grant it, and this is the command
+    /// to run in an elevated terminal instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_command: Option<String>,
 }
 
 /// Which of `report.unavailable` a grant would fix: the program resolves on
 /// the host `PATH` into a folder that app packages may not run from today and
 /// that [`crate::tools::toolchain_grants::validate_folder`] accepts.
+///
+/// The program is resolved to its real executable ([`locate_real_on_host`]),
+/// so a shim or a temp copy never names the folder. A folder the user cannot
+/// change the permissions of (`can_change` is `Some(false)`) carries the
+/// elevated command instead.
 pub fn grant_candidates(
     unavailable: &[String],
     host_path: &OsString,
-    pathext: &str,
+    avoid: &[PathBuf],
     profile: Option<&Path>,
     can_execute: impl Fn(&Path) -> Option<bool>,
+    can_change: impl Fn(&Path) -> Option<bool>,
 ) -> Vec<GrantCandidate> {
     let mut out: Vec<GrantCandidate> = Vec::new();
     for name in unavailable {
-        let Some(exe) = locate_on_host(name, host_path, pathext) else {
+        let Some(exe) = locate_real_on_host(name, host_path, avoid) else {
             continue;
         };
         let Some(folder) = exe.parent().map(Path::to_path_buf) else {
@@ -307,9 +383,12 @@ pub fn grant_candidates(
         {
             continue;
         }
+        let admin_command =
+            (can_change(&folder) == Some(false)).then(|| admin_grant_command(&folder));
         out.push(GrantCandidate {
             program: name.clone(),
             folder,
+            admin_command,
         });
     }
     out
@@ -425,9 +504,10 @@ fn compute_toolchains() -> Option<ToolchainReport> {
     report.grantable = grant_candidates(
         &report.unavailable,
         &host,
-        &pathext,
+        &transient_dirs(),
         profile.as_deref(),
         container_can_execute,
+        can_change_acl,
     );
     Some(report)
 }
@@ -460,6 +540,43 @@ mod win {
     }
     fn grants_exec(mask: u32) -> bool {
         mask & (FILE_EXECUTE | GENERIC_EXECUTE | GENERIC_ALL) != 0
+    }
+
+    /// Open the folder for `WRITE_DAC` only, to learn whether its ACL could
+    /// be changed; nothing is changed.
+    pub fn can_write_dac(dir: &Path) -> Option<bool> {
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_ACCESS_DENIED, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, OPEN_EXISTING,
+        };
+        const WRITE_DAC: u32 = 0x0004_0000;
+        let name: Vec<u16> = OsStr::new(dir)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                WRITE_DAC,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return if unsafe { GetLastError() } == ERROR_ACCESS_DENIED {
+                Some(false)
+            } else {
+                None
+            };
+        }
+        unsafe { CloseHandle(handle) };
+        Some(true)
     }
 
     pub fn any_package_can_execute(dir: &Path) -> Option<bool> {
@@ -577,12 +694,114 @@ mod grant_candidate_tests {
             .map(|s| s.to_string())
             .collect();
         // Everything but the Windows folder refuses app packages today.
-        let got = grant_candidates(&names, &host, ".EXE", Some(&profile), |d| {
-            Some(d == windows.as_path())
-        });
+        let got = grant_candidates(
+            &names,
+            &host,
+            &[],
+            Some(&profile),
+            |d| Some(d == windows.as_path()),
+            |_| Some(true),
+        );
         let offered: Vec<&str> = got.iter().map(|c| c.program.as_str()).collect();
         assert_eq!(offered, vec!["python", "python3"]);
         assert!(got.iter().all(|c| c.folder == python));
+        assert!(got.iter().all(|c| c.admin_command.is_none()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A shim or a temp copy never names the folder: yarn's `xfs-*` shims,
+    /// the app's own folder and npm's `.cmd`/`.ps1` shims are passed over for
+    /// the real install further down the `PATH`.
+    #[test]
+    fn shims_temp_copies_and_the_apps_folder_are_skipped() {
+        let root = std::env::temp_dir().join(format!("grant-shim-{}", std::process::id()));
+        let xfs = root.join("t").join("xfs-db9b0b6d");
+        let app = root.join("app").join("debug");
+        let npm = root.join("Roaming").join("npm");
+        let node_home = root.join("tools").join("node");
+        let bun_home = root.join("tools").join("bun");
+        for d in [&xfs, &app, &npm, &node_home, &bun_home] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let exe = if cfg!(windows) { ".exe" } else { "" };
+        std::fs::write(xfs.join(format!("node{exe}")), "").unwrap();
+        std::fs::write(xfs.join("yarn.cmd"), "").unwrap();
+        std::fs::write(app.join(format!("bun{exe}")), "").unwrap();
+        std::fs::write(npm.join("pnpm.cmd"), "").unwrap();
+        std::fs::write(npm.join("pnpm.ps1"), "").unwrap();
+        std::fs::write(node_home.join(format!("node{exe}")), "").unwrap();
+        std::fs::write(bun_home.join(format!("bun{exe}")), "").unwrap();
+        let host = std::env::join_paths([
+            xfs.clone(),
+            app.clone(),
+            npm.clone(),
+            node_home.clone(),
+            bun_home.clone(),
+        ])
+        .unwrap();
+        let names: Vec<String> = ["node", "yarn", "bun", "pnpm"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let got = grant_candidates(
+            &names,
+            &host,
+            &[root.join("app")],
+            None,
+            |_| Some(false),
+            |_| Some(true),
+        );
+        let offered: Vec<(&str, &Path)> = got
+            .iter()
+            .map(|c| (c.program.as_str(), c.folder.as_path()))
+            .collect();
+        if cfg!(windows) {
+            // yarn and pnpm exist only as shims: nothing to grant for them.
+            assert_eq!(
+                offered,
+                vec![("node", node_home.as_path()), ("bun", bun_home.as_path())]
+            );
+        } else {
+            assert_eq!(offered[0], ("node", node_home.as_path()));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A folder the user created is one whose permissions they may change.
+    #[cfg(windows)]
+    #[test]
+    fn the_users_own_folder_can_have_its_acl_changed() {
+        let dir = std::env::temp_dir().join(format!("grant-dac-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(can_change_acl(&dir), Some(true));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(can_change_acl(&dir), None);
+    }
+
+    /// A folder the user cannot change is offered with the elevated command,
+    /// not a grant.
+    #[test]
+    fn a_folder_needing_admin_carries_the_icacls_command() {
+        let root = std::env::temp_dir().join(format!("grant-admin-{}", std::process::id()));
+        let nodejs = root.join("Program Files").join("nodejs");
+        std::fs::create_dir_all(&nodejs).unwrap();
+        let exe = if cfg!(windows) { ".exe" } else { "" };
+        std::fs::write(nodejs.join(format!("node{exe}")), "").unwrap();
+        let host = std::env::join_paths([nodejs.clone()]).unwrap();
+        let got = grant_candidates(
+            &["node".to_string()],
+            &host,
+            &[],
+            None,
+            |_| Some(false),
+            |_| Some(false),
+        );
+        assert_eq!(got.len(), 1);
+        let want = format!(
+            "icacls \"{}\" /grant *S-1-15-2-1:(OI)(CI)(RX)",
+            nodejs.display()
+        );
+        assert_eq!(got[0].admin_command.as_deref(), Some(want.as_str()));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

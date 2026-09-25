@@ -242,14 +242,19 @@ pub fn grant(program: &str) -> Result<ToolchainGrant, String> {
     let store = store().ok_or("toolchain grants are not available here")?;
     let report = host_tools::probe_toolchains()
         .ok_or("toolchain grants exist only for the Windows sandbox")?;
-    if !report.grantable.iter().any(|c| c.program == program) {
+    let Some(candidate) = report.grantable.iter().find(|c| c.program == program) else {
         return Err(format!(
             "`{program}` is not a toolchain a grant would make runnable in the sandbox"
         ));
+    };
+    if let Some(command) = &candidate.admin_command {
+        return Err(format!(
+            "changing {} needs administrator rights: run `{command}` in an elevated terminal",
+            candidate.folder.display()
+        ));
     }
     let host = std::env::var_os("PATH").unwrap_or_default();
-    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-    let exe = host_tools::locate_on_host(program, &host, &pathext)
+    let exe = host_tools::locate_real_on_host(program, &host, &host_tools::transient_dirs())
         .ok_or_else(|| format!("`{program}` is not on the PATH"))?;
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let made = grant_at(&store, program, &exe, profile.as_deref(), &SystemAcl)?;

@@ -239,7 +239,9 @@
       "granted": "The sandbox can now use {{program}}.",
       "confirmTitle": "Let the sandbox use {{program}}?",
       "confirmBody": "This changes the permissions of the folder below, where {{program}} is installed, and only that folder and what is inside it: it adds an entry that lets every sandboxed Windows app (ALL APPLICATION PACKAGES) read and run the files inside it. Nothing else in your user profile is opened. You can revoke it here at any time, which removes exactly that entry.",
-      "confirm": "Allow"
+      "confirm": "Allow",
+      "needsAdmin": "Installed in {{folder}}, which only an administrator can change. Needs administrator: run this in an elevated terminal:",
+      "copyCommand": "Copy command"
     },
     "title": "Agent Tools",
     "description": "Give models a private scratch workspace for each conversation, plus memories and skills kept permanently in your Flint data folder.",

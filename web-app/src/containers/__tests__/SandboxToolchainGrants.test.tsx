@@ -97,4 +97,31 @@ describe('SandboxToolchainGrants', () => {
       expect(sandboxToolchainRevoke).toHaveBeenCalledWith('C:\\Users\\me\\Python311')
     )
   })
+
+  it('offers the elevated command, not a grant, for a folder only an admin can change', async () => {
+    const command =
+      'icacls "C:\\Program Files\\nodejs" /grant *S-1-15-2-1:(OI)(CI)(RX)'
+    getSandboxToolchains.mockResolvedValue({
+      runnable: [],
+      unavailable: ['node'],
+      grantable: [
+        {
+          program: 'node',
+          folder: 'C:\\Program Files\\nodejs',
+          adminCommand: command,
+        },
+      ],
+    })
+    sandboxToolchainGrants.mockResolvedValue([])
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(<SandboxToolchainGrants />)
+    expect(
+      await screen.findByTestId('toolchain-admin-command-node')
+    ).toHaveTextContent(command)
+    expect(screen.queryByTestId('toolchain-grant-node')).toBeNull()
+    fireEvent.click(screen.getByTestId('toolchain-copy-command-node'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(command))
+    expect(sandboxToolchainGrant).not.toHaveBeenCalled()
+  })
 })

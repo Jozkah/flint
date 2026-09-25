@@ -18,6 +18,7 @@ import {
   type ToolchainReport,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { toast } from 'sonner'
+import { Copy } from 'lucide-react'
 import { CardItem } from '@/containers/Card'
 import { Button } from '@/components/ui/button'
 import {
@@ -87,6 +88,15 @@ export function SandboxToolchainGrants() {
     }
   }
 
+  const copyCommand = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command)
+      toast.success(t('common:copied'))
+    } catch (e) {
+      toast.error(errorText(e))
+    }
+  }
+
   // Only the Windows sandbox reports toolchains; elsewhere there is nothing
   // to grant, and no grant to revoke either.
   if (!report && grants.length === 0) return null
@@ -114,16 +124,40 @@ export function SandboxToolchainGrants() {
             key={`u-${program}`}
             title={<code>{program}</code>}
             description={
-              offer
-                ? t('settings:agentTools.toolchains.unrunnable', {
+              offer?.adminCommand ? (
+                <>
+                  {t('settings:agentTools.toolchains.needsAdmin', {
                     folder: offer.folder,
-                  })
-                : program === 'py'
-                  ? t('settings:agentTools.toolchains.launcher')
-                  : t('settings:agentTools.toolchains.notGrantable')
+                  })}
+                  <code
+                    className="mt-1 block break-all rounded bg-muted px-2 py-1 text-xs"
+                    data-testid={`toolchain-admin-command-${program}`}
+                  >
+                    {offer.adminCommand}
+                  </code>
+                </>
+              ) : offer ? (
+                t('settings:agentTools.toolchains.unrunnable', {
+                  folder: offer.folder,
+                })
+              ) : program === 'py' ? (
+                t('settings:agentTools.toolchains.launcher')
+              ) : (
+                t('settings:agentTools.toolchains.notGrantable')
+              )
             }
             actions={
-              offer ? (
+              offer?.adminCommand ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid={`toolchain-copy-command-${program}`}
+                  onClick={() => void copyCommand(offer.adminCommand ?? '')}
+                >
+                  <Copy size={14} />
+                  {t('settings:agentTools.toolchains.copyCommand')}
+                </Button>
+              ) : offer ? (
                 <Button
                   variant="outline"
                   size="sm"
