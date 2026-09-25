@@ -90,7 +90,7 @@ function providers(): ModelProvider[] {
 }
 
 const FOLDERS = [
-  { id: 'flint', name: 'Jan / Flint', updated_at: now },
+  { id: 'flint', name: 'Jan / Flint', updated_at: now, assistantId: 'jan' },
   { id: 're', name: 'RE research', updated_at: now - 60 * MIN },
   { id: 'energy', name: 'Energy monitoring', updated_at: now - 300 * MIN },
 ]

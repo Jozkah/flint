@@ -94,9 +94,7 @@ import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import {
   useToolApprovalRequests,
-  usePendingApprovalCount,
 } from '@/hooks/useToolApprovalRequests'
-import { useIsThreadActive } from '@/hooks/useAppState'
 import {
   ThreadStatusMark,
   useThreadStatus,
@@ -2141,15 +2139,16 @@ export function ThreadConversation({
 
   // Where this chat sits, as the sidebar shows it: its status mark, then
   // Pinned or its collection.
-  const pendingHere = usePendingApprovalCount(threadId)
-  const threadActive = useIsThreadActive(threadId)
+  const waitingHere = useToolApprovalRequests((s) =>
+    Object.values(s.pending ?? {}).some((p) => p.threadId === threadId)
+  )
   const threadStreaming = useChatSessions(
     (state) => state.sessions[threadId]?.isStreaming ?? false
   )
   const threadStatus = useThreadStatus(
     { updated: thread?.updated ?? 0 },
-    threadActive || threadStreaming,
-    pendingHere > 0
+    threadStreaming,
+    waitingHere
   )
   const groupLabel = thread?.isFavorite
     ? t('common:shell.pinned')

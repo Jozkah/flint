@@ -49,6 +49,7 @@ import { Link, useParams } from '@tanstack/react-router'
 import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
 
 const ThreadItem = memo(
@@ -210,21 +211,39 @@ const ThreadItem = memo(
         onContextMenu={openRowMenu}
         onKeyDown={onRowKeyDown}
         className={cn(
-          currentProjectId && 'list-none',
+          currentProjectId && 'list-none [&:last-child>a]:border-b-0',
           drag.isDragging && 'opacity-40'
         )}
       >
         {currentProjectId ?
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-lg border-[0.8px] border-transparent px-3 py-2 text-[0.8125rem] text-foreground transition-[background-color,border-color] duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 outline-hidden pointer-coarse:min-h-11", isSelected && "border-border bg-card shadow-[0_4px_7px_rgba(0,0,0,.04)]")}>
-              <div className="flex items-center gap-2 min-w-0 pr-9">
-                <ThreadStatusMark status={status} />
-                <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
-              </div>
-              {currentProjectId && lastUserMessageText && (
-                <div className="text-muted-foreground text-xs mt-1 line-clamp-1 pr-9 pl-[22px]">
+          // A collection page row (the design's `.lrow`): a tile, the title
+          // over the last thing asked, and when it was last active.
+          <Link
+            to="/threads/$threadId"
+            params={{ threadId: thread.id }}
+            className="group/lrow relative flex max-w-full items-center gap-3 overflow-hidden border-b border-dashed border-border px-0.5 py-3 pr-10 text-[13px] text-foreground outline-hidden transition-colors duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg border-[0.8px] border-input bg-card transition-[transform,box-shadow] duration-200 ease-expo group-hover/lrow:-translate-y-px group-hover/lrow:shadow-lift">
+              <Icon name="comment" size={16} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {status !== 'none' && <ThreadStatusMark status={status} />}
+                <b className="block truncate leading-tight font-medium" title={thread.title || t('common:newThread')}>
+                  {thread.title || t('common:newThread')}
+                </b>
+              </span>
+              {lastUserMessageText && (
+                <small className="line-clamp-1 text-xs leading-snug text-muted-foreground">
                   {lastUserMessageText}
-                </div>
+                </small>
               )}
+            </span>
+            {thread.updated ? (
+              <span className="shrink-0 text-xs text-subtle-foreground tabular-nums">
+                {formatRowTime(updatedMs(thread.updated))}
+              </span>
+            ) : null}
           </Link>
           :
           <HoverCard openDelay={650} closeDelay={80}>
@@ -261,7 +280,7 @@ const ThreadItem = memo(
               showOnHover
               className={cn(
                 'pointer-coarse:size-9',
-                currentProjectId && 'top-4 right-1.5'
+                currentProjectId && 'top-1/2 right-1 -translate-y-1/2 opacity-100'
               )}
             >
               <MoreHorizontal />
@@ -380,6 +399,21 @@ const ThreadItem = memo(
     )
   }
 )
+
+/** "10:18" today, "Yesterday", a weekday this week, else the date. */
+function formatRowTime(ms: number, now = new Date()): string {
+  const d = new Date(ms)
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((day(now) - day(d)) / 86_400_000)
+  if (days <= 0) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  }
+  if (days === 1) {
+    return new Intl.RelativeTimeFormat(document.documentElement.lang || undefined, { numeric: 'auto' }).format(-1, 'day')
+  }
+  if (days < 7) return d.toLocaleDateString(document.documentElement.lang || [], { weekday: 'short' })
+  return d.toLocaleDateString(document.documentElement.lang || [], { month: 'short', day: 'numeric' })
+}
 
 type ThreadListProps = {
   threads: Thread[]
