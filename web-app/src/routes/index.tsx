@@ -1,15 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { PenLine } from 'lucide-react'
 import ChatInput from '@/containers/ChatInput'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useTools } from '@/hooks/useTools'
-import { cn } from '@/lib/utils'
+import { usePrompt } from '@/hooks/usePrompt'
 
 import { useModelProvider } from '@/hooks/useModelProvider'
 import SetupScreen from '@/containers/SetupScreen'
 import { route } from '@/constants/routes'
 import { hasUsableProvider } from '@/lib/providerReadiness'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 
 type ThreadModel = {
   id: string
@@ -24,7 +26,10 @@ import { useThreads } from '@/hooks/useThreads'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { NewTemporaryChatButton } from '@/containers/NewTemporaryChatButton'
-import { GettingStartedCard } from '@/containers/GettingStartedCard'
+import {
+  GettingStartedCard,
+  ResumeRecentLink,
+} from '@/containers/GettingStartedCard'
 
 export const Route = createFileRoute(route.home as any)({
   component: Index,
@@ -36,6 +41,9 @@ export const Route = createFileRoute(route.home as any)({
     return result
   },
 })
+
+/** Starter prompts: a click fills the composer, it never sends. */
+const SUGGESTIONS = ['explain', 'summarise', 'draft', 'compare'] as const
 
 function Index() {
   const { t } = useTranslation()
@@ -55,10 +63,19 @@ function Index() {
     return <SetupScreen />
   }
 
+  const fillComposer = (text: string) => {
+    usePrompt.getState().setPrompt(text)
+    const input = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="chat-input"]'
+    )
+    input?.focus()
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col pt-1 pb-3">
       <HeaderPage>
         <PageHeaderRow>
+          <div className="flex-1" />
           {/* A new chat with no model chosen starts from the last-used model,
               or the first local one on a first run (janhq/jan#7703). The
               composer's own picker, which used to ask for this, is not
@@ -70,25 +87,64 @@ function Index() {
           <NewTemporaryChatButton />
         </PageHeaderRow>
       </HeaderPage>
-      <div
-        className={cn(
-          'min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col justify-center px-3 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:px-6'
-        )}
-      >
-        <div className={cn('mx-auto w-full max-w-[calc(var(--read-w)+3rem)]')}>
-          <h1 className="mb-3 text-[15px] font-semibold text-foreground">
-            {t('chat:description')}
-          </h1>
-          <GettingStartedCard />
-          <div className="flex-1 shrink-0">
+      {/* One Frame: the page's header row, a scrolling hero, and the
+          composer pinned under it. */}
+      <Frame className="min-h-0 flex-1 motion-safe:animate-rise-in">
+        <FrameHeader
+          icon={<PenLine />}
+          title={t('chat:home.title')}
+          actions={
+            <span className="text-xs text-muted-foreground">
+              {t('chat:home.notSaved')}
+            </span>
+          }
+        />
+        <FrameBody className="min-h-0 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto px-[18px] py-8 [scrollbar-width:thin]">
+            {/* Centred when it fits, top-aligned (and scrolling) when not. */}
+            <div className="my-auto flex w-full max-w-[780px] flex-col gap-[18px]">
+              <div className="flex flex-col gap-2.5 text-center">
+                <h1 className="text-[30px] leading-tight font-semibold tracking-[-0.02em] text-foreground motion-safe:animate-rise-in">
+                  {t('chat:description')}
+                </h1>
+                <p className="text-[13px] text-muted-foreground motion-safe:animate-rise-in motion-safe:[animation-delay:60ms]">
+                  {t('chat:home.sub')}
+                </p>
+              </div>
+              <GettingStartedCard resume={false} />
+              <div
+                role="group"
+                aria-label={t('chat:home.suggestionsLabel')}
+                className="grid grid-cols-1 gap-2 motion-safe:animate-rise-in motion-safe:[animation-delay:200ms] sm:grid-cols-2"
+              >
+                {SUGGESTIONS.map((key) => {
+                  const text = t(`chat:home.suggestions.${key}`)
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      data-testid={`suggestion-${key}`}
+                      onClick={() => fillComposer(text)}
+                      className="w-full rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-left text-[13px] text-secondary-foreground transition-[box-shadow,color,transform] duration-150 outline-hidden hover:-translate-y-px hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                    >
+                      {text}
+                    </button>
+                  )
+                })}
+              </div>
+              <ResumeRecentLink className="motion-safe:animate-rise-in motion-safe:[animation-delay:260ms]" />
+            </div>
+          </div>
+          {/* The composer stays put while the hero scrolls. */}
+          <div className="mx-auto w-full max-w-[calc(780px+2rem)] shrink-0 px-4 pt-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
             <ChatInput
               showSpeedToken={false}
               model={threadModel}
               initialMessage={true}
             />
           </div>
-        </div>
-      </div>
+        </FrameBody>
+      </Frame>
     </div>
   )
 }

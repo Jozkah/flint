@@ -86,7 +86,10 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
+import { CircleAlert, Loader2, MessageSquare, RefreshCw } from 'lucide-react'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Chip } from '@/components/ui/chip'
+import { formatDate } from '@/utils/formatDate'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
@@ -2075,30 +2078,37 @@ export function ThreadConversation({
     setNarrowView('conversation')
   }, [])
 
-  // Who this conversation is: title and collection.
+  // Who this conversation is: the title, on the chat frame's header row.
   const identity = (
-    <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <MessageSquare
+        aria-hidden
+        className="size-4 shrink-0 text-muted-foreground"
+      />
       <h1
         data-testid="conversation-title"
-        className={cn(
-          'min-w-0 truncate font-semibold text-foreground',
-          isSplit ? 'text-[13px]' : 'text-sm'
-        )}
+        className="min-w-0 truncate text-sm leading-none font-medium text-secondary-foreground"
         title={plainThreadTitle}
       >
         {plainThreadTitle}
       </h1>
-      {thread?.metadata?.project?.name && !isSplit && (
-        <span
-          className="hidden min-w-0 max-w-48 truncate text-sm text-muted-foreground md:inline"
-          title={thread.metadata.project.name}
-        >
-          <span aria-hidden>· </span>
-          {thread.metadata.project.name}
-        </span>
-      )}
     </div>
   )
+
+  // The collection this chat belongs to, as a chip in the page header.
+  const projectChip = thread?.metadata?.project?.name ? (
+    <Chip
+      className="hidden max-w-48 md:inline-flex"
+      title={thread.metadata.project.name}
+    >
+      <span className="truncate">{thread.metadata.project.name}</span>
+    </Chip>
+  ) : null
+
+  // When the conversation began: its first message's time.
+  const firstCreatedAt = (
+    chatMessages[0]?.metadata as { createdAt?: Date | string } | undefined
+  )?.createdAt
 
   // The model, then what acts on the conversation, plus whatever the
   // surrounding layout adds.
@@ -2108,7 +2118,7 @@ export function ThreadConversation({
       <div className="min-w-0 shrink">
         <DropdownModelProvider model={threadModel} />
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         {extra}
         <WhatJanIsUsingToggle
           open={detailsOpen}
@@ -2132,28 +2142,21 @@ export function ThreadConversation({
   }, [localThreadMessages])
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {isSplit ? (
-        // A pane's own header: the same identity and controls, sized for a
-        // pane, with a thin accent edge on the pane the user is working in.
-        <div
-          data-testid={`conversation-pane-header-${paneId}`}
-          data-active={isActive}
-          className={cn(
-            'relative flex h-10 shrink-0 items-center gap-1.5 border-b border-border bg-sunken pr-1 pl-3 pointer-coarse:h-12',
-            isActive &&
-              'before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-brand-fill'
-          )}
-        >
-          {identity}
-          {controlsWith(paneControls)}
-        </div>
-      ) : (
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col',
+        // The page's own breathing room; a split pane sits flush in its half.
+        !isSplit && 'pt-1 pb-3'
+      )}
+    >
+      {!isSplit && (
         <HeaderPage>
-          {/* Conversation identity first -- title and collection -- then the
-              model and the controls that act on it. */}
+          {/* The collection, then the model and the controls that act on
+              the conversation. The breadcrumb already names the chat. */}
           <div className="flex w-full min-w-0 items-center gap-1.5 md:pr-1">
-            {identity}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {projectChip}
+            </div>
             {controlsWith(contextControls)}
           </div>
         </HeaderPage>
@@ -2161,12 +2164,12 @@ export function ThreadConversation({
       <div className="@container/conv relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {detailsOpen && (
           // Narrow panes show one of the two at a time.
-          <div className="shrink-0 border-b border-border bg-background px-3 py-2 @3xl/conv:hidden">
+          <div className="shrink-0 pb-2 @3xl/conv:hidden">
             <div
               role="group"
               aria-label={t('context:views.label')}
               data-testid="conversation-view-switch"
-              className="grid grid-cols-2 gap-0.5 rounded-md bg-sunken p-0.5"
+              className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]"
             >
               {(['conversation', 'details'] as const).map((view) => (
                 <button
@@ -2175,10 +2178,10 @@ export function ThreadConversation({
                   aria-pressed={narrowView === view}
                   onClick={() => setNarrowView(view)}
                   className={cn(
-                    'flex h-8 min-w-0 items-center justify-center rounded-sm px-2 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
+                    'flex h-7 min-w-0 items-center justify-center rounded-md px-2 text-xs font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
                     narrowView === view
-                      ? 'bg-card text-foreground ring-1 ring-border'
-                      : 'text-ink-2 hover:text-foreground'
+                      ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <span className="truncate">{t(`context:views.${view}`)}</span>
@@ -2187,15 +2190,44 @@ export function ThreadConversation({
             </div>
           </div>
         )}
-        <div className="relative flex min-h-0 min-w-0 flex-1">
-        <div
+        <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
+        {/* The conversation is one Frame: its title row, then the messages
+            and the composer on the card inside. */}
+        <Frame
           className={cn(
-            'flex h-full min-h-0 min-w-0 flex-1 flex-col',
+            'h-full min-h-0 min-w-0 flex-1',
+            // The pane being worked in shows a thin accent edge.
+            isSplit &&
+              isActive &&
+              'shadow-[inset_0_0_0_0.8px_var(--border),inset_0_2px_0_0_var(--acc)]',
             detailsOpen &&
               narrowView === 'details' &&
               '@max-3xl/conv:invisible'
           )}
         >
+          <FrameHeader
+            data-testid={
+              isSplit ? `conversation-pane-header-${paneId}` : undefined
+            }
+            data-active={isSplit ? isActive : undefined}
+            className="min-h-10"
+          >
+            {identity}
+            {isSplit ? (
+              <div className="flex min-w-0 shrink items-center gap-1.5">
+                {controlsWith(paneControls)}
+              </div>
+            ) : (
+              firstCreatedAt && (
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {t('chat:startedAt', {
+                    time: formatDate(firstCreatedAt),
+                  })}
+                </span>
+              )
+            )}
+          </FrameHeader>
+          <FrameBody className="min-h-0 overflow-hidden">
         {/* Messages Area */}
         <div
           className="message-zoom flex-1 relative min-w-0"
@@ -2208,8 +2240,8 @@ export function ThreadConversation({
           <Conversation className="absolute inset-0 text-start text-base">
             <ConversationContent
               className={cn(
-                'mx-auto w-full min-w-0 max-w-[calc(var(--read-w)+3rem)] pt-6 pb-4',
-                isSplit ? 'px-4' : 'px-4 md:px-6'
+                'mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
+                isSplit ? 'px-4' : 'px-5'
               )}
             >
               {chatMessages.map((message, index) => {
@@ -2278,9 +2310,9 @@ export function ThreadConversation({
               {processingEmbeddings && (
                 <div
                   role="status"
-                  className="flex items-start gap-3 px-4 py-3 my-2 rounded-lg border border-border bg-card"
+                  className="flex items-start gap-3 px-3.5 py-3 my-2 rounded-xl border-[0.8px] border-border bg-card"
                 >
-                  <Loader2 className="size-4 text-ink-2 shrink-0 mt-0.5 motion-safe:animate-spin" />
+                  <Loader2 className="size-4 text-muted-foreground shrink-0 mt-0.5 motion-safe:animate-spin" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground mb-0.5">
                       {t('chat:embeddings.title')}
@@ -2308,7 +2340,7 @@ export function ThreadConversation({
                 <div
                   role="alert"
                   data-testid="conversation-error-notice"
-                  className="px-4 py-3 my-2 rounded-lg border border-destructive/30 bg-destructive-tint"
+                  className="px-3.5 py-3 my-2 rounded-xl border-[0.8px] border-destructive/30 bg-destructive-tint"
                 >
                   <div className="flex items-start gap-3">
                     <CircleAlert className="size-4 text-destructive shrink-0 mt-0.5" />
@@ -2326,7 +2358,7 @@ export function ThreadConversation({
                             (oomError || backendError
                               ? 'text-xs font-mono'
                               : 'text-sm') +
-                            ' text-ink-2 table-cell align-middle'
+                            ' text-fg-2 table-cell align-middle'
                           }
                           style={{ wordWrap: 'break-word' }}
                         >
@@ -2334,7 +2366,7 @@ export function ThreadConversation({
                         </span>
                       </div>
                       {oomError && (
-                        <ul className="mt-2 list-disc pl-5 text-xs text-ink-2 space-y-0.5">
+                        <ul className="mt-2 list-disc pl-5 text-xs text-fg-2 space-y-0.5">
                           <li>Reduce context size (ctx-size)</li>
                           <li>Disable MTP (Multi-Token Prediction)</li>
                           <li>Lower n-gpu-layers or switch to a CPU backend</li>
@@ -2370,7 +2402,7 @@ export function ThreadConversation({
                           </Button>
                         ) : (
                           <div className="mt-3 space-y-2">
-                            <p className="text-sm text-ink-2">
+                            <p className="text-sm text-fg-2">
                               This model's context window is set by its server,
                               so Flint cannot enlarge it. Start a new chat, shorten
                               the conversation, or raise the limit on the server.
@@ -2407,11 +2439,13 @@ export function ThreadConversation({
         </div>
 
         {/* Chat Input - Fixed at bottom. The shell sizes the page to the
-            visual viewport, so this stays above a phone keyboard. */}
+            visual viewport, so this stays above a phone keyboard. A short
+            fade above it lets the transcript slide under the composer. */}
         <div
           className={cn(
-            'mx-auto w-full min-w-0 max-w-[calc(var(--read-w)+3rem)] pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4',
-            isSplit ? 'px-3' : 'px-3 md:px-6'
+            'relative mx-auto w-full min-w-0 max-w-[calc(780px+2rem)] pt-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]',
+            "before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:z-10 before:h-9 before:bg-linear-to-b before:from-transparent before:to-card before:content-['']",
+            isSplit ? 'px-3' : 'px-4'
           )}
         >
           <ChatInput
@@ -2428,7 +2462,8 @@ export function ThreadConversation({
             takeFocus={isActive}
           />
         </div>
-        </div>
+          </FrameBody>
+        </Frame>
         <WhatJanIsUsingPanel
           id={detailsPanelId}
           threadId={threadId}
@@ -2437,7 +2472,7 @@ export function ThreadConversation({
           onClose={closeDetails}
           className={cn(
             'w-(--inspector-w) shrink-0',
-            '@max-3xl/conv:absolute @max-3xl/conv:inset-0 @max-3xl/conv:z-10 @max-3xl/conv:w-full @max-3xl/conv:border-l-0',
+            '@max-3xl/conv:absolute @max-3xl/conv:inset-0 @max-3xl/conv:z-10 @max-3xl/conv:w-full',
             narrowView === 'conversation' && '@max-3xl/conv:hidden'
           )}
         />

@@ -55,7 +55,7 @@ export function NewTemporaryChatButton() {
         <Button
           variant="ghost"
           size="icon-sm"
-          className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
+          className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
           onClick={start}
           aria-label={t('common:temporaryChat')}
         >

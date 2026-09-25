@@ -139,7 +139,7 @@ function ThreadDetail() {
           <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-1">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               {sideBySide ? (
-                <h1 className="truncate text-sm font-semibold text-foreground">
+                <h1 className="truncate text-sm font-medium text-secondary-foreground">
                   {t('chat:split.label')}
                 </h1>
               ) : (
@@ -157,7 +157,11 @@ function ThreadDetail() {
         ref={panesRef}
         data-testid="conversation-panes"
         data-split={open}
-        className="relative flex min-h-0 min-w-0 flex-1"
+        className={cn(
+          'relative flex min-h-0 min-w-0 flex-1',
+          // Split panes are Frames of their own: give them the page's room.
+          open && 'pt-1 pb-3'
+        )}
       >
         <div
           id="conversation-pane-primary"

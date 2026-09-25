@@ -285,10 +285,10 @@ function SetupScreen() {
         {/* Scrolls rather than clips: on a short window the intentions and the
             finish page are taller than the space, and centring with
             items-center pushed the primary actions out of reach. */}
-        <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0 overflow-y-auto overflow-x-hidden bg-background px-4 py-6 sm:px-6">
+        <div className="flex h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 sm:px-6">
 
           <div
-            className="m-auto w-full min-w-0 max-w-[480px] rounded-lg border border-border bg-card p-5 pointer-events-auto sm:p-6"
+            className="m-auto w-full min-w-0 max-w-[480px] rounded-[14px] border-[0.8px] border-border bg-card p-5 shadow-pop pointer-events-auto motion-safe:animate-dlg-in sm:p-6"
             data-testid="setup-wizard"
             data-page={currentPage?.id ?? 'done'}
           >
@@ -313,10 +313,10 @@ function SetupScreen() {
                         className={cn(
                           'h-1 w-6 rounded-full motion-safe:transition-colors',
                           index === currentIndex
-                            ? 'bg-brand'
+                            ? 'bg-primary'
                             : index < currentIndex
-                              ? 'bg-ink-2'
-                              : 'bg-line-strong'
+                              ? 'bg-secondary-foreground'
+                              : 'bg-track'
                         )}
                       />
                     ))}
@@ -332,7 +332,7 @@ function SetupScreen() {
                           ? 'bg-destructive-tint text-destructive'
                           : isSetupComplete
                             ? 'bg-success-tint text-success'
-                            : 'bg-sunken text-muted-foreground'
+                            : 'bg-accent text-muted-foreground'
                       )}
                     >
                       {isWarning ? (
@@ -350,7 +350,7 @@ function SetupScreen() {
                       : t(currentPage.labelKey)}
                   </h1>
                   {body() && (
-                    <p className="mt-2 text-sm leading-relaxed text-ink-2">
+                    <p className="mt-2 text-sm leading-relaxed text-fg-2">
                       {body()}
                     </p>
                   )}
@@ -359,7 +359,7 @@ function SetupScreen() {
                 {resumed && currentPage.id !== 'welcome' && (
                   <p
                     role="status"
-                    className="mt-4 flex items-start gap-2 rounded-md border border-border bg-sunken px-3 py-2 text-xs text-ink-2"
+                    className="mt-4 flex items-start gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-fg-2"
                     data-testid="setup-resumed"
                   >
                     <Info className="mt-px size-3.5 shrink-0 text-muted-foreground" />
@@ -419,10 +419,10 @@ function SetupScreen() {
                               data-testid={`setup-intent-${intent}`}
                               onClick={() => guide.setIntent(intent)}
                               className={cn(
-                                'flex min-h-11 items-start gap-3 rounded-md border px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                'flex min-h-11 items-start gap-3 rounded-lg border-[0.8px] px-3.5 py-3 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-brand bg-accent'
-                                  : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
+                                  ? 'border-primary bg-accent'
+                                  : 'border-border bg-card hover:border-border-strong hover:bg-hover-row'
                               )}
                             >
                               {/* The radio mark: a ring, filled when chosen. */}
@@ -430,11 +430,11 @@ function SetupScreen() {
                                 aria-hidden
                                 className={cn(
                                   'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border',
-                                  isChosen ? 'border-brand' : 'border-input'
+                                  isChosen ? 'border-primary' : 'border-input'
                                 )}
                               >
                                 {isChosen && (
-                                  <span className="size-2 rounded-full bg-brand" />
+                                  <span className="size-2 rounded-full bg-primary" />
                                 )}
                               </span>
                               <span className="min-w-0">
@@ -476,7 +476,7 @@ function SetupScreen() {
                       'mt-5 flex items-start gap-2.5 rounded-md border px-3.5 py-3',
                       gpu.willUse
                         ? 'border-success/30 bg-success-tint'
-                        : 'border-border bg-sunken'
+                        : 'border-border bg-muted'
                     )}
                     data-testid="setup-gpu-badge"
                   >
@@ -538,7 +538,7 @@ function SetupScreen() {
                             : t('setup:showDetails')}
                         </button>
                         {showDetails && (
-                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-sunken p-2.5 font-mono text-xs text-ink-2">
+                          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-muted p-2.5 font-mono text-xs text-fg-2">
                             {currentPage.detail}
                           </pre>
                         )}
@@ -598,7 +598,7 @@ function SetupScreen() {
                   <div className="mt-5" data-testid="setup-finish">
                     <section
                       aria-labelledby="setup-processing-heading"
-                      className="mb-4 rounded-md border border-border bg-sunken px-3.5 py-3 text-xs leading-relaxed"
+                      className="mb-4 rounded-md border border-border bg-muted px-3.5 py-3 text-xs leading-relaxed"
                       data-testid="setup-processing"
                     >
                       <h2
@@ -607,10 +607,10 @@ function SetupScreen() {
                       >
                         {t('onboarding:processingHeading')}
                       </h2>
-                      <p className="mt-1.5 text-ink-2">
+                      <p className="mt-1.5 text-fg-2">
                         {t('onboarding:processingLocal')}
                       </p>
-                      <p className="mt-1.5 text-ink-2">
+                      <p className="mt-1.5 text-fg-2">
                         {t('onboarding:processingRemote')}
                       </p>
                       <Button
@@ -641,17 +641,17 @@ function SetupScreen() {
                               data-testid="setup-local-model"
                               onClick={() => setChosenModel(model.id)}
                               className={cn(
-                                'flex min-h-11 items-center justify-between gap-2 rounded-md border px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                'flex min-h-11 items-center justify-between gap-2 rounded-lg border-[0.8px] px-3.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
                                 isChosen
-                                  ? 'border-brand bg-accent'
-                                  : 'border-border bg-card hover:border-line-strong hover:bg-sunken'
+                                  ? 'border-primary bg-accent'
+                                  : 'border-border bg-card hover:border-border-strong hover:bg-hover-row'
                               )}
                             >
                               <span className="truncate">
                                 {getModelDisplayName(model)}
                               </span>
                               {isChosen && (
-                                <Check className="size-4 shrink-0 text-brand-text" />
+                                <Check className="size-4 shrink-0 text-acc-text" />
                               )}
                             </button>
                           )

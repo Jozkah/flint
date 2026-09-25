@@ -11,7 +11,15 @@ import HeaderPage from '@/containers/HeaderPage'
 import ThreadList from '@/containers/ThreadList'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 
-import { FolderPenIcon, MessageCircle, MoreHorizontal, PencilIcon, Trash2 } from 'lucide-react'
+import {
+  FolderPenIcon,
+  MessageCircle,
+  MoreHorizontal,
+  PencilIcon,
+  Settings2,
+  Trash2,
+} from 'lucide-react'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import ProjectFiles from '@/containers/ProjectFiles'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import {
@@ -86,7 +94,7 @@ function ProjectPageContent() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-background">
+    <div className="flex h-full w-full flex-col">
       <HeaderPage>
         {/* The collection's name is the page title; its actions sit beside
             it, the model on the right. */}
@@ -100,7 +108,7 @@ function ProjectPageContent() {
             </h1>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:size-11">
+                <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
                   <MoreHorizontal className="size-4" />
                   <span className="sr-only">More options</span>
                 </Button>
@@ -127,100 +135,119 @@ function ProjectPageContent() {
         </div>
       </HeaderPage>
 
-      <div className="min-h-0 flex-1 min-w-0 relative flex flex-col px-3 md:px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto overflow-x-hidden">
-        <div className="mx-auto w-full max-w-[calc(var(--read-w)+3rem)]">
-          {/* Chat Input */}
-          <div className="mb-5">
+      {/* The mockup's collection page: the composer and the conversations on
+          the left, the collection's settings in a Frame on the right. */}
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-width:thin]">
+        <div className="grid w-full grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex min-w-0 flex-col gap-4">
             <ChatInput
               showSpeedToken={false}
               initialMessage={true}
               projectId={projectId}
               projectAssistantId={project.assistantId}
             />
-          </div>
 
-          {/* Conversation Section */}
-          {projectThreads.length > 0 && (
-            <div className="flex flex-col mb-5">
-              <div className="flex items-center justify-between gap-2 mb-1 px-1">
-                <h2 className="text-[13px] font-semibold text-foreground">
-                  {t('projects.conversation')}
-                </h2>
-                <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" className="pointer-coarse:size-11">
-                      <MoreHorizontal className="size-4" />
-                      <span className="sr-only">More options</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="right" align="start">
-                    <DeleteAllThreadsInProjectDialog
-                      projectName={project.name}
-                      threadCount={projectThreads.length}
-                      onDeleteAll={handleDeleteAllThreads}
-                      onDropdownClose={() => setDropdownOpen(false)}
+            <Frame className="motion-safe:animate-rise-in motion-safe:[animation-delay:100ms]">
+              <FrameHeader
+                icon={<MessageCircle />}
+                title={t('projects.conversation')}
+                actions={
+                  projectThreads.length > 0 && (
+                    <DropdownMenu
+                      open={dropdownOpen}
+                      onOpenChange={setDropdownOpen}
+                    >
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="pointer-coarse:size-11"
+                        >
+                          <MoreHorizontal className="size-4" />
+                          <span className="sr-only">More options</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start">
+                        <DeleteAllThreadsInProjectDialog
+                          projectName={project.name}
+                          threadCount={projectThreads.length}
+                          onDeleteAll={handleDeleteAllThreads}
+                          onDropdownClose={() => setDropdownOpen(false)}
+                        />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                }
+              />
+              <FrameBody className="p-1.5">
+                {projectThreads.length > 0 ? (
+                  <NavList>
+                    <ThreadList
+                      threads={projectThreads}
+                      currentProjectId={projectId}
                     />
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <NavList>
-                <ThreadList
-                  threads={projectThreads}
-                  currentProjectId={projectId}
-                />
-              </NavList>
-            </div>
-          )}
-
-          {/* Empty State */}
-          {projectThreads.length === 0 && (
-            <div className="flex flex-col items-center justify-center px-4 py-6 text-center mb-5">
-              <MessageCircle className="size-5 text-muted-foreground mb-2" />
-              <h3 className="text-sm font-semibold text-foreground mb-0.5">
-                {t('projects.noConversationsIn', { projectName: project.name })}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {t('projects.startNewConversation', { projectName: project.name })}
-              </p>
-            </div>
-          )}
-
-          {/* Project Settings Card */}
-          <div className="rounded-lg border border-border overflow-hidden mb-6 bg-card">
-            {/* Assistant Section */}
-            <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-sm font-medium">{t('projects.addProjectDialog.assistant')}</h3>
-                {projectAssistant ? (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    {projectAssistant.avatar && (
-                      <AvatarEmoji
-                        avatar={projectAssistant.avatar}
-                        imageClassName="w-4 h-4 object-contain"
-                        textClassName="text-sm"
-                      />
-                    )}
-                    <span className="text-sm text-muted-foreground">{projectAssistant.name}</span>
-                  </div>
+                  </NavList>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {t('projects.noAssistantAssigned')}
-                  </p>
+                  <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+                    <MessageCircle className="mb-2 size-5 text-muted-foreground" />
+                    <h3 className="mb-0.5 text-sm font-medium text-foreground">
+                      {t('projects.noConversationsIn', {
+                        projectName: project.name,
+                      })}
+                    </h3>
+                    <p className="text-[13px] text-muted-foreground">
+                      {t('projects.startNewConversation', {
+                        projectName: project.name,
+                      })}
+                    </p>
+                  </div>
                 )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditDialogOpen(true)}
-              >
-                <PencilIcon className="size-3" />
-                <span>{t('common:edit')}</span>
-              </Button>
-            </div>
-
-            {/* Files Section */}
-            <ProjectFiles projectId={projectId} lng={i18n.language} />
+              </FrameBody>
+            </Frame>
           </div>
+
+          {/* Project Settings */}
+          <Frame className="self-start motion-safe:animate-rise-in motion-safe:[animation-delay:160ms]">
+            <FrameHeader icon={<Settings2 />} title={t('common:settings')} />
+            <FrameBody className="overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-dashed border-border px-3 py-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h3 className="text-[13px] font-medium text-foreground">
+                    {t('projects.addProjectDialog.assistant')}
+                  </h3>
+                  {projectAssistant ? (
+                    <div className="flex items-center gap-1.5">
+                      {projectAssistant.avatar && (
+                        <AvatarEmoji
+                          avatar={projectAssistant.avatar}
+                          imageClassName="w-4 h-4 object-contain"
+                          textClassName="text-sm"
+                        />
+                      )}
+                      <span className="truncate text-xs text-muted-foreground">
+                        {projectAssistant.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('projects.noAssistantAssigned')}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditDialogOpen(true)}
+                >
+                  <PencilIcon className="size-3" />
+                  <span>{t('common:edit')}</span>
+                </Button>
+              </div>
+
+              {/* Files Section */}
+              <ProjectFiles projectId={projectId} lng={i18n.language} />
+            </FrameBody>
+          </Frame>
         </div>
       </div>
 
