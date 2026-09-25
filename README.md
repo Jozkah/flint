@@ -429,12 +429,13 @@ corepack enable
 it fails with a permissions error, run that one command in an Administrator
 PowerShell (Windows) or prefix it with `sudo` (macOS/Linux).
 
-### 3. Install dependencies and build the shared packages
+### 3. Install dependencies and build the shared packages and extensions
 
 ```bash
 yarn install
 yarn build:tauri:plugin:api
 yarn build:core
+yarn build:extensions
 ```
 
 ### 4a. Run Flint in development
@@ -516,6 +517,7 @@ CUDA variants need the CUDA Toolkit.
 
 - **`cross-env: command not found` or `tauri: command not found`** — run `yarn install` first, from the repository root.
 - **Type errors about `@janhq/tauri-plugin-…-api` or `@janhq/core`** — the shared packages are stale; run `yarn build:tauri:plugin:api` and `yarn build:core` again.
+- **"ServiceHub not initialized" or "Failed to resolve import @janhq/assistant-extension" in `yarn dev`** — the bundled extensions are not built; run `yarn build:extensions`.
 - **"Sidecar verification failed … empty (0 bytes)"** — placeholder binaries are in the way. Delete everything in `src-tauri/resources/bin/` and run `yarn download:bin`, then build again.
 - **"the engine build needs clang on PATH"** — LLVM is installed but not on `PATH`; run the `PATH` command from step 1 and reopen the terminal.
 - **Windows: `wsl: Failed to translate` during `make`** — you ran `make` from PowerShell; run it from Git Bash.
