@@ -470,19 +470,99 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
     Ok(plan)
 }
 
+/// How gh calls are written, for refusals that should teach the shape.
+const GH_SHAPES: &str = "Write gh calls subcommand first, flags with their dashes, each flag and value as separate entries, e.g. [\"pr\", \"create\", \"--repo\", \"owner/repo\", \"--head\", \"my-branch\", \"--base\", \"main\", \"--title\", \"T\", \"--body\", \"B\"] or [\"issue\", \"list\", \"--repo\", \"owner/repo\", \"--json\", \"number,title\"].";
+
+/// `gh -R owner/repo issue list` is a spelling gh itself accepts; move a
+/// leading `-R/--repo` behind the subcommand so it is classified like any
+/// other call (transcript audit #8) instead of being refused.
+fn move_leading_repo(args: Vec<String>) -> Result<Vec<String>, String> {
+    let mut lead: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        if a == "-R" || a == "--repo" {
+            let Some(v) = args.get(i + 1) else {
+                return Err(format!("`{a}` needs a repository after it, e.g. [\"{a}\", \"owner/repo\"]. {GH_SHAPES}"));
+            };
+            lead.push(a.to_string());
+            lead.push(v.clone());
+            i += 2;
+        } else if a.starts_with("--repo=") {
+            lead.push(a.to_string());
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    if lead.is_empty() {
+        return Ok(args);
+    }
+    let mut rest: Vec<String> = args[i..].to_vec();
+    if rest.is_empty() {
+        return Err(format!("no gh command given after `{}`. {GH_SHAPES}", lead.join(" ")));
+    }
+    let at = if rest.get(1).is_some_and(|s| !s.starts_with('-')) { 2 } else { 1 };
+    let tail = rest.split_off(at);
+    rest.extend(lead);
+    rest.extend(tail);
+    Ok(rest)
+}
+
+/// Mistakes a model makes in gh's argument shape, named with the fix.
+fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), String> {
+    if has(args, &["--web", "-w"]) {
+        return Err(format!(
+            "`--web` opens a browser you cannot see and returns nothing; drop it (use `--json <fields>` to read). {GH_SHAPES}"
+        ));
+    }
+    if let Some(i) = args.iter().position(|a| a == "--json") {
+        let words: Vec<&String> = args[i + 1..]
+            .iter()
+            .take_while(|a| !a.starts_with('-'))
+            .collect();
+        let field = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric());
+        if words.len() >= 3 && words.iter().all(|w| field(w)) {
+            let joined = words.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(",");
+            return Err(format!(
+                "`--json` takes ONE comma-separated value: [\"--json\", \"{joined}\"], not separate arguments. {GH_SHAPES}"
+            ));
+        }
+        if words.is_empty() {
+            return Err(format!("`--json` needs the fields to return, e.g. [\"--json\", \"number,title\"]. {GH_SHAPES}"));
+        }
+    }
+    if matches!(group, "pr" | "issue") && action == "create" {
+        const VALUE_FLAGS: &[&str] = &[
+            "-R", "--repo", "-t", "--title", "-b", "--body", "-F", "--body-file", "-B", "--base",
+            "-H", "--head", "-l", "--label", "-a", "--assignee", "-m", "--milestone", "-p",
+            "--project", "-r", "--reviewer", "-T", "--template", "--recover",
+        ];
+        let stray = positionals(&args[2..], VALUE_FLAGS);
+        if let Some(first) = stray.first() {
+            return Err(format!(
+                "`gh {group} create` takes no positional arguments, but got `{first}` -- were the dashes dropped (`--title`, `--body`, `--repo`)? {GH_SHAPES}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
+    let args = move_leading_repo(args)?;
     let Some(group) = args.first().cloned() else {
-        return Err("no gh command given (e.g. [\"pr\", \"list\"])".into());
+        return Err(format!("no gh command given. {GH_SHAPES}"));
     };
     if group.starts_with('-') {
         return Err(format!(
-            "options before the gh command (`{group}`) are not allowed"
+            "options before the gh command (`{group}`) are not allowed: put the subcommand first. {GH_SHAPES}"
         ));
     }
     if has_opt(&args, &["--show-token", "-t"]) && group == "auth" {
         return Err("`gh auth status --show-token` is not allowed: the token must never reach the transcript".into());
     }
     let action = args.get(1).map(String::as_str).unwrap_or("");
+    check_gh_shape(&group, action, &args)?;
     let mut plan = plan_of(Program::Gh, args.clone(), GitClass::Read);
     plan.reaches_remote = true;
     let destructive = |why: &str| Some(why.to_string());
@@ -524,7 +604,7 @@ fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
         }
         _ => {
             return Err(format!(
-                "`gh {group} {action}` is not supported by this tool. Supported: repo view/list/clone/create/fork, pr list/view/status/diff/checks/checkout/create/merge/comment/close/edit/review/ready, issue list/view/create/comment/close/edit, run list/view, release list/view/create, auth status. `gh api`, `gh auth login`, `gh secret`, `gh config` and extensions are refused."
+                "`gh {group} {action}` is not supported by this tool. Supported: repo view/list/clone/create/fork, pr list/view/status/diff/checks/checkout/create/merge/comment/close/edit/review/ready, issue list/view/create/comment/close/edit, run list/view, release list/view/create, auth status. `gh api`, `gh auth login`, `gh secret`, `gh config` and extensions are refused. {GH_SHAPES}"
             ))
         }
     }
@@ -1193,7 +1273,7 @@ mod tests {
             &["secret", "list"],
             &["extension", "install", "x"],
             &["config", "set", "editor", "x"],
-            &["--repo", "o/r", "pr", "list"],
+            &["--hostname", "x", "pr", "list"],
         ] {
             assert!(p("gh", args).is_err(), "gh {args:?} was not refused");
         }
@@ -1201,6 +1281,28 @@ mod tests {
         assert!(p("git", &["commit", "-m", "a\0b"]).is_err());
         // A multi-line message is one argv entry, not a second command.
         assert!(p("git", &["commit", "-m", "subject\n\nbody"]).is_ok());
+    }
+
+    /// Transcript audit #8: gh shapes a model gets wrong are fixed where gh
+    /// itself would accept them, and otherwise refused with the right form.
+    #[test]
+    fn gh_shape_mistakes_are_fixed_or_named() {
+        let plan = p("gh", &["-R", "o/r", "issue", "create", "--title", "T"]).unwrap();
+        assert_eq!(plan.args, vec!["issue", "create", "-R", "o/r", "--title", "T"]);
+        assert_eq!(plan.remote.as_deref(), Some("o/r"));
+        assert_eq!(plan.class, GitClass::Remote);
+
+        let err = p("gh", &["repo", "view", "o/r", "--json", "defaultBranchRef", "isPrivate", "url"]).unwrap_err();
+        assert!(err.contains("defaultBranchRef,isPrivate,url"), "{err}");
+        let err = p("gh", &["issue", "create", "repo", "o/r", "t", "T"]).unwrap_err();
+        assert!(err.contains("dashes"), "{err}");
+        assert!(err.contains("--title"), "{err}");
+        let err = p("gh", &["pr", "list", "--web", "--json", "number"]).unwrap_err();
+        assert!(err.contains("browser"), "{err}");
+        let err = p("gh", &["--hostname", "x", "pr", "list"]).unwrap_err();
+        assert!(err.contains("[\"pr\", \"create\""), "{err}");
+        // A PR number or branch after a single-field --json stays allowed.
+        assert!(p("gh", &["pr", "view", "--json", "title", "main"]).is_ok());
     }
 
     #[test]
