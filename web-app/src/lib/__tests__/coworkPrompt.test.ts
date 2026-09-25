@@ -16,6 +16,17 @@ const opts = (over = {}) => ({
 })
 
 describe('buildCoworkSystemPrompt', () => {
+  // A later turn that changes code must not leave the existing tests broken
+  // unnoticed: the model reruns them when it can.
+  it('asks the model to rerun existing tests after changing code', () => {
+    expect(buildCoworkSystemPrompt(opts())).toContain(
+      "rerun the project's existing tests or checks"
+    )
+    expect(buildCoworkSystemPrompt(opts())).toContain(
+      'write a real test file'
+    )
+  })
+
   it('names the workspace as the writable directory', () => {
     const p = buildCoworkSystemPrompt(opts())
     expect(p).toContain('/data/agent-workspace/sessions/s1')
