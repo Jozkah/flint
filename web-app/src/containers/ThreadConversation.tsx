@@ -711,6 +711,11 @@ export function ThreadConversation({
             break
           }
 
+          // A permission event written with no ending yet: if this iteration
+          // throws before the call runs, the catch below ends it, so no call
+          // is left "awaiting permission" in the record for good.
+          let openPermission: Parameters<typeof recordToolActivity>[0] | null =
+            null
           try {
             const toolName = toolCall.toolName
             // The same record Cowork writes (AH-050): Chat's tool calls are
@@ -732,10 +737,17 @@ export function ThreadConversation({
               agentId: 'agent',
               source: 'chat' as const,
             }
+            // Permission events carry the same run and invocation as the
+            // call's other events: without them the fold keyed them as a
+            // separate call, stuck at "allowed", which a restart then marked
+            // interrupted although the call had finished.
             const permissionEvent = {
               call: toolCall.toolCallId,
               tool: toolName,
               session: threadId,
+              run: activityCtx.run,
+              invocation: activityCtx.invocation,
+              agent_id: activityCtx.agentId,
               source: 'chat',
               resource: resourceOf(toolCall.input),
             }
@@ -795,6 +807,7 @@ export function ThreadConversation({
             const needsApproval =
               !isAutoAllowedTool(toolName) || forced !== null || git !== null
             if (needsApproval) {
+              openPermission = { ...permissionEvent, phase: 'failed' }
               void recordToolActivity({
                 ...permissionEvent,
                 phase: 'awaiting-permission',
@@ -839,6 +852,7 @@ export function ThreadConversation({
                       ))
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
+            openPermission = null
             if (!approved) {
               // A prompt withdrawn because the conversation stopped is not a
               // "no" from the user, and the transcript should not say it was.
@@ -1011,6 +1025,13 @@ export function ThreadConversation({
               })
             }
           } catch (error) {
+            if (openPermission) {
+              await recordToolActivity({
+                ...openPermission,
+                phase: signal.aborted ? 'cancelled' : 'failed',
+                detail: error instanceof Error ? error.message : String(error),
+              })
+            }
             if ((error as Error).name !== 'AbortError') {
               console.error('Tool call error:', error)
               await persistToolOutput({

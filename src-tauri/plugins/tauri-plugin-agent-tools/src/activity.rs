@@ -859,7 +859,10 @@ impl ToolActivityItem {
     /// moves it in the list.
     fn refine(&mut self, event: ToolActivityEvent) {
         self.history.push(event.phase);
-        self.phase = event.phase;
+        // A late permission event never reopens a call that already ended.
+        if !(self.phase.is_terminal() && !event.phase.is_terminal()) {
+            self.phase = event.phase;
+        }
         if event.phase.is_terminal() {
             self.finished_at = Some(event.at.clone());
             self.finished_at_ms = event.at_ms;
@@ -932,7 +935,8 @@ pub fn item_id(session: &str, call: &str, invocation: &str) -> String {
 /// are keyed by session *and* call, so two sessions that reuse a provider call
 /// id stay two items.
 pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem> {
-    let events = read_all(data_folder, session);
+    let mut events = read_all(data_folder, session);
+    adopt_invocations(&mut events);
     let mut order: Vec<String> = Vec::new();
     let mut items: HashMap<String, ToolActivityItem> = HashMap::new();
 
@@ -953,15 +957,74 @@ pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem>
         .collect()
 }
 
+/// Give an event written without its invocation the invocation of the call it
+/// belongs to.
+///
+/// Older chat builds wrote a call's permission events (`awaiting-permission`,
+/// `allowed`) with no invocation while its other events carried one, so the
+/// fold kept them as a second item stuck at `allowed` that a restart then
+/// marked interrupted. An invocation-less event joins the invocation of the
+/// same session and call that was last seen before it (or, when it came
+/// first, the first one seen after it). Where no event of that call has an
+/// invocation, nothing changes: a log from before invocations were recorded
+/// folds exactly as it did.
+fn adopt_invocations(events: &mut [ToolActivityEvent]) {
+    let mut seen: HashMap<(String, String), Vec<(usize, String)>> = HashMap::new();
+    for (i, event) in events.iter().enumerate() {
+        if event.invocation.is_empty() {
+            continue;
+        }
+        let list = seen
+            .entry((event.session.clone(), event.call.clone()))
+            .or_default();
+        if list.last().map(|(_, inv)| inv != &event.invocation).unwrap_or(true) {
+            list.push((i, event.invocation.clone()));
+        }
+    }
+    if seen.is_empty() {
+        return;
+    }
+    for (i, event) in events.iter_mut().enumerate() {
+        if !event.invocation.is_empty() {
+            continue;
+        }
+        let Some(list) = seen.get(&(event.session.clone(), event.call.clone())) else {
+            continue;
+        };
+        let chosen = list
+            .iter()
+            .rev()
+            .find(|(at, _)| *at < i)
+            .or_else(|| list.first())
+            .map(|(_, inv)| inv.clone());
+        if let Some(inv) = chosen {
+            event.invocation = inv;
+        }
+    }
+}
+
 /// Settle anything a dead run left mid-flight.
 ///
 /// Nothing survives a restart: a shell process and a stream both died with the
 /// process that owned them, so a call still `running` in the log is finished
 /// in the only honest way available.
 pub fn settle_unfinished(data_folder: &Path) -> usize {
-    let stuck: Vec<ToolActivityItem> = items(data_folder, None)
-        .into_iter()
+    let all = items(data_folder, None);
+    // A call that already reached a terminal phase is finished, whatever a
+    // stray invocation-less event of it says: only its own unfinished items
+    // are settled, never a shadow of a call that ended.
+    let finished: std::collections::HashSet<(&str, &str)> = all
+        .iter()
+        .filter(|i| i.phase.is_terminal())
+        .map(|i| (i.session.as_str(), i.call.as_str()))
+        .collect();
+    let stuck: Vec<ToolActivityItem> = all
+        .iter()
         .filter(|i| !i.phase.is_terminal())
+        .filter(|i| {
+            !(i.invocation.is_empty() && finished.contains(&(i.session.as_str(), i.call.as_str())))
+        })
+        .cloned()
         .collect();
     for item in &stuck {
         let mut event = ToolActivityEvent::new(item.call.clone(), item.tool.clone(), Phase::Stale);
@@ -1726,6 +1789,60 @@ mod tests {
         assert_eq!(by("inv-1").output.as_deref(), Some("the first file"));
         assert_eq!(by("inv-2").phase, Phase::Requested, "the second call is still running");
         assert!(by("inv-2").output.is_none(), "the first call's output leaked into the second");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Transcript audit #1: chat wrote a call's permission events without its
+    /// invocation; they must fold into the call, and a restart must not mark
+    /// the finished call interrupted.
+    #[test]
+    fn permission_events_without_an_invocation_fold_into_their_call() {
+        let dir = scratch();
+        let with_inv = |phase| {
+            let mut e = ev("c1", "git", phase);
+            e.invocation = "chat:t#5".into();
+            e
+        };
+        append(&dir, &ev("c1", "git", Phase::AwaitingPermission));
+        append(&dir, &with_inv(Phase::Requested));
+        append(&dir, &ev("c1", "git", Phase::Allowed));
+        append(&dir, &with_inv(Phase::Running));
+        append(&dir, &with_inv(Phase::Succeeded));
+
+        let found = items(&dir, None);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].phase, Phase::Succeeded);
+        assert!(found[0].history.contains(&Phase::Allowed));
+        assert_eq!(settle_unfinished(&dir), 0, "a finished call was marked interrupted");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_late_non_terminal_event_does_not_reopen_a_finished_call() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "bash", Phase::Requested));
+        append(&dir, &ev("c1", "bash", Phase::Succeeded));
+        append(&dir, &ev("c1", "bash", Phase::Allowed));
+        assert_eq!(items(&dir, None)[0].phase, Phase::Succeeded);
+        assert_eq!(settle_unfinished(&dir), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_shadow_item_of_a_finished_call_is_not_settled() {
+        let dir = scratch();
+        // Two invocations both reached a terminal phase; an invocation-less
+        // event is adopted by one of them, so nothing is left to settle.
+        for inv in ["inv-1", "inv-2"] {
+            let mut r = ev("c1", "read", Phase::Requested);
+            r.invocation = inv.into();
+            append(&dir, &r);
+            let mut d = ev("c1", "read", Phase::Succeeded);
+            d.invocation = inv.into();
+            append(&dir, &d);
+        }
+        append(&dir, &ev("c1", "read", Phase::Allowed));
+        assert_eq!(settle_unfinished(&dir), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

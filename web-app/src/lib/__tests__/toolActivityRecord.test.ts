@@ -121,6 +121,28 @@ describe('what a recorded call carries', () => {
     expect(sent().at(-1)?.phase).toBe('cancelled')
   })
 
+  it('ends a call the moment it is stopped, even if the tool never returns', async () => {
+    const controller = new AbortController()
+    let release: (v: { output: string; isError: boolean }) => void = () => {}
+    const pending = withToolActivity(
+      { toolCallId: 'c7', toolName: 'git', input: { args: ['push'] } },
+      { session: 's1', run: 'r1', invocation: 'inv-1' },
+      controller.signal,
+      () => new Promise((r) => (release = r))
+    )
+    await Promise.resolve()
+    controller.abort()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(sent().at(-1)).toMatchObject({ phase: 'cancelled', invocation: 'inv-1' })
+    // The late result does not write a second ending.
+    release({ output: 'pushed', isError: false })
+    await pending
+    const ends = sent().filter((e) =>
+      ['succeeded', 'failed', 'cancelled'].includes(e.phase)
+    )
+    expect(ends).toHaveLength(1)
+  })
+
   it('passes the outcome through untouched', async () => {
     const outcome = { output: 'as the model sees it', isError: false }
     const back = await withToolActivity(
