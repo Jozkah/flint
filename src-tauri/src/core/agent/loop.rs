@@ -12255,7 +12255,7 @@ mod tests {
         .unwrap();
 
         let out = task.await.unwrap();
-        assert_eq!(out[0].content, "User response for \"scope\": Small");
+        assert_eq!(out[0].content, "Question \"scope\": Which scope?\nUser chose: Small");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -12288,7 +12288,7 @@ mod tests {
         let out = task.await.unwrap();
         assert_eq!(
             out[0].content,
-            "User response for \"scope\": CUSTOM-SENTINEL-4829"
+            "Question \"scope\": Which scope?\nUser wrote: CUSTOM-SENTINEL-4829"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -12320,7 +12320,7 @@ mod tests {
         .unwrap();
 
         let out = task.await.unwrap();
-        assert_eq!(out[0].content, "User response for \"scope\": custom answer");
+        assert_eq!(out[0].content, "Question \"scope\": Which scope?\nUser wrote: custom answer");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -12360,7 +12360,7 @@ mod tests {
                 assert!(
                     out[0]
                         .content
-                        .contains("User response for \"scope\": Small"),
+                        .contains("Question \"scope\": Which scope?\nUser chose: Small"),
                     "auto-selected the first option: {}",
                     out[0].content
                 );
@@ -12405,7 +12405,7 @@ mod tests {
                     out[0].content
                 );
                 assert!(
-                    out[0].content.contains("User response for \"scope\": Huge"),
+                    out[0].content.contains("User chose: Huge"),
                     "must select the recommended option (Huge): {}",
                     out[0].content
                 );
