@@ -149,6 +149,8 @@
     "historyDecision": "Decision",
     "historyTool": "Tool",
     "historyScope": "Scope",
+    "decisionAllowed": "Allowed",
+    "decisionDenied": "Denied",
     "historyRow":"{{decision}} · {{tool}} · {{at}}",
     "historyLimit": "Last {{count}}",
     "stateTrusted": "Trusted",

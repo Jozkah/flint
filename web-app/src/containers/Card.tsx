@@ -11,6 +11,8 @@ type CardProps = {
   description?: string | ReactNode
   /** Rendered at the end of the title row: a count, a link, a small action. */
   aside?: ReactNode
+  /** A small mark before the title. */
+  icon?: ReactNode
   children?: ReactNode
   /** Free-form content above the rows, kept for callers that build their own header. */
   header?: ReactNode
@@ -124,6 +126,7 @@ export function Card({
   title,
   description,
   aside,
+  icon,
   children,
   header,
   className,
@@ -150,15 +153,20 @@ export function Card({
       {(title || aside) && (
         <header
           data-slot="frame-header"
-          className="flex min-h-9 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 p-2"
+          className="flex min-h-[30px] w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 p-2"
         >
           {title && (
-            <h2 className="min-w-0 text-sm leading-none font-medium text-secondary-foreground">
+            <h2 className="flex min-w-0 items-center gap-3 text-sm leading-none font-medium text-secondary-foreground">
+              {icon && (
+                <span className="flex shrink-0 text-muted-foreground [&_svg:not([class*='size-'])]:size-4">
+                  {icon}
+                </span>
+              )}
               {title}
             </h2>
           )}
           {aside && (
-            <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px] text-muted-foreground">
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-base leading-none text-muted-foreground">
               {aside}
             </div>
           )}
@@ -167,12 +175,12 @@ export function Card({
       <div
         data-slot="frame-body"
         className={cn(
-          'relative flex min-w-0 flex-col rounded-xl border-[0.8px] border-input bg-card px-3.5 py-[3px]',
+          'relative flex min-w-0 flex-col rounded-xl border-[0.8px] border-input bg-card p-3.5',
           bodyClassName
         )}
       >
         {description && (
-          <p className="mt-2.5 mb-0.5 text-[12.5px] leading-normal text-muted-foreground">
+          <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
             {description}
           </p>
         )}

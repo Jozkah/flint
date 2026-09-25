@@ -27,7 +27,6 @@ function FixedKeys({ children }: { children: React.ReactNode }) {
       <Button
         aria-hidden
         tabIndex={-1}
-        size="sm"
         variant="ghost"
         className="invisible hidden pointer-events-none sm:inline-flex"
       >
@@ -124,6 +123,7 @@ function Shortcuts() {
       <SettingsPageBody
         title={t('common:keyboardShortcuts')}
         description={t('settings:pageDesc.shortcuts')}
+        layout={[0, 1, 1]}
       >
         {/* Application */}
         <Card title={t('settings:shortcuts.application')}>

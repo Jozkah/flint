@@ -82,7 +82,6 @@ export function FolderAccessCard() {
               </div>
               <Button
                 variant="destructive"
-                size="sm"
                 className={REVOKE}
                 aria-label={`Revoke access to ${g.display}`}
                 onClick={() => void revoke(g)}

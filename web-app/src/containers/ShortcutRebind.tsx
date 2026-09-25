@@ -78,7 +78,6 @@ export function ShortcutRebind({
           children
         )}
         <Button
-          size="sm"
           variant="ghost"
           className="text-acc-text pointer-coarse:h-11"
           onClick={() => {
@@ -91,7 +90,6 @@ export function ShortcutRebind({
         </Button>
         {customised && !recording ? (
           <Button
-            size="sm"
             variant="ghost"
             className="pointer-coarse:h-11"
             onClick={() => useKeybindings.getState().reset(action)}

@@ -279,11 +279,10 @@ function CustomColorPicker({
         ))}
       </div>
       <div className="flex justify-end gap-1.5 border-t border-dashed border-border pt-2">
-        <Button variant="surface" size="sm" onClick={onCancel}>
+        <Button variant="surface" onClick={onCancel}>
           {t('common:cancel')}
         </Button>
         <Button
-          size="sm"
           data-testid="accent-picker-apply"
           onClick={() => onApply(hex)}
           style={{
@@ -414,7 +413,7 @@ export function AccentSettings() {
       aside={
         <Button
           variant="outline"
-          size="xs"
+          className="pointer-coarse:h-11"
           disabled={isDefault}
           onClick={() => {
             clearMessages()
@@ -434,7 +433,9 @@ export function AccentSettings() {
         <div className="font-mono text-xs text-muted-foreground">
           {isCustom
             ? base.hex
-            : t('settings:accent.presetValues', {
+            : isDefault
+              ? t('settings:accent.defaultValues')
+              : t('settings:accent.presetValues', {
                 light: base.light,
                 dark: base.dark,
               })}
@@ -605,7 +606,7 @@ export function AccentSettings() {
         aria-label={t('settings:accent.previewLabel')}
         className="mb-3 flex flex-wrap items-center gap-3.5 rounded-[10px] bg-muted p-2.5"
       >
-        <Button size="sm" tabIndex={-1}>
+        <Button tabIndex={-1}>
           {t('settings:accent.previewPrimary')}
         </Button>
         <span className="text-[13px] font-medium text-acc-text underline underline-offset-2">

@@ -8,7 +8,7 @@ import {
 
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { cn } from '@/lib/utils'
-import { ChevronsUpDown } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 
 const hostOptions = [
   { value: '127.0.0.1', label: '127.0.0.1' },
@@ -28,9 +28,9 @@ export function ServerHostSwitcher({
         asChild
         className={cn(isServerRunning && 'opacity-50 pointer-events-none')}
       >
-        <Button variant="outline" size="sm" className="w-full justify-between" title="Edit Server Host">
+        <Button variant="outline" className="w-full min-w-[140px] justify-between pointer-coarse:h-11" title="Edit Server Host">
           {serverHost}
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+          <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-24">

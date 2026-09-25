@@ -19,7 +19,8 @@ import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocat
 import { FactoryResetDialog } from '@/containers/dialogs'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { Copy, CopyCheck, Folder, ScrollText } from 'lucide-react'
+import { Copy, CopyCheck } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
@@ -199,6 +200,7 @@ function General() {
       <SettingsPageBody
         title={t('common:general')}
         description={t('settings:pageDesc.general')}
+        layout={[0, 1, 0, 1, 0]}
       >
 
         {/* General */}
@@ -206,7 +208,7 @@ function General() {
           <CardItem
             title={t('settings:general.appVersion')}
             actions={
-              <span className="text-foreground font-medium">
+              <span className="font-mono text-xs text-muted-foreground">
                 v{VERSION}
               </span>
             }
@@ -222,7 +224,6 @@ function General() {
             actions={
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => {
                   useOnboardingGuide
                     .getState()
@@ -248,7 +249,6 @@ function General() {
             actions={
               <Button
                 variant="outline"
-                size="sm"
                 data-testid="open-migration-assistant"
                 onClick={() => openMigrationAssistant()}
               >
@@ -261,53 +261,12 @@ function General() {
             title={t('settings:dataFolder.appData', {
               ns: 'settings',
             })}
-            align="start"
-            className="items-start"
+            column
             description={
               <>
-                <span>
-                  {t('settings:dataFolder.appDataDesc', {
-                    ns: 'settings',
-                  })}
-                  &nbsp;
-                </span>
-                <div className="mt-1 flex min-w-0 items-center gap-2">
-                  <div className="min-w-0 max-w-100 rounded-sm bg-muted px-1.5 py-0.5">
-                    <span
-                      data-testid="app-data-folder-path"
-                      title={janDataFolder}
-                      className="line-clamp-1 break-all font-mono text-xs text-fg-2"
-                    >
-                      {janDataFolder}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() =>
-                      janDataFolder && copyToClipboard(janDataFolder)
-                    }
-                    className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-                    title={
-                      isCopied
-                        ? t('settings:general.copied')
-                        : t('settings:general.copyPath')
-                    }
-                  >
-                    {isCopied ? (
-                      <div className="flex items-center gap-1">
-                        <CopyCheck size={14} className="text-success" aria-hidden />
-                        <span className="text-xs leading-0">
-                          {t('settings:general.copied')}
-                        </span>
-                      </div>
-                    ) : (
-                      <Copy
-                        size={14}
-                        className="text-muted-foreground"
-                        aria-hidden
-                      />
-                    )}
-                  </button>
-                </div>
+                {t('settings:dataFolder.appDataDesc', {
+                  ns: 'settings',
+                })}
                 {unavailableDataFolder && (
                   <p role="alert" className="text-xs text-destructive mt-1">
                     {t('settings:dataFolder.unavailable', {
@@ -319,16 +278,45 @@ function General() {
             }
             actions={
               <>
+                <span className="flex h-8 min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-lg border-[0.8px] border-border bg-muted py-0 pr-1 pl-2.5 pointer-coarse:h-11">
+                  <span
+                    data-testid="app-data-folder-path"
+                    title={janDataFolder}
+                    className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2"
+                  >
+                    {janDataFolder}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      janDataFolder && copyToClipboard(janDataFolder)
+                    }
+                    className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                    title={
+                      isCopied
+                        ? t('settings:general.copied')
+                        : t('settings:general.copyPath')
+                    }
+                    aria-label={
+                      isCopied
+                        ? t('settings:general.copied')
+                        : t('settings:general.copyPath')
+                    }
+                  >
+                    {isCopied ? (
+                      <CopyCheck size={14} className="text-success" aria-hidden />
+                    ) : (
+                      <Copy size={14} aria-hidden />
+                    )}
+                  </button>
+                </span>
                 <Button
                   variant="outline"
-                  size="sm"
+                  className="pointer-coarse:h-11"
                   title={t('settings:dataFolder.appData')}
                   onClick={handleDataFolderChange}
                 >
-                    <Folder
-                      size={12}
-                      className="text-muted-foreground"
-                    />
+                    <Icon name="x-folder" size={14} />
                     <span>{t('settings:general.changeLocation')}</span>
                 </Button>
                 {selectedNewPath && (
@@ -360,7 +348,6 @@ function General() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
-                  size="sm"
                   className="pointer-coarse:h-11"
                   onClick={async () => {
                     if (janDataFolder) {
@@ -380,19 +367,15 @@ function General() {
                   }}
                   title={t('settings:general.revealLogs')}
                 >
-                  <Folder
-                    size={12}
-                    className="text-muted-foreground"
-                  />
+                  <Icon name="x-folder" size={14} />
                   <span>{openFileTitle()}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={handleOpenLogs}
                   title={t('settings:dataFolder.appLogs')}
                 >
-                  <ScrollText size={12} className="text-muted-foreground" aria-hidden />
+                  <Icon name="sb-file" size={14} />
                   <span>{t('settings:general.openLogs')}</span>
                 </Button>
               </div>
@@ -414,7 +397,6 @@ function General() {
                 cliInstalled ? (
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={handleUninstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
@@ -422,8 +404,7 @@ function General() {
                   </Button>
                 ) : (
                   <Button
-                    variant="secondary"
-                    size="sm"
+                    variant="outline"
                     onClick={handleInstallCli}
                     disabled={isCliLoading || cliInstalled === null}
                   >
@@ -443,7 +424,7 @@ function General() {
             })}
             actions={
               <FactoryResetDialog onReset={resetApp}>
-                <Button variant="destructive" size="sm">
+                <Button variant="destructive">
                   {t('common:reset')}
                 </Button>
               </FactoryResetDialog>

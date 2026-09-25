@@ -189,16 +189,21 @@ describe('Interface Settings Route', () => {
     expect(setReduceMotion).toHaveBeenCalledWith(true)
   })
 
-  it('places the motion group right after the theme group', () => {
+  it('reads theme, reading, reset and motion down the first column', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
     const titles = screen
       .getAllByTestId('card-title')
       .map((el) => el.textContent)
-    expect(titles.indexOf('settings:appearance.motionGroup')).toBe(
-      titles.indexOf('settings:appearance.themeGroup') + 1
-    )
+    const order = [
+      'settings:appearance.themeGroup',
+      'settings:appearance.readingGroup',
+      'settings:appearance.resetGroup',
+      'settings:appearance.motionGroup',
+    ].map((title) => titles.indexOf(title))
+    expect(order.every((at) => at >= 0)).toBe(true)
+    expect([...order].sort((x, y) => x - y)).toEqual(order)
   })
 
   it('should render main layout structure', () => {

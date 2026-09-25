@@ -8,7 +8,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useHardware, type GPU } from '@/hooks/useHardware'
 import { useLlamacppDevices } from '@/hooks/useLlamacppDevices'
 import { useEffect, useState } from 'react'
-import { Activity, RefreshCw } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import {
   SettingsPageBody,
   SettingsPageHeader,
@@ -498,11 +498,10 @@ function HardwareContent() {
         actions={
           <Button
             variant="outline"
-            size="sm"
             className="pointer-coarse:h-11"
             onClick={handleClickSystemMonitor}
           >
-            <Activity className="text-muted-foreground" aria-hidden />
+            <Icon name="x-activity" size={14} />
             <span>{t('settings:hardware.systemMonitor')}</span>
           </Button>
         }
@@ -655,7 +654,7 @@ function HardwareContent() {
                         disabled={isLoading}
                         className="pointer-coarse:h-11"
                       >
-                        <RefreshCw className="text-muted-foreground" aria-hidden />
+                        <Icon name="x-refresh" size={14} />
                         {t('settings:hardware.refresh')}
                       </Button>
                     </>

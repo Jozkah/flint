@@ -10,6 +10,7 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OctagonAlert } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -23,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import { Pin, PinOff } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -767,7 +768,6 @@ function MemorySettings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
-                      size="sm"
                       className="pointer-coarse:h-11"
                       disabled={busy || !newMemory.trim() || location == null}
                       data-testid="memory-new-save"
@@ -776,7 +776,6 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="outline"
                       className="pointer-coarse:h-11 sm:ml-auto"
                       disabled={busy || total === 0 || location == null}
@@ -787,7 +786,6 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="outline"
                       className="pointer-coarse:h-11"
                       disabled={busy || location == null}
@@ -798,7 +796,6 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="destructive"
                       className="pointer-coarse:h-11"
                       disabled={busy || total === 0 || location == null}
@@ -1106,7 +1103,7 @@ function MemorySettings() {
                               setDraft(memory.content)
                             }}
                           >
-                            <Pencil aria-hidden />
+                            <Icon name="x-edit" size={16} />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1117,7 +1114,7 @@ function MemorySettings() {
                             aria-label="Forget memory"
                             onClick={() => void onForget(memory)}
                           >
-                            <Trash2 className="text-destructive" aria-hidden />
+                            <Icon name="x-trash" size={16} />
                           </Button>
                         </div>
                       </li>
@@ -1134,7 +1131,6 @@ function MemorySettings() {
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
                         disabled={offset === 0}
                         onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                       >
@@ -1142,7 +1138,6 @@ function MemorySettings() {
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
                         disabled={offset + PAGE_SIZE >= total}
                         onClick={() => setOffset(offset + PAGE_SIZE)}
                       >
@@ -1214,7 +1209,6 @@ function MemorySettings() {
                               <span className="font-mono break-all">{side.id}</span>
                             </p>
                             <Button
-                              size="sm"
                               variant="outline"
                               className="self-start pointer-coarse:h-11"
                               disabled={busy}
