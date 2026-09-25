@@ -138,6 +138,9 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     title: string
   } | null>(null)
   const runningRoomIds = useRoomsStore((s) => s.runningRoomIds)
+  const visibleRooms = expanded
+    ? summaries
+    : summaries.filter((room) => runningRoomIds.includes(room.id))
 
   useEffect(() => {
     if (api.status !== 'ready') return
@@ -195,19 +198,23 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
           </button>
         </span>
       </NavItem>
-      <NavCollapse as="li" open={expanded}>
+      {/* Collapsed, the tree still lists the rooms that are running, until
+          their run ends. */}
+      <NavCollapse as="li" open={expanded || visibleRooms.length > 0}>
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
-          <NavItem>
-            <NavButton
-              size="sub"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onClick={() => navigate({ to: route.rooms, search: { new: 1 } as any })}
-            >
-              <Plus aria-hidden className="size-3.5" />
-              <span>{t('common:shell.newRoom')}</span>
-            </NavButton>
-          </NavItem>
-          {summaries.map((room) => (
+          {expanded && (
+            <NavItem>
+              <NavButton
+                size="sub"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onClick={() => navigate({ to: route.rooms, search: { new: 1 } as any })}
+              >
+                <Plus aria-hidden className="size-3.5" />
+                <span>{t('common:shell.newRoom')}</span>
+              </NavButton>
+            </NavItem>
+          )}
+          {visibleRooms.map((room) => (
             <RoomItem
               key={room.id}
               room={room}

@@ -2,10 +2,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { useSeen } from '@/stores/seen-store'
 
 /**
  * The mark before a chat or session in the sidebar. Nothing for an inactive
- * chat, a blue dot for one active in the last hour, a blinking blue dot while
+ * chat, a blue dot for one that finished within the last hour and has not been
+ * looked at since (opening it clears the dot), a blinking blue dot while
  * it is working, and yellow while it waits for the user's answer. Pull-request
  * states (open, merged, closed, draft) use the GitHub glyphs in their colours.
  */
@@ -32,26 +34,45 @@ export function statusFor(
   thread: Pick<Thread, 'updated'>,
   working: boolean,
   now: number,
-  waiting = false
+  waiting = false,
+  /** When the user last looked at it (epoch ms); 0 when never. */
+  seenMs = 0
 ): ThreadStatus {
   if (waiting) return 'wait'
   if (working) return 'active'
-  if (now - updatedMs(thread.updated) < RECENT_MS) return 'recent'
+  const updated = updatedMs(thread.updated)
+  if (now - updated < RECENT_MS && updated > seenMs) return 'recent'
   return 'none'
 }
 
-/** Re-evaluated every minute so "recent" fades out without a reload. */
+/**
+ * Re-evaluated every minute so "recent" fades out without a reload. With an
+ * `id`, the dot also clears once the item has been seen: while it is the one
+ * open (`selected`), every change it makes is marked seen as it lands.
+ */
 export function useThreadStatus(
   thread: Pick<Thread, 'updated'>,
   working: boolean,
-  waiting = false
+  waiting = false,
+  seenAs?: { id: string; selected?: boolean }
 ): ThreadStatus {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(id)
   }, [])
-  return statusFor(thread, working, now, waiting)
+  const seenId = seenAs?.id
+  const selected = Boolean(seenAs?.selected)
+  const seenMs = useSeen((s) => (seenId ? (s.seen[seenId] ?? 0) : 0))
+  const updated = updatedMs(thread.updated)
+  // Re-run when the run ends too, so a reply finishing while the item is
+  // open is marked seen rather than lighting the dot.
+  useEffect(() => {
+    if (seenId && selected)
+      useSeen.getState().markSeen(seenId, Math.max(Date.now(), updated))
+  }, [seenId, selected, updated, working])
+  if (selected && !working && !waiting) return 'none'
+  return statusFor(thread, working, now, waiting, seenId ? seenMs : 0)
 }
 
 const OCTICON: Partial<Record<ThreadStatus, string>> = {

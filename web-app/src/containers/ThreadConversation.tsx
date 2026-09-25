@@ -2257,7 +2257,9 @@ export function ThreadConversation({
   const threadStatus = useThreadStatus(
     { updated: thread?.updated ?? 0 },
     threadStreaming,
-    waitingHere
+    waitingHere,
+    // Open here, so what it did is seen: the sidebar's dot clears.
+    { id: threadId, selected: true }
   )
   const groupLabel = thread?.isFavorite
     ? t('common:shell.pinned')

@@ -92,7 +92,8 @@ function DropTarget({ id, children }: { id: string; children: ReactNode }) {
 /**
  * The Chats section: Pinned, one collapsible group per project, then the
  * chats in no project. A collapsed group keeps showing the chat that was open
- * when it was collapsed, until another chat or group is chosen.
+ * when it was collapsed, until another chat or group is chosen, and any chat
+ * that is still running, until its run ends.
  */
 export function ChatsNav() {
   const { t } = useTranslation()
@@ -300,9 +301,16 @@ export function ChatsNav() {
         <div className="flex flex-col gap-1">
           {groups.map((g) => {
             const isOpen = collapsed[g.id] === undefined
-            const kept = !isOpen && collapsed[g.id] === currentThreadId
-              ? g.threads.filter((th) => th.id === currentThreadId)
-              : []
+            // A collapsed group still lists the chat that was open when it
+            // was collapsed and any chat that is running, until it stops.
+            const kept = isOpen
+              ? []
+              : g.threads.filter(
+                  (th) =>
+                    (collapsed[g.id] === currentThreadId &&
+                      th.id === currentThreadId) ||
+                    streaming[th.id]?.isStreaming
+                )
             const showAll = expandedMore[g.id]
             const visible = isOpen
               ? showAll
