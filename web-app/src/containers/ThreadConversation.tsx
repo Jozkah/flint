@@ -2262,9 +2262,19 @@ export function ThreadConversation({
   const groupLabel = thread?.isFavorite
     ? t('common:shell.pinned')
     : thread?.metadata?.project?.name
+  // The mark sits in its own non-shrinking box with a little padding, so the
+  // header slot's overflow clip never cuts into the dot's left edge.
+  const statusMark =
+    threadStatus !== 'none' ? (
+      <span
+        data-testid="header-thread-status"
+        className="flex shrink-0 items-center px-0.5"
+      >
+        <ThreadStatusMark status={threadStatus} />
+      </span>
+    ) : null
   const projectChip = (
     <>
-      {threadStatus !== 'none' && <ThreadStatusMark status={threadStatus} />}
       {groupLabel && (
         <Chip className="hidden max-w-48 md:inline-flex" title={groupLabel}>
           <span className="truncate">{groupLabel}</span>
@@ -2287,7 +2297,9 @@ export function ThreadConversation({
           onto the conversation's own header row, and Split and Details into
           an overflow menu. A split pane's header row keeps them all. */}
       {(isSplit || !isPhone) && (
-        <div className="min-w-0 shrink">
+        // A bounded box: the pill truncates the model name inside it instead
+        // of resizing with every name swap and spilling onto the Split button.
+        <div className="flex min-w-24 max-w-60 shrink" data-testid="model-pill-box">
           <DropdownModelProvider model={threadModel} />
         </div>
       )}
@@ -2355,6 +2367,7 @@ export function ThreadConversation({
           {/* The collection, then the model and the controls that act on
               the conversation. The breadcrumb already names the chat. */}
           <div className="flex w-full min-w-0 items-center gap-1.5 md:pr-1">
+            {statusMark}
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {projectChip}
             </div>

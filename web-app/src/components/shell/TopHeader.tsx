@@ -221,9 +221,11 @@ export function TopHeader() {
         )
       )}
 
+      {/* The breadcrumb takes the title's full width first; the page slot
+          beside it gives way (it clips) before the title truncates. */}
       <nav
         aria-label={t('common:shell.breadcrumb')}
-        className="flex min-w-0 shrink items-center gap-2 text-sm leading-none"
+        className="flex min-w-0 flex-[0_1_auto] items-center gap-2 text-sm leading-none"
         {...dragRegion}
       >
         <Link
@@ -234,7 +236,12 @@ export function TopHeader() {
           <span className="hidden sm:inline">{t(crumb.parentKey)}</span>
         </Link>
         <span aria-hidden className="text-subtle-foreground">/</span>
-        <span aria-current="page" className="truncate font-medium text-foreground" title={current}>
+        <span
+          aria-current="page"
+          data-testid="breadcrumb-current"
+          className="min-w-0 truncate font-medium text-foreground"
+          title={current}
+        >
           {current}
         </span>
       </nav>
@@ -243,7 +250,7 @@ export function TopHeader() {
         ref={headerSlot?.setSlot}
         {...dragRegion}
         data-testid="header-slot"
-        className="flex h-full min-w-0 flex-1 items-center gap-2 overflow-hidden"
+        className="flex h-full min-w-0 flex-[1_1_0%] items-center gap-2 overflow-hidden pl-0.5"
       />
 
       <div className="flex shrink-0 items-center gap-1.5">
