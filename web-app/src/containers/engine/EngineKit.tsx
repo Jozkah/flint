@@ -187,9 +187,12 @@ const CAP_STYLE: Record<string, { cls: string; icon: ReactNode }> = {
 export function CapabilityChips({
   capabilities,
   className,
+  iconOnly = false,
 }: {
   capabilities: string[]
   className?: string
+  /** Just the tinted icons, named by their tooltip, for narrow tables. */
+  iconOnly?: boolean
 }) {
   const shown = capabilities.filter((c) => CAP_STYLE[c])
   if (shown.length === 0) return null
@@ -199,13 +202,15 @@ export function CapabilityChips({
         <span
           key={c}
           title={c === 'web_search' ? 'web search' : c}
+          aria-label={iconOnly ? c : undefined}
           className={cn(
-            'inline-flex h-5 items-center gap-1 rounded-md px-[7px] text-[11px] font-medium [&_svg]:size-[11px]',
+            'inline-flex h-5 items-center gap-1 rounded-md text-[11px] font-medium [&_svg]:size-[11px]',
+            iconOnly ? 'w-5 justify-center' : 'px-[7px]',
             CAP_STYLE[c].cls
           )}
         >
           {CAP_STYLE[c].icon}
-          {c === 'web_search' ? 'web' : c}
+          {!iconOnly && (c === 'web_search' ? 'web' : c)}
         </span>
       ))}
     </span>

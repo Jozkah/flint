@@ -1037,7 +1037,9 @@ function MCPServersDesktop() {
           <LiveChart
             series={series}
             color={color}
-            off={!snapshot.connected}
+            // Recorded calls stay visible after a server stops; only a
+            // server with nothing in the window reads as off.
+            off={!snapshot.connected && series.every((v) => v === 0)}
             label={t('engine:mcp.callsPerMin')}
             windowLabel={t('engine:mcp.window', { count: CHART_BUCKETS })}
             peakLabel={t('engine:chart.peak')}
@@ -1161,7 +1163,7 @@ function MCPServersDesktop() {
                   void handleAutoApprove(key, checked)
                 }
               />
-              {t('mcp-servers:autoApproveServer')}
+              {t('engine:mcp.autoApprove')}
             </label>
             <span className="flex-1" />
             <Button
@@ -1229,8 +1231,8 @@ function MCPServersDesktop() {
         <SettingsPageHeader title={t('common:mcp-servers')} />
         <EnginePage testId="tools-page">
           <PageHead
-            title={t('common:mcp-servers')}
-            description={t('settings:pageDesc.mcpServers')}
+            title={t('engine:mcp.title')}
+            description={t('engine:mcp.description')}
             actions={
               <>
                 <Button

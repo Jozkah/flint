@@ -100,6 +100,9 @@
     "danger": "Danger zone"
   },
   "mcp": {
+    "title": "Tools & MCP",
+    "description": "Servers and the tools your models can call through them.",
+    "autoApprove": "Auto-approve",
     "editJson": "Edit JSON",
     "kpiServers": "MCP servers",
     "kpiServersSub": "{{connected}} connected · {{connecting}} connecting",

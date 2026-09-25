@@ -116,8 +116,8 @@ function contextLengthOf(model: Model): number | undefined {
 
 /** Models table columns: mark, name, capabilities, (size, context,) status, actions. */
 const LOCAL_COLS =
-  '30px minmax(150px,1fr) minmax(90px,auto) 64px 70px 110px auto'
-const REMOTE_COLS = '30px minmax(150px,1fr) minmax(90px,auto) 110px auto'
+  '30px minmax(110px,1fr) 64px 60px 64px 136px auto'
+const REMOTE_COLS = '30px minmax(140px,1fr) 72px 130px auto'
 
 /** How many recent replies the speed chart shows. */
 const SPEED_WINDOW = 24
@@ -846,7 +846,7 @@ function ProviderDetail() {
               : model.id}
           </small>
         </div>
-        <CapabilityChips capabilities={model.capabilities || []} />
+        <CapabilityChips iconOnly capabilities={model.capabilities || []} />
         {isEngineProvider && (
           <>
             <span className="tabular-nums text-fg-2">
@@ -1123,7 +1123,7 @@ function ProviderDetail() {
       <FrameBody className="overflow-x-auto p-3">
         {provider?.models.length ? (
           <TBox
-            className={isEngineProvider ? 'min-w-[640px]' : 'min-w-[460px]'}
+            className={isEngineProvider ? 'min-w-[660px]' : 'min-w-[480px]'}
             columns={isEngineProvider ? LOCAL_COLS : REMOTE_COLS}
             head={tableHead}
           >
@@ -1300,7 +1300,7 @@ function ProviderDetail() {
         ) : (
           <LiveChart
             series={recentSpeeds(providerSamples, SPEED_WINDOW)}
-            color={isEngineProvider ? 'var(--success)' : 'var(--chart-2)'}
+            color="var(--success)"
             label={t('engine:speed.label')}
             format={formatTps}
             windowLabel={t('engine:speed.window', {
