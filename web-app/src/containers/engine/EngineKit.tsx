@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { CountUp } from '@/components/ui/count-up'
 import {
   Atom,
   Binary,
@@ -118,7 +119,7 @@ export function KpiTile({
       />
       <FrameBody className="min-h-[92px] items-start justify-between gap-2.5 p-3">
         <div className="text-2xl leading-none font-medium text-foreground tabular-nums">
-          {value}
+          {typeof value === 'string' ? <CountUp value={value} delayMs={delay + 150} /> : value}
           {unit && (
             <small className="ml-1 text-2xl font-medium">{unit}</small>
           )}

@@ -25,6 +25,7 @@ import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Button } from '@/components/ui/button'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
+import { CountUp } from '@/components/ui/count-up'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -133,7 +134,9 @@ function Kpi({
       />
       <FrameBody className="flex-row items-end justify-between rounded-[10px] border-border px-3 pb-3 transition-[box-shadow,transform] duration-300 ease-expo group-hover/kpi:-translate-y-px group-hover/kpi:shadow-lift">
         <div className="flex flex-col gap-2">
-          <p className="text-2xl leading-none font-medium tabular-nums">{value}</p>
+          <p className="text-2xl leading-none font-medium tabular-nums">
+            <CountUp value={value} delayMs={delay + 150} />
+          </p>
           <p className="flex items-center gap-1.5 text-xs leading-none">
             {delta === null ? (
               <span className="text-muted-foreground">{cmpLabel}</span>
@@ -187,7 +190,9 @@ function Throughput({
       <FrameHeader icon={<BarChart3 />} title={t('overview:throughput')} />
       <FrameBody className="gap-6 px-3.5 pt-4 pb-3.5">
         <div className="flex items-end gap-3 leading-none whitespace-nowrap">
-          <p className="text-[32px] font-medium tabular-nums">{summary.tokens.toLocaleString(i18n.language)}</p>
+          <p className="text-[32px] font-medium tabular-nums">
+            <CountUp value={summary.tokens.toLocaleString('en-US')} delayMs={400} />
+          </p>
           <p className="flex items-center gap-1.5 text-xs">
             {delta !== null && (
               <span className={cn('font-medium', delta >= 0 ? 'text-success' : 'text-destructive')}>{pct(delta)}</span>
