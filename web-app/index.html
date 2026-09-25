@@ -11,77 +11,98 @@
     />
     <title>Flint</title>
     <style>
-      /* Inlined so it applies on first paint (external CSS is injected late). */
+      /* Start-up screen in the app's design, inlined so it paints before any
+         stylesheet loads. Colours mirror the index.css tokens; the pre-paint
+         script below sets .dark and .reduce-motion before this is shown. */
       #initial-loader {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1.5rem;
-        background: #f8f8f8;
-        z-index: 9999;
-        opacity: 1;
-        transition: opacity 0.3s ease-in-out;
+        --bg: #f8f8f8; --card: #ffffff; --muted: #f6f6f6; --fg: #1f2937;
+        --sub: #6b7280; --line: #e5e7eb; --track: #eef0f3;
+        --grad: linear-gradient(90deg, #37475d, #1f2937);
+        --lift: 0 2px 3px -1px rgba(0,0,0,.1), 0 0 0 1px rgba(25,28,33,.08), 0 12px 32px -12px rgba(0,0,0,.18);
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+        background: var(--bg);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        opacity: 1; transition: opacity .35s cubic-bezier(.16,1,.3,1);
       }
       .dark #initial-loader {
-        background: #0a0b0d;
+        --bg: #0a0b0d; --card: #131519; --muted: #0f1114; --fg: #e6e8eb;
+        --sub: #8a909a; --line: #23262c; --track: #22252b;
+        --grad: linear-gradient(90deg, #ffffff, #d9dde3);
+        --lift: 0 2px 3px -1px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.09), 0 12px 32px -12px rgba(0,0,0,.6);
       }
-      #initial-loader img {
-        width: 5rem;
-        height: 5rem;
-        /* Sprite animates itself (strike + sparks). */
+      /* The mark sits in a framed tile (the design's muted shell + card). */
+      .fl-frame {
+        position: relative; padding: 5px; border-radius: 22px;
+        background: var(--muted); box-shadow: inset 0 0 0 .8px var(--line);
+        animation: fl-rise .6s cubic-bezier(.16,1,.3,1) both;
       }
-      @keyframes wave {
-        0%,
-        100% {
-          transform: rotate(0deg);
-        }
-        10%,
-        30% {
-          transform: rotate(14deg);
-        }
-        20% {
-          transform: rotate(-8deg);
-        }
-        40%,
-        60% {
-          transform: rotate(14deg);
-        }
-        50% {
-          transform: rotate(-8deg);
-        }
-        70% {
-          transform: rotate(0deg);
-        }
+      .fl-tile {
+        position: relative; display: grid; place-items: center;
+        width: 88px; height: 88px; border-radius: 18px;
+        background: var(--card); box-shadow: var(--lift); overflow: hidden;
       }
+      .fl-tile img {
+        width: 54px; height: 54px; image-rendering: pixelated;
+        filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
+        animation: fl-strike 1.8s cubic-bezier(.16,1,.3,1) .5s infinite;
+      }
+      .dark .fl-tile img { filter: drop-shadow(0 0 1px rgba(255,255,255,.35)) brightness(1.25); }
+      /* A sheen passes over the tile each strike. */
+      .fl-tile::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.45) 50%, transparent 65%);
+        transform: translateX(-130%); animation: fl-sheen 1.8s cubic-bezier(.16,1,.3,1) .5s infinite;
+      }
+      .dark .fl-tile::after { background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.08) 50%, transparent 65%); }
+      /* Sparks thrown from the strike. */
+      .fl-spark {
+        position: absolute; top: 34%; left: 64%; width: 4px; height: 4px; border-radius: 1px;
+        background: #f59e0b; opacity: 0; box-shadow: 0 0 6px #fbbf24;
+        animation: fl-spark 1.8s ease-out .5s infinite;
+      }
+      .fl-spark.b { --dx: 26px; --dy: -22px; animation-delay: .56s; background: #fb923c; }
+      .fl-spark.c { --dx: 30px; --dy: 4px; animation-delay: .6s; width: 3px; height: 3px; }
+      .fl-spark { --dx: 18px; --dy: -30px; }
+      .fl-text { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: fl-rise .6s cubic-bezier(.16,1,.3,1) .08s both; }
+      .fl-name { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); }
       #initial-loader-caption {
-        margin: 0;
-        text-align: center;
-        line-height: 1;
-        font-family:
-          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-          sans-serif;
-        font-size: 0.875rem;
-        font-weight: 400;
-        color: #6b7280;
-        opacity: 0;
-        /* Delayed so fast starts never flash the caption. */
-        animation: caption-fade-in 0.3s ease-in-out 1s forwards;
+        margin: 0; font-size: 13px; line-height: 1; color: transparent;
+        background: linear-gradient(90deg, var(--sub) 0%, var(--fg) 50%, var(--sub) 100%);
+        background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
+        animation: fl-shim 1.6s linear infinite, fl-fade .3s ease 1s both;
       }
-      .dark #initial-loader-caption {
-        color: #8a909a;
+      /* Thin indeterminate bar in the accent gradient. */
+      .fl-bar {
+        position: relative; width: 148px; height: 3px; border-radius: 99px; overflow: hidden;
+        background: var(--track); animation: fl-rise .6s cubic-bezier(.16,1,.3,1) .14s both;
       }
-      @keyframes caption-fade-in {
-        to {
-          opacity: 1;
-        }
+      .fl-bar i {
+        position: absolute; top: 0; bottom: 0; width: 40%; border-radius: inherit;
+        background: var(--grad); animation: fl-slide 1.4s cubic-bezier(.65,0,.35,1) infinite;
       }
-      .loaded #initial-loader {
-        opacity: 0;
-        pointer-events: none;
+      @keyframes fl-rise { from { opacity: 0; transform: translateY(8px); } }
+      @keyframes fl-fade { from { opacity: 0; } }
+      @keyframes fl-shim { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+      @keyframes fl-slide { from { left: -40%; } to { left: 100%; } }
+      @keyframes fl-strike {
+        0%, 100% { transform: none; }
+        12% { transform: rotate(-12deg) scale(1.08); }
+        22% { transform: rotate(6deg) scale(.96); }
+        34% { transform: none; }
       }
+      @keyframes fl-sheen { 0%, 12% { transform: translateX(-130%); } 45%, 100% { transform: translateX(130%); } }
+      @keyframes fl-spark {
+        0%, 16% { opacity: 0; transform: translate(0, 0) scale(1); }
+        20% { opacity: 1; }
+        46% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.4); }
+        100% { opacity: 0; }
+      }
+      /* Flint's own Reduce motion setting: a still mark and a static bar. */
+      .reduce-motion #initial-loader *, .reduce-motion #initial-loader *::after { animation: none !important; }
+      .reduce-motion .fl-bar i { left: 30%; }
+      .reduce-motion #initial-loader-caption { color: var(--sub); background: none; }
+      .loaded #initial-loader { opacity: 0; pointer-events: none; }
     </style>
     <script>
       // Apply the theme, accent, font size and motion setting before first
@@ -130,9 +151,18 @@
     </script>
   </head>
   <body>
-    <div id="initial-loader" data-tauri-drag-region>
-      <img src="/images/flint-steel-loader.svg" alt="Flint Logo" data-tauri-drag-region />
-      <p id="initial-loader-caption" data-tauri-drag-region>Booting up Flint…</p>
+    <div id="initial-loader" data-tauri-drag-region role="status" aria-live="polite">
+      <div class="fl-frame" data-tauri-drag-region>
+        <div class="fl-tile" data-tauri-drag-region>
+          <img src="/images/flint-mark.png" alt="" data-tauri-drag-region />
+          <span class="fl-spark"></span><span class="fl-spark b"></span><span class="fl-spark c"></span>
+        </div>
+      </div>
+      <div class="fl-text" data-tauri-drag-region>
+        <p class="fl-name">Flint</p>
+        <p id="initial-loader-caption" data-tauri-drag-region>Starting your workspace…</p>
+      </div>
+      <div class="fl-bar" aria-hidden="true"><i></i></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
