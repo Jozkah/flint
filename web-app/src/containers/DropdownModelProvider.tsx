@@ -787,11 +787,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
             also holds the settings and support controls, which are not part
             of the trigger (a div carrying aria-expanded failed axe). */}
         <PopoverAnchor asChild>
-          <div data-slot="model-pill" className="relative z-20 flex h-[30px] min-w-0 max-w-full items-center gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift pointer-coarse:h-11">
+          <div data-slot="model-pill" className="relative z-20 flex h-[30px] min-w-0 max-w-full shrink items-center gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift pointer-coarse:h-11">
             <PopoverTrigger asChild>
             <button
               type="button"
-              className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="relative z-20 flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {provider && selectedModel?.id ? (
                 <ModelAvatar
@@ -808,7 +808,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
-                      'text-foreground truncate leading-normal',
+                      'min-w-0 flex-1 truncate text-left leading-normal text-foreground',
                       !selectedModel?.id && 'text-muted-foreground'
                     )}
                   >

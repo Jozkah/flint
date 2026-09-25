@@ -202,7 +202,6 @@ const ThreadItem = memo(
     const isSessionStreaming = useChatSessions(
       (state) => state.sessions[thread.id]?.isStreaming ?? false
     )
-    const status = useThreadStatus(thread, isAppStateActive || isSessionStreaming)
     const toggleFavorite = useThreads((state) => state.toggleFavorite)
 
     const currentThreadId = useParams({
@@ -210,6 +209,12 @@ const ThreadItem = memo(
       select: (params) => params.threadId,
     })
     const isSelected = currentThreadId === thread.id
+    const status = useThreadStatus(
+      thread,
+      isAppStateActive || isSessionStreaming,
+      false,
+      { id: thread.id, selected: isSelected }
+    )
 
     /**
      * Open the row's menu from somewhere other than its button.

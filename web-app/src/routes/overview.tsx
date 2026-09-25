@@ -113,7 +113,7 @@ function Kpi({
 }) {
   return (
     <Frame
-      className="group/kpi h-[140px] min-w-0 motion-safe:animate-rise-in"
+      className="group/kpi @container/kpi min-h-[140px] min-w-0 motion-safe:animate-rise-in"
       style={{ animationDelay: `${delay}ms` }}
     >
       <FrameHeader
@@ -122,12 +122,12 @@ function Kpi({
           <Icon name={icon} className="transition-transform duration-300 ease-expo group-hover/kpi:-rotate-12 group-hover/kpi:scale-110" />
         }
       />
-      <FrameBody className="flex-row items-end justify-between rounded-[10px] border-border px-3 pb-3 transition-[box-shadow,transform] duration-300 ease-expo group-hover/kpi:-translate-y-px group-hover/kpi:shadow-lift">
-        <div className="flex flex-col gap-2">
-          <p className="text-2xl leading-none font-medium tabular-nums">
+      <FrameBody className="flex-row items-end justify-between gap-2 rounded-[10px] border-border px-3 pb-3 transition-[box-shadow,transform] duration-300 ease-expo group-hover/kpi:-translate-y-px group-hover/kpi:shadow-lift">
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xl leading-none font-medium whitespace-nowrap tabular-nums @[16rem]/kpi:text-2xl">
             <CountUp value={value} delayMs={delay + 150} />
           </p>
-          <p className="flex items-center gap-1.5 text-xs leading-none">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs leading-none">
             {delta === null ? (
               <span className="text-muted-foreground">{cmpLabel}</span>
             ) : (
@@ -140,7 +140,10 @@ function Kpi({
             )}
           </p>
         </div>
-        <Sparkline values={series} tone={delta !== null && delta < 0 ? 'down' : 'up'} />
+        {/* Dropped on a narrow card rather than drawn over the figures. */}
+        <div className="hidden shrink-0 @[15rem]/kpi:block">
+          <Sparkline values={series} tone={delta !== null && delta < 0 ? 'down' : 'up'} />
+        </div>
       </FrameBody>
     </Frame>
   )
@@ -306,7 +309,10 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
       (!q || `${it.title} ${it.detail ?? ''}`.toLowerCase().includes(q.toLowerCase()))
   )
   return (
-    <Frame className="h-full min-h-[420px] w-full motion-safe:animate-rise-in lg:w-[300px] lg:shrink-0" style={{ animationDelay: '200ms' }}>
+    // Beside the charts it is as tall as they are and scrolls inside; the
+    // frame is taken out of flow so a long feed cannot stretch the page.
+    <div data-testid="latest-activity" className="relative w-full lg:w-[300px] lg:shrink-0 lg:min-h-[420px]">
+    <Frame className="h-[min(560px,80vh)] w-full motion-safe:animate-rise-in lg:absolute lg:inset-0 lg:h-auto" style={{ animationDelay: '200ms' }}>
       <FrameHeader title={t('overview:activity')} actions={<Icon name="news" />} />
       <FrameBody className="min-h-0 gap-4 overflow-hidden px-3.5 pt-4 pb-3.5">
         <Segmented
@@ -338,7 +344,7 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
         {list.length === 0 ? (
           <EmptyState icon={<Icon name="news" />} title={t('overview:noActivity')} description={t('overview:noActivityHint')} />
         ) : (
-          <ul className="m-0 flex min-h-0 w-full flex-1 list-none flex-col gap-5 overflow-y-auto p-0 pb-1 [scrollbar-width:none]">
+          <ul className="m-0 flex min-h-0 w-full flex-1 list-none flex-col gap-5 overflow-y-auto p-0 pb-1 [scrollbar-width:thin]">
             {list.map((it, i) => {
               const icon = ACTIVITY_ICON[it.kind] ?? 'feed-alert'
               return (
@@ -369,6 +375,7 @@ function LatestActivity({ items }: { items: ActivityItem[] }) {
         )}
       </FrameBody>
     </Frame>
+    </div>
   )
 }
 
@@ -613,7 +620,10 @@ function Overview() {
 
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Sized by the column, not the window: three across only when
+                each card has room for its title, figure and sparkline. */}
+            <div className="@container/kpis w-full">
+            <div className="grid w-full grid-cols-1 gap-4 @md/kpis:grid-cols-2 @3xl/kpis:grid-cols-3">
               <Kpi
                 title={t('overview:tokens')}
                 icon="analytics"
@@ -646,6 +656,7 @@ function Overview() {
                 cmpLabel={cmpLabel}
                 delay={200}
               />
+            </div>
             </div>
             <Throughput
               summary={current}

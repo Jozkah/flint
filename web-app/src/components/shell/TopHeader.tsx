@@ -167,6 +167,19 @@ export function TopHeader() {
   const runs = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const approvals = useToolApprovalRequests((s) => Object.keys(s.pending ?? {}).length)
   const navigate = useNavigate()
+  const focusFirstApproval = () => {
+    const card = document.querySelector<HTMLElement>(
+      '[data-testid="inline-approval-card"]'
+    )
+    if (card) {
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      card.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus({
+        preventScroll: true,
+      })
+      return
+    }
+    navigate({ to: route.cowork })
+  }
   const activity = useUsageStats((s) => s.activity)
   const recent = activity.slice(0, 4)
 
@@ -221,9 +234,11 @@ export function TopHeader() {
         )
       )}
 
+      {/* The breadcrumb takes the title's full width first; the page slot
+          beside it gives way (it clips) before the title truncates. */}
       <nav
         aria-label={t('common:shell.breadcrumb')}
-        className="flex min-w-0 shrink items-center gap-2 text-sm leading-none"
+        className="flex min-w-0 flex-[0_1_auto] items-center gap-2 text-sm leading-none"
         {...dragRegion}
       >
         <Link
@@ -234,7 +249,12 @@ export function TopHeader() {
           <span className="hidden sm:inline">{t(crumb.parentKey)}</span>
         </Link>
         <span aria-hidden className="text-subtle-foreground">/</span>
-        <span aria-current="page" className="truncate font-medium text-foreground" title={current}>
+        <span
+          aria-current="page"
+          data-testid="breadcrumb-current"
+          className="min-w-0 truncate font-medium text-foreground"
+          title={current}
+        >
           {current}
         </span>
       </nav>
@@ -243,7 +263,7 @@ export function TopHeader() {
         ref={headerSlot?.setSlot}
         {...dragRegion}
         data-testid="header-slot"
-        className="flex h-full min-w-0 flex-1 items-center gap-2 overflow-hidden"
+        className="flex h-full min-w-0 flex-[1_1_0%] items-center gap-2 overflow-hidden pl-0.5"
       />
 
       <div className="flex shrink-0 items-center gap-1.5">
@@ -259,14 +279,21 @@ export function TopHeader() {
           </Link>
         )}
         {approvals > 0 && (
-          <span
-            role="status"
-            className="hidden h-[26px] items-center gap-1.5 rounded-full border-[0.8px] border-warning/35 bg-warning/8 px-2.5 text-[11.5px] font-medium whitespace-nowrap text-warning md:inline-flex"
+          // Actionable: jumps to the first request waiting for an answer.
+          <button
+            type="button"
+            className="hidden h-[26px] cursor-pointer items-center gap-1.5 rounded-full border border-warning bg-warning px-2.5 text-[11.5px] font-semibold whitespace-nowrap text-white shadow-md shadow-warning/30 transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-warning/50 focus-visible:outline-hidden md:inline-flex"
             data-testid="header-approvals-chip"
+            title={t('common:shell.approvalWaiting')}
+            onClick={focusFirstApproval}
           >
+            <span className="relative flex size-2" aria-hidden>
+              <span className="absolute inline-flex size-full rounded-full bg-white/80 motion-safe:animate-ping" />
+              <span className="relative inline-flex size-2 rounded-full bg-white" />
+            </span>
             <ShieldAlert className="size-3" aria-hidden />
             {t('common:shell.approvals', { count: approvals })}
-          </span>
+          </button>
         )}
         <button
           type="button"

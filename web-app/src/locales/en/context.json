@@ -155,6 +155,8 @@
     "searched": "Searched",
     "searchedWeb": "Searched the web",
     "usedTool": "Used {{tool}}",
+    "toolOk": "ok",
+    "toolFailed": "failed",
     "chatStarted": "Chat started"
   }
 }

@@ -52,7 +52,7 @@ export const StepRow = ({ text, children, marker, index = 0 }: StepRowProps) => 
       <span
         aria-hidden
         data-slot="step-dot"
-        className="absolute top-3 -left-[22px] z-10 size-[7px] rounded-full bg-card shadow-[0_0_0_1.5px_var(--border-strong)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo"
+        className="pointer-events-none absolute top-3 left-[-18.75px] z-10 size-2 -translate-x-1/2 rounded-full"
       />
       {children ? (
         <div className="min-w-0">{children}</div>

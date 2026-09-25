@@ -134,7 +134,7 @@ const SessionItem = memo(function SessionItem({
         data-session-id={session.id}
         data-current={isCurrent ? 'true' : 'false'}
       >
-        <SessionMark session={session} running={running} />
+        <SessionMark session={session} running={running} selected={isCurrent} />
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
@@ -306,9 +306,20 @@ const SessionItem = memo(function SessionItem({
  * recently active. A session whose folder is on a branch with a pull request
  * shows that request's state (read through the GitHub CLI).
  */
-function SessionMark({ session, running }: { session: CoworkSession; running: boolean }) {
+function SessionMark({
+  session,
+  running,
+  selected,
+}: {
+  session: CoworkSession
+  running: boolean
+  selected: boolean
+}) {
   const pr = usePrStatus(session.folder)
-  const recency = useThreadStatus({ updated: session.updated }, running)
+  const recency = useThreadStatus({ updated: session.updated }, running, false, {
+    id: `cowork:${session.id}`,
+    selected,
+  })
   const status: ThreadStatus = running
     ? 'active'
     : pr
@@ -330,11 +341,15 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
   const expanded = treeOpen ?? onCowork
   const runningCount = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
+  const runs = useCoworkRun((s) => s.runs)
   const [moreOpen, setMoreOpen] = useState(false)
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
   const sessions = useCoworkSessions((s) => s.sessions)
+  const visibleSessions = expanded
+    ? sessions
+    : sessions.filter((session) => Boolean(runs?.[session.id]))
   const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
@@ -506,15 +521,19 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
           </button>
         </span>
       </NavItem>
-      <NavCollapse as="li" open={expanded}>
+      {/* Collapsed, the tree still lists the sessions that are running,
+          until their run ends. */}
+      <NavCollapse as="li" open={expanded || visibleSessions.length > 0}>
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
-          <NavItem>
-            <NavButton size="sub" onClick={newSession}>
-              <Plus aria-hidden className="size-3.5" />
-              <span>{t('common:newSession')}</span>
-            </NavButton>
-          </NavItem>
-          {sessions.map((session) => (
+          {expanded && (
+            <NavItem>
+              <NavButton size="sub" onClick={newSession}>
+                <Plus aria-hidden className="size-3.5" />
+                <span>{t('common:newSession')}</span>
+              </NavButton>
+            </NavItem>
+          )}
+          {visibleSessions.map((session) => (
             <SessionItem
               key={session.id}
               session={session}

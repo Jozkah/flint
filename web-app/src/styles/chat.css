@@ -62,12 +62,13 @@
 [data-slot='step-row']:has([data-tool-kind='todo']) { --cotc: #ea580c; }
 [data-slot='step-row']:has([data-tool-kind='fail']) { --cotc: #ef4444; }
 [data-slot='step-row']:has([data-tool-kind='appr']) { --cotc: #f59e0b; }
-[data-slot='step-row']:has([data-tool-kind]) > [data-slot='step-dot'] {
-  background: var(--cotc, var(--card));
-  box-shadow: 0 0 0 1.5px var(--cotc, var(--border-strong));
-}
-[data-slot='step-row']:hover [data-slot='step-dot'] {
-  transform: scale(1.5);
+/* Every dot is the same 8px disc centred on the rail (reasoning-timeline.tsx
+   places it): a card-coloured halo separates it from the line, and only the
+   fill changes with the step's kind. No hover scaling, so dots never differ
+   in size or grow past the rail's gutter and get clipped. */
+[data-slot='step-dot'] {
+  background: var(--cotc, var(--border-strong));
+  box-shadow: 0 0 0 2px var(--card);
 }
 
 /* ---- Terminal palette (dark in both themes) ---- */

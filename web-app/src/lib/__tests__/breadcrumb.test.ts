@@ -35,6 +35,12 @@ describe('thread status', () => {
     expect(statusFor({ updated: now - 30 * 60_000 }, false, now)).toBe('recent')
     expect(statusFor({ updated: now - 2 * 60 * 60_000 }, false, now)).toBe('none')
   })
+  it('is not recent once seen after its last change', () => {
+    const updated = now - 10 * 60_000
+    expect(statusFor({ updated }, false, now, false, updated - 1)).toBe('recent')
+    expect(statusFor({ updated }, false, now, false, updated)).toBe('none')
+    expect(statusFor({ updated }, false, now, false, now)).toBe('none')
+  })
   it('reads second and millisecond timestamps', () => {
     expect(updatedMs(1_700_000_000)).toBe(1_700_000_000_000)
     expect(updatedMs(1_700_000_000_000)).toBe(1_700_000_000_000)
