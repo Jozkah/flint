@@ -188,7 +188,9 @@ function LocalAPIServerContent() {
               : String(error)
 
           // Port-related errors (highest priority)
-          if (errorMsg.includes('Address already in use')) {
+          // The backend says "Port N (...) is already in use" (see
+          // map_bind_error); the OS wording is "Address already in use".
+          if (/already in use/i.test(errorMsg)) {
             toast.error(t('model-errors:serverPortOccupied'), {
               description: t('model-errors:serverPortOccupiedDescription', {
                 port: serverPort,
