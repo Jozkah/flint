@@ -3,7 +3,12 @@
  */
 
 import { invoke } from '@tauri-apps/api/core'
-import type { HardwareData, SystemUsage, DeviceList } from './types'
+import type {
+  HardwareData,
+  SystemUsage,
+  SystemSnapshot,
+  DeviceList,
+} from './types'
 import { DefaultHardwareService } from './default'
 
 export class TauriHardwareService extends DefaultHardwareService {
@@ -13,6 +18,10 @@ export class TauriHardwareService extends DefaultHardwareService {
 
   async getSystemUsage(): Promise<SystemUsage | null> {
     return invoke('plugin:hardware|get_system_usage') as Promise<SystemUsage>
+  }
+
+  async getSystemSnapshot(): Promise<SystemSnapshot | null> {
+    return invoke('plugin:hardware|get_system_snapshot') as Promise<SystemSnapshot>
   }
 
   async getLlamacppDevices(): Promise<DeviceList[]> {

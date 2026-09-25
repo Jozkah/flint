@@ -1,6 +1,7 @@
 #[cfg(feature = "tauri")]
 mod commands;
 mod constants;
+pub mod snapshot;
 pub mod cpu;
 pub mod gpu;
 mod types;
@@ -94,6 +95,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             commands::get_system_info,
             commands::get_system_usage,
+            commands::get_system_snapshot,
             commands::refresh_system_info
         ])
         .build()

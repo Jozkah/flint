@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Icon } from '@/components/ui/icon'
 import { useHardware, type GPU } from '@/hooks/useHardware'
 import { route } from '@/constants/routes'
@@ -12,13 +19,32 @@ import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
+import {
+  computeNetworkRates,
+  diskUsedPercent,
+  formatBytes,
+  formatFrequency,
+  formatRate,
+  formatTemperature,
+  formatUptime,
+  interfaceKind,
+  isVirtualInterface,
+  type NetworkRate,
+  type SystemSnapshot,
+} from '@/lib/systemMonitor'
 
 export const Route = createFileRoute(route.systemMonitor as any)({
   component: SystemMonitorContent,
 })
 
+/** Poll interval, matching the page's "updates every 5 seconds". */
+const POLL_MS = 5000
+
 /** Samples kept per sparkline: two minutes at the 5 second poll. */
 const HISTORY = 24
+
+const pageHidden = () =>
+  typeof document !== 'undefined' && document.visibilityState === 'hidden'
 
 function gpuBackendLabel(gpu: GPU): string {
   if (gpu.nvidia_info?.compute_capability) return 'CUDA'
@@ -163,6 +189,327 @@ function Panel({
 const pushSample = (list: number[] | undefined, value: number) =>
   [...(list ?? [value]), value].slice(-HISTORY)
 
+/** Per-core usage, folded away until asked for. */
+function PerCoreUsage({ values }: { values: number[] }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  return (
+    <div className="mt-3 border-t border-dashed border-border pt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <span>{t('system-monitor:perCore')}</span>
+        <span
+          aria-hidden
+          className={cn('transition-transform', open && 'rotate-180')}
+        >
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div
+          id={id}
+          className="mt-2.5 grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5"
+        >
+          {values.map((v, i) => {
+            const clamped = clampPercent(v)
+            return (
+              <div
+                key={i}
+                role="meter"
+                aria-label={t('system-monitor:coreN', { n: i })}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(clamped)}
+                className="flex flex-col gap-1 rounded-md bg-muted px-2 py-1.5"
+              >
+                <div className="flex items-baseline justify-between text-[11px] tabular-nums">
+                  <span className="text-muted-foreground">#{i}</span>
+                  <b className="font-medium text-foreground">
+                    {Math.round(clamped)}%
+                  </b>
+                </div>
+                <div className="h-1 w-full overflow-hidden rounded-full bg-track">
+                  <div
+                    className={cn('h-full rounded-full', BAND_FILL[band(clamped)])}
+                    style={{ width: `${clamped}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A muted note for data the platform does not expose. */
+function Empty({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg bg-muted px-3 py-3 text-[13px] text-muted-foreground">
+      {children}
+    </div>
+  )
+}
+
+/** One entry in a list panel, separated by a dashed rule like the GPUs. */
+function Row({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0">
+      {children}
+    </div>
+  )
+}
+
+function RowTitle({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <b
+        className="min-w-0 truncate text-[13px] font-medium text-foreground"
+        title={title}
+      >
+        {title}
+      </b>
+      {children}
+    </div>
+  )
+}
+
+function SystemPanel({ snapshot }: { snapshot: SystemSnapshot }) {
+  const { t } = useTranslation()
+  return (
+    <Panel
+      title={t('system-monitor:system')}
+      icon={<Icon name="clock-01" size={16} />}
+      delay={240}
+    >
+      <Stats>
+        {snapshot.host_name && (
+          <Stat label={t('system-monitor:hostName')}>
+            <span className="font-mono">{snapshot.host_name}</span>
+          </Stat>
+        )}
+        {snapshot.os_version && (
+          <Stat label={t('system-monitor:osVersion')}>
+            {snapshot.os_version}
+          </Stat>
+        )}
+        {snapshot.kernel_version && (
+          <Stat label={t('system-monitor:kernel')}>
+            <span className="font-mono">{snapshot.kernel_version}</span>
+          </Stat>
+        )}
+        <Stat label={t('system-monitor:uptime')}>
+          {formatUptime(snapshot.uptime_secs)}
+        </Stat>
+      </Stats>
+    </Panel>
+  )
+}
+
+function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
+  const { t } = useTranslation()
+  return (
+    <Panel
+      title={t('system-monitor:drives')}
+      icon={<Icon name="x-server" size={16} />}
+      delay={300}
+    >
+      <div className="flex flex-col gap-4">
+        {snapshot.disks.length === 0 ? (
+          <Empty>{t('system-monitor:noDrives')}</Empty>
+        ) : (
+          snapshot.disks.map((disk) => {
+            const title = disk.name
+              ? `${disk.name} (${disk.mount_point})`
+              : disk.mount_point
+            return (
+              <Row key={disk.mount_point}>
+                <RowTitle title={title}>
+                  {disk.file_system && <Chip mono>{disk.file_system}</Chip>}
+                  {disk.kind !== 'Unknown' && <Chip mono>{disk.kind}</Chip>}
+                  {disk.removable && (
+                    <Chip tone="info" dot>
+                      {t('system-monitor:removable')}
+                    </Chip>
+                  )}
+                </RowTitle>
+                <Stats>
+                  <Stat label={t('system-monitor:total')}>
+                    {formatBytes(disk.total)}
+                  </Stat>
+                  <Stat label={t('system-monitor:used')}>
+                    {formatBytes(
+                      disk.total - Math.min(disk.available, disk.total)
+                    )}
+                  </Stat>
+                  <Stat label={t('system-monitor:free')}>
+                    {formatBytes(disk.available)}
+                  </Stat>
+                </Stats>
+                <Meter
+                  label={t('system-monitor:diskUsage')}
+                  percent={diskUsedPercent(disk)}
+                />
+              </Row>
+            )
+          })
+        )}
+      </div>
+    </Panel>
+  )
+}
+
+function NetworkPanel({
+  snapshot,
+  rates,
+}: {
+  snapshot: SystemSnapshot
+  rates: Record<string, NetworkRate>
+}) {
+  const { t } = useTranslation()
+  const [showVirtual, setShowVirtual] = useState(false)
+  const toggleId = useId()
+  const isVirtual = (n: SystemSnapshot['networks'][number]) =>
+    isVirtualInterface(n.name, n.mac_address)
+  const hiddenCount = snapshot.networks.filter(isVirtual).length
+  const shown = showVirtual
+    ? snapshot.networks
+    : snapshot.networks.filter((n) => !isVirtual(n))
+  const kindLabel = {
+    wifi: t('system-monitor:wifi'),
+    ethernet: t('system-monitor:ethernet'),
+    other: null,
+  }
+  return (
+    <Panel
+      title={t('system-monitor:network')}
+      icon={<Icon name="x-globe" size={16} />}
+      delay={360}
+    >
+      <div className="flex flex-col gap-4">
+        {hiddenCount > 0 && (
+          <label
+            htmlFor={toggleId}
+            className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+          >
+            <input
+              id={toggleId}
+              type="checkbox"
+              checked={showVirtual}
+              onChange={(e) => setShowVirtual(e.target.checked)}
+            />
+            {t('system-monitor:showVirtual', { count: hiddenCount })}
+          </label>
+        )}
+        {shown.length === 0 ? (
+          <Empty>{t('system-monitor:noNetworks')}</Empty>
+        ) : (
+          shown.map((n) => {
+            const rate = rates[n.name]
+            const kind = kindLabel[interfaceKind(n.name)]
+            return (
+              <Row key={n.name}>
+                <RowTitle title={n.name}>
+                  {isVirtual(n) ? (
+                    <Chip>{t('system-monitor:virtual')}</Chip>
+                  ) : (
+                    kind && <Chip>{kind}</Chip>
+                  )}
+                </RowTitle>
+                <Stats>
+                  <Stat label={t('system-monitor:download')}>
+                    {rate ? formatRate(rate.rx) : '—'}
+                  </Stat>
+                  <Stat label={t('system-monitor:upload')}>
+                    {rate ? formatRate(rate.tx) : '—'}
+                  </Stat>
+                  <Stat label={t('system-monitor:totalReceived')}>
+                    {formatBytes(n.total_received)}
+                  </Stat>
+                  <Stat label={t('system-monitor:totalSent')}>
+                    {formatBytes(n.total_transmitted)}
+                  </Stat>
+                </Stats>
+              </Row>
+            )
+          })
+        )}
+      </div>
+    </Panel>
+  )
+}
+
+function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
+  const { t } = useTranslation()
+  const sensors = snapshot.sensors.filter((s) => s.temperature != null)
+  const kindLabel = {
+    cpu: 'CPU',
+    gpu: 'GPU',
+    disk: t('system-monitor:drive'),
+    other: null,
+  }
+  return (
+    <Panel
+      title={t('system-monitor:temperatures')}
+      icon={<Icon name="zap" size={16} />}
+      delay={420}
+    >
+      {sensors.length === 0 ? (
+        <Empty>
+          {IS_WINDOWS
+            ? t('system-monitor:noSensorsWindows')
+            : t('system-monitor:noSensors')}
+        </Empty>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {sensors.map((sensor, i) => {
+            const temp = sensor.temperature ?? 0
+            const kind = kindLabel[sensor.kind]
+            // Heat as a share of the critical point when known; otherwise
+            // the Celsius value itself is a fair stand-in for the bands.
+            const heat = band(
+              sensor.critical != null && sensor.critical > 0
+                ? (temp / sensor.critical) * 100
+                : temp
+            )
+            return (
+              <Row key={`${sensor.label}-${i}`}>
+                <RowTitle title={sensor.label}>
+                  {kind && <Chip mono>{kind}</Chip>}
+                  <Chip tone={heat === 'ok' ? 'neutral' : heat} dot>
+                    {formatTemperature(sensor.temperature)}
+                  </Chip>
+                </RowTitle>
+                {(sensor.max != null || sensor.critical != null) && (
+                  <Stats>
+                    {sensor.max != null && (
+                      <Stat label={t('system-monitor:max')}>
+                        {formatTemperature(sensor.max)}
+                      </Stat>
+                    )}
+                    {sensor.critical != null && (
+                      <Stat label={t('system-monitor:critical')}>
+                        {formatTemperature(sensor.critical)}
+                      </Stat>
+                    )}
+                  </Stats>
+                )}
+              </Row>
+            )
+          })}
+        </div>
+      )}
+    </Panel>
+  )
+}
+
 function SystemMonitorContent() {
   const { t } = useTranslation()
   const { hardwareData, systemUsage, updateSystemUsage } = useHardware()
@@ -173,22 +520,59 @@ function SystemMonitorContent() {
   // the hardware plugin (allowed by this window's capabilities), not llamacpp.
   const gpus = hardwareData.gpus ?? []
 
-  // Poll system usage every 5 seconds
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      serviceHub.hardware().getSystemUsage()
-        .then((data) => {
-          if (data) {
-            updateSystemUsage(data)
-          }
-        })
-        .catch((error) => {
-          console.error('Failed to get system usage:', error)
-        })
-    }, 5000)
+  const [snapshot, setSnapshot] = useState<SystemSnapshot | null>(null)
+  const [rates, setRates] = useState<Record<string, NetworkRate>>({})
+  const lastSnapshot = useRef<SystemSnapshot | null>(null)
 
-    return () => clearInterval(intervalId)
+  const pollSnapshot = useCallback(() => {
+    serviceHub
+      .hardware()
+      .getSystemSnapshot()
+      .then((next) => {
+        if (!next) return
+        setRates(computeNetworkRates(lastSnapshot.current, next))
+        lastSnapshot.current = next
+        setSnapshot(next)
+      })
+      .catch((error) => {
+        console.error('Failed to get system snapshot:', error)
+      })
+  }, [serviceHub])
+
+  const pollUsage = useCallback(() => {
+    serviceHub
+      .hardware()
+      .getSystemUsage()
+      .then((data) => {
+        if (data) {
+          updateSystemUsage(data)
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to get system usage:', error)
+      })
   }, [updateSystemUsage, serviceHub])
+
+  // Poll every 5 seconds while the page is visible; a hidden window costs
+  // nothing and catches up as soon as it is shown again.
+  useEffect(() => {
+    if (!pageHidden()) pollSnapshot()
+    const intervalId = setInterval(() => {
+      if (pageHidden()) return
+      pollUsage()
+      pollSnapshot()
+    }, POLL_MS)
+    const onVisibility = () => {
+      if (pageHidden()) return
+      pollUsage()
+      pollSnapshot()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [pollUsage, pollSnapshot])
 
   // Calculate RAM usage percentage
   const ramUsagePercentage =
@@ -269,8 +653,18 @@ function SystemMonitorContent() {
                   <span title={hardwareData.cpu.name}>{hardwareData.cpu.name}</span>
                 </Stat>
                 <Stat label={t('system-monitor:cores')}>
-                  {hardwareData.cpu.core_count}
+                  {snapshot?.cpu.physical_cores ?? hardwareData.cpu.core_count}
                 </Stat>
+                {snapshot && (
+                  <Stat label={t('system-monitor:threads')}>
+                    {snapshot.cpu.logical_cores}
+                  </Stat>
+                )}
+                {snapshot && snapshot.cpu.frequency_mhz > 0 && (
+                  <Stat label={t('system-monitor:frequency')}>
+                    {formatFrequency(snapshot.cpu.frequency_mhz)}
+                  </Stat>
+                )}
                 <Stat label={t('system-monitor:architecture')}>
                   <span className="font-mono">{hardwareData.cpu.arch}</span>
                 </Stat>
@@ -280,6 +674,9 @@ function SystemMonitorContent() {
                 percent={systemUsage.cpu}
               />
               <Sparkline values={history.cpu ?? []} />
+              {snapshot && snapshot.cpu.per_core.length > 1 && (
+                <PerCoreUsage values={snapshot.cpu.per_core} />
+              )}
             </Panel>
 
             <Panel
@@ -305,6 +702,25 @@ function SystemMonitorContent() {
                 percent={ramUsagePercentage}
               />
               <Sparkline values={history.ram ?? []} />
+              {snapshot && snapshot.memory.swap_total > 0 && (
+                <>
+                  <div className="mt-3 border-t border-dashed border-border pt-3">
+                    <Stats>
+                      <Stat label={t('system-monitor:swap')}>
+                        {formatBytes(snapshot.memory.swap_used)} /{' '}
+                        {formatBytes(snapshot.memory.swap_total)}
+                      </Stat>
+                    </Stats>
+                  </div>
+                  <Meter
+                    label={t('system-monitor:swapUsage')}
+                    percent={
+                      (snapshot.memory.swap_used / snapshot.memory.swap_total) *
+                      100
+                    }
+                  />
+                </>
+              )}
             </Panel>
 
             {!IS_MACOS && (
@@ -363,6 +779,11 @@ function SystemMonitorContent() {
                 </div>
               </Panel>
             )}
+
+            {snapshot && <SystemPanel snapshot={snapshot} />}
+            {snapshot && <DrivesPanel snapshot={snapshot} />}
+            {snapshot && <NetworkPanel snapshot={snapshot} rates={rates} />}
+            {snapshot && <TemperaturePanel snapshot={snapshot} />}
           </div>
         </div>
       </div>

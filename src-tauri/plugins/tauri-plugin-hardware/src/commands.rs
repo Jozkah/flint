@@ -6,6 +6,15 @@ pub fn get_system_info() -> SystemInfo {
     crate::get_system_info()
 }
 
+/// Detailed snapshot for the System Monitor page (drives, network
+/// counters, sensors, per-core CPU, swap, uptime).
+#[tauri::command]
+pub async fn get_system_snapshot() -> crate::snapshot::SystemSnapshot {
+    tauri::async_runtime::spawn_blocking(crate::snapshot::get_system_snapshot)
+        .await
+        .expect("system snapshot task panicked")
+}
+
 #[tauri::command]
 pub fn refresh_system_info() {
     crate::invalidate_system_info();

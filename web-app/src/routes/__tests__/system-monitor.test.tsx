@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import React from 'react'
 
@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   systemUsage: { cpu: 42.5, used_memory: 16384, gpus: [] as any[] },
   updateSystemUsage: vi.fn(),
   getSystemUsage: vi.fn(),
+  getSystemSnapshot: vi.fn(),
   sidebar: null as null | object,
 }))
 
@@ -21,7 +22,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts && 'count' in opts ? `${key}:${opts.count}` : key,
+  }),
 }))
 
 vi.mock('@/hooks/useHardware', () => ({
@@ -34,7 +38,10 @@ vi.mock('@/hooks/useHardware', () => ({
 
 vi.mock('@/hooks/useServiceHub', () => ({
   useServiceHub: () => ({
-    hardware: () => ({ getSystemUsage: h.getSystemUsage }),
+    hardware: () => ({
+      getSystemUsage: h.getSystemUsage,
+      getSystemSnapshot: h.getSystemSnapshot,
+    }),
   }),
 }))
 
@@ -79,7 +86,9 @@ describe('SystemMonitor route', () => {
     }
     h.systemUsage = { cpu: 42.5, used_memory: 16384, gpus: [] }
     h.getSystemUsage.mockResolvedValue({ cpu: 10, used_memory: 1 })
+    h.getSystemSnapshot.mockResolvedValue(null)
     h.sidebar = null
+    ;(globalThis as any).IS_WINDOWS = false
   })
 
   afterEach(() => {
@@ -207,5 +216,150 @@ describe('SystemMonitor route', () => {
     const { unmount } = renderComponent()
     unmount()
     expect(clearSpy).toHaveBeenCalled()
+  })
+
+  describe('with a system snapshot', () => {
+    const GB = 1024 ** 3
+    const snap = (over: Record<string, any> = {}) => ({
+      host_name: 'workstation',
+      os_version: 'Windows 11 Pro',
+      kernel_version: '26100',
+      uptime_secs: 3 * 86400 + 2 * 3600 + 5 * 60,
+      timestamp_ms: 10_000,
+      cpu: {
+        name: 'Intel i9',
+        frequency_mhz: 3600,
+        physical_cores: 8,
+        logical_cores: 4,
+        usage: 30,
+        per_core: [10, 20, 30, 95],
+      },
+      memory: { total: 32 * GB, used: 16 * GB, swap_total: 8 * GB, swap_used: 2 * GB },
+      disks: [
+        {
+          name: 'System',
+          mount_point: 'C:/',
+          file_system: 'NTFS',
+          kind: 'SSD',
+          total: 100 * GB,
+          available: 25 * GB,
+          removable: false,
+        },
+        {
+          name: 'USB',
+          mount_point: 'E:/',
+          file_system: 'exFAT',
+          kind: 'Unknown',
+          total: 64 * GB,
+          available: 64 * GB,
+          removable: true,
+        },
+      ],
+      networks: [
+        { name: 'Ethernet', mac_address: '12:34:56:78:9a:bc', total_received: 1000, total_transmitted: 500 },
+        { name: 'vEthernet (WSL)', mac_address: '00:15:5d:00:00:01', total_received: 0, total_transmitted: 0 },
+      ],
+      sensors: [],
+      ...over,
+    })
+
+    it('shows system, drive, swap and CPU details', async () => {
+      h.getSystemSnapshot.mockResolvedValue(snap())
+      renderComponent()
+      expect(await screen.findByText('workstation')).toBeInTheDocument()
+      expect(screen.getByText('Windows 11 Pro')).toBeInTheDocument()
+      expect(screen.getByText('3d 2h 5m')).toBeInTheDocument()
+      expect(screen.getByText('3.60 GHz')).toBeInTheDocument()
+      expect(screen.getByText('8')).toBeInTheDocument()
+      expect(screen.getByText('NTFS')).toBeInTheDocument()
+      expect(screen.getByText('SSD')).toBeInTheDocument()
+      expect(screen.getByText('system-monitor:removable')).toBeInTheDocument()
+      expect(screen.getByText('75.00%')).toBeInTheDocument()
+      expect(screen.getByText('2.0 GB / 8.0 GB')).toBeInTheDocument()
+      expect(screen.getByText('25.00%')).toBeInTheDocument()
+    })
+
+    it('keeps per-core usage collapsed until expanded', async () => {
+      h.getSystemSnapshot.mockResolvedValue(snap())
+      renderComponent()
+      const toggle = await screen.findByRole('button', {
+        name: 'system-monitor:perCore',
+      })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByText('95%')).not.toBeInTheDocument()
+      fireEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('95%')).toBeInTheDocument()
+      expect(screen.getAllByLabelText('system-monitor:coreN')).toHaveLength(4)
+    })
+
+    it('hides virtual adapters until the toggle is on', async () => {
+      h.getSystemSnapshot.mockResolvedValue(snap())
+      renderComponent()
+      expect(await screen.findByText('Ethernet')).toBeInTheDocument()
+      expect(screen.queryByText('vEthernet (WSL)')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByLabelText('system-monitor:showVirtual:1'))
+      expect(screen.getByText('vEthernet (WSL)')).toBeInTheDocument()
+    })
+
+    it('computes network rates between polls', async () => {
+      vi.useFakeTimers()
+      h.getSystemSnapshot.mockResolvedValueOnce(snap())
+      h.getSystemSnapshot.mockResolvedValueOnce(
+        snap({
+          timestamp_ms: 15_000,
+          networks: [
+            { name: 'Ethernet', mac_address: '12:34:56:78:9a:bc', total_received: 1000 + 5 * 2048, total_transmitted: 500 },
+          ],
+        })
+      )
+      renderComponent()
+      await vi.advanceTimersByTimeAsync(5100)
+      expect(screen.getByText('2.0 KB/s')).toBeInTheDocument()
+      expect(screen.getByText('0 B/s')).toBeInTheDocument()
+    })
+
+    it('explains missing sensors on Windows', async () => {
+      ;(globalThis as any).IS_WINDOWS = true
+      h.getSystemSnapshot.mockResolvedValue(snap())
+      renderComponent()
+      expect(
+        await screen.findByText('system-monitor:noSensorsWindows')
+      ).toBeInTheDocument()
+    })
+
+    it('lists sensors with current, max and critical', async () => {
+      h.getSystemSnapshot.mockResolvedValue(
+        snap({
+          sensors: [
+            { label: 'CPU Package', kind: 'cpu', temperature: 61.4, max: 80, critical: 100 },
+            { label: 'Unreadable', kind: 'other', temperature: null, max: null, critical: null },
+          ],
+        })
+      )
+      renderComponent()
+      expect(await screen.findByText('CPU Package')).toBeInTheDocument()
+      expect(screen.getByText('61 °C')).toBeInTheDocument()
+      expect(screen.getByText('80 °C')).toBeInTheDocument()
+      expect(screen.getByText('100 °C')).toBeInTheDocument()
+      expect(screen.queryByText('Unreadable')).not.toBeInTheDocument()
+    })
+
+    it('does not poll while the page is hidden', async () => {
+      vi.useFakeTimers()
+      const vis = vi
+        .spyOn(document, 'visibilityState', 'get')
+        .mockReturnValue('hidden')
+      renderComponent()
+      await vi.advanceTimersByTimeAsync(10_100)
+      expect(h.getSystemUsage).not.toHaveBeenCalled()
+      expect(h.getSystemSnapshot).not.toHaveBeenCalled()
+      vis.mockReturnValue('visible')
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(h.getSystemUsage).toHaveBeenCalledTimes(1)
+      expect(h.getSystemSnapshot).toHaveBeenCalledTimes(1)
+      vis.mockRestore()
+    })
   })
 })

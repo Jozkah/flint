@@ -182,3 +182,29 @@ fn create_gpu_info(nvml: &Nvml, index: u32, driver_version: &str) -> Result<GpuI
         vulkan_info: None,
     })
 }
+
+impl GpuInfo {
+    /// Current and shutdown-threshold temperature in Celsius, when NVML
+    /// reports them. Non-NVIDIA GPUs and unsupported platforms yield `None`.
+    pub fn nvidia_temperature(&self) -> Option<(f32, Option<f32>)> {
+        #[cfg(any(target_os = "android", target_os = "ios", target_os = "macos"))]
+        {
+            None
+        }
+
+        #[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
+        {
+            use nvml_wrapper::enum_wrappers::device::{TemperatureSensor, TemperatureThreshold};
+            let index = self.nvidia_info.as_ref()?.index;
+            with_nvml(|nvml| {
+                let device = nvml?.device_by_index(index).ok()?;
+                let current = device.temperature(TemperatureSensor::Gpu).ok()?;
+                let critical = device
+                    .temperature_threshold(TemperatureThreshold::Shutdown)
+                    .ok()
+                    .map(|t| t as f32);
+                Some((current as f32, critical))
+            })
+        }
+    }
+}
