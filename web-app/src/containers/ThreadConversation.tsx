@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -86,7 +87,20 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
+import {
+  CircleAlert,
+  Columns2,
+  Loader2,
+  MoreHorizontal,
+  PanelRight,
+  RefreshCw,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
@@ -132,7 +146,10 @@ import {
   useConversationModel,
   useConversationPane,
 } from '@/hooks/useConversationPane'
-import { SECONDARY_DRAFT_SCOPE } from '@/hooks/useSplitConversation'
+import {
+  SECONDARY_DRAFT_SCOPE,
+  useSplitConversation,
+} from '@/hooks/useSplitConversation'
 
 const CHAT_STATUS = {
   STREAMING: 'streaming',
@@ -2104,6 +2121,8 @@ export function ThreadConversation({
     'conversation'
   )
   const detailsPanelId = useId()
+  // A phone's page header has room for one button (see controlsWith).
+  const isPhone = useMediaQuery('(max-width: 639px)')
   // Splitting halves the width; the inspector gives its room to the panes.
   useEffect(() => {
     if (isSplit) {
@@ -2174,16 +2193,49 @@ export function ThreadConversation({
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
-      <div className="min-w-0 shrink">
-        <DropdownModelProvider model={threadModel} />
-      </div>
+      {/* On a phone the page header has room for one button: the model moves
+          onto the conversation's own header row, and Split and Details into
+          an overflow menu. A split pane's header row keeps them all. */}
+      {(isSplit || !isPhone) && (
+        <div className="min-w-0 shrink">
+          <DropdownModelProvider model={threadModel} />
+        </div>
+      )}
       <div className="flex shrink-0 items-center gap-1.5">
-        {extra}
+        {extra && <div className="hidden sm:contents">{extra}</div>}
+        {!isSplit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-[30px] sm:hidden pointer-coarse:size-11"
+                aria-label={t('common:more')}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={toggleDetails}>
+                <PanelRight className="size-4" />
+                <span>{t('context:details')}</span>
+              </DropdownMenuItem>
+              {extra && (
+                <DropdownMenuItem
+                  onSelect={() => useSplitConversation.getState().openSplit()}
+                >
+                  <Columns2 className="size-4" />
+                  <span>{t('chat:split.open')}</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <WhatJanIsUsingToggle
           open={detailsOpen}
           onToggle={toggleDetails}
           controls={detailsPanelId}
-          className={isSplit ? '[&>span]:sr-only' : undefined}
+          className={isSplit ? '[&>span]:sr-only' : 'max-sm:hidden'}
         />
       </div>
     </>
@@ -2277,13 +2329,20 @@ export function ThreadConversation({
                 {controlsWith(paneControls)}
               </div>
             ) : (
-              firstCreatedAt && (
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {t('chat:startedAt', {
-                    time: formatMessageTime(firstCreatedAt),
-                  })}
-                </span>
-              )
+              <>
+                {isPhone && (
+                  <div className="min-w-0 shrink">
+                    <DropdownModelProvider model={threadModel} />
+                  </div>
+                )}
+                {firstCreatedAt && (
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums max-sm:hidden">
+                    {t('chat:startedAt', {
+                      time: formatMessageTime(firstCreatedAt),
+                    })}
+                  </span>
+                )}
+              </>
             )}
           </FrameHeader>
           <FrameBody className="min-h-0 overflow-hidden">

@@ -12,6 +12,10 @@ import SetupScreen from '@/containers/SetupScreen'
 import { route } from '@/constants/routes'
 import { hasUsableProvider } from '@/lib/providerReadiness'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+
+/** Below Tailwind's `sm`: the page header has room for one button. */
+const PHONE_QUERY = '(max-width: 639px)'
 
 type ThreadModel = {
   id: string
@@ -54,6 +58,7 @@ function Index() {
   useTools()
 
   const hasValidProviders = hasUsableProvider(providers)
+  const isPhone = useMediaQuery(PHONE_QUERY)
 
   useEffect(() => {
     setCurrentThreadId(undefined)
@@ -80,10 +85,13 @@ function Index() {
               or the first local one on a first run (janhq/jan#7703). The
               composer's own picker, which used to ask for this, is not
               rendered, so without it nothing was ever selected. */}
-          <DropdownModelProvider
-            model={threadModel}
-            useLastUsedModel={!threadModel}
-          />
+          {/* On a phone the model sits on the frame's header row instead. */}
+          {!isPhone && (
+            <DropdownModelProvider
+              model={threadModel}
+              useLastUsedModel={!threadModel}
+            />
+          )}
           <NewTemporaryChatButton />
         </PageHeaderRow>
       </HeaderPage>
@@ -94,9 +102,19 @@ function Index() {
           icon={<PenLine />}
           title={t('chat:home.title')}
           actions={
-            <span className="text-xs text-muted-foreground">
-              {t('chat:home.notSaved')}
-            </span>
+            <>
+              <span className="text-xs text-muted-foreground max-sm:hidden">
+                {t('chat:home.notSaved')}
+              </span>
+              {isPhone && (
+                <div className="min-w-0 shrink">
+                  <DropdownModelProvider
+                    model={threadModel}
+                    useLastUsedModel={!threadModel}
+                  />
+                </div>
+              )}
+            </>
           }
         />
         <FrameBody className="min-h-0 overflow-hidden">
