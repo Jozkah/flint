@@ -556,7 +556,7 @@ export function RoomEditor({ room }: { room: Room }) {
                       >
                         {(['none', 'read', 'edit'] as const).map((v) => (
                           <div key={v} className="flex items-center gap-2">
-                            <RadioGroupItem id={`${pid}-tools-${v}`} value={v} />
+                            <RadioGroupItem id={`${pid}-tools-${v}`} value={v} aria-label={t(toolKey(v))} />
                             <Label htmlFor={`${pid}-tools-${v}`}>{t(toolKey(v))}</Label>
                           </div>
                         ))}
@@ -627,9 +627,11 @@ export function RoomEditor({ room }: { room: Room }) {
               className="mt-1.5 flex min-w-0 flex-col gap-2 rounded-[10px] border border-dashed border-border-strong p-3 motion-safe:animate-dd-in"
             >
               <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
-              <p className="text-xs text-muted-foreground">
-                {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-              </p>
+              {participants.length < 2 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
+                </p>
+              )}
               {atMax ? (
                 <p className="text-xs text-muted-foreground">
                   {t('rooms:editor.maxReached', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
@@ -784,7 +786,7 @@ export function RoomEditor({ room }: { room: Room }) {
                     <RadioGroupItem
                       id={`${uid}-mode-${m}`}
                       value={m}
-                      aria-labelledby={`${uid}-mode-${m}-name`}
+                      aria-label={t(`rooms:mode.${m}`)}
                       aria-describedby={`${uid}-mode-${m}-hint`}
                       className="mt-0.5"
                     />
@@ -808,6 +810,7 @@ export function RoomEditor({ room }: { room: Room }) {
                 </div>
                 <Switch
                   id={`${uid}-mod-enabled`}
+                  aria-label={t('rooms:editor.moderatorEnable')}
                   checked={moderator.enabled}
                   disabled={disabled}
                   onCheckedChange={(enabled) => edit(setModerator)({ ...moderator, enabled })}
