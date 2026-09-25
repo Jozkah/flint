@@ -4297,19 +4297,11 @@ function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
-                  {running && (
-                    // Row wrapper as in the chat route: the transcript is a
-                    // column flex, which stretches the indicator's own
-                    // `inline-flex` box across the whole column.
-                    <div className="flex flex-row items-center gap-2">
-                      <PromptProgress
-                        hideIdle={!awaitingModel}
-                        stateKey={session?.id}
-                      />
-                    </div>
-                  )}
-                  {!running &&
-                    (runEnding || runOrigins?.summary) &&
+                  {/* Also while the run goes, as the design shows it: what
+                      it has changed and checked so far, marked Running, with
+                      no next steps offered until it ends (the outcome holds
+                      them back while running). */}
+                  {(running || runEnding || runOrigins?.summary) &&
                     // Only when the run has something of its own to report:
                     // a write, a check, a loose end, or an ending that was
                     // not a clean finish. A working tree that was already
@@ -4317,7 +4309,10 @@ function CoworkPage() {
                     // a permanent panel over the composer listing the user's
                     // own edits. The stop reason itself stays in the notice
                     // below; this shows what was kept.
-                    shouldShowRunOutcome(runOutcome) && (
+                    (running
+                      ? runOutcome.checks.length > 0 ||
+                        runOutcome.resultLocation.paths.length > 0
+                      : shouldShowRunOutcome(runOutcome)) && (
                       <CoworkRunSummary
                         outcome={runOutcome}
                         canOpenPath={shouldOpenInCode}
@@ -4342,6 +4337,17 @@ function CoworkPage() {
                         }
                       />
                     )}
+                  {running && (
+                    // Row wrapper as in the chat route: the transcript is a
+                    // column flex, which stretches the indicator's own
+                    // `inline-flex` box across the whole column.
+                    <div className="flex flex-row items-center gap-2">
+                      <PromptProgress
+                        hideIdle={!awaitingModel}
+                        stateKey={session?.id}
+                      />
+                    </div>
+                  )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"
