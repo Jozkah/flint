@@ -1,4 +1,5 @@
 import {
+  Check,
   Copy,
   Folder,
   MoreHorizontal,
@@ -6,7 +7,6 @@ import {
   Pin,
   PinOff,
   Trash2,
-  X,
 } from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
 import { useIsThreadActive } from '@/hooks/useAppState'
@@ -21,6 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -52,6 +53,7 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
 import { useConversationGroups } from '@/lib/groups/store'
+import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 
 const ThreadItem = memo(
   ({
@@ -76,7 +78,7 @@ const ThreadItem = memo(
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
     const getFolderById = useThreadManagement().getFolderById
-    const { folders } = useThreadManagement()
+    const { folders, addFolder } = useThreadManagement()
     const { t } = useTranslation()
     const [menuOpen, setMenuOpen] = useState(false)
     const [renameOpen, setRenameOpen] = useState(false)
@@ -143,26 +145,37 @@ const ThreadItem = memo(
       return (thread.title || '').replace(/<span[^>]*>|<\/span>/g, '')
     }, [thread.title])
 
-    const availableProjects = useMemo(() => {
-      return folders
-        .filter((f) => {
-          if (f.id === currentProjectId) return false
-          if (f.id === thread.metadata?.project?.id) return false
-          return true
-        })
-        .sort((a, b) => b.updated_at - a.updated_at)
-    }, [folders, currentProjectId, thread.metadata?.project?.id])
+    // Every group, by name; the thread's own group is ticked rather than hidden.
+    const groupChoices = useMemo(
+      () => [...folders].sort((a, b) => a.name.localeCompare(b.name)),
+      [folders]
+    )
+    const currentGroupId = thread.metadata?.project?.id ?? null
+    const [newGroupOpen, setNewGroupOpen] = useState(false)
 
-    const assignThreadToProject = (threadId: string, projectId: string) => {
-      const project = getFolderById(projectId)
-      if (!project) return
+    /** Move the thread into a group, or out of every group with `null`. */
+    const moveToGroup = (groupId: string | null) => {
+      if (groupId === currentGroupId) return
+      const name = groupId ? getFolderById(groupId)?.name : null
       // Home groups are the source of truth; the mirror updates metadata.project.
       void useConversationGroups
         .getState()
-        .moveItem('home', threadId, projectId)
+        .moveItem('home', thread.id, groupId)
         .then((ok) => {
-          if (ok) toast.success(`Thread assigned to "${project.name}" successfully`)
+          if (!ok) return
+          toast.success(
+            name
+              ? t('common:projects.movedToGroup', { name })
+              : t('common:projects.movedToUngrouped')
+          )
         })
+    }
+
+    const createGroupAndMove = async (name: string, assistantId?: string) => {
+      const created = await addFolder(name, assistantId)
+      setNewGroupOpen(false)
+      await useConversationGroups.getState().moveItem('home', thread.id, created.id)
+      toast.success(t('common:projects.movedToGroup', { name: created.name }))
     }
 
     const isAppStateActive = useIsThreadActive(thread.id)
@@ -297,53 +310,59 @@ const ThreadItem = memo(
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />
-                <span>{t('common:projects.addToProject')}</span>
+                <span>{t('common:projects.moveToGroup')}</span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="max-h-60 min-w-44 overflow-y-auto">
-                {availableProjects.length === 0 ? (
-                  <DropdownMenuItem disabled>
-                    <span className="text-muted-foreground">
-                      {t('common:projects.noProjectsAvailable')}
-                    </span>
+              {/* Numbered like the design's group picker: a digit key picks
+                  the row with that number while the submenu is open. */}
+              <DropdownMenuSubContent
+                className="max-h-72 min-w-48 overflow-y-auto"
+                onKeyDown={(e) => {
+                  const n = Number(e.key)
+                  if (!Number.isInteger(n) || n < 1) return
+                  const choices = [...groupChoices.map((g) => g.id), null, 'new'] as const
+                  const pick = choices[n - 1]
+                  if (pick === undefined) return
+                  e.preventDefault()
+                  if (pick === 'new') setNewGroupOpen(true)
+                  else moveToGroup(pick)
+                  setMenuOpen(false)
+                }}
+              >
+                {groupChoices.map((group, i) => (
+                  <DropdownMenuItem
+                    key={group.id}
+                    onSelect={() => moveToGroup(group.id)}
+                    data-testid="move-to-group-option"
+                  >
+                    <span className="max-w-[200px] truncate">{group.name}</span>
+                    {group.id === currentGroupId && (
+                      <Check aria-label={t('common:projects.currentGroup')} className="ml-auto size-4 text-info" />
+                    )}
+                    <DropdownMenuShortcut className={group.id === currentGroupId ? 'ml-2' : undefined}>
+                      {i + 1}
+                    </DropdownMenuShortcut>
                   </DropdownMenuItem>
-                ) : (
-                  availableProjects.map((folder) => (
-                    <DropdownMenuItem
-                      key={folder.id}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        assignThreadToProject(thread.id, folder.id)
-                      }}
-                    >
-                      <Folder className="size-4" />
-                      <span className="truncate max-w-[200px]">
-                        {folder.name}
-                      </span>
-                    </DropdownMenuItem>
-                  ))
-                )}
+                ))}
+                {groupChoices.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onSelect={() => moveToGroup(null)}>
+                  <span>{t('common:shell.ungrouped')}</span>
+                  {currentGroupId === null && (
+                    <Check aria-label={t('common:projects.currentGroup')} className="ml-auto size-4 text-info" />
+                  )}
+                  <DropdownMenuShortcut className={currentGroupId === null ? 'ml-2' : undefined}>
+                    {groupChoices.length + 1}
+                  </DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setNewGroupOpen(true)}>
+                  <span>
+                    {groupChoices.length === 0
+                      ? t('common:projects.createFirstGroup')
+                      : t('common:projects.newGroup')}
+                  </span>
+                  <DropdownMenuShortcut>{groupChoices.length + 2}</DropdownMenuShortcut>
+                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            {thread.metadata?.project && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const projectName = thread.metadata?.project?.name
-                    void useConversationGroups
-                      .getState()
-                      .moveItem('home', thread.id, null)
-                      .then((ok) => {
-                        if (ok) toast.success(`Thread removed from "${projectName}" successfully`)
-                      })
-                  }}
-                >
-                  <X className="size-4" />
-                  <span>Remove from project</span>
-                </DropdownMenuItem>
-              </>
-            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
@@ -369,6 +388,16 @@ const ThreadItem = memo(
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Mounted only while open: one per chat row would be wasted. */}
+        {newGroupOpen && (
+          <AddProjectDialog
+            open
+            onOpenChange={setNewGroupOpen}
+            editingKey={null}
+            onSave={createGroupAndMove}
+          />
+        )}
 
         <RenameThreadDialog
           thread={thread}

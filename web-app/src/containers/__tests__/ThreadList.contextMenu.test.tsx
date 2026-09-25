@@ -79,6 +79,7 @@ vi.mock('@/components/ui/dropdown-menu', () => {
     DropdownMenuTrigger: Passthrough,
     DropdownMenuSub: Passthrough,
     DropdownMenuSubContent: Passthrough,
+    DropdownMenuShortcut: Passthrough,
     DropdownMenuSubTrigger: Passthrough,
   }
 })
@@ -140,7 +141,7 @@ describe('what the menu contains', () => {
     fireEvent.contextMenu(screen.getByTestId('row'))
     expect(screen.getByText('common:rename')).toBeInTheDocument()
     expect(
-      screen.getByText('common:projects.addToProject')
+      screen.getByText('common:projects.moveToGroup')
     ).toBeInTheDocument()
     expect(screen.getByText('common:delete')).toBeInTheDocument()
   })

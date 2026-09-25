@@ -41,17 +41,13 @@ export function WebPreviewPip({
       e.preventDefault()
       drag.current = { dx: e.clientX - rect.x, dy: e.clientY - rect.y }
       const move = (ev: PointerEvent) => {
-        if (!drag.current) return
-        setRect((r) =>
-          clampPipRect(
-            {
-              ...r,
-              x: ev.clientX - drag.current!.dx,
-              y: ev.clientY - drag.current!.dy,
-            },
-            vp()
-          )
-        )
+        // Read the offset now: the updater runs later, after a pointerup may
+        // already have cleared the ref, and reading it then crashed the app.
+        const d = drag.current
+        if (!d) return
+        const x = ev.clientX - d.dx
+        const y = ev.clientY - d.dy
+        setRect((r) => clampPipRect({ ...r, x, y }, vp()))
       }
       const up = () => {
         drag.current = null
