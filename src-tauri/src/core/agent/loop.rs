@@ -3367,7 +3367,14 @@ impl CompositeToolInvoker {
             if let Some(allowed) = &self.allowed_tools {
                 if !allowed.contains(name) {
                     let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                    let mut refused = ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered);
+                    // Transcript audit #11: name the offered tools it was
+                    // probably meant to be.
+                    refused.content.push_str(&tauri_plugin_agent_tools::tools::call_shape::did_you_mean(
+                        name,
+                        allowed.iter().map(String::as_str),
+                    ));
+                    out.push(refused);
                     continue;
                 }
             }
@@ -3768,6 +3775,7 @@ impl CompositeToolInvoker {
                     // deregisters it.
                     let _registered = registered;
                     let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
+                    let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
                     ToolOutcome {
                         diff,
                         images: images.unwrap_or_default(),
@@ -3929,6 +3937,9 @@ impl CompositeToolInvoker {
                     }
                 }
             };
+            // Transcript audit #12: a refusal of the arguments shows the call
+            // it expected.
+            let text = tauri_plugin_agent_tools::tools::call_shape::explain(name, &args, text);
             out.push(ToolOutcome {
                 diff,
                 images: images.unwrap_or_default(),

@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 /// Windows-only confinement backend for [`jail`]. Present on every platform so
 /// the argv it builds stays unit-testable.
 pub mod appcontainer;
+/// The expected shape of a call, for refusals of its arguments.
+pub mod call_shape;
 pub mod cmdscan;
 pub mod fuzzy_edit;
 pub mod gate;

@@ -18,6 +18,7 @@ import { streamCutOff } from './streamFinish'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
+import { deadTools } from '@/lib/deadTools'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
@@ -1262,6 +1263,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       hasDocuments,
       ragFeatureAvailable,
       disabledToolKeys,
+      deadTools: deadTools(this.threadId),
       webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
     })
@@ -1422,6 +1424,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       }
     }
 
+    // A tool its server does not implement is no longer offered in this
+    // conversation (transcript audit #11).
+    for (const name of deadTools(this.threadId)) delete toolsRecord[name]
     this.tools = toolsRecord
     this.toolsCacheKey = cacheKey
   }

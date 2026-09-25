@@ -1240,6 +1240,9 @@ async fn execute_tool_inner(
     };
     let ((content, diff, _images), read_ok) =
         handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
+    // Transcript audit #12: a refusal of the arguments shows the call it
+    // expected, not only the word that was wrong.
+    let content = crate::tools::call_shape::explain(&name, &args, content);
     // AH-009: what the call was is decided once, by classification. A shell
     // command that exited non-zero is a tool failure even though it said so in
     // its own words rather than in the tool protocol's. A `read` that

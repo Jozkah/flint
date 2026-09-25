@@ -117,6 +117,13 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import {
+  deadToolNote,
+  deadToolRefusal,
+  isMethodNotFound,
+  markToolDead,
+  unknownToolError,
+} from '@/lib/deadTools'
 import { chatForcedPrompt } from '@/lib/chatToolGuard'
 import { GIT_TOOL_NAME, gitApproval, gitRemoteFacts } from '@/lib/gitTool'
 import { chatLoopStop, chatTurnId, noteChatToolCall } from '@/lib/chatLoopGuard'
@@ -891,6 +898,11 @@ export function ThreadConversation({
             const runChatTool = async () => {
             let result
 
+            // A tool its server turned out not to implement is answered here
+            // for the rest of the conversation (transcript audit #11).
+            const deadRefusal = deadToolRefusal(threadId, toolName)
+            if (deadRefusal) return { error: deadRefusal }
+
             if (isNativeWebTool(toolName)) {
               result = await executeWebTool(toolName, toolCall.input)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
@@ -973,9 +985,25 @@ export function ThreadConversation({
                   typeof ctxLen === 'number' ? ctxLen : undefined
                 ),
               })
+              const failure = result.error
+                ? String(result.error)
+                : (result as { isError?: unknown }).isError === true
+                  ? JSON.stringify(result.content ?? '')
+                  : undefined
+              if (isMethodNotFound(failure)) {
+                markToolDead(threadId, toolName, 'Method not found')
+                result = {
+                  ...result,
+                  error: `${failure}${deadToolNote(toolName)}`,
+                }
+              }
             } else {
               result = {
-                error: `Tool '${toolName}' not found in any service`,
+                error: unknownToolError(toolName, [
+                  ...mcpToolNames,
+                  ...ragToolNames,
+                  ...AGENT_TOOL_NAMES,
+                ]),
               }
             }
             return result
