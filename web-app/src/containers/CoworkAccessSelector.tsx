@@ -129,7 +129,9 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            <span>{t(accessLabelKey(active))}</span>
+            {/* Icon only when the Cowork header row is tight (@container/ctx);
+                the button keeps its aria-label either way. */}
+            <span className="@max-xl/ctx:sr-only">{t(accessLabelKey(active))}</span>
             <ChevronDown
               aria-hidden
               className="size-3 shrink-0 text-muted-foreground"

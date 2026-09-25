@@ -4204,11 +4204,15 @@ function CoworkPage() {
         <PageHeaderRow>
           {!phone && (
             // Set off from the breadcrumb by a dashed rule, as the design's
-            // context controls are. Clips and lets the pills shrink, so on a
-            // narrow window they give way instead of sliding under "Review
-            // changes" on the right.
-            <div className="flex min-w-0 shrink items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5 [&>*]:min-w-0 [&>*]:shrink">
-              {modelSelector}
+            // context controls are. The pills never shrink below their own
+            // content (squeezed to nothing they drew on top of each other);
+            // the model pill truncates inside a bounded box, the mode and
+            // access pills drop their labels to icons when the row is tight,
+            // and anything still too wide is clipped at the right edge.
+            <div className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5">
+              <div className="flex min-w-24 max-w-56 shrink">
+                {modelSelector}
+              </div>
               {sessionControls}
             </div>
           )}
