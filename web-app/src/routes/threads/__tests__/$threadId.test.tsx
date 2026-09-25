@@ -317,6 +317,7 @@ vi.mock('@/lib/extension', () => ({
 }))
 
 vi.mock('@/lib/messages', () => ({
+  mergeSettledToolParts: () => null,
   convertThreadMessagesToUIMessages: (msgs: any[]) =>
     msgs.map((m) => ({
       id: m.id,
@@ -540,7 +541,9 @@ describe('ThreadDetail route', () => {
   it('clears this thread pending tool approvals on unmount', () => {
     const { unmount } = renderComponent()
     unmount()
-    expect(h.toolApprovalState.clearPendingForThread).toHaveBeenCalledWith('thread-1')
+    expect(h.toolApprovalState.clearPendingForThread).toHaveBeenCalledWith('thread-1', {
+      notify: true,
+    })
   })
 
   it('renders messages passed through useChat', () => {
