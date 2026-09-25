@@ -20,6 +20,7 @@ import { useServiceStore } from '@/hooks/useServiceHub'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useAssistant } from '@/hooks/useAssistant'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 
 const MIN = 60_000
 const now = Date.now()
@@ -412,6 +413,9 @@ export function seedPreview() {
     tools: mcpTools(),
   } as never)
   useAssistant.setState({ assistants: assistants(), loading: false } as never)
+  if (useOnboardingGuide.getState().status !== 'in-progress') {
+    useOnboardingGuide.getState().start('question', CHATS.length)
+  }
   seedToolRuntime()
   seedUsage()
   seedCowork()

@@ -86,7 +86,8 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { CircleAlert, Loader2, MessageSquare, RefreshCw } from 'lucide-react'
+import { CircleAlert, Loader2, RefreshCw } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { formatMessageTime } from '@/utils/formatMessageTime'
@@ -2120,10 +2121,7 @@ export function ThreadConversation({
   // Who this conversation is: the title, on the chat frame's header row.
   const identity = (
     <div className="flex min-w-0 flex-1 items-center gap-3">
-      <MessageSquare
-        aria-hidden
-        className="size-4 shrink-0 text-muted-foreground"
-      />
+      <Icon name="comment" size={16} />
       <h1
         data-testid="conversation-title"
         className="min-w-0 truncate text-sm leading-none font-medium text-secondary-foreground"
@@ -2201,7 +2199,7 @@ export function ThreadConversation({
       className={cn(
         'flex h-full min-h-0 flex-col',
         // The page's own breathing room; a split pane sits flush in its half.
-        !isSplit && 'pt-1 pb-3'
+        !isSplit && 'px-1 pt-3.5 pb-4'
       )}
     >
       {!isSplit && (
@@ -2265,7 +2263,7 @@ export function ThreadConversation({
               isSplit ? `conversation-pane-header-${paneId}` : undefined
             }
             data-active={isSplit ? isActive : undefined}
-            className="min-h-10"
+            className="min-h-9"
           >
             {identity}
             {isSplit ? (

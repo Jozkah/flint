@@ -72,7 +72,7 @@ function Index() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col pt-1 pb-3">
+    <div className="flex h-full min-h-0 flex-col px-1 pt-3.5 pb-4">
       <HeaderPage>
         <PageHeaderRow>
           <div className="flex-1" />
