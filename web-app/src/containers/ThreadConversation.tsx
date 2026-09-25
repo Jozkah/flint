@@ -143,6 +143,12 @@ import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { generateThreadTitle } from '@/lib/thread-title-summarizer'
+import {
+  AUTO_TITLE_SOURCE_KEY,
+  beginAutoTitle,
+  decideAutoTitle,
+  endAutoTitle,
+} from '@/lib/threadAutoTitle'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import {
   resolveThreadModelSelection,
@@ -158,8 +164,6 @@ const CHAT_STATUS = {
   STREAMING: 'streaming',
   SUBMITTED: 'submitted',
 } as const
-
-const TITLE_REFRESH_EVERY_N_ASSISTANT_MESSAGES = 4
 
 // The MCP server a tool belongs to, so an approval prompt can offer to trust
 // the whole server rather than this one tool.
@@ -1012,21 +1016,27 @@ export function ThreadConversation({
 
       if (!isAbort) {
         const localMessages = useMessages.getState().getMessages(threadId)
-        const assistantCount = localMessages.filter(
-          (m) => m.role === 'assistant'
-        ).length
-        const isRefreshTick =
-          assistantCount === 1 ||
-          (assistantCount > 0 &&
-            assistantCount % TITLE_REFRESH_EVERY_N_ASSISTANT_MESSAGES === 0)
         const currentThread = useThreads.getState().threads[threadId]
-        const autoGenerateTitle =
-          useInterfaceSettings.getState().autoGenerateTitle
-        if (
-          autoGenerateTitle &&
-          isRefreshTick &&
-          !currentThread?.metadata?.titleSetManually
-        ) {
+        // Once per chat, and again only when the first message was edited
+        // (see lib/threadAutoTitle).
+        const titleDecision = decideAutoTitle({
+          threadId,
+          enabled: useInterfaceSettings.getState().autoGenerateTitle,
+          metadata: currentThread?.metadata,
+          messages: localMessages,
+        })
+        const recordTitleSource = (source: string, title?: string) => {
+          const latest = useThreads.getState().threads[threadId]
+          if (!latest || latest.metadata?.titleSetManually) return
+          useThreads.getState().updateThread(threadId, {
+            ...(title ? { title } : {}),
+            metadata: { ...latest.metadata, [AUTO_TITLE_SOURCE_KEY]: source },
+          })
+        }
+        if (titleDecision.kind === 'adopt') {
+          recordTitleSource(titleDecision.source)
+        } else if (titleDecision.kind === 'generate') {
+          const titleSource = titleDecision.source
           const TITLE_TRANSCRIPT_MAX_TURNS = 8
           const recent = localMessages.slice(-TITLE_TRANSCRIPT_MAX_TURNS)
           const inputText =
@@ -1047,6 +1057,7 @@ export function ThreadConversation({
             const titleSelection = getModelSelection()
             const provider = titleSelection.selectedProvider
             const modelId = titleSelection.selectedModel?.id
+            beginAutoTitle(threadId, titleSource)
             ;(async () => {
               if (provider === 'llamacpp' && modelId) {
                 let idle = false
@@ -1070,10 +1081,12 @@ export function ThreadConversation({
                 controller.signal,
                 threadId
               )
-              if (!title || controller.signal.aborted) return
-              useThreads.getState().updateThread(threadId, { title })
+              if (controller.signal.aborted) return
+              // Recorded even when no title came back, so a model that cannot
+              // title is not asked again on every reply.
+              recordTitleSource(titleSource, title ?? undefined)
               titleAbortRef.current = null
-            })()
+            })().finally(() => endAutoTitle(threadId, titleSource))
           }
         }
       }

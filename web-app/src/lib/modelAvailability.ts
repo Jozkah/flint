@@ -69,6 +69,18 @@ export function modelAvailability(input: AvailabilityInput): ModelAvailability {
   return 'remote-ready'
 }
 
+/**
+ * Whether a remote provider's endpoint failed its last request. Local and
+ * loopback endpoints report their own health, so they never count.
+ */
+export function providerIsUnreachable(
+  provider: { base_url?: string | null },
+  unreachableOrigins: Readonly<Record<string, unknown>>
+): boolean {
+  const origin = originOf(provider.base_url)
+  return !!origin && !isLoopback(origin) && origin in unreachableOrigins
+}
+
 /** Only one state earns the red treatment. */
 export const isOffline = (a: ModelAvailability): boolean => a === 'offline'
 
@@ -80,6 +92,6 @@ export const isOffline = (a: ModelAvailability): boolean => a === 'offline'
  * cannot pick it, and hover and selection have to keep working over the top.
  */
 export const OFFLINE_ROW_CLASS =
-  'bg-destructive/[0.06] dark:bg-destructive/[0.10] ring-1 ring-inset ring-destructive/25'
+  'opacity-70 hover:opacity-100 bg-destructive/[0.06] dark:bg-destructive/[0.10] ring-1 ring-inset ring-destructive/25'
 
 export const OFFLINE_DOT_CLASS = 'bg-destructive/70'

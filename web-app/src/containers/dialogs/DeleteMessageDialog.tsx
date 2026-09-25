@@ -78,7 +78,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
               onClick={handleDelete}
               size="sm"
               className="w-full sm:w-auto"
-              aria-label={t('common:deleteMessage')}
+              data-testid="delete-message-confirm"
             >
               {t('common:delete')}
             </Button>

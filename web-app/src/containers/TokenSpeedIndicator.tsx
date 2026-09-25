@@ -10,6 +10,7 @@ import {
 import { readTokenUsage } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
+import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
 
 interface TokenSpeedMeta {
   tokenSpeed: number
@@ -52,9 +53,13 @@ export const TokenSpeedIndicator = memo(
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
     const memoryIds = ids(memory?.injectedIds)
     const withheldIds = ids(memory?.conflictIds)
-    const rawSpeed = toNumber(persisted?.tokenSpeed ?? 0)
-    const displaySpeed = Math.round(rawSpeed)
     const displayTokenCount = usage?.outputTokens ?? persisted?.tokenCount ?? 0
+    const durationMs =
+      typeof persisted?.durationMs === 'number' ? persisted.durationMs : undefined
+    const rawSpeed = isMeaningfulSpeed(displayTokenCount, durationMs)
+      ? toNumber(persisted?.tokenSpeed ?? 0)
+      : 0
+    const displaySpeed = Math.round(rawSpeed)
     const promptSpeed = persisted?.promptSpeed
 
     if (

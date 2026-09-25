@@ -3,6 +3,7 @@ import {
   isOffline,
   modelAvailability,
   OFFLINE_ROW_CLASS,
+  providerIsUnreachable,
 } from '@/lib/modelAvailability'
 import {
   isLoopback,
@@ -158,5 +159,21 @@ describe('the reachability record', () => {
   it('keeps nothing across a restart, having no persistence at all', () => {
     // A stale badge accuses a provider that may be perfectly fine.
     expect('persist' in useProviderReachability).toBe(false)
+  })
+})
+
+describe('providerIsUnreachable', () => {
+  it('flags a remote origin with a failure on record', () => {
+    const down = { 'https://api.example.com': { reason: 'x', at: 1 } }
+    expect(providerIsUnreachable({ base_url: 'https://api.example.com/v1' }, down)).toBe(true)
+    expect(providerIsUnreachable({ base_url: 'https://other.example.com/v1' }, down)).toBe(false)
+  })
+  it('never flags loopback or a provider without a URL', () => {
+    const down = { 'http://localhost:1337': { reason: 'x', at: 1 } }
+    expect(providerIsUnreachable({ base_url: 'http://localhost:1337/v1' }, down)).toBe(false)
+    expect(providerIsUnreachable({}, down)).toBe(false)
+  })
+  it('mutes the row as well as tinting it', () => {
+    expect(OFFLINE_ROW_CLASS).toContain('opacity-70')
   })
 })

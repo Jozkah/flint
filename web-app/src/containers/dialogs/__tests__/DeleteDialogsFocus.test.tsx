@@ -102,3 +102,15 @@ describe.each(cases)('$name', ({ cancel, open, deleted }) => {
     expect(deleted(onDelete)).toBe(false)
   })
 })
+
+describe('DeleteMessageDialog names', () => {
+  it('gives the confirm button its own name, not the trigger\'s', async () => {
+    render(<DeleteMessageDialog onDelete={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'common:deleteMessage' }))
+    const confirm = await screen.findByTestId('delete-message-confirm')
+    expect(confirm.getAttribute('aria-label')).toBeNull()
+    expect(screen.getByRole('button', { name: 'common:delete' })).toBe(confirm)
+    // Only the trigger carries the "Delete Message" name.
+    expect(screen.getAllByRole('button', { name: 'common:deleteMessage', hidden: true })).toHaveLength(1)
+  })
+})

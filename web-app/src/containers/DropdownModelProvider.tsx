@@ -40,6 +40,7 @@ import {
   modelAvailability,
   OFFLINE_DOT_CLASS,
   OFFLINE_ROW_CLASS,
+  providerIsUnreachable,
 } from '@/lib/modelAvailability'
 import { providerHasRemoteApiKeys as hasRemoteKeys } from '@/lib/provider-api-keys'
 import { useModelOrder } from '@/hooks/useModelOrder'
@@ -532,10 +533,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // it, so they are not repeated here.
   const flatItems = useMemo(() => {
     if (!wantsFlatList) return []
-    return sortModels(filteredItems, sort, lastUsed).filter(
+    // Models from a provider that did not answer go last.
+    return sortModels(filteredItems, sort, lastUsed, modelIsOffline).filter(
       (item) => !favoriteModels.some((fav) => fav.id === item.model.id)
     )
-  }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels])
+  }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels, modelIsOffline])
 
   // With nothing to list, the provider sections are still worth showing: their
   // headers are how a user reaches a provider's settings to add a model.
@@ -556,6 +558,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           // Local (llamacpp) first
           if (aIsLocal && !bIsLocal) return -1
           if (!aIsLocal && bIsLocal) return 1
+
+          // A provider that did not answer its last request goes last.
+          const aDown = providerIsUnreachable(a, unreachableOrigins)
+          const bDown = providerIsUnreachable(b, unreachableOrigins)
+          if (aDown !== bDown) return aDown ? 1 : -1
 
           // Configured providers sort above unconfigured templates. Same
           // predicate as the visibility gate, so the two cannot disagree about
@@ -598,7 +605,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     }
 
     return groups
-  }, [filteredItems, providers, searchValue, favoriteModels])
+  }, [filteredItems, providers, searchValue, favoriteModels, unreachableOrigins])
 
   const handleSelect = useCallback(
     async (searchableModel: SearchableModel) => {

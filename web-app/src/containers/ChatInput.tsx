@@ -48,7 +48,6 @@ import { generateId } from 'ai'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageChip } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
-import { BotIcon } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -397,7 +396,6 @@ const ChatInput = memo(function ChatInput({
   const effectiveAgentMode = isAgentMode && !projectId
   // Gate for the controls that shape which tools the model is offered.
   const showToolControls = ownsToolSet && !effectiveAgentMode
-  const toggleAgentMode = useAgentMode((state) => state.toggleAgentMode)
   const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
   const setWebSearchEnabled = useWebSearchConfig((s) => s.setWebSearchEnabled)
 
@@ -680,10 +678,6 @@ const ChatInput = memo(function ChatInput({
     },
     [workingDir, referenceDataFolder, referenceAgents]
   )
-
-  const handleAgentToggle = useCallback(() => {
-    toggleAgentMode(agentModeKey)
-  }, [agentModeKey, toggleAgentMode])
 
   // Get current thread messages for token counting
   const threadMessages = useMessages(
@@ -2910,84 +2904,44 @@ const ChatInput = memo(function ChatInput({
                     // Use default tools dropdown
                     <Tooltip
                       open={tooltipShown === 'tools'}
-                      onOpenChange={(newValue) => newValue ? setTooltipShown('tools') : setTooltipShown(false)}
+                      onOpenChange={(newValue) =>
+                        // No tooltip over the open menu. (Not `disabled` on
+                        // the trigger: that lands on the button itself.)
+                        newValue && !dropdownToolsAvailable
+                          ? setTooltipShown('tools')
+                          : setTooltipShown(false)
+                      }
                     >
-                      <TooltipTrigger
-                        asChild
-                        disabled={dropdownToolsAvailable}
+                      {/* One button: the dropdown trigger and the tooltip
+                          trigger both merge onto it, so there is no
+                          interactive element nested inside another. */}
+                      <DropdownToolsAvailable
+                        onOpenChange={(isOpen) => {
+                          setDropdownToolsAvailable(isOpen)
+                          if (isOpen) {
+                            setTooltipShown(false)
+                          }
+                        }}
                       >
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t('tools')}
-                          className="size-7 rounded-[7px] pointer-coarse:size-11"
-                          onClick={(e) => {
-                            setDropdownToolsAvailable(false)
-                            e.stopPropagation()
-                          }}
-                        >
-                          <DropdownToolsAvailable
-                            onOpenChange={(isOpen) => {
-                              setDropdownToolsAvailable(isOpen)
-                              if (isOpen) {
-                                setTooltipShown(false)
-                              }
-                            }}
-                          >
-                            {() => {
-                              return (
-                                <div
-                                  className={cn(
-                                    'p-1 flex items-center justify-center rounded-sm transition-all duration-200 ease-in-out gap-1 cursor-pointer',
-                                  )}
-                                >
-                                  <Wrench
-                                    className={cn(
-                                      'size-4 text-muted-foreground',
-                                    )}
-                                  />
-                                </div>
-                              )
-                            }}
-                          </DropdownToolsAvailable>
-                        </Button>
-                      </TooltipTrigger>
+                        {() => (
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={t('tools')}
+                              data-testid="composer-tools-trigger"
+                              className="size-7 rounded-[7px] pointer-coarse:size-11"
+                            >
+                              <Wrench className="size-4 text-muted-foreground" />
+                            </Button>
+                          </TooltipTrigger>
+                        )}
+                      </DropdownToolsAvailable>
                       <TooltipContent>
                         <p>{t('tools')}</p>
                       </TooltipContent>
                     </Tooltip>
                   ))}
-
-                {/* Agent mode toggle hidden — kept as dead code for future use */}
-                {false && !projectId && isAgentMode && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={isAgentMode ? "default" : "ghost"}
-                        size="icon-xs"
-                        onClick={currentThreadId ? handleAgentToggle : undefined}
-                        className={cn(
-                          isAgentMode && 'items-center bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]',
-                          !currentThreadId && 'cursor-default pointer-events-none'
-                        )}
-                      >
-                        <BotIcon
-                          className={cn(
-                            'text-muted-foreground -mt-0.5',
-                            isAgentMode && 'text-foreground'
-                          )}
-                        />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {isAgentMode
-                          ? 'Agent mode active'
-                          : 'Enable agent mode'}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
 
                 {!effectiveAgentMode && selectedModel?.capabilities?.includes('tools') && (
                   <Tooltip>

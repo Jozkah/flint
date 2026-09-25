@@ -184,3 +184,21 @@ describe('the stored preference', () => {
     expect(isModelSortOption(undefined)).toBe(false)
   })
 })
+
+describe('unreachable providers', () => {
+  it('lists their models after every working model, each part in order', () => {
+    const items = [
+      item('down', 'alpha'),
+      item('up', 'charlie'),
+      item('up', 'bravo'),
+      item('down', 'delta'),
+    ]
+    const sorted = sortModels(items, 'name-asc', undefined, (i) => i.provider.provider === 'down')
+    expect(names(sorted)).toEqual(['bravo', 'charlie', 'alpha', 'delta'])
+  })
+
+  it('leaves the order alone when nothing is unreachable', () => {
+    const items = [item('a', 'b'), item('a', 'a')]
+    expect(names(sortModels(items, 'name-asc', undefined, () => false))).toEqual(['a', 'b'])
+  })
+})
