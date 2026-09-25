@@ -490,7 +490,7 @@ Then run `yarn dev` or `yarn build` again.
 | `yarn dev` | Run the desktop app in development |
 | `yarn build` | Build the installable desktop app |
 | `yarn build:web` | Build only the web interface (fast check) |
-| `yarn workspace @janhq/web-app typecheck` | Type-check the interface |
+| `yarn workspace @janhq/web-app typecheck` | Type-check the interface (rebuilds the Tauri plugins' `dist-js` first, so their types are never stale) |
 | `yarn lint` | Lint the interface |
 | `yarn test:web` | Run the interface tests |
 | `yarn build:cli` | Build the `flint` command-line agent into `src-tauri/resources/bin/` |
@@ -516,7 +516,7 @@ CUDA variants need the CUDA Toolkit.
 ### Troubleshooting
 
 - **`cross-env: command not found` or `tauri: command not found`** — run `yarn install` first, from the repository root.
-- **Type errors about `@janhq/tauri-plugin-…-api` or `@janhq/core`** — the shared packages are stale; run `yarn build:tauri:plugin:api` and `yarn build:core` again.
+- **Type errors about `@janhq/tauri-plugin-…-api` or `@janhq/core`** — the shared packages are stale; run `yarn build:tauri:plugin:api` and `yarn build:core` again. The web-app `typecheck` script and `yarn build:extensions` both rebuild the plugins' `dist-js` themselves, so after merging a branch that changes a plugin's `guest-js` either one picks the change up.
 - **"ServiceHub not initialized" or "Failed to resolve import @janhq/assistant-extension" in `yarn dev`** — the bundled extensions are not built; run `yarn build:extensions`.
 - **"Sidecar verification failed … empty (0 bytes)"** — placeholder binaries are in the way. Delete everything in `src-tauri/resources/bin/` and run `yarn download:bin`, then build again.
 - **"the engine build needs clang on PATH"** — LLVM is installed but not on `PATH`; run the `PATH` command from step 1 and reopen the terminal.
