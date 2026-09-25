@@ -271,15 +271,15 @@ function LocalAPIServerContent() {
               className="w-[min(100vw-1.5rem,480px)] max-h-[70vh] overflow-y-auto bg-card"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-border pb-2">
-                  <h2 className="font-semibold text-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.serverConfiguration')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.serverHost')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -292,7 +292,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.serverPort')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -303,7 +303,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.apiPrefix')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -313,7 +313,7 @@ function LocalAPIServerContent() {
                     <ApiPrefixInput isServerRunning={isServerRunning} />
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">
+                    <p className="text-[13px] font-medium">
                       {t('settings:localApiServer.apiKey')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -327,7 +327,7 @@ function LocalAPIServerContent() {
                     </div>
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">
+                    <p className="text-[13px] font-medium">
                       {t('settings:localApiServer.trustedHosts')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -339,7 +339,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.proxyTimeout')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -350,15 +350,15 @@ function LocalAPIServerContent() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border pt-4 mt-4">
-                  <h2 className="font-semibold text-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.advancedSettings')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         Execute tools on server
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -373,7 +373,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.cors')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -388,7 +388,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.verboseLogs')}
                       </p>
                       <p className="text-xs text-muted-foreground">
