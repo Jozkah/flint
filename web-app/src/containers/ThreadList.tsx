@@ -413,6 +413,7 @@ const ThreadItem = memo(
             open
             onOpenChange={setNewGroupOpen}
             editingKey={null}
+            noun="group"
             onSave={createGroupAndMove}
           />
         )}

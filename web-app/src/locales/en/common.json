@@ -571,6 +571,14 @@
       "createSuccess": "Collection \"{{projectName}}\" created",
       "updateSuccess": "Collection \"{{projectName}}\" updated"
     },
+    "addGroupDialog": {
+      "createTitle": "Create group",
+      "editTitle": "Edit group",
+      "namePlaceholder": "Enter group name...",
+      "alreadyExists": "Group \"{{projectName}}\" already exists",
+      "createSuccess": "Group \"{{projectName}}\" created",
+      "updateSuccess": "Group \"{{projectName}}\" updated"
+    },
     "noConversationsIn": "No Conversations in {{projectName}}",
     "startNewConversation": "Start a new conversation with {{projectName}} below",
     "conversationsIn": "Conversations in {{projectName}}",

@@ -38,6 +38,12 @@ interface AddProjectDialogProps {
     assistantId?: string
   }
   onSave: (name: string, assistantId?: string) => void
+  /**
+   * What the thing being created is called. The chat row's "New group…"
+   * creates a sidebar group, so it says "group"; other callers keep the
+   * collection wording.
+   */
+  noun?: 'collection' | 'group'
 }
 
 export default function AddProjectDialog({
@@ -46,8 +52,11 @@ export default function AddProjectDialog({
   editingKey,
   initialData,
   onSave,
+  noun = 'collection',
 }: AddProjectDialogProps) {
   const { t } = useTranslation()
+  const dialogKey =
+    noun === 'group' ? 'projects.addGroupDialog' : 'projects.addProjectDialog'
   const navigate = useNavigate()
   const [name, setName] = useState(initialData?.name || '')
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>(initialData?.assistantId)
@@ -77,7 +86,7 @@ export default function AddProjectDialog({
     )
 
     if (isDuplicate) {
-      toast.warning(t('projects.addProjectDialog.alreadyExists', { projectName: trimmedName }))
+      toast.warning(t(`${dialogKey}.alreadyExists`, { projectName: trimmedName }))
       return
     }
 
@@ -85,9 +94,9 @@ export default function AddProjectDialog({
 
     // Show success message
     if (editingKey) {
-      toast.success(t('projects.addProjectDialog.updateSuccess', { projectName: trimmedName }))
+      toast.success(t(`${dialogKey}.updateSuccess`, { projectName: trimmedName }))
     } else {
-      toast.success(t('projects.addProjectDialog.createSuccess', { projectName: trimmedName }))
+      toast.success(t(`${dialogKey}.createSuccess`, { projectName: trimmedName }))
     }
     setName('')
     setSelectedAssistantId(undefined)
@@ -124,7 +133,7 @@ export default function AddProjectDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {editingKey ? t('projects.addProjectDialog.editTitle') : t('projects.addProjectDialog.createTitle')}
+            {editingKey ? t(`${dialogKey}.editTitle`) : t(`${dialogKey}.createTitle`)}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -132,7 +141,7 @@ export default function AddProjectDialog({
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t('projects.addProjectDialog.namePlaceholder')}
+              placeholder={t(`${dialogKey}.namePlaceholder`)}
               className="mt-1"
               autoFocus
               onKeyDown={(e) => {
