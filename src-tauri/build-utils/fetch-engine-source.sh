@@ -23,7 +23,9 @@ if [ -n "${JAN_LLAMA_CPP_DIR:-}" ]; then
   exit 0
 fi
 
-pin() { sed -n "s/^pub const $1: &str = \"\(.*\)\";/\1/p" "$PLUGIN_DIR/build.rs"; }
+# `tr` drops a carriage return: with Git's default core.autocrlf on Windows,
+# build.rs is checked out with CRLF and the pinned tag would end in \r.
+pin() { sed -n "s/^pub const $1: &str = \"\(.*\)\";/\1/p" "$PLUGIN_DIR/build.rs" | tr -d '\r'; }
 TAG=$(pin LLAMA_CPP_TAG)
 COMMIT=$(pin LLAMA_CPP_COMMIT)
 if [ -z "$TAG" ] || [ -z "$COMMIT" ]; then
