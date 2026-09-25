@@ -78,14 +78,23 @@ const BAND_LINE = {
 }
 
 /** A labelled usage bar with its measured number beside it. */
-function Meter({ label, percent }: { label: string; percent: number }) {
+function Meter({
+  label,
+  percent,
+  display,
+}: {
+  label: string
+  percent: number
+  /** Shown instead of the percent, e.g. a rate or a temperature. */
+  display?: string
+}) {
   const clamped = clampPercent(percent)
   return (
     <div className="mt-3 flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="text-muted-foreground">{label}</span>
         <b className="font-medium tabular-nums text-foreground">
-          {percent.toFixed(2)}%
+          {display ?? `${percent.toFixed(2)}%`}
         </b>
       </div>
       <div
@@ -167,16 +176,18 @@ function Panel({
   title,
   icon,
   delay,
+  className,
   children,
 }: {
   title: string
   icon: ReactNode
   delay: number
+  className?: string
   children: ReactNode
 }) {
   return (
     <Frame
-      className="motion-safe:animate-rise-in"
+      className={cn('motion-safe:animate-rise-in', className)}
       style={{ animationDelay: `${delay}ms` }}
     >
       <FrameHeader icon={icon} title={title} />
@@ -188,6 +199,28 @@ function Panel({
 /** Appends a sample, keeping the last {@link HISTORY}. */
 const pushSample = (list: number[] | undefined, value: number) =>
   [...(list ?? [value]), value].slice(-HISTORY)
+
+/** A rate as a share of the highest rate seen on that interface. */
+function ratePercent(rate: number | undefined, peak: number | undefined) {
+  if (!rate || !peak) return 0
+  return (rate / peak) * 100
+}
+
+/**
+ * How full a sensor's meter is: against its critical point, else its
+ * recorded max, else 100 °C. Warm (75%) and hot (90%) use the load bands.
+ */
+function temperatureScale(sensor: SystemSnapshot['sensors'][number]) {
+  const temp = sensor.temperature ?? 0
+  const pick = (
+    limit: number | null,
+    of: 'ofCritical' | 'ofMax'
+  ): { limit: number; of: 'ofCritical' | 'ofMax' } | null =>
+    limit != null && limit > temp && limit > 0 ? { limit, of } : null
+  const chosen = pick(sensor.critical, 'ofCritical') ?? pick(sensor.max, 'ofMax')
+  if (!chosen) return { limit: null, of: null, percent: temp }
+  return { ...chosen, percent: (temp / chosen.limit) * 100 }
+}
 
 /** Per-core usage, folded away until asked for. */
 function PerCoreUsage({ values }: { values: number[] }) {
@@ -320,18 +353,34 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
       title={t('system-monitor:drives')}
       icon={<Icon name="x-server" size={16} />}
       delay={300}
+      className="md:col-span-2"
     >
-      <div className="flex flex-col gap-4">
-        {snapshot.disks.length === 0 ? (
-          <Empty>{t('system-monitor:noDrives')}</Empty>
-        ) : (
-          snapshot.disks.map((disk) => {
-            const title = disk.name
-              ? `${disk.name} (${disk.mount_point})`
-              : disk.mount_point
+      {snapshot.disks.length === 0 ? (
+        <Empty>{t('system-monitor:noDrives')}</Empty>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {snapshot.disks.map((disk) => {
+            const used = disk.total - Math.min(disk.available, disk.total)
             return (
-              <Row key={disk.mount_point}>
-                <RowTitle title={title}>
+              <div
+                key={disk.mount_point}
+                data-testid="drive-card"
+                className="flex min-w-0 flex-col rounded-lg border border-border px-3 pt-2.5 pb-3"
+              >
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <b className="shrink-0 font-mono text-[13px] font-medium text-foreground">
+                    {disk.mount_point}
+                  </b>
+                  {disk.name && (
+                    <span
+                      className="min-w-0 truncate text-xs text-muted-foreground"
+                      title={disk.name}
+                    >
+                      {disk.name}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {disk.file_system && <Chip mono>{disk.file_system}</Chip>}
                   {disk.kind !== 'Unknown' && <Chip mono>{disk.kind}</Chip>}
                   {disk.removable && (
@@ -339,29 +388,21 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
                       {t('system-monitor:removable')}
                     </Chip>
                   )}
-                </RowTitle>
-                <Stats>
-                  <Stat label={t('system-monitor:total')}>
-                    {formatBytes(disk.total)}
-                  </Stat>
-                  <Stat label={t('system-monitor:used')}>
-                    {formatBytes(
-                      disk.total - Math.min(disk.available, disk.total)
-                    )}
-                  </Stat>
-                  <Stat label={t('system-monitor:free')}>
-                    {formatBytes(disk.available)}
-                  </Stat>
-                </Stats>
+                </div>
                 <Meter
-                  label={t('system-monitor:diskUsage')}
+                  label={`${formatBytes(used)} / ${formatBytes(disk.total)}`}
                   percent={diskUsedPercent(disk)}
                 />
-              </Row>
+                <div className="mt-1.5 text-[11.5px] text-muted-foreground tabular-nums">
+                  {t('system-monitor:freeOf', {
+                    free: formatBytes(disk.available),
+                  })}
+                </div>
+              </div>
             )
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </Panel>
   )
 }
@@ -369,9 +410,12 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
 function NetworkPanel({
   snapshot,
   rates,
+  peaks,
 }: {
   snapshot: SystemSnapshot
   rates: Record<string, NetworkRate>
+  /** Highest rate seen per interface this session; the meters' scale. */
+  peaks: Record<string, NetworkRate>
 }) {
   const { t } = useTranslation()
   const [showVirtual, setShowVirtual] = useState(false)
@@ -408,6 +452,11 @@ function NetworkPanel({
             {t('system-monitor:showVirtual', { count: hiddenCount })}
           </label>
         )}
+        {shown.length > 0 && (
+          <p className="text-[11.5px] text-muted-foreground">
+            {t('system-monitor:peakScale')}
+          </p>
+        )}
         {shown.length === 0 ? (
           <Empty>{t('system-monitor:noNetworks')}</Empty>
         ) : (
@@ -423,13 +472,17 @@ function NetworkPanel({
                     kind && <Chip>{kind}</Chip>
                   )}
                 </RowTitle>
+                <Meter
+                  label={t('system-monitor:download')}
+                  percent={ratePercent(rate?.rx, peaks[n.name]?.rx)}
+                  display={rate ? formatRate(rate.rx) : '—'}
+                />
+                <Meter
+                  label={t('system-monitor:upload')}
+                  percent={ratePercent(rate?.tx, peaks[n.name]?.tx)}
+                  display={rate ? formatRate(rate.tx) : '—'}
+                />
                 <Stats>
-                  <Stat label={t('system-monitor:download')}>
-                    {rate ? formatRate(rate.rx) : '—'}
-                  </Stat>
-                  <Stat label={t('system-monitor:upload')}>
-                    {rate ? formatRate(rate.tx) : '—'}
-                  </Stat>
                   <Stat label={t('system-monitor:totalReceived')}>
                     {formatBytes(n.total_received)}
                   </Stat>
@@ -469,38 +522,38 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
         </Empty>
       ) : (
         <div className="flex flex-col gap-4">
+          {IS_WINDOWS && !sensors.some((s) => s.kind === 'cpu') && (
+            <Empty>{t('system-monitor:noCpuSensorsWindows')}</Empty>
+          )}
           {sensors.map((sensor, i) => {
             const temp = sensor.temperature ?? 0
             const kind = kindLabel[sensor.kind]
-            // Heat as a share of the critical point when known; otherwise
-            // the Celsius value itself is a fair stand-in for the bands.
-            const heat = band(
-              sensor.critical != null && sensor.critical > 0
-                ? (temp / sensor.critical) * 100
-                : temp
-            )
+            const scale = temperatureScale(sensor)
             return (
               <Row key={`${sensor.label}-${i}`}>
                 <RowTitle title={sensor.label}>
                   {kind && <Chip mono>{kind}</Chip>}
-                  <Chip tone={heat === 'ok' ? 'neutral' : heat} dot>
-                    {formatTemperature(sensor.temperature)}
-                  </Chip>
                 </RowTitle>
-                {(sensor.max != null || sensor.critical != null) && (
-                  <Stats>
-                    {sensor.max != null && (
-                      <Stat label={t('system-monitor:max')}>
-                        {formatTemperature(sensor.max)}
-                      </Stat>
-                    )}
-                    {sensor.critical != null && (
-                      <Stat label={t('system-monitor:critical')}>
-                        {formatTemperature(sensor.critical)}
-                      </Stat>
-                    )}
-                  </Stats>
-                )}
+                <Meter
+                  label={
+                    scale.limit
+                      ? t(`system-monitor:${scale.of}`, {
+                          value: formatTemperature(scale.limit),
+                        })
+                      : t('system-monitor:current')
+                  }
+                  percent={scale.percent}
+                  display={formatTemperature(temp)}
+                />
+                <div className="text-[11.5px] text-muted-foreground">
+                  {sensor.source}
+                  {sensor.max != null && scale.of !== 'ofMax' && (
+                    <>
+                      {' · '}
+                      {t('system-monitor:max')} {formatTemperature(sensor.max)}
+                    </>
+                  )}
+                </div>
               </Row>
             )
           })}
@@ -522,6 +575,7 @@ function SystemMonitorContent() {
 
   const [snapshot, setSnapshot] = useState<SystemSnapshot | null>(null)
   const [rates, setRates] = useState<Record<string, NetworkRate>>({})
+  const [peaks, setPeaks] = useState<Record<string, NetworkRate>>({})
   const lastSnapshot = useRef<SystemSnapshot | null>(null)
 
   const pollSnapshot = useCallback(() => {
@@ -530,7 +584,18 @@ function SystemMonitorContent() {
       .getSystemSnapshot()
       .then((next) => {
         if (!next) return
-        setRates(computeNetworkRates(lastSnapshot.current, next))
+        const nextRates = computeNetworkRates(lastSnapshot.current, next)
+        setRates(nextRates)
+        setPeaks((p) => {
+          const out = { ...p }
+          for (const [name, r] of Object.entries(nextRates)) {
+            out[name] = {
+              rx: Math.max(out[name]?.rx ?? 0, r.rx),
+              tx: Math.max(out[name]?.tx ?? 0, r.tx),
+            }
+          }
+          return out
+        })
         lastSnapshot.current = next
         setSnapshot(next)
       })
@@ -782,7 +847,7 @@ function SystemMonitorContent() {
 
             {snapshot && <SystemPanel snapshot={snapshot} />}
             {snapshot && <DrivesPanel snapshot={snapshot} />}
-            {snapshot && <NetworkPanel snapshot={snapshot} rates={rates} />}
+            {snapshot && <NetworkPanel snapshot={snapshot} rates={rates} peaks={peaks} />}
             {snapshot && <TemperaturePanel snapshot={snapshot} />}
           </div>
         </div>

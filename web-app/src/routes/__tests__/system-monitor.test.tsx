@@ -317,6 +317,13 @@ describe('SystemMonitor route', () => {
       await vi.advanceTimersByTimeAsync(5100)
       expect(screen.getByText('2.0 KB/s')).toBeInTheDocument()
       expect(screen.getByText('0 B/s')).toBeInTheDocument()
+      // The first rate is the peak so far: full bar for download, empty upload.
+      expect(
+        screen.getByRole('meter', { name: 'system-monitor:download' })
+      ).toHaveAttribute('aria-valuenow', '100')
+      expect(
+        screen.getByRole('meter', { name: 'system-monitor:upload' })
+      ).toHaveAttribute('aria-valuenow', '0')
     })
 
     it('explains missing sensors on Windows', async () => {
@@ -332,17 +339,49 @@ describe('SystemMonitor route', () => {
       h.getSystemSnapshot.mockResolvedValue(
         snap({
           sensors: [
-            { label: 'CPU Package', kind: 'cpu', temperature: 61.4, max: 80, critical: 100 },
-            { label: 'Unreadable', kind: 'other', temperature: null, max: null, critical: null },
+            { label: 'CPU Package', kind: 'cpu', source: 'sysinfo', temperature: 61.4, max: 80, critical: 100 },
+            { label: 'Samsung SSD', kind: 'disk', source: 'Storage reliability counter', temperature: 76, max: 80, critical: null },
+            { label: 'Unreadable', kind: 'other', source: 'sysinfo', temperature: null, max: null, critical: null },
           ],
         })
       )
       renderComponent()
       expect(await screen.findByText('CPU Package')).toBeInTheDocument()
       expect(screen.getByText('61 °C')).toBeInTheDocument()
-      expect(screen.getByText('80 °C')).toBeInTheDocument()
-      expect(screen.getByText('100 °C')).toBeInTheDocument()
+      expect(screen.getByText(/80 °C/)).toBeInTheDocument()
+      expect(screen.getByText('Storage reliability counter')).toBeInTheDocument()
       expect(screen.queryByText('Unreadable')).not.toBeInTheDocument()
+      // Meters: CPU against critical (61/100), drive against max (76/80 = 95%, hot).
+      const cpu = screen.getByRole('meter', { name: 'system-monitor:ofCritical' })
+      expect(cpu).toHaveAttribute('aria-valuenow', '61')
+      const drive = screen.getByRole('meter', { name: 'system-monitor:ofMax' })
+      expect(drive).toHaveAttribute('aria-valuenow', '95')
+      expect(drive.firstElementChild?.className).toContain('--destructive')
+    })
+
+    it('notes missing CPU temperatures on Windows when only a GPU reports', async () => {
+      ;(globalThis as any).IS_WINDOWS = true
+      h.getSystemSnapshot.mockResolvedValue(
+        snap({
+          sensors: [
+            { label: 'RTX 4090', kind: 'gpu', source: 'NVML', temperature: 50, max: null, critical: 90 },
+          ],
+        })
+      )
+      renderComponent()
+      expect(await screen.findByText('RTX 4090')).toBeInTheDocument()
+      expect(
+        screen.getByText('system-monitor:noCpuSensorsWindows')
+      ).toBeInTheDocument()
+    })
+
+    it('lays drives out as cards with a usage meter each', async () => {
+      h.getSystemSnapshot.mockResolvedValue(snap())
+      renderComponent()
+      const cards = await screen.findAllByTestId('drive-card')
+      expect(cards).toHaveLength(2)
+      expect(cards[0]).toHaveTextContent('75.0 GB / 100.0 GB')
+      expect(cards[0].parentElement?.className).toContain('md:grid-cols-2')
     })
 
     it('does not poll while the page is hidden', async () => {
