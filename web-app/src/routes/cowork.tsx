@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { PrBar } from '@/containers/PrBar'
 import { createFileRoute } from '@tanstack/react-router'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
@@ -4446,6 +4447,9 @@ function CoworkPage() {
                   useCoworkSessions.getState().dismissHandoff(session.id)
                 }
               />
+              {/* The pull request for the folder's branch, if it has one, with
+                  the same mark the session carries in the sidebar. */}
+              <PrBar folder={folder} className="mb-2" />
               {/* AH-209: a folder with no JAN.md is offered a starting one,
                   proposed from a survey and written only when accepted. */}
               <CoworkProjectInit
