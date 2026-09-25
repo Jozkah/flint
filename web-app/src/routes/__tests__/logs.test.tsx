@@ -77,12 +77,12 @@ describe('LogsViewer route', () => {
       expect(screen.getByText('boom')).toBeInTheDocument()
     })
     expect(screen.getByText('hello')).toBeInTheDocument()
-    expect(screen.getByText('error')).toBeInTheDocument()
-    expect(screen.getByText('info')).toBeInTheDocument()
-    expect(screen.getByText('warn')).toBeInTheDocument()
-    expect(screen.getByText('debug')).toBeInTheDocument()
+    expect(screen.getByText('ERROR')).toBeInTheDocument()
+    expect(screen.getByText('INFO')).toBeInTheDocument()
+    expect(screen.getByText('WARN')).toBeInTheDocument()
+    expect(screen.getByText('DEBUG')).toBeInTheDocument()
     // default branch (unknown level) still renders uppercased
-    expect(screen.getByText('verbose')).toBeInTheDocument()
+    expect(screen.getByText('VERBOSE')).toBeInTheDocument()
   })
 
   it('filters out falsy log entries before rendering', async () => {
