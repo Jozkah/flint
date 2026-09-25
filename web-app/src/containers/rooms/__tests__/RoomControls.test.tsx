@@ -78,6 +78,17 @@ describe('RoomControls', () => {
     expect(controller.synthesize).toHaveBeenCalledWith('r1')
   })
 
+  it('completed: a room that finished on its own can still be wrapped up', async () => {
+    const user = userEvent.setup()
+    const { controller } = setup('completed')
+    for (const name of ['Call vote', 'Final positions', 'Synthesize']) expect(btn(name)).toBeEnabled()
+    expect(btn('Cancel turn')).toBeDisabled()
+    await user.click(btn('Final positions'))
+    expect(controller.requestFinalPositions).toHaveBeenCalledWith('r1')
+    await user.click(btn('Synthesize'))
+    expect(controller.synthesize).toHaveBeenCalledWith('r1')
+  })
+
   it('stop asks for confirmation first', async () => {
     const user = userEvent.setup()
     const { controller } = setup('running')

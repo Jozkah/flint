@@ -49,6 +49,9 @@ export function controlAvailability(
   const s = room.status
   const midTurn = isMidTurn(room, liveTurn)
   const betweenTurns = ACTIVE.includes(s) && !midTurn
+  // A room can finish on its own (turn limit), and the engine runs one-off
+  // commands on a completed room, so the wrap-up actions stay open there.
+  const wrapUp = betweenTurns || (s === 'completed' && !midTurn)
   return {
     start:
       (s === 'draft' || s === 'stopped' || s === 'completed' || s === 'failed') &&
@@ -58,9 +61,9 @@ export function controlAvailability(
     stop: ACTIVE.includes(s),
     cancelTurn: midTurn,
     selectNext: betweenTurns && availableParticipants(room).length > 0,
-    callVote: betweenTurns,
-    requestFinalPositions: betweenTurns,
-    synthesize: betweenTurns,
+    callVote: wrapUp,
+    requestFinalPositions: wrapUp,
+    synthesize: wrapUp,
   }
 }
 
