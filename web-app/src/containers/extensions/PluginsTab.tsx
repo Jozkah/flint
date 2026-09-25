@@ -7,7 +7,6 @@ import {
   OctagonAlert,
   Plus,
   Power,
-  Puzzle,
   Search,
   Sparkles,
   Trash2,
@@ -42,6 +41,13 @@ import {
   type PluginSources,
 } from '@/lib/pluginStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
+import {
+  getMatrix,
+  listProjects,
+  type ExtensionsMatrix,
+  type ProjectEntry,
+} from '@/lib/extensionsStore'
+import { Icon } from '@/components/ui/icon'
 import { ExtensionIcon, extensionIcon } from '@/containers/extensions/ExtensionIcon'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -56,7 +62,18 @@ const ALERT = 'flex items-start gap-1.5 text-xs text-destructive break-words'
  * panel to discover and install new ones. Lifts the list/details/install/
  * remove flow out of `PluginsManagerDialog` for `scope: 'global'`.
  */
-export default function PluginsTab() {
+export default function PluginsTab({
+  hideToolbar = false,
+  view = 'installed',
+  installRequest = 0,
+}: {
+  /** The page supplies its own Install button (and a Marketplace tab). */
+  hideToolbar?: boolean
+  /** Installed plugins, or the marketplace as a grid of cards. */
+  view?: 'installed' | 'marketplace'
+  /** Bumped by the page's Install button to open the install panel. */
+  installRequest?: number
+} = {}) {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
 
@@ -95,6 +112,20 @@ export default function PluginsTab() {
 
   const tRef = useRef(t)
   tRef.current = t
+
+  // Where each plugin is on, for the "Enabled on" chips. Best effort: the
+  // cards render without it.
+  const [matrix, setMatrix] = useState<ExtensionsMatrix | null>(null)
+  const [projects, setProjects] = useState<ProjectEntry[]>([])
+  const refreshMatrix = useCallback(() => {
+    Promise.all([getMatrix(), listProjects()])
+      .then(([m, list]) => {
+        setMatrix(m)
+        setProjects(list)
+      })
+      .catch(() => {})
+  }, [])
+  useEffect(() => refreshMatrix(), [refreshMatrix])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -235,6 +266,32 @@ export default function PluginsTab() {
     } finally {
       setInstallingName(null)
     }
+  }
+
+  // The page's Install button.
+  const lastInstallRequest = useRef(installRequest)
+  useEffect(() => {
+    if (installRequest !== lastInstallRequest.current) {
+      lastInstallRequest.current = installRequest
+      openInstall()
+    }
+     
+  }, [installRequest])
+
+  // The Marketplace tab lists the index straight away.
+  useEffect(() => {
+    if (view === 'marketplace' && sources?.marketplace) void runSearch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, sources?.marketplace])
+
+  const surfaceColumns = [
+    { key: 'home', label: t('common:extensionsManager.surfaces.home', undefined) ?? 'Home' },
+    { key: 'rooms', label: t('common:extensionsManager.surfaces.rooms', undefined) ?? 'Rooms' },
+    ...projects.map((p) => ({ key: `cowork:${p.id}`, label: p.name || p.folder })),
+  ]
+  const enabledOn = (p: InstalledPlugin) => {
+    const entry = matrix?.plugins[p.id]
+    return (key: string) => p.enabled && (!entry || entry.surfaces.includes(key))
   }
 
   const sourceLabel = (p: InstalledPlugin) =>
@@ -425,12 +482,45 @@ export default function PluginsTab() {
                 </Chip>
               </span>
             )}
+            {matrix && (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-[11px] font-medium text-subtle-foreground uppercase">
+                  {t('common:extensionsManager.enablement.title', undefined) ?? 'Enabled on'}
+                </span>
+                {surfaceColumns.slice(0, 4).map((c) => {
+                  const on = enabledOn(p)(c.key)
+                  return (
+                    <span
+                      key={c.key}
+                      className={cn(
+                        'rounded-full border-[0.8px] px-2 py-0.5 text-[11px] transition-colors',
+                        on
+                          ? 'border-transparent bg-[color-mix(in_oklab,var(--success)_14%,transparent)] text-success'
+                          : 'border-dashed border-border-strong text-subtle-foreground'
+                      )}
+                    >
+                      {c.label}
+                    </span>
+                  )
+                })}
+                {surfaceColumns.length > 4 && (
+                  <span className="text-[11px] text-subtle-foreground">
+                    +{surfaceColumns.length - 4}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="relative z-10 mt-auto flex items-center justify-between gap-2 text-xs text-subtle-foreground">
               <span
                 className="min-w-0 truncate font-mono"
                 title={p.source ?? undefined}
               >
-                {p.source ? p.source : sourceLabel(p)}
+                {/* A repository reads best as its address; a folder or a
+                    marketplace name by what kind of source it is (the full
+                    path is in the tooltip and the details). */}
+                {p.sourceKind === 'git' && p.source
+                  ? p.source.replace(/^https?:\/\//, '')
+                  : sourceLabel(p)}
               </span>
               <RowMenu
                 label={t('engine:extensions.pluginActions', { name: p.name })}
@@ -476,9 +566,83 @@ export default function PluginsTab() {
     )
   }
 
+  /** A marketplace entry as a card, with its Install button. */
+  const renderMarketCard = (entry: MarketEntry, i: number) => {
+    const { from } = extensionIcon(entry.name)
+    const installed = plugins.some((p) => p.name === entry.name)
+    return (
+      <div role="listitem" key={entry.name} className="min-w-0">
+        <Frame
+          style={{ animationDelay: `${60 + i * 60}ms`, ['--g1' as string]: from }}
+          className="group h-full motion-safe:animate-rise-in motion-safe:hover:-translate-y-0.5"
+        >
+          <div className="relative flex h-[74px] items-start justify-end rounded-t-[9px] border-b-[0.8px] border-border bg-[radial-gradient(circle_at_18%_130%,color-mix(in_oklab,var(--g1)_70%,transparent),transparent_62%),linear-gradient(120deg,color-mix(in_oklab,var(--g1)_38%,transparent),transparent),repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.08)_10px_10.8px)] p-2.5">
+            <ExtensionIcon
+              name={entry.name}
+              size={40}
+              className="absolute bottom-[-16px] left-3.5 z-10 shadow-[0_0_0_2.5px_var(--card),0_8px_18px_-8px_color-mix(in_oklab,var(--g1)_70%,transparent)] transition-transform duration-300 ease-expo group-hover:-translate-y-0.5 group-hover:-rotate-4"
+            />
+          </div>
+          <div className="relative flex flex-1 flex-col gap-2.5 rounded-b-[9px] bg-card p-3.5 pt-6">
+            <b className="truncate text-sm font-semibold text-foreground">{entry.name}</b>
+            <p className="m-0 line-clamp-2 text-[12.5px] leading-normal text-muted-foreground">
+              {entry.description}
+            </p>
+            <div className="mt-auto flex items-center justify-between gap-2 text-xs text-subtle-foreground">
+              <span className="min-w-0 truncate font-mono" title={entry.repo}>
+                {urlHost(entry.repo) || entry.repo}
+              </span>
+              <Button
+                size="sm"
+                className="h-7 shrink-0 pointer-coarse:h-11"
+                disabled={installed || installingName === entry.name}
+                onClick={() => void installFromMarket(entry)}
+              >
+                {installingName === entry.name && (
+                  <Loader2 className="motion-safe:animate-spin" size={14} aria-hidden />
+                )}
+                {installed ? t('plugins:state.installed') : t('plugins:installButton')}
+              </Button>
+            </div>
+          </div>
+        </Frame>
+      </div>
+    )
+  }
+
+  const renderMarketGrid = () => (
+    <div
+      className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-4"
+      role="list"
+      aria-label={t('plugins:browseButton')}
+      aria-busy={searching}
+    >
+      {!sources?.marketplace ? (
+        <div className="col-span-full" data-testid="plugins-browse-unconfigured">
+          <EmptyState
+            icon={<Icon name="x-puzzle" size={20} />}
+            title={t('plugins:browse.notConfigured')}
+            description={t('plugins:browse.notConfiguredHint')}
+          />
+        </div>
+      ) : searchError ? (
+        <p role="alert" className={cn(ALERT, 'col-span-full')}>
+          <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{searchError}</span>
+        </p>
+      ) : searching && entries.length === 0 ? (
+        <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
+          {t('plugins:loading')}
+        </p>
+      ) : (
+        entries.map(renderMarketCard)
+      )}
+    </div>
+  )
+
   const renderGrid = () => (
     <div
-      className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4"
+      className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-4"
       role="list"
       aria-label={t('plugins:listLabel')}
       aria-busy={loading}
@@ -490,7 +654,7 @@ export default function PluginsTab() {
       ) : plugins.length === 0 ? (
         <div className="col-span-full">
           <EmptyState
-            icon={<Puzzle />}
+            icon={<Icon name="x-puzzle" size={20} />}
             title={t('plugins:empty.title')}
             description={t('plugins:empty.body')}
           />
@@ -831,7 +995,13 @@ export default function PluginsTab() {
   return (
     <>
       <div className="flex min-h-0 flex-col gap-4">
-        {renderToolbar()}
+        {!hideToolbar && renderToolbar()}
+        {hideToolbar && loadError && (
+          <p role="alert" className={ALERT}>
+            <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{loadError}</span>
+          </p>
+        )}
         {removeError && !selectedPlugin && (
           <p role="alert" className={ALERT}>
             <OctagonAlert className="mt-px size-3.5 shrink-0" aria-hidden />
@@ -844,7 +1014,7 @@ export default function PluginsTab() {
             panelOpen && 'lg:grid-cols-[minmax(0,1fr)_380px]'
           )}
         >
-          {renderGrid()}
+          {view === 'marketplace' ? renderMarketGrid() : renderGrid()}
           {panelOpen && (
             <Frame className="motion-safe:animate-rise-in">
               <FrameHeader

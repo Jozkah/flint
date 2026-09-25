@@ -43,6 +43,7 @@ vi.mock('@/lib/skillStore', () => ({
 
 vi.mock('@/lib/extensionsStore', () => ({
   listProjects: vi.fn().mockResolvedValue([]),
+  getMatrix: vi.fn().mockResolvedValue({ skills: {}, plugins: {} }),
   ccScan: vi.fn().mockResolvedValue({ items: [] }),
   ccImport: vi.fn(),
 }))
