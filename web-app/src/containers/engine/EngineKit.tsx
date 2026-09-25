@@ -149,7 +149,7 @@ export function KpiRow({
         'grid gap-4',
         columns === 4
           ? 'grid-cols-2 xl:grid-cols-4'
-          : 'grid-cols-1 sm:grid-cols-3'
+          : 'grid-cols-3 max-sm:gap-2'
       )}
     >
       {children}

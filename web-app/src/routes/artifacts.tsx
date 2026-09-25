@@ -1,22 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import {
-  ChevronRight,
-  Clock,
-  Eye,
-  FolderOpen,
-  Info,
-  Library,
-  SquareArrowOutUpRight,
-  Workflow,
-  X,
-} from 'lucide-react'
+import { Eye, Info, X } from 'lucide-react'
 import { fs } from '@janhq/core'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Segmented } from '@/components/ui/segmented'
+import { Icon, type IconName } from '@/components/ui/icon'
 import {
   EnginePage,
   KpiRow,
@@ -28,16 +19,17 @@ import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { sessionWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
+import { artifactsFromTurns, type CoworkArtifact } from '@/lib/coworkArtifacts'
 import {
-  ARTIFACT_GROUP_NAMES,
-  ARTIFACT_ICON,
-  artifactsFromTurns,
-  type CoworkArtifact,
-} from '@/lib/coworkArtifacts'
-import { previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
-import { cn } from '@/lib/utils'
+  extensionOf,
+  previewKindFor,
+  resolveInRoot,
+} from '@/lib/coworkPreview'
+import type { CoworkTurn } from '@/types/coworkSession'
+import { cn, formatBytes } from '@/lib/utils'
 
 export const Route = createFileRoute(route.artifacts as any)({
   component: ArtifactsPage,
@@ -45,7 +37,50 @@ export const Route = createFileRoute(route.artifacts as any)({
 
 const PAGE = 24
 
+/**
+ * What the library files an artifact under: HTML is a page, SVG is code, the
+ * rest follow their group. Video gets a filter tab only when there is some.
+ */
+type Kind = 'code' | 'page' | 'doc' | 'image' | 'audio' | 'video'
+const KINDS: Kind[] = ['code', 'page', 'doc', 'image', 'audio', 'video']
+const KIND_LABEL: Record<Kind, string> = {
+  code: 'engine:library.kindCode',
+  page: 'engine:library.kindPages',
+  doc: 'engine:library.kindDocuments',
+  image: 'engine:library.kindImages',
+  audio: 'engine:library.kindAudio',
+  video: 'engine:library.kindVideo',
+}
+const KIND_ICON: Record<Kind, IconName> = {
+  code: 'x-code',
+  page: 'x-globe',
+  doc: 'sb-file',
+  image: 'x-palette',
+  audio: 'x-play',
+  video: 'x-play',
+}
+
+function kindOf(artifact: CoworkArtifact): Kind {
+  const ext = extensionOf(artifact.path)
+  if (ext === 'html' || ext === 'htm') return 'page'
+  switch (artifact.group) {
+    case 'Image':
+      return 'image'
+    case 'Document':
+      return 'doc'
+    case 'Audio':
+      return 'audio'
+    case 'Video':
+      return 'video'
+    default:
+      return 'code'
+  }
+}
+
 type Row = CoworkArtifact & {
+  kind: Kind
+  /** File size from the write result, when it reported one. */
+  bytes?: number
   sessionId: string
   sessionTitle: string
   /** The attached project folder, when the session has one. */
@@ -56,6 +91,35 @@ type Row = CoworkArtifact & {
 
 const rowKey = (row: Pick<Row, 'sessionId' | 'path'>) =>
   `${row.sessionId}:${row.path}`
+
+/**
+ * Size and finish time per written path, read off the session's `write`
+ * results ("Created <path> (<n> bytes)").
+ */
+function writesOf(turns: CoworkTurn[] | undefined) {
+  const out = new Map<string, { bytes?: number; at?: number }>()
+  for (const turn of turns ?? []) {
+    if (turn.role !== 'tool' || turn.name !== 'write') continue
+    const path =
+      turn.args && typeof turn.args === 'object'
+        ? (turn.args as Record<string, unknown>).path
+        : undefined
+    if (typeof path !== 'string') continue
+    const m = /\((\d+) bytes\)/.exec(turn.result ?? '')
+    out.set(path, {
+      bytes: m ? Number(m[1]) : out.get(path)?.bytes,
+      at: turn.endedAt ?? turn.startedAt ?? out.get(path)?.at,
+    })
+  }
+  return out
+}
+
+/** A readable type, e.g. "Markdown · 2 KB" or "HTML page". */
+function typeLabel(row: Row, htmlPage: string): string {
+  if (row.kind === 'page') return htmlPage
+  const name = row.label === 'MD' ? 'Markdown' : row.label
+  return row.bytes ? `${name} · ${formatBytes(row.bytes)}` : name
+}
 
 /** The last path segment, for naming a project folder on a row. */
 function folderName(folder: string): string {
@@ -70,6 +134,27 @@ function formatUpdated(updated: number): string {
       dateStyle: 'medium',
       timeStyle: 'short',
     })
+  } catch {
+    return ''
+  }
+}
+
+/** A short time for a card: the time today, the weekday this week, else the date. */
+function formatShort(updated: number): string {
+  if (!updated) return ''
+  try {
+    const d = new Date(updated)
+    const now = new Date()
+    if (d.toDateString() === now.toDateString()) {
+      return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    }
+    if (now.getTime() - d.getTime() < 6 * 24 * 60 * 60 * 1000) {
+      return d.toLocaleDateString(undefined, { weekday: 'short' })
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   } catch {
     return ''
   }
@@ -147,8 +232,11 @@ function ArtifactsPage() {
   const serviceHub = useServiceHub()
   const sessions = useCoworkSessions((s) => s.sessions)
   const [query, setQuery] = useState('')
-  const [group, setGroup] = useState<CoworkArtifact['group'] | null>(null)
+  const [kind, setKind] = useState<Kind | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  // On a wide window the details sit beside the grid, so one item is always
+  // shown there; on a phone they replace the grid until closed.
+  const wide = useMediaQuery('(min-width: 1024px)')
   // ponytail: a render cap with "show more" rather than paging or a virtual
   // list. Search and the kind filter already narrow the set, and DOM size was
   // the only real cost. Swap for virtualization if this hits thousands.
@@ -166,12 +254,15 @@ function ArtifactsPage() {
     () =>
       sessions.flatMap((session) => {
         const root = workspaces[session.id] ?? null
+        const writes = writesOf(session.turns)
         return artifactsFromTurns(session.turns, root).map((artifact) => ({
           ...artifact,
+          kind: kindOf(artifact),
+          bytes: writes.get(artifact.path)?.bytes,
           sessionId: session.id,
           sessionTitle: session.title,
           folder: session.folder ?? null,
-          updated: session.updated,
+          updated: writes.get(artifact.path)?.at ?? session.updated,
           root,
         }))
       }),
@@ -182,19 +273,25 @@ function ArtifactsPage() {
     const q = query.trim().toLowerCase()
     return rows.filter(
       (r) =>
-        (!group || r.group === group) &&
+        (!kind || r.kind === kind) &&
         (!q ||
           r.title.toLowerCase().includes(q) ||
           r.path.toLowerCase().includes(q))
     )
-  }, [rows, query, group])
+  }, [rows, query, kind])
 
   // Narrowing the set should start from the top again.
-  useEffect(() => setLimit(PAGE), [query, group])
+  useEffect(() => setLimit(PAGE), [query, kind])
 
   const selected = useMemo(
-    () => rows.find((r) => rowKey(r) === selectedKey) ?? null,
-    [rows, selectedKey]
+    () =>
+      rows.find((r) => rowKey(r) === selectedKey) ??
+      (wide ? (shown[0] ?? null) : null),
+    [rows, selectedKey, shown, wide]
+  )
+  const selectedRowKey = selected ? rowKey(selected) : null
+  const kindsPresent = KINDS.filter(
+    (k) => k !== 'video' || rows.some((r) => r.kind === k)
   )
 
   const open = (row: Row) => {
@@ -212,8 +309,10 @@ function ArtifactsPage() {
   const sessionCount = new Set(rows.map((r) => r.sessionId)).size
   const now = Date.now()
   const thisWeek = rows.filter((r) => r.updated && now - r.updated < WEEK_MS)
-  const latest = rows.reduce((m, r) => Math.max(m, r.updated || 0), 0)
+  const sized = rows.filter((r) => r.bytes)
+  const diskBytes = sized.reduce((sum, r) => sum + (r.bytes ?? 0), 0)
   const convertFileSrc = (p: string) => serviceHub.core().convertFileSrc(p)
+  const htmlPage = t('engine:library.htmlPage')
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col">
@@ -223,7 +322,7 @@ function ArtifactsPage() {
           description={t('engine:library.description')}
           actions={
             <SearchField
-              className="w-[240px] max-w-full"
+              className="w-full sm:w-[240px]"
               value={query}
               onChange={setQuery}
               placeholder={t('common:artifactsSearch')}
@@ -234,23 +333,25 @@ function ArtifactsPage() {
         <KpiRow columns={3}>
           <KpiTile
             title={t('engine:library.kpiArtifacts')}
-            icon={<Library />}
+            icon={<Icon name="x-library" />}
             value={rows.length}
-            sub={t('engine:library.kpiArtifactsSub', { count: thisWeek.length })}
+            sub={t('engine:library.kpiArtifactsSub', {
+              count: thisWeek.length,
+            })}
             delay={40}
           />
           <KpiTile
             title={t('engine:library.kpiSessions')}
-            icon={<Workflow />}
-            value={sessionCount}
-            sub={t('engine:library.kpiSessionsSub', { count: sessions.length })}
+            icon={<Icon name="x-cowork" />}
+            value={rows.length}
+            sub={t('engine:library.kpiSessionsSub', { count: sessionCount })}
             delay={90}
           />
           <KpiTile
-            title={t('engine:library.kpiLatest')}
-            icon={<Clock />}
-            value={latest ? formatDay(latest) : '—'}
-            sub={latest ? formatUpdated(latest) : t('engine:library.kpiLatestNone')}
+            title={t('engine:library.kpiDisk')}
+            icon={<Icon name="x-disk" />}
+            value={sized.length ? formatBytes(diskBytes) : '—'}
+            sub={t('engine:library.kpiDiskSub')}
             delay={140}
           />
         </KpiRow>
@@ -260,7 +361,7 @@ function ArtifactsPage() {
           <Frame data-testid="artifacts-empty">
             <FrameBody>
               <EmptyState
-                icon={<Library />}
+                icon={<Icon name="x-library" size={20} />}
                 title={t('common:artifactsEmptyTitle')}
                 description={t('common:artifactsEmpty')}
                 action={
@@ -276,19 +377,24 @@ function ArtifactsPage() {
           </Frame>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:160ms]">
-              <Segmented<string>
-                className="w-[560px] max-w-full"
-                aria-label={t('common:artifactsFilterLabel')}
-                value={group ?? 'all'}
-                onValueChange={(v) =>
-                  setGroup(v === 'all' ? null : (v as CoworkArtifact['group']))
-                }
-                options={[
-                  { value: 'all', label: t('common:artifactsAll') },
-                  ...ARTIFACT_GROUP_NAMES.map((g) => ({ value: g, label: g })),
-                ]}
-              />
+            <div className="flex min-w-0 flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:160ms]">
+              <div className="-mx-1 max-w-full overflow-x-auto px-1 [scrollbar-width:none]">
+                <Segmented<string>
+                  className="w-[560px] min-w-[440px] max-w-none sm:max-w-full"
+                  aria-label={t('common:artifactsFilterLabel')}
+                  value={kind ?? 'all'}
+                  onValueChange={(v) =>
+                    setKind(v === 'all' ? null : (v as Kind))
+                  }
+                  options={[
+                    { value: 'all', label: t('common:artifactsAll') },
+                    ...kindsPresent.map((k) => ({
+                      value: k,
+                      label: t(KIND_LABEL[k]),
+                    })),
+                  ]}
+                />
+              </div>
               <span
                 className="text-xs text-muted-foreground tabular-nums"
                 aria-live="polite"
@@ -305,12 +411,13 @@ function ArtifactsPage() {
             >
               <div className={cn('min-w-0', selected && 'max-lg:hidden')}>
                 {shown.length === 0 ? (
-                  <p className="py-10 text-center text-[13px] text-muted-foreground">
-                    {t('common:artifactsNoMatch')}
-                  </p>
+                  <EmptyState
+                    icon={<Icon name={kind ? KIND_ICON[kind] : 'x-library'} size={20} />}
+                    title={t('common:artifactsNoMatch')}
+                  />
                 ) : (
                   <ul
-                    className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4"
+                    className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,230px),1fr))] gap-4"
                     data-testid="artifacts-gallery"
                   >
                     {shown.slice(0, limit).map((row, i) => (
@@ -318,11 +425,12 @@ function ArtifactsPage() {
                         key={rowKey(row)}
                         row={row}
                         index={i}
-                        selected={rowKey(row) === selectedKey}
+                        selected={rowKey(row) === selectedRowKey}
                         onSelect={() => setSelectedKey(rowKey(row))}
                         onOpen={() => open(row)}
                         onGoToSession={() => goToSession(row)}
                         convertFileSrc={convertFileSrc}
+                        typeText={typeLabel(row, htmlPage)}
                       />
                     ))}
                   </ul>
@@ -347,6 +455,8 @@ function ArtifactsPage() {
                 <ArtifactInspector
                   key={rowKey(selected)}
                   row={selected}
+                  typeText={typeLabel(selected, htmlPage)}
+                  closable={!wide}
                   onClose={() => setSelectedKey(null)}
                   onOpen={() => open(selected)}
                   onGoToSession={() => goToSession(selected)}
@@ -365,17 +475,9 @@ function ArtifactsPage() {
   )
 }
 
-/** A day label for the "latest" tile: today, yesterday, or the date. */
-function formatDay(updated: number): string {
-  try {
-    return new Date(updated).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return ''
-  }
-}
+/** The design's `.thumb` surface: a hairline box on the code background. */
+const THUMB =
+  'relative flex flex-col gap-1.5 overflow-hidden rounded-lg bg-code-bg p-3 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:after:absolute motion-safe:after:inset-0 motion-safe:after:[animation:sheen_1.4s_var(--expo)_.4s_both] motion-safe:after:bg-[linear-gradient(105deg,transparent_35%,rgba(255,255,255,.35)_50%,transparent_65%)] dark:motion-safe:after:bg-[linear-gradient(105deg,transparent_35%,rgba(255,255,255,.07)_50%,transparent_65%)] motion-safe:after:content-[""]'
 
 /**
  * A preview-shaped placeholder per kind (the design's `.thumb`): code lines,
@@ -392,17 +494,8 @@ function ArtifactThumb({
   big?: boolean
 }) {
   const [broken, setBroken] = useState(false)
-  const base = cn(
-    'relative flex flex-col gap-1.5 overflow-hidden rounded-lg p-3 shadow-[inset_0_0_0_0.8px_var(--border)]',
-    big ? 'h-[170px]' : 'h-[118px]'
-  )
-  const line = 'block h-1.5 rounded-full'
-  const sheen = (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,transparent_35%,rgba(255,255,255,.18)_50%,transparent_65%)] motion-safe:animate-sheen"
-    />
-  )
+  const base = cn(THUMB, big ? 'h-[170px]' : 'h-[118px]')
+  const line = 'block h-1.5 shrink-0 rounded-[9px]'
   if (src && !broken) {
     return (
       <div className={cn(base, 'bg-muted p-0')}>
@@ -416,28 +509,27 @@ function ArtifactThumb({
       </div>
     )
   }
-  if (row.group === 'Code' && previewKindFor(row.path) !== 'html') {
+  if (row.kind === 'code') {
     return (
-      <div className={cn(base, 'bg-term-bg')}>
+      <div className={cn(base, 'bg-[#1f2937]')}>
         {[
-          ['w-[30%]', 'bg-[#6366f1]/70'],
-          ['w-[70%]', 'bg-white/15'],
-          ['w-1/2', 'bg-[#10b981]/60'],
-          ['w-[82%]', 'bg-white/15'],
-          ['w-[22%]', 'bg-[#6366f1]/70'],
-          ['w-[60%]', 'bg-white/15'],
+          ['w-[30%]', 'bg-[#6366f1] opacity-70'],
+          ['w-[70%]', 'bg-[#374151]'],
+          ['w-1/2', 'bg-[#10b981] opacity-60'],
+          ['w-[82%]', 'bg-[#374151]'],
+          ['w-[22%]', 'bg-[#6366f1] opacity-70'],
+          ['w-[60%]', 'bg-[#374151]'],
         ].map(([w, c], i) => (
           <i key={i} className={cn(line, w, c)} />
         ))}
-        {sheen}
       </div>
     )
   }
-  if (row.group === 'Code') {
+  if (row.kind === 'page') {
     // A page: a heading, a line, and a small bar chart.
     return (
-      <div className={cn(base, 'bg-card')}>
-        <i className={cn(line, 'h-2 w-[55%] bg-sk-2')} />
+      <div className={base}>
+        <i className={cn(line, 'h-[9px] w-[55%] bg-sk-2')} />
         <i className={cn(line, 'w-[60%] bg-sk')} />
         <div className="mt-auto flex h-[60px] items-end gap-[5px]">
           {[40, 70, 55, 90, 65, 80].map((h, j) => (
@@ -446,36 +538,50 @@ function ArtifactThumb({
               style={{ height: `${h}%`, animationDelay: `${j * 50}ms` }}
               className={cn(
                 'flex-1 origin-bottom rounded-t-[4px] rounded-b-[2px] motion-safe:animate-grow-y',
-                j === 3 ? 'bg-grad' : 'bg-sk-2'
+                j === 3
+                  ? 'bg-grad'
+                  : 'bg-[linear-gradient(var(--bar),var(--bar-2))] shadow-[inset_0_0_0_0.5px_var(--bar-border)]'
               )}
             />
           ))}
         </div>
-        {sheen}
       </div>
     )
   }
-  if (row.group === 'Audio' || row.group === 'Video') {
+  if (row.kind === 'audio' || row.kind === 'video') {
     return (
-      <div className={cn(base, 'flex-row items-center gap-[3px] bg-card px-4')}>
+      <div className={cn(base, 'flex-row items-center gap-[3px] p-4')}>
         {Array.from({ length: 36 }, (_, i) => (
           <span
             key={i}
-            style={{ height: `${20 + Math.abs(Math.sin(i * 1.7)) * 70}%` }}
+            style={{
+              height: `${20 + Math.abs(Math.sin(i * 1.7)) * 70}%`,
+              animationDelay: `${(i % 3) * 0.2}s`,
+            }}
             className={cn(
-              'flex-1 rounded-[2px]',
-              i >= 9 && i < 14 ? 'bg-grad' : 'bg-sk-2'
+              'flex-1 rounded-[2px] motion-safe:animate-wave-bar',
+              i >= 9 && i < 14
+                ? 'bg-grad'
+                : 'bg-[linear-gradient(var(--sk2),var(--sk))]'
             )}
           />
         ))}
       </div>
     )
   }
-  if (row.group === 'Image') {
+  if (row.kind === 'image') {
     return (
-      <div className={cn(base, 'bg-card p-0')}>
-        <svg viewBox="0 0 120 60" preserveAspectRatio="none" className="size-full" aria-hidden>
-          <path d="M0 50 20 38 40 42 60 20 80 28 100 12 120 16V60H0Z" fill="var(--sk-2)" />
+      <div className={cn(base, 'block p-0')}>
+        <svg
+          viewBox="0 0 120 60"
+          preserveAspectRatio="none"
+          className="size-full"
+          aria-hidden
+        >
+          <path
+            d="M0 50 20 38 40 42 60 20 80 28 100 12 120 16V60H0Z"
+            fill="var(--sk2)"
+          />
           <path
             d="M0 50 20 38 40 42 60 20 80 28 100 12 120 16"
             fill="none"
@@ -488,12 +594,11 @@ function ArtifactThumb({
     )
   }
   return (
-    <div className={cn(base, 'bg-card')}>
-      <i className={cn(line, 'h-2 w-[55%] bg-sk-2')} />
+    <div className={base}>
+      <i className={cn(line, 'h-[9px] w-[55%] bg-sk-2')} />
       {['w-[92%]', 'w-[84%]', 'w-[88%]', 'w-[60%]', 'w-[76%]'].map((w, i) => (
         <i key={i} className={cn(line, w, 'bg-sk')} />
       ))}
-      {sheen}
     </div>
   )
 }
@@ -526,6 +631,7 @@ function LibraryCard({
   onOpen,
   onGoToSession,
   convertFileSrc,
+  typeText,
 }: {
   row: Row
   index: number
@@ -534,23 +640,22 @@ function LibraryCard({
   onOpen: () => void
   onGoToSession: () => void
   convertFileSrc: (path: string) => string
+  typeText: string
 }) {
   const { t } = useTranslation()
-  const Icon = ARTIFACT_ICON[row.group]
-  const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
-  const updated = formatUpdated(row.updated)
   return (
     <li data-testid="artifact-card" className="min-w-0">
       <Frame
         style={{ animationDelay: `${40 + index * 35}ms` }}
         className={cn(
-          'group h-full cursor-pointer motion-safe:animate-rise-in',
+          'group h-full cursor-pointer motion-safe:animate-rise-in motion-safe:hover:-translate-y-0.5',
+          '[&>[data-slot=frame-body]]:transition-[transform,box-shadow] [&>[data-slot=frame-body]]:duration-300 [&>[data-slot=frame-body]]:ease-expo hover:[&>[data-slot=frame-body]]:shadow-lift',
           selected &&
-            '[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),0_4px_14px_rgba(0,0,0,.08)]'
+            '[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),0_4px_14px_rgba(0,0,0,.08)] hover:[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),0_4px_14px_rgba(0,0,0,.08)]'
         )}
       >
         <FrameHeader
-          icon={<Icon />}
+          icon={<Icon name={KIND_ICON[row.kind]} />}
           title={<span title={row.title}>{row.title}</span>}
           actions={
             <Button
@@ -566,7 +671,7 @@ function LibraryCard({
             </Button>
           }
         />
-        <FrameBody className="gap-2 p-3">
+        <FrameBody className="gap-3 p-3.5">
           <button
             type="button"
             onClick={onSelect}
@@ -580,29 +685,23 @@ function LibraryCard({
             <ArtifactThumb row={row} src={thumbSrc(row, convertFileSrc)} />
           </div>
           <div className="pointer-events-none flex items-center justify-between gap-2 text-xs text-subtle-foreground">
-            <span className="truncate">
-              {row.group} · {row.label}
+            <span className="truncate">{typeText}</span>
+            <span className="shrink-0 tabular-nums">
+              {formatShort(row.updated)}
             </span>
-            <span className="shrink-0 tabular-nums">{updated}</span>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-subtle-foreground">
+          <div className="flex min-w-0 items-center text-xs text-subtle-foreground">
             <button
               type="button"
               onClick={onGoToSession}
               title={t('common:artifactGoToSession')}
               aria-label={`${t('common:artifactGoToSession')}: ${row.sessionTitle}`}
               data-testid="artifact-go-to-session"
-              className="relative z-10 flex min-w-0 items-center gap-1.5 rounded-md text-left hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              className="relative z-10 flex min-w-0 items-center gap-[5px] rounded-md text-left hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11"
             >
-              <Workflow className="size-3 shrink-0" aria-hidden />
+              <Icon name="flow" size={12} />
               <span className="truncate">{row.sessionTitle}</span>
             </button>
-            <span
-              className="pointer-events-none min-w-0 shrink truncate"
-              title={row.folder ?? project}
-            >
-              {project}
-            </span>
           </div>
         </FrameBody>
       </Frame>
@@ -612,6 +711,8 @@ function LibraryCard({
 
 function ArtifactInspector({
   row,
+  typeText,
+  closable,
   onClose,
   onOpen,
   onGoToSession,
@@ -620,6 +721,9 @@ function ArtifactInspector({
   revealItemInDir,
 }: {
   row: Row
+  typeText: string
+  /** A close button, for the phone layout where the details cover the grid. */
+  closable: boolean
   onClose: () => void
   onOpen: () => void
   onGoToSession: () => void
@@ -628,7 +732,6 @@ function ArtifactInspector({
   revealItemInDir: (path: string) => void
 }) {
   const { t } = useTranslation()
-  const Icon = ARTIFACT_ICON[row.group]
   const kind = previewKindFor(row.path)
   const abs = row.root ? resolveInRoot(row.root, row.path) : null
   const missing = useFileExists(abs) === false
@@ -638,31 +741,35 @@ function ArtifactInspector({
     abs && !missing && (kind === 'image' || kind === 'svg')
       ? convertFileSrc(abs)
       : null
-  const project = row.folder ? folderName(row.folder) : t('common:artifactSandbox')
+  const project = row.folder
+    ? folderName(row.folder)
+    : t('common:artifactSandbox')
   const updated = formatUpdated(row.updated)
 
   return (
     <Frame
       aria-label={t('common:artifactDetails')}
       data-testid="artifact-inspector"
-      className="motion-safe:animate-rise-in lg:sticky lg:top-0"
+      className="motion-safe:animate-rise-in [animation-delay:80ms] lg:sticky lg:top-0"
     >
       <FrameHeader
-        icon={<Icon />}
+        icon={<Icon name={KIND_ICON[row.kind]} />}
         title={<span title={row.title}>{row.title}</span>}
         actions={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="pointer-coarse:size-11"
-            onClick={onClose}
-            aria-label={t('common:artifactClose')}
-          >
-            <X />
-          </Button>
+          closable ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="pointer-coarse:size-11"
+              onClick={onClose}
+              aria-label={t('common:artifactClose')}
+            >
+              <X />
+            </Button>
+          ) : undefined
         }
       />
-      <FrameBody className="gap-3 p-3">
+      <FrameBody className="gap-3 p-3.5">
         <ArtifactThumb row={row} src={thumb} big />
         {missing && (
           <div
@@ -681,55 +788,62 @@ function ArtifactInspector({
             </div>
           </div>
         )}
-        {!thumb && !missing && (
-          <p className="m-0 text-xs leading-relaxed text-muted-foreground">
-            {t('common:artifactNoPreview')}
-          </p>
-        )}
 
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-[12.5px]">
+        <dl className="grid grid-cols-[140px_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-[12.5px] lg:grid-cols-[96px_minmax(0,1fr)]">
           <dt className="text-muted-foreground">{t('common:artifactType')}</dt>
-          <dd className="min-w-0 truncate text-foreground">
-            {row.group} · {row.label}
-          </dd>
-          <dt className="text-muted-foreground">{t('common:artifactProject')}</dt>
-          <dd className="min-w-0 truncate text-foreground" title={row.folder ?? project}>
+          <dd className="min-w-0 truncate text-foreground">{typeText}</dd>
+          <dt className="text-muted-foreground">
+            {t('common:artifactProject')}
+          </dt>
+          <dd
+            className="min-w-0 truncate text-foreground"
+            title={row.folder ?? project}
+          >
             {project}
           </dd>
           <dt className="text-muted-foreground">{t('common:artifactPath')}</dt>
-          <dd className="min-w-0 font-mono text-xs break-all text-fg-2" title={row.path}>
+          <dd
+            className="min-w-0 font-mono text-xs break-all text-fg-2"
+            title={row.path}
+          >
             {row.path}
           </dd>
           {updated && (
             <>
-              <dt className="text-muted-foreground">{t('common:artifactUpdated')}</dt>
+              <dt className="text-muted-foreground">
+                {t('common:artifactUpdated')}
+              </dt>
               <dd className="min-w-0 truncate text-foreground tabular-nums">
-                {updated}
+                {formatShort(row.updated)}
               </dd>
             </>
           )}
         </dl>
 
         {/* Where it came from, and the way back there. */}
-        <section className="flex flex-col gap-1.5 border-y border-dashed border-border py-2.5">
-          <h3 className="text-[11px] font-medium text-subtle-foreground uppercase">
-            {t('common:artifactSource')}
-          </h3>
-          <b className="truncate text-[13px] font-medium text-foreground" title={row.sessionTitle}>
-            {row.sessionTitle}
-          </b>
-          <small className="text-xs text-muted-foreground">
-            {t('common:artifactCoworkSession')}
-            {updated ? ` · ${updated}` : ''}
-          </small>
+        <section
+          aria-label={t('common:artifactSource')}
+          className="flex flex-col gap-1.5 border-b border-dashed border-border py-2.5"
+        >
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <b
+              className="truncate text-[13px] font-medium text-foreground"
+              title={row.sessionTitle}
+            >
+              {row.sessionTitle}
+            </b>
+            <small className="text-xs text-muted-foreground">
+              {t('common:artifactCoworkSession')}
+              {updated ? ` · ${updated}` : ''}
+            </small>
+          </div>
           <Button
             variant="outline"
             size="sm"
-            className="self-start pointer-coarse:h-11"
+            className="w-full pointer-coarse:h-11"
             onClick={onGoToSession}
             data-testid="artifact-inspector-go-to-session"
           >
-            <ChevronRight />
             {t('common:artifactGoToSession')}
           </Button>
         </section>
@@ -742,7 +856,6 @@ function ArtifactInspector({
             disabled={missing}
             data-testid="artifact-inspector-open"
           >
-            <Eye />
             {t('common:artifactOpenPreview')}
           </Button>
           {abs && !missing && (
@@ -753,7 +866,6 @@ function ArtifactInspector({
                 className="pointer-coarse:h-11"
                 onClick={() => openPath(abs)}
               >
-                <SquareArrowOutUpRight />
                 {t('common:artifactOpenExternal')}
               </Button>
               <Button
@@ -762,7 +874,6 @@ function ArtifactInspector({
                 className="pointer-coarse:h-11"
                 onClick={() => revealItemInDir(abs)}
               >
-                <FolderOpen />
                 {t('common:artifactShowInFolder')}
               </Button>
             </>
