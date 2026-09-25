@@ -36,6 +36,7 @@ export function PermissionRequestDetails({
   request,
   showAction = true,
   showTechnicalDetails = true,
+  layout = 'stack',
   className,
 }: {
   request: PermissionRequestDescription
@@ -43,6 +44,11 @@ export function PermissionRequestDetails({
   showAction?: boolean
   /** Off where the arguments are already on screen. */
   showTechnicalDetails?: boolean
+  /**
+   * `rows`: one compact label/value grid (Affects, Why, What allowing it
+   * means), for the prompt inside a tool card. `stack`: the dialog's layout.
+   */
+  layout?: 'stack' | 'rows'
   className?: string
 }) {
   const { t } = useTranslation()
@@ -50,6 +56,48 @@ export function PermissionRequestDetails({
   const affectsId = useId()
   const consequencesId = useId()
   const { technicalDetails } = request
+
+  if (layout === 'rows') {
+    return (
+      <dl
+        className={cn(
+          'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[12.5px] text-foreground',
+          className
+        )}
+      >
+        {request.resources.length > 0 && (
+          <>
+            <dt className="text-muted-foreground">
+              {t('permissions:request.affects')}
+            </dt>
+            <dd className="min-w-0 font-mono text-xs leading-[19px] break-all">
+              {request.resources.join(' · ')}
+            </dd>
+          </>
+        )}
+        {request.reason && (
+          <>
+            <dt className="text-muted-foreground">
+              {t('permissions:request.reason')}
+            </dt>
+            <dd className="min-w-0 break-words">{request.reason}</dd>
+          </>
+        )}
+        {request.consequences.length > 0 && (
+          <>
+            <dt className="text-muted-foreground">
+              {t('permissions:request.consequences')}
+            </dt>
+            <dd className="min-w-0 break-words">
+              {request.consequences
+                .map((msg) => formatPermissionMessage(t, msg))
+                .join(' ')}
+            </dd>
+          </>
+        )}
+      </dl>
+    )
+  }
 
   return (
     <div className={cn('space-y-2.5 text-[12.5px] text-fg-2', className)}>

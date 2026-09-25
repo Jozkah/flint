@@ -106,7 +106,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     reduceMotion: false,
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
-    coloredUserBubble: true,
+    coloredUserBubble: false,
     renderHtmlArtifacts: false,
     autoGenerateTitle: true,
   }
@@ -159,7 +159,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             reduceMotion: false,
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
-            coloredUserBubble: true,
+            coloredUserBubble: false,
             renderHtmlArtifacts: false,
             autoGenerateTitle: true,
           })

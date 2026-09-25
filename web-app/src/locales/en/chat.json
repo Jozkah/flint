@@ -64,6 +64,7 @@
   },
   "split": {
     "open": "Split conversation",
+    "openShort": "Split",
     "openHint": "Open a second, independent conversation beside this one",
     "close": "Close split",
     "closePane": "Close this pane",
@@ -72,6 +73,7 @@
     "panes": "Conversation panes",
     "primary": "Main",
     "secondary": "Second",
+    "secondTitle": "Second conversation",
     "streaming": "Replying",
     "active": "Active pane",
     "pickTitle": "Open a conversation here",

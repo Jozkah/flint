@@ -7,7 +7,6 @@ import {
   DropDrawerSub,
   DropDrawerLabel,
   DropDrawerSubContent,
-  DropDrawerSeparator,
   DropDrawerSubTrigger,
   DropDrawerTrigger,
   DropDrawerGroup,
@@ -119,13 +118,12 @@ export default memo(function DropdownToolsAvailable({
       <DropDrawerContent
         side="top"
         align="start"
-        className="overflow-hidden!"
+        className="w-[300px] overflow-hidden!"
         onClick={(e) => e.stopPropagation()}
       >
-        <DropDrawerLabel className="flex items-center gap-2 sticky -top-1 z-10 px-4 pl-2 py-1">
-          Available Tools
+        <DropDrawerLabel className="sticky -top-1 z-10 flex items-center gap-2 px-2 py-1.5 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">
+          {t('common:availableTools')}
         </DropDrawerLabel>
-        <DropDrawerSeparator />
         <div className="max-h-64 overflow-y-auto">
           <DropDrawerGroup>
             {Object.entries(toolsByServer).map(([serverName, serverTools]) => (
@@ -133,17 +131,31 @@ export default memo(function DropdownToolsAvailable({
                 id={`server-${serverName}`}
                 key={serverName}
               >
-                <DropDrawerSubTrigger className="py-2 hover:backdrop-blur-2xl rounded-sm px-2 mx-auto w-full">
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-sm">
+                <DropDrawerSubTrigger className="mx-auto w-full rounded-lg px-2 py-2">
+                  {/* The design's `.trow2`: the server, how many of its tools
+                      are on, and one switch for all of them. */}
+                  <div className="flex w-full min-w-0 items-center gap-2.5">
+                    <b className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
                       {serverName}
+                    </b>
+                    <span className="text-xs whitespace-nowrap text-muted-foreground">
+                      {t('common:toolsEnabledCount', {
+                        count: serverTools.filter((tool) =>
+                          isToolChecked(tool.server, tool.name)
+                        ).length,
+                      })}
                     </span>
-                    <span className="text-xs text-muted-foreground inline-flex items-center mr-1 border px-1 rounded-sm">
-                      {
-                        serverTools.filter((tool) => isToolChecked(tool.server, tool.name))
-                          .length
+                    <Switch
+                      aria-label={serverName}
+                      checked={serverTools.some((tool) =>
+                        isToolChecked(tool.server, tool.name)
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onCheckedChange={(checked) =>
+                        handleDisableAllServerTools(serverName, !checked)
                       }
-                    </span>
+                    />
                   </div>
                 </DropDrawerSubTrigger>
                 <DropDrawerSubContent className="max-w-64 max-h-70 w-full overflow-hidden">

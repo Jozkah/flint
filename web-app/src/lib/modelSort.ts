@@ -17,8 +17,11 @@ export const MODEL_SORT_OPTIONS = [
 
 export type ModelSortOption = (typeof MODEL_SORT_OPTIONS)[number]
 
-/** Alphabetical by display name, until the user says otherwise. */
-export const DEFAULT_MODEL_SORT: ModelSortOption = 'name-asc'
+/**
+ * A section per provider, local ones first, until the user says otherwise:
+ * the list then also says where each model runs.
+ */
+export const DEFAULT_MODEL_SORT: ModelSortOption = 'provider'
 
 export function isModelSortOption(value: unknown): value is ModelSortOption {
   return MODEL_SORT_OPTIONS.includes(value as ModelSortOption)

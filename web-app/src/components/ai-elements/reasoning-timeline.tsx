@@ -5,67 +5,66 @@ import { segmentReasoningSteps } from '@/lib/reasoning'
 
 type StepRowProps = {
   text?: string
+  /**
+   * Kept for callers that still pass it; the rail is one continuous line drawn
+   * by the list (`TIMELINE_RAIL`), so a step no longer draws its own piece.
+   */
   connector?: boolean
   children?: React.ReactNode
+  /** Replaces the dot: the step is a closing line (e.g. "Done") on the rail. */
   marker?: React.ReactNode
+  /** Position in the list, for the staggered entrance. */
+  index?: number
 }
 
 /**
- * One step on the dotted timeline rail: a small ringed dot plus content, with
- * an optional dotted connector descending to the next step. Pass `text` for a
- * plain reasoning paragraph, or `children` to host arbitrary content (e.g. a
- * tool call) on the same continuous rail. A step holding a tool call takes
+ * The list a trace's steps hang off: one smooth, solid line down the left,
+ * with each step's dot sitting on it.
+ */
+export const TIMELINE_RAIL =
+  'relative ml-1.5 flex flex-col gap-2.5 border-l-[1.5px] border-solid border-border-strong pl-[18px]'
+
+/**
+ * One step on the timeline: a small ringed dot on the rail plus content. Pass
+ * `text` for a plain reasoning paragraph, or `children` to host arbitrary
+ * content (e.g. a tool call) on the same rail. A step holding a tool call takes
  * that call's kind colour for its dot (styles/chat.css), so the rail doubles
  * as a legend for the cards beside it.
  */
-export const StepRow = ({
-  text,
-  connector = false,
-  children,
-  marker,
-}: StepRowProps) => {
-  // A card's header is taller than a line of text: centre the dot on it.
-  const dotTop = children ? 'top-3' : 'top-[7px]'
+export const StepRow = ({ text, children, marker, index = 0 }: StepRowProps) => {
+  if (marker) {
+    return (
+      <li
+        data-slot="step-done"
+        className="flex items-center gap-1.5 text-xs text-success [&_svg]:size-3.5"
+      >
+        {marker}
+        <span>{text}</span>
+      </li>
+    )
+  }
   return (
-  <li data-slot="step-row" className="relative flex gap-3">
-    {connector && (
+    <li
+      data-slot="step-row"
+      className="relative min-w-0 motion-safe:animate-cot-in"
+      style={{ animationDelay: `${0.08 + Math.min(index, 9) * 0.06}s` }}
+    >
       <span
         aria-hidden
-        className={cn(
-          'absolute left-[3px] -bottom-2.5 border-l-[1.5px] border-dotted border-border-strong',
-          children ? 'top-5' : 'top-4'
-        )}
+        data-slot="step-dot"
+        className="absolute top-3 -left-[22px] z-10 size-[7px] rounded-full bg-card shadow-[0_0_0_1.5px_var(--border-strong)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo"
       />
-    )}
-    {marker ? (
-      <span className="relative z-10 mt-1 flex w-[7px] shrink-0 items-center justify-center">
-        <span className="absolute flex items-center justify-center bg-card">
-          {marker}
-        </span>
-      </span>
-    ) : (
-      <span className="relative w-[7px] shrink-0">
-        <span
-          aria-hidden
-          data-slot="step-dot"
-          className={cn(
-            'absolute left-0 z-10 size-[7px] rounded-full bg-card shadow-[0_0_0_1.5px_var(--border-strong)] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo',
-            dotTop
-          )}
-        />
-      </span>
-    )}
-    {children ? (
-      <div className="min-w-0 flex-1">{children}</div>
-    ) : (
-      <div
-        dir="auto"
-        className="select-text whitespace-pre-wrap wrap-break-word text-[13px] leading-[1.55] text-muted-foreground"
-      >
-        {text}
-      </div>
-    )}
-  </li>
+      {children ? (
+        <div className="min-w-0">{children}</div>
+      ) : (
+        <div
+          dir="auto"
+          className="select-text whitespace-pre-wrap wrap-break-word text-[13px] leading-[1.55] text-muted-foreground"
+        >
+          {text}
+        </div>
+      )}
+    </li>
   )
 }
 

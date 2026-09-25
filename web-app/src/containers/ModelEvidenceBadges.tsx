@@ -10,6 +10,10 @@ import {
 } from '@/lib/modelEvidence'
 import { runtimeVersion } from '@/containers/ModelSupportStatus'
 
+/** The design's `.evb`: a quiet tag, the same for every measured fact. */
+const EVIDENCE_BADGE =
+  'rounded-[5px] bg-accent px-1.5 py-px text-[10.5px] leading-4 whitespace-nowrap text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
+
 /**
  * Small, text-only labels on a model picker row: whether the model has been
  * measured to work here under its current settings, and whether it is the
@@ -55,7 +59,7 @@ export function ModelEvidenceBadges({
     // app, so "Worked here" reads as a measured state, not as decoration.
     <span className="flex shrink-0 items-center gap-1">
       {isDefault && (
-        <span className="rounded-md border border-border bg-muted px-1.5 text-[11px] font-medium leading-5 text-fg-2">
+        <span className={EVIDENCE_BADGE}>
           {t('model-fit:badge.default')}
         </span>
       )}
@@ -65,7 +69,7 @@ export function ModelEvidenceBadges({
         </span>
       )}
       {worked && (
-        <span className="rounded-md bg-success-tint px-1.5 text-[11px] font-medium leading-5 text-success">
+        <span className={EVIDENCE_BADGE}>
           {t('model-fit:badge.worked')}
         </span>
       )}

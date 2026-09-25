@@ -51,7 +51,9 @@ describe('the approval card', () => {
     expect(screen.getByTestId('memory-proposal-content')).toHaveTextContent(
       'prefers tabs'
     )
-    expect(screen.getByText(/apply to everywhere/i)).toBeInTheDocument()
+    expect(screen.getByTestId('memory-proposal-card')).toHaveTextContent(
+      /apply to everywhere/i
+    )
   })
 
   /// The reason is the whole value of the card. Three different situations

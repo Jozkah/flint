@@ -107,11 +107,9 @@ describe('ToolElapsed', () => {
     expect(screen.getByText('common:duration.seconds:2')).toBeInTheDocument()
   })
 
-  // "Used foo 0s" is noise; a sub-second call just has no duration worth showing.
-  it('omits a duration that rounds to zero', () => {
-    const { container } = render(
-      <ToolElapsed startedAt={1_000_000} endedAt={1_000_400} />
-    )
-    expect(container).toBeEmptyDOMElement()
+  // Most calls take under a second; "0s" would say nothing, a tenth does.
+  it('keeps a tenth of a second for a quick finished call', () => {
+    render(<ToolElapsed startedAt={1_000_000} endedAt={1_000_400} />)
+    expect(screen.getByText('common:duration.seconds:0.4')).toBeInTheDocument()
   })
 })

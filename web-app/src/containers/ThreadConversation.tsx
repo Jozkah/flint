@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -86,12 +87,32 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
-import { CircleAlert, Loader2, MessageSquare, RefreshCw } from 'lucide-react'
+import {
+  CircleAlert,
+  Columns2,
+  Loader2,
+  MoreHorizontal,
+  PanelRight,
+  RefreshCw,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
-import { formatDate } from '@/utils/formatDate'
+import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
+import {
+  ThreadStatusMark,
+  useThreadStatus,
+} from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
@@ -125,7 +146,10 @@ import {
   useConversationModel,
   useConversationPane,
 } from '@/hooks/useConversationPane'
-import { SECONDARY_DRAFT_SCOPE } from '@/hooks/useSplitConversation'
+import {
+  SECONDARY_DRAFT_SCOPE,
+  useSplitConversation,
+} from '@/hooks/useSplitConversation'
 
 const CHAT_STATUS = {
   STREAMING: 'streaming',
@@ -194,6 +218,32 @@ export type ThreadConversationProps = {
  * conversation is split -- which is why it takes its thread id as a prop and
  * never reads the route.
  */
+/** Where the Details inspector's open state is remembered. */
+const DETAILS_OPEN_KEY = 'flint.chat.detailsOpen'
+
+function readDetailsOpen(isSplit: boolean): boolean {
+  if (isSplit) return false
+  try {
+    const saved = localStorage.getItem(DETAILS_OPEN_KEY)
+    if (saved !== null) return saved === 'true'
+  } catch {
+    // Storage unavailable: fall back to the window size.
+  }
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(min-width: 1280px)').matches
+  )
+}
+
+function writeDetailsOpen(open: boolean) {
+  try {
+    localStorage.setItem(DETAILS_OPEN_KEY, String(open))
+  } catch {
+    // Not remembered; the default applies next time.
+  }
+}
+
 export function ThreadConversation({
   threadId,
   searchThreadModel,
@@ -2063,28 +2113,39 @@ export function ThreadConversation({
   // The Details inspector ("What Flint is using"). On a narrow pane it takes the
   // whole width and a switch moves between it and the conversation; the
   // conversation stays mounted, so its draft and scroll survive.
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  // Open beside the conversation on a wide window, as the design shows it;
+  // the last choice is remembered. A narrow window starts on the
+  // conversation, since there the inspector takes the whole width.
+  const [detailsOpen, setDetailsOpen] = useState(() => readDetailsOpen(isSplit))
   const [narrowView, setNarrowView] = useState<'conversation' | 'details'>(
     'conversation'
   )
   const detailsPanelId = useId()
+  // A phone's page header has room for one button (see controlsWith).
+  const isPhone = useMediaQuery('(max-width: 639px)')
+  // Splitting halves the width; the inspector gives its room to the panes.
+  useEffect(() => {
+    if (isSplit) {
+      setDetailsOpen(false)
+      setNarrowView('conversation')
+    }
+  }, [isSplit])
   const toggleDetails = useCallback(() => {
     const next = !detailsOpen
     setDetailsOpen(next)
     setNarrowView(next ? 'details' : 'conversation')
+    writeDetailsOpen(next)
   }, [detailsOpen])
   const closeDetails = useCallback(() => {
     setDetailsOpen(false)
     setNarrowView('conversation')
+    writeDetailsOpen(false)
   }, [])
 
   // Who this conversation is: the title, on the chat frame's header row.
   const identity = (
     <div className="flex min-w-0 flex-1 items-center gap-3">
-      <MessageSquare
-        aria-hidden
-        className="size-4 shrink-0 text-muted-foreground"
-      />
+      <Icon name="comment" size={16} />
       <h1
         data-testid="conversation-title"
         className="min-w-0 truncate text-sm leading-none font-medium text-secondary-foreground"
@@ -2095,15 +2156,32 @@ export function ThreadConversation({
     </div>
   )
 
-  // The collection this chat belongs to, as a chip in the page header.
-  const projectChip = thread?.metadata?.project?.name ? (
-    <Chip
-      className="hidden max-w-48 md:inline-flex"
-      title={thread.metadata.project.name}
-    >
-      <span className="truncate">{thread.metadata.project.name}</span>
-    </Chip>
-  ) : null
+  // Where this chat sits, as the sidebar shows it: its status mark, then
+  // Pinned or its collection.
+  const waitingHere = useToolApprovalRequests((s) =>
+    Object.values(s.pending ?? {}).some((p) => p.threadId === threadId)
+  )
+  const threadStreaming = useChatSessions(
+    (state) => state.sessions[threadId]?.isStreaming ?? false
+  )
+  const threadStatus = useThreadStatus(
+    { updated: thread?.updated ?? 0 },
+    threadStreaming,
+    waitingHere
+  )
+  const groupLabel = thread?.isFavorite
+    ? t('common:shell.pinned')
+    : thread?.metadata?.project?.name
+  const projectChip = (
+    <>
+      {threadStatus !== 'none' && <ThreadStatusMark status={threadStatus} />}
+      {groupLabel && (
+        <Chip className="hidden max-w-48 md:inline-flex" title={groupLabel}>
+          <span className="truncate">{groupLabel}</span>
+        </Chip>
+      )}
+    </>
+  )
 
   // When the conversation began: its first message's time.
   const firstCreatedAt = (
@@ -2115,16 +2193,49 @@ export function ThreadConversation({
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
-      <div className="min-w-0 shrink">
-        <DropdownModelProvider model={threadModel} />
-      </div>
+      {/* On a phone the page header has room for one button: the model moves
+          onto the conversation's own header row, and Split and Details into
+          an overflow menu. A split pane's header row keeps them all. */}
+      {(isSplit || !isPhone) && (
+        <div className="min-w-0 shrink">
+          <DropdownModelProvider model={threadModel} />
+        </div>
+      )}
       <div className="flex shrink-0 items-center gap-1.5">
-        {extra}
+        {extra && <div className="hidden sm:contents">{extra}</div>}
+        {!isSplit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-[30px] sm:hidden pointer-coarse:size-11"
+                aria-label={t('common:more')}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={toggleDetails}>
+                <PanelRight className="size-4" />
+                <span>{t('context:details')}</span>
+              </DropdownMenuItem>
+              {extra && (
+                <DropdownMenuItem
+                  onSelect={() => useSplitConversation.getState().openSplit()}
+                >
+                  <Columns2 className="size-4" />
+                  <span>{t('chat:split.open')}</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <WhatJanIsUsingToggle
           open={detailsOpen}
           onToggle={toggleDetails}
           controls={detailsPanelId}
-          className={isSplit ? '[&>span]:sr-only' : undefined}
+          className={isSplit ? '[&>span]:sr-only' : 'max-sm:hidden'}
         />
       </div>
     </>
@@ -2146,7 +2257,7 @@ export function ThreadConversation({
       className={cn(
         'flex h-full min-h-0 flex-col',
         // The page's own breathing room; a split pane sits flush in its half.
-        !isSplit && 'pt-1 pb-3'
+        !isSplit && 'px-1 pt-3.5 pb-4'
       )}
     >
       {!isSplit && (
@@ -2190,7 +2301,7 @@ export function ThreadConversation({
             </div>
           </div>
         )}
-        <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
+        <div className="relative flex min-h-0 min-w-0 flex-1 gap-4">
         {/* The conversation is one Frame: its title row, then the messages
             and the composer on the card inside. */}
         <Frame
@@ -2210,7 +2321,7 @@ export function ThreadConversation({
               isSplit ? `conversation-pane-header-${paneId}` : undefined
             }
             data-active={isSplit ? isActive : undefined}
-            className="min-h-10"
+            className="min-h-9"
           >
             {identity}
             {isSplit ? (
@@ -2218,13 +2329,20 @@ export function ThreadConversation({
                 {controlsWith(paneControls)}
               </div>
             ) : (
-              firstCreatedAt && (
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {t('chat:startedAt', {
-                    time: formatDate(firstCreatedAt),
-                  })}
-                </span>
-              )
+              <>
+                {isPhone && (
+                  <div className="min-w-0 shrink">
+                    <DropdownModelProvider model={threadModel} />
+                  </div>
+                )}
+                {firstCreatedAt && (
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums max-sm:hidden">
+                    {t('chat:startedAt', {
+                      time: formatMessageTime(firstCreatedAt),
+                    })}
+                  </span>
+                )}
+              </>
             )}
           </FrameHeader>
           <FrameBody className="min-h-0 overflow-hidden">
@@ -2237,7 +2355,8 @@ export function ThreadConversation({
             } as CSSProperties
           }
         >
-          <Conversation className="absolute inset-0 text-start text-base">
+          {/* 13.5px at the default size; the message zoom scales it. */}
+          <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
             <ConversationContent
               className={cn(
                 'mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
@@ -2305,6 +2424,7 @@ export function ThreadConversation({
                   onOpenSettings={() =>
                     navigate({ to: route.settings.memory })
                   }
+                  projectName={thread?.metadata?.project?.name}
                 />
               )}
               {processingEmbeddings && (

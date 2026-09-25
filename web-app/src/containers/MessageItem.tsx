@@ -48,7 +48,7 @@ import {
 } from './message/types'
 import { CopyButton } from './CopyButton'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { formatDate } from '@/utils/formatDate'
+import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useConversationModel } from '@/hooks/useConversationPane'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
@@ -350,7 +350,7 @@ export const MessageItem = memo(
               <div
                 data-slot="user-bubble"
                 className={cn(
-                  'relative inline-block max-w-[min(85%,36rem)] rounded-[14px] rounded-br-[4px] px-3 py-2.5 leading-normal text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
+                  'relative inline-block max-w-[min(85%,36rem)] rounded-[14px] rounded-br-[4px] px-3 py-2.5 text-[calc(var(--text-base)*0.8125)] leading-normal text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
                   coloredUserBubble
                     ? // The accent tint, only when the setting asks for it.
                       'bg-acc-tint'
@@ -590,7 +590,10 @@ export const MessageItem = memo(
 
     // The model that answered, when the request recorded it.
     const answeredBy =
-      message.role === 'assistant' ? attributionOf(message)?.model : undefined
+      message.role === 'assistant'
+        ? (attributionOf(message)?.model ??
+          (metadata?.model as { id?: string } | undefined)?.id)
+        : undefined
 
     return (
       <div
@@ -618,7 +621,7 @@ export const MessageItem = memo(
             {answeredBy && (
               <>
                 <span aria-hidden>·</span>
-                <span className="min-w-0 truncate font-mono text-xs" title={answeredBy}>
+                <span className="min-w-0 truncate" title={answeredBy}>
                   {answeredBy}
                 </span>
               </>
@@ -627,7 +630,7 @@ export const MessageItem = memo(
               <>
                 <span aria-hidden>·</span>
                 <span className="shrink-0 tabular-nums">
-                  {formatDate(createdAt)}
+                  {formatMessageTime(createdAt)}
                 </span>
               </>
             )}
@@ -717,7 +720,7 @@ export const MessageItem = memo(
             )}
           >
             <span className="mr-1 text-muted-foreground tabular-nums">
-              {formatDate(createdAt)}
+              {formatMessageTime(createdAt)}
             </span>
             {versionNav}
             <span className="inline-flex pointer-coarse:[&_button]:size-11">

@@ -160,7 +160,7 @@ function ThreadDetail() {
         className={cn(
           'relative flex min-h-0 min-w-0 flex-1',
           // Split panes are Frames of their own: give them the page's room.
-          open && 'pt-1 pb-3'
+          open && 'px-1 pt-3.5 pb-4'
         )}
       >
         <div

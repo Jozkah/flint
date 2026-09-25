@@ -2830,6 +2830,7 @@ const ChatInput = memo(function ChatInput({
                         <Button
                           variant="ghost"
                           size="icon-xs"
+                          aria-label={t('tools')}
                           className="size-7 rounded-[7px] pointer-coarse:size-11"
                           onClick={(e) => {
                             setDropdownToolsAvailable(false)

@@ -24,8 +24,8 @@ describe('useModelOrder', () => {
   })
 
   describe('the chosen order', () => {
-    it('starts alphabetical', () => {
-      expect(store().sort).toBe('name-asc')
+    it('starts grouped by provider', () => {
+      expect(store().sort).toBe('provider')
     })
 
     it('remembers what the user picked', () => {

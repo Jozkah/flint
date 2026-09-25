@@ -7,7 +7,7 @@ import { useAssistant } from '@/hooks/useAssistant'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
 import ChatInput from '@/containers/ChatInput'
-import HeaderPage from '@/containers/HeaderPage'
+import { Icon } from '@/components/ui/icon'
 import ThreadList from '@/containers/ThreadList'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 
@@ -16,7 +16,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   PencilIcon,
-  Settings2,
   Trash2,
 } from 'lucide-react'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -95,49 +94,51 @@ function ProjectPageContent() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <HeaderPage>
-        {/* The collection's name is the page title; its actions sit beside
-            it, the model on the right. */}
-        <div className="flex min-w-0 items-center gap-1.5 w-full md:pr-1">
-          <div className="flex min-w-0 flex-1 items-center gap-0.5">
-            <h1
-              className="min-w-0 truncate text-sm font-semibold text-foreground"
-              title={project.name}
-            >
-              {project.name}
-            </h1>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
-                  <MoreHorizontal className="size-4" />
-                  <span className="sr-only">More options</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setEditDialogOpen(true)}>
-                  <FolderPenIcon className="size-4" />
-                  <span>{t('projects.editProject')}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() => setDeleteDialogOpen(true)}
-                >
-                  <Trash2 className="size-4" />
-                  <span>{t('projects.deleteProject')}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+      {/* The mockup's collection page: the composer and the conversations on
+          the left, the collection's settings in a Frame on the right. */}
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-3.5 pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-width:thin]">
+        {/* The page head: the collection's name and its menu, what a
+            collection is, and the model on the right. */}
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-4 motion-safe:animate-rise-in">
+          <div className="flex min-w-0 flex-col gap-4 leading-none">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h1
+                className="min-w-0 truncate text-xl leading-tight font-semibold text-foreground"
+                title={project.name}
+              >
+                {project.name}
+              </h1>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
+                    <MoreHorizontal className="size-4" />
+                    <span className="sr-only">More options</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onSelect={() => setEditDialogOpen(true)}>
+                    <FolderPenIcon className="size-4" />
+                    <span>{t('projects.editProject')}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="size-4" />
+                    <span>{t('projects.deleteProject')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <p className="text-[13px] text-muted-foreground">
+              {t('projects.collectionHint')}
+            </p>
           </div>
           <div className="min-w-0 shrink">
             <DropdownModelProvider />
           </div>
         </div>
-      </HeaderPage>
-
-      {/* The mockup's collection page: the composer and the conversations on
-          the left, the collection's settings in a Frame on the right. */}
-      <div className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] [scrollbar-width:thin]">
         <div className="grid w-full grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-w-0 flex-col gap-4">
             <ChatInput
@@ -149,7 +150,7 @@ function ProjectPageContent() {
 
             <Frame className="motion-safe:animate-rise-in motion-safe:[animation-delay:100ms]">
               <FrameHeader
-                icon={<MessageCircle />}
+                icon={<Icon name="comment" />}
                 title={t('projects.conversation')}
                 actions={
                   projectThreads.length > 0 && (
@@ -179,9 +180,9 @@ function ProjectPageContent() {
                   )
                 }
               />
-              <FrameBody className="p-1.5">
+              <FrameBody className="px-4 py-1">
                 {projectThreads.length > 0 ? (
-                  <NavList>
+                  <NavList className="gap-0">
                     <ThreadList
                       threads={projectThreads}
                       currentProjectId={projectId}
@@ -208,7 +209,7 @@ function ProjectPageContent() {
 
           {/* Project Settings */}
           <Frame className="self-start motion-safe:animate-rise-in motion-safe:[animation-delay:160ms]">
-            <FrameHeader icon={<Settings2 />} title={t('common:settings')} />
+            <FrameHeader icon={<Icon name="sb-settings" />} title={t('common:settings')} />
             <FrameBody className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-dashed border-border px-3 py-3">
                 <div className="flex min-w-0 flex-col gap-1">

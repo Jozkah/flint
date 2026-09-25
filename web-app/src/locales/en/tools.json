@@ -64,6 +64,8 @@
     "pollingJob": "waiting for background job {{id}}",
     "pathPlaceholder": "path",
     "reading": "Reading...",
-    "workspaceRoot": "workspace root"
+    "workspaceRoot": "workspace root",
+    "matches": "{{count}} matches",
+    "testsPassed": "{{count}} passed"
   }
 }

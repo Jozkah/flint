@@ -12,6 +12,7 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 vi.mock('@/hooks/useToolApprovalRequests', () => ({
   useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
     selector({ pending: {} }),
+  usePendingApprovalCount: () => 0,
 }))
 
 const origin = vi.fn()
@@ -32,9 +33,9 @@ vi.mock('../RagToolWidget', () => ({
 import { ToolCallCard } from '../ToolCallCard'
 
 describe('ToolCallCard', () => {
-  // The widget already shows the query in its search bar, so repeating it in
-  // the header renders the same text twice, one line apart.
-  it('leaves the argument preview to the widget when one renders', () => {
+  // A native call's header names the one argument it is about -- the query --
+  // rather than a generic `key: value` preview; the widget shows the result.
+  it('names the query in the header and leaves the result to the widget', () => {
     origin.mockReturnValue({ kind: 'web-search', detail: 'Exa' })
     render(
       <ToolCallCard
@@ -48,12 +49,13 @@ describe('ToolCallCard', () => {
         messageId="m1"
       />
     )
-    expect(screen.getByTestId('web-widget')).toHaveTextContent(
-      'deepfake prevention news'
-    )
+    expect(screen.getByTestId('web-widget')).toBeInTheDocument()
     expect(
       screen.queryByText('query: deepfake prevention news')
     ).not.toBeInTheDocument()
+    expect(
+      screen.getAllByText('deepfake prevention news').length
+    ).toBeGreaterThan(0)
   })
 
   // Without a widget the header preview is the only thing describing the call

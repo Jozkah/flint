@@ -18,7 +18,6 @@
  */
 
 import { useCallback, useState } from 'react'
-import { Brain, Check, X } from 'lucide-react'
 import {
   memoryProposalResolve,
   type MemoryLocation,
@@ -40,9 +39,12 @@ export function MemoryProposalCard({
   location,
   onResolved,
   onOpenSettings,
+  projectName,
 }: {
   proposal: PendingProposal
   location: MemoryLocation
+  /** The chat's project, so a project memory names where it would apply. */
+  projectName?: string
   /** Called once the backend has answered, so the list can drop this one. */
   onResolved: (id: string, approved: boolean) => void
   onOpenSettings?: () => void
@@ -69,78 +71,76 @@ export function MemoryProposalCard({
     [busy, location, proposal.id, proposal.scope, onResolved]
   )
 
+  const where =
+    proposal.scope === 'project' && projectName
+      ? projectName
+      : (SCOPE_LABEL[proposal.scope] ?? proposal.scope)
+
   return (
+    // A question in the flow of the conversation, not a card among cards: a
+    // dashed outline on the row tint.
     <div
-      className="rounded-lg border border-border bg-card p-3"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[13px] motion-safe:animate-rise-in"
       data-testid="memory-proposal-card"
       data-proposal-id={proposal.id}
       data-reason={proposal.reason}
     >
-      <div className="flex items-start gap-2">
-        <Brain size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-fg-2">
-            Remember this?
+      <div className="w-full min-w-0">
+        <b className="font-semibold text-foreground">Remember this?</b>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          <span data-testid="memory-proposal-content">
+            “{proposal.content}”
+          </span>{' '}
+          Would apply to <b className="font-semibold text-foreground">{where}</b>.
+        </p>
+        {/* The reason, from the backend. Never a generic prompt. */}
+        <p
+          className="mt-1 text-xs text-subtle-foreground"
+          data-testid="memory-proposal-explanation"
+        >
+          {proposal.explanation}
+        </p>
+        {error && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {error}
           </p>
-          <p
-            className="mt-1 text-sm text-foreground"
-            data-testid="memory-proposal-content"
-          >
-            {proposal.content}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Would apply to {SCOPE_LABEL[proposal.scope] ?? proposal.scope}.
-          </p>
-          {/* The reason, from the backend. Never a generic prompt. */}
-          <p
-            className="mt-1 text-xs text-muted-foreground"
-            data-testid="memory-proposal-explanation"
-          >
-            {proposal.explanation}
-          </p>
+        )}
+      </div>
 
-          {error && (
-            <p className="mt-2 text-xs text-destructive" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-2 flex flex-wrap items-center gap-1">
-            {proposal.approvable ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy != null}
-                onClick={() => void answer(true)}
-                data-testid="memory-proposal-approve"
-              >
-                <Check size={12} />
-                {busy === 'approve' ? 'Saving…' : 'Remember'}
-              </Button>
-            ) : (
-              // No Approve. Resolving the disagreement is the action, and it
-              // lives where both sides can be seen at once.
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={onOpenSettings}
-                data-testid="memory-proposal-resolve-conflict"
-              >
-                Review both
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy != null}
-              onClick={() => void answer(false)}
-              data-testid="memory-proposal-reject"
-            >
-              <X size={12} />
-              {busy === 'reject' ? 'Discarding…' : 'Discard'}
-            </Button>
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {proposal.approvable ? (
+          <Button
+            size="sm"
+            disabled={busy != null}
+            onClick={() => void answer(true)}
+            data-testid="memory-proposal-approve"
+            className="pointer-coarse:h-11"
+          >
+            {busy === 'approve' ? 'Saving…' : 'Remember'}
+          </Button>
+        ) : (
+          // No Approve. Resolving the disagreement is the action, and it
+          // lives where both sides can be seen at once.
+          <Button
+            size="sm"
+            variant="surface"
+            onClick={onOpenSettings}
+            data-testid="memory-proposal-resolve-conflict"
+            className="pointer-coarse:h-11"
+          >
+            Review both
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="surface"
+          disabled={busy != null}
+          onClick={() => void answer(false)}
+          data-testid="memory-proposal-reject"
+          className="pointer-coarse:h-11"
+        >
+          {busy === 'reject' ? 'Discarding…' : 'Discard'}
+        </Button>
       </div>
     </div>
   )
@@ -157,12 +157,14 @@ export function MemoryProposalList({
   location,
   onResolved,
   onOpenSettings,
+  projectName,
   className,
 }: {
   proposals: PendingProposal[]
   location: MemoryLocation
   onResolved: (id: string, approved: boolean) => void
   onOpenSettings?: () => void
+  projectName?: string
   className?: string
 }) {
   if (proposals.length === 0) return null
@@ -178,6 +180,7 @@ export function MemoryProposalList({
           location={location}
           onResolved={onResolved}
           onOpenSettings={onOpenSettings}
+          projectName={projectName}
         />
       ))}
     </div>

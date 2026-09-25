@@ -4,12 +4,12 @@ import {
   Columns2,
   List,
   Loader2,
-  MessageCircle,
-  MessageSquarePlus,
+  Plus,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Icon } from '@/components/ui/icon'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
@@ -43,7 +43,7 @@ export function SplitToggleButton() {
       data-testid="split-conversation-open"
     >
       <Columns2 className="size-4" aria-hidden />
-      <span className="hidden lg:inline">{t('chat:split.open')}</span>
+      <span className="max-sm:sr-only">{t('chat:split.openShort')}</span>
     </Button>
   )
 }
@@ -307,7 +307,7 @@ export function SecondaryPanePicker({
       Object.values(threads ?? {})
         .filter((th) => th.id !== primaryThreadId && th.id !== TEMPORARY_CHAT_ID)
         .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
-        .slice(0, 12),
+        .slice(0, 6),
     [threads, primaryThreadId]
   )
 
@@ -346,9 +346,12 @@ export function SecondaryPanePicker({
       className="flex h-full min-h-0 flex-col rounded-xl bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)]"
       data-testid="split-pane-picker"
     >
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 pr-1 pl-2 pointer-coarse:h-12">
-        <span className="truncate text-sm font-medium text-secondary-foreground">
-          {t('chat:split.secondary')}
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 pr-1 pl-2 pointer-coarse:h-12">
+        <span className="flex min-w-0 items-center gap-3">
+          <Icon name="comment" size={16} />
+          <span className="truncate text-sm leading-none font-medium text-secondary-foreground">
+            {t('chat:split.secondTitle')}
+          </span>
         </span>
         <Button
           variant="ghost"
@@ -361,25 +364,27 @@ export function SecondaryPanePicker({
           <X className="size-4" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border-[0.8px] border-input bg-card px-4 py-5">
-        <div className="mx-auto w-full max-w-md">
-          <h2 className="text-sm font-semibold text-foreground">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border-[0.8px] border-input bg-card px-6 py-8 motion-safe:animate-rise-in">
+        <div className="flex w-full flex-col items-start gap-2.5">
+          <h2 className="text-lg font-medium text-foreground">
             {t('chat:split.pickTitle')}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-[13px] leading-normal text-muted-foreground">
             {t('chat:split.pickDescription')}
           </p>
           <Button
-            className="mt-4 pointer-coarse:h-11"
+            className="pointer-coarse:h-11"
             onClick={() => void startNewChat()}
             data-testid="split-new-chat"
           >
-            <MessageSquarePlus className="size-4" />
+            <Plus className="size-3.5" />
             {t('chat:split.newChat')}
           </Button>
-          <h3 className="mt-6 mb-1 px-1 text-xs font-medium text-muted-foreground">
+          <h3 className="mt-2 mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
             {t('chat:split.recent')}
           </h3>
+        </div>
+        <div className="w-full">
           {recent.length === 0 ? (
             <p className="px-1 text-sm text-muted-foreground">
               {t('chat:split.noRecent')}
@@ -394,9 +399,9 @@ export function SecondaryPanePicker({
                       type="button"
                       onClick={() => choose(th.id)}
                       data-testid={`split-pick-${th.id}`}
-                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11"
+                      className="flex h-[34px] w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] text-secondary-foreground transition-[background-color,color,transform] duration-150 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:scale-[.965] pointer-coarse:h-11"
                     >
-                      <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
+                      <Icon name="comment" size={16} />
                       <span className="min-w-0 truncate" title={title}>
                         {title}
                       </span>

@@ -15,6 +15,8 @@ export type RagToolWidgetProps = {
   errorText?: string
   messageId?: string
   citationOffset?: number
+  /** Inside a tool card whose header shows the query: results only. */
+  embedded?: boolean
 }
 
 /**
@@ -30,6 +32,7 @@ export const RagToolWidget = memo(
     errorText,
     messageId,
     citationOffset = 0,
+    embedded = false,
   }: RagToolWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
@@ -54,20 +57,22 @@ export const RagToolWidget = memo(
       .join(' ')
 
     return (
-      <div className="space-y-2 px-2.5 py-2">
-        <ToolBar
-          icon={<FileSearchIcon className="size-4" />}
-          value={bar.query}
-          placeholder={t('tools:toolCall.documentsPlaceholder')}
-          typing={running}
-          trailing={
-            scopeLabel ? (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {scopeLabel}
-              </span>
-            ) : undefined
-          }
-        />
+      <div className={embedded ? 'space-y-2' : 'space-y-2 px-2.5 py-2'}>
+        {!embedded && (
+          <ToolBar
+            icon={<FileSearchIcon className="size-4" />}
+            value={bar.query}
+            placeholder={t('tools:toolCall.documentsPlaceholder')}
+            typing={running}
+            trailing={
+              scopeLabel ? (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {scopeLabel}
+                </span>
+              ) : undefined
+            }
+          />
+        )}
 
         {errorText && (
           <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-sm text-destructive">
