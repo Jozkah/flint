@@ -2,7 +2,7 @@ import { Check, CircleSlash, Clock } from 'lucide-react'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import type { AskAnswer, AskRecord } from '@/types/coworkSession'
+import type { AskAnswer, AskRecord, TodoList } from '@/types/coworkSession'
 
 /**
  * One question, at the point in the conversation where it was asked.
@@ -19,8 +19,11 @@ export function CoworkAskEntry({
   record,
   running,
   onRespond,
+  plan,
 }: {
   record: AskRecord
+  /** The session's staged todos, for a plan review card. */
+  plan?: TodoList | null
   /** Whether the run that asked is still alive. */
   running: boolean
   onRespond: (requestId: string, answers: AskAnswer[] | null) => void
@@ -35,6 +38,7 @@ export function CoworkAskEntry({
           requestId={record.requestId}
           request={record.request}
           onRespond={onRespond}
+          plan={plan}
         />
       </div>
     )

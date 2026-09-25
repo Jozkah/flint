@@ -428,9 +428,9 @@ describe('the environment block', () => {
       })
     )
 
-    expect(prompt).toContain('OS: Windows. Shell commands run in PowerShell (no POSIX shell).')
+    expect(prompt).toContain('OS: Windows. Shell commands run in Windows PowerShell 5.1 (no POSIX shell)')
     expect(prompt).toContain('Runnable here: git, node.')
-    expect(prompt).toContain('Installed but not runnable in the sandbox: python, cargo.')
+    expect(prompt).toContain('Installed but not runnable in the sandbox: python, cargo (use')
     expect(prompt).toContain('The shell has no network access.')
     expect(prompt).toContain('MCP servers in this session: none.')
     expect(prompt).toContain('never download or install a runtime')
@@ -524,5 +524,61 @@ describe('session block and managed worktrees', () => {
     } as Parameters<typeof buildCoworkSystemPrompt>[0])
     expect(prompt).toContain('jan/cowork/s1')
     expect(prompt).not.toContain('The attached folder is on git branch `main`')
+  })
+})
+
+describe('agent working rules and environment facts', () => {
+  const base = {
+    workspacePath: '/ws',
+    readOnlyFolder: '/proj',
+    planMode: false,
+    bashAvailable: true,
+    subagentNames: [],
+    webSearch: false,
+  }
+
+  it('states the working rules', () => {
+    const out = buildCoworkSystemPrompt(base)
+    for (const needle of [
+      'do it with your tools; do not describe',
+      'unless a tool actually ran it',
+      'Your tools are exactly the ones provided in this request',
+      'Use an MCP shell or exec server only when the user asked',
+      'at most 72 characters',
+    ]) {
+      expect(out).toContain(needle)
+    }
+  })
+
+  it('states PowerShell syntax rules and the sandbox way out up front', () => {
+    const out = buildCoworkSystemPrompt({
+      ...base,
+      platform: 'windows',
+      shellFlavor: 'powershell',
+      runnable: ['git'],
+      unavailable: ['node'],
+    })
+    expect(out).toContain('Windows PowerShell 5.1')
+    expect(out).toContain('`$env:NAME`')
+    expect(out).toContain('`2>$null`')
+    expect(out).toContain('not runnable in the sandbox: node')
+    expect(out).toContain('`git_inspect`')
+    expect(out).toContain('Settings > Agent Tools')
+  })
+
+  it('names the access mode and where writes go', () => {
+    expect(buildCoworkSystemPrompt(base)).toContain(
+      'Access mode: Review only (writes go to your workspace, the session sandbox).'
+    )
+    expect(
+      buildCoworkSystemPrompt({ ...base, folderAccess: 'editable' })
+    ).toContain('Access mode: Edit this folder (writes land in the folder).')
+    expect(
+      buildCoworkSystemPrompt({
+        ...base,
+        folderAccess: 'worktree',
+        worktreeBranch: 'flint/x',
+      })
+    ).toContain('Access mode: Managed worktree')
   })
 })

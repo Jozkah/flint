@@ -3118,7 +3118,7 @@ function CoworkPage() {
                       }
                       resolve(
                         review === 'none'
-                          ? renderAskResult(answers)
+                          ? renderAskResult(answers, parsed)
                           : renderPlanReviewResult(review, answers)
                       )
                     })
@@ -4423,6 +4423,7 @@ function CoworkPage() {
                                 record={record}
                                 running={running}
                                 onRespond={respondAsk}
+                                plan={session?.todos}
                               />
                             )
                           })}

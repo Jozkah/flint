@@ -26,9 +26,12 @@ CANNOT edit files, run shell commands, or make any change; those tools are \
 disabled. Investigate thoroughly, then stage the full phased plan by calling \
 the `todo` tool with an `init` action listing every task. When the plan is \
 ready, call `ask` with exactly one question: {\"questions\": [{\"id\": \
-\"plan_review\", \"question\": \"<concise plan summary>\", \"options\": \
+\"plan_review\", \"question\": \"<one-sentence plan summary; the staged todos are shown with it>\", \"options\": \
 [{\"label\": \"Execute plan\"}, {\"label\": \"Keep planning\"}, {\"label\": \
-\"Exit plan mode\"}]}]}. Do not ask for plan review until the todos are staged."
+\"Exit plan mode\"}]}]}. Do not ask for plan review until the todos are staged. If \
+the plan depends on a decision that is the user's to make, ask it first with your own `ask` \
+question (concrete options, a description each, your recommended pick), then plan around the \
+answer."
 }
 
 /// Reserved `ask` question id the TUI special-cases to drive plan-mode

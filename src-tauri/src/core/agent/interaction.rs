@@ -140,21 +140,28 @@ impl AskRequest {
         Ok(())
     }
 
+    /// What the model reads back: each question in its own words, then what
+    /// the user chose (option labels) or wrote (their own text), so an answer
+    /// never has to be matched to its question by id alone.
     pub(crate) fn render_results(&self, results: &[QuestionResult]) -> String {
         results
             .iter()
             .map(|result| {
-                let answer = result
-                    .custom_input
-                    .clone()
-                    .unwrap_or_else(|| result.selected.join(", "));
-                format!(
-                    "User response for {}: {answer}",
-                    serde_json::to_string(&result.id).expect("question ids serialize")
-                )
+                let id = serde_json::to_string(&result.id).expect("question ids serialize");
+                let question = self
+                    .questions
+                    .iter()
+                    .find(|question| question.id == result.id)
+                    .map(|question| question.question.as_str())
+                    .unwrap_or_default();
+                let answer = match result.custom_input.as_deref() {
+                    Some(text) => format!("User wrote: {text}"),
+                    None => format!("User chose: {}", result.selected.join(", ")),
+                };
+                format!("Question {id}: {question}\n{answer}")
             })
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n\n")
     }
 
     /// The results the loop falls back to when an `ask` times out with no user
@@ -178,39 +185,45 @@ impl AskRequest {
     }
 }
 
+/// What the model is told about `ask`. The web Cowork runner carries the same
+/// text (web-app/src/lib/coworkTools.ts); keep the two in step.
+pub(crate) const ASK_TOOL_DESCRIPTION: &str = "Ask the user one or more multiple-choice questions and wait for the answers. Use it when you need the user's input to proceed well: the request is ambiguous, there are several reasonable approaches and the choice is theirs, or a preference (naming, scope, library, style) is missing. Do not ask what you can find out yourself by reading files or searching, and do not ask for permission to use tools. For each question propose 2-4 concrete options, each a short label with a one-line description of what it means or costs. Set `recommended` to the index of the option you would pick. Set `multi` when the choices are not exclusive. The user can always type their own answer instead, so never add an \"Other\" option. Batch related questions into one call rather than asking one at a time. Each answer comes back as the question followed by the chosen label(s) or the user's own text.";
+
 pub(crate) fn ask_tool_schema() -> Value {
     json!({
         "type": "function",
         "function": {
             "name": "ask",
-            "description": "Ask the user one or more structured questions. Use only when the answer materially changes the work.",
+            "description": ASK_TOOL_DESCRIPTION,
             "parameters": {
                 "type": "object",
                 "properties": {
                     "questions": {
                         "type": "array",
                         "minItems": 1,
+                        "description": "One or more questions; batch related questions into one call.",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "id": { "type": "string" },
-                                "question": { "type": "string" },
+                                "id": { "type": "string", "description": "Short stable key for this question, unique in the call (e.g. \"db\"). The answer comes back under it." },
+                                "question": { "type": "string", "description": "The full question, one decision, ending with a question mark." },
                                 "options": {
                                     "type": "array",
                                     "minItems": 2,
                                     "maxItems": 5,
+                                    "description": "2-4 concrete choices you propose (at most 5). Do not add an \"Other\" option; the user can always type their own answer.",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "label": { "type": "string" },
-                                            "description": { "type": "string" }
+                                            "label": { "type": "string", "description": "A few words naming the choice." },
+                                            "description": { "type": "string", "description": "One short line: what this choice means or its trade-off." }
                                         },
                                         "required": ["label"],
                                         "additionalProperties": false
                                     }
                                 },
-                                "multi": { "type": "boolean" },
-                                "recommended": { "type": "integer", "minimum": 0 }
+                                "multi": { "type": "boolean", "description": "true when choices are not exclusive and the user may pick several." },
+                                "recommended": { "type": "integer", "minimum": 0, "description": "0-based index of the option you recommend; it is marked in the UI." }
                             },
                             "required": ["id", "question", "options"],
                             "additionalProperties": false
@@ -326,6 +339,60 @@ mod tests {
             custom_input: Some("custom".into()),
         }];
         assert!(req.validate_results(&both).is_err());
+    }
+
+    #[test]
+    fn render_results_pairs_each_question_with_its_answer() {
+        let req = AskRequest::parse(&json!({
+            "questions": [
+                {"id": "db", "question": "Which database?", "options": [{"label": "SQLite"}, {"label": "Postgres"}]},
+                {"id": "extras", "question": "Which extras?", "multi": true,
+                 "options": [{"label": "Auth"}, {"label": "Logging"}, {"label": "Metrics"}]}
+            ]
+        }))
+        .unwrap();
+        let out = req.render_results(&[
+            QuestionResult {
+                id: "db".into(),
+                selected: vec![],
+                custom_input: Some("DuckDB".into()),
+            },
+            QuestionResult {
+                id: "extras".into(),
+                selected: vec!["Auth".into(), "Metrics".into()],
+                custom_input: None,
+            },
+        ]);
+        assert_eq!(
+            out,
+            "Question \"db\": Which database?\nUser wrote: DuckDB\n\nQuestion \"extras\": Which extras?\nUser chose: Auth, Metrics"
+        );
+    }
+
+    #[test]
+    fn tool_description_teaches_when_and_how_to_ask() {
+        let schema = ask_tool_schema();
+        let description = schema["function"]["description"].as_str().unwrap();
+        for needle in [
+            "ambiguous",
+            "2-4 concrete options",
+            "recommended",
+            "multi",
+            "type their own answer",
+            "Batch related questions",
+            "find out yourself",
+        ] {
+            assert!(description.contains(needle), "missing {needle}");
+        }
+        let item = &schema["function"]["parameters"]["properties"]["questions"]["items"];
+        assert_eq!(item["required"], json!(["id", "question", "options"]));
+        assert!(item["properties"]["recommended"]["description"].is_string());
+        assert!(
+            item["properties"]["options"]["items"]["properties"]["description"]["description"]
+                .is_string()
+        );
+        // Backward compatible: an old-shape request still parses.
+        assert!(AskRequest::parse(&json!({"questions": [{"id": "x", "question": "?", "options": [{"label": "a"}, {"label": "b"}]}]})).is_ok());
     }
 
     #[test]

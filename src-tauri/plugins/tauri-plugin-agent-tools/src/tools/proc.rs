@@ -60,6 +60,13 @@ pub struct ShellConfig {
     pub flavor: ShellFlavor,
 }
 
+/// The Windows PowerShell 5.1 syntax rules a model trips over first, stated in
+/// the system prompt before any command fails: the same rules the `bash` tool's
+/// own note and [`chaining_unavailable_error`] give after the fact.
+pub const POWERSHELL_SYNTAX_NOTE: &str = "Windows PowerShell 5.1 syntax: chain with `;` \
+(or `a; if ($?) { b }` to stop on failure), never `&&`/`||`; read env vars as `$env:NAME`; \
+discard output with `2>$null`, not `2>nul`.";
+
 /// Resolved shell for this process, computed once. Prefers a real `bash`
 /// (matching the tool's name and documented guidance) and falls back to a
 /// POSIX `sh`/`cmd` only when no bash is found.

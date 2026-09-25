@@ -218,4 +218,92 @@ describe('CoworkAskCard', () => {
       { id: 'scope', selected: ['Small change'] },
     ])
   })
+
+  it('shows option descriptions and marks the recommended option', () => {
+    render(
+      <CoworkAskCard
+        requestId="ask-r"
+        request={{
+          questions: [
+            {
+              id: 'db',
+              question: 'Which database?',
+              recommended: 1,
+              options: [
+                { label: 'SQLite', description: 'One file, no server' },
+                { label: 'Postgres', description: 'Full server' },
+              ],
+            },
+          ],
+        }}
+        onRespond={onRespond}
+      />
+    )
+    expect(screen.getByText('One file, no server')).toBeInTheDocument()
+    const badge = screen.getByText('common:askRecommended')
+    expect(badge.closest('button')).toHaveTextContent('Postgres')
+    expect(screen.getAllByText('common:askRecommended')).toHaveLength(1)
+  })
+
+  it('renders multi-select options as checkboxes and submits every pick', () => {
+    render(<CoworkAskCard requestId="ask-m" request={multi} onRespond={onRespond} />)
+    const boxes = screen.getAllByRole('checkbox')
+    expect(boxes.length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(screen.getByText('Team'))
+    fireEvent.click(screen.getByText('Public'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    fireEvent.click(submitButton())
+    expect(onRespond).toHaveBeenCalledWith('ask-m', [
+      { id: 'who', selected: ['Team', 'Public'] },
+    ])
+  })
+
+  it('shows the staged plan under a plan review question', () => {
+    render(
+      <CoworkAskCard
+        requestId="ask-p"
+        request={{
+          questions: [
+            {
+              id: 'plan_review',
+              question: 'Add a login page.',
+              options: [
+                { label: 'Execute plan' },
+                { label: 'Keep planning' },
+                { label: 'Exit plan mode' },
+              ],
+            },
+          ],
+        }}
+        plan={{
+          phases: [
+            {
+              name: 'Build',
+              tasks: [
+                { content: 'Add the route', status: 'pending' },
+                { content: 'Write the form', status: 'pending' },
+              ],
+            },
+          ],
+        }}
+        onRespond={onRespond}
+      />
+    )
+    const steps = screen.getByTestId('ask-plan-steps')
+    expect(steps).toHaveTextContent('Build')
+    expect(steps).toHaveTextContent('Add the route')
+    expect(steps).toHaveTextContent('Write the form')
+  })
+
+  it('shows no plan for an ordinary question', () => {
+    render(
+      <CoworkAskCard
+        requestId="ask-o"
+        request={single}
+        plan={{ phases: [{ name: '', tasks: [{ content: 'x', status: 'pending' }] }] }}
+        onRespond={onRespond}
+      />
+    )
+    expect(screen.queryByTestId('ask-plan-steps')).toBeNull()
+  })
 })
