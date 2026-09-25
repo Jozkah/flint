@@ -71,6 +71,14 @@
   { "program": "gh", "args": ["repo", "create", "o/r", "--private"], "class": "remote" },
   { "program": "gh", "args": ["repo", "delete", "o/r", "--yes"], "class": "remote", "destructive": true },
   { "program": "gh", "args": ["api", "repos/o/r"], "class": "deny" },
+  { "program": "gh", "args": ["-R", "o/r", "issue", "list"], "class": "read" },
+  { "program": "gh", "args": ["--repo", "o/r", "pr", "create", "--title", "T", "--body", "B"], "class": "remote" },
+  { "program": "gh", "args": ["--repo=o/r", "pr", "list"], "class": "read" },
+  { "program": "gh", "args": ["-R"], "class": "deny" },
+  { "program": "gh", "args": ["issue", "list", "--repo", "o/r", "--json", "number,title"], "class": "read" },
+  { "program": "gh", "args": ["repo", "view", "o/r", "--json", "defaultBranchRef", "isPrivate", "url"], "class": "deny" },
+  { "program": "gh", "args": ["pr", "view", "--web"], "class": "deny" },
+  { "program": "gh", "args": ["issue", "create", "repo", "o/r", "t", "T"], "class": "deny" },
   { "program": "gh", "args": ["auth", "login"], "class": "deny" },
   { "program": "gh", "args": ["secret", "set", "X"], "class": "deny" }
 ]

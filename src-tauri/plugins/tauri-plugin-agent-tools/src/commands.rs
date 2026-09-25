@@ -989,6 +989,13 @@ async fn execute_tool_inner(
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
+    // Transcript audit #5: `"C:	mp"` in JSON arrives as `C:<TAB>mp`. Put the
+    // backslash back when that names something real, before the gate judges
+    // the path; otherwise say what happened instead of "does not exist".
+    let mut args = args;
+    crate::tools::path_repair::repair_args_on_disk(&name, tool.path_args, &mut args, &root, Some(&scratch))
+        .map_err(|e| AgentToolsError::from(format!("tool '{name}' was refused: {e}")))?;
+
     // The project's own policy, read from its `agent.toml` rather than assumed.
     // AH-007/AH-036/AH-037/AH-042: this call site used to build
     // `ToolPermissions::default()` -- allow everything -- so a repository that
@@ -1241,6 +1248,9 @@ async fn execute_tool_inner(
     };
     let ((content, diff, _images), read_ok) =
         handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
+    // Transcript audit #12: a refusal of the arguments shows the call it
+    // expected, not only the word that was wrong.
+    let content = crate::tools::call_shape::explain(&name, &args, content);
     // AH-009: what the call was is decided once, by classification. A shell
     // command that exited non-zero is a tool failure even though it said so in
     // its own words rather than in the tool protocol's. A `read` that

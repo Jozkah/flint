@@ -541,6 +541,29 @@ export async function withToolActivity<T extends RecordableOutcome>(
   })
   void recordToolActivity({ ...base, phase: 'running' })
 
+  // Exactly one terminal event per call. A stop that lands while the tool is
+  // still out (a git push waiting on the network, a command the backend has
+  // not returned from) settles the call as cancelled straight away: if the
+  // tool never comes back -- the window reloads, the app exits -- the record
+  // still ends, instead of staying `running` for good.
+  let ended = false
+  const end = async (event: Parameters<typeof recordToolActivity>[0]) => {
+    if (ended) return
+    ended = true
+    await recordToolActivity(event)
+  }
+  const onAbort = () => {
+    void end({
+      ...base,
+      phase: 'cancelled',
+      elapsed_ms: Date.now() - startedAt,
+      detail: 'stopped before the tool returned',
+    })
+  }
+  if (signal && !signal.aborted) {
+    signal.addEventListener('abort', onAbort, { once: true })
+  }
+
   try {
     const outcome = await route()
     // An aborted run reports its calls as cancelled, not failed: the user
@@ -555,7 +578,7 @@ export async function withToolActivity<T extends RecordableOutcome>(
     const text = outcomeText(outcome)
     const jobId =
       call.toolName === 'bash' ? (backgroundJobId(text) ?? '') : ''
-    await recordToolActivity({
+    await end({
       ...base,
       phase,
       elapsed_ms: Date.now() - startedAt,
@@ -570,12 +593,14 @@ export async function withToolActivity<T extends RecordableOutcome>(
     // The router resolves rather than throws, so reaching here means something
     // unforeseen went wrong -- which is exactly the case the record must not
     // lose.
-    await recordToolActivity({
+    await end({
       ...base,
       phase: signal?.aborted ? 'cancelled' : 'failed',
       elapsed_ms: Date.now() - startedAt,
       detail: error instanceof Error ? error.message : String(error),
     })
     throw error
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
   }
 }

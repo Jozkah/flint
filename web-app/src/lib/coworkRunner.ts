@@ -180,7 +180,69 @@ export function looksTruncatedArgs(raw: unknown): boolean {
  * value just truncates again and loops -- rather than the generic parse error,
  * which the model cannot act on.
  */
-function invalidArgsMessage(errorText: unknown, raw: unknown, usable: boolean): string {
+/**
+ * The one-line shape of a valid call to each built-in tool, for a refusal
+ * that should show what was expected (transcript audit #12). Required
+ * arguments only; the schema the model was given has the rest.
+ */
+const EXPECTED_SHAPES: Record<string, string> = {
+  read: '{"path": "<file>"}',
+  write: '{"path": "<file>", "content": "<text>"}',
+  edit: '{"path": "<file>", "edits": [{"old_string": "<exact text>", "new_string": "<replacement>"}]}',
+  ls: '{"path": "<folder>"}',
+  find: '{"pattern": "<glob>"}',
+  grep: '{"pattern": "<regex>"}',
+  bash: '{"command": "<command>"}',
+  git: '{"args": ["status"]} or {"program": "gh", "args": ["pr", "list", "--repo", "owner/repo"]}',
+  request_access: '{"path": "<absolute folder>", "reason": "<why>", "access_mode": "read"}',
+}
+
+/**
+ * The fields a schema validation error names, as "`path`: Required". The AI
+ * SDK reports them as a JSON list of issues inside its message.
+ */
+export function schemaIssues(errorText: string): string[] {
+  const out: string[] = []
+  const issue =
+    /\{[^{}]*?"path"\s*:\s*\[([^\]]*)\][^{}]*?"message"\s*:\s*"([^"]*)"[^{}]*?\}/g
+  for (const m of errorText.matchAll(issue)) {
+    const field = m[1]
+      .split(',')
+      .map((p) => p.trim().replace(/^"|"$/g, ''))
+      .filter(Boolean)
+      .join('.')
+    out.push(`\`${field || '(arguments)'}\`: ${m[2]}`)
+  }
+  const missing = /missing required (?:argument|property) '?"?([\w.]+)/gi
+  for (const m of errorText.matchAll(missing)) {
+    const line = `\`${m[1]}\`: Required`
+    if (!out.includes(line)) out.push(line)
+  }
+  return out
+}
+
+function explainInvalid(base: string, tool: string | undefined, raw: unknown): string {
+  const issues = schemaIssues(base)
+  const shape = tool ? EXPECTED_SHAPES[tool] : undefined
+  const sent =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? Object.keys(raw as Record<string, unknown>)
+      : []
+  return (
+    (issues.length ? ` Invalid or missing: ${issues.join('; ')}.` : '') +
+    (shape ? ` Expected call shape: ${shape}.` : '') +
+    (shape && sent.length
+      ? ` You sent: ${sent.map((k) => `\`${k}\``).join(', ')}.`
+      : '')
+  )
+}
+
+function invalidArgsMessage(
+  errorText: unknown,
+  raw: unknown,
+  usable: boolean,
+  tool?: string
+): string {
   const base = String(errorText ?? 'the call was not valid')
   if (looksTruncatedArgs(raw)) {
     return (
@@ -195,7 +257,8 @@ function invalidArgsMessage(errorText: unknown, raw: unknown, usable: boolean): 
     base +
     (usable || raw === undefined
       ? ''
-      : ` (the arguments sent were: ${capArgs(raw)})`)
+      : ` (the arguments sent were: ${capArgs(raw)})`) +
+    explainInvalid(base, tool, raw)
   )
 }
 
@@ -596,7 +659,12 @@ export async function consumeStep(
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
             input: usable ? raw : {},
-            invalid: invalidArgsMessage(chunk.errorText, raw, usable),
+            invalid: invalidArgsMessage(
+              chunk.errorText,
+              raw,
+              usable,
+              chunk.toolName
+            ),
           }
           result.toolCalls.push(call)
           sink.onToolCall(call)
@@ -994,7 +1062,7 @@ export async function runTurn(opts: {
         void recordToolActivity({
           ...identity,
           phase: 'refused',
-          detail: 'not a valid call',
+          detail: `not a valid call: ${call.invalid}`.slice(0, 500),
           refusal: refusal.kind,
         })
         observed.push({

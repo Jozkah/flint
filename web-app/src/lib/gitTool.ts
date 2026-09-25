@@ -577,18 +577,98 @@ const GH_DESTRUCTIVE: Record<string, [string[], string]> = {
   label: [['delete'], 'permanently deletes content on GitHub'],
 }
 
-function ghPlan(args: string[]): GitPlanResult {
+/** How gh calls are written, for refusals that should teach the shape. */
+const GH_SHAPES =
+  'Write gh calls subcommand first, flags with their dashes, each flag and value as separate entries, e.g. ["pr", "create", "--repo", "owner/repo", "--head", "my-branch", "--base", "main", "--title", "T", "--body", "B"] or ["issue", "list", "--repo", "owner/repo", "--json", "number,title"].'
+
+/**
+ * `gh -R owner/repo issue list` is a spelling gh itself accepts: the leading
+ * `-R/--repo` moves behind the subcommand, as tools/git_tool.rs does, so the
+ * prompt decision here and the backend's classification agree.
+ */
+function moveLeadingRepo(
+  args: string[]
+): { ok: true; args: string[] } | { ok: false; error: string } {
+  const lead: string[] = []
+  let i = 0
+  while (i < args.length) {
+    const a = args[i]
+    if (a === '-R' || a === '--repo') {
+      if (args[i + 1] === undefined)
+        return {
+          ok: false,
+          error: `\`${a}\` needs a repository after it. ${GH_SHAPES}`,
+        }
+      lead.push(a, args[i + 1])
+      i += 2
+    } else if (a.startsWith('--repo=')) {
+      lead.push(a)
+      i += 1
+    } else break
+  }
+  if (!lead.length) return { ok: true, args }
+  const rest = args.slice(i)
+  if (!rest.length)
+    return {
+      ok: false,
+      error: `no gh command given after \`${lead.join(' ')}\`. ${GH_SHAPES}`,
+    }
+  const at = rest[1] !== undefined && !rest[1].startsWith('-') ? 2 : 1
+  return { ok: true, args: [...rest.slice(0, at), ...lead, ...rest.slice(at)] }
+}
+
+const GH_CREATE_VALUE_FLAGS = [
+  '-R', '--repo', '-t', '--title', '-b', '--body', '-F', '--body-file',
+  '-B', '--base', '-H', '--head', '-l', '--label', '-a', '--assignee',
+  '-m', '--milestone', '-p', '--project', '-r', '--reviewer', '-T',
+  '--template', '--recover',
+]
+
+/** Mistakes a model makes in gh's argument shape, named with the fix. */
+function ghShapeError(
+  group: string,
+  action: string,
+  args: string[]
+): string | null {
+  if (has(args, ['--web', '-w']))
+    return `\`--web\` opens a browser you cannot see and returns nothing; drop it (use \`--json <fields>\` to read). ${GH_SHAPES}`
+  const j = args.indexOf('--json')
+  if (j >= 0) {
+    const words: string[] = []
+    for (const a of args.slice(j + 1)) {
+      if (a.startsWith('-')) break
+      words.push(a)
+    }
+    if (words.length >= 3 && words.every((w) => /^[A-Za-z0-9]+$/.test(w)))
+      return `\`--json\` takes ONE comma-separated value: ["--json", "${words.join(',')}"], not separate arguments. ${GH_SHAPES}`
+    if (!words.length)
+      return `\`--json\` needs the fields to return, e.g. ["--json", "number,title"]. ${GH_SHAPES}`
+  }
+  if ((group === 'pr' || group === 'issue') && action === 'create') {
+    const stray = positionals(args.slice(2), GH_CREATE_VALUE_FLAGS)
+    if (stray.length)
+      return `\`gh ${group} create\` takes no positional arguments, but got \`${stray[0]}\` -- were the dashes dropped (\`--title\`, \`--body\`, \`--repo\`)? ${GH_SHAPES}`
+  }
+  return null
+}
+
+function ghPlan(input: string[]): GitPlanResult {
+  const moved = moveLeadingRepo(input)
+  if (!moved.ok) return moved
+  const args = moved.args
   const group = args[0]
-  if (!group) return { ok: false, error: 'no gh command given' }
+  if (!group) return { ok: false, error: `no gh command given. ${GH_SHAPES}` }
   if (group.startsWith('-'))
     return {
       ok: false,
-      error: `options before the gh command (\`${group}\`) are not allowed`,
+      error: `options before the gh command (\`${group}\`) are not allowed: put the subcommand first. ${GH_SHAPES}`,
     }
   if (group === 'auth' && hasOpt(args, ['--show-token', '-t'])) {
     return { ok: false, error: '`gh auth status --show-token` is not allowed' }
   }
   const action = args[1] ?? ''
+  const shape = ghShapeError(group, action, args)
+  if (shape) return { ok: false, error: shape }
   const plan: GitPlan = {
     program: 'gh',
     args,
@@ -614,7 +694,7 @@ function ghPlan(args: string[]): GitPlanResult {
   } else {
     return {
       ok: false,
-      error: `\`gh ${group} ${action}\` is not supported by this tool`,
+      error: `\`gh ${group} ${action}\` is not supported by this tool. ${GH_SHAPES}`,
     }
   }
   if (group === 'pr' && action === 'merge' && hasOpt(args, ['--admin'])) {

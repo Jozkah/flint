@@ -18,6 +18,7 @@ import {
   type PendingToolCall,
   type StepResult,
   type ToolOutcome,
+  schemaIssues,
 } from '../coworkRunner'
 import { MAX_SESSION_TOKENS } from '../coworkBudget'
 
@@ -413,6 +414,48 @@ describe('an invalid tool call', () => {
     expect(told).toContain('`edit`')
     // The 4000-char blob is not echoed back into the transcript/context.
     expect(told).not.toContain('x'.repeat(1000))
+  })
+})
+
+describe('a refused call names what was wrong (transcript audit #12)', () => {
+  it('reads the fields out of a schema validation error', () => {
+    const issues = [
+      {
+        code: 'invalid_type',
+        expected: 'string',
+        received: 'undefined',
+        path: ['path'],
+        message: 'Required',
+      },
+    ]
+    const text = [
+      'Invalid input for tool edit: Type validation failed: Value: {}.',
+      `Error message: ${JSON.stringify(issues, null, 2)}`,
+    ].join('\n')
+    expect(schemaIssues(text)).toEqual(['`path`: Required'])
+    expect(schemaIssues("missing required argument 'content'")).toEqual([
+      '`content`: Required',
+    ])
+  })
+
+  it('shows the expected call shape and the keys that were sent', async () => {
+    const r = await consumeStep(
+      streamOf([
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'edit',
+          input: { file_path: 'a.txt', old_string: 'x', new_string: 'y' },
+          errorText:
+            'Invalid input for tool edit: Type validation failed: [{"path": ["path"], "message": "Required"}]',
+        } as unknown as UIMessageChunk,
+      ]),
+      noopSink()
+    )
+    const invalid = r.toolCalls[0].invalid ?? ''
+    expect(invalid).toContain('`path`: Required')
+    expect(invalid).toContain('Expected call shape: {"path": "<file>", "edits": [')
+    expect(invalid).toContain('You sent: `file_path`, `old_string`, `new_string`')
   })
 })
 

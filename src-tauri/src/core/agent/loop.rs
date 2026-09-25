@@ -3367,7 +3367,14 @@ impl CompositeToolInvoker {
             if let Some(allowed) = &self.allowed_tools {
                 if !allowed.contains(name) {
                     let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                    let mut refused = ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered);
+                    // Transcript audit #11: name the offered tools it was
+                    // probably meant to be.
+                    refused.content.push_str(&tauri_plugin_agent_tools::tools::call_shape::did_you_mean(
+                        name,
+                        allowed.iter().map(String::as_str),
+                    ));
+                    out.push(refused);
                     continue;
                 }
             }
@@ -3591,11 +3598,22 @@ impl CompositeToolInvoker {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let Some(args) = parse_tool_args(tc) else {
+            let Some(mut args) = parse_tool_args(tc) else {
                 out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
                 continue;
             };
             let tool = lookup(name).expect("is_builtin implies lookup");
+            // Transcript audit #5: a backslash JSON turned into a TAB.
+            if let Err(e) = tauri_plugin_agent_tools::tools::path_repair::repair_args_on_disk(
+                name,
+                tool.path_args,
+                &mut args,
+                &self.project_root,
+                Some(self.scratch_root.as_path()),
+            ) {
+                out.push(ToolOutcome::plain(id, format!("ERROR: {e}")));
+                continue;
+            }
             // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
             // BEFORE the normal gate, without a permission prompt, and auto-approval
             // cannot override this (unlike the normal prompt suppression below).
@@ -3757,6 +3775,7 @@ impl CompositeToolInvoker {
                     // deregisters it.
                     let _registered = registered;
                     let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
+                    let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
                     ToolOutcome {
                         diff,
                         images: images.unwrap_or_default(),
@@ -3918,6 +3937,9 @@ impl CompositeToolInvoker {
                     }
                 }
             };
+            // Transcript audit #12: a refusal of the arguments shows the call
+            // it expected.
+            let text = tauri_plugin_agent_tools::tools::call_shape::explain(name, &args, text);
             out.push(ToolOutcome {
                 diff,
                 images: images.unwrap_or_default(),
