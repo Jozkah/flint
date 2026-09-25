@@ -12,7 +12,7 @@ export type Crumb = {
   parentTo: string
   /** i18n key for the current page, or null when `dynamic` names it. */
   currentKey: string | null
-  dynamic?: 'thread' | 'project' | 'room' | 'provider'
+  dynamic?: 'thread' | 'project' | 'room' | 'provider' | 'session'
   param?: string
 }
 
@@ -46,7 +46,13 @@ export function crumbForPath(pathname: string): Crumb {
       dynamic: 'project',
       param: path.slice('/project/'.length),
     }
-  if (path === route.cowork) return { ...ws, currentKey: 'common:cowork' }
+  if (path === route.cowork)
+    return {
+      parentKey: 'common:cowork',
+      parentTo: route.cowork,
+      currentKey: null,
+      dynamic: 'session',
+    }
   if (path === route.artifacts) return { ...ws, currentKey: 'common:appRail.library' }
   if (path === route.rooms) return { ...ws, currentKey: 'common:appRail.rooms' }
   if (path.startsWith(`${route.rooms}/`))

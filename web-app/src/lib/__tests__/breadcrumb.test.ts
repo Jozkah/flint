@@ -5,7 +5,6 @@ import { statusFor, updatedMs } from '@/containers/ThreadStatusMark'
 describe('crumbForPath', () => {
   it.each([
     ['/', 'common:appRail.workspace', 'common:newChat'],
-    ['/cowork', 'common:appRail.workspace', 'common:cowork'],
     ['/artifacts', 'common:appRail.workspace', 'common:appRail.library'],
     ['/settings/providers', 'common:shell.engine', 'common:appRail.models'],
     ['/settings/mcp-servers', 'common:shell.engine', 'common:shell.toolsAndMcp'],
@@ -20,6 +19,7 @@ describe('crumbForPath', () => {
 
   it('names threads, rooms and providers from the page', () => {
     expect(crumbForPath('/threads/t1')).toMatchObject({ dynamic: 'thread', param: 't1', currentKey: null })
+    expect(crumbForPath('/cowork')).toMatchObject({ dynamic: 'session', parentKey: 'common:cowork' })
     expect(crumbForPath('/rooms/r1')).toMatchObject({ dynamic: 'room', parentKey: 'common:appRail.rooms' })
     expect(crumbForPath('/settings/providers/llama.cpp')).toMatchObject({ dynamic: 'provider', param: 'llama.cpp' })
   })

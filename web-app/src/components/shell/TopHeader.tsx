@@ -22,6 +22,7 @@ import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useRoomsState } from '@/containers/rooms/roomsBindings'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getProviderTitle, cn } from '@/lib/utils'
@@ -44,6 +45,12 @@ function useCurrentName(crumb: ReturnType<typeof crumbForPath>) {
   const { folders } = useThreadManagement()
   const providers = useModelProvider((s) => s.providers)
   const { summaries } = useRoomsState()
+  const sessionTitle = useCoworkSessions((s) =>
+    crumb.dynamic === 'session'
+      ? s.sessions.find((x) => x.id === s.currentId)?.title
+      : undefined
+  )
+  if (crumb.dynamic === 'session') return sessionTitle
   if (crumb.dynamic === 'thread') return thread?.title
   if (crumb.dynamic === 'room')
     return summaries.find((r) => r.id === crumb.param)?.title
@@ -77,6 +84,8 @@ export function TopHeader() {
         ? t('common:appRail.rooms')
         : crumb.dynamic === 'thread'
           ? t('common:newThread')
+          : crumb.dynamic === 'session'
+            ? t('common:newSession')
           : (crumb.param ?? ''))
 
   const isDark = useTheme((s) => s.isDark)
