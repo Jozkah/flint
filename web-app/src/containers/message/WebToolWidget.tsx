@@ -16,7 +16,7 @@ import { ToolBar } from './ToolBar'
 const Favicon = ({ url }: { url: string }) => (
   <span
     aria-hidden
-    className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border bg-sunken text-[0.5rem] font-medium uppercase text-muted-foreground"
+    className="size-4 shrink-0 inline-flex items-center justify-center rounded-[5px] border border-border bg-accent text-[0.5rem] font-medium uppercase text-muted-foreground"
   >
     {siteInitial(url)}
   </span>
@@ -33,7 +33,7 @@ const ResultRow = ({
     href={url}
     target="_blank"
     rel="noreferrer noopener"
-    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
+    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 no-underline transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
     title={url}
   >
     <Favicon url={url} />
@@ -75,7 +75,7 @@ export const WebToolWidget = memo(
     )
 
     return (
-      <div className="space-y-2">
+      <div className="space-y-2 px-2.5 py-2">
         {bar.variant === 'search' ? (
           <ToolBar
             icon={<SearchIcon className="size-4" />}
@@ -138,7 +138,7 @@ export const WebToolWidget = memo(
         {!running && !errorText && page && (
           <div className="space-y-1.5">
             {page.url && <ResultRow url={page.url} title={page.title} />}
-            <div className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border px-2 py-1.5 text-xs text-muted-foreground">
+            <div className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
               {page.content}
             </div>
             {page.truncated && (

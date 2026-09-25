@@ -61,6 +61,7 @@ vi.mock('@/containers/DropdownModelProvider', () => ({
 
 vi.mock('@/containers/GettingStartedCard', () => ({
   GettingStartedCard: () => <div data-testid="getting-started-card" />,
+  ResumeRecentLink: () => <div data-testid="resume-recent" />,
 }))
 
 vi.mock('@/containers/SetupScreen', () => ({

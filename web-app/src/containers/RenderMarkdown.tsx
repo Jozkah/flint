@@ -86,7 +86,7 @@ function StreamingCode({ node, className, children, ...props }: CodeProps) {
     return (
       <code
         className={cn(
-          'rounded bg-muted px-1.5 py-0.5 font-mono text-sm',
+          'rounded-[5px] bg-accent px-1.5 py-0.5 font-mono text-[0.86em]',
           className
         )}
         {...props}
@@ -96,8 +96,8 @@ function StreamingCode({ node, className, children, ...props }: CodeProps) {
     )
   }
   return (
-    <pre className="my-4 overflow-x-auto rounded-lg border border-border bg-secondary p-4">
-      <code className={cn('font-mono text-sm', className)}>{children}</code>
+    <pre className="mt-1 mb-3 overflow-x-auto rounded-[10px] border-[0.8px] border-border bg-code-bg px-3 py-2.5">
+      <code className={cn('font-mono text-xs leading-[1.6]', className)}>{children}</code>
     </pre>
   )
 }

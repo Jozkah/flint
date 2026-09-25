@@ -1,6 +1,19 @@
 {
   "welcome": "Hi, how are you?",
   "description": "How can I help you today?",
+  "startedAt": "Started {{time}}",
+  "home": {
+    "title": "New chat",
+    "notSaved": "Nothing is saved until you send",
+    "sub": "Ask anything, attach files, or hand a bigger task to Cowork.",
+    "suggestionsLabel": "Suggestions",
+    "suggestions": {
+      "explain": "Explain this error message",
+      "summarise": "Summarise a document I attach",
+      "draft": "Draft release notes from a list of changes",
+      "compare": "Compare two approaches and recommend one"
+    }
+  },
   "temporaryChat": "Temporary Chat",
   "temporaryChatDescription": "Start a temporary conversation that won't be saved to your chat history.",
   "temporaryChatBanner": "Temporary chat — won't be saved",

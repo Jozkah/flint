@@ -52,7 +52,7 @@ export function PermissionRequestDetails({
   const { technicalDetails } = request
 
   return (
-    <div className={cn('space-y-3 text-sm text-ink-2', className)}>
+    <div className={cn('space-y-2.5 text-[12.5px] text-fg-2', className)}>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip tone="neutral">
           {formatPermissionMessage(t, request.categoryLabel)}
@@ -72,7 +72,7 @@ export function PermissionRequestDetails({
           <ul
             aria-labelledby={affectsId}
             tabIndex={request.resources.length > 4 ? 0 : undefined}
-            className="max-h-32 space-y-0.5 overflow-auto rounded-md bg-code px-3 py-2"
+            className="max-h-32 space-y-0.5 overflow-auto rounded-lg bg-code-bg px-2.5 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]"
           >
             {request.resources.map((resource) => (
               <li
@@ -120,7 +120,7 @@ export function PermissionRequestDetails({
               variant="ghost"
               size="sm"
               type="button"
-              className="-ml-2 text-ink-2 pointer-coarse:h-11"
+              className="-ml-2 text-muted-foreground pointer-coarse:h-11"
             >
               <ChevronDownIcon
                 aria-hidden
@@ -158,7 +158,7 @@ export function PermissionRequestDetails({
                 </div>
                 <pre
                   tabIndex={0}
-                  className="max-h-48 overflow-auto rounded-md bg-code p-2 font-mono whitespace-pre-wrap break-all text-foreground"
+                  className="max-h-48 overflow-auto rounded-lg bg-code-bg p-2 font-mono whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
                 >
                   {technicalDetails.argumentsJson}
                 </pre>
@@ -204,11 +204,11 @@ export function PermissionScopeChoices({
     <div
       role="group"
       aria-label={t('permissions:request.chooseScope')}
-      className={cn('flex flex-col gap-2', className)}
+      className={cn('flex flex-wrap items-start gap-2.5', className)}
     >
       {/* Deny comes first in the tab order: focus starts here, and Tab then
           walks the scopes from the narrowest to the broadest. */}
-      <div className="flex">
+      <div className="flex shrink-0">
         <Button
           ref={denyRef}
           size="sm"
@@ -222,40 +222,40 @@ export function PermissionScopeChoices({
           {t('permissions:scope.deny')}
         </Button>
       </div>
-      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+      <ul className="flex min-w-60 flex-1 flex-col divide-y divide-dashed divide-border overflow-hidden rounded-[10px] border-[0.8px] border-border bg-card">
         {offered.map((scope, index) => {
           const info = request.scopeExplanations[scope]!
           const explanationId = `${baseId}-${scope}`
           return (
-            <li
-              key={scope}
-              className="flex flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-center sm:gap-3"
-            >
-              <Button
-                size="sm"
-                variant={index === 0 ? 'default' : 'outline'}
+            <li key={scope} className="flex">
+              {/* The whole row answers; the narrowest scope is marked as the
+                  expected choice by weight, not by a filled button. */}
+              <button
                 type="button"
+                // Named by the scope alone; the explanation describes it.
+                aria-label={formatPermissionMessage(t, info.label)}
                 aria-describedby={explanationId}
                 data-scope={scope}
+                data-primary={index === 0 || undefined}
                 disabled={disabled}
-                className="shrink-0 justify-start self-start pointer-coarse:h-11 sm:self-auto"
+                className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
                 onClick={() => onDecision(scope)}
               >
-                {formatPermissionMessage(t, info.label)}
-              </Button>
-              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <span
-                  id={explanationId}
-                  className="text-xs leading-snug text-muted-foreground"
-                >
-                  {formatPermissionMessage(t, info.explanation)}
-                </span>
+                <b className="text-[13px] font-medium text-foreground">
+                  {formatPermissionMessage(t, info.label)}
+                </b>
                 {info.broader && (
                   <StatusChip tone="warning">
                     {t('permissions:scope.broader')}
                   </StatusChip>
                 )}
-              </span>
+                <span
+                  id={explanationId}
+                  className="w-full text-xs leading-snug text-muted-foreground"
+                >
+                  {formatPermissionMessage(t, info.explanation)}
+                </span>
+              </button>
             </li>
           )
         })}

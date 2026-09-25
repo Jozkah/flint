@@ -45,7 +45,7 @@ export function DiffView({
       className={cn(
         // Long lines scroll sideways inside the diff rather than wrapping into
         // the gutter or widening whatever panel holds it.
-        'max-h-96 overflow-auto rounded-md border border-border bg-card font-mono text-xs',
+        'max-h-96 overflow-auto rounded-lg border-[0.8px] border-border bg-card font-mono text-xs leading-[1.65]',
         className
       )}
     >
@@ -54,7 +54,7 @@ export function DiffView({
           {parsed.hunks.map((hunk, hunkIndex) => (
             <Fragment key={`hunk-${hunkIndex}`}>
               {hunk.header && (
-                <tr className="bg-sunken">
+                <tr className="bg-accent">
                   <td
                     colSpan={3}
                     className="select-none px-2 py-0.5 text-muted-foreground"
@@ -92,10 +92,18 @@ export function DiffView({
 }
 
 const ROW_TONE: Record<DiffLine['kind'], string> = {
-  add: 'bg-diff-add-bg text-diff-add',
-  remove: 'bg-diff-del-bg text-diff-del',
-  context: '',
+  add: 'bg-diff-add-bg text-fg-2',
+  remove: 'bg-diff-del-bg text-fg-2',
+  context: 'text-fg-2',
   meta: 'text-muted-foreground italic',
+}
+
+/** The line-number gutter takes a deeper step of the row's tint. */
+const GUTTER_TONE: Record<DiffLine['kind'], string> = {
+  add: 'bg-diff-add-ln',
+  remove: 'bg-diff-del-ln',
+  context: '',
+  meta: '',
 }
 
 const MARKER: Record<DiffLine['kind'], string> = {
@@ -115,23 +123,29 @@ function DiffRow({
   return (
     <tr className={ROW_TONE[line.kind]}>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
+        className={cn(
+          'select-none px-2 text-right align-top text-subtle-foreground tabular-nums',
+          GUTTER_TONE[line.kind]
+        )}
         style={gutter}
       >
         {line.oldNumber ?? ''}
       </td>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
+        className={cn(
+          'select-none px-2 text-right align-top text-subtle-foreground tabular-nums',
+          GUTTER_TONE[line.kind]
+        )}
         style={gutter}
       >
         {line.newNumber ?? ''}
       </td>
-      <td className="whitespace-pre px-2 align-top">
+      <td className="whitespace-pre pr-3 align-top">
         {/* The marker is what makes the row readable without colour. */}
         <span
           aria-hidden
           className={cn(
-            'select-none pr-1',
+            'inline-block w-[18px] select-none text-center text-subtle-foreground',
             line.kind === 'add' && 'text-diff-add',
             line.kind === 'remove' && 'text-diff-del'
           )}

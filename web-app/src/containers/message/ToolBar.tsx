@@ -45,7 +45,7 @@ export const ToolBar = ({
     !value && 'text-muted-foreground'
   )
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
+    <div className="flex min-w-0 items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 py-1.5">
       <span className="shrink-0 text-muted-foreground">{icon}</span>
       {onActivate ? (
         <button

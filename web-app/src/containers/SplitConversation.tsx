@@ -34,9 +34,9 @@ export function SplitToggleButton() {
   const openSplit = useSplitConversation((s) => s.openSplit)
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:h-11"
+      className="h-[30px] shrink-0 pointer-coarse:h-11"
       onClick={openSplit}
       aria-label={t('chat:split.open')}
       title={t('chat:split.openHint')}
@@ -54,9 +54,9 @@ export function CloseSplitButton() {
   const closeSplit = useSplitConversation((s) => s.closeSplit)
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      className="shrink-0 text-ink-2 hover:text-foreground pointer-coarse:h-11"
+      className="h-[30px] shrink-0 pointer-coarse:h-11"
       onClick={closeSplit}
       aria-label={t('chat:split.close')}
       data-testid="split-conversation-close"
@@ -77,7 +77,7 @@ export function SecondaryPaneControls() {
       <Button
         variant="ghost"
         size="icon-sm"
-        className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
+        className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
         onClick={() => setSecondaryThread(undefined)}
         aria-label={t('chat:split.change')}
         title={t('chat:split.change')}
@@ -88,7 +88,7 @@ export function SecondaryPaneControls() {
       <Button
         variant="ghost"
         size="icon-sm"
-        className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
+        className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
         onClick={closeSplit}
         aria-label={t('chat:split.closePane')}
         title={t('chat:split.closePane')}
@@ -137,8 +137,8 @@ function PaneTab({
       className={cn(
         'relative flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-sm px-3 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
         selected
-          ? 'bg-card text-foreground ring-1 ring-border'
-          : 'text-ink-2 hover:text-foreground'
+          ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
+          : 'text-muted-foreground hover:text-foreground'
       )}
     >
       {/* Which pane, for a screen reader; the title for everyone. */}
@@ -149,7 +149,7 @@ function PaneTab({
           {/* Replying is activity, not selection: an icon, never the accent. */}
           <Loader2
             aria-hidden
-            className="size-3.5 shrink-0 text-ink-2 motion-safe:animate-spin"
+            className="size-3.5 shrink-0 text-muted-foreground motion-safe:animate-spin"
           />
           <span className="sr-only">{t('chat:split.streaming')}</span>
         </>
@@ -194,7 +194,7 @@ export function SplitPaneSwitch({
       aria-label={t('chat:split.panes')}
       onKeyDown={onKeyDown}
       data-testid="split-pane-switch"
-      className="grid w-full min-w-0 max-w-md grid-cols-2 gap-0.5 rounded-md bg-sunken p-0.5"
+      className="grid w-full min-w-0 max-w-md grid-cols-2 gap-0.5 rounded-md bg-muted p-0.5"
     >
       <PaneTab
         pane="primary"
@@ -281,7 +281,7 @@ export function SplitDivider({
     >
       <span
         aria-hidden
-        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-line-strong group-focus-visible:bg-brand"
+        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-border-strong group-focus-visible:bg-acc"
       />
     </div>
   )
@@ -343,17 +343,17 @@ export function SecondaryPanePicker({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col bg-background"
+      className="flex h-full min-h-0 flex-col rounded-xl bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)]"
       data-testid="split-pane-picker"
     >
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-sunken pr-1 pl-3 pointer-coarse:h-12">
-        <span className="truncate text-[13px] font-semibold text-foreground">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 pr-1 pl-2 pointer-coarse:h-12">
+        <span className="truncate text-sm font-medium text-secondary-foreground">
           {t('chat:split.secondary')}
         </span>
         <Button
           variant="ghost"
           size="icon-sm"
-          className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
+          className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
           onClick={closeSplit}
           aria-label={t('chat:split.closePane')}
           title={t('chat:split.closePane')}
@@ -361,12 +361,12 @@ export function SecondaryPanePicker({
           <X className="size-4" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border-[0.8px] border-input bg-card px-4 py-5">
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-sm font-semibold text-foreground">
             {t('chat:split.pickTitle')}
           </h2>
-          <p className="mt-1 text-sm text-ink-2">
+          <p className="mt-1 text-sm text-muted-foreground">
             {t('chat:split.pickDescription')}
           </p>
           <Button
@@ -396,7 +396,7 @@ export function SecondaryPanePicker({
                       data-testid={`split-pick-${th.id}`}
                       className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11"
                     >
-                      <MessageCircle className="size-4 shrink-0 text-ink-2" />
+                      <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 truncate" title={title}>
                         {title}
                       </span>

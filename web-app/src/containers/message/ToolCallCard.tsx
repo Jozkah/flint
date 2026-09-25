@@ -68,6 +68,8 @@ export const ToolCallCard = memo(
         state={part.state}
         toolCallId={part.toolCallId}
         messageId={messageId}
+        name={toolName}
+        origin={originLabel}
         className={className}
       >
         <ToolHeader
@@ -79,9 +81,14 @@ export const ToolCallCard = memo(
           // the header too prints the same text twice, one line apart.
           input={bar ? undefined : part.input}
         />
-        <ToolProgressRow toolCallId={part.toolCallId} />
+        <ToolProgressRow
+          toolCallId={part.toolCallId}
+          className="mt-0 px-2.5 pb-2"
+        />
         {bar && (
-          <div className="mt-2">
+          // The widget stays in view when the card is closed: it is how a
+          // native call says what it did.
+          <div className="min-w-0 border-t border-dashed border-border">
             {bar.variant === 'documents' ? (
               <RagToolWidget
                 bar={bar}

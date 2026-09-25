@@ -7,7 +7,17 @@ import {
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
-import { ChevronDownIcon, WrenchIcon, SearchIcon, GlobeIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  FileDiffIcon,
+  FileTextIcon,
+  GlobeIcon,
+  ListTodoIcon,
+  Loader2Icon,
+  SearchIcon,
+  TerminalIcon,
+  WrenchIcon,
+} from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import {
   createContext,
@@ -48,9 +58,24 @@ import { Button } from '@/components/ui/button'
 import { ShieldAlertIcon } from 'lucide-react'
 import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
-import { TONE_CLASSES, toneForTool } from '@/lib/semanticTone'
+import { toolKind } from '@/lib/toolKind'
+import { Chip } from '@/components/ui/chip'
 import { ChangeDiff } from '@/components/ChangeDiff'
-import { WorkStatus, type WorkState } from '@/containers/StatusChip'
+import type { WorkState } from '@/containers/StatusChip'
+
+/** One section of an open tool card, under a dashed rule. */
+const TOOL_SECTION =
+  'min-w-0 border-t border-dashed border-border px-2.5 py-2'
+
+/** The mockup's small "Table | Raw" switch: two options on a muted track. */
+const MINI_TRACK = 'inline-flex rounded-md bg-accent p-0.5'
+const miniOption = (on: boolean) =>
+  cn(
+    'rounded px-[7px] py-0.5 text-[11px] leading-4 transition-colors outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11',
+    on
+      ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
+      : 'text-muted-foreground hover:text-foreground'
+  )
 
 /** Payloads shorter than this fit the collapsed box, so no expand control. */
 const OUTPUT_EXPAND_THRESHOLD = 600
@@ -81,6 +106,10 @@ export type ToolProps = ComponentProps<typeof Collapsible> & {
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  /** Bare tool name, for the card's kind colour. */
+  name?: string
+  /** Where the tool came from, for the card's kind colour. */
+  origin?: string
 }
 
 export const Tool = memo(
@@ -89,6 +118,8 @@ export const Tool = memo(
     state,
     toolCallId,
     messageId,
+    name,
+    origin,
     open,
     defaultOpen = false,
     onOpenChange,
@@ -118,12 +149,26 @@ export const Tool = memo(
       setIsOpen(newOpen)
     }
 
+    const kind = toolKind({
+      name: name ?? '',
+      state,
+      origin,
+      awaitingApproval: isPending,
+    })
+
     return (
       <ToolContext.Provider
         value={{ isOpen, setIsOpen, state, toolCallId, messageId }}
       >
+        {/* A compact card whose kind colour (styles/chat.css) marks the left
+            edge, the icon tile and the status text. */}
         <Collapsible
-          className={cn('not-prose', className)}
+          data-slot="tool-card"
+          data-tool-kind={kind}
+          className={cn(
+            'tool-card not-prose min-w-0 overflow-hidden rounded-[10px] border-[0.8px] bg-card motion-safe:transition-shadow motion-safe:duration-200 hover:shadow-lift',
+            className
+          )}
           onOpenChange={handleOpenChange}
           open={isOpen}
           {...props}
@@ -196,11 +241,8 @@ export const ToolHeader = memo(
       toolCallId ? s.timings[toolCallId]?.endedAt : undefined
     )
 
-    // Colour says what kind of row this is; the status text below still says
-    // what happened, so nothing here is the only signal.
-    const tone = toneForTool({ name: toolName, state, origin })
-    const toneIcon = TONE_CLASSES[tone].icon
-
+    // Colour comes from the card's kind (Tool); the status text below still
+    // says what happened, so colour is never the only signal.
     const isQueued = queuePosition >= 0
     const workState: WorkState = awaitingApproval
       ? 'needs-you'
@@ -218,45 +260,40 @@ export const ToolHeader = memo(
       // long it took and the disclosure chevron.
       <CollapsibleTrigger
         className={cn(
-          'group/tool-row flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-1.5 text-left text-sm text-ink-2 transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+          'group/tool-row flex min-h-[38px] w-full min-w-0 cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-xs text-fg-2 transition-colors outline-hidden hover:bg-[color-mix(in_oklab,var(--tk)_4%,transparent)] focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
           className
         )}
       >
-        {awaitingApproval ? (
-          <ShieldAlertIcon className="size-4 shrink-0 text-warning" />
-        ) : toolName === 'web_search' ? (
-          <SearchIcon className={cn('size-4 shrink-0', toneIcon)} />
-        ) : toolName === 'web_fetch' ? (
-          <GlobeIcon className={cn('size-4 shrink-0', toneIcon)} />
-        ) : (
-          <WrenchIcon className={cn('size-4 shrink-0', toneIcon)} />
-        )}
-        <WorkStatus
-          state={workState}
-          className={cn(
-            'min-w-0 first-letter:uppercase',
-            // A finished call is the normal case: say so quietly.
-            workState === 'done' && 'bg-transparent px-0 text-ink-2'
-          )}
+        <span
+          aria-hidden
+          data-slot="tool-icon"
+          className="grid size-[22px] shrink-0 place-items-center rounded-md bg-[color-mix(in_oklab,var(--tk)_14%,transparent)] text-(--tk) [&_svg]:size-[13px]"
+        >
+          <ToolKindIcon
+            name={toolName}
+            awaitingApproval={awaitingApproval}
+            running={workState === 'running'}
+          />
+        </span>
+        <span
+          data-state={workState}
+          className="min-w-0 shrink-0 truncate font-medium text-(--tk) first-letter:uppercase"
         >
           {getStatusText(t, state, toolName, awaitingApproval, isQueued)}
-        </WorkStatus>
+        </span>
         {origin && (
-          <span
-            className={cn(
-              'hidden shrink-0 sm:inline',
-              TONE_CLASSES[tone].badge
-            )}
-          >
+          <span className="hidden shrink-0 rounded-[5px] bg-[color-mix(in_oklab,var(--tk)_10%,transparent)] px-1.5 py-px text-[10.5px] text-[color-mix(in_oklab,var(--tk)_80%,var(--foreground))] sm:inline">
             {origin}
           </span>
         )}
-        {summary && (
+        {summary ? (
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
             {summary}
           </span>
+        ) : (
+          <span className="flex-1" />
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px] text-muted-foreground">
           {queuePosition > 0 && (
             <span>
               {t('tools:toolCall.queuedPosition', { count: queuePosition })}
@@ -270,7 +307,7 @@ export const ToolHeader = memo(
           <ChevronDownIcon
             aria-hidden
             className={cn(
-              'size-4 shrink-0 motion-safe:transition-transform',
+              'size-3 shrink-0 motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo',
               isOpen ? 'rotate-180' : 'rotate-0'
             )}
           />
@@ -280,21 +317,50 @@ export const ToolHeader = memo(
   }
 )
 
+/** The card's icon: its kind, or a shield while it waits for the user. */
+const ToolKindIcon = ({
+  name,
+  awaitingApproval,
+  running,
+}: {
+  name: string
+  awaitingApproval: boolean
+  running: boolean
+}) => {
+  if (awaitingApproval) return <ShieldAlertIcon />
+  if (running) return <Loader2Icon className="motion-safe:animate-spin" />
+  switch (toolKind({ name })) {
+    case 'web':
+      return name === 'web_fetch' ? <GlobeIcon /> : <SearchIcon />
+    case 'search':
+      return <SearchIcon />
+    case 'bash':
+      return <TerminalIcon />
+    case 'edit':
+      return <FileDiffIcon />
+    case 'read':
+      return <FileTextIcon />
+    case 'todo':
+      return <ListTodoIcon />
+    default:
+      return <WrenchIcon />
+  }
+}
+
 export type ToolContentProps = ComponentProps<typeof CollapsibleContent>
 
 export const ToolContent = memo(
   ({ className, children, ...props }: ToolContentProps) => (
     <CollapsibleContent
       className={cn(
-        'overflow-hidden text-sm relative data-[state=open]:mt-1.5 data-[state=open]:mb-2',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
+        'relative overflow-hidden text-sm',
+        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 text-fg-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="ml-3.5 min-w-0 space-y-3 border-l border-border pl-3">
-        {children}
-      </div>
+      {/* Parameters, the approval and the result: each a TOOL_SECTION. */}
+      <div className="flex min-w-0 flex-col">{children}</div>
     </CollapsibleContent>
   )
 )
@@ -321,43 +387,48 @@ export const ToolInput = memo(
     const asTable = rows.length > 0 && !showRaw
 
     return (
-      <div className={cn('space-y-1', className)} {...props}>
-        <div className="flex min-h-7 items-center gap-1">
-          <h4 className="text-xs font-medium text-muted-foreground">
+      <div className={cn(TOOL_SECTION, 'space-y-2', className)} {...props}>
+        <div className="flex min-h-6 items-center gap-2">
+          <h4 className="flex-1 text-xs font-medium text-foreground">
             {t('tools:toolCall.parameters')}
           </h4>
-          <div className="ml-auto flex items-center gap-0.5">
-            {rows.length > 0 && (
-              <Button
-                variant="ghost"
-                size="xs"
+          {rows.length > 0 && (
+            <span className={MINI_TRACK}>
+              <button
                 type="button"
-                className="text-ink-2 pointer-coarse:h-11"
-                onClick={() => setShowRaw((raw) => !raw)}
+                aria-pressed={!showRaw}
+                className={miniOption(!showRaw)}
+                onClick={() => setShowRaw(false)}
               >
-                {showRaw
-                  ? t('tools:toolCall.viewTable')
-                  : t('tools:toolCall.viewRaw')}
-              </Button>
-            )}
-            <CopyButton text={formatted} />
-          </div>
+                {t('tools:toolCall.viewTable')}
+              </button>
+              <button
+                type="button"
+                aria-pressed={showRaw}
+                className={miniOption(showRaw)}
+                onClick={() => setShowRaw(true)}
+              >
+                {t('tools:toolCall.viewRaw')}
+              </button>
+            </span>
+          )}
+          <CopyButton text={formatted} />
         </div>
         {asTable ? (
-          <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-code px-3 py-2">
+          <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-xs">
             {rows.map(([key, value]) => (
               <Fragment key={key}>
-                <dt className="truncate font-mono text-xs text-muted-foreground">
+                <dt className="max-w-32 truncate text-muted-foreground">
                   {key}
                 </dt>
-                <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-xs text-foreground">
+                <dd className="min-w-0 max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-fg-2">
                   {formatParamValue(value)}
                 </dd>
               </Fragment>
             ))}
           </dl>
         ) : (
-          <div className="rounded-md max-h-40 overflow-auto bg-code">
+          <div className="max-h-40 overflow-auto rounded-lg bg-code-bg shadow-[inset_0_0_0_0.8px_var(--border)]">
             <CodeBlock code={formatted} language="json" />
           </div>
         )}
@@ -408,22 +479,22 @@ export const ToolApprovalActions = memo(() => {
   if (!pending || !toolCallId || pending.origin || !request) return null
 
   return (
-    // A separate object that needs an answer, so a real card: a warning edge,
-    // the action in plain words first, then what it touches, then the answers
+    // A separate object that needs an answer: a warm band inside the card, the
+    // action in plain words first, then what it touches, then the answers
     // with Deny focused first.
     <div
       data-testid="inline-approval-card"
-      className="relative min-w-0 space-y-2.5 overflow-hidden rounded-lg border border-line-strong bg-card py-2.5 pr-3 pl-3.5 text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-warning"
+      className="relative flex min-w-0 flex-col gap-2.5 border-t border-dashed border-border bg-[color-mix(in_oklab,var(--warning)_6%,transparent)] p-3 text-foreground"
     >
-      <div className="flex flex-wrap items-start gap-2 text-sm">
-        <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-        <span className="min-w-0 flex-1 basis-48 font-medium text-foreground wrap-break-word">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <ShieldAlertIcon className="size-4 shrink-0 text-warning" aria-hidden />
+        <b className="min-w-0 font-medium text-foreground wrap-break-word">
           {formatPermissionMessage(t, request.action)}
-        </span>
+        </b>
         {isFirstInThread && threadPendingCount > 1 && (
-          <span className="shrink-0 rounded-md bg-warning-tint px-1.5 py-0.5 text-xs font-medium text-warning tabular-nums">
+          <Chip tone="warn" className="tabular-nums">
             {t('permissions:pending.many', { count: threadPendingCount })}
-          </span>
+          </Chip>
         )}
       </div>
       {isFirstInThread && (
@@ -485,8 +556,8 @@ const ToolImage = memo(({ data, index }: ToolImageProps) => {
   if (isLoading) {
     return (
       <div className="flex justify-center">
-        <div className="flex size-24 items-center justify-center rounded-md bg-sunken">
-          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-ink-2 border-t-transparent" />
+        <div className="flex size-24 items-center justify-center rounded-md bg-muted">
+          <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
         </div>
       </div>
     )
@@ -557,7 +628,7 @@ export const ToolOutput = memo(
       !citationPayload && copyText.length > OUTPUT_EXPAND_THRESHOLD
     // Output scrolls inside its own code-surface box, never the page.
     const boxClassName = cn(
-      'max-w-full overflow-auto rounded-md bg-code',
+      'max-w-full overflow-auto rounded-lg bg-code-bg shadow-[inset_0_0_0_0.8px_var(--border)]',
       expanded ? 'max-h-[32rem]' : 'max-h-40'
     )
 
@@ -703,9 +774,14 @@ export const ToolOutput = memo(
     }
 
     return (
-      <div className={cn('space-y-1', className)} {...props}>
-        <div className="flex min-h-7 items-center gap-1">
-          <h4 className="text-xs font-medium text-muted-foreground">
+      <div className={cn(TOOL_SECTION, 'space-y-2', className)} {...props}>
+        <div className="flex min-h-6 items-center gap-1">
+          <h4
+            className={cn(
+              'text-xs font-medium',
+              errorText ? 'text-destructive' : 'text-foreground'
+            )}
+          >
             {errorText ? t('tools:toolCall.error') : t('tools:toolCall.result')}
           </h4>
           <div className="ml-auto flex items-center gap-0.5">
@@ -714,7 +790,7 @@ export const ToolOutput = memo(
                 variant="ghost"
                 size="xs"
                 type="button"
-                className="text-ink-2 pointer-coarse:h-11"
+                className="text-muted-foreground pointer-coarse:h-11"
                 onClick={() => setShowRaw((raw) => !raw)}
               >
                 {showRaw
@@ -744,7 +820,7 @@ export const ToolOutput = memo(
         )}
         <div className="rounded-md overflow-hidden">
           {refusal && (
-            <div data-testid="permission-outcome" className="m-2 space-y-1">
+            <div data-testid="permission-outcome" className="mb-2 space-y-1">
               <p className="text-foreground">
                 {formatPermissionMessage(t, refusal.message)}
               </p>
@@ -756,7 +832,7 @@ export const ToolOutput = memo(
             </div>
           )}
           {errorText && (
-            <div className="m-2 p-2 border border-destructive/30 bg-destructive-tint text-destructive rounded-md wrap-break-word">
+            <div className="rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint px-2.5 py-2 font-mono text-xs text-destructive wrap-break-word">
               {errorText}
             </div>
           )}

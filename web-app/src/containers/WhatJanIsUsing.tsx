@@ -8,7 +8,8 @@ import {
   type MemoryScope,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { PanelRight, RefreshCw, X } from 'lucide-react'
+import { Gauge, PanelRight, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -164,15 +165,12 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
       : undefined
 
   return (
-    <section
-      className="border-b border-border px-4 py-3"
-      data-testid="context-window"
-    >
+    <section className="px-3 py-3" data-testid="context-window">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">
+        <h3 className="text-xs text-muted-foreground">
           {t('context:contextWindow.title')}
         </h3>
-        <span className="text-xs text-ink-2 tabular-nums">
+        <span className="text-xs font-semibold text-foreground tabular-nums">
           {tokenCount > 0 && maxTokens
             ? t('context:contextWindow.usedOf', {
                 used: compact(tokenCount),
@@ -187,12 +185,12 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
         <div
           role="img"
           aria-label={t('context:contextWindow.meter', { percent })}
-          className="mt-2 h-1.5 overflow-hidden rounded-full bg-accent"
+          className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-track"
         >
           <div
             className={cn(
-              'h-full rounded-full motion-safe:transition-[width]',
-              percent > 85 ? 'bg-warning' : 'bg-brand-fill'
+              'h-full rounded-full motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo',
+              percent > 85 ? 'bg-warning' : 'bg-grad'
             )}
             style={{ width: `${percent}%` }}
           />
@@ -218,7 +216,7 @@ export function WhatJanIsUsingToggle({
   const { t } = useTranslation()
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
       data-testid="what-jan-is-using"
       aria-pressed={open}
@@ -227,11 +225,11 @@ export function WhatJanIsUsingToggle({
       title={t('context:open')}
       onClick={onToggle}
       className={cn(
-        'shrink-0 text-ink-2 hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground pointer-coarse:h-11',
+        'h-[30px] shrink-0 aria-pressed:border-border-strong aria-pressed:bg-hover-btn aria-pressed:text-foreground pointer-coarse:h-11',
         className
       )}
     >
-      <PanelRight className="size-4" aria-hidden />
+      <PanelRight className="size-3.5" aria-hidden />
       <span className="max-sm:sr-only">{t('context:details')}</span>
     </Button>
   )
@@ -529,20 +527,20 @@ export function WhatJanIsUsingPanel({
       key={section.id}
       aria-labelledby={`${tabsId}-context-${section.id}`}
       data-testid={`context-section-${section.id}`}
-      className="border-b border-border px-4 py-3 last:border-b-0"
+      className="border-b border-dashed border-border px-3 py-2.5 last:border-b-0"
     >
       <h3
         id={`${tabsId}-context-${section.id}`}
-        className="text-xs font-medium text-muted-foreground"
+        className="text-[13px] font-medium text-foreground"
       >
         {t(`context:section.${section.id}`)}
       </h3>
       {section.items.length === 0 ? (
-        <p className="mt-1.5 text-xs text-ink-2">
+        <p className="mt-1 text-xs text-muted-foreground">
           {t(`context:empty.${section.emptyReason}`)}
         </p>
       ) : (
-        <ul className="mt-1 divide-y divide-border">
+        <ul className="mt-1 divide-y divide-dashed divide-border">
           {section.items.map((item) => (
             <li
               key={item.key}
@@ -551,7 +549,7 @@ export function WhatJanIsUsingPanel({
               data-state={item.state}
             >
               <div className="min-w-0 flex-1 basis-40">
-                <p className="break-words text-sm text-foreground">
+                <p className="break-words text-[13px] text-fg-2">
                   <span>{labelFor(item)}</span>
                   {item.detail ? (
                     <span className="ml-1.5 text-xs text-muted-foreground">
@@ -565,7 +563,7 @@ export function WhatJanIsUsingPanel({
                   </p>
                 )}
                 {item.reason && (
-                  <p className="mt-0.5 text-xs leading-relaxed text-ink-2">
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                     {t(`context:reason.${item.reason}`)}
                   </p>
                 )}
@@ -573,7 +571,7 @@ export function WhatJanIsUsingPanel({
                   <Button
                     size="sm"
                     variant="link"
-                    className="h-auto px-0 text-xs text-brand-text pointer-coarse:min-h-11"
+                    className="h-auto px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
                     onClick={() => runAction(item.action!, item)}
                   >
                     {t(`context:action.${item.action}`)}
@@ -592,7 +590,7 @@ export function WhatJanIsUsingPanel({
         <p
           key={notice.key}
           role="note"
-          className="mt-2 text-xs leading-relaxed text-ink-2"
+          className="mt-2 text-xs leading-relaxed text-muted-foreground"
           data-testid={`context-notice-${notice.key}`}
         >
           {noticeText(notice)}
@@ -605,7 +603,7 @@ export function WhatJanIsUsingPanel({
       )}
       {section.snapshotId && (
         <div className="mt-3" data-testid="context-inspect-request">
-          <p className="mb-1 text-xs font-medium text-brand-text">
+          <p className="mb-1 text-xs font-medium text-foreground">
             {t('context:inspect')}
           </p>
           {/* Advanced and collapsed by default: the sanitized record, read
@@ -647,9 +645,9 @@ export function WhatJanIsUsingPanel({
           document.getElementById(`${tabsId}-tab-${next}`)?.focus()
         }}
         className={cn(
-          'relative flex h-10 items-center gap-1.5 px-2 text-[13px] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
+          'relative flex h-9 items-center gap-1.5 px-2 text-[12.5px] font-medium whitespace-nowrap transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11',
           selected
-            ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-brand-fill'
+            ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary'
             : 'text-muted-foreground hover:text-foreground'
         )}
       >
@@ -664,76 +662,88 @@ export function WhatJanIsUsingPanel({
   }
 
   return (
+    // The inspector is a column of Frames beside the conversation: how full
+    // the context is, then what went into the last request.
     <aside
       id={id}
       aria-label={t('context:title')}
       data-testid="what-jan-is-using-panel"
       className={cn(
-        'flex min-h-0 flex-col border-l border-border bg-sunken',
+        'flex min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto bg-card [scrollbar-width:thin] motion-safe:animate-fade-in',
         className
       )}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border pr-1.5 pl-4">
-        <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
-          {t('context:details')}
-        </h2>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
-          onClick={() => setRefreshKey((k) => k + 1)}
-          aria-label={t('context:refresh')}
-          title={t('context:refresh')}
-        >
-          <RefreshCw className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-ink-2 hover:text-foreground pointer-coarse:size-11"
-          onClick={onClose}
-          aria-label={t('context:closeDetails')}
-          title={t('context:closeDetails')}
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
-      <div
-        role="tablist"
-        aria-label={t('context:tabs.label')}
-        className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-border px-2"
-      >
-        {tabButton('using', t('context:tabs.using'))}
-        {tabButton('files', t('context:tabs.files'), fileCount)}
-      </div>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-4">
-        <div
-          role="tabpanel"
-          id={`${tabsId}-panel-using`}
-          aria-labelledby={`${tabsId}-tab-using`}
-          hidden={tab !== 'using'}
-        >
-          <p className="border-b border-border px-4 py-3 text-xs leading-relaxed text-ink-2">
-            {t('context:description')} <TermHint term="context" />
-          </p>
-          {payload.map(renderSection)}
+      <Frame className="shrink-0 motion-safe:animate-rise-in">
+        <FrameHeader
+          icon={<Gauge />}
+          title={t('context:details')}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+                onClick={() => setRefreshKey((k) => k + 1)}
+                aria-label={t('context:refresh')}
+                title={t('context:refresh')}
+              >
+                <RefreshCw className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+                onClick={onClose}
+                aria-label={t('context:closeDetails')}
+                title={t('context:closeDetails')}
+              >
+                <X className="size-4" />
+              </Button>
+            </>
+          }
+        />
+        <FrameBody>
           <ContextWindowMeter threadId={threadId} />
-          {included.length > 0 && (
-            <h3 className="px-4 pt-3 text-[13px] font-semibold text-foreground">
-              {t('context:included')}
-            </h3>
-          )}
-          {included.map(renderSection)}
-        </div>
-        <div
-          role="tabpanel"
-          id={`${tabsId}-panel-files`}
-          aria-labelledby={`${tabsId}-tab-files`}
-          hidden={tab !== 'files'}
-        >
-          {attachments.map(renderSection)}
-        </div>
-      </div>
+        </FrameBody>
+      </Frame>
+      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:60ms]">
+        <FrameHeader icon={<Sparkles />} title={t('context:open')} />
+        <FrameBody className="overflow-hidden">
+          <div
+            role="tablist"
+            aria-label={t('context:tabs.label')}
+            className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-dashed border-border px-1.5"
+          >
+            {tabButton('using', t('context:tabs.using'))}
+            {tabButton('files', t('context:tabs.files'), fileCount)}
+          </div>
+          <div
+            role="tabpanel"
+            id={`${tabsId}-panel-using`}
+            aria-labelledby={`${tabsId}-tab-using`}
+            hidden={tab !== 'using'}
+          >
+            <p className="border-b border-dashed border-border px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              {t('context:description')} <TermHint term="context" />
+            </p>
+            {payload.map(renderSection)}
+            {included.length > 0 && (
+              <h3 className="px-3 pt-3 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">
+                {t('context:included')}
+              </h3>
+            )}
+            {included.map(renderSection)}
+          </div>
+          <div
+            role="tabpanel"
+            id={`${tabsId}-panel-files`}
+            aria-labelledby={`${tabsId}-tab-files`}
+            hidden={tab !== 'files'}
+          >
+            {attachments.map(renderSection)}
+          </div>
+        </FrameBody>
+      </Frame>
     </aside>
   )
 }

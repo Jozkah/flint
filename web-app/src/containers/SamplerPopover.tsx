@@ -167,20 +167,20 @@ export function SamplerPopover({
               variant="ghost"
               size="icon-xs"
               aria-label="Sampling parameters"
-              className="relative"
+              className="relative size-7 rounded-[7px] pointer-coarse:size-11"
               disabled={assistantsLoading}
             >
               <SlidersHorizontal
-                size={18}
                 className={cn(
-                  'text-muted-foreground',
-                  hasOverrides && 'text-primary'
+                  'size-[15px] text-muted-foreground',
+                  hasOverrides && 'text-foreground'
                 )}
               />
+              {/* Overridden sampling: a small orange dot, like a draft marker. */}
               {hasOverrides && (
                 <span
                   aria-hidden
-                  className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+                  className="absolute top-1 right-1 size-[5px] rounded-full bg-[#f59e0b]"
                 />
               )}
             </Button>

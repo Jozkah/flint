@@ -154,14 +154,14 @@ export const TokenCounter = memo(function TokenCounter({
     tier === 'over'
       ? 'text-destructive'
       : tier === 'warn'
-        ? 'text-amber-500'
+        ? 'text-warning'
         : 'text-foreground'
   const ringCls =
     tier === 'over'
       ? 'stroke-destructive'
       : tier === 'warn'
-        ? 'stroke-amber-500'
-        : 'stroke-primary'
+        ? 'stroke-warning'
+        : 'stroke-secondary-foreground'
   const barCls =
     tier === 'over'
       ? 'bg-destructive'
@@ -195,47 +195,46 @@ export const TokenCounter = memo(function TokenCounter({
             className={cn('relative cursor-pointer', className)}
             onClick={handleCalculateTokens}
           >
-            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-background border border-border">
+            {/* The composer's context ring: how full the window is, as a
+                ring and a number, quiet until it gets close. */}
+            <div className="flex h-7 items-center gap-[5px] rounded-[7px] px-1.5 text-[11.5px] text-muted-foreground tabular-nums transition-colors hover:bg-accent">
+              <svg
+                aria-hidden
+                className="size-[18px] shrink-0 -rotate-90"
+                viewBox="0 0 20 20"
+              >
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  strokeWidth="2.4"
+                  fill="none"
+                  className="stroke-track"
+                />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  strokeWidth="2.4"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 8}`}
+                  strokeDashoffset={`${2 * Math.PI * 8 * (1 - Math.min(pct ?? 0, 100) / 100)}`}
+                  className={cn(
+                    'motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo',
+                    ringCls
+                  )}
+                />
+              </svg>
               <span
                 className={cn(
-                  'text-xs font-medium tabular-nums transition-all duration-500 ease-out',
-                  textCls,
+                  'transition-transform duration-500 ease-out',
+                  tier !== 'ok' && textCls,
                   isAnimating && 'scale-110'
                 )}
               >
                 {pct?.toFixed(1) ?? '0.0'}%
               </span>
-              <div className="relative size-4 shrink-0">
-                <svg
-                  className="size-4 transform -rotate-90"
-                  viewBox="0 0 16 16"
-                >
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="6"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    fill="none"
-                    className="text-muted-foreground"
-                  />
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="6"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    fill="none"
-                    strokeDasharray={`${2 * Math.PI * 6}`}
-                    strokeDashoffset={`${2 * Math.PI * 6 * (1 - Math.min(pct ?? 0, 100) / 100)}`}
-                    className={cn(
-                      'transition-all duration-500 ease-out',
-                      ringCls
-                    )}
-                    style={{ transformOrigin: 'center' }}
-                  />
-                </svg>
-              </div>
               {tier !== 'ok' && (
                 // AH-077: said in words, not only by colour, and announced.
                 <span
@@ -412,9 +411,9 @@ function TokenCountOnly({
             data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
           >
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border">
+            <div className="flex h-7 items-center gap-1.5 rounded-[7px] px-1.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent">
               <Sigma className="size-3.5 text-muted-foreground shrink-0" />
-              <span className="text-xs font-medium tabular-nums text-foreground">
+              <span className="font-medium tabular-nums text-fg-2">
                 {formatTokenCount(totalTokens)}
               </span>
             </div>

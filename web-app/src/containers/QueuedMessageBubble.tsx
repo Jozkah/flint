@@ -16,10 +16,10 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
   onRemove,
 }: QueuedMessageChipProps) {
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-sunken border border-border text-sm max-w-full">
+    <div className="flex h-6 max-w-full items-center gap-1.5 rounded-md bg-accent pr-1 pl-2 text-xs text-secondary-foreground">
       <Clock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <span
-        className="min-w-0 truncate text-ink-2 cursor-pointer hover:text-foreground transition-colors"
+        className="min-w-0 truncate text-secondary-foreground cursor-pointer hover:text-foreground transition-colors"
         onClick={() => onEdit?.(message)}
         title="Click to edit"
       >

@@ -38,7 +38,7 @@ const REVEAL_ACTIONS =
 
 /** Icon actions: compact with a mouse, 44px with a finger. */
 const ACTION_BUTTON =
-  'size-7 text-ink-2 hover:text-foreground pointer-coarse:size-11'
+  'size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
 import {
   CHAT_STATUS,
@@ -68,6 +68,7 @@ import { useWebCitationStore } from '@/stores/web-citation-store'
 import { WebSourcesRow } from '@/components/WebSourcesRow'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
+import { FlintMark } from '@/components/shell/FlintMark'
 
 export type MessageItemProps = {
   message: UIMessage
@@ -347,14 +348,15 @@ export const MessageItem = memo(
           {message.role === 'user' ? (
             <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
               <div
+                data-slot="user-bubble"
                 className={cn(
-                  'relative inline-block max-w-[min(85%,36rem)] rounded-lg rounded-br-sm px-3.5 py-2.5 text-foreground',
+                  'relative inline-block max-w-[min(85%,36rem)] rounded-[14px] rounded-br-[4px] px-3 py-2.5 leading-normal text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]',
                   coloredUserBubble
                     ? // The accent tint, only when the setting asks for it.
-                      'bg-brand-tint'
+                      'bg-acc-tint'
                     : // A neutral block otherwise: the right-aligned column
                       // and the tone are enough to find the user's own turns.
-                      'bg-accent'
+                      'bg-muted'
                 )}
               >
                 {/* janhq/jan#8864: typed while the agent worked and handed to
@@ -362,7 +364,7 @@ export const MessageItem = memo(
                 {metadata?.steered === true && partIndex === 0 && (
                   <div
                     data-testid="steered-label"
-                    className="mb-1 text-[11px] text-ink-2"
+                    className="mb-1 text-[11px] text-muted-foreground"
                   >
                     {t('common:steering.delivered')}
                   </div>
@@ -374,7 +376,7 @@ export const MessageItem = memo(
                     {attachedFiles.map((file: FileMetadata, idx: number) => (
                       <div
                         key={`file-${idx}-${file.id}`}
-                        className="flex min-w-0 max-w-full items-center gap-1.5 px-2 py-1 rounded-md bg-sunken text-foreground border border-border text-xs"
+                        className="flex min-w-0 max-w-full items-center gap-1.5 px-2 py-1 rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
                       >
                         <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 truncate font-medium" title={file.name}>
@@ -564,7 +566,7 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
@@ -576,7 +578,7 @@ export const MessageItem = memo(
           </span>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-sunken hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"
@@ -592,9 +594,10 @@ export const MessageItem = memo(
 
     return (
       <div
+        data-role={message.role}
         className={cn(
-          'w-full mb-5 group/message',
-          message.role === 'user' && !isFirstMessage && 'mt-6'
+          'group/message mb-[18px] w-full motion-safe:animate-msg-in',
+          message.role === 'user' && !isFirstMessage && 'mt-2'
         )}
         onContextMenu={openContextMenu}
       >
@@ -602,13 +605,20 @@ export const MessageItem = memo(
         {message.role === 'assistant' && (
           <div
             data-testid="assistant-message-header"
-            className="mb-1 flex min-w-0 items-center gap-1.5 text-xs leading-5 text-muted-foreground"
+            className="mb-2 flex min-w-0 items-center gap-2 text-[12.5px] leading-5 text-subtle-foreground"
           >
-            <span className="shrink-0 font-semibold text-ink-2">Flint</span>
+            {/* The model's avatar: the Flint mark on a quiet tile. */}
+            <span
+              aria-hidden
+              className="grid size-[22px] shrink-0 place-items-center rounded-md bg-accent p-[3px] shadow-[inset_0_0_0_0.8px_var(--border)]"
+            >
+              <FlintMark className="size-full" />
+            </span>
+            <span className="shrink-0 font-semibold text-foreground">Flint</span>
             {answeredBy && (
               <>
                 <span aria-hidden>·</span>
-                <span className="min-w-0 truncate" title={answeredBy}>
+                <span className="min-w-0 truncate font-mono text-xs" title={answeredBy}>
                   {answeredBy}
                 </span>
               </>
@@ -634,7 +644,7 @@ export const MessageItem = memo(
         {message.role === 'assistant' && !isStreaming && usedSkills.length > 0 && (
           <div
             aria-label={t('common:skillsUsedLabel')}
-            className="mt-2 inline-flex max-w-full rounded-md bg-sunken px-2 py-0.5 text-xs font-medium text-ink-2"
+            className="mt-2 inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground"
           >
             {t('common:skillsUsed', { skills: usedSkills.join(', ') })}
           </div>
@@ -653,7 +663,7 @@ export const MessageItem = memo(
                   aria-live="polite"
                   className="flex items-center gap-2 text-xs"
                 >
-                  <Loader className="motion-safe:animate-spin size-3.5 text-ink-2 shrink-0" />
+                  <Loader className="motion-safe:animate-spin size-3.5 text-muted-foreground shrink-0" />
                   <span className="font-medium text-foreground">
                     {activityLabel.text}
                   </span>
@@ -677,7 +687,7 @@ export const MessageItem = memo(
               <div className="font-medium text-destructive">
                 Generation failed
               </div>
-              <div className="text-ink-2 break-words">
+              <div className="text-fg-2 break-words">
                 {messageError}
               </div>
             </div>

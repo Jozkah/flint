@@ -29,7 +29,7 @@ export function TemporaryChatBanner({ threadId }: { threadId: string }) {
   const hasSomethingToKeep = !isEmptyTemporaryChat(messages)
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-sunken px-2 py-1 text-xs text-ink-2">
+    <div className="flex h-[30px] min-w-0 items-center gap-2 rounded-lg border-[0.8px] border-warning/30 bg-warning-tint px-2 text-xs text-fg-2">
       <Clock className="size-3.5 shrink-0" aria-hidden />
       <span className="truncate">{t('chat:temporaryChatBanner')}</span>
       {hasSomethingToKeep && (
