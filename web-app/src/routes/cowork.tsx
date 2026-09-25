@@ -25,7 +25,9 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, FileDiff, Handshake, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileDiff, Loader2 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import { basenameOf } from '@/lib/coworkPreview'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
@@ -4082,7 +4084,7 @@ function CoworkPage() {
           data-testid="cowork-content-view"
         >
           <FrameHeader
-            icon={<Handshake aria-hidden />}
+            icon={<Icon name="x-cowork" size={16} />}
             title={
               <span
                 title={session?.title || undefined}
@@ -4325,15 +4327,6 @@ function CoworkPage() {
                         }
                       />
                     )}
-                  {/* The session's changed files, one step from review. */}
-                  {!running && (
-                    <CoworkReviewReady
-                      fileCount={changeCounts.fileCount}
-                      additions={changeCounts.additions}
-                      deletions={changeCounts.deletions}
-                      onReview={() => openRail({ kind: 'diff' })}
-                    />
-                  )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"
@@ -4446,6 +4439,14 @@ function CoworkPage() {
                   session &&
                   useCoworkSessions.getState().dismissHandoff(session.id)
                 }
+              />
+              {/* The session's changed files, one step from review: over the
+                  composer, where the design keeps it while the run goes on. */}
+              <CoworkReviewReady
+                fileCount={changeCounts.fileCount}
+                additions={changeCounts.additions}
+                deletions={changeCounts.deletions}
+                onReview={() => openRail({ kind: 'diff' })}
               />
               {/* The pull request for the folder's branch, if it has one, with
                   the same mark the session carries in the sidebar. */}
@@ -4565,20 +4566,12 @@ function CoworkPage() {
                   onApplied={() => git.refresh()}
                 />
               ) : null}
-              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
-              {folder && session?.id ? (
-                <CoworkBundleImport
-                  destination={folder}
-                  session={session.id}
-                  pickFolder={async () => {
-                    const picked = await serviceHub
-                      .dialog()
-                      .open({ directory: true })
-                    return typeof picked === 'string' ? picked : null
-                  }}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
+              </>
+            }
+            // After the files, as the design orders it: what each turn
+            // changed, earlier points, then bundles made elsewhere.
+            footer={
+              <>
               {/* AH-202: each turn's own file changes, undone or redone
                   from the turn that made them. */}
               {session?.id ? (
@@ -4631,8 +4624,24 @@ function CoworkPage() {
                   return done
                 }}
               />
+              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
+              {folder && session?.id ? (
+                <CoworkBundleImport
+                  destination={folder}
+                  session={session.id}
+                  pickFolder={async () => {
+                    const picked = await serviceHub
+                      .dialog()
+                      .open({ directory: true })
+                    return typeof picked === 'string' ? picked : null
+                  }}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
               </>
             }
+            branch={worktree?.branch ?? gitBranch}
+            projectName={folder ? basenameOf(folder) : undefined}
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
             // The tree the changes are in, not the one the session is

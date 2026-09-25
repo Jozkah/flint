@@ -15,6 +15,10 @@ import { useMessages } from '@/hooks/useMessages'
 import { useAppState } from '@/hooks/useAppState'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
+import { useCoworkView } from '@/hooks/useCoworkView'
 import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
 
@@ -219,6 +223,212 @@ function seedUsage() {
   })
 }
 
+const JAN = 'C:\\Users\\Jozkah\\Desktop\\Coding\\jan'
+const WORKTREE = `${JAN}\\.flint\\worktrees\\fix-json-escape`
+
+/** A write/edit diff in the agent's own format: `±  line | text`. */
+const diffOf = (hunks: [number, string][]) =>
+  hunks.map(([n, l]) => `${l[0]} ${String(n).padStart(4)} | ${l.slice(1)}`).join('\n')
+
+/** The mockup's example session: plan, tool activity, a question, changes. */
+function escapeSession() {
+  const at = (m: number) => now - m * MIN
+  const turns = [
+    {
+      role: 'user',
+      content: 'Windows paths in tool arguments still break JSON parsing. Fix the escape tracking and add tests for UNC paths.',
+      startedAt: at(8),
+    },
+    {
+      role: 'assistant',
+      content: '',
+      startedAt: at(8),
+      asks: [
+        {
+          requestId: 'ask-unc',
+          sessionId: 'escape',
+          at: new Date(at(1)).toISOString(),
+          state: 'pending',
+          request: {
+            questions: [
+              {
+                id: 'where',
+                question: 'Where should the new UNC path tests live?',
+                recommended: 0,
+                options: [
+                  { label: 'In the existing recover.rs test module', description: 'Keeps all recovery tests together.' },
+                  { label: 'In a new windows_paths.rs file', description: 'Clearer if more Windows cases follow.' },
+                  { label: 'Only as doc tests', description: 'Lightest, but harder to run alone.' },
+                ],
+              },
+              {
+                id: 'long',
+                question: 'Cover long-path (\\\\?\\) prefixes too?',
+                options: [{ label: 'Yes' }, { label: 'No, UNC only' }],
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      name: 'read',
+      callId: 'e1',
+      args: { path: 'src/agent/json_recovery.rs' },
+      result: '212 lines',
+      toolState: 'succeeded',
+      status: 'done',
+      startedAt: at(7.9),
+      endedAt: at(7.9) + 100,
+    },
+    {
+      role: 'tool',
+      name: 'bash',
+      callId: 'e2',
+      args: { command: 'cargo test recover_args' },
+      result: `test recover_args::windows_path ... ${r('FAILED')}\n${y('assertion failed: escaped == raw')}\n  left: "C:\\\\Users\\\\jozkah"\n right: "C:\\\\\\\\Users\\\\\\\\jozkah"`,
+      isError: true,
+      exitCode: 101,
+      toolState: 'failed',
+      status: 'done',
+      startedAt: at(7.5),
+      endedAt: at(7.5) + 12_000,
+    },
+    {
+      role: 'tool',
+      name: 'edit',
+      callId: 'e3',
+      args: { path: 'src/agent/json_recovery.rs' },
+      argsLive: '{"path":"src/agent/json_recovery.rs"',
+      toolState: 'running',
+      status: 'running',
+      startedAt: at(0.2),
+    },
+  ]
+  // What the test-writer subagent changed, so the Changes panel has files.
+  const subTurn = (callId: string, name: 'write' | 'edit', path: string, diff: string) => ({
+    role: 'tool',
+    name,
+    callId,
+    args: { path },
+    result: `Edited ${path}`,
+    diff,
+    toolState: 'succeeded',
+    status: 'done',
+  })
+  const subagents = [
+    {
+      runId: 'sa-writer',
+      name: 'test-writer',
+      status: 'done',
+      startedAt: at(6),
+      endedAt: at(5),
+      turns: [
+        subTurn('s1', 'edit', 'src-tauri/src/agent/json_recovery.rs', [
+          '@@ edit 1/1 @@',
+          diffOf([
+            [58, "-            '\\\\' => escaped = true,"],
+            [58, "+            '\\\\' if in_str => {"],
+            [59, '+                // Windows paths: keep a lone backslash literal'],
+            [60, '+                escaped = !is_path_char(next);'],
+            [61, '+            }'],
+            [74, '+fn is_path_char(c: Option<char>) -> bool {'],
+            [75, "+    matches!(c, Some(c) if c.is_ascii_alphanumeric() || c == '.' || c == ' ')"],
+            [76, '+}'],
+          ]),
+        ].join('\n')),
+        subTurn('s2', 'write', 'src-tauri/src/agent/tests/recover.rs', diffOf([
+          [1, '+use crate::agent::json_recovery::recover_args;'],
+          [2, '+'],
+          [3, '+#[test]'],
+          [4, '+fn unc_path_survives() {'],
+          [5, '+    let raw = r#"{"path":"\\\\server\\share\\file.txt"}"#;'],
+          [6, '+    assert_eq!(recover_args(raw).unwrap()["path"], "\\\\server\\share\\file.txt");'],
+          [7, '+}'],
+        ])),
+        subTurn('s3', 'edit', 'src-tauri/src/agent/mcp_args.rs', [
+          '@@ edit 1/1 @@',
+          diffOf([
+            [31, '-    let value = serde_json::from_str(raw)?;'],
+            [31, '+    let value = recover_args(raw)'],
+            [32, '+        .or_else(|_| serde_json::from_str(raw))?;'],
+          ]),
+        ].join('\n')),
+      ],
+    },
+  ]
+  return {
+    id: 'escape',
+    title: 'Fix JSON escape tracking',
+    folder: JAN,
+    mode: 'ask',
+    access: 'managed-worktree',
+    turns,
+    subagents,
+    todos: {
+      phases: [
+        {
+          name: 'Fix',
+          tasks: [
+            { content: 'Read the tool-arg recovery code', status: 'completed' },
+            { content: 'Reproduce the bad escape with a failing test', status: 'completed' },
+            { content: 'Patch the escape state machine', status: 'in_progress' },
+            { content: 'Run the full test suite', status: 'pending' },
+          ],
+        },
+      ],
+    },
+    messages: [],
+    updated: at(1),
+    model: { provider: 'anthropic', id: 'claude-sonnet-5' },
+  }
+}
+
+/** The background work the mockup's workflow card and Activity panel show. */
+function seedActivity() {
+  const at = (m: number) => now - m * MIN
+  const task = (
+    id: string,
+    workflowId: string,
+    kind: 'agent' | 'shell',
+    title: string,
+    status: string,
+    startedAt: number,
+    extra: Record<string, unknown> = {}
+  ) => [id, { id, callId: id, sessionId: 'escape', workflowId, kind, title, status, startedAt, ...extra }]
+  const tasks = Object.fromEntries([
+    task('t1', 'w1', 'agent', 'Audit escape handling', 'done', at(7), {
+      endedAt: at(7) + 41_000, agentName: 'auditor', model: 'claude-sonnet-5', usage: { total_tokens: 6_200 }, toolCount: 9,
+    }),
+    task('t2', 'w1', 'shell', 'cargo test recover_args', 'error', at(6.5), {
+      endedAt: at(6.5) + 12_000, command: 'cargo test recover_args', exitCode: 101,
+    }),
+    task('t3', 'w1', 'agent', 'Write UNC path cases', 'running', now - 18_000, {
+      agentName: 'test-writer', model: 'claude-sonnet-5', usage: { total_tokens: 3_100 }, toolCount: 4,
+    }),
+    task('t4', 'w1', 'shell', 'cargo test --workspace', 'queued', now - 5_000, {
+      command: 'cargo test --workspace', waiting: 1,
+    }),
+    task('t5', 'w2', 'shell', 'cargo check -p app_lib', 'done', at(12), {
+      endedAt: at(12) + 38_000, command: 'cargo check -p app_lib', exitCode: 0,
+    }),
+    task('t6', 'w2', 'agent', 'Summarise failures', 'cancelled', at(11), {
+      endedAt: at(11) + 4_000, agentName: 'summariser', detail: 'Stopped by you',
+    }),
+  ])
+  useCoworkActivity.setState({
+    workflows: {
+      w1: {
+        id: 'w1', sessionId: 'escape', title: 'Verify recovery across platforms', startedAt: at(7),
+        phases: [], anchorMessageId: 'escape-asst-1', model: 'claude-sonnet-5',
+      },
+      w2: { id: 'w2', sessionId: 'escape', title: 'Check the build', startedAt: at(12), endedAt: at(11), phases: [] },
+    },
+    tasks,
+  } as never)
+}
+
 function seedCowork() {
   const session = (id: string, title: string, age: number, folder: string | null) => ({
     id,
@@ -233,13 +443,40 @@ function seedCowork() {
     model: { provider: 'anthropic', id: 'claude-sonnet-5' },
   })
   const sessions = [
-    session('escape', 'Fix JSON escape tracking', 3, 'C:\\Coding\\jan'),
-    session('changelog', 'Draft 0.9.0 changelog', 50, 'C:\\Coding\\jan'),
-    session('paths', 'Heal Windows paths', 400, 'C:\\Coding\\jan'),
+    escapeSession(),
+    session('changelog', 'Draft 0.9.0 changelog', 50, JAN),
+    session('paths', 'Heal Windows paths', 400, JAN),
     session('sync', 'Sync RE findings', 3000, null),
   ]
   useCoworkSessions.setState({ sessions: sessions as never, currentId: 'escape' } as never)
   useCoworkRun.setState({ runs: { escape: { startedAt: now } } } as never)
+  seedActivity()
+  // The session works in a managed worktree, as the mockup's does. The web
+  // build cannot ask the backend what it can confine, so the answer is given
+  // here -- and given again when the page's own query fails.
+  useCoworkWorktrees.setState({
+    bySession: {
+      escape: {
+        path: WORKTREE,
+        branch: 'flint/fix-json-escape',
+        baseSha: 'ca08fc9',
+        sourceRoot: JAN,
+        identity: {} as never,
+        uncommittedAtCreation: [],
+      },
+    },
+  } as never)
+  const grant = () =>
+    useDirectEditGrants.setState({
+      capability: { known: true, directEdit: false, managedWorktree: true },
+      bySession: { escape: { sessionId: 'escape', folder: WORKTREE, grantId: 'preview' } },
+    } as never)
+  grant()
+  useDirectEditGrants.subscribe((s) => {
+    if (!s.capability.known) grant()
+  })
+  // The Output panel open on Changes, as the mockup shows it.
+  useCoworkView.getState().setRail('escape', { kind: 'diff' })
 }
 
 /**

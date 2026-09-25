@@ -6,8 +6,9 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { ArrowLeft, Library, Maximize2, Minimize2, X } from 'lucide-react'
+import { ArrowLeft, Maximize2, Minimize2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -16,6 +17,8 @@ type CoworkSidePanelProps = {
   title: ReactNode
   leading?: ReactNode
   summary?: ReactNode
+  /** Right-aligned beside the title, e.g. the branch the changes are on. */
+  aside?: ReactNode
   children: ReactNode
   onClose: () => void
   /** Lets a panel identify itself to the smoke harness. */
@@ -255,10 +258,42 @@ export function CoworkInspectorFrame({
                 <ArrowLeft className="size-4" aria-hidden />
               </Button>
             ) : (
-              <Library aria-hidden />
+              <Icon name="x-library" size={16} />
             )
           }
           title={t('common:coworkLayout.output')}
+          // Expand and close belong to the output panel as a whole, so they
+          // sit on its header rather than on whichever tab is open.
+          actions={
+            full ? undefined : (
+              <span className="-my-1 flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+                  onClick={() => state?.setExpanded((value) => !value)}
+                  aria-label={expanded ? t('common:collapse') : t('common:expand')}
+                  title={expanded ? t('common:collapse') : t('common:expand')}
+                >
+                  {expanded ? (
+                    <Minimize2 className="size-4" aria-hidden />
+                  ) : (
+                    <Maximize2 className="size-4" aria-hidden />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+                  onClick={onDismiss}
+                  aria-label={t('common:close')}
+                  title={t('common:close')}
+                >
+                  <X className="size-4" aria-hidden />
+                </Button>
+              </span>
+            )
+          }
         />
         <FrameBody className="min-h-0 overflow-hidden">
           {/* The panel switch: a muted well of tabs over the open panel. */}
@@ -276,6 +311,7 @@ export function CoworkSidePanel({
   title,
   leading,
   summary,
+  aside,
   children,
   onClose,
   'data-testid': testId,
@@ -292,7 +328,6 @@ export function CoworkSidePanel({
     expanded: localExpanded,
     setExpanded: setLocalExpanded,
   })
-  const full = framed?.layout === 'full'
   const iconButton =
     'text-muted-foreground hover:text-foreground pointer-coarse:size-11'
 
@@ -319,13 +354,27 @@ export function CoworkSidePanel({
           onKeyDown={resize.onKeyDown}
         />
       )}
-      <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-1.5 text-[13px] pointer-coarse:h-12">
-        {leading}
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
-          {title}
-        </span>
-        {summary}
-        {!full && (
+      {framed ? (
+        // Inside the output frame the panel's own row is a quiet sub-header:
+        // what is shown, its totals, and one fact on the right. Expand and
+        // close are on the frame.
+        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-2 text-[13px] pointer-coarse:min-h-12">
+          {leading}
+          <span className="min-w-0 truncate font-semibold text-foreground">
+            {title}
+          </span>
+          {summary}
+          <span className="flex-1" />
+          {aside}
+        </div>
+      ) : (
+        <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-1.5 text-[13px] pointer-coarse:h-12">
+          {leading}
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
+            {title}
+          </span>
+          {summary}
+          {aside}
           <Button
             variant="ghost"
             size="icon-xs"
@@ -340,17 +389,17 @@ export function CoworkSidePanel({
               <Maximize2 className="size-4" aria-hidden />
             )}
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className={iconButton}
-          onClick={onClose}
-          aria-label={t('common:close')}
-        >
-          <X className="size-4" aria-hidden />
-        </Button>
-      </div>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={iconButton}
+            onClick={onClose}
+            aria-label={t('common:close')}
+          >
+            <X className="size-4" aria-hidden />
+          </Button>
+        </div>
+      )}
       {/* Each panel scrolls inside itself; the page never does. */}
       <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">{children}</div>
     </aside>
