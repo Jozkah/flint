@@ -10,7 +10,11 @@ import {
   renderWithApi,
 } from '@/containers/rooms/__tests__/roomsTestUtils'
 
-const h = vi.hoisted(() => ({ navigate: vi.fn(), params: { roomId: 'r1' } }))
+const h = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  params: { roomId: 'r1' },
+  search: {} as Record<string, unknown>,
+}))
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: any) => config,
@@ -20,6 +24,7 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
   useNavigate: () => h.navigate,
+  useSearch: () => h.search,
   useParams: () => h.params,
 }))
 vi.mock('@/containers/HeaderPage', () => ({
@@ -65,6 +70,20 @@ describe('rooms list route', () => {
     expect(root.children[1]).toHaveClass('h-full')
     expect(screen.getByText('No rooms yet')).toBeInTheDocument()
     await waitFor(() => expect(api.loadSummaries).toHaveBeenCalled())
+  })
+
+  // The sidebar's "New room" lands on /rooms?new=1; it did nothing when the
+  // page was already open.
+  it('opens the create dialog for ?new=1 and clears it', async () => {
+    const { api } = createFakeApi()
+    h.search = { new: 1 }
+    try {
+      renderWithApi(<List />, api)
+      expect(await screen.findByRole('dialog')).toBeInTheDocument()
+      expect(h.navigate).toHaveBeenCalledWith(expect.objectContaining({ search: {}, replace: true }))
+    } finally {
+      h.search = {}
+    }
   })
 
   it('lists rooms with status badges and a link to each', () => {

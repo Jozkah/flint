@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -124,7 +124,7 @@ function RoomsList() {
     setCreateOpen(true)
   }
 
-  const wantsNew = (Route.useSearch() as { new?: 1 }).new === 1
+  const wantsNew = (useSearch({ strict: false }) as { new?: 1 }).new === 1
   useEffect(() => {
     if (!wantsNew) return
     openCreate()
