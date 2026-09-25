@@ -77,12 +77,12 @@ describe('LogsViewer route', () => {
       expect(screen.getByText('boom')).toBeInTheDocument()
     })
     expect(screen.getByText('hello')).toBeInTheDocument()
-    expect(screen.getByText('ERROR')).toBeInTheDocument()
-    expect(screen.getByText('INFO')).toBeInTheDocument()
-    expect(screen.getByText('WARN')).toBeInTheDocument()
-    expect(screen.getByText('DEBUG')).toBeInTheDocument()
+    expect(screen.getByText('error')).toBeInTheDocument()
+    expect(screen.getByText('info')).toBeInTheDocument()
+    expect(screen.getByText('warn')).toBeInTheDocument()
+    expect(screen.getByText('debug')).toBeInTheDocument()
     // default branch (unknown level) still renders uppercased
-    expect(screen.getByText('VERBOSE')).toBeInTheDocument()
+    expect(screen.getByText('verbose')).toBeInTheDocument()
   })
 
   it('filters out falsy log entries before rendering', async () => {
@@ -147,7 +147,7 @@ describe('LogsViewer route', () => {
     })
     expect(screen.queryByText('hello')).not.toBeInTheDocument()
     expect(screen.getByText('careful boom')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'logs:levelError' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'logs:levelError' }))
     expect(screen.queryByText('careful boom')).not.toBeInTheDocument()
     expect(screen.getByText('boom')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('copy-logs'))

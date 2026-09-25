@@ -6,9 +6,16 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { Check, Copy, Search, X } from 'lucide-react'
+import { Check, Copy, X } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
-import { KpiRow, KpiTile } from '@/containers/engine/EngineKit'
+import {
+  EnginePage,
+  KpiRow,
+  KpiTile,
+  PageHead,
+  SearchField,
+} from '@/containers/engine/EngineKit'
+import { Segmented } from '@/components/ui/segmented'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
@@ -28,7 +35,7 @@ function logLevelClass(level: string): string {
     case 'warn':
       return 'text-warning'
     case 'info':
-      return 'text-info'
+      return 'text-secondary-foreground'
     default:
       return 'text-subtle-foreground'
   }
@@ -64,32 +71,12 @@ function logSource(log: Pick<LogEntry, 'target'>): string {
   return parts[parts.length - 1] ?? 'app'
 }
 
-// A fixed set of distinguishable hues; a source always gets the same one.
-const SOURCE_COLOURS = [
-  '#8b5cf6',
-  '#0891b2',
-  '#d97706',
-  '#2563eb',
-  '#e11d48',
-  '#059669',
-  '#10a37f',
-  '#64748b',
-]
-
-function sourceColour(source: string): string {
-  let h = 0
-  for (let i = 0; i < source.length; i++) h = (h * 31 + source.charCodeAt(i)) >>> 0
-  return SOURCE_COLOURS[h % SOURCE_COLOURS.length]
-}
-
-/** The source as a small tinted mono label. */
+/** The source as a quiet mono label; the level is the only colour on a line. */
 function SourceTag({ source, title }: { source: string; title?: string }) {
-  const c = sourceColour(source)
   return (
     <span
       title={title}
-      className="inline-flex h-5 max-w-full min-w-0 items-center justify-center truncate rounded-md px-2 font-mono text-[11px] font-medium"
-      style={{ color: c, background: `color-mix(in oklab, ${c} 13%, transparent)` }}
+      className="block min-w-0 truncate font-mono text-[11.5px] text-muted-foreground"
     >
       {source}
     </span>
@@ -124,59 +111,28 @@ export function LogToolbar({
   children?: ReactNode
 }) {
   const { t } = useTranslation()
-  const index = Math.max(0, LOG_LEVEL_FILTERS.indexOf(level))
-  const count = LOG_LEVEL_FILTERS.length
   return (
     <div
-      className="flex min-w-0 flex-wrap items-center gap-3 border-b border-dashed border-border px-3 py-2.5"
+      className="flex min-w-0 flex-wrap items-center gap-2.5 px-3 pt-3 pb-2"
       data-testid="log-toolbar"
     >
-      <label className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 transition-[border-color,box-shadow] focus-within:border-border-strong focus-within:ring-[3px] focus-within:ring-ring/20 sm:w-60 pointer-coarse:h-11">
-        <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder={t('logs:search')}
-          aria-label={t('logs:search')}
-          className="w-full min-w-0 bg-transparent text-[13px] placeholder:text-muted-foreground focus:outline-none"
-        />
-      </label>
-      {/* Pressed buttons under a gliding gradient pill, like every other
-          segmented choice in the app. */}
-      <div
-        role="group"
+      <SearchField
+        value={query}
+        onChange={onQueryChange}
+        placeholder={t('logs:search')}
+        className="w-full sm:w-60"
+      />
+      <Segmented<LogLevelFilter>
+        size="sm"
+        className="w-full sm:w-[440px]"
         aria-label={t('logs:filterLabel')}
-        className="relative flex w-full max-w-[400px] gap-2 overflow-x-auto sm:w-[400px]"
-      >
-        <span
-          aria-hidden
-          style={{
-            width: `calc((100% - ${count - 1} * 0.5rem) / ${count})`,
-            left: `calc((100% - ${count - 1} * 0.5rem) / ${count} * ${index} + ${index} * 0.5rem)`,
-          }}
-          className="pointer-events-none absolute top-0 h-7 rounded-lg border border-primary bg-grad transition-[left] duration-300 ease-expo pointer-coarse:h-10"
-        />
-        {LOG_LEVEL_FILTERS.map((value) => {
-          const pressed = value === level
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={pressed}
-              onClick={() => onLevelChange(value)}
-              className={cn(
-                'relative z-10 h-7 min-w-0 flex-1 cursor-pointer rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-10',
-                pressed
-                  ? 'border-transparent bg-transparent text-on-grad'
-                  : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
-              )}
-            >
-              {t(LEVEL_LABEL_KEY[value])}
-            </button>
-          )
-        })}
-      </div>
+        value={level}
+        onValueChange={onLevelChange}
+        options={LOG_LEVEL_FILTERS.map((value) => ({
+          value,
+          label: t(LEVEL_LABEL_KEY[value]),
+        }))}
+      />
       {children}
       <span
         className="ml-auto text-xs tabular-nums text-muted-foreground"
@@ -197,14 +153,11 @@ function LogRow({ log, fresh }: { log: LogEntry; fresh: boolean }) {
   return (
     <div
       className={cn(
-        'border-b border-[rgba(127,127,127,.1)]',
-        log.level === 'error' &&
-          'bg-[color-mix(in_oklab,var(--destructive)_5%,transparent)] shadow-[inset_3px_0_0_var(--destructive)]',
-        log.level === 'warn' && 'shadow-[inset_3px_0_0_var(--warning)]',
+        'border-b border-dashed border-border last:border-b-0',
         fresh && 'motion-safe:animate-msg-in'
       )}
     >
-      <div className="group/lg grid min-h-[34px] grid-cols-[70px_58px_96px_minmax(0,1fr)_26px] items-center gap-x-2.5 px-3 text-[12.5px] transition-colors hover:bg-hover-row max-sm:grid-cols-[62px_50px_minmax(0,1fr)_26px]">
+      <div className="group/lg grid min-h-9 grid-cols-[64px_64px_88px_minmax(0,1fr)_26px] items-center gap-x-3 px-3 text-[12.5px] transition-colors hover:bg-hover-row max-sm:grid-cols-[58px_56px_minmax(0,1fr)_26px]">
         <button
           type="button"
           aria-expanded={open}
@@ -212,23 +165,24 @@ function LogRow({ log, fresh }: { log: LogEntry; fresh: boolean }) {
           onClick={() => setOpen((o) => !o)}
           className="col-span-4 grid min-h-[34px] cursor-pointer grid-cols-subgrid items-center text-left outline-hidden focus-visible:bg-hover-row max-sm:col-span-3"
         >
-        <span className="font-mono text-[11.5px] tabular-nums text-subtle-foreground">
+        <span className="text-[11.5px] tabular-nums text-muted-foreground">
           {formatLogTimestamp(log.timestamp)}
         </span>
         <span
           className={cn(
-            'font-mono text-[10.5px] font-semibold tracking-[.03em]',
+            'flex items-center gap-1.5 text-[11.5px] font-medium capitalize',
             logLevelClass(log.level)
           )}
         >
-          {log.level.toUpperCase()}
+          <i aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />
+          {log.level}
         </span>
         <span className="min-w-0 max-sm:hidden">
           <SourceTag source={source} title={log.target} />
         </span>
         <span
           className={cn(
-            'min-w-0 font-mono text-xs text-fg-2',
+            'min-w-0 font-mono text-xs text-foreground',
             open ? 'break-words whitespace-pre-wrap' : 'truncate whitespace-pre'
           )}
         >
@@ -250,7 +204,7 @@ function LogRow({ log, fresh }: { log: LogEntry; fresh: boolean }) {
         </button>
       </div>
       {open && (
-        <pre className="mx-3 mb-2.5 ml-3 overflow-x-auto rounded-lg bg-code-bg px-3 py-2.5 font-mono text-[11.5px] leading-[1.55] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in sm:ml-[186px]">
+        <pre className="mx-3 mb-2.5 ml-3 overflow-x-auto rounded-lg bg-code-bg px-3 py-2.5 font-mono text-[11.5px] leading-[1.55] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in sm:ml-[244px]">
           {JSON.stringify(
             {
               time: formatLogTimestamp(log.timestamp),
@@ -391,20 +345,25 @@ const hourLabel = (ms: number) =>
     hour12: false,
   })
 
+/**
+ * Lines per hour over the last day. Each bar is one neutral column; warnings
+ * and errors are the only colour, stacked on top in the semantic tokens.
+ */
 function ActivityChart({ logs }: { logs: LogEntry[] }) {
   const { t } = useTranslation()
   const buckets = useMemo(() => hourBuckets(logs, Date.now()), [logs])
   const max = Math.max(1, ...buckets.map((b) => b.info + b.warn + b.error))
   const any = buckets.some((b) => b.info + b.warn + b.error > 0)
   return (
-    <div className="flex h-full min-h-[150px] flex-col">
-      <div className="relative flex min-h-[120px] flex-1 items-end gap-1 py-1">
+    <div className="flex flex-col">
+      <div className="relative flex h-36 items-end gap-[3px]">
         {!any && (
           <p className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">
             {t('logs:activityEmpty')}
           </p>
         )}
         {buckets.map((b, i) => {
+          const total = b.info + b.warn + b.error
           const tip = t('logs:activityBar', {
             time: hourLabel(b.start),
             info: b.info,
@@ -416,34 +375,32 @@ function ActivityChart({ logs }: { logs: LogEntry[] }) {
               key={b.start}
               title={tip}
               aria-label={tip}
-              className="group/b flex h-full flex-1 flex-col-reverse gap-px"
+              className="flex h-full flex-1 items-end rounded-[4px] bg-muted/60"
             >
-              {(
-                [
-                  ['info', 'bg-[linear-gradient(var(--sk2),var(--sk))]'],
-                  ['warn', 'bg-[#f59e0b]'],
-                  ['error', 'bg-destructive'],
-                ] as const
-              ).map(([k, cls]) =>
-                b[k] > 0 ? (
-                  <i
-                    key={k}
-                    className={cn(
-                      'block w-full origin-bottom rounded-[3px] group-hover/b:brightness-115 motion-safe:animate-grow-y',
-                      cls
-                    )}
-                    style={{
-                      height: `${(b[k] / max) * 100}%`,
-                      animationDelay: `${i * 25}ms`,
-                    }}
-                  />
-                ) : null
+              {total > 0 && (
+                <div
+                  className="flex w-full origin-bottom flex-col overflow-hidden rounded-[4px] motion-safe:animate-grow-y"
+                  style={{
+                    height: `${Math.max(4, (total / max) * 100)}%`,
+                    animationDelay: `${i * 20}ms`,
+                  }}
+                >
+                  {b.error > 0 && (
+                    <i className="block bg-destructive/80" style={{ flexGrow: b.error }} />
+                  )}
+                  {b.warn > 0 && (
+                    <i className="block bg-warning/80" style={{ flexGrow: b.warn }} />
+                  )}
+                  {b.info > 0 && (
+                    <i className="block bg-sk-2" style={{ flexGrow: b.info }} />
+                  )}
+                </div>
               )}
             </div>
           )
         })}
       </div>
-      <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
+      <div className="mt-2 flex justify-between text-[11px] tabular-nums text-muted-foreground">
         {[0, 6, 12, 18].map((i) => (
           <span key={i}>{hourLabel(buckets[i].start)}</span>
         ))}
@@ -453,13 +410,33 @@ function ActivityChart({ logs }: { logs: LogEntry[] }) {
   )
 }
 
+function ActivityLegend() {
+  const { t } = useTranslation()
+  return (
+    <span className="flex items-center gap-3 text-[11.5px] text-muted-foreground">
+      {(
+        [
+          ['bg-sk-2', 'logs:levelInfo'],
+          ['bg-warning/80', 'logs:levelWarn'],
+          ['bg-destructive/80', 'logs:levelError'],
+        ] as const
+      ).map(([cls, key]) => (
+        <span key={key} className="flex items-center gap-1.5">
+          <i className={cn('size-2 rounded-[2px]', cls)} />
+          {t(key)}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /**
  * The Logs page shared by the app log and the Local API Server log: headline
  * numbers, activity over the day, the busiest sources (each one a filter),
  * and the lines themselves with search, level and source filters.
  *
- * It renders inside the shell and in the logs' own window; there the page
- * title and actions move to the standalone bar that SystemPageHeader draws.
+ * Inside the shell it is an engine page like Models or Library. In the logs'
+ * own window the title and actions move to the bar SystemPageHeader draws.
  */
 export function LogsDashboard({
   title,
@@ -499,7 +476,7 @@ export function LogsDashboard({
   const stats = useMemo(() => {
     const hourAgo = Date.now() - HOUR
     const today = new Date().toDateString()
-    let lines = 0
+    let todayLines = 0
     let errors = 0
     let warnings = 0
     let recentErrors = 0
@@ -507,7 +484,7 @@ export function LogsDashboard({
     const warnSources = new Map<string, number>()
     for (const log of logs) {
       const at = toTime(log.timestamp)
-      if (new Date(at).toDateString() === today) lines++
+      if (new Date(at).toDateString() === today) todayLines++
       const s = logSource(log)
       if (log.level === 'error') {
         errors++
@@ -520,7 +497,7 @@ export function LogsDashboard({
     }
     const top = [...sources.entries()].sort((a, b) => b[1] - a[1])
     const topWarn = [...warnSources.entries()].sort((a, b) => b[1] - a[1])[0]
-    return { lines, errors, warnings, recentErrors, top, topWarn: topWarn?.[0] }
+    return { todayLines, errors, warnings, recentErrors, top, topWarn: topWarn?.[0] }
   }, [logs])
 
   const serviceHub = useServiceHub()
@@ -534,12 +511,12 @@ export function LogsDashboard({
     }
   }
 
-  const copy = <CopyLogsButton logs={shown} />
   const actions = (
     <>
-      {copy}
+      <CopyLogsButton logs={shown} />
       <Button
         variant="outline"
+        size="sm"
         className="pointer-coarse:h-11"
         onClick={() => void openFolder()}
         data-testid="open-logs-folder"
@@ -551,204 +528,174 @@ export function LogsDashboard({
   )
   const topMax = stats.top[0]?.[1] ?? 1
 
+  const body = (
+    <>
+      {inShell ? (
+        <PageHead title={title} description={description} actions={actions} />
+      ) : (
+        <p className="text-[13px] text-muted-foreground">{description}</p>
+      )}
+
+      <KpiRow>
+        <KpiTile
+          title={t('logs:kpiLines')}
+          icon={<Icon name="sb-file" size={16} />}
+          value={logs.length.toLocaleString()}
+          sub={t('logs:kpiLinesToday', { count: stats.todayLines })}
+          delay={40}
+        />
+        <KpiTile
+          title={t('logs:kpiErrors')}
+          icon={<Icon name="x-shield" size={16} />}
+          value={stats.errors.toLocaleString()}
+          sub={t('logs:kpiLastHour', { count: stats.recentErrors })}
+          delay={80}
+        />
+        <KpiTile
+          title={t('logs:kpiWarnings')}
+          icon={<Icon name="feed-alert" size={16} />}
+          value={stats.warnings.toLocaleString()}
+          sub={
+            stats.topWarn
+              ? t('logs:kpiWarningsSub', { name: stats.topWarn })
+              : t('logs:kpiWarningsNone')
+          }
+          delay={120}
+        />
+        <KpiTile
+          title={t('logs:kpiSources')}
+          icon={<Icon name="flow" size={16} />}
+          value={String(stats.top.length)}
+          sub={
+            stats.top[0]
+              ? t('logs:kpiSourcesSub', { name: stats.top[0][0] })
+              : t('logs:kpiSourcesNone')
+          }
+          delay={160}
+        />
+      </KpiRow>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <Frame className="motion-safe:animate-rise-in" style={{ animationDelay: '200ms' }}>
+          <FrameHeader
+            icon={<Icon name="analytics" size={16} />}
+            title={t('logs:activity')}
+            actions={<ActivityLegend />}
+          />
+          <FrameBody className="p-3.5">
+            <ActivityChart logs={logs} />
+          </FrameBody>
+        </Frame>
+        <Frame className="motion-safe:animate-rise-in" style={{ animationDelay: '240ms' }}>
+          <FrameHeader icon={<Icon name="flow" size={16} />} title={t('logs:topSources')} />
+          <FrameBody className="gap-0 p-1.5">
+            {stats.top.length === 0 && (
+              <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+                {t('logs:kpiSourcesNone')}
+              </p>
+            )}
+            {stats.top.slice(0, 6).map(([name, n]) => {
+              const on = source === name
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={on}
+                  title={t('logs:filterSource', { name })}
+                  onClick={() => setSource(on ? null : name)}
+                  className={cn(
+                    'grid grid-cols-[80px_minmax(0,1fr)_32px] items-center gap-3 rounded-lg px-2 py-[7px] text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40',
+                    on && 'bg-hover-row'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'truncate font-mono text-xs',
+                      on ? 'font-medium text-foreground' : 'text-secondary-foreground'
+                    )}
+                  >
+                    {name}
+                  </span>
+                  <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                    <i
+                      className="block h-full rounded-full bg-sk-2 motion-safe:animate-draw-x"
+                      style={{ width: `${(n / topMax) * 100}%` }}
+                    />
+                  </span>
+                  <b className="text-right text-xs font-medium tabular-nums text-foreground">
+                    {n}
+                  </b>
+                </button>
+              )
+            })}
+          </FrameBody>
+        </Frame>
+      </div>
+
+      <Frame className="motion-safe:animate-rise-in" style={{ animationDelay: '280ms' }}>
+        <FrameHeader
+          icon={<Icon name="x-terminal" size={16} />}
+          title={<span className="font-mono">{fileName}</span>}
+          actions={
+            <>
+              <Chip tone={follow ? 'ok' : 'neutral'} dot live={follow}>
+                {follow ? t('logs:following') : t('logs:paused')}
+              </Chip>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="pointer-coarse:h-11"
+                onClick={() => {
+                  if (follow) setFrozen(logs)
+                  setFollow(!follow)
+                }}
+              >
+                {follow ? t('logs:pause') : t('logs:follow')}
+              </Button>
+            </>
+          }
+        />
+        <FrameBody className="overflow-hidden p-0">
+          {logs.length > 0 && (
+            <LogToolbar
+              query={query}
+              onQueryChange={setQuery}
+              level={level}
+              onLevelChange={setLevel}
+              shown={shown.length}
+              total={lines.length}
+            >
+              {source && (
+                <button
+                  type="button"
+                  onClick={() => setSource(null)}
+                  aria-label={t('logs:clearSource')}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 font-mono text-xs text-secondary-foreground hover:bg-hover-row"
+                >
+                  {source}
+                  <X className="size-3" aria-hidden />
+                </button>
+              )}
+            </LogToolbar>
+          )}
+          <LogViewer
+            logs={shown}
+            follow={follow}
+            className="max-h-[62vh] min-h-[240px] border-t border-dashed border-border"
+            emptyText={logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')}
+          />
+        </FrameBody>
+      </Frame>
+    </>
+  )
+
+  if (inShell) return <EnginePage testId="logs-page">{body}</EnginePage>
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-card">
-      <SystemPageHeader
-        title={title}
-        icon={<Icon name="sb-file" size={16} />}
-        actions={inShell ? undefined : actions}
-      />
-      <div
-        className={cn(
-          'min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-8 [scrollbar-width:thin]',
-          inShell ? 'px-1' : 'px-4'
-        )}
-      >
-        <div className="flex w-full min-w-0 flex-col gap-4">
-          <div className="mb-2 flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-3">
-              {inShell && (
-                <h2 className="text-[22px] leading-none font-medium tracking-[-0.01em] text-foreground">
-                  {title}
-                </h2>
-              )}
-              <p className="text-[13px] text-muted-foreground">{description}</p>
-            </div>
-            {inShell && (
-              <div className="flex flex-wrap items-center gap-2">{actions}</div>
-            )}
-          </div>
-
-          <KpiRow>
-            <KpiTile
-              title={t('logs:kpiLines')}
-              icon={<Icon name="sb-file" size={16} />}
-              value={stats.lines.toLocaleString()}
-              sub={t('logs:kpiLinesSub', { count: shown.length })}
-              delay={40}
-            />
-            <KpiTile
-              title={t('logs:kpiErrors')}
-              icon={<Icon name="x-shield" size={16} />}
-              value={stats.errors.toLocaleString()}
-              sub={t('logs:kpiLastHour', { count: stats.recentErrors })}
-              delay={80}
-            />
-            <KpiTile
-              title={t('logs:kpiWarnings')}
-              icon={<Icon name="feed-alert" size={16} />}
-              value={stats.warnings.toLocaleString()}
-              sub={
-                stats.topWarn
-                  ? t('logs:kpiWarningsSub', { name: stats.topWarn })
-                  : t('logs:kpiWarningsNone')
-              }
-              delay={120}
-            />
-            <KpiTile
-              title={t('logs:kpiSources')}
-              icon={<Icon name="flow" size={16} />}
-              value={String(stats.top.length)}
-              sub={
-                stats.top[0]
-                  ? t('logs:kpiSourcesSub', { name: stats.top[0][0] })
-                  : t('logs:kpiSourcesNone')
-              }
-              delay={160}
-            />
-          </KpiRow>
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <Frame
-              className="motion-safe:animate-rise-in"
-              style={{ animationDelay: '200ms' }}
-            >
-              <FrameHeader
-                icon={<Icon name="analytics" size={16} />}
-                title={t('logs:activity')}
-                actions={
-                  <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-                    <i className="ml-1.5 size-2 rounded-[2px] bg-sk-2" />
-                    {t('logs:levelInfo')}
-                    <i className="ml-1.5 size-2 rounded-[2px] bg-[#f59e0b]" />
-                    {t('logs:levelWarn')}
-                    <i className="ml-1.5 size-2 rounded-[2px] bg-destructive" />
-                    {t('logs:levelError')}
-                  </span>
-                }
-              />
-              <FrameBody className="flex-1 p-3.5">
-                <ActivityChart logs={logs} />
-              </FrameBody>
-            </Frame>
-            <Frame
-              className="motion-safe:animate-rise-in"
-              style={{ animationDelay: '240ms' }}
-            >
-              <FrameHeader
-                icon={<Icon name="flow" size={16} />}
-                title={t('logs:topSources')}
-              />
-              <FrameBody className="gap-0.5 p-2.5">
-                {stats.top.length === 0 && (
-                  <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-                    {t('logs:kpiSourcesNone')}
-                  </p>
-                )}
-                {stats.top.slice(0, 8).map(([name, n]) => {
-                  const on = source === name
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      aria-pressed={on}
-                      title={t('logs:filterSource', { name })}
-                      onClick={() => setSource(on ? null : name)}
-                      className={cn(
-                        'grid grid-cols-[88px_minmax(0,1fr)_34px] items-center gap-2.5 rounded-lg px-1 py-1.5 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40',
-                        on && 'bg-hover-row'
-                      )}
-                    >
-                      <SourceTag source={name} />
-                      <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
-                        <i
-                          className="block h-full rounded-full motion-safe:animate-draw-x"
-                          style={{
-                            width: `${(n / topMax) * 100}%`,
-                            background: sourceColour(name),
-                          }}
-                        />
-                      </span>
-                      <b className="text-right text-xs font-medium tabular-nums">
-                        {n}
-                      </b>
-                    </button>
-                  )
-                })}
-              </FrameBody>
-            </Frame>
-          </div>
-
-          <Frame
-            className="motion-safe:animate-rise-in"
-            style={{ animationDelay: '280ms' }}
-          >
-            <FrameHeader
-              icon={<Icon name="x-terminal" size={16} />}
-              title={fileName}
-              actions={
-                <>
-                  <Chip tone={follow ? 'ok' : 'neutral'} dot live={follow}>
-                    {follow ? t('logs:following') : t('logs:paused')}
-                  </Chip>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="pointer-coarse:h-11"
-                    onClick={() => {
-                      if (follow) setFrozen(logs)
-                      setFollow(!follow)
-                    }}
-                  >
-                    {follow ? t('logs:pause') : t('logs:follow')}
-                  </Button>
-                </>
-              }
-            />
-            <FrameBody className="overflow-hidden">
-              {logs.length > 0 && (
-                <LogToolbar
-                  query={query}
-                  onQueryChange={setQuery}
-                  level={level}
-                  onLevelChange={setLevel}
-                  shown={shown.length}
-                  total={lines.length}
-                >
-                  {source && (
-                    <button
-                      type="button"
-                      onClick={() => setSource(null)}
-                      aria-label={t('logs:clearSource')}
-                      className="inline-flex h-[22px] items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground hover:bg-hover-row"
-                    >
-                      {source}
-                      <X className="size-3" aria-hidden />
-                    </button>
-                  )}
-                </LogToolbar>
-              )}
-              <LogViewer
-                logs={shown}
-                follow={follow}
-                className="max-h-[62vh] min-h-[240px]"
-                emptyText={
-                  logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')
-                }
-              />
-            </FrameBody>
-          </Frame>
-        </div>
+      <SystemPageHeader title={title} icon={<Icon name="sb-file" size={16} />} actions={actions} />
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 pb-8 [scrollbar-width:thin]">
+        <div className="flex w-full min-w-0 flex-col gap-6">{body}</div>
       </div>
     </div>
   )

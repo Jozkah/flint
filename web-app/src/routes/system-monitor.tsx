@@ -258,7 +258,7 @@ function SystemMonitorContent() {
             </div>
           )}
 
-          <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] items-start gap-4">
+          <div className="grid w-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Panel
               title={t('system-monitor:cpuUsage')}
               icon={<Icon name="x-cpu" size={16} />}
