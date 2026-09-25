@@ -41,11 +41,11 @@ vi.mock('@/hooks/useThreadManagement', () => ({
   }),
 }))
 
-vi.mock('@/components/ui/sidebar', () => ({
-  SidebarMenuItem: ({ children }: any) => <li>{children}</li>,
-  SidebarMenuButton: ({ children }: any) => <div>{children}</div>,
-  SidebarMenuAction: ({ children }: any) => <button>{children}</button>,
-  useSidebar: () => ({ isMobile: false }),
+vi.mock('@/components/shell/nav-kit', () => ({
+  NavItem: ({ children }: any) => <li>{children}</li>,
+  NavButton: ({ children }: any) => <div>{children}</div>,
+  NavAction: ({ children }: any) => <button>{children}</button>,
+  useShellNav: () => ({ isMobile: false }),
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => {

@@ -14,8 +14,8 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-vi.mock('@/components/ui/sidebar', () => ({
-  useOptionalSidebar: () => null,
+vi.mock('@/components/shell/HeaderSlot', () => ({
+  useHeaderSlot: () => null,
 }))
 
 vi.mock('@/containers/HeaderPage', () => ({
@@ -59,7 +59,6 @@ vi.mock('@/lib/pluginStore', async () => {
 })
 
 import { Route } from '../extensions'
-import { RAIL_ITEMS } from '@/lib/shellNavigation'
 
 const renderComponent = () => {
   const Component = Route.component as React.ComponentType
@@ -97,11 +96,5 @@ describe('ExtensionsPage route', () => {
 
     fireEvent.click(screen.getByTestId('extensions-import-cc-button'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-  })
-})
-
-describe('RAIL_ITEMS', () => {
-  it('has an entry that routes to /extensions', () => {
-    expect(RAIL_ITEMS.some((item) => item.to === '/extensions')).toBe(true)
   })
 })

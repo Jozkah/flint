@@ -97,14 +97,11 @@ vi.mock('@/containers/GlobalError', () => ({
 }))
 
 // Components
-vi.mock('@/components/left-sidebar', () => ({
-  LeftSidebar: () => <div data-testid="left-sidebar" />,
+vi.mock('@/components/shell/AppSidebar', () => ({
+  AppSidebar: () => <div data-testid="left-sidebar" />,
 }))
-vi.mock('@/components/shell/AppRail', () => ({
-  AppRail: () => <nav data-testid="app-rail" />,
-}))
-vi.mock('@/components/shell/StatusBar', () => ({
-  StatusBar: () => <footer data-testid="status-bar" />,
+vi.mock('@/components/shell/TopHeader', () => ({
+  TopHeader: () => <header data-testid="top-header" />,
 }))
 vi.mock('@/hooks/useAppViewport', () => ({
   useAppViewport: () => {},
@@ -121,12 +118,9 @@ vi.mock('@/hooks/useWindowTitle', () => ({
 vi.mock('@/lib/titlebar', () => ({
   detectWindowChrome: () => h.chrome,
 }))
-vi.mock('@/components/ui/sidebar', () => ({
-  SidebarProvider: ({ children }: any) => (
+vi.mock('@/components/shell/nav-kit', () => ({
+  ShellNavProvider: ({ children }: any) => (
     <div data-testid="sidebar-provider">{children}</div>
-  ),
-  SidebarInset: ({ children }: any) => (
-    <div data-testid="sidebar-inset">{children}</div>
   ),
 }))
 
@@ -188,13 +182,13 @@ describe('__root route', () => {
     expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
   })
 
-  it('renders one shell: rail, sidebar, page and status bar', () => {
+  it('renders one shell: sidebar, then the top header above the page', () => {
     renderComponent()
     const shell = screen.getByTestId('app-shell')
-    expect(shell).toContainElement(screen.getByTestId('app-rail'))
     expect(shell).toContainElement(screen.getByTestId('left-sidebar'))
-    expect(shell).toContainElement(screen.getByTestId('outlet'))
-    expect(shell).toContainElement(screen.getByTestId('status-bar'))
+    const main = screen.getByTestId('app-main')
+    expect(main).toContainElement(screen.getByTestId('top-header'))
+    expect(main).toContainElement(screen.getByTestId('outlet'))
   })
 
   /**

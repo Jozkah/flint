@@ -44,19 +44,19 @@ vi.mock('@/hooks/useThreadManagement', () => ({
 }))
 
 // Forward the row's handlers, which the other suite's mock drops.
-vi.mock('@/components/ui/sidebar', () => ({
-  SidebarMenuItem: ({ children, ...rest }: any) => (
+vi.mock('@/components/shell/nav-kit', () => ({
+  NavItem: ({ children, ...rest }: any) => (
     <li data-testid="row" tabIndex={0} {...rest}>
       {children}
     </li>
   ),
-  SidebarMenuButton: ({ children }: any) => <div>{children}</div>,
-  SidebarMenuAction: ({ children, showOnHover: _showOnHover, ...rest }: any) => (
+  NavButton: ({ children }: any) => <div>{children}</div>,
+  NavAction: ({ children, showOnHover: _showOnHover, ...rest }: any) => (
     <button data-testid="dots" {...rest}>
       {children}
     </button>
   ),
-  useSidebar: () => ({ isMobile: false }),
+  useShellNav: () => ({ isMobile: false }),
 }))
 
 // A menu that reports whether it is open, and only renders its items then —

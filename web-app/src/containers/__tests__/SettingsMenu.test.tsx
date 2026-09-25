@@ -139,11 +139,11 @@ describe('SettingsMenu', () => {
     expect(screen.getByText('common:modelProviders')).toBeInTheDocument()
   })
 
-  it('marks selection with a neutral background and an accent rail, not the accent tint', () => {
+  it('marks selection as a raised neutral card, not the accent tint', () => {
     render(<SettingsMenu />)
     const link = screen.getByText('common:general').closest('a')!
-    expect(link.className).toContain('[&.active]:bg-sidebar-accent')
-    expect(link.className).toContain('[&.active]:before:bg-brand-rail')
+    expect(link.className).toContain('[&.active]:bg-card')
+    expect(link.className).toContain('[&.active]:border-border')
     expect(link.className).not.toContain('bg-brand-tint')
   })
 

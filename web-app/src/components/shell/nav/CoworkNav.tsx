@@ -1,12 +1,11 @@
 import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuAction,
-  SidebarGroup,
-  SidebarGroupLabel,
-  useSidebar,
-} from '@/components/ui/sidebar'
+  NavAction,
+  NavButton,
+  NavCollapse,
+  NavItem,
+  NavList,
+  useShellNav,
+} from '@/components/shell/nav-kit'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,10 +23,13 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { useNavigate } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
+  ChevronUp,
+  Handshake,
+  Plus,
   SlidersHorizontal,
   Copy,
   Download,
@@ -41,17 +43,8 @@ import {
   Loader2,
   type LucideIcon,
 } from 'lucide-react'
-import {
-  MessageCircleIcon,
-  type MessageCircleIconHandle,
-} from '@/components/animated-icon/message-circle'
-import {
-  SearchIcon,
-  type SearchIconHandle,
-} from '@/components/animated-icon/search'
-import { ShortcutAction } from '@/lib/shortcuts'
-import { ShortcutHint } from '@/containers/ShortcutHint'
-import { useSearchDialog } from '@/hooks/useSearchDialog'
+import { cn } from '@/lib/utils'
+import { isCoworkRoute } from '@/constants/routes'
 import {
   useCoworkSessions,
   type CoworkSession,
@@ -59,7 +52,7 @@ import {
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
-import { memo, useCallback, useRef, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -126,14 +119,16 @@ const SessionItem = memo(function SessionItem({
   }
 
   return (
-    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
-      <SidebarMenuButton
+    <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
+      <NavButton
+        size="sub"
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
         data-testid="cowork-session-item"
         data-session-id={session.id}
         data-current={isCurrent ? 'true' : 'false'}
       >
+        <SessionDot running={running} />
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
@@ -143,24 +138,18 @@ const SessionItem = memo(function SessionItem({
             role="status"
             aria-label={t('common:tasks.running', { count: 1 })}
             data-testid={`cowork-session-running-${session.id}`}
-            className="ml-auto flex shrink-0 items-center text-ink-2"
+            className="sr-only"
           >
-            <Loader2
-              aria-hidden
-              className="size-3.5! motion-safe:animate-spin"
-            />
+            <Loader2 aria-hidden />
           </span>
         )}
-      </SidebarMenuButton>
+      </NavButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction
-            showOnHover
-            className="hover:bg-sidebar-foreground/8"
-          >
+          <NavAction showOnHover>
             <MoreHorizontal />
             <span className="sr-only">More</span>
-          </SidebarMenuAction>
+          </NavAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-48"
@@ -301,14 +290,38 @@ const SessionItem = memo(function SessionItem({
           useCoworkRun.getState().requestCodeOpen(session.id, path, 'diff')
         }}
       />
-    </SidebarMenuItem>
+    </NavItem>
   )
 })
 
-export function NavCowork() {
+/** Status mark before a session: a blinking blue dot while it runs. */
+function SessionDot({ running }: { running: boolean }) {
+  return (
+    <span aria-hidden className="grid size-3.5 shrink-0 place-items-center">
+      {running && (
+        <span className="relative size-2 rounded-full bg-info">
+          <span className="absolute inset-0 rounded-full bg-info motion-safe:animate-ping" />
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * The Cowork row of the sidebar with its session tree: the row opens Cowork,
+ * the chevron shows or hides the sessions, and the row menu holds the less
+ * frequent actions (artifacts, customize, import, plugins).
+ */
+export function CoworkNav({ icon: Icon = Handshake }: { icon?: LucideIcon }) {
+  const { pathname } = useLocation()
+  const onCowork = isCoworkRoute(pathname)
+  const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
+  const expanded = treeOpen ?? onCowork
+  const runningCount = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
+  const [moreOpen, setMoreOpen] = useState(false)
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isMobile } = useSidebar()
+  const { isMobile } = useShellNav()
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
@@ -320,8 +333,6 @@ export function NavCowork() {
   } | null>(null)
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
-  const newSessionIconRef = useRef<MessageCircleIconHandle>(null)
-  const searchIconRef = useRef<SearchIconHandle>(null)
   const newSession = () => {
     // Idempotent: on a blank session this returns the same one, so a second
     // press cannot leave a trail of empty sessions behind. An unsent draft
@@ -424,71 +435,83 @@ export function NavCowork() {
 
   return (
     <>
-      <SidebarMenu>
-        {/* Cowork replaces `NavMain` in the sidebar, so it has to carry the
-            same entries NavMain does; without this, Search and Settings were
-            simply absent on this tab. Same dialog, same route -- opened
-            through the shared store, not a second implementation. */}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => useSearchDialog.getState().setOpen(true)}
-            data-testid="cowork-search"
-            onMouseEnter={() => searchIconRef.current?.startAnimation()}
-            onMouseLeave={() => searchIconRef.current?.stopAnimation()}
+      <NavItem>
+        <NavButton
+          isActive={pathname === route.cowork}
+          onClick={goCowork}
+          data-testid="nav-cowork"
+        >
+          <Icon aria-hidden />
+          <span className="flex-1 truncate">{t('common:cowork')}</span>
+        </NavButton>
+        <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
+          {runningCount > 0 && (
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {runningCount}
+            </span>
+          )}
+          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t('common:more')}
+                className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover/nav-item:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 [&>svg]:size-3.5"
+              >
+                <MoreHorizontal />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-52"
+              side={isMobile ? 'bottom' : 'right'}
+              align="start"
+            >
+              {items.map((item) => {
+                const ItemIcon = item.icon
+                return (
+                  <DropdownMenuItem key={item.title} onSelect={item.onClick}>
+                    <ItemIcon />
+                    <span>{item.title}</span>
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            aria-label={t('common:sessions')}
+            aria-expanded={expanded}
+            onClick={() => setTreeOpen(!expanded)}
+            className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&>svg]:size-3"
           >
-            <SearchIcon
-              ref={searchIconRef}
-              className="text-ink-2"
-              size={16}
+            <ChevronUp
+              className={cn(
+                'transition-transform duration-300 ease-expo',
+                !expanded && 'rotate-180'
+              )}
             />
-            <span>{t('common:search')}</span>
-            <ShortcutHint action={ShortcutAction.SEARCH} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={newSession}
-            onMouseEnter={() => newSessionIconRef.current?.startAnimation()}
-            onMouseLeave={() => newSessionIconRef.current?.stopAnimation()}
-          >
-            <MessageCircleIcon
-              ref={newSessionIconRef}
-              className="text-ink-2"
-              size={16}
+          </button>
+        </span>
+      </NavItem>
+      <NavCollapse open={expanded}>
+        <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
+          <NavItem>
+            <NavButton size="sub" onClick={newSession}>
+              <Plus aria-hidden className="size-3.5" />
+              <span>{t('common:newSession')}</span>
+            </NavButton>
+          </NavItem>
+          {sessions.map((session) => (
+            <SessionItem
+              key={session.id}
+              session={session}
+              isCurrent={onCowork && session.id === currentId}
+              isMobile={isMobile}
+              onSelect={selectSession}
+              onRequestDelete={setPendingDelete}
             />
-            <span>{t('common:newSession')}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        {items.map((item) => {
-          const Icon = item.icon
-          return (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton onClick={item.onClick}>
-                <Icon className="text-ink-2" size={16} />
-                <span>{item.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )
-        })}
-      </SidebarMenu>
-
-      {sessions.length > 0 && (
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>{t('common:sessions')}</SidebarGroupLabel>
-          <SidebarMenu>
-            {sessions.map((session) => (
-              <SessionItem
-                key={session.id}
-                session={session}
-                isCurrent={session.id === currentId}
-                isMobile={isMobile}
-                onSelect={selectSession}
-                onRequestDelete={setPendingDelete}
-              />
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-      )}
+          ))}
+        </NavList>
+      </NavCollapse>
 
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
       <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />

@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import { DeleteProjectDialog } from '@/containers/dialogs/DeleteProjectDialog'
 import { DeleteAllThreadsInProjectDialog } from '@/containers/dialogs/DeleteAllThreadsInProjectDialog'
-import { SidebarMenu } from '@/components/ui/sidebar'
+import { NavList } from '@/components/shell/nav-kit'
 
 export const Route = createFileRoute('/project/$projectId')({
   component: ProjectPageContent,
@@ -163,12 +163,12 @@ function ProjectPageContent() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              <SidebarMenu>
+              <NavList>
                 <ThreadList
                   threads={projectThreads}
                   currentProjectId={projectId}
                 />
-              </SidebarMenu>
+              </NavList>
             </div>
           )}
 

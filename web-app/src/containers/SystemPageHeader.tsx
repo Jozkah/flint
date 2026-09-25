@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import HeaderPage from '@/containers/HeaderPage'
-import { useOptionalSidebar } from '@/components/ui/sidebar'
+import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 
 type SystemPageHeaderProps = {
   title: ReactNode
@@ -18,7 +18,7 @@ type SystemPageHeaderProps = {
  * still reads as part of Flint.
  */
 export function SystemPageHeader({ title, icon, actions }: SystemPageHeaderProps) {
-  const inShell = useOptionalSidebar() !== null
+  const inShell = useHeaderSlot() !== null
 
   const row = (
     <div className="flex w-full min-w-0 items-center gap-2">
@@ -38,12 +38,19 @@ export function SystemPageHeader({ title, icon, actions }: SystemPageHeaderProps
     </div>
   )
 
-  if (inShell) return <HeaderPage>{row}</HeaderPage>
+  // In the shell the breadcrumb already names the page; only its actions
+  // join the top header.
+  if (inShell)
+    return actions ? (
+      <HeaderPage>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>
+      </HeaderPage>
+    ) : null
 
   return (
     <header
       data-testid="system-page-bar"
-      className="flex h-(--ctx-h) min-h-(--ctx-h) shrink-0 items-center border-b border-border bg-card px-3 md:px-6"
+      className="flex h-[52px] shrink-0 items-center border-b border-border bg-card px-3 md:px-6"
     >
       {row}
     </header>

@@ -171,7 +171,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   // Selected rows use a neutral background and a 2px accent marker: the
   // accent means "selected" here, never "running".
   const menuLinkClass =
-    'relative flex h-8 pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-md px-2 text-sm text-ink-2 outline-hidden hover:bg-sidebar-accent/70 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring [&.active]:bg-sidebar-accent [&.active]:font-medium [&.active]:text-foreground [&.active]:before:absolute [&.active]:before:left-0 [&.active]:before:inset-y-2 [&.active]:before:w-0.5 [&.active]:before:rounded-full [&.active]:before:bg-brand-rail'
+    'relative flex h-8 pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2 text-[0.8125rem] text-secondary-foreground outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo hover:bg-hover-row hover:text-foreground active:scale-[.985] focus-visible:ring-[3px] focus-visible:ring-ring/40 [&.active]:border-border [&.active]:bg-card [&.active]:font-medium [&.active]:text-foreground [&.active]:shadow-[0_4px_7px_rgba(0,0,0,.04)]'
 
   const renderProvider = (provider: ProviderObject, hidden: boolean) => {
     const isRouteActive = matches.some(
@@ -323,7 +323,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
         data-testid="settings-menu"
         className={cn(
           'h-full shrink-0 flex flex-col overflow-auto',
-          variant === 'column' ? 'w-58' : 'w-full'
+          variant === 'column' ? 'w-full' : 'w-full'
         )}
       >
         <SettingsSearch />
@@ -384,7 +384,7 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
                   type="button"
                   aria-expanded={expandedProviders}
                   aria-controls="settings-hidden-providers"
-                  className="mt-1 flex h-7 pointer-coarse:h-11 w-full items-center justify-between rounded-md px-2 text-muted-foreground hover:bg-sidebar-accent/70 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                  className="mt-1 flex h-7 pointer-coarse:h-11 w-full items-center justify-between rounded-md px-2 text-muted-foreground hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40"
                   onClick={() => setExpandedProviders(!expandedProviders)}
                 >
                   <span className="text-xs font-medium">

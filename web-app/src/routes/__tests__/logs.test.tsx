@@ -26,8 +26,8 @@ vi.mock('@/constants/routes', () => ({
   route: { appLogs: '/logs' },
 }))
 
-vi.mock('@/components/ui/sidebar', () => ({
-  useOptionalSidebar: () => null,
+vi.mock('@/components/shell/HeaderSlot', () => ({
+  useHeaderSlot: () => null,
 }))
 
 vi.mock('@/containers/HeaderPage', () => ({

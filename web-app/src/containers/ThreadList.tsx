@@ -1,9 +1,10 @@
 import {
   Copy,
   Folder,
-  Loader2,
   MoreHorizontal,
   Pencil,
+  Pin,
+  PinOff,
   Trash2,
   X,
 } from 'lucide-react'
@@ -26,11 +27,12 @@ import {
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@/components/ui/sidebar'
+  NavAction,
+  NavButton,
+  NavItem,
+  useShellNav,
+} from '@/components/shell/nav-kit'
+import { ThreadStatusMark, useThreadStatus } from '@/containers/ThreadStatusMark'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { memo, useMemo, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
@@ -152,7 +154,8 @@ const ThreadItem = memo(
     const isSessionStreaming = useChatSessions(
       (state) => state.sessions[thread.id]?.isStreaming ?? false
     )
-    const isActive = isAppStateActive || isSessionStreaming
+    const status = useThreadStatus(thread, isAppStateActive || isSessionStreaming)
+    const toggleFavorite = useThreads((state) => state.toggleFavorite)
 
     const currentThreadId = useParams({
       strict: false,
@@ -181,54 +184,55 @@ const ThreadItem = memo(
     }
 
     return (
-      <SidebarMenuItem
+      <NavItem
         onContextMenu={openRowMenu}
         onKeyDown={onRowKeyDown}
+        className={cn(currentProjectId && 'list-none')}
       >
         {currentProjectId ?
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-md px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11", isSelected && "bg-accent before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail")}>
-              <div className="flex items-center gap-1.5 min-w-0 pr-9">
-                {isActive && (
-                  <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-ink-2" />
-                )}
+          <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-lg border-[0.8px] border-transparent px-3 py-2 text-[0.8125rem] text-foreground transition-[background-color,border-color] duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 outline-hidden pointer-coarse:min-h-11", isSelected && "border-border bg-card shadow-[0_4px_7px_rgba(0,0,0,.04)]")}>
+              <div className="flex items-center gap-2 min-w-0 pr-9">
+                <ThreadStatusMark status={status} />
                 <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
               </div>
               {currentProjectId && lastUserMessageText && (
-                <div className="text-muted-foreground text-xs mt-0.5 line-clamp-1 pr-9">
+                <div className="text-muted-foreground text-xs mt-1 line-clamp-1 pr-9 pl-[22px]">
                   {lastUserMessageText}
                 </div>
               )}
           </Link>
           :
-          <SidebarMenuButton asChild isActive={isSelected}>
-            <Link to="/threads/$threadId" params={{ threadId: thread.id }}>
-              {isActive && (
-                <Loader2 className="size-3 shrink-0 motion-safe:animate-spin text-muted-foreground" />
-              )}
+          <NavButton asChild size="sm" isActive={isSelected}>
+            <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
+              <ThreadStatusMark status={status} />
               <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
             </Link>
-          </SidebarMenuButton>
+          </NavButton>
         }
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             {/* Hover reveals it with a mouse; a touch screen has no hover, so
                 the row menu stays visible there with a 44px target. */}
-            <SidebarMenuAction
+            <NavAction
               showOnHover
               className={cn(
-                "hover:bg-sunken pointer-coarse:opacity-100 pointer-coarse:size-9 pointer-coarse:top-0.5",
-                currentProjectId && 'top-1.5 right-1.5'
+                'pointer-coarse:size-9',
+                currentProjectId && 'top-4 right-1.5'
               )}
             >
               <MoreHorizontal />
-              <span className="sr-only">More</span>
-            </SidebarMenuAction>
+              <span className="sr-only">{t('common:more')}</span>
+            </NavAction>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-48"
             side={isMobile ? 'bottom' : 'right'}
             align={isMobile ? 'end' : 'start'}
           >
+            <DropdownMenuItem onSelect={() => toggleFavorite(thread.id)}>
+              {thread.isFavorite ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+              <span>{thread.isFavorite ? t('common:shell.unpin') : t('common:shell.pin')}</span>
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
@@ -328,7 +332,7 @@ const ThreadItem = memo(
           onOpenChange={setDeleteConfirmOpen}
           withoutTrigger
         />
-      </SidebarMenuItem>
+      </NavItem>
     )
   }
 )
@@ -339,7 +343,7 @@ type ThreadListProps = {
 }
 
 function ThreadList({ threads, currentProjectId }: ThreadListProps) {
-  const { isMobile } = useSidebar()
+  const { isMobile } = useShellNav()
 
   const sortedThreads = useMemo(() => {
     return [...threads].sort((a, b) => {

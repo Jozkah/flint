@@ -38,8 +38,8 @@ vi.mock('@/hooks/useServiceHub', () => ({
   }),
 }))
 
-vi.mock('@/components/ui/sidebar', () => ({
-  useOptionalSidebar: () => h.sidebar,
+vi.mock('@/components/shell/HeaderSlot', () => ({
+  useHeaderSlot: () => h.sidebar,
 }))
 
 vi.mock('@/containers/HeaderPage', () => ({
@@ -103,12 +103,9 @@ describe('SystemMonitor route', () => {
     expect(screen.queryByTestId('context-bar')).not.toBeInTheDocument()
   })
 
-  it('uses the shell context bar inside the shell', () => {
+  it('leaves the title to the shell breadcrumb inside the shell', () => {
     h.sidebar = {}
     renderComponent()
-    expect(screen.getByTestId('context-bar')).toHaveTextContent(
-      'system-monitor:title'
-    )
     expect(screen.queryByTestId('system-page-bar')).not.toBeInTheDocument()
   })
 
