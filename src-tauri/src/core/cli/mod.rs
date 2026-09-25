@@ -1578,7 +1578,14 @@ fn prepare_agent_session(
     )
     .unwrap_or(smol_model);
 
-    let provider_configs = load_provider_configs(Some(&project_root), &overrides)?;
+    let mut provider_configs = load_provider_configs(Some(&project_root), &overrides)?;
+
+    // `--provider` names the provider the run goes to, by id or by the name
+    // the desktop app shows. Without pinning, upstream resolution picks
+    // whichever provider serves the model id first, which may be another one.
+    if let Some(requested) = overrides.provider.as_deref().filter(|_| overrides.pin) {
+        crate::core::cli::providers::pin_provider(&mut provider_configs, requested, &model)?;
+    }
 
     // Reject a model whose only provider is a local engine descriptor before any
     // setup work: the CLI cannot start an engine itself, so this would otherwise
@@ -2492,10 +2499,18 @@ pub fn cli_policy_export(
 > {
     use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
     let root = resolve_project_root(project);
-    let config = crate::core::agent::project::load_agent_config(&root).map_err(|e| {
-        HarnessError::new(ErrorKind::MalformedState, format!("this project's configuration cannot be read: {e}"))
-            .at(Stage::Startup)
-    })?;
+    // A project with no agent.toml runs under the default policy, so that is
+    // the policy to export; only a file that exists and cannot be read is an
+    // error.
+    let path = crate::core::agent::project::agent_toml_path(&root);
+    let config = if path.exists() {
+        crate::core::agent::project::load_agent_config(&root).map_err(|e| {
+            HarnessError::new(ErrorKind::MalformedState, format!("this project's configuration cannot be read: {e}"))
+                .at(Stage::Startup)
+        })?
+    } else {
+        crate::core::agent::project::AgentToml::default()
+    };
     Ok(tauri_plugin_agent_tools::policy_transfer::export(
         config.tools.default.as_deref().unwrap_or("read-only"),
         &config.tools.allow,
@@ -5248,5 +5263,28 @@ mod tests {
         let zero = request_body("m", &limits_with(Some(0), 0), true, messages);
         assert_eq!(zero["max_turns"], 0);
         assert_eq!(zero["max_session_tokens"], 0);
+    }
+
+    /// A project without `.jan/agent/agent.toml` runs under the default
+    /// policy, so exporting it yields that policy instead of a
+    /// malformed-state error.
+    #[test]
+    fn policy_export_without_agent_toml_exports_the_default_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let document = super::cli_policy_export(dir.path().to_str().unwrap())
+            .expect("a project without agent.toml exports the default policy");
+        assert_eq!(document.default, "read-only");
+        assert!(document.allow.is_empty());
+        assert!(document.deny.is_empty());
+    }
+
+    /// An agent.toml that exists but cannot be parsed is still refused.
+    #[test]
+    fn policy_export_with_malformed_agent_toml_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        std::fs::write(agent.join("agent.toml"), "this is = = not toml").unwrap();
+        assert!(super::cli_policy_export(dir.path().to_str().unwrap()).is_err());
     }
 }

@@ -30,6 +30,10 @@ pub struct ProviderOverrides {
     pub provider: Option<String>,
     /// API key to inject for `provider` (or all providers when `provider` is None).
     pub api_key: Option<String>,
+    /// Whether the user named `provider` explicitly (`--provider`), so a run
+    /// must go to it. A provider defaulted from the desktop selection only
+    /// steers the env-key fallback and never pins the run.
+    pub pin: bool,
 }
 
 impl ProviderOverrides {
@@ -152,6 +156,7 @@ pub fn provider_is_signed_in(project_root: Option<&Path>, provider: &str) -> boo
     let overrides = ProviderOverrides {
         provider: Some(provider.to_string()),
         api_key: None,
+        pin: false,
     }
     .with_env();
 
@@ -709,7 +714,10 @@ fn apply_overrides(
         return Ok(());
     };
     match &overrides.provider {
-        Some(provider) => {
+        Some(requested) => {
+            let provider = &find_provider(configs, requested)
+                .map(str::to_string)
+                .unwrap_or_else(|| requested.clone());
             let cfg = configs
                 .entry(provider.clone())
                 .or_insert_with(|| ProviderConfig {
@@ -746,6 +754,119 @@ fn set_key(cfg: &mut ProviderConfig, api_key: &str) {
     cfg.api_keys = vec![api_key.to_string()];
 }
 
+/// How long `flint cli models list` waits for a provider's server to accept a
+/// connection before reporting it unreachable.
+pub const REACHABILITY_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Whether something accepts a TCP connection at `base_url`'s host and port
+/// within `timeout`. A URL that does not parse, or names no host, is not
+/// reachable.
+pub async fn probe_base_url(base_url: &str, timeout: Duration) -> bool {
+    let trimmed = base_url.trim();
+    let parsed = if trimmed.contains("://") {
+        url::Url::parse(trimmed)
+    } else {
+        url::Url::parse(&format!("http://{trimmed}"))
+    };
+    let Ok(url) = parsed else {
+        return false;
+    };
+    let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) else {
+        return false;
+    };
+    // IPv6 literals come back bracketed; the socket address wants them bare.
+    let host = host.trim_start_matches('[').trim_end_matches(']').to_string();
+    matches!(
+        tokio::time::timeout(timeout, tokio::net::TcpStream::connect((host.as_str(), port))).await,
+        Ok(Ok(_))
+    )
+}
+
+/// Probe every provider with a `base_url` concurrently, keyed by provider
+/// name. Local engines (no `base_url`) are left out: they are never reachable
+/// from the CLI and need no probe.
+pub async fn probe_providers(
+    configs: &HashMap<String, ProviderConfig>,
+    timeout: Duration,
+) -> HashMap<String, bool> {
+    let targets: Vec<(String, String)> = configs
+        .values()
+        .filter(|c| is_cli_reachable(c))
+        .map(|c| (c.provider.clone(), c.base_url.clone().unwrap_or_default()))
+        .collect();
+    futures::future::join_all(targets.into_iter().map(|(name, url)| async move {
+        let up = probe_base_url(&url, timeout).await;
+        (name, up)
+    }))
+    .await
+    .into_iter()
+    .collect()
+}
+
+/// The config key of the provider `requested` names: its key or its
+/// `provider` name exactly, else either one compared case-insensitively. A
+/// Desktop provider's name is what the app shows (e.g. `Qwen 3.8 500k
+/// (8080)`), so that is what a user types.
+pub fn find_provider<'a>(
+    configs: &'a HashMap<String, ProviderConfig>,
+    requested: &str,
+) -> Option<&'a str> {
+    let requested = requested.trim();
+    if let Some((key, _)) = configs.get_key_value(requested) {
+        return Some(key.as_str());
+    }
+    if let Some((key, _)) = configs.iter().find(|(_, c)| c.provider == requested) {
+        return Some(key.as_str());
+    }
+    let mut matches: Vec<&String> = configs
+        .iter()
+        .filter(|(key, c)| {
+            key.eq_ignore_ascii_case(requested) || c.provider.eq_ignore_ascii_case(requested)
+        })
+        .map(|(key, _)| key)
+        .collect();
+    matches.sort();
+    matches.first().map(|k| k.as_str())
+}
+
+/// Pin a run to the provider `--provider` named: resolve it by id or display
+/// name, then make it the only provider offering `model`, so upstream
+/// resolution cannot pick another provider serving the same model id. Errors
+/// when no configured provider matches. Returns the provider's config key.
+pub fn pin_provider(
+    configs: &mut HashMap<String, ProviderConfig>,
+    requested: &str,
+    model: &str,
+) -> Result<String, String> {
+    let Some(key) = find_provider(configs, requested).map(str::to_string) else {
+        let mut known: Vec<&str> = configs.values().map(|c| c.provider.as_str()).collect();
+        known.sort_unstable();
+        return Err(format!(
+            "unknown provider '{requested}'. Configured providers: {}",
+            if known.is_empty() {
+                "(none)".to_string()
+            } else {
+                known.join(", ")
+            }
+        ));
+    };
+    if model.is_empty() {
+        return Ok(key);
+    }
+    for (name, cfg) in configs.iter_mut() {
+        if *name == key {
+            // Model lists are routinely incomplete; naming the provider is an
+            // explicit choice, so it serves the model whether listed or not.
+            if !cfg.models.iter().any(|m| m == model) {
+                cfg.models.push(model.to_string());
+            }
+        } else {
+            cfg.models.retain(|m| m != model);
+        }
+    }
+    Ok(key)
+}
+
 /// Every configured model, for `flint cli models list`.
 ///
 /// Models the CLI cannot reach are listed too, marked `reachable: false`,
@@ -753,15 +874,29 @@ fn set_key(cfg: &mut ProviderConfig, api_key: &str) {
 /// llama.cpp engine has no `base_url` for them -- the engine runs inside the
 /// app -- and filtering on reachability printed `[]` while the app showed a
 /// full model list, with nothing to say why (janhq/jan#8412).
+///
+/// `reachable` is `false` for a local engine the CLI cannot start, and
+/// otherwise whatever `probed` says about that provider's server: `true` only
+/// when it answered, `false` when it did not, and `null` (unknown) when it was
+/// not probed. A configured `base_url` alone never reads as reachable.
 pub fn model_listing(
     configs: &HashMap<String, ProviderConfig>,
     provider: Option<&str>,
+    probed: &HashMap<String, bool>,
 ) -> Vec<serde_json::Value> {
+    let wanted = provider.map(|p| find_provider(configs, p).unwrap_or(p).to_string());
     let mut output: Vec<serde_json::Value> = configs
-        .values()
-        .filter(|c| provider.is_none_or(|p| c.provider == p))
+        .iter()
+        .filter(|(key, _)| wanted.as_deref().is_none_or(|p| key.as_str() == p))
+        .map(|(_, c)| c)
         .flat_map(|c| {
-            let reachable = is_cli_reachable(c);
+            let reachable = if is_cli_reachable(c) {
+                probed
+                    .get(&c.provider)
+                    .map_or(serde_json::Value::Null, |&up| serde_json::Value::Bool(up))
+            } else {
+                serde_json::Value::Bool(false)
+            };
             c.models.iter().map(move |m| {
                 serde_json::json!({
                     "id": m,
@@ -848,6 +983,7 @@ mod tests {
         let ov = ProviderOverrides {
             provider: Some("openai".to_string()),
             api_key: Some("sk-new".to_string()),
+            pin: false,
         };
         apply_overrides(&mut configs, &ov).unwrap();
         let openai = configs.get("openai").unwrap();
@@ -861,6 +997,7 @@ mod tests {
         let ov = ProviderOverrides {
             provider: Some("anthropic".to_string()),
             api_key: Some("sk-ant".to_string()),
+            pin: false,
         };
         apply_overrides(&mut configs, &ov).unwrap();
         assert_eq!(
@@ -875,6 +1012,7 @@ mod tests {
         let ov = ProviderOverrides {
             provider: None,
             api_key: Some("shared".to_string()),
+            pin: false,
         };
         apply_overrides(&mut configs, &ov).unwrap();
         assert!(configs
@@ -1099,14 +1237,24 @@ mod tests {
             },
         );
 
-        let all = model_listing(&configs, None);
+        let probed = HashMap::from([("jan".to_string(), true)]);
+        let all = model_listing(&configs, None, &probed);
         assert_eq!(all.len(), 2);
         let engine = all.iter().find(|m| m["provider"] == "llamacpp").unwrap();
         assert_eq!(engine["reachable"], false);
         let server = all.iter().find(|m| m["provider"] == "jan").unwrap();
         assert_eq!(server["reachable"], true);
 
-        let only = model_listing(&configs, Some("jan"));
+        // Unprobed, a configured server is unknown -- never assumed up.
+        let unprobed = model_listing(&configs, None, &HashMap::new());
+        let server = unprobed.iter().find(|m| m["provider"] == "jan").unwrap();
+        assert!(server["reachable"].is_null());
+        let down = HashMap::from([("jan".to_string(), false)]);
+        let listed = model_listing(&configs, None, &down);
+        let server = listed.iter().find(|m| m["provider"] == "jan").unwrap();
+        assert_eq!(server["reachable"], false);
+
+        let only = model_listing(&configs, Some("jan"), &probed);
         assert_eq!(only.len(), 1);
         assert_eq!(only[0]["provider"], "jan");
     }
@@ -1663,6 +1811,7 @@ mod tests {
                 let overrides = ProviderOverrides {
                     provider: Some("deepseek".into()),
                     api_key: Some("sk-flag".into()),
+                    pin: false,
                 };
                 let configs = load_provider_configs(None, &overrides).unwrap();
                 assert_eq!(
@@ -1832,6 +1981,7 @@ mod credential_origin_tests {
             let overrides = ProviderOverrides {
                 provider: None,
                 api_key: Some("sk-env".into()),
+                pin: false,
             };
             let configs = load(&root, &overrides);
             assert!(configs.get("deepseek").unwrap().bearer_key_chain().is_empty());
@@ -1935,6 +2085,7 @@ mod credential_origin_tests {
             let overrides = ProviderOverrides {
                 provider: Some("deepseek".into()),
                 api_key: Some("sk-flag".into()),
+                pin: false,
             };
             let err = load_provider_configs(Some(root.path()), &overrides).unwrap_err();
             assert!(err.contains("deepseek") && err.contains("base_url"), "{err}");
@@ -1950,5 +2101,77 @@ mod credential_origin_tests {
             assert_eq!(url, "http://127.0.0.1:11434/v1/chat/completions");
             assert!(keys.is_empty());
         });
+    }
+
+    fn pc(provider: &str, base_url: Option<&str>, models: &[&str]) -> ProviderConfig {
+        ProviderConfig {
+            provider: provider.into(),
+            base_url: base_url.map(String::from),
+            models: models.iter().map(|m| m.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    /// A server that accepts connections probes as reachable; a port nobody
+    /// listens on does not.
+    #[tokio::test]
+    async fn probe_reports_a_dead_server_unreachable() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let live = listener.local_addr().unwrap().port();
+        let closed = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let timeout = Duration::from_millis(500);
+        assert!(probe_base_url(&format!("http://127.0.0.1:{live}/v1"), timeout).await);
+        assert!(!probe_base_url(&format!("http://127.0.0.1:{closed}/v1"), timeout).await);
+        assert!(!probe_base_url("not a url at all", timeout).await);
+
+        let mut configs = HashMap::new();
+        let up_url = format!("http://127.0.0.1:{live}/v1");
+        let down_url = format!("http://127.0.0.1:{closed}/v1");
+        configs.insert("up".to_string(), pc("up", Some(&up_url), &["m"]));
+        configs.insert("down".to_string(), pc("down", Some(&down_url), &["m"]));
+        let probed = probe_providers(&configs, timeout).await;
+        let listed = model_listing(&configs, None, &probed);
+        let up = listed.iter().find(|m| m["provider"] == "up").unwrap();
+        let down = listed.iter().find(|m| m["provider"] == "down").unwrap();
+        assert_eq!(up["reachable"], true);
+        assert_eq!(down["reachable"], false);
+        drop(listener);
+    }
+
+    /// `--provider` resolves a Desktop display name case-insensitively and
+    /// pins the run to it even when another provider serves the same model.
+    #[test]
+    fn pin_provider_resolves_display_name_and_excludes_twins() {
+        let mut configs = HashMap::new();
+        configs.insert(
+            "Qwen 3.8 500k (8080)".to_string(),
+            pc("Qwen 3.8 500k (8080)", Some("http://localhost:8080/v1"), &["qwen3.8"]),
+        );
+        configs.insert(
+            "aaa-gateway".to_string(),
+            pc("aaa-gateway", Some("http://localhost:9090/v1"), &["qwen3.8", "other"]),
+        );
+        assert_eq!(
+            find_provider(&configs, "qwen 3.8 500K (8080)"),
+            Some("Qwen 3.8 500k (8080)")
+        );
+        assert_eq!(find_provider(&configs, "AAA-Gateway"), Some("aaa-gateway"));
+        assert_eq!(find_provider(&configs, "nope"), None);
+
+        let key = pin_provider(&mut configs, "qwen 3.8 500k (8080)", "qwen3.8").unwrap();
+        assert_eq!(key, "Qwen 3.8 500k (8080)");
+        assert_eq!(configs["aaa-gateway"].models, vec!["other".to_string()]);
+        assert!(configs[&key].models.iter().any(|m| m == "qwen3.8"));
+        let runnable = reachable_models(&configs);
+        assert!(runnable
+            .iter()
+            .filter(|(_, m)| m == "qwen3.8")
+            .all(|(p, _)| p == "Qwen 3.8 500k (8080)"));
+
+        let err = pin_provider(&mut configs, "missing", "qwen3.8").unwrap_err();
+        assert!(err.contains("unknown provider 'missing'"), "{err}");
     }
 }

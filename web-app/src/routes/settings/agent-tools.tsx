@@ -41,6 +41,7 @@ import {
 } from '@/lib/agentWorkspace'
 import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
+import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -316,6 +317,7 @@ function AgentToolsContent() {
               }
             />
           )}
+          {sandbox?.enforces && <SandboxToolchainGrants />}
         </Card>
 
         <CompactionPolicySettings />

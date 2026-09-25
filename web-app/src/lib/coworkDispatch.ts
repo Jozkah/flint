@@ -26,6 +26,7 @@ import {
 import {
   BACKEND_ACCESS_CAPABILITY,
   decideMutation,
+  writesInsideSessionTree,
   type AccessCapability,
   type AccessMode,
   type EditConsent,
@@ -419,10 +420,21 @@ async function routeCoworkTool(
     const readOnlyShell =
       command !== undefined && !destructive && isReadOnlyCommand(command)
     const needsApproval = decision.needsApproval && !readOnlyShell
+    // In Auto mode, a file write inside the session's own worktree or sandbox
+    // is the run's ordinary work: it never pauses the run to ask.
+    const ownTree =
+      ctx.mode === 'auto' &&
+      writesInsideSessionTree(
+        toolName,
+        call.input,
+        decision.destination,
+        ctx.worktreePath
+      )
     const overLimit =
       !needsApproval &&
       !readOnlyShell &&
       !destructive &&
+      !ownTree &&
       noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
     const forced: { alwaysAsk: true; reason: string } | undefined = destructive
       ? {

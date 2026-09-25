@@ -407,3 +407,57 @@ export function effectiveDowngradeKey(effective: EffectiveAccess): string | null
   }
   return downgradeMessageKey(effective.reason)
 }
+
+// ---------------------------------------------------------------------------
+// Writes inside the session's own tree
+
+/** File tools whose `path` argument is the one thing they change. */
+const FILE_WRITE_TOOLS = new Set(['write', 'edit'])
+
+const normalizeSlashes = (p: string): string => p.replace(/\\/g, '/')
+
+const isAbsolutePath = (p: string): boolean =>
+  p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\')
+
+/** Whether a relative path stays inside its root once `..` is applied. */
+function relativeStaysInside(path: string): boolean {
+  let depth = 0
+  for (const segment of normalizeSlashes(path).split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      depth -= 1
+      if (depth < 0) return false
+    } else {
+      depth += 1
+    }
+  }
+  return true
+}
+
+/**
+ * Is this call a file write that lands inside a tree the session owns -- its
+ * managed worktree, or its own sandbox?
+ *
+ * In Auto mode such a write is the run doing exactly what it was set up to
+ * do, so it neither asks nor counts toward the unasked streak that makes an
+ * unattended run pause. Anything that could reach the user's own folder --
+ * the `repository` destination, an absolute path outside the worktree, a
+ * relative path that climbs out -- is not covered and keeps the usual gate.
+ */
+export function writesInsideSessionTree(
+  toolName: string,
+  input: unknown,
+  destination: WriteDestination,
+  worktreePath?: string | null
+): boolean {
+  if (!FILE_WRITE_TOOLS.has(toolName)) return false
+  if (destination !== 'managed' && destination !== 'sandbox') return false
+  const path = (input as { path?: unknown } | null | undefined)?.path
+  if (typeof path !== 'string' || path.trim() === '') return false
+  if (!isAbsolutePath(path)) return relativeStaysInside(path)
+  if (destination !== 'managed' || !worktreePath) return false
+  const root = normalizeSlashes(worktreePath).replace(/\/+$/, '').toLowerCase()
+  const target = normalizeSlashes(path).toLowerCase()
+  if (!target.startsWith(root + '/')) return false
+  return relativeStaysInside(target.slice(root.length + 1))
+}

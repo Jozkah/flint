@@ -950,12 +950,70 @@ describe('dispatchCoworkTool: destructive commands and auto-approve limit', () =
       const onApprove = vi.fn(async () => true)
       for (let i = 0; i < 6; i++) {
         await dispatchCoworkTool(
-          call('write', { path: `f${i}` }),
+          call('bash', { command: `npm run step${i}` }),
           ctx({ sessionId: 'streak', mode: 'auto', onApprove })
         )
       }
       // Calls 1-2 run, 3 asks; 4-5 run, 6 asks.
       expect(onApprove).toHaveBeenCalledTimes(2)
+    } finally {
+      useAutoApproveLimit.getState().setLimit(50)
+    }
+  })
+})
+
+describe('dispatchCoworkTool: Auto mode writes inside the session tree', () => {
+  const WT = 'C:\\data\\worktrees\\s1'
+  const managed = (over = {}) =>
+    ctx({
+      mode: 'auto',
+      access: 'managed-worktree',
+      accessCapability: { managedWorktree: true, directEdit: false },
+      worktreePath: WT,
+      ...over,
+    })
+
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('never stops to ask for writes inside the managed worktree', async () => {
+    const { useAutoApproveLimit } = await import('@/hooks/useAutoApproveLimit')
+    useAutoApproveLimit.getState().setLimit(2)
+    try {
+      const onApprove = vi.fn(async () => true)
+      for (let i = 0; i < 6; i++) {
+        await dispatchCoworkTool(
+          call(i % 2 ? 'edit' : 'write', { path: `src/f${i}.py` }),
+          managed({ sessionId: 'own-tree', onApprove })
+        )
+      }
+      await dispatchCoworkTool(
+        call('write', { path: `${WT}\\calc.py` }),
+        managed({ sessionId: 'own-tree', onApprove })
+      )
+      expect(onApprove).not.toHaveBeenCalled()
+      expect(executeAgentTool).toHaveBeenCalledTimes(7)
+    } finally {
+      useAutoApproveLimit.getState().setLimit(50)
+    }
+  })
+
+  it('still asks for writes that leave the worktree', async () => {
+    const { useAutoApproveLimit } = await import('@/hooks/useAutoApproveLimit')
+    useAutoApproveLimit.getState().setLimit(2)
+    try {
+      const onApprove = vi.fn(async () => true)
+      const paths = ['../outside.txt', 'C:\\Users\\me\\a.txt', 'C:\\data\\worktrees\\s10\\b']
+      for (const path of paths) {
+        await dispatchCoworkTool(
+          call('write', { path }),
+          managed({ sessionId: 'outside-tree', onApprove })
+        )
+      }
+      // Counted toward the streak like any unasked change: the third asks.
+      expect(onApprove).toHaveBeenCalledTimes(1)
     } finally {
       useAutoApproveLimit.getState().setLimit(50)
     }

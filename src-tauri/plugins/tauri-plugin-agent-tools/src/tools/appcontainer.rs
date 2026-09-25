@@ -1397,10 +1397,14 @@ mod win {
         // the sandbox they would only fail, and confusingly.
         if let Some(host) = std::env::var_os("PATH") {
             let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
+            // Folders the user explicitly let the sandbox use are carried even
+            // when they sit in the profile.
+            let granted = crate::tools::toolchain_grants::granted_folders();
             let extra = crate::tools::host_tools::usable_host_dirs(
                 &host,
                 profile.as_deref(),
                 &dirs,
+                &granted,
                 crate::tools::host_tools::container_can_execute,
             );
             dirs.extend(extra);

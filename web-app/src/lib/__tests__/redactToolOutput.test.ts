@@ -102,3 +102,31 @@ describe('redacting a whole tool result', () => {
     expect(secretsRedact).not.toHaveBeenCalled()
   })
 })
+
+describe('plain command output', () => {
+  // git clone printing to stderr, then a README, with an empty field last:
+  // nothing here is a credential, so all of it must come through.
+  it('passes ordinary git output and a README through untouched', async () => {
+    // A backend that drops a trailing newline, as the Rust redactor once did:
+    // an empty last field must not be what decides the result.
+    secretsRedact.mockImplementation(async (text: string) =>
+      text.replace(/\n$/, '')
+    )
+    const result = {
+      stdout: 'Hello World!\n',
+      stderr: "Cloning into 'Hello-World'...\n",
+      error: '',
+    }
+    const out = await redactDeep(result)
+    expect(out.stdout).toBe('Hello World!\n')
+    expect(out.stderr).toBe("Cloning into 'Hello-World'...")
+    expect(out.error).toBe('')
+    expect(JSON.stringify(out)).not.toContain(UNREDACTABLE)
+  })
+
+  it('still removes a real credential next to empty fields', async () => {
+    const out = await redactDeep({ stdout: 'token ' + KEY, stderr: '' })
+    expect(out.stdout).not.toContain(KEY)
+    expect(out.stderr).toBe('')
+  })
+})

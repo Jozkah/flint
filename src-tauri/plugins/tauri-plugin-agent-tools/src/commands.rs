@@ -580,6 +580,38 @@ pub async fn sandbox_toolchains(
         .map_err(|e| AgentToolsError::from(format!("toolchain probe failed: {e}")))
 }
 
+/// Toolchain folders the user let the Windows sandbox use.
+#[tauri::command]
+pub async fn sandbox_toolchain_grants(
+) -> Result<Vec<crate::tools::toolchain_grants::ToolchainGrant>, AgentToolsError> {
+    Ok(crate::tools::toolchain_grants::list())
+}
+
+/// Let the sandbox run `program`, a toolchain the probe reports as installed
+/// but unrunnable: adds an inheritable read+execute entry for `ALL APPLICATION
+/// PACKAGES` on that program's install folder only, and records it.
+#[tauri::command]
+pub async fn sandbox_toolchain_grant(
+    program: String,
+) -> Result<crate::tools::toolchain_grants::ToolchainGrant, AgentToolsError> {
+    tokio::task::spawn_blocking(move || crate::tools::toolchain_grants::grant(&program))
+        .await
+        .map_err(|e| AgentToolsError::from(format!("toolchain grant failed: {e}")))?
+        .map_err(AgentToolsError::from)
+}
+
+/// Take back a grant made by `sandbox_toolchain_grant`: removes exactly the
+/// entry it added, and the record.
+#[tauri::command]
+pub async fn sandbox_toolchain_revoke(folder: String) -> Result<(), AgentToolsError> {
+    tokio::task::spawn_blocking(move || {
+        crate::tools::toolchain_grants::revoke(std::path::Path::new(&folder))
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(format!("toolchain revoke failed: {e}")))?
+    .map_err(AgentToolsError::from)
+}
+
 /// What a session can do right now, component by component.
 ///
 /// The tool list, the run preflight and the Environment readiness card all read

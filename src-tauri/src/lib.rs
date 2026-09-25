@@ -607,6 +607,13 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
+            // Toolchain folders the user let the Windows sandbox use are
+            // recorded beside the app's settings.
+            tauri_plugin_agent_tools::tools::toolchain_grants::set_store(
+                tauri_plugin_agent_tools::tools::toolchain_grants::store_path(
+                    &get_jan_data_folder_path(app.handle().clone()),
+                ),
+            );
             // Anything a killed run left mid-flight is settled before the
             // window opens, so a timeline restored from disk never shows a
             // call as still running when nothing is left to finish it.

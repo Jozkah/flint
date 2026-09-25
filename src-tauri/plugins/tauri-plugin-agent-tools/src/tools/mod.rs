@@ -22,6 +22,7 @@ pub mod proc;
 pub mod sandbox;
 pub mod schema;
 pub mod shell_diag;
+pub mod toolchain_grants;
 pub mod web;
 /// Windows sandbox environment construction. Compiled on every host so its
 /// rules stay unit-testable off Windows; only the AppContainer backend calls it.

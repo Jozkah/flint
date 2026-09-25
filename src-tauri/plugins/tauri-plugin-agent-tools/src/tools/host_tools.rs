@@ -122,12 +122,15 @@ pub fn container_can_execute(_dir: &Path) -> Option<bool> {
 }
 
 /// Host `PATH` folders the sandbox can use: absolute, existing, outside the
-/// user's profile, and granting `ALL APPLICATION PACKAGES` read and execute.
-/// Returned in host order, without duplicates of `already`.
+/// user's profile (unless the user granted that folder to the sandbox), and
+/// granting `ALL APPLICATION PACKAGES` read and execute. Returned in host
+/// order, without duplicates of `already`; granted folders not on the host
+/// `PATH` follow at the end.
 pub fn usable_host_dirs(
     host_path: &OsString,
     profile: Option<&Path>,
     already: &[PathBuf],
+    granted: &[PathBuf],
     can_execute: impl Fn(&Path) -> Option<bool>,
 ) -> Vec<PathBuf> {
     let same = |a: &Path, b: &Path| {
@@ -135,11 +138,18 @@ pub fn usable_host_dirs(
             .trim_end_matches(['\\', '/'])
             .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
     };
+    let is_granted = |dir: &Path| granted.iter().any(|g| same(g, dir));
     let mut out: Vec<PathBuf> = Vec::new();
-    for dir in std::env::split_paths(host_path) {
+    let host_dirs: Vec<PathBuf> = std::env::split_paths(host_path).collect();
+    let extra: Vec<PathBuf> = granted
+        .iter()
+        .filter(|g| !host_dirs.iter().any(|d| same(d, g)))
+        .cloned()
+        .collect();
+    for dir in host_dirs.into_iter().chain(extra) {
         if !dir.is_absolute()
             || !dir.is_dir()
-            || under_profile(&dir, profile)
+            || (under_profile(&dir, profile) && !is_granted(&dir))
             || is_msys_install(&dir)
         {
             continue;
@@ -174,7 +184,9 @@ pub fn unavailable_hint(
         );
     }
     let reason = if under_profile(dir, profile) {
-        "it is installed inside the user profile, which the sandbox cannot read".to_string()
+        "it is installed inside the user profile, which the sandbox cannot read unless the \
+         user allows it"
+            .to_string()
     } else if can_execute(dir) == Some(false) {
         "its folder does not grant ALL APPLICATION PACKAGES read and execute, so the sandbox \
          is not allowed to run it"
@@ -186,7 +198,8 @@ pub fn unavailable_hint(
         "\n[sandbox: `{name}` is installed at {} but this sandbox cannot run it: {reason}. \
          Do not search the disk for another copy, and do not run a runtime bundled with a \
          different application. Tell the user that `{name}` is not available in the sandbox, \
-         and that they can run the command themselves or make `{name}` available to it.]",
+         and that they can run the command themselves or allow it in Settings > Agent Tools > \
+         Sandbox toolchains (\"Let the sandbox use this\").]",
         found.display()
     )
 }
@@ -343,7 +356,14 @@ fn compute_toolchains() -> Option<ToolchainReport> {
     let host = std::env::var_os("PATH").unwrap_or_default();
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let mut dirs = system_dirs();
-    let extra = usable_host_dirs(&host, profile.as_deref(), &dirs, container_can_execute);
+    let granted = crate::tools::toolchain_grants::granted_folders();
+    let extra = usable_host_dirs(
+        &host,
+        profile.as_deref(),
+        &dirs,
+        &granted,
+        container_can_execute,
+    );
     dirs.extend(extra);
     let sandbox = std::env::join_paths(&dirs).ok()?;
     let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
@@ -576,14 +596,27 @@ mod tests {
             root.path().join("missing"),
         ])
         .unwrap();
-        let got = usable_host_dirs(&host, Some(&prof), &[], |d| Some(d.ends_with("ok")));
+        let got = usable_host_dirs(&host, Some(&prof), &[], &[], |d| Some(d.ends_with("ok")));
         assert_eq!(got, vec![ok.clone()]);
         // Already on the sandbox PATH: not added twice.
         assert!(
-            usable_host_dirs(&host, Some(&prof), &[ok.clone()], |_| Some(true))
+            usable_host_dirs(&host, Some(&prof), &[ok.clone()], &[], |_| Some(true))
                 .iter()
                 .all(|d| d != &ok)
         );
+        // A profile folder the user granted is carried, once it admits app
+        // packages; a granted folder off the host PATH is appended.
+        let granted_off_path = prof.join("tools");
+        std::fs::create_dir_all(&granted_off_path).unwrap();
+        let granted = vec![prof_bin.clone(), granted_off_path.clone()];
+        let got = usable_host_dirs(&host, Some(&prof), &[], &granted, |_| Some(true));
+        assert!(got.contains(&prof_bin), "{got:?}");
+        assert_eq!(got.last(), Some(&granted_off_path));
+        // Granted but still not executable by app packages: left out.
+        let got = usable_host_dirs(&host, Some(&prof), &[], &granted, |d| {
+            Some(!d.starts_with(&prof))
+        });
+        assert!(!got.contains(&prof_bin), "{got:?}");
     }
 
     #[test]
@@ -641,7 +674,7 @@ mod tests {
         assert!(!is_msys_install(&other));
         let host = std::env::join_paths([cmd.clone(), mingw.clone(), other.clone()]).unwrap();
         assert_eq!(
-            usable_host_dirs(&host, None, &[], |_| Some(true)),
+            usable_host_dirs(&host, None, &[], &[], |_| Some(true)),
             vec![other]
         );
         let hint = unavailable_hint("git", &cmd.join("git.exe"), None, |_| Some(true));
