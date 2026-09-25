@@ -3,6 +3,7 @@ import { ChevronDown, User } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -114,6 +115,7 @@ export function AssistantSwitcher({
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+        <DropdownMenuLabel>{t('common:projects.addProjectDialog.assistant')}</DropdownMenuLabel>
         <AssistantsMenu
           selectedAssistant={selectedAssistantId}
           setSelectedAssistant={setSelectedAssistantId}

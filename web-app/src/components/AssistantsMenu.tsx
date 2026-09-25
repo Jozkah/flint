@@ -58,7 +58,6 @@ export function AssistantsMenu({
         }}
       >
         <div className="flex items-center gap-2 w-full">
-          <span className="text-muted-foreground">—</span>
           <span>None</span>
           {noSelectedAssistant && (
             <span className="ml-auto text-xs text-muted-foreground">✓</span>
