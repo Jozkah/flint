@@ -1474,6 +1474,32 @@ pub async fn agent_bundle_apply(
     import_blocking(move || crate::core::agent::bundle_import::apply(&data_folder, &approval)).await
 }
 
+/// Copy one file a Review only session wrote into its sandbox into the
+/// attached folder. The sandbox is resolved here from the session id, never
+/// taken from the renderer; an existing file is only replaced when `overwrite`
+/// says the user confirmed it.
+#[tauri::command]
+pub async fn agent_sandbox_apply_file(
+    app: tauri::AppHandle,
+    session: String,
+    path: String,
+    project: String,
+    overwrite: bool,
+) -> Result<tauri_plugin_agent_tools::sandbox_apply::SandboxApplyOutcome, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let sandbox = workspace::session_workspace(&data_folder, &session)?;
+        tauri_plugin_agent_tools::sandbox_apply::apply_sandbox_file(
+            &sandbox,
+            std::path::Path::new(&project),
+            &path,
+            overwrite,
+        )
+    })
+    .await
+    .map_err(|e| format!("the copy did not finish: {e}"))?
+}
+
 /// Give up on a pending import; its proposal is rejected.
 #[tauri::command]
 pub async fn agent_bundle_abandon(

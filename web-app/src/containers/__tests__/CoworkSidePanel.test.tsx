@@ -104,3 +104,41 @@ describe('CoworkInspectorFrame', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('the drawer and the composer', () => {
+  function withComposer(layout: InspectorLayout) {
+    render(
+      <div data-testid="pane" style={{ position: 'relative' }}>
+        <div data-composer data-testid="composer" />
+        <CoworkInspectorProvider layout={layout}>
+          <CoworkInspectorFrame tabs={null} onDismiss={vi.fn()}>
+            body
+          </CoworkInspectorFrame>
+        </CoworkInspectorProvider>
+      </div>
+    )
+  }
+  const rect = (top: number, bottom: number) =>
+    ({ top, bottom, left: 0, right: 1000, width: 1000, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect
+
+  it('ends the drawer and its scrim above the composer', () => {
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.dataset.composer !== undefined ? rect(600, 700) : rect(0, 700)
+      })
+    try {
+      withComposer('drawer')
+      // 700 - 600 plus the 8px gap.
+      expect(screen.getByTestId('cowork-inspector').style.bottom).toBe('108px')
+      expect(screen.getByRole('button', { name: 'common:rail.closeOverlay' }).style.bottom).toBe('108px')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('leaves a docked panel alone', () => {
+    withComposer('docked')
+    expect(screen.getByTestId('cowork-inspector').style.bottom).toBe('')
+  })
+})

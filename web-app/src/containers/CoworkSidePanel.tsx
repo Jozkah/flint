@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -163,6 +164,48 @@ function ResizeHandle({
 }
 
 /**
+ * How far the drawer must stay off the bottom of its container so it ends
+ * above the conversation's composer rather than covering it. Zero when not a
+ * drawer or when there is no composer beside it.
+ *
+ * The composer is found by its `data-composer` mark inside the drawer's
+ * positioned container and followed with a ResizeObserver, since it grows
+ * with its text and attachments.
+ */
+function useComposerClearance(
+  frame: React.RefObject<HTMLElement | null>,
+  active: boolean
+): number {
+  const [clearance, setClearance] = useState(0)
+  useLayoutEffect(() => {
+    const el = frame.current
+    const container = el?.offsetParent ?? el?.parentElement
+    if (!active || !container) {
+      setClearance(0)
+      return
+    }
+    const composer = container.querySelector<HTMLElement>('[data-composer]')
+    if (!composer) {
+      setClearance(0)
+      return
+    }
+    const measure = () => {
+      const box = container.getBoundingClientRect()
+      const top = composer.getBoundingClientRect().top
+      // A small gap so the drawer's shadow does not sit on the composer.
+      setClearance(Math.max(0, Math.round(box.bottom - top + 8)))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(composer)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [frame, active])
+  return clearance
+}
+
+/**
  * The output panel's frame: the rail tabs over whichever panel is open, docked
  * beside the conversation, as a drawer over it, or as the whole view.
  */
@@ -192,6 +235,10 @@ export function CoworkInspectorFrame({
   })
   const full = layout === 'full'
   const drawer = layout === 'drawer'
+  const frameRef = useRef<HTMLElement | null>(null)
+  // The drawer and its scrim end above the composer, so the input stays
+  // reachable while the drawer is open.
+  const clearance = useComposerClearance(frameRef, drawer)
 
   return (
     <>
@@ -203,10 +250,12 @@ export function CoworkInspectorFrame({
           tabIndex={-1}
           aria-label={t('common:rail.closeOverlay')}
           onClick={onDismiss}
+          style={clearance ? { bottom: clearance } : undefined}
           className="absolute inset-0 z-20 cursor-default bg-scrim motion-safe:animate-in motion-safe:fade-in-0"
         />
       )}
       <Frame
+        ref={frameRef}
         data-testid="cowork-inspector"
         data-layout={layout}
         onKeyDown={
@@ -233,7 +282,10 @@ export function CoworkInspectorFrame({
           !full && expanded && 'w-[40rem]',
           layout === 'docked' && expanded && 'max-w-[60%]'
         )}
-        style={full || expanded ? undefined : { width: `${width}px` }}
+        style={{
+          ...(full || expanded ? {} : { width: `${width}px` }),
+          ...(drawer && clearance ? { bottom: clearance } : {}),
+        }}
       >
         {!full && (
           <ResizeHandle

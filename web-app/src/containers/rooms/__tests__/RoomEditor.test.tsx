@@ -262,4 +262,28 @@ describe('RoomEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Remove Bob' }))
     expect(api.removeParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), 'p2')
   })
+
+  it('shows the two-participant hint only below two participants', () => {
+    const { api } = createFakeApi()
+    const hint = /At least two participants are needed/
+    const { unmount } = renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    expect(screen.queryByText(hint)).not.toBeInTheDocument()
+    unmount()
+    renderWithApi(
+      <RoomEditor room={makeRoom({ participants: [makeParticipant('p1', { name: 'Solo' })] })} />,
+      api
+    )
+    expect(screen.getByText(hint)).toBeInTheDocument()
+  })
+
+  it('gives every settings control its own accessible name', () => {
+    const { api } = createFakeApi()
+    const { container } = renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    // Radix radios and switches are bare <button>s; each carries its own name
+    // rather than relying on a label elsewhere in the DOM.
+    const bare = [...container.querySelectorAll('button')].filter((b) => !b.textContent?.trim())
+    expect(bare.length).toBeGreaterThan(0)
+    for (const el of bare) expect(el).toHaveAttribute('aria-label')
+    expect(container.querySelector('button[role="switch"]')).toHaveAttribute('aria-label', 'Use a moderator')
+  })
 })
